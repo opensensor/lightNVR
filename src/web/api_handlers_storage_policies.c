@@ -16,6 +16,7 @@
 #include "core/camera_selector.h"
 #include "database/db_fleet_query.h"
 #include "database/db_storage_policies.h"
+#include "database/db_storage_pools.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
 #include "web/audit_log.h"
@@ -56,6 +57,12 @@ static cJSON *policy_to_json(const storage_policy_t *policy) {
     cJSON_AddItemToObject(object, "selector", selector);
     cJSON_AddStringToObject(object, "primary_target_uuid",
                            policy->primary_target_uuid);
+    if (policy->primary_pool_uuid[0]) {
+        cJSON_AddStringToObject(object, "primary_pool_uuid",
+                               policy->primary_pool_uuid);
+    } else {
+        cJSON_AddNullToObject(object, "primary_pool_uuid");
+    }
     cJSON_AddStringToObject(object, "fallback_mode", policy->fallback_mode);
     if (policy->fallback_target_uuid[0]) {
         cJSON_AddStringToObject(object, "fallback_target_uuid",
@@ -63,6 +70,30 @@ static cJSON *policy_to_json(const storage_policy_t *policy) {
     } else {
         cJSON_AddNullToObject(object, "fallback_target_uuid");
     }
+    cJSON_AddNumberToObject(object, "minimum_retention_days",
+                            policy->minimum_retention_days);
+    cJSON_AddNumberToObject(object, "desired_retention_days",
+                            policy->desired_retention_days);
+    cJSON_AddNumberToObject(object, "maximum_retention_days",
+                            policy->maximum_retention_days);
+    cJSON_AddNumberToObject(object, "required_copy_count",
+                            policy->required_copy_count);
+    if (policy->replication_pool_uuid[0]) {
+        cJSON_AddStringToObject(object, "replication_pool_uuid",
+                               policy->replication_pool_uuid);
+    } else {
+        cJSON_AddNullToObject(object, "replication_pool_uuid");
+    }
+    cJSON_AddNumberToObject(object, "migration_after_days",
+                            policy->migration_after_days);
+    if (policy->migration_target_uuid[0]) {
+        cJSON_AddStringToObject(object, "migration_target_uuid",
+                               policy->migration_target_uuid);
+    } else {
+        cJSON_AddNullToObject(object, "migration_target_uuid");
+    }
+    cJSON_AddNumberToObject(object, "pressure_priority",
+                            policy->pressure_priority);
     cJSON_AddNumberToObject(object, "revision", (double)policy->revision);
     cJSON_AddNumberToObject(object, "created_at", (double)policy->created_at);
     cJSON_AddNumberToObject(object, "updated_at", (double)policy->updated_at);
@@ -142,6 +173,44 @@ static bool string_value(const cJSON *body, const char *key,
     return true;
 }
 
+static bool nullable_string_value(const cJSON *body, const char *key,
+                                  char *destination, size_t destination_size,
+                                  http_response_t *res) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(body, key);
+    if (!item) return true;
+    if (cJSON_IsNull(item)) {
+        destination[0] = '\0';
+        return true;
+    }
+    if (!cJSON_IsString(item) || !item->valuestring ||
+        strnlen(item->valuestring, destination_size) >= destination_size) {
+        char message[160];
+        snprintf(message, sizeof(message), "%s must be a UUID or null", key);
+        http_response_set_json_error(res, 400, message);
+        return false;
+    }
+    safe_strcpy(destination, item->valuestring, destination_size, 0);
+    return true;
+}
+
+static bool integer_value(const cJSON *body, const char *key,
+                          int minimum, int maximum, int *destination,
+                          http_response_t *res) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(body, key);
+    if (!item) return true;
+    if (!cJSON_IsNumber(item) || !isfinite(item->valuedouble) ||
+        floor(item->valuedouble) != item->valuedouble ||
+        item->valuedouble < minimum || item->valuedouble > maximum) {
+        char message[192];
+        snprintf(message, sizeof(message), "%s must be an integer from %d to %d",
+                 key, minimum, maximum);
+        http_response_set_json_error(res, 400, message);
+        return false;
+    }
+    *destination = item->valueint;
+    return true;
+}
+
 static bool apply_body(const cJSON *body, storage_policy_t *policy,
                        bool create, int64_t *revision,
                        char validation_error[STORAGE_TARGET_ERROR_MAX],
@@ -155,9 +224,45 @@ static bool apply_body(const cJSON *body, storage_policy_t *policy,
                       create, res) ||
         !string_value(body, "primary_target_uuid",
                       policy->primary_target_uuid,
-                      sizeof(policy->primary_target_uuid), create, res) ||
+                      sizeof(policy->primary_target_uuid), false, res) ||
         !string_value(body, "fallback_mode", policy->fallback_mode,
-                      sizeof(policy->fallback_mode), false, res)) return false;
+                      sizeof(policy->fallback_mode), false, res) ||
+        !nullable_string_value(body, "primary_pool_uuid",
+                               policy->primary_pool_uuid,
+                               sizeof(policy->primary_pool_uuid), res) ||
+        !nullable_string_value(body, "replication_pool_uuid",
+                               policy->replication_pool_uuid,
+                               sizeof(policy->replication_pool_uuid), res) ||
+        !nullable_string_value(body, "migration_target_uuid",
+                               policy->migration_target_uuid,
+                               sizeof(policy->migration_target_uuid), res) ||
+        !integer_value(body, "minimum_retention_days", 0, 36500,
+                       &policy->minimum_retention_days, res) ||
+        !integer_value(body, "desired_retention_days", 0, 36500,
+                       &policy->desired_retention_days, res) ||
+        !integer_value(body, "maximum_retention_days", 0, 36500,
+                       &policy->maximum_retention_days, res) ||
+        !integer_value(body, "required_copy_count", 1, 8,
+                       &policy->required_copy_count, res) ||
+        !integer_value(body, "migration_after_days", 0, 36500,
+                       &policy->migration_after_days, res) ||
+        !integer_value(body, "pressure_priority", -1000000, 1000000,
+                       &policy->pressure_priority, res)) return false;
+    if (create && policy->primary_target_uuid[0] == '\0' &&
+        policy->primary_pool_uuid[0]) {
+        storage_pool_t pool;
+        if (db_storage_pool_get(policy->primary_pool_uuid, &pool) ==
+                DB_STORAGE_POOL_OK && pool.member_count > 0) {
+            safe_strcpy(policy->primary_target_uuid,
+                        pool.members[0].target_uuid,
+                        sizeof(policy->primary_target_uuid), 0);
+        }
+    }
+    if (create && policy->primary_target_uuid[0] == '\0') {
+        http_response_set_json_error(
+            res, 400, "primary_target_uuid or primary_pool_uuid is required");
+        return false;
+    }
 
     const cJSON *fallback = cJSON_GetObjectItemCaseSensitive(
         body, "fallback_target_uuid");
@@ -269,6 +374,12 @@ static cJSON *preview_winner_json(const storage_policy_t *policy,
     cJSON_AddNumberToObject(winner, "priority", policy->priority);
     cJSON_AddStringToObject(winner, "primary_target_uuid",
                             policy->primary_target_uuid);
+    if (policy->primary_pool_uuid[0]) {
+        cJSON_AddStringToObject(winner, "primary_pool_uuid",
+                                policy->primary_pool_uuid);
+    } else {
+        cJSON_AddNullToObject(winner, "primary_pool_uuid");
+    }
     cJSON_AddStringToObject(winner, "fallback_mode",
                             policy->fallback_mode);
     if (policy->fallback_target_uuid[0]) {
@@ -296,6 +407,8 @@ void handle_post_storage_policy_preview(const http_request_t *req,
     memset(&draft, 0, sizeof(draft));
     draft.enabled = true;
     draft.priority = 100;
+    draft.required_copy_count = 1;
+    draft.pressure_priority = 100;
     safe_strcpy(draft.fallback_mode, "default",
                 sizeof(draft.fallback_mode), 0);
     bool editing = false;
@@ -563,6 +676,8 @@ void handle_post_storage_policy(const http_request_t *req,
     memset(&policy, 0, sizeof(policy));
     policy.enabled = true;
     policy.priority = 100;
+    policy.required_copy_count = 1;
+    policy.pressure_priority = 100;
     safe_strcpy(policy.fallback_mode, "default",
                 sizeof(policy.fallback_mode), 0);
     cJSON *body = httpd_parse_json_body(req);

@@ -10,17 +10,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "database/db_storage_policies.h"
 #include "database/db_storage_targets.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_storage_policies.h"
+#include "web/api_handlers_storage_compliance.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_api_storage_policies.db"
@@ -74,7 +77,10 @@ void setUp(void) {
     g_config.demo_mode = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
         get_db_handle(),
-        "DELETE FROM recordings;DELETE FROM storage_policies;"
+        "DELETE FROM storage_policy_violations;DELETE FROM storage_migration_jobs;"
+        "DELETE FROM storage_recording_copies;DELETE FROM recordings;"
+        "DELETE FROM storage_policies;DELETE FROM storage_pool_members;"
+        "DELETE FROM storage_pools;"
         "DELETE FROM streams;DELETE FROM storage_targets;DELETE FROM audit_events;",
         NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
@@ -232,6 +238,66 @@ void test_policy_preview_reports_conflicts_and_effective_precedence(void) {
     cJSON_Delete(json);
 }
 
+void test_compliance_forecasts_thirty_day_observed_rate(void) {
+    storage_policy_t policy;
+    memset(&policy, 0, sizeof(policy));
+    safe_strcpy(policy.name, "Forecast fixture", sizeof(policy.name), 0);
+    policy.enabled = true;
+    policy.priority = 100;
+    safe_strcpy(policy.selector_json,
+                "{\"version\":1,\"expression\":{\"op\":\"all\"}}",
+                sizeof(policy.selector_json), 0);
+    safe_strcpy(policy.primary_target_uuid, primary_target.uuid,
+                sizeof(policy.primary_target_uuid), 0);
+    safe_strcpy(policy.fallback_mode, "default",
+                sizeof(policy.fallback_mode), 0);
+    policy.required_copy_count = 1;
+    policy.minimum_retention_days = 1;
+    policy.desired_retention_days = 30;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
+                          db_storage_policy_create(&policy));
+
+    const int ages[] = {29, 15, 0};
+    for (int index = 0; index < 3; index++) {
+        recording_metadata_t recording;
+        memset(&recording, 0, sizeof(recording));
+        safe_strcpy(recording.stream_name, "forecast-camera",
+                    sizeof(recording.stream_name), 0);
+        snprintf(recording.object_key, sizeof(recording.object_key),
+                 "forecast-%d.mp4", index);
+        snprintf(recording.file_path, sizeof(recording.file_path), "%s/%s",
+                 primary_root, recording.object_key);
+        safe_strcpy(recording.storage_target_uuid, primary_target.uuid,
+                    sizeof(recording.storage_target_uuid), 0);
+        snprintf(recording.placement_reason,
+                 sizeof(recording.placement_reason), "policy-primary:%s",
+                 policy.uuid);
+        recording.storage_policy_version = policy.revision;
+        recording.start_time = time(NULL) - ages[index] * 86400;
+        recording.end_time = recording.start_time + 60;
+        recording.size_bytes = 86400000;
+        recording.is_complete = true;
+        TEST_ASSERT_NOT_EQUAL_UINT64(0, add_recording_metadata(&recording));
+    }
+
+    cJSON *json = call(handle_get_storage_compliance, HTTP_METHOD_GET,
+                       "/api/storage-compliance", NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(30, cJSON_GetObjectItemCaseSensitive(
+                                  json, "forecast_window_days")->valueint);
+    cJSON *policies = cJSON_GetObjectItemCaseSensitive(json, "policies");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(policies));
+    cJSON *forecast = cJSON_GetArrayItem(policies, 0);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetObjectItemCaseSensitive(
+                                 forecast, "recording_count")->valueint);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(
+                              forecast, "sample_window_days")->valuedouble >= 29.0);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(
+                              forecast, "observed_daily_bytes")->valuedouble > 0.0);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(
+                                  forecast, "expected_retention_days"));
+    cJSON_Delete(json);
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(primary_root));
@@ -244,6 +310,7 @@ int main(void) {
     RUN_TEST(test_policy_api_crud_and_revision_guard);
     RUN_TEST(test_policy_api_rejects_primary_as_named_fallback);
     RUN_TEST(test_policy_preview_reports_conflicts_and_effective_precedence);
+    RUN_TEST(test_compliance_forecasts_thirty_day_observed_rate);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

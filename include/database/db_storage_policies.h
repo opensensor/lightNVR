@@ -21,8 +21,17 @@ typedef struct {
     int priority;
     char selector_json[STORAGE_POLICY_SELECTOR_MAX];
     char primary_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    char primary_pool_uuid[LIGHTNVR_UUID_STRING_SIZE];
     char fallback_mode[STORAGE_POLICY_FALLBACK_MODE_MAX];
     char fallback_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    int minimum_retention_days;
+    int desired_retention_days;
+    int maximum_retention_days;
+    int required_copy_count;
+    char replication_pool_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    int migration_after_days;
+    char migration_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    int pressure_priority;
     int64_t revision;
     int64_t created_at;
     int64_t updated_at;

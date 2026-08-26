@@ -1291,6 +1291,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 int delete_recording_metadata(uint64_t id) {
     int rc;
     sqlite3_stmt *stmt;
+    char replica_paths[8][MAX_PATH_LENGTH];
+    int replica_count = 0;
 
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
@@ -1301,6 +1303,22 @@ int delete_recording_metadata(uint64_t id) {
     }
 
     pthread_mutex_lock(db_mutex);
+
+    /* Capture retained-copy paths before the recording cascade removes their
+     * metadata. Deletion of a logical recording owns all verified copies. */
+    const char *copy_sql =
+        "SELECT t.root_path || '/' || c.object_key FROM storage_recording_copies c "
+        "JOIN storage_targets t ON t.uuid=c.target_uuid WHERE c.recording_id=? "
+        "LIMIT 8;";
+    if (sqlite3_prepare_v2(db, copy_sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+        while (replica_count < 8 && sqlite3_step(stmt) == SQLITE_ROW) {
+            const char *path = (const char *)sqlite3_column_text(stmt, 0);
+            safe_strcpy(replica_paths[replica_count++], path ? path : "",
+                        MAX_PATH_LENGTH, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
 
     // First, clear any foreign key references in the detections table
     // The detections table has FOREIGN KEY (recording_id) REFERENCES recordings(id)
@@ -1348,6 +1366,13 @@ int delete_recording_metadata(uint64_t id) {
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
+
+    for (int index = 0; index < replica_count; index++) {
+        if (replica_paths[index][0] && unlink(replica_paths[index]) != 0) {
+            log_warn("Could not remove retained recording copy: %s",
+                     replica_paths[index]);
+        }
+    }
 
     return 0;
 }
@@ -2086,14 +2111,23 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "WHERE stream_name = ? "
               "AND protected = 0 "
               "AND is_complete = 1 "
-              "AND ("
+              "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE "
+              "j.recording_id=recordings.id AND j.state NOT IN ('completed','failed','cancelled')) "
+              "AND (("
               "  (retention_tier = 0 AND start_time < ?) OR "
               "  (retention_tier = 1 AND start_time < ?) OR "
               "  (retention_tier = 2 AND start_time < ?) OR "
               "  (retention_tier = 3 AND start_time < ?)"
-              ") "
+              ") OR EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
+              "AND p.maximum_retention_days>0 AND start_time < "
+              "strftime('%s','now')-p.maximum_retention_days*86400)) "
               "AND (retention_override_days IS NULL "
               "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
+              "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
+              "AND p.minimum_retention_days>0 AND start_time >= "
+              "strftime('%s','now')-p.minimum_retention_days*86400) "
               "ORDER BY retention_tier DESC, start_time ASC "
               "LIMIT ?;";
     } else {
@@ -2104,14 +2138,23 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "FROM recordings "
               "WHERE protected = 0 "
               "AND is_complete = 1 "
-              "AND ("
+              "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE "
+              "j.recording_id=recordings.id AND j.state NOT IN ('completed','failed','cancelled')) "
+              "AND (("
               "  (retention_tier = 0 AND start_time < ?) OR "
               "  (retention_tier = 1 AND start_time < ?) OR "
               "  (retention_tier = 2 AND start_time < ?) OR "
               "  (retention_tier = 3 AND start_time < ?)"
-              ") "
+              ") OR EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
+              "AND p.maximum_retention_days>0 AND start_time < "
+              "strftime('%s','now')-p.maximum_retention_days*86400)) "
               "AND (retention_override_days IS NULL "
               "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
+              "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
+              "AND p.minimum_retention_days>0 AND start_time >= "
+              "strftime('%s','now')-p.minimum_retention_days*86400) "
               "ORDER BY retention_tier DESC, start_time ASC "
               "LIMIT ?;";
     }
@@ -2218,6 +2261,20 @@ static int get_pressure_cleanup_recordings(
 
     pthread_mutex_lock(db_mutex);
 
+#define POLICY_PRESSURE_GUARD \
+        "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE " \
+        "j.recording_id=recordings.id AND " \
+        "j.state NOT IN ('completed','failed','cancelled')) " \
+        "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 " \
+        "AND p.uuid=substr(COALESCE(placement_reason,'')," \
+        "instr(COALESCE(placement_reason,''),':')+1) AND (" \
+        "p.required_copy_count>1 OR (p.minimum_retention_days>0 AND " \
+        "start_time>=strftime('%s','now')-p.minimum_retention_days*86400))) "
+#define POLICY_PRESSURE_ORDER \
+        "COALESCE((SELECT p.pressure_priority FROM storage_policies p WHERE " \
+        "p.uuid=substr(COALESCE(placement_reason,'')," \
+        "instr(COALESCE(placement_reason,''),':')+1)),100) ASC, "
+
     const char *global_sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
@@ -2229,7 +2286,9 @@ static int get_pressure_cleanup_recordings(
         "WHERE protected = 0 "
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
-        "ORDER BY retention_tier DESC, "
+        POLICY_PRESSURE_GUARD
+        "ORDER BY " POLICY_PRESSURE_ORDER
+        "retention_tier DESC, "
         "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
         "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
         "start_time ASC "
@@ -2246,7 +2305,9 @@ static int get_pressure_cleanup_recordings(
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
         "AND storage_target_uuid = ? "
-        "ORDER BY retention_tier DESC, "
+        POLICY_PRESSURE_GUARD
+        "ORDER BY " POLICY_PRESSURE_ORDER
+        "retention_tier DESC, "
         "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
         "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
         "start_time ASC "
@@ -2269,13 +2330,17 @@ static int get_pressure_cleanup_recordings(
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
         "AND (storage_target_uuid = ? OR storage_target_uuid IS NULL) "
-        "ORDER BY retention_tier DESC, "
+        POLICY_PRESSURE_GUARD
+        "ORDER BY " POLICY_PRESSURE_ORDER
+        "retention_tier DESC, "
         "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
         "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
         "start_time ASC "
         "LIMIT ?;";
 
     const char *selected_sql = global_sql;
+#undef POLICY_PRESSURE_ORDER
+#undef POLICY_PRESSURE_GUARD
     if (storage_target_uuid) {
         selected_sql = include_unattributed ? default_target_sql : target_sql;
     }

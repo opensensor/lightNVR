@@ -28,7 +28,7 @@ static cJSON *job_json(const storage_migration_job_t *job) {
     if (!root) return NULL;
     cJSON_AddStringToObject(root, "uuid", job->uuid);
     cJSON_AddNumberToObject(root, "recording_id", (double)job->recording_id);
-    cJSON_AddStringToObject(root, "operation", "move");
+    cJSON_AddStringToObject(root, "operation", job->operation);
     cJSON_AddStringToObject(root, "source_target_uuid",
                            job->source_target_uuid);
     cJSON_AddStringToObject(root, "source_object_key",
@@ -58,6 +58,13 @@ static cJSON *job_json(const storage_migration_job_t *job) {
         cJSON_AddNullToObject(root, "next_attempt_at");
     }
     cJSON_AddStringToObject(root, "last_error", job->last_error);
+    cJSON_AddBoolToObject(root, "cancel_requested", job->cancel_requested);
+    cJSON_AddNumberToObject(root, "bandwidth_limit_bps",
+                            (double)job->bandwidth_limit_bps);
+    cJSON_AddNumberToObject(root, "window_start_minute",
+                            job->window_start_minute);
+    cJSON_AddNumberToObject(root, "window_end_minute",
+                            job->window_end_minute);
     cJSON_AddNumberToObject(root, "revision", (double)job->revision);
     cJSON_AddNumberToObject(root, "created_at", (double)job->created_at);
     cJSON_AddNumberToObject(root, "updated_at", (double)job->updated_at);
@@ -97,7 +104,7 @@ static void set_db_error(http_response_t *res,
         case DB_STORAGE_MIGRATION_CONFLICT:
             http_response_set_json_error(
                 res, 409,
-                "Recording already has an active migration or is on that target");
+                "Migration conflicts with the recording, target, or current job state");
             break;
         case DB_STORAGE_MIGRATION_SOURCE_INCOMPLETE:
             http_response_set_json_error(
@@ -121,14 +128,21 @@ static void set_db_error(http_response_t *res,
 static bool extract_job_uuid(const http_request_t *req,
                              char uuid[LIGHTNVR_UUID_STRING_SIZE],
                              http_response_t *res) {
+    char value[MAX_PATH_LENGTH];
     if (http_request_extract_path_param(
-            req, "/api/storage-migrations/", uuid,
-            LIGHTNVR_UUID_STRING_SIZE) != 0 ||
-        !lightnvr_uuid_is_valid(uuid)) {
+            req, "/api/storage-migrations/", value, sizeof(value)) != 0) {
+        http_response_set_json_error(res, 400,
+                                     "Invalid storage migration path");
+        return false;
+    }
+    char *slash = strchr(value, '/');
+    if (slash) *slash = '\0';
+    if (!lightnvr_uuid_is_valid(value)) {
         http_response_set_json_error(res, 400,
                                      "Invalid storage migration UUID");
         return false;
     }
+    safe_strcpy(uuid, value, LIGHTNVR_UUID_STRING_SIZE, 0);
     return true;
 }
 
@@ -180,6 +194,8 @@ void handle_post_storage_migration(const http_request_t *req,
     const cJSON *destination = body
         ? cJSON_GetObjectItemCaseSensitive(body,
                                            "destination_target_uuid") : NULL;
+    const cJSON *operation = body
+        ? cJSON_GetObjectItemCaseSensitive(body, "operation") : NULL;
     bool valid_id = cJSON_IsNumber(recording) &&
         isfinite(recording->valuedouble) && recording->valuedouble >= 1.0 &&
         recording->valuedouble <= 9007199254740991.0 &&
@@ -187,22 +203,32 @@ void handle_post_storage_migration(const http_request_t *req,
     bool valid_destination = cJSON_IsString(destination) &&
         destination->valuestring &&
         lightnvr_uuid_is_valid(destination->valuestring);
-    if (!cJSON_IsObject(body) || !valid_id || !valid_destination) {
+    bool valid_operation = !operation ||
+        (cJSON_IsString(operation) && operation->valuestring &&
+         (strcmp(operation->valuestring, "move") == 0 ||
+          strcmp(operation->valuestring, "copy") == 0));
+    if (!cJSON_IsObject(body) || !valid_id || !valid_destination ||
+        !valid_operation) {
         cJSON_Delete(body);
         http_response_set_json_error(
             res, 400,
-            "recording_id and destination_target_uuid are required");
+            "recording_id, destination_target_uuid, and a valid operation are required");
         return;
     }
     uint64_t recording_id = (uint64_t)recording->valuedouble;
     char destination_uuid[LIGHTNVR_UUID_STRING_SIZE];
     safe_strcpy(destination_uuid, destination->valuestring,
                 sizeof(destination_uuid), 0);
+    char operation_name[STORAGE_MIGRATION_OPERATION_MAX];
+    safe_strcpy(operation_name,
+                operation ? operation->valuestring : "move",
+                sizeof(operation_name), 0);
     cJSON_Delete(body);
 
     storage_migration_job_t job;
-    db_storage_migration_result_t result = db_storage_migration_create(
-        recording_id, destination_uuid, user.id, &job);
+    db_storage_migration_result_t result =
+        db_storage_migration_create_operation(
+            recording_id, destination_uuid, operation_name, user.id, &job);
     if (result != DB_STORAGE_MIGRATION_OK) {
         set_db_error(res, result);
         audit_log_operation(req, &user, "storage.configure",
@@ -217,6 +243,7 @@ void handle_post_storage_migration(const http_request_t *req,
                                (double)recording_id);
         cJSON_AddStringToObject(details, "destination_target_uuid",
                                destination_uuid);
+        cJSON_AddStringToObject(details, "operation", operation_name);
     }
     audit_log_operation(req, &user, "storage.configure",
                         "storage_migration", job.uuid, "migration_create",
@@ -240,4 +267,41 @@ void handle_get_storage_migration(const http_request_t *req,
         return;
     }
     send_json(res, 200, job_json(&job));
+}
+
+static void handle_job_action(const http_request_t *req,
+                              http_response_t *res, bool retry) {
+    user_t user;
+    char uuid[LIGHTNVR_UUID_STRING_SIZE];
+    if (!authorize_storage(req, res, &user) ||
+        !extract_job_uuid(req, uuid, res)) return;
+    storage_migration_job_t job;
+    db_storage_migration_result_t result = retry
+        ? db_storage_migration_retry(uuid, &job)
+        : db_storage_migration_request_cancel(uuid, &job);
+    if (result != DB_STORAGE_MIGRATION_OK) {
+        set_db_error(res, result);
+        audit_log_operation(req, &user, "storage.configure",
+                            "storage_migration", uuid,
+                            retry ? "migration_retry" : "migration_cancel",
+                            result == DB_STORAGE_MIGRATION_ERROR
+                                ? "error" : "failure", NULL);
+        return;
+    }
+    audit_log_operation(req, &user, "storage.configure",
+                        "storage_migration", uuid,
+                        retry ? "migration_retry" : "migration_cancel",
+                        "success", NULL);
+    if (retry || job.cancel_requested) storage_migration_worker_wake();
+    send_json(res, 200, job_json(&job));
+}
+
+void handle_post_storage_migration_cancel(const http_request_t *req,
+                                          http_response_t *res) {
+    handle_job_action(req, res, false);
+}
+
+void handle_post_storage_migration_retry(const http_request_t *req,
+                                         http_response_t *res) {
+    handle_job_action(req, res, true);
 }

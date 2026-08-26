@@ -1309,7 +1309,10 @@ later.
   "storage_class": "hot",
   "reserve_bytes": 107374182400,
   "low_watermark_pct": 80,
-  "high_watermark_pct": 90
+  "high_watermark_pct": 90,
+  "migration_bandwidth_bps": 12500000,
+  "archival_window_start_minute": 1320,
+  "archival_window_end_minute": 360
 }
 ```
 
@@ -1323,7 +1326,9 @@ List and item responses include `health.status`, capacity, available and used
 bytes, `health.pressure`, `health.cleanup_target_bytes`, last probe/success
 times, and the last error. They also include indexed
 recording count/bytes maintained by SQLite triggers rather than scanning the
-recordings table. `health.duplicate_filesystem` warns when two roots have the
+recordings table, plus retained-copy count/bytes. Equal archival-window start
+and end means all day; a window with end before start crosses midnight.
+`health.duplicate_filesystem` warns when two roots have the
 same underlying device ID, preventing later capacity planning from counting one
 filesystem twice.
 
@@ -1333,6 +1338,42 @@ pressure-eligible recordings assigned to that target and works back toward the
 low watermark (or reserve, whichever requires more free bytes). Cleanup is
 bounded per heartbeat and never borrows candidates from another target. The
 legacy global capacity and emergency paths are restricted to the default target.
+
+### Storage Pools, Lifecycle Jobs, and Compliance
+
+All endpoints require `storage.configure`:
+
+```
+GET    /api/storage-pools
+POST   /api/storage-pools
+GET    /api/storage-pools/{pool_uuid}
+PUT    /api/storage-pools/{pool_uuid}
+DELETE /api/storage-pools/{pool_uuid}?revision={last_seen_revision}
+
+GET    /api/storage-migrations
+POST   /api/storage-migrations
+GET    /api/storage-migrations/{job_uuid}
+POST   /api/storage-migrations/{job_uuid}/cancel
+POST   /api/storage-migrations/{job_uuid}/retry
+
+GET    /api/storage-compliance
+```
+
+Pools contain an ordered `members` array of target UUIDs and use `most_free`,
+`round_robin`, or `priority` allocation. Pool updates replace membership
+atomically and require `revision`.
+
+Create a move or retained copy with
+`{"recording_id":123,"destination_target_uuid":"…","operation":"copy"}`.
+The durable worker snapshots the destination bandwidth/window controls, copies
+to a job-specific temporary path, verifies SHA-256, and atomically publishes
+the move or verified copy. Cancellation is cooperative; retry requeues failed
+or cancelled work.
+
+The compliance response states its 30-day observed-rate window and confidence,
+then returns target days-to-high-watermark/expected-retention forecasts, policy
+achieved-versus-expected retention and copy deficits, and persistent active
+violations.
 
 ### Storage Placement Policies
 
@@ -1347,10 +1388,16 @@ PUT    /api/storage-policies/{policy_uuid}
 DELETE /api/storage-policies/{policy_uuid}?revision={last_seen_revision}
 ```
 
-Policies use a Fleet selector, integer priority, primary target, and an explicit
+Policies use a Fleet selector, integer priority, primary target or pool, and an explicit
 `default`, named `target`, `pause`, or `fail` fallback. Higher priority wins;
 ties are stable by case-insensitive policy name and UUID. Placement is evaluated
 for each newly opened recording segment and does not move existing footage.
+Lifecycle fields are `minimum_retention_days`, `desired_retention_days`,
+`maximum_retention_days`, `required_copy_count`, `replication_pool_uuid`,
+`migration_after_days`, `migration_target_uuid`, and `pressure_priority`.
+Missing copies and age moves are scheduled asynchronously. Minimum retention
+and protected recordings constrain automatic cleanup; maximum retention joins
+the existing tiered-retention eligibility while manual overrides still win.
 
 The preview endpoint accepts the same draft as create. An edit draft also sends
 its `uuid` and `revision`. It does not mutate policy state. The response reports
