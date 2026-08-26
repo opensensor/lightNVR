@@ -9,12 +9,14 @@
 #define STORAGE_MIGRATION_STATE_MAX 24
 #define STORAGE_MIGRATION_CHECKSUM_MAX 65
 #define STORAGE_MIGRATION_ERROR_MAX 256
+#define STORAGE_MIGRATION_OPERATION_MAX 8
 #define STORAGE_MIGRATION_MAX_VISIBLE 256
 
 typedef struct {
     char uuid[LIGHTNVR_UUID_STRING_SIZE];
     uint64_t recording_id;
     int64_t owner_user_id;
+    char operation[STORAGE_MIGRATION_OPERATION_MAX];
     char source_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
     char source_object_key[STORAGE_TARGET_OBJECT_KEY_MAX];
     char destination_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
@@ -27,6 +29,10 @@ typedef struct {
     int max_attempts;
     int64_t next_attempt_at;
     char last_error[STORAGE_MIGRATION_ERROR_MAX];
+    bool cancel_requested;
+    uint64_t bandwidth_limit_bps;
+    int window_start_minute;
+    int window_end_minute;
     int64_t revision;
     int64_t created_at;
     int64_t updated_at;
@@ -48,6 +54,10 @@ typedef enum {
 db_storage_migration_result_t db_storage_migration_create(
     uint64_t recording_id, const char *destination_target_uuid,
     int64_t owner_user_id, storage_migration_job_t *job);
+db_storage_migration_result_t db_storage_migration_create_operation(
+    uint64_t recording_id, const char *destination_target_uuid,
+    const char *operation, int64_t owner_user_id,
+    storage_migration_job_t *job);
 db_storage_migration_result_t db_storage_migration_get(
     const char *uuid, storage_migration_job_t *job);
 int db_storage_migration_list(storage_migration_job_t *jobs, int max_count);
@@ -71,5 +81,15 @@ db_storage_migration_result_t db_storage_migration_complete_cleanup(
     const char *uuid);
 db_storage_migration_result_t db_storage_migration_defer_cleanup(
     const storage_migration_job_t *job, const char *error);
+
+db_storage_migration_result_t db_storage_migration_commit_copy(
+    const storage_migration_job_t *job, const char *checksum);
+db_storage_migration_result_t db_storage_migration_request_cancel(
+    const char *uuid, storage_migration_job_t *job);
+db_storage_migration_result_t db_storage_migration_mark_cancelled(
+    const char *uuid, storage_migration_job_t *job);
+db_storage_migration_result_t db_storage_migration_retry(
+    const char *uuid, storage_migration_job_t *job);
+bool db_storage_migration_cancel_requested(const char *uuid);
 
 #endif /* LIGHTNVR_DB_STORAGE_MIGRATIONS_H */

@@ -135,10 +135,14 @@ performance class, reserved headroom, watermarks, cached capacity, and health.
 Enabled roots must already be mounted and writable. lightNVR does not mount
 remote shares or store share credentials.
 
-In the foundation phase, the default target continues receiving all new
-recordings. Registering another target prepares it for the next phase's camera
-placement and spillover policies; it does not redirect cameras or migrate files
-by itself.
+Storage pools and selector-driven lifecycle policies are managed on the same
+page. A pool can allocate by most-free, round-robin, or explicit priority.
+Policies may place new segments into a pool, require distinct verified copies,
+move footage to an archive target after an age threshold, and set
+minimum/desired/maximum retention. Lifecycle copies and moves are durable,
+restart-safe, bandwidth-limited, and constrained to each destination target's
+local-time archival window. The compliance panel uses the prior 30 days of
+observed bytes to forecast target pressure and expected policy retention.
 
 The INI format offers several advantages:
 - Simple and widely used format

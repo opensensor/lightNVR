@@ -74,6 +74,16 @@ static cJSON *target_to_json(const storage_target_t *target,
                             (double)target->recording_count);
     cJSON_AddNumberToObject(object, "recording_bytes",
                             (double)target->recording_bytes);
+    cJSON_AddNumberToObject(object, "replica_count",
+                            (double)target->replica_count);
+    cJSON_AddNumberToObject(object, "replica_bytes",
+                            (double)target->replica_bytes);
+    cJSON_AddNumberToObject(object, "migration_bandwidth_bps",
+                            (double)target->migration_bandwidth_bps);
+    cJSON_AddNumberToObject(object, "archival_window_start_minute",
+                            target->archival_window_start_minute);
+    cJSON_AddNumberToObject(object, "archival_window_end_minute",
+                            target->archival_window_end_minute);
     cJSON_AddNumberToObject(object, "revision", (double)target->revision);
     cJSON_AddNumberToObject(object, "created_at",
                             (double)target->created_at);
@@ -283,6 +293,35 @@ static bool apply_body(const cJSON *body, storage_target_t *target,
     if (cJSON_HasObjectItem(body, "low_watermark_pct") &&
         !json_number(body, "low_watermark_pct",
                      &target->low_watermark_pct, true, res)) return false;
+    if (cJSON_HasObjectItem(body, "migration_bandwidth_bps")) {
+        if (!json_number(body, "migration_bandwidth_bps", &number, true, res) ||
+            number < 0.0 || number > (double)INT64_MAX || floor(number) != number) {
+            http_response_set_json_error(
+                res, 400, "migration_bandwidth_bps must be a nonnegative integer");
+            return false;
+        }
+        target->migration_bandwidth_bps = (uint64_t)number;
+    }
+    if (cJSON_HasObjectItem(body, "archival_window_start_minute")) {
+        if (!json_number(body, "archival_window_start_minute", &number, true,
+                         res) || number < 0.0 || number > 1439.0 ||
+            floor(number) != number) {
+            http_response_set_json_error(
+                res, 400, "archival_window_start_minute must be 0 through 1439");
+            return false;
+        }
+        target->archival_window_start_minute = (int)number;
+    }
+    if (cJSON_HasObjectItem(body, "archival_window_end_minute")) {
+        if (!json_number(body, "archival_window_end_minute", &number, true,
+                         res) || number < 0.0 || number > 1439.0 ||
+            floor(number) != number) {
+            http_response_set_json_error(
+                res, 400, "archival_window_end_minute must be 0 through 1439");
+            return false;
+        }
+        target->archival_window_end_minute = (int)number;
+    }
     if (!create) {
         if (!json_number(body, "revision", &number, true, res) ||
             number < 1.0 || floor(number) != number ||

@@ -41,6 +41,11 @@ typedef struct {
     uint64_t recording_bytes;
     bool mount_required;
     char mount_guard_path[MAX_PATH_LENGTH];
+    uint64_t migration_bandwidth_bps;
+    int archival_window_start_minute;
+    int archival_window_end_minute;
+    uint64_t replica_count;
+    uint64_t replica_bytes;
 } storage_target_t;
 
 typedef enum {

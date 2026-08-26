@@ -64,6 +64,13 @@ jobs:
             test_storage_pressure_extended \
             test_detection_result_structures \
             test_storage_retention_sqlite \
+            test_storage_manager_retention \
+            test_storage_target_pressure_cleanup \
+            test_storage_migration \
+            test_db_storage_targets \
+            test_db_storage_policies \
+            test_api_handlers_storage_targets \
+            test_api_handlers_storage_policies \
             test_config \
             test_logger \
             test_strings \
@@ -100,7 +107,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -V \
-            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_onvif_soap_fault|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_motion_trigger_parse|test_url_utils"
+            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_storage_manager_retention|test_storage_target_pressure_cleanup|test_storage_migration|test_db_storage_targets|test_db_storage_policies|test_api_handlers_storage_targets|test_api_handlers_storage_policies|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_onvif_soap_fault|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_motion_trigger_parse|test_url_utils"
 
       - name: Generate coverage report
         if: always()

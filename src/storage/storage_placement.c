@@ -14,6 +14,7 @@
 #include "core/logger.h"
 #include "database/db_fleet_query.h"
 #include "database/db_storage_policies.h"
+#include "database/db_storage_pools.h"
 #include "database/db_storage_targets.h"
 #include "storage/storage_target_health.h"
 #include "utils/strings.h"
@@ -267,9 +268,14 @@ int storage_placement_select(const char *stream_name,
     safe_strcpy(placement->policy_uuid, policy.uuid,
                 sizeof(placement->policy_uuid), 0);
     placement->policy_version = policy.revision;
-    if (target_is_eligible(policy.primary_target_uuid, &target)) {
+    bool primary_available = policy.primary_pool_uuid[0]
+        ? db_storage_pool_allocate(policy.primary_pool_uuid, NULL, &target) ==
+              DB_STORAGE_POOL_OK
+        : target_is_eligible(policy.primary_target_uuid, &target);
+    if (primary_available) {
         char reason[64];
-        snprintf(reason, sizeof(reason), "policy-primary:%s", policy.uuid);
+        snprintf(reason, sizeof(reason), policy.primary_pool_uuid[0]
+            ? "policy-pool:%s" : "policy-primary:%s", policy.uuid);
         ready(placement, &target, reason);
         return 0;
     }

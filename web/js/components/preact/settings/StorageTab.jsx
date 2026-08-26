@@ -21,7 +21,23 @@ const EMPTY_TARGET = {
   reserve_gb: '0',
   high_watermark_pct: '90',
   low_watermark_pct: '80',
+  migration_mbps: '0',
+  archival_window_start: '00:00',
+  archival_window_end: '00:00',
 };
+
+function minutesToTime(value) {
+  const minutes = Math.max(0, Math.min(1439, Number(value) || 0));
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function timeToMinutes(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
+}
 
 function formatBytes(value) {
   const bytes = Number(value) || 0;
@@ -49,6 +65,7 @@ function migrationStateClass(state) {
   if (state === 'completed') return 'badge-success';
   if (state === 'failed') return 'badge-danger';
   if (state === 'retry_wait' || state === 'cleanup_pending') return 'badge-warning';
+  if (state === 'cancelled') return 'bg-muted text-muted-foreground';
   return 'badge-info';
 }
 
@@ -58,6 +75,7 @@ function targetToEditor(target) {
     revision: target.revision,
     is_default: target.is_default,
     recording_count: target.recording_count,
+    replica_count: target.replica_count,
     name: target.name,
     root_path: target.root_path,
     enabled: target.enabled,
@@ -66,12 +84,15 @@ function targetToEditor(target) {
     reserve_gb: String(Math.round((Number(target.reserve_bytes) || 0) / (1024 ** 3) * 100) / 100),
     high_watermark_pct: String(target.high_watermark_pct),
     low_watermark_pct: String(target.low_watermark_pct),
+    migration_mbps: String(Math.round(((Number(target.migration_bandwidth_bps) || 0) * 8 / 1000000) * 100) / 100),
+    archival_window_start: minutesToTime(target.archival_window_start_minute),
+    archival_window_end: minutesToTime(target.archival_window_end_minute),
   };
 }
 
 function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
   const editing = !!value.uuid;
-  const rootLocked = value.is_default || Number(value.recording_count) > 0;
+  const rootLocked = value.is_default || Number(value.recording_count) > 0 || Number(value.replica_count) > 0;
   const set = (key, next) => onChange({ ...value, [key]: next });
   return (
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mb-4">
@@ -109,6 +130,16 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
             <input type="number" min="1" max="99" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.high_watermark_pct} onInput={(event) => set('high_watermark_pct', event.currentTarget.value)} disabled={busy} />
           </label>
         </div>
+        <label class="text-sm font-medium">
+          <span class="block mb-1">{t('settings.storageTargets.migrationBandwidth')}</span>
+          <input type="number" min="0" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.migration_mbps} onInput={(event) => set('migration_mbps', event.currentTarget.value)} disabled={busy} />
+          <span class="block mt-1 text-xs font-normal text-muted-foreground">{t('settings.storageTargets.migrationBandwidthHelp')}</span>
+        </label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveStart')}</span><input type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_start} onInput={(event) => set('archival_window_start', event.currentTarget.value)} disabled={busy} /></label>
+          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveEnd')}</span><input type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_end} onInput={(event) => set('archival_window_end', event.currentTarget.value)} disabled={busy} /></label>
+          <span class="col-span-2 text-xs text-muted-foreground">{t('settings.storageTargets.archiveWindowHelp')}</span>
+        </div>
         <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy || value.is_default} />
           {t('settings.storageTargets.enabled')}
@@ -141,7 +172,10 @@ function StorageTargetsPanel({ canModifySettings, t }) {
     const reserveGb = Number(editor.reserve_gb);
     const low = Number(editor.low_watermark_pct);
     const high = Number(editor.high_watermark_pct);
-    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high) {
+    const migrationMbps = Number(editor.migration_mbps);
+    const windowStart = timeToMinutes(editor.archival_window_start);
+    const windowEnd = timeToMinutes(editor.archival_window_end);
+    if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || windowStart === null || windowEnd === null) {
       showStatusMessage(t('settings.storageTargets.invalidThresholds'), 'error');
       return;
     }
@@ -156,6 +190,9 @@ function StorageTargetsPanel({ canModifySettings, t }) {
         reserve_bytes: Math.round(reserveGb * (1024 ** 3)),
         low_watermark_pct: low,
         high_watermark_pct: high,
+        migration_bandwidth_bps: Math.round(migrationMbps * 1000000 / 8),
+        archival_window_start_minute: windowStart,
+        archival_window_end_minute: windowEnd,
       };
       if (editor.uuid) payload.revision = editor.revision;
       await fetchJSON(editor.uuid ? `/api/storage-targets/${encodeURIComponent(editor.uuid)}` : '/api/storage-targets', {
@@ -221,7 +258,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
       {!isLoading && !isError && <div class="divide-y divide-border mt-4">
         {targets.map((target) => {
           const health = target.health || {};
-          const cannotDelete = target.is_default || Number(target.recording_count) > 0;
+          const cannotDelete = target.is_default || Number(target.recording_count) > 0 || Number(target.replica_count) > 0;
           return (
             <article key={target.uuid} class="py-4 first:pt-0 last:pb-0">
               <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
@@ -238,7 +275,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                   <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 text-sm">
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.capacity')}</dt><dd>{formatBytes(health.capacity_bytes)}</dd></div>
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.available')}</dt><dd>{formatBytes(health.available_bytes)} ({Math.max(0, 100 - (Number(health.used_pct) || 0)).toFixed(1)}%)</dd></div>
-                    <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.recordings')}</dt><dd>{Number(target.recording_count || 0).toLocaleString()} · {formatBytes(target.recording_bytes)}</dd></div>
+                    <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.recordings')}</dt><dd>{Number(target.recording_count || 0).toLocaleString()} · {formatBytes(target.recording_bytes)}</dd><dd class="text-xs text-muted-foreground">{t('settings.storageTargets.replicas', { count: Number(target.replica_count || 0).toLocaleString(), bytes: formatBytes(target.replica_bytes) })}</dd></div>
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.reserve')}</dt><dd>{formatBytes(target.reserve_bytes)}</dd></div>
                   </dl>
                   {health.duplicate_filesystem && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.duplicateFilesystem')}</p>}
@@ -259,6 +296,54 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
 }
 
+function StoragePoolsPanel({ canModifySettings, t }) {
+  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const [editor, setEditor] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const pools = poolsQuery.data?.pools || [];
+  const targets = targetsQuery.data?.targets || [];
+  const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
+  const openNew = () => setEditor({ name: '', strategy: 'most_free', enabled: true, members: [] });
+  const openEdit = (pool) => setEditor({ ...pool, members: (pool.members || []).map((member) => member.target_uuid) });
+  const toggleMember = (uuid) => setEditor((current) => ({ ...current, members: current.members.includes(uuid) ? current.members.filter((item) => item !== uuid) : [...current.members, uuid] }));
+  const save = async () => {
+    setBusy(true);
+    try {
+      const payload = { name: editor.name.trim(), strategy: editor.strategy, enabled: editor.enabled, members: editor.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
+      if (editor.uuid) payload.revision = editor.revision;
+      await fetchJSON(editor.uuid ? `/api/storage-pools/${encodeURIComponent(editor.uuid)}` : '/api/storage-pools', { method: editor.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      await poolsQuery.refetch();
+      setEditor(null);
+      showStatusMessage(t(editor.uuid ? 'settings.storagePools.updated' : 'settings.storagePools.created'), 'success');
+    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusy(false); }
+  };
+  const remove = async (pool) => {
+    if (!window.confirm(t('settings.storagePools.deleteConfirm', { name: pool.name }))) return;
+    setBusy(true);
+    try {
+      await fetchJSON(`/api/storage-pools/${encodeURIComponent(pool.uuid)}?revision=${encodeURIComponent(pool.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
+      await poolsQuery.refetch();
+      showStatusMessage(t('settings.storagePools.deleted'), 'success');
+    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusy(false); }
+  };
+  const loading = poolsQuery.isLoading || targetsQuery.isLoading;
+  const error = poolsQuery.error || targetsQuery.error;
+  return <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storagePools.title')}>
+    <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePools.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePools.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePools.add')}</button>}</div>
+    {editor && <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" value={editor.name} onInput={(event) => setEditor({ ...editor, name: event.currentTarget.value })} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePools.strategy')}</span><select class="w-full p-2 border border-input rounded bg-background" value={editor.strategy} onChange={(event) => setEditor({ ...editor, strategy: event.currentTarget.value })} disabled={busy}><option value="most_free">{t('settings.storagePools.mostFree')}</option><option value="round_robin">{t('settings.storagePools.roundRobin')}</option><option value="priority">{t('settings.storagePools.priority')}</option></select></label></div>
+      <fieldset><legend class="text-sm font-semibold mb-2">{t('settings.storagePools.members')}</legend><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{targets.map((target) => <label key={target.uuid} class="touch-target flex items-center gap-2 text-sm"><input type="checkbox" checked={editor.members.includes(target.uuid)} onChange={() => toggleMember(target.uuid)} disabled={busy} />{target.name}</label>)}</div></fieldset>
+      <label class="touch-target flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={editor.enabled} onChange={(event) => setEditor({ ...editor, enabled: event.currentTarget.checked })} disabled={busy} />{t('settings.storagePools.enabled')}</label>
+      <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" onClick={() => setEditor(null)} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-primary" onClick={save} disabled={busy || !editor.name.trim() || editor.members.length === 0}>{busy ? t('common.saving') : t('common.saveChanges')}</button></div>
+    </div>}
+    {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
+    {error && <p class="py-6 text-sm text-[hsl(var(--danger))]">{error.message}</p>}
+    {!loading && !error && <div class="divide-y divide-border">{pools.map((pool) => <article key={pool.uuid} class="py-4 first:pt-4 last:pb-0"><div class="flex justify-between gap-3"><div><div class="flex items-center gap-2"><h4 class="font-semibold">{pool.name}</h4><span class={`rounded-full px-2 py-0.5 text-xs ${pool.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(pool.enabled ? 'settings.storagePools.active' : 'settings.storagePools.inactive')}</span></div><p class="text-xs text-muted-foreground mt-1">{t(`settings.storagePools.strategyValue.${pool.strategy}`)} · {(pool.members || []).map((member) => targetNames.get(member.target_uuid) || member.target_uuid).join(' → ')}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(pool)} disabled={busy || !!editor}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => remove(pool)} disabled={busy}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+    {!loading && !error && pools.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePools.empty')}</p>}
+  </div>;
+}
+
 function StorageMigrationJobsPanel({ t }) {
   const { data, isLoading, isError, error, refetch } = useQuery(
     ['storage-migrations'],
@@ -267,6 +352,18 @@ function StorageMigrationJobsPanel({ t }) {
     { staleTime: 2000, refetchInterval: 3000 },
   );
   const jobs = data?.jobs || [];
+  const [busyKey, setBusyKey] = useState('');
+  const actOnJob = async (job, action) => {
+    setBusyKey(job.uuid);
+    try {
+      await fetchJSON(`/api/storage-migrations/${encodeURIComponent(job.uuid)}/${action}`, { method: 'POST', timeout: 15000, retries: 0 });
+      await refetch();
+      showStatusMessage(t(action === 'cancel' ? 'settings.storageMigrations.cancelled' : 'settings.storageMigrations.retried'), 'success');
+    } catch (requestError) {
+      showStatusMessage(requestError.message, 'error', 7000);
+      await refetch();
+    } finally { setBusyKey(''); }
+  };
   return (
     <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storageMigrations.title')}>
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-3 border-b border-border">
@@ -287,6 +384,7 @@ function StorageMigrationJobsPanel({ t }) {
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="font-semibold">{t('settings.storageMigrations.recording', { id: job.recording_id })}</span>
+                  <span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t(`settings.storageMigrations.operation.${job.operation || 'move'}`)}</span>
                   <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${migrationStateClass(job.state)}`}>{t(`settings.storageMigrations.state.${job.state}`)}</span>
                   <span class="text-xs text-muted-foreground">{t('settings.storageMigrations.attempt', { current: job.attempt_count, max: job.max_attempts })}</span>
                 </div>
@@ -296,6 +394,10 @@ function StorageMigrationJobsPanel({ t }) {
               <div class="w-full lg:w-56">
                 <div class="mb-1 flex justify-between text-xs text-muted-foreground"><span>{formatBytes(job.bytes_copied)} / {formatBytes(job.bytes_total)}</span><span>{progress}%</span></div>
                 <div class="h-2 overflow-hidden rounded-full bg-muted"><div class="h-full bg-[hsl(var(--primary))] transition-[width]" style={{ width: `${progress}%` }} /></div>
+                <div class="flex justify-end gap-2 mt-2">
+                  {['queued', 'copying', 'verifying', 'committing', 'retry_wait'].includes(job.state) && <button type="button" class="btn-secondary" disabled={!!busyKey || job.cancel_requested} onClick={() => actOnJob(job, 'cancel')}>{job.cancel_requested ? t('settings.storageMigrations.cancelling') : t('common.cancel')}</button>}
+                  {['failed', 'cancelled'].includes(job.state) && <button type="button" class="btn-secondary" disabled={!!busyKey} onClick={() => actOnJob(job, 'retry')}>{t('common.retry')}</button>}
+                </div>
               </div>
             </div>
           </article>;
@@ -305,7 +407,7 @@ function StorageMigrationJobsPanel({ t }) {
   );
 }
 
-function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
+function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
   const set = (key, next) => onChange({ ...value, [key]: next });
   const fallbackTargets = targets.filter((target) => target.uuid !== value.primary_target_uuid);
   const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
@@ -316,8 +418,15 @@ function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCan
         <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength="127" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{targets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => set('primary_pool_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
         {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
+        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3"><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.minimumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.minimum_retention_days} onInput={(event) => set('minimum_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.desiredDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.desired_retention_days} onInput={(event) => set('desired_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.maximumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.maximum_retention_days} onInput={(event) => set('maximum_retention_days', event.currentTarget.value)} disabled={busy} /></label></div>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.copyCount')}</span><input type="number" min="1" max="8" class="w-full p-2 border border-input rounded bg-background" value={value.required_copy_count} onInput={(event) => set('required_copy_count', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.replicationPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.replication_pool_uuid || ''} onChange={(event) => set('replication_pool_uuid', event.currentTarget.value)} disabled={busy || Number(value.required_copy_count) <= 1}><option value="">{t('settings.storagePolicies.choosePool')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.migrateAfter')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.migration_after_days} onInput={(event) => set('migration_after_days', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.migrationTarget')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.migration_target_uuid || ''} onChange={(event) => set('migration_target_uuid', event.currentTarget.value)} disabled={busy || Number(value.migration_after_days) <= 0}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{targets.filter((target) => target.uuid !== value.primary_target_uuid).map((target) => <option key={target.uuid} value={target.uuid}>{target.name}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.pressurePriority')}</span><input type="number" min="-1000000" max="1000000" class="w-full p-2 border border-input rounded bg-background" value={value.pressure_priority} onInput={(event) => set('pressure_priority', event.currentTarget.value)} disabled={busy} /></label>
         <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
       </div>
       <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
@@ -337,27 +446,35 @@ function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCan
 function StoragePoliciesPanel({ canModifySettings, t }) {
   const policiesQuery = useQuery(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const locationsQuery = useQuery(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
   const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
   const [editor, setEditor] = useState(null);
   const [busyKey, setBusyKey] = useState('');
   const policies = policiesQuery.data?.policies || [];
   const targets = targetsQuery.data?.targets || [];
+  const pools = poolsQuery.data?.pools || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
+  const poolNames = new Map(pools.map((pool) => [pool.uuid, pool.name]));
   const onSelectorChange = useCallback((selector, error) => {
     setEditor((current) => current ? { ...current, selector, selector_error: error, preview: null, preview_key: '', preview_request_key: '' } : current);
   }, []);
   const updateEditor = useCallback((next) => setEditor({ ...next, preview: null, preview_key: '', preview_request_key: '' }), []);
 
-  const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', fallback_mode: 'default', fallback_target_uuid: '', preview: null });
-  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), fallback_target_uuid: policy.fallback_target_uuid || '', selector_error: '', preview: null });
+  const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', primary_pool_uuid: '', fallback_mode: 'default', fallback_target_uuid: '', minimum_retention_days: '0', desired_retention_days: '0', maximum_retention_days: '0', required_copy_count: '1', replication_pool_uuid: '', migration_after_days: '0', migration_target_uuid: '', pressure_priority: '100', preview: null });
+  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), primary_pool_uuid: policy.primary_pool_uuid || '', fallback_target_uuid: policy.fallback_target_uuid || '', minimum_retention_days: String(policy.minimum_retention_days || 0), desired_retention_days: String(policy.desired_retention_days || 0), maximum_retention_days: String(policy.maximum_retention_days || 0), required_copy_count: String(policy.required_copy_count || 1), replication_pool_uuid: policy.replication_pool_uuid || '', migration_after_days: String(policy.migration_after_days || 0), migration_target_uuid: policy.migration_target_uuid || '', pressure_priority: String(policy.pressure_priority ?? 100), selector_error: '', preview: null });
   const policyPayload = () => {
     const priority = Number(editor.priority);
     if (!Number.isInteger(priority) || priority < -1000000 || priority > 1000000) {
       showStatusMessage(t('settings.storagePolicies.invalidPriority'), 'error');
       return null;
     }
-    const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null };
+    const minimum = Number(editor.minimum_retention_days); const desired = Number(editor.desired_retention_days); const maximum = Number(editor.maximum_retention_days); const copies = Number(editor.required_copy_count); const migrationAfter = Number(editor.migration_after_days); const pressurePriority = Number(editor.pressure_priority);
+    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor.migration_target_uuid)) {
+      showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
+      return null;
+    }
+    const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, primary_pool_uuid: editor.primary_pool_uuid || null, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: migrationAfter > 0 ? editor.migration_target_uuid : null, pressure_priority: pressurePriority };
     if (editor.uuid) { payload.uuid = editor.uuid; payload.revision = editor.revision; }
     return payload;
   };
@@ -399,27 +516,51 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
       showStatusMessage(t('settings.storagePolicies.deleted'), 'success');
     } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusyKey(''); }
   };
-  const loading = policiesQuery.isLoading || targetsQuery.isLoading || locationsQuery.isLoading || tagsQuery.isLoading;
-  const error = policiesQuery.error || targetsQuery.error || locationsQuery.error || tagsQuery.error;
+  const loading = policiesQuery.isLoading || targetsQuery.isLoading || poolsQuery.isLoading || locationsQuery.isLoading || tagsQuery.isLoading;
+  const error = policiesQuery.error || targetsQuery.error || poolsQuery.error || locationsQuery.error || tagsQuery.error;
 
   return (
     <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storagePolicies.title')}>
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePolicies.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary shrink-0" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePolicies.add')}</button>}</div>
-      {editor && <StoragePolicyEditor value={editor} targets={targets} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={updateEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onPreview={previewPolicy} onSave={savePolicy} busy={!!busyKey} previewing={busyKey === 'preview'} saving={busyKey === (editor.uuid || 'new')} t={t} />}
+      {editor && <StoragePolicyEditor value={editor} targets={targets} pools={pools} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={updateEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onPreview={previewPolicy} onSave={savePolicy} busy={!!busyKey} previewing={busyKey === 'preview'} saving={busyKey === (editor.uuid || 'new')} t={t} />}
       {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
-      {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
-      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => deletePolicy(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+      {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), poolsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
+      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: policy.primary_pool_uuid ? poolNames.get(policy.primary_pool_uuid) || policy.primary_pool_uuid : targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{t('settings.storagePolicies.lifecycleSummary', { minimum: policy.minimum_retention_days, desired: policy.desired_retention_days, maximum: policy.maximum_retention_days, copies: policy.required_copy_count })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => deletePolicy(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
       {!loading && !error && policies.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePolicies.empty')}</p>}
     </div>
   );
+}
+
+function StorageCompliancePanel({ t }) {
+  const { data, isLoading, isError, error, refetch } = useQuery(
+    ['storage-compliance'], '/api/storage-compliance',
+    { cache: 'no-store', timeout: 20000, retries: 1 },
+    { staleTime: 30000, refetchInterval: 60000 },
+  );
+  const formatDays = (value) => value == null ? t('settings.storageCompliance.unknown') : t('settings.storageCompliance.days', { days: Number(value).toFixed(1) });
+  return <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storageCompliance.title')}>
+    <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storageCompliance.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storageCompliance.description')}</p></div><button type="button" class="btn-secondary" onClick={refetch}>{t('common.refresh')}</button></div>
+    {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
+    {isError && <p class="py-6 text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageCompliance.loadError')}</p>}
+    {!isLoading && !isError && <>
+      <p class="text-xs text-muted-foreground mt-3">{data?.forecast_note}</p>
+      <h4 class="font-semibold mt-4">{t('settings.storageCompliance.targetForecasts')}</h4>
+      <div class="overflow-x-auto mt-2"><table class="w-full text-sm"><thead><tr class="text-left text-xs uppercase text-muted-foreground"><th class="py-2 pr-3">{t('settings.storageCompliance.target')}</th><th class="py-2 pr-3">{t('settings.storageCompliance.dailyRate')}</th><th class="py-2 pr-3">{t('settings.storageCompliance.toHigh')}</th><th class="py-2 pr-3">{t('settings.storageCompliance.expected')}</th><th class="py-2">{t('settings.storageCompliance.confidence')}</th></tr></thead><tbody>{(data?.targets || []).map((target) => <tr key={target.target_uuid} class="border-t border-border"><td class="py-2 pr-3 font-medium">{target.target_name}</td><td class="py-2 pr-3">{formatBytes(target.observed_daily_bytes)}/{t('settings.storageCompliance.day')}</td><td class="py-2 pr-3">{formatDays(target.days_to_high_watermark)}</td><td class="py-2 pr-3">{formatDays(target.expected_retention_days)}</td><td class="py-2">{target.confidence}</td></tr>)}</tbody></table></div>
+      <h4 class="font-semibold mt-5">{t('settings.storageCompliance.policyCompliance')}</h4>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-2">{(data?.policies || []).map((policy) => <article key={policy.policy_uuid} class={`rounded-md border p-3 ${policy.active_violation_count ? 'border-amber-400/70 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'}`}><div class="flex justify-between gap-3"><h5 class="font-semibold">{policy.policy_name}</h5><span class={`rounded-full px-2 py-0.5 text-xs ${policy.active_violation_count ? 'badge-warning' : 'badge-success'}`}>{policy.active_violation_count ? t('settings.storageCompliance.violationCount', { count: policy.active_violation_count }) : t('settings.storageCompliance.compliant')}</span></div><p class="text-xs text-muted-foreground mt-2">{t('settings.storageCompliance.policyForecast', { achieved: formatDays(policy.achieved_retention_days), expected: formatDays(policy.expected_retention_days), desired: policy.desired_retention_days })}</p>{policy.copy_deficit_recordings > 0 && <p class="text-xs text-[hsl(var(--danger))] mt-1">{t('settings.storageCompliance.copyDeficits', { count: policy.copy_deficit_recordings })}</p>}</article>)}</div>
+      {(data?.active_violations || []).length > 0 && <><h4 class="font-semibold mt-5">{t('settings.storageCompliance.activeViolations')}</h4><div class="divide-y divide-border mt-2">{data.active_violations.map((violation) => <div key={violation.uuid} class="py-2 text-sm"><span class="font-medium">{violation.policy_name}</span> · <span class="text-amber-700 dark:text-amber-300">{t(`settings.storageCompliance.type.${violation.type}`)}</span><p class="text-xs text-muted-foreground mt-0.5">{violation.details}</p></div>)}</div></>}
+    </>}
+  </div>;
 }
 
 export function StorageTab({ settings, handleInputChange, canModifySettings, t }) {
   return (
     <div class="space-y-6">
       {canModifySettings && <StorageTargetsPanel canModifySettings={canModifySettings} t={t} />}
+      {canModifySettings && <StoragePoolsPanel canModifySettings={canModifySettings} t={t} />}
       {canModifySettings && <StorageMigrationJobsPanel t={t} />}
       {canModifySettings && <StoragePoliciesPanel canModifySettings={canModifySettings} t={t} />}
+      {canModifySettings && <StorageCompliancePanel t={t} />}
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
         <div data-setting-label={t('settings.storagePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

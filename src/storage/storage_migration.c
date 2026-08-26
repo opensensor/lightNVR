@@ -20,6 +20,7 @@
 
 #include "core/logger.h"
 #include "core/path_utils.h"
+#include "database/db_storage_lifecycle.h"
 #include "database/db_storage_migrations.h"
 #include "database/db_storage_targets.h"
 #include "storage/storage_target_health.h"
@@ -43,6 +44,34 @@ static migration_worker_control_t worker = {
     .exited = true,
 };
 static atomic_bool stop_requested = false;
+
+static bool migration_cancel_requested(const storage_migration_job_t *job) {
+    return job && db_storage_migration_cancel_requested(job->uuid);
+}
+
+static int throttle_copy(const storage_migration_job_t *job,
+                         const struct timespec *started, uint64_t copied) {
+    if (!job || job->bandwidth_limit_bps == 0 || !started) return 0;
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    long double expected_ns =
+        ((long double)copied * 1000000000.0L) /
+        (long double)job->bandwidth_limit_bps;
+    int64_t elapsed_ns =
+        (int64_t)(now.tv_sec - started->tv_sec) * 1000000000LL +
+        (int64_t)(now.tv_nsec - started->tv_nsec);
+    if (expected_ns <= (long double)elapsed_ns) return 0;
+    int64_t wait_ns = (int64_t)(expected_ns - (long double)elapsed_ns);
+    struct timespec delay = {
+        .tv_sec = wait_ns / 1000000000LL,
+        .tv_nsec = wait_ns % 1000000000LL,
+    };
+    while (nanosleep(&delay, &delay) != 0 && errno == EINTR) {
+        if (atomic_load(&stop_requested)) return -1;
+        if (migration_cancel_requested(job)) return 1;
+    }
+    return migration_cancel_requested(job) ? 1 : 0;
+}
 
 static void set_error(char error[STORAGE_MIGRATION_ERROR_MAX],
                       const char *operation, const char *path) {
@@ -272,11 +301,19 @@ static int copy_and_verify(
     uint64_t copied = 0;
     uint64_t reported = 0;
     int result = 0;
+    struct timespec copy_started;
+    clock_gettime(CLOCK_MONOTONIC, &copy_started);
     for (;;) {
         if (atomic_load(&stop_requested)) {
             safe_strcpy(error, "Migration worker is shutting down",
                         STORAGE_MIGRATION_ERROR_MAX, 0);
             result = -1;
+            break;
+        }
+        if (migration_cancel_requested(job)) {
+            safe_strcpy(error, "Cancelled by operator",
+                        STORAGE_MIGRATION_ERROR_MAX, 0);
+            result = -3;
             break;
         }
         ssize_t count = read(source, buffer, MIGRATION_COPY_BUFFER);
@@ -300,6 +337,14 @@ static int copy_and_verify(
             break;
         }
         copied += (uint64_t)count;
+        int throttled = throttle_copy(job, &copy_started, copied);
+        if (throttled != 0) {
+            safe_strcpy(error, throttled > 0 ? "Cancelled by operator" :
+                        "Migration worker is shutting down",
+                        STORAGE_MIGRATION_ERROR_MAX, 0);
+            result = throttled > 0 ? -3 : -1;
+            break;
+        }
         if (copied - reported >= MIGRATION_PROGRESS_INTERVAL) {
             if (db_storage_migration_update_progress(
                     job->uuid, "copying", copied,
@@ -328,7 +373,10 @@ static int copy_and_verify(
     } else if (result != 0) {
         mbedtls_sha256_free(&context);
     }
-    if (result != 0) return -1;
+    if (result != 0) {
+        if (result == -3) unlink(temporary_path);
+        return result;
+    }
 
     job->bytes_total = copied;
     if (db_storage_migration_update_progress(
@@ -350,6 +398,12 @@ static int copy_and_verify(
                     STORAGE_MIGRATION_ERROR_MAX, 0);
         unlink(temporary_path);
         return -1;
+    }
+    if (migration_cancel_requested(job)) {
+        safe_strcpy(error, "Cancelled by operator",
+                    STORAGE_MIGRATION_ERROR_MAX, 0);
+        unlink(temporary_path);
+        return -3;
     }
     if (lstat(destination_path, &source_status) == 0) {
         safe_strcpy(error, "Destination appeared while migration was copying",
@@ -436,9 +490,18 @@ int storage_migration_process_one(void) {
     int copied = copy_and_verify(&job, source_path, destination_path,
                                  checksum, error);
     if (copied != 0) {
+        if (copied == -3) {
+            db_storage_migration_mark_cancelled(job.uuid, &job);
+            return 1;
+        }
         db_storage_migration_record_failure(&job, error[0] ? error :
                                              "Recording copy failed",
                                              copied != -2);
+        return 1;
+    }
+    if (migration_cancel_requested(&job)) {
+        unlink(destination_path);
+        db_storage_migration_mark_cancelled(job.uuid, &job);
         return 1;
     }
     if (db_storage_migration_update_progress(
@@ -457,11 +520,14 @@ int storage_migration_process_one(void) {
             &job, "Destination target became unavailable before commit", true);
         return 1;
     }
-    db_storage_migration_result_t committed =
-        db_storage_migration_commit_location(&job, destination_path, checksum);
+    db_storage_migration_result_t committed = strcmp(job.operation, "copy") == 0
+        ? db_storage_migration_commit_copy(&job, checksum)
+        : db_storage_migration_commit_location(&job, destination_path, checksum);
     if (committed != DB_STORAGE_MIGRATION_OK) {
-        if (committed == DB_STORAGE_MIGRATION_SOURCE_CHANGED) {
-            unlink(destination_path);
+        unlink(destination_path);
+        if (migration_cancel_requested(&job)) {
+            db_storage_migration_mark_cancelled(job.uuid, &job);
+        } else if (committed == DB_STORAGE_MIGRATION_SOURCE_CHANGED) {
             db_storage_migration_record_failure(
                 &job, "Recording location changed before migration commit",
                 false);
@@ -471,13 +537,19 @@ int storage_migration_process_one(void) {
         }
         return 1;
     }
-    finish_cleanup(&job, source_path);
+    if (strcmp(job.operation, "move") == 0) {
+        finish_cleanup(&job, source_path);
+    } else {
+        log_info("Storage replication %s completed for recording %llu",
+                 job.uuid, (unsigned long long)job.recording_id);
+    }
     return 1;
 }
 
 static void *migration_worker_main(void *unused) {
     (void)unused;
     log_set_thread_context("StorageMigration", NULL);
+    time_t last_lifecycle_check = 0;
     for (;;) {
         pthread_mutex_lock(&worker.mutex);
         bool running = worker.running;
@@ -485,6 +557,20 @@ static void *migration_worker_main(void *unused) {
         if (!running) break;
         int result = storage_migration_process_one();
         if (result > 0) continue;
+        time_t now = time(NULL);
+        if (result == 0 && now - last_lifecycle_check >= 60) {
+            last_lifecycle_check = now;
+            int scheduled = db_storage_lifecycle_schedule(16);
+            int violations = db_storage_lifecycle_reconcile();
+            if (scheduled > 0) {
+                log_info("Scheduled %d policy-driven storage lifecycle job(s)",
+                         scheduled);
+                continue;
+            }
+            if (scheduled < 0 || violations < 0) {
+                log_warn("Could not refresh storage lifecycle policy state");
+            }
+        }
         pthread_mutex_lock(&worker.mutex);
         if (worker.running) {
             struct timespec deadline;

@@ -50,6 +50,8 @@
 #include "web/api_handlers_storage_targets.h"
 #include "web/api_handlers_storage_migrations.h"
 #include "web/api_handlers_storage_policies.h"
+#include "web/api_handlers_storage_pools.h"
+#include "web/api_handlers_storage_compliance.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -325,8 +327,24 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_storage_migrations);
     http_server_register_handler(server, "/api/storage-migrations", "POST",
                                  handle_post_storage_migration);
+    http_server_register_handler(server, "/api/storage-migrations/#/cancel", "POST",
+                                 handle_post_storage_migration_cancel);
+    http_server_register_handler(server, "/api/storage-migrations/#/retry", "POST",
+                                 handle_post_storage_migration_retry);
     http_server_register_handler(server, "/api/storage-migrations/#", "GET",
                                  handle_get_storage_migration);
+    http_server_register_handler(server, "/api/storage-pools", "GET",
+                                 handle_get_storage_pools);
+    http_server_register_handler(server, "/api/storage-pools", "POST",
+                                 handle_post_storage_pool);
+    http_server_register_handler(server, "/api/storage-pools/#", "GET",
+                                 handle_get_storage_pool);
+    http_server_register_handler(server, "/api/storage-pools/#", "PUT",
+                                 handle_put_storage_pool);
+    http_server_register_handler(server, "/api/storage-pools/#", "DELETE",
+                                 handle_delete_storage_pool);
+    http_server_register_handler(server, "/api/storage-compliance", "GET",
+                                 handle_get_storage_compliance);
     http_server_register_handler(server, "/api/storage-policies", "GET",
                                  handle_get_storage_policies);
     http_server_register_handler(server, "/api/storage-policies", "POST",

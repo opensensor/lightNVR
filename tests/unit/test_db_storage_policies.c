@@ -9,12 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "core/config.h"
 #include "database/db_core.h"
 #include "database/db_recordings.h"
+#include "database/db_storage_lifecycle.h"
+#include "database/db_storage_migrations.h"
 #include "database/db_storage_policies.h"
+#include "database/db_storage_pools.h"
 #include "database/db_storage_targets.h"
 #include "database/db_streams.h"
 #include "storage/storage_placement.h"
@@ -76,8 +80,11 @@ static storage_policy_t policy_value(const char *name,
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
-        db, "DELETE FROM detections;DELETE FROM recordings;"
-            "DELETE FROM storage_policies;DELETE FROM storage_targets;"
+        db, "DELETE FROM detections;DELETE FROM storage_policy_violations;"
+            "DELETE FROM storage_migration_jobs;DELETE FROM storage_recording_copies;"
+            "DELETE FROM recordings;DELETE FROM storage_policies;"
+            "DELETE FROM storage_pool_members;DELETE FROM storage_pools;"
+            "DELETE FROM storage_targets;"
             "DELETE FROM streams;", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         0, db_storage_target_bootstrap_default(default_root, default_uuid));
@@ -286,6 +293,140 @@ void test_policy_revision_validation_and_target_reference_safety(void) {
                                                    primary_target.revision));
 }
 
+void test_pool_placement_and_round_robin_allocation(void) {
+    storage_pool_t pool;
+    memset(&pool, 0, sizeof(pool));
+    safe_strcpy(pool.name, "Hot pool", sizeof(pool.name), 0);
+    safe_strcpy(pool.strategy, "round_robin", sizeof(pool.strategy), 0);
+    pool.enabled = true;
+    pool.member_count = 2;
+    safe_strcpy(pool.members[0].target_uuid, primary_target.uuid,
+                sizeof(pool.members[0].target_uuid), 0);
+    pool.members[0].weight = 1;
+    safe_strcpy(pool.members[1].target_uuid, default_uuid,
+                sizeof(pool.members[1].target_uuid), 0);
+    pool.members[1].weight = 1;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POOL_OK,
+                          db_storage_pool_create(&pool));
+    storage_pool_t secondary = pool;
+    secondary.uuid[0] = '\0';
+    safe_strcpy(secondary.name, "Warm pool", sizeof(secondary.name), 0);
+    secondary.member_count = 1;
+    safe_strcpy(secondary.strategy, "priority", sizeof(secondary.strategy), 0);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POOL_OK,
+                          db_storage_pool_create(&secondary));
+    storage_pool_t listed[4];
+    TEST_ASSERT_EQUAL_INT(2, db_storage_pool_list(listed, 4));
+
+    storage_target_t first;
+    storage_target_t second;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POOL_OK,
+                          db_storage_pool_allocate(pool.uuid, NULL, &first));
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POOL_OK,
+                          db_storage_pool_allocate(pool.uuid, NULL, &second));
+    TEST_ASSERT_NOT_EQUAL_INT(0, strcmp(first.uuid, second.uuid));
+
+    storage_policy_t policy = policy_value("Pooled placement",
+                                           primary_target.uuid);
+    policy.minimum_retention_days = 1;
+    safe_strcpy(policy.primary_pool_uuid, pool.uuid,
+                sizeof(policy.primary_pool_uuid), 0);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
+                          db_storage_policy_create(&policy));
+    TEST_ASSERT_TRUE(db_storage_lifecycle_reconcile() >= 0);
+    storage_placement_cache_invalidate();
+    storage_placement_t placement;
+    TEST_ASSERT_EQUAL_INT(0,
+                          storage_placement_select("lobby-camera", &placement));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PLACEMENT_READY, placement.status);
+    TEST_ASSERT_TRUE(strncmp(placement.reason, "policy-pool:", 12) == 0);
+}
+
+void test_replication_policy_schedules_copy_and_persists_violation(void) {
+    storage_pool_t pool;
+    memset(&pool, 0, sizeof(pool));
+    safe_strcpy(pool.name, "Replica pool", sizeof(pool.name), 0);
+    safe_strcpy(pool.strategy, "priority", sizeof(pool.strategy), 0);
+    pool.enabled = true;
+    pool.member_count = 1;
+    safe_strcpy(pool.members[0].target_uuid, default_uuid,
+                sizeof(pool.members[0].target_uuid), 0);
+    pool.members[0].weight = 1;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POOL_OK,
+                          db_storage_pool_create(&pool));
+
+    storage_policy_t policy = policy_value("Replicated", primary_target.uuid);
+    policy.minimum_retention_days = 7;
+    policy.required_copy_count = 2;
+    safe_strcpy(policy.replication_pool_uuid, pool.uuid,
+                sizeof(policy.replication_pool_uuid), 0);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
+                          db_storage_policy_create(&policy));
+
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, "lobby-camera",
+                sizeof(recording.stream_name), 0);
+    snprintf(recording.file_path, sizeof(recording.file_path),
+             "%s/lifecycle.mp4", primary_root);
+    safe_strcpy(recording.storage_target_uuid, primary_target.uuid,
+                sizeof(recording.storage_target_uuid), 0);
+    safe_strcpy(recording.object_key, "lifecycle.mp4",
+                sizeof(recording.object_key), 0);
+    snprintf(recording.placement_reason, sizeof(recording.placement_reason),
+             "policy-primary:%s", policy.uuid);
+    recording.storage_policy_version = policy.revision;
+    recording.start_time = time(NULL) - 60;
+    recording.end_time = time(NULL);
+    recording.size_bytes = 1024;
+    recording.is_complete = true;
+    uint64_t recording_id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, recording_id);
+
+    recording_metadata_t candidates[4];
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_pressure_cleanup_target(
+                                 primary_target.uuid, candidates, 4));
+    const double multipliers[] = {1.0, 1.0, 1.0, 1.0};
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_tiered_retention(
+                                 NULL, 0, multipliers, candidates, 4));
+
+    TEST_ASSERT_EQUAL_INT(1, db_storage_lifecycle_reconcile());
+    TEST_ASSERT_EQUAL_INT(1, db_storage_lifecycle_schedule(8));
+    storage_migration_job_t jobs[4];
+    TEST_ASSERT_EQUAL_INT(1, db_storage_migration_list(jobs, 4));
+    TEST_ASSERT_EQUAL_UINT64(recording_id, jobs[0].recording_id);
+    TEST_ASSERT_EQUAL_STRING("copy", jobs[0].operation);
+    TEST_ASSERT_EQUAL_STRING(default_uuid, jobs[0].destination_target_uuid);
+}
+
+void test_policy_maximum_retention_joins_tiered_cleanup(void) {
+    storage_policy_t policy = policy_value("Short maximum",
+                                           primary_target.uuid);
+    policy.maximum_retention_days = 1;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
+                          db_storage_policy_create(&policy));
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, "lobby-camera",
+                sizeof(recording.stream_name), 0);
+    snprintf(recording.file_path, sizeof(recording.file_path),
+             "%s/expired.mp4", primary_root);
+    safe_strcpy(recording.storage_target_uuid, primary_target.uuid,
+                sizeof(recording.storage_target_uuid), 0);
+    safe_strcpy(recording.object_key, "expired.mp4",
+                sizeof(recording.object_key), 0);
+    snprintf(recording.placement_reason, sizeof(recording.placement_reason),
+             "policy-primary:%s", policy.uuid);
+    recording.start_time = time(NULL) - 2 * 86400;
+    recording.end_time = recording.start_time + 60;
+    recording.is_complete = true;
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, add_recording_metadata(&recording));
+    const double multipliers[] = {1.0, 1.0, 1.0, 1.0};
+    recording_metadata_t candidates[4];
+    TEST_ASSERT_EQUAL_INT(1, get_recordings_for_tiered_retention(
+                                 NULL, 365, multipliers, candidates, 4));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(primary_root));
@@ -300,6 +441,9 @@ int main(void) {
     RUN_TEST(test_unavailable_primary_honors_named_pause_and_fail_fallbacks);
     RUN_TEST(test_camera_selectors_route_two_cameras_to_different_targets);
     RUN_TEST(test_policy_revision_validation_and_target_reference_safety);
+    RUN_TEST(test_pool_placement_and_round_robin_allocation);
+    RUN_TEST(test_replication_policy_schedules_copy_and_persists_violation);
+    RUN_TEST(test_policy_maximum_retention_joins_tiered_cleanup);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

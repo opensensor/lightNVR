@@ -14,12 +14,16 @@
 
 #include "core/camera_selector.h"
 #include "database/db_core.h"
+#include "database/db_storage_pools.h"
 #include "utils/strings.h"
 
 #define STORAGE_POLICY_SELECT_FIELDS \
     "uuid,name,enabled,priority,selector_json,primary_target_uuid," \
     "fallback_mode,COALESCE(fallback_target_uuid,''),revision," \
-    "created_at,updated_at"
+    "created_at,updated_at,COALESCE(primary_pool_uuid,'')," \
+    "minimum_retention_days,desired_retention_days,maximum_retention_days," \
+    "required_copy_count,COALESCE(replication_pool_uuid,'')," \
+    "migration_after_days,COALESCE(migration_target_uuid,''),pressure_priority"
 
 static atomic_uint_fast64_t policy_generation = 1;
 
@@ -55,6 +59,18 @@ static void populate(sqlite3_stmt *statement, storage_policy_t *policy) {
     policy->revision = sqlite3_column_int64(statement, 8);
     policy->created_at = sqlite3_column_int64(statement, 9);
     policy->updated_at = sqlite3_column_int64(statement, 10);
+    copy_column(policy->primary_pool_uuid,
+                sizeof(policy->primary_pool_uuid), statement, 11);
+    policy->minimum_retention_days = sqlite3_column_int(statement, 12);
+    policy->desired_retention_days = sqlite3_column_int(statement, 13);
+    policy->maximum_retention_days = sqlite3_column_int(statement, 14);
+    policy->required_copy_count = sqlite3_column_int(statement, 15);
+    copy_column(policy->replication_pool_uuid,
+                sizeof(policy->replication_pool_uuid), statement, 16);
+    policy->migration_after_days = sqlite3_column_int(statement, 17);
+    copy_column(policy->migration_target_uuid,
+                sizeof(policy->migration_target_uuid), statement, 18);
+    policy->pressure_priority = sqlite3_column_int(statement, 19);
 }
 
 static bool valid_name(const char *input, char *normalized, size_t size) {
@@ -130,6 +146,15 @@ db_storage_policy_result_t db_storage_policy_validate(
         set_error(error, error_size, "primary target does not exist");
         return DB_STORAGE_POLICY_INVALID;
     }
+    if (policy->primary_pool_uuid[0]) {
+        storage_pool_t pool;
+        if (!lightnvr_uuid_is_valid(policy->primary_pool_uuid) ||
+            db_storage_pool_get(policy->primary_pool_uuid, &pool) !=
+                DB_STORAGE_POOL_OK) {
+            set_error(error, error_size, "primary pool does not exist");
+            return DB_STORAGE_POLICY_INVALID;
+        }
+    }
     bool named_fallback = strcmp(policy->fallback_mode, "target") == 0;
     bool valid_mode = named_fallback ||
         strcmp(policy->fallback_mode, "default") == 0 ||
@@ -153,6 +178,121 @@ db_storage_policy_result_t db_storage_policy_validate(
     } else if (policy->fallback_target_uuid[0] != '\0') {
         set_error(error, error_size,
                   "fallback_target_uuid is only valid for target fallback");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->minimum_retention_days < 0 ||
+        policy->desired_retention_days < 0 ||
+        policy->maximum_retention_days < 0 ||
+        policy->minimum_retention_days > 36500 ||
+        policy->desired_retention_days > 36500 ||
+        policy->maximum_retention_days > 36500 ||
+        (policy->desired_retention_days > 0 &&
+         policy->minimum_retention_days > policy->desired_retention_days) ||
+        (policy->maximum_retention_days > 0 &&
+         ((policy->desired_retention_days > 0 &&
+           policy->desired_retention_days > policy->maximum_retention_days) ||
+          policy->minimum_retention_days > policy->maximum_retention_days))) {
+        set_error(error, error_size,
+                  "retention days must satisfy minimum <= desired <= maximum");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->required_copy_count == 0) policy->required_copy_count = 1;
+    if (policy->required_copy_count < 1 || policy->required_copy_count > 8) {
+        set_error(error, error_size, "required_copy_count must be 1-8");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->required_copy_count > 1) {
+        storage_pool_t pool;
+        if (!lightnvr_uuid_is_valid(policy->replication_pool_uuid) ||
+            db_storage_pool_get(policy->replication_pool_uuid, &pool) !=
+                DB_STORAGE_POOL_OK) {
+            set_error(error, error_size,
+                      "replication pool cannot satisfy required copy count");
+            return DB_STORAGE_POLICY_INVALID;
+        }
+        int usable_members = pool.member_count;
+        bool may_contain_primary = false;
+        if (policy->primary_pool_uuid[0]) {
+            storage_pool_t primary_pool;
+            if (db_storage_pool_get(policy->primary_pool_uuid, &primary_pool) ==
+                    DB_STORAGE_POOL_OK) {
+                for (int replica = 0; replica < pool.member_count; replica++) {
+                    for (int primary = 0;
+                         primary < primary_pool.member_count; primary++) {
+                        if (strcmp(pool.members[replica].target_uuid,
+                                   primary_pool.members[primary].target_uuid) == 0) {
+                            may_contain_primary = true;
+                        }
+                    }
+                }
+            }
+        } else {
+            for (int index = 0; index < pool.member_count; index++) {
+                if (strcmp(pool.members[index].target_uuid,
+                           policy->primary_target_uuid) == 0) {
+                    usable_members--;
+                }
+            }
+        }
+        if ((policy->primary_pool_uuid[0] && may_contain_primary &&
+             pool.member_count < policy->required_copy_count) ||
+            (!policy->primary_pool_uuid[0] &&
+             usable_members < policy->required_copy_count - 1) ||
+            (policy->primary_pool_uuid[0] && !may_contain_primary &&
+             pool.member_count < policy->required_copy_count - 1)) {
+            set_error(error, error_size,
+                      "replication pool cannot satisfy distinct copy count");
+            return DB_STORAGE_POLICY_INVALID;
+        }
+    } else if (policy->replication_pool_uuid[0]) {
+        set_error(error, error_size,
+                  "replication_pool_uuid requires more than one copy");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->migration_after_days < 0 ||
+        policy->migration_after_days > 36500) {
+        set_error(error, error_size, "migration_after_days must be 0-36500");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->migration_after_days > 0) {
+        if (!lightnvr_uuid_is_valid(policy->migration_target_uuid) ||
+            db_storage_target_get(policy->migration_target_uuid, &target) !=
+                DB_STORAGE_TARGET_OK) {
+            set_error(error, error_size, "migration target does not exist");
+            return DB_STORAGE_POLICY_INVALID;
+        }
+        if (strcmp(policy->migration_target_uuid,
+                   policy->primary_target_uuid) == 0) {
+            set_error(error, error_size,
+                      "migration target must differ from initial target");
+            return DB_STORAGE_POLICY_INVALID;
+        }
+        const char *pool_uuids[] = {
+            policy->primary_pool_uuid, policy->replication_pool_uuid
+        };
+        for (size_t pool_index = 0; pool_index < 2; pool_index++) {
+            if (!pool_uuids[pool_index][0]) continue;
+            storage_pool_t pool;
+            if (db_storage_pool_get(pool_uuids[pool_index], &pool) !=
+                DB_STORAGE_POOL_OK) continue;
+            for (int member = 0; member < pool.member_count; member++) {
+                if (strcmp(pool.members[member].target_uuid,
+                           policy->migration_target_uuid) == 0) {
+                    set_error(error, error_size,
+                        "migration target must not be an initial or replica pool member");
+                    return DB_STORAGE_POLICY_INVALID;
+                }
+            }
+        }
+    } else if (policy->migration_target_uuid[0]) {
+        set_error(error, error_size,
+                  "migration_target_uuid requires migration_after_days");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->pressure_priority < -1000000 ||
+        policy->pressure_priority > 1000000) {
+        set_error(error, error_size,
+                  "pressure_priority must be between -1000000 and 1000000");
         return DB_STORAGE_POLICY_INVALID;
     }
     return DB_STORAGE_POLICY_OK;
@@ -275,8 +415,12 @@ db_storage_policy_result_t db_storage_policy_create(storage_policy_t *policy) {
     }
     const char *sql =
         "INSERT INTO storage_policies(uuid,name,enabled,priority,selector_json,"
-        "primary_target_uuid,fallback_mode,fallback_target_uuid)"
-        " VALUES(?,?,?,?,?,?,?,NULLIF(?,''));";
+        "primary_target_uuid,fallback_mode,fallback_target_uuid,primary_pool_uuid,"
+        "minimum_retention_days,desired_retention_days,maximum_retention_days,"
+        "required_copy_count,replication_pool_uuid,migration_after_days,"
+        "migration_target_uuid,pressure_priority)"
+        " VALUES(?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),?,?,?,?,NULLIF(?,''),?,"
+        "NULLIF(?,''),?);";
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
     if (result == SQLITE_OK) {
@@ -292,6 +436,18 @@ db_storage_policy_result_t db_storage_policy_create(storage_policy_t *policy) {
                           SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 8, policy->fallback_target_uuid, -1,
                           SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 9, policy->primary_pool_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 10, policy->minimum_retention_days);
+        sqlite3_bind_int(statement, 11, policy->desired_retention_days);
+        sqlite3_bind_int(statement, 12, policy->maximum_retention_days);
+        sqlite3_bind_int(statement, 13, policy->required_copy_count);
+        sqlite3_bind_text(statement, 14, policy->replication_pool_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 15, policy->migration_after_days);
+        sqlite3_bind_text(statement, 16, policy->migration_target_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 17, policy->pressure_priority);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -323,7 +479,11 @@ db_storage_policy_result_t db_storage_policy_update(
     const char *sql =
         "UPDATE storage_policies SET name=?,enabled=?,priority=?,"
         "selector_json=?,primary_target_uuid=?,fallback_mode=?,"
-        "fallback_target_uuid=NULLIF(?,''),revision=revision+1,"
+        "fallback_target_uuid=NULLIF(?,''),primary_pool_uuid=NULLIF(?,''),"
+        "minimum_retention_days=?,desired_retention_days=?,maximum_retention_days=?,"
+        "required_copy_count=?,replication_pool_uuid=NULLIF(?,''),"
+        "migration_after_days=?,migration_target_uuid=NULLIF(?,''),"
+        "pressure_priority=?,revision=revision+1,"
         "updated_at=strftime('%s','now') WHERE uuid=? AND revision=?;";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
@@ -340,8 +500,20 @@ db_storage_policy_result_t db_storage_policy_update(
                           SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 7, policy->fallback_target_uuid, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 8, policy->uuid, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(statement, 9, expected_revision);
+        sqlite3_bind_text(statement, 8, policy->primary_pool_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 9, policy->minimum_retention_days);
+        sqlite3_bind_int(statement, 10, policy->desired_retention_days);
+        sqlite3_bind_int(statement, 11, policy->maximum_retention_days);
+        sqlite3_bind_int(statement, 12, policy->required_copy_count);
+        sqlite3_bind_text(statement, 13, policy->replication_pool_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 14, policy->migration_after_days);
+        sqlite3_bind_text(statement, 15, policy->migration_target_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 16, policy->pressure_priority);
+        sqlite3_bind_text(statement, 17, policy->uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 18, expected_revision);
         result = sqlite3_step(statement);
     }
     db_storage_policy_result_t outcome;

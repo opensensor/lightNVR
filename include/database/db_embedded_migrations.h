@@ -1488,6 +1488,59 @@ static const char migration_0070_down[] =
     "DROP INDEX IF EXISTS idx_onvif_inventory_seen;"
     "DROP TABLE IF EXISTS onvif_discovery_inventory;";
 
+static const char migration_0071_up[] =
+    "ALTER TABLE storage_targets ADD COLUMN migration_bandwidth_bps INTEGER NOT NULL DEFAULT 0\n    CHECK (migration_bandwidth_bps = 0 OR migration_bandwidth_bps >= 65536);\nALTER TABLE storage_targets ADD COLUMN archival_window_start_minute INTEGER NOT NULL DEFAULT 0\n    CHECK (archival_window_start_minute BETWEEN 0 AND 1439);\nALTER TABLE storage_targets ADD COLUMN archival_window_end_minute INTEGER NOT NULL DEFAULT 0\n    CHECK (archival_window_end_minute BETWEEN 0 AND 1439);\nALTER TABLE storage_targets ADD COLUMN replica_count INTEGER NOT NULL DEFAULT 0\n    CHECK (replica_count >= 0);\nALTER TABLE storage_targets ADD COLUMN replica_bytes INTEGER NOT NULL DEFAULT 0\n    CHECK (replica_bytes >= 0);\n\nCREATE TABLE storage_migration_jobs_v2 (\n    uuid TEXT PRIMARY KEY,\n    recording_id INTEGER NOT NULL\n        REFERENCES recordings(id) ON DELETE CASCADE,\n    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,\n    operation TEXT NOT NULL DEFAULT 'move'\n        CHECK (operation IN ('move', 'copy')),\n    source_target_uuid TEXT NOT NULL\n        REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n    source_object_key TEXT NOT NULL,\n    destination_target_uuid TEXT NOT NULL\n        REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n    destination_object_key TEXT NOT NULL,\n    state TEXT NOT NULL DEFAULT 'queued'\n        CHECK (state IN ('queued', 'copying', 'verifying', 'committing',\n                         'cleanup_pending', 'retry_wait', 'completed',\n                         'failed', 'cancelled')),\n    checksum_mode TEXT NOT NULL DEFAULT 'sha256'\n        CHECK (checksum_mode IN ('sha256')),\n    checksum TEXT NOT NULL DEFAULT '',\n    bytes_total INTEGER NOT NULL DEFAULT 0 CHECK (bytes_total >= 0),\n    bytes_copied INTEGER NOT NULL DEFAULT 0 CHECK (bytes_copied >= 0),\n    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),\n    max_attempts INTEGER NOT NULL DEFAULT 5 CHECK (max_attempts BETWEEN 1 AND 20),\n    next_attempt_at INTEGER NOT NULL DEFAULT 0,\n    last_error TEXT NOT NULL DEFAULT '',\n    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),\n    bandwidth_limit_bps INTEGER NOT NULL DEFAULT 0\n        CHECK (bandwidth_limit_bps = 0 OR bandwidth_limit_bps >= 65536),\n    window_start_minute INTEGER NOT NULL DEFAULT 0\n        CHECK (window_start_minute BETWEEN 0 AND 1439),\n    window_end_minute INTEGER NOT NULL DEFAULT 0\n        CHECK (window_end_minute BETWEEN 0 AND 1439),\n    revision INTEGER NOT NULL DEFAULT 1,\n    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    started_at INTEGER,\n    completed_at INTEGER,\n    CHECK (source_target_uuid <> destination_target_uuid)\n);\n\nINSERT INTO storage_migration_jobs_v2(\n    uuid, recording_id, owner_user_id, operation, source_target_uuid,\n    source_object_key, destination_target_uuid, destination_object_key, state,\n    checksum_mode, checksum, bytes_total, bytes_copied, attempt_count,\n    max_attempts, next_attempt_at, last_error, revision, created_at, updated_at,\n    started_at, completed_at)\nSELECT uuid, recording_id, owner_user_id, operation, source_target_uuid,\n       source_object_key, destination_target_uuid, destination_object_key, state,\n       checksum_mode, checksum, bytes_total, bytes_copied, attempt_count,\n       max_attempts, next_attempt_at, last_error, revision, created_at, updated_at,\n       started_at, completed_at\nFROM storage_migration_jobs;\n\nDROP TABLE storage_migration_jobs;\nALTER TABLE storage_migration_jobs_v2 RENAME TO storage_migration_jobs;\n\nCREATE UNIQUE INDEX idx_storage_migration_one_active_recording\n    ON storage_migration_jobs(recording_id)\n    WHERE state NOT IN ('completed', 'failed', 'cancelled');\nCREATE INDEX idx_storage_migration_due\n    ON storage_migration_jobs(state, next_attempt_at, created_at);\nCREATE INDEX idx_storage_migration_destination\n    ON storage_migration_jobs(destination_target_uuid, state);\n\nCREATE TABLE storage_recording_copies (\n    uuid TEXT PRIMARY KEY,\n    recording_id INTEGER NOT NULL\n        REFERENCES recordings(id) ON DELETE CASCADE,\n    target_uuid TEXT NOT NULL\n        REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n    object_key TEXT NOT NULL,\n    checksum_mode TEXT NOT NULL DEFAULT 'sha256'\n        CHECK (checksum_mode IN ('sha256')),\n    checksum TEXT NOT NULL,\n    size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),\n    verified_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    UNIQUE(recording_id, target_uuid),\n    UNIQUE(target_uuid, object_key)\n);\n\nCREATE INDEX idx_storage_recording_copies_recording\n    ON storage_recording_copies(recording_id);\nCREATE INDEX idx_storage_recording_copies_target\n    ON storage_recording_copies(target_uuid, recording_id);\n\nCREATE TRIGGER trg_storage_recording_copy_insert\nAFTER INSERT ON storage_recording_copies\nBEGIN\n    UPDATE storage_targets\n    SET replica_count = replica_count + 1,\n        replica_bytes = replica_bytes + NEW.size_bytes\n    WHERE uuid = NEW.target_uuid;\nEND;\n\nCREATE TRIGGER trg_storage_recording_copy_delete\nAFTER DELETE ON storage_recording_copies\nBEGIN\n    UPDATE storage_targets\n    SET replica_count = MAX(replica_count - 1, 0),\n        replica_bytes = MAX(replica_bytes - OLD.size_bytes, 0)\n    WHERE uuid = OLD.target_uuid;\nEND;";
+
+static const char migration_0071_down[] =
+    "DROP TRIGGER IF EXISTS trg_storage_recording_copy_delete;\nDROP TRIGGER IF EXISTS trg_storage_recording_copy_insert;\nDROP INDEX IF EXISTS idx_storage_recording_copies_target;\nDROP INDEX IF EXISTS idx_storage_recording_copies_recording;\nDROP TABLE IF EXISTS storage_recording_copies;\n\nCREATE TABLE storage_migration_jobs_v1 (\n    uuid TEXT PRIMARY KEY,\n    recording_id INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,\n    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,\n    operation TEXT NOT NULL DEFAULT 'move' CHECK (operation IN ('move')),\n    source_target_uuid TEXT NOT NULL REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n    source_object_key TEXT NOT NULL,\n    destination_target_uuid TEXT NOT NULL REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n    destination_object_key TEXT NOT NULL,\n    state TEXT NOT NULL DEFAULT 'queued'\n        CHECK (state IN ('queued', 'copying', 'verifying', 'committing',\n                         'cleanup_pending', 'retry_wait', 'completed',\n                         'failed', 'cancelled')),\n    checksum_mode TEXT NOT NULL DEFAULT 'sha256' CHECK (checksum_mode IN ('sha256')),\n    checksum TEXT NOT NULL DEFAULT '',\n    bytes_total INTEGER NOT NULL DEFAULT 0 CHECK (bytes_total >= 0),\n    bytes_copied INTEGER NOT NULL DEFAULT 0 CHECK (bytes_copied >= 0),\n    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),\n    max_attempts INTEGER NOT NULL DEFAULT 5 CHECK (max_attempts BETWEEN 1 AND 20),\n    next_attempt_at INTEGER NOT NULL DEFAULT 0,\n    last_error TEXT NOT NULL DEFAULT '',\n    revision INTEGER NOT NULL DEFAULT 1,\n    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n    started_at INTEGER,\n    completed_at INTEGER,\n    CHECK (source_target_uuid <> destination_target_uuid)\n);\nINSERT INTO storage_migration_jobs_v1\nSELECT uuid, recording_id, owner_user_id, operation, source_target_uuid,\n       source_object_key, destination_target_uuid, destination_object_key, state,\n       checksum_mode, checksum, bytes_total, bytes_copied, attempt_count,\n       max_attempts, next_attempt_at, last_error, revision, created_at, updated_at,\n       started_at, completed_at\nFROM storage_migration_jobs WHERE operation = 'move';\nDROP TABLE storage_migration_jobs;\nALTER TABLE storage_migration_jobs_v1 RENAME TO storage_migration_jobs;\nCREATE UNIQUE INDEX idx_storage_migration_one_active_recording\n    ON storage_migration_jobs(recording_id)\n    WHERE state NOT IN ('completed', 'failed', 'cancelled');\nCREATE INDEX idx_storage_migration_due\n    ON storage_migration_jobs(state, next_attempt_at, created_at);\nCREATE INDEX idx_storage_migration_destination\n    ON storage_migration_jobs(destination_target_uuid, state);\n\n-- Target control columns are intentionally retained on rollback; older code\n-- ignores additive columns and preserving them avoids a lossy table rebuild.";
+
+static const char migration_0072_up[] =
+    "CREATE TABLE storage_pools (\n"
+    "    uuid TEXT PRIMARY KEY,\n"
+    "    name TEXT NOT NULL UNIQUE COLLATE NOCASE,\n"
+    "    strategy TEXT NOT NULL DEFAULT 'most_free' CHECK (strategy IN ('most_free', 'round_robin', 'priority')),\n"
+    "    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),\n"
+    "    allocation_cursor INTEGER NOT NULL DEFAULT 0 CHECK (allocation_cursor >= 0),\n"
+    "    revision INTEGER NOT NULL DEFAULT 1,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "CREATE TABLE storage_pool_members (\n"
+    "    pool_uuid TEXT NOT NULL REFERENCES storage_pools(uuid) ON DELETE CASCADE,\n"
+    "    target_uuid TEXT NOT NULL REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n"
+    "    position INTEGER NOT NULL DEFAULT 0,\n"
+    "    weight INTEGER NOT NULL DEFAULT 1 CHECK (weight BETWEEN 1 AND 1000),\n"
+    "    PRIMARY KEY(pool_uuid, target_uuid)\n"
+    ");\n"
+    "CREATE INDEX idx_storage_pool_members_order ON storage_pool_members(pool_uuid, position, target_uuid);\n"
+    "ALTER TABLE storage_policies ADD COLUMN primary_pool_uuid TEXT REFERENCES storage_pools(uuid) ON DELETE RESTRICT;\n"
+    "ALTER TABLE storage_policies ADD COLUMN minimum_retention_days INTEGER NOT NULL DEFAULT 0 CHECK (minimum_retention_days BETWEEN 0 AND 36500);\n"
+    "ALTER TABLE storage_policies ADD COLUMN desired_retention_days INTEGER NOT NULL DEFAULT 0 CHECK (desired_retention_days BETWEEN 0 AND 36500);\n"
+    "ALTER TABLE storage_policies ADD COLUMN maximum_retention_days INTEGER NOT NULL DEFAULT 0 CHECK (maximum_retention_days BETWEEN 0 AND 36500);\n"
+    "ALTER TABLE storage_policies ADD COLUMN required_copy_count INTEGER NOT NULL DEFAULT 1 CHECK (required_copy_count BETWEEN 1 AND 8);\n"
+    "ALTER TABLE storage_policies ADD COLUMN replication_pool_uuid TEXT REFERENCES storage_pools(uuid) ON DELETE RESTRICT;\n"
+    "ALTER TABLE storage_policies ADD COLUMN migration_after_days INTEGER NOT NULL DEFAULT 0 CHECK (migration_after_days BETWEEN 0 AND 36500);\n"
+    "ALTER TABLE storage_policies ADD COLUMN migration_target_uuid TEXT REFERENCES storage_targets(uuid) ON DELETE RESTRICT;\n"
+    "ALTER TABLE storage_policies ADD COLUMN pressure_priority INTEGER NOT NULL DEFAULT 100 CHECK (pressure_priority BETWEEN -1000000 AND 1000000);\n"
+    "CREATE TABLE storage_policy_violations (\n"
+    "    uuid TEXT PRIMARY KEY,\n"
+    "    policy_uuid TEXT NOT NULL REFERENCES storage_policies(uuid) ON DELETE CASCADE,\n"
+    "    recording_id INTEGER REFERENCES recordings(id) ON DELETE CASCADE,\n"
+    "    camera_uuid TEXT,\n"
+    "    scope_key TEXT NOT NULL,\n"
+    "    violation_type TEXT NOT NULL CHECK (violation_type IN ('copy_count', 'minimum_retention', 'target_unavailable', 'migration_failed')),\n"
+    "    details TEXT NOT NULL DEFAULT '',\n"
+    "    first_seen_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    last_seen_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    resolved_at INTEGER,\n"
+    "    UNIQUE(policy_uuid, scope_key, violation_type)\n"
+    ");\n"
+    "CREATE INDEX idx_storage_policy_violations_active ON storage_policy_violations(policy_uuid, resolved_at, violation_type);";
+
+static const char migration_0072_down[] =
+    "DROP INDEX IF EXISTS idx_storage_policy_violations_active;\n"
+    "DROP TABLE IF EXISTS storage_policy_violations;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1979,8 +2032,22 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0070_down,
         .is_embedded = true
     },
+    {
+        .version = "0071",
+        .description = "complete_storage_migration_controls",
+        .sql_up = migration_0071_up,
+        .sql_down = migration_0071_down,
+        .is_embedded = true
+    },
+    {
+        .version = "0072",
+        .description = "add_storage_pools_and_lifecycle",
+        .sql_up = migration_0072_up,
+        .sql_down = migration_0072_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 70
+#define EMBEDDED_MIGRATIONS_COUNT 72
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

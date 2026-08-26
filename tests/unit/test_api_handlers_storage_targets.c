@@ -280,6 +280,24 @@ void test_migration_api_creates_and_lists_durable_job(void) {
     TEST_ASSERT_EQUAL_STRING(job_uuid,
         cJSON_GetObjectItemCaseSensitive(json, "uuid")->valuestring);
     cJSON_Delete(json);
+
+    char action_path[160];
+    snprintf(action_path, sizeof(action_path),
+             "/api/storage-migrations/%s/cancel", job_uuid);
+    json = call(handle_post_storage_migration_cancel, HTTP_METHOD_POST,
+                action_path, NULL, NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_STRING(
+        "cancelled", cJSON_GetObjectItemCaseSensitive(
+            json, "state")->valuestring);
+    cJSON_Delete(json);
+    snprintf(action_path, sizeof(action_path),
+             "/api/storage-migrations/%s/retry", job_uuid);
+    json = call(handle_post_storage_migration_retry, HTTP_METHOD_POST,
+                action_path, NULL, NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_STRING(
+        "queued", cJSON_GetObjectItemCaseSensitive(
+            json, "state")->valuestring);
+    cJSON_Delete(json);
     unlink(recording_path);
 }
 

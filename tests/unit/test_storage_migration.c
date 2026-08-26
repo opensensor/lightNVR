@@ -190,6 +190,95 @@ void test_destination_collision_fails_without_changing_source(void) {
     TEST_ASSERT_EQUAL_STRING(source_uuid, recording.storage_target_uuid);
 }
 
+void test_verified_copy_retains_source_and_registers_replica(void) {
+    const char *payload = "replicated payload";
+    uint64_t recording_id = add_complete_recording(payload);
+    storage_migration_job_t job;
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_create_operation(
+            recording_id, destination_uuid, "copy", 0, &job));
+    TEST_ASSERT_EQUAL_STRING("copy", job.operation);
+
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("completed", job.state);
+    TEST_ASSERT_EQUAL_INT(0, access(source_path, R_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(destination_path, R_OK));
+
+    recording_metadata_t recording;
+    TEST_ASSERT_EQUAL_INT(
+        0, get_recording_metadata_by_id(recording_id, &recording));
+    TEST_ASSERT_EQUAL_STRING(source_uuid, recording.storage_target_uuid);
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "SELECT count(*),checksum,size_bytes FROM storage_recording_copies "
+        "WHERE recording_id=? AND target_uuid=?;", -1, &statement, NULL));
+    sqlite3_bind_int64(statement, 1, (sqlite3_int64)recording_id);
+    sqlite3_bind_text(statement, 2, destination_uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(statement));
+    TEST_ASSERT_EQUAL_INT(1, sqlite3_column_int(statement, 0));
+    TEST_ASSERT_EQUAL_size_t(64, strlen(
+        (const char *)sqlite3_column_text(statement, 1)));
+    TEST_ASSERT_EQUAL_UINT64(strlen(payload),
+                             (uint64_t)sqlite3_column_int64(statement, 2));
+    sqlite3_finalize(statement);
+
+    storage_target_t destination;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_get(destination_uuid,
+                                                &destination));
+    TEST_ASSERT_EQUAL_UINT64(1, destination.replica_count);
+    TEST_ASSERT_EQUAL_UINT64(strlen(payload), destination.replica_bytes);
+    TEST_ASSERT_EQUAL_INT(0, delete_recording_metadata(recording_id));
+    TEST_ASSERT_NOT_EQUAL_INT(0, access(destination_path, F_OK));
+}
+
+void test_cancelled_job_can_be_manually_retried(void) {
+    uint64_t recording_id = add_complete_recording("cancel and retry payload");
+    storage_migration_job_t job;
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_create(recording_id, destination_uuid, 0, &job));
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_request_cancel(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("cancelled", job.state);
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    TEST_ASSERT_EQUAL_INT(0, access(source_path, R_OK));
+    TEST_ASSERT_NOT_EQUAL_INT(0, access(destination_path, F_OK));
+
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_retry(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("queued", job.state);
+    TEST_ASSERT_FALSE(job.cancel_requested);
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("completed", job.state);
+}
+
+void test_migration_list_returns_more_than_one_job(void) {
+    uint64_t first_id = add_complete_recording("first list payload");
+    storage_migration_job_t first;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_create(first_id, destination_uuid, 0, &first));
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_request_cancel(first.uuid, &first));
+
+    uint64_t second_id = add_complete_recording("second list payload");
+    storage_migration_job_t second;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK,
+        db_storage_migration_create(second_id, destination_uuid, 0, &second));
+    storage_migration_job_t jobs[4];
+    TEST_ASSERT_EQUAL_INT(2, db_storage_migration_list(jobs, 4));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(source_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(destination_root));
@@ -206,6 +295,9 @@ int main(void) {
     RUN_TEST(test_verified_move_commits_location_then_removes_source);
     RUN_TEST(test_restart_interrupted_copy_is_reclaimed_and_completed);
     RUN_TEST(test_destination_collision_fails_without_changing_source);
+    RUN_TEST(test_verified_copy_retains_source_and_registers_replica);
+    RUN_TEST(test_cancelled_job_can_be_manually_retried);
+    RUN_TEST(test_migration_list_returns_more_than_one_job);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
