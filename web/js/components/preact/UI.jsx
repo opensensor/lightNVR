@@ -842,9 +842,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]`}>
-        <div className="flex justify-between items-center p-3 border-b border-border flex-shrink-0">
-          <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
+      <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
+        <div className="flex justify-between items-center p-2 sm:p-3 border-b border-border flex-shrink-0">
+          <h3 id="video-preview-title" className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
             {title || 'Video'}
           </h3>
           <button
@@ -856,15 +856,17 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex-1 min-h-0 p-3 flex justify-center items-center">
+          <div className="flex-none p-2 sm:p-3 md:flex-1 md:min-h-0 flex justify-center items-center">
             <div
               ref={videoContainerRef}
               data-testid="recording-video-container"
-              className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full max-h-full h-full bg-black overflow-hidden'}
+              className={isFullscreen
+                ? 'relative w-screen h-screen bg-black'
+                : 'relative w-full aspect-video bg-black overflow-hidden md:h-full md:aspect-auto'}
             >
               <video
                 ref={videoRef}
-                className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-full max-w-full max-h-full object-contain'}
+                className="w-full h-full object-contain"
                 controls
                 controlsList="nofullscreen"
                 key={videoUrl} /* Add key to force re-render when URL changes */
@@ -886,7 +888,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             </div>
           </div>
 
-          <div className="px-3 pb-1 flex-shrink-0">
+          <div className="px-2 sm:px-3 pb-1 flex-shrink-0">
             <div
               id="recording-playback-position"
               data-testid="recording-playback-position"
@@ -896,7 +898,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             </div>
           </div>
 
-          <div id="recordings-controls" className="mx-3 mb-3 p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10 flex-shrink-0 overflow-y-auto">
+          <div id="recordings-controls" className="mx-2 sm:mx-3 mb-2 sm:mb-3 p-2 sm:p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain md:flex-none">
             <h3 className="text-base font-bold text-center mb-2 text-foreground">
               PLAYBACK CONTROLS
             </h3>
