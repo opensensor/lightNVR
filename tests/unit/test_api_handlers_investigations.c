@@ -732,8 +732,14 @@ void test_search_cursor_filters_facets_and_current_camera_context(void) {
         cJSON_GetObjectItemCaseSensitive(camera_facet, "label")->valuestring);
     const cJSON *histogram =
         cJSON_GetObjectItemCaseSensitive(first_page, "histogram");
-    TEST_ASSERT_TRUE(cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
-        histogram, "buckets")) > 0);
+    const cJSON *histogram_buckets =
+        cJSON_GetObjectItemCaseSensitive(histogram, "buckets");
+    TEST_ASSERT_TRUE(cJSON_GetArraySize(histogram_buckets) > 0);
+    const cJSON *first_bucket = cJSON_GetArrayItem(histogram_buckets, 0);
+    TEST_ASSERT_EQUAL_INT64(
+        range_start + 100,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            first_bucket, "event_time")->valuedouble);
     const cJSON *next_cursor = cJSON_GetObjectItemCaseSensitive(
         cJSON_GetObjectItemCaseSensitive(first_page, "page"), "next_cursor");
     TEST_ASSERT_TRUE(cJSON_IsString(next_cursor));

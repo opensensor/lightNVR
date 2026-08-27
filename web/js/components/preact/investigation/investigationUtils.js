@@ -293,6 +293,11 @@ export function segmentTrackPosition(segment, startTime, endTime) {
   };
 }
 
+export function histogramEventTime(bucket) {
+  return Number.isFinite(bucket?.event_time)
+    ? bucket.event_time : bucket?.start_time;
+}
+
 export function adjacentInvestigationResultIndex(results, selectedResultId, direction) {
   if (!Array.isArray(results) || results.length === 0) return -1;
   const step = direction < 0 ? -1 : 1;

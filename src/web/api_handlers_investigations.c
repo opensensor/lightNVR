@@ -1341,6 +1341,8 @@ void handle_post_investigation_search(const http_request_t *request,
             (double)summary->histogram[i].start_time);
         cJSON_AddNumberToObject(bucket, "end_time",
             (double)summary->histogram[i].end_time);
+        cJSON_AddNumberToObject(bucket, "event_time",
+            (double)summary->histogram[i].event_time);
         cJSON_AddNumberToObject(bucket, "count",
             (double)summary->histogram[i].count);
         cJSON_AddItemToArray(buckets, bucket);

@@ -2021,6 +2021,7 @@
   "investigation.start": "Start",
   "investigation.end": "End",
   "investigation.load": "Load investigation",
+  "investigation.applyWindow": "Apply time window",
   "investigation.loading": "Loading investigation…",
   "investigation.eventType": "Event type",
   "investigation.anyEventType": "Any event type",

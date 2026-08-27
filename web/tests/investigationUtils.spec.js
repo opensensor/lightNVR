@@ -5,6 +5,7 @@ import {
   buildInvestigationBookmarkPayload,
   findSegmentAt,
   formatDateTimeLocal,
+  histogramEventTime,
   nextAvailableTimestamp,
   narrowThumbnailWindow,
   normalizedRegionRectangle,
@@ -69,6 +70,11 @@ test('segmentTrackPosition clips segments to the visible UTC window', () => {
   expect(segmentTrackPosition(
     { start_time: 90, end_time: 120 }, 100, 200,
   )).toEqual({ left: '0%', width: '20%' });
+});
+
+test('histogram bars seek to a matching event instead of the bucket boundary', () => {
+  expect(histogramEventTime({ start_time: 100, event_time: 137 })).toBe(137);
+  expect(histogramEventTime({ start_time: 100 })).toBe(100);
 });
 
 test('adjacent result navigation is stable by opaque result id', () => {

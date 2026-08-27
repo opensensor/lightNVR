@@ -415,11 +415,15 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     log_info("Creating new ONVIF subscription for %s", url);
 
-    // Create a new subscription
+    /* Create a pull-point whose lifetime is maintained by PullMessages.
+     * InitialTerminationTime is optional in ONVIF and is intended for clients
+     * that renew subscriptions explicitly. Some Tapo firmware rejects our old
+     * PT1H value with ter:InvalidArgVal even though it supports pull points.
+     * Omitting the value selects the polling keepalive mode that this client
+     * already uses. */
     const char *request_body =
-        "<CreatePullPointSubscription xmlns=\"http://www.onvif.org/ver10/events/wsdl\">\n"
-        "  <InitialTerminationTime>PT1H</InitialTerminationTime>\n"
-        "</CreatePullPointSubscription>";
+        "<CreatePullPointSubscription "
+        "xmlns=\"http://www.onvif.org/ver10/events/wsdl\"/>";
 
     // Dynamically discover the correct event service URL via GetServices.
     // Different vendors use different paths (e.g. Tapo uses "service", Lorex uses "event_service").

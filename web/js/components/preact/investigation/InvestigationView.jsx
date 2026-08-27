@@ -15,6 +15,7 @@ import {
   findSegmentAt,
   formatCursorTime,
   formatDateTimeLocal,
+  histogramEventTime,
   normalizedRegionRectangle,
   narrowThumbnailWindow,
   parseDateTimeLocal,
@@ -338,6 +339,7 @@ function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }) {
             0.35,
             ((Math.min(bucket.end_time, endTime) - bucket.start_time) / duration) * 100,
           );
+          const eventTime = histogramEventTime(bucket);
           return (
             <button
               key={`${bucket.start_time}-${bucket.end_time}`}
@@ -347,9 +349,9 @@ function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }) {
                 width: `${width}%`,
                 height: `${Math.max(10, (bucket.count / maximum) * 100)}%`,
               }}
-              title={`${bucket.count} · ${formatCursorTime(bucket.start_time)}`}
-              aria-label={`${bucket.count} ${t('investigation.results')} · ${formatCursorTime(bucket.start_time)}`}
-              onClick={() => onSeek(bucket.start_time)}
+              title={`${bucket.count} · ${formatCursorTime(eventTime)}`}
+              aria-label={`${bucket.count} ${t('investigation.results')} · ${formatCursorTime(eventTime)}`}
+              onClick={() => onSeek(eventTime)}
             />
           );
         })}
@@ -1184,7 +1186,7 @@ export function InvestigationView() {
               <input
                 type="datetime-local"
                 value={formatDateTimeLocal(startTime)}
-                onChange={(event) => {
+                onInput={(event) => {
                   const value = parseDateTimeLocal(event.target.value);
                   if (value !== null) setStartTime(value);
                 }}
@@ -1195,14 +1197,14 @@ export function InvestigationView() {
               <input
                 type="datetime-local"
                 value={formatDateTimeLocal(endTime)}
-                onChange={(event) => {
+                onInput={(event) => {
                   const value = parseDateTimeLocal(event.target.value);
                   if (value !== null) setEndTime(value);
                 }}
               />
             </label>
             <button type="button" className="btn-primary" disabled={loading} onClick={loadTimeline}>
-              {loading ? t('investigation.loading') : t('investigation.load')}
+              {loading ? t('investigation.loading') : t('investigation.applyWindow')}
             </button>
           </div>
         </div>
@@ -1333,7 +1335,7 @@ export function InvestigationView() {
           </label>
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-primary"
             disabled={!timeline || searchLoading}
             onClick={() => loadSearchPage(null, 0, [null])}
           >
@@ -1461,41 +1463,6 @@ export function InvestigationView() {
 
       {timeline && !loading && (
         <>
-          <section className="investigation-controls" aria-label={t('investigation.playbackControls')}>
-            <button
-              type="button"
-              className="btn-primary investigation-play-button"
-              onClick={() => setPlaying((value) => !value)}
-              disabled={activeTracks.length === 0}
-            >
-              {playing ? '❚❚' : '▶'}
-              <span>{playing ? t('investigation.pause') : t('investigation.play')}</span>
-            </button>
-            <label>
-              <span>{t('investigation.mode')}</span>
-              <select value={playbackMode} onChange={(event) => setPlaybackMode(event.target.value)}>
-                <option value="wall-clock">{t('investigation.wallClock')}</option>
-                <option value="skip-common-gaps">{t('investigation.skipCommonGaps')}</option>
-              </select>
-            </label>
-            <label>
-              <span>{t('investigation.speed')}</span>
-              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
-                <option value="0.5">0.5×</option>
-                <option value="1">1×</option>
-                <option value="2">2×</option>
-                <option value="4">4×</option>
-              </select>
-            </label>
-            <div className="investigation-cursor-time">
-              <span>{t('investigation.sharedCursor')}</span>
-              <strong>{formatCursorTime(cursor)}</strong>
-            </div>
-            <span className="investigation-decoder-count">
-              {activeTracks.length}/{timeline.max_active_decoders} {t('investigation.activePlayers')}
-            </span>
-          </section>
-
           <section className="investigation-search-panel" aria-label={t('investigation.searchResults')}>
             <div className="investigation-results-heading">
               <div>
@@ -1681,6 +1648,41 @@ export function InvestigationView() {
           ) : (
             <div className="investigation-empty">{t('investigation.activateCamera')}</div>
           )}
+
+          <section className="investigation-controls" aria-label={t('investigation.playbackControls')}>
+            <button
+              type="button"
+              className="btn-primary investigation-play-button"
+              onClick={() => setPlaying((value) => !value)}
+              disabled={activeTracks.length === 0}
+            >
+              {playing ? '❚❚' : '▶'}
+              <span>{playing ? t('investigation.pause') : t('investigation.play')}</span>
+            </button>
+            <label>
+              <span>{t('investigation.mode')}</span>
+              <select value={playbackMode} onChange={(event) => setPlaybackMode(event.target.value)}>
+                <option value="wall-clock">{t('investigation.wallClock')}</option>
+                <option value="skip-common-gaps">{t('investigation.skipCommonGaps')}</option>
+              </select>
+            </label>
+            <label>
+              <span>{t('investigation.speed')}</span>
+              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
+                <option value="0.5">0.5×</option>
+                <option value="1">1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select>
+            </label>
+            <div className="investigation-cursor-time">
+              <span>{t('investigation.sharedCursor')}</span>
+              <strong>{formatCursorTime(cursor)}</strong>
+            </div>
+            <span className="investigation-decoder-count">
+              {activeTracks.length}/{timeline.max_active_decoders} {t('investigation.activePlayers')}
+            </span>
+          </section>
         </>
       )}
     </div>

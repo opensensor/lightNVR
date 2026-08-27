@@ -427,14 +427,17 @@ static int load_histogram(sqlite3 *database,
     int next_parameter = prepare_with_where(
         database,
         "SELECT CASE WHEN d.timestamp < ? THEN 0 "
-        "ELSE CAST((d.timestamp - ?) / ? AS INTEGER) END AS bucket, COUNT(*) "
+        "ELSE CAST((d.timestamp - ?) / ? AS INTEGER) END AS bucket, "
+        "COUNT(*), MIN(CASE WHEN d.timestamp < ? THEN ? ELSE d.timestamp END) "
         "FROM detections d",
-        query, false, true, " GROUP BY bucket ORDER BY bucket ASC;", 4,
+        query, false, true, " GROUP BY bucket ORDER BY bucket ASC;", 6,
         &statement);
     if (next_parameter < 0) return -1;
     sqlite3_bind_int64(statement, 1, (sqlite3_int64)query->start_time);
     sqlite3_bind_int64(statement, 2, (sqlite3_int64)query->start_time);
     sqlite3_bind_int(statement, 3, bucket_seconds);
+    sqlite3_bind_int64(statement, 4, (sqlite3_int64)query->start_time);
+    sqlite3_bind_int64(statement, 5, (sqlite3_int64)query->start_time);
 
     int count = 0;
     int step;
@@ -450,6 +453,7 @@ static int load_histogram(sqlite3 *database,
         if (output->end_time > query->end_time) {
             output->end_time = query->end_time;
         }
+        output->event_time = (time_t)sqlite3_column_int64(statement, 2);
         output->count = sqlite3_column_int64(statement, 1);
     }
     sqlite3_finalize(statement);

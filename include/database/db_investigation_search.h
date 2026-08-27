@@ -120,6 +120,7 @@ typedef struct {
 typedef struct {
     time_t start_time;
     time_t end_time;
+    time_t event_time;
     int64_t count;
 } investigation_search_histogram_bucket_t;
 
