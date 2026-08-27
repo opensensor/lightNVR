@@ -21,6 +21,7 @@ import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { usePullToRefresh } from './usePullToRefresh.js';
 import { shouldShowGestureTip } from './mobileLiveGestures.js';
 import { fetchAllStreamSummaries } from '../../utils/stream-summaries.js';
+import { LiveOperatorNavigator } from './live/LiveOperatorNavigator.jsx';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -63,6 +64,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   // State for streams and layout
   const [streams, setStreams] = useState([]);
   const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const [operatorFilter, setOperatorFilter] = useState(null);
 
   // Tag filter: '' means "All tags", or a single tag value to filter by
   const [tagFilter, setTagFilter] = useState(() => {
@@ -433,9 +435,12 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const tagFilteredStreams = useMemo(() => {
     return streams.filter((stream) => {
       if (collectionFilter && !collectionCameraUuids.has(stream.camera_uuid)) return false;
+      if (operatorFilter && !operatorFilter.cameraUuids.has(stream.camera_uuid)) return false;
+      if (operatorFilter && operatorFilter.availability !== 'all' &&
+          stream.availability !== operatorFilter.availability) return false;
       return !tagFilter || (stream.tags && stream.tags.split(',').some(tag => tag.trim() === tagFilter));
     });
-  }, [streams, tagFilter, collectionFilter, collectionCameraUuids]);
+  }, [streams, tagFilter, collectionFilter, collectionCameraUuids, operatorFilter]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -444,6 +449,8 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     toggleReorderMode,
     enterReorderMode,
     resetOrder,
+    setCameraOrder,
+    placeCameraAtIndex,
     handleDragStart,
     handleDragOver,
     handleDrop,
@@ -453,6 +460,19 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     handleReorderPointerUp,
     handleReorderPointerCancel,
   } = useCameraOrder(tagFilteredStreams, 'webrtc');
+
+  const applyOperatorLayout = useCallback((layout) => {
+    const nextCols = Math.max(1, Math.min(9, Number(layout.columns) || cols));
+    const nextRows = Math.max(1, Math.min(9, Number(layout.rows) || rows));
+    setCols(nextCols);
+    setRows(Math.min(nextRows, Math.floor(MAX_GRID_CELLS / nextCols)));
+    setCurrentPage(0);
+    setAutoGrid(false);
+    const names = (layout.cameraUuids || []).map((cameraUuid) =>
+      streams.find((stream) => stream.camera_uuid === cameraUuid)?.name).filter(Boolean);
+    setCameraOrder(names);
+    if (nextCols * nextRows === 1 && names[0]) setSelectedStream(names[0]);
+  }, [cols, rows, streams, setCameraOrder]);
 
   // Ensure current page is valid when orderedStreams or maxStreams changes
   useEffect(() => {
@@ -778,10 +798,20 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
         </div>
       </div>
 
-      <div
-        className="live-grid-frame flex flex-col space-y-4 h-full"
-        {...pullToRefresh.bind}
-      >
+      <div className="live-workspace-shell">
+        <LiveOperatorNavigator
+          streams={streams}
+          orderedStreams={orderedStreams}
+          columns={cols}
+          rows={rows}
+          onFilterChange={setOperatorFilter}
+          onApplyLayout={applyOperatorLayout}
+        />
+        <div className="live-operator-main">
+        <div
+          className="live-grid-frame flex flex-col space-y-4 h-full"
+          {...pullToRefresh.bind}
+        >
         {(pullToRefresh.distance > 0 || pullToRefresh.refreshing) && (
           <div
             className={`mobile-pull-refresh ${pullToRefresh.ready ? 'ready' : ''}`}
@@ -853,8 +883,17 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                   style={{ position: 'relative', touchAction: reorderMode ? 'none' : undefined }}
                   draggable={reorderMode}
                   onDragStart={reorderMode ? () => handleDragStart(globalIndex) : undefined}
-                  onDragOver={reorderMode ? (e) => handleDragOver(e, globalIndex) : undefined}
-                  onDrop={reorderMode ? handleDrop : undefined}
+                  onDragOver={(event) => {
+                    if (reorderMode) handleDragOver(event, globalIndex);
+                    else if (event.dataTransfer?.types?.includes('application/x-lightnvr-camera')) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    if (reorderMode) handleDrop(event);
+                    else {
+                      const cameraUuid = event.dataTransfer?.getData('application/x-lightnvr-camera');
+                      if (cameraUuid) { event.preventDefault(); placeCameraAtIndex(cameraUuid, globalIndex); }
+                    }
+                  }}
                   onDragEnd={reorderMode ? handleDragEnd : undefined}
                   onPointerDown={reorderMode ? (event) => handleReorderPointerDown(event, globalIndex) : undefined}
                   onPointerMove={reorderMode ? handleReorderPointerMove : undefined}
@@ -934,6 +973,8 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
             </button>
           </div>
         ) : null}
+        </div>
+        </div>
       </div>
     </section>
   );
