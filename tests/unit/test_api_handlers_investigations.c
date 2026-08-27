@@ -73,6 +73,40 @@ static uint64_t create_recording(const char *camera_uuid,
     return add_recording_metadata(&recording);
 }
 
+static void create_continuous_recordings(const char *camera_uuid,
+                                         const char *stream_name,
+                                         time_t start_time,
+                                         int segment_seconds,
+                                         int segment_count) {
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "BEGIN IMMEDIATE;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        db,
+        "INSERT INTO recordings "
+        "(camera_uuid, stream_name, file_path, start_time, end_time, "
+        " size_bytes, codec, is_complete, trigger_type, "
+        " schedule_restricted, disk_pressure_eligible) "
+        "VALUES (?, ?, '/tmp/investigation-scale.mp4', ?, ?, 1024, "
+        "'h264', 1, 'scheduled', 0, 1);",
+        -1, &statement, NULL));
+    for (int index = 0; index < segment_count; index++) {
+        time_t segment_start = start_time + (time_t)index * segment_seconds;
+        sqlite3_bind_text(statement, 1, camera_uuid, -1, SQLITE_STATIC);
+        sqlite3_bind_text(statement, 2, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(statement, 3, (sqlite3_int64)segment_start);
+        sqlite3_bind_int64(statement, 4,
+                           (sqlite3_int64)(segment_start + segment_seconds));
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_reset(statement));
+        sqlite3_clear_bindings(statement);
+    }
+    sqlite3_finalize(statement);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "COMMIT;", NULL, NULL, NULL));
+}
+
 static cJSON *call_timeline(const char *body, int expected_status) {
     http_request_t request;
     http_response_t response;
@@ -87,6 +121,28 @@ static cJSON *call_timeline(const char *body, int expected_status) {
     request.body = (void *)body;
     request.body_len = strlen(body);
     handle_post_investigation_timeline(&request, &response);
+    TEST_ASSERT_EQUAL_INT(expected_status, response.status_code);
+    cJSON *json = response.body
+        ? cJSON_Parse((const char *)response.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&response);
+    return json;
+}
+
+static cJSON *call_segment_at(const char *body, int expected_status) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/investigations/segment-at",
+                sizeof(request.path), 0);
+    safe_strcpy(request.client_ip, "127.0.0.1",
+                sizeof(request.client_ip), 0);
+    request.body = (void *)body;
+    request.body_len = strlen(body);
+    handle_post_investigation_segment_at(&request, &response);
     TEST_ASSERT_EQUAL_INT(expected_status, response.status_code);
     cJSON *json = response.body
         ? cJSON_Parse((const char *)response.body) : NULL;
@@ -445,6 +501,70 @@ void test_timeline_rejects_duplicate_camera_ids(void) {
     cJSON_Delete(json);
 }
 
+void test_timeline_aggregates_complete_30_second_multi_day_ranges(void) {
+    const time_t range_start = 1701000000;
+    const int segment_seconds = 30;
+    const int days = 31;
+    stream_config_t camera = create_camera("Scale Camera");
+    create_continuous_recordings(
+        camera.camera_uuid, camera.name, range_start, segment_seconds,
+        days * 24 * 60 * 60 / segment_seconds);
+
+    const int requested_days[] = {1, 7, 31};
+    for (size_t index = 0;
+         index < sizeof(requested_days) / sizeof(requested_days[0]); index++) {
+        int requested_seconds = requested_days[index] * 24 * 60 * 60;
+        int expected_segments = requested_seconds / segment_seconds;
+        char body[512];
+        snprintf(body, sizeof(body),
+                 "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+                 "\"end_time\":%lld}",
+                 camera.camera_uuid, (long long)range_start,
+                 (long long)(range_start + requested_seconds));
+        cJSON *json = call_timeline(body, 200);
+        const cJSON *track = cJSON_GetArrayItem(
+            cJSON_GetObjectItemCaseSensitive(json, "tracks"), 0);
+        const cJSON *segments =
+            cJSON_GetObjectItemCaseSensitive(track, "segments");
+        TEST_ASSERT_TRUE(cJSON_IsTrue(
+            cJSON_GetObjectItemCaseSensitive(track, "aggregated")));
+        TEST_ASSERT_FALSE(cJSON_IsTrue(
+            cJSON_GetObjectItemCaseSensitive(track, "truncated")));
+        TEST_ASSERT_EQUAL_INT(
+            expected_segments,
+            cJSON_GetObjectItemCaseSensitive(track, "segment_count")->valueint);
+        TEST_ASSERT_GREATER_THAN_INT(0, cJSON_GetArraySize(segments));
+        TEST_ASSERT_LESS_OR_EQUAL_INT(INVESTIGATION_MAX_SEGMENTS_PER_CAMERA,
+                                      cJSON_GetArraySize(segments));
+        const cJSON *first = cJSON_GetArrayItem(segments, 0);
+        const cJSON *last = cJSON_GetArrayItem(
+            segments, cJSON_GetArraySize(segments) - 1);
+        TEST_ASSERT_EQUAL_INT64(
+            range_start,
+            (int64_t)cJSON_GetObjectItemCaseSensitive(
+                first, "start_time")->valuedouble);
+        TEST_ASSERT_EQUAL_INT64(
+            range_start + requested_seconds,
+            (int64_t)cJSON_GetObjectItemCaseSensitive(
+                last, "end_time")->valuedouble);
+        cJSON_Delete(json);
+    }
+
+    char cursor_body[512];
+    snprintf(cursor_body, sizeof(cursor_body),
+             "{\"camera_uuids\":[\"%s\"],\"timestamp\":%lld}",
+             camera.camera_uuid, (long long)(range_start + 30));
+    cJSON *cursor = call_segment_at(cursor_body, 200);
+    const cJSON *exact_segment =
+        cJSON_GetObjectItemCaseSensitive(cursor, "segment");
+    TEST_ASSERT_TRUE(cJSON_IsObject(exact_segment));
+    TEST_ASSERT_EQUAL_INT64(
+        range_start + 30,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            exact_segment, "start_time")->valuedouble);
+    cJSON_Delete(cursor);
+}
+
 void test_recording_action_preview_is_exact_and_bounded(void) {
     const time_t range_start = 1700003000;
     stream_config_t camera = create_camera("Action Camera");
@@ -580,10 +700,10 @@ void test_thumbnail_samples_map_even_times_to_recordings_and_gaps(void) {
     const cJSON *coverage =
         cJSON_GetObjectItemCaseSensitive(json, "coverage");
     TEST_ASSERT_EQUAL_INT(
-        4, cJSON_GetObjectItemCaseSensitive(
+        3, cJSON_GetObjectItemCaseSensitive(
                coverage, "available_samples")->valueint);
     TEST_ASSERT_EQUAL_INT(
-        1, cJSON_GetObjectItemCaseSensitive(
+        2, cJSON_GetObjectItemCaseSensitive(
                coverage, "gap_samples")->valueint);
     cJSON_Delete(json);
 
@@ -832,6 +952,51 @@ void test_search_rejects_invalid_cursor(void) {
     cJSON_Delete(json);
 }
 
+void test_search_results_and_summary_can_be_loaded_independently(void) {
+    const time_t range_start = 1700009000;
+    stream_config_t camera = create_camera("Split Search Camera");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    insert_detection(camera.camera_uuid, camera.name, range_start + 10,
+                     "person", 0.95, "", "", recording_id);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"include_summary\":false}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    cJSON *results_response = call_search(body, 200);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        results_response, "summary_complete")));
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
+               results_response, "results")));
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(results_response, "page"),
+               "total")->valueint);
+    cJSON_Delete(results_response);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"summary_only\":true}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    cJSON *summary_response = call_search(body, 200);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        summary_response, "summary_complete")));
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
+               summary_response, "results")));
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(summary_response, "page"),
+               "total")->valueint);
+    TEST_ASSERT_NOT_NULL(find_facet(summary_response, "labels", "person"));
+    cJSON_Delete(summary_response);
+}
+
 void test_search_includes_spanning_motion_and_reports_legacy_gap(void) {
     const time_t range_start = 1700010000;
     stream_config_t camera = create_camera("Perimeter");
@@ -996,6 +1161,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_capture_identity_survives_camera_rename_and_drives_timeline);
     RUN_TEST(test_timeline_rejects_duplicate_camera_ids);
+    RUN_TEST(test_timeline_aggregates_complete_30_second_multi_day_ranges);
     RUN_TEST(test_recording_action_preview_is_exact_and_bounded);
     RUN_TEST(test_recording_action_preview_rejects_more_than_export_limit);
     RUN_TEST(test_thumbnail_samples_map_even_times_to_recordings_and_gaps);
@@ -1004,6 +1170,7 @@ int main(void) {
     RUN_TEST(test_investigation_thumbnails_disabled_in_cpu_save_mode);
     RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
     RUN_TEST(test_search_rejects_invalid_cursor);
+    RUN_TEST(test_search_results_and_summary_can_be_loaded_independently);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);
     RUN_TEST(test_region_search_filters_boxes_and_explains_missing_metadata);
     int result = UNITY_END();

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "core/logger.h"
 #include "core/url_utils.h"
@@ -244,6 +245,7 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
     stream_metrics_t *metrics = calloc((size_t)maximum, sizeof(*metrics));
     if (!metrics) return;
     int metric_count = metrics_snapshot_all(metrics, maximum);
+    time_t now = time(NULL);
 
     size_t table_size = 1;
     while (table_size < (size_t)(metric_count * 2 + 1)) table_size <<= 1;
@@ -298,7 +300,14 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
             cameras[i].health_changed_at =
                 (int64_t)metrics[j].health_changed_at;
             cameras[i].current_fps = metrics[j].current_fps;
-            cameras[i].recording_active = metrics[j].recording_active != 0;
+            int expected_segment = metrics[j].expected_segment_duration > 0
+                ? metrics[j].expected_segment_duration : 30;
+            int recorder_window = expected_segment * 2 + 30;
+            if (recorder_window < 90) recorder_window = 90;
+            time_t last_segment =
+                (time_t)metrics[j].last_completed_segment_ts;
+            cameras[i].recording_active = last_segment > 0 &&
+                difftime(now, last_segment) <= recorder_window;
             break;
         }
     }

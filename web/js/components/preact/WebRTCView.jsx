@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 // Note: useCallback is still used by getStreamsToShow
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream, getNativeFullscreenElement, requestNativeFullscreen, exitNativeFullscreen } from './FullscreenManager.jsx';
-import { useQuery, useQueryClient } from '../../query-client.js';
+import { useQuery } from '../../query-client.js';
 import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
@@ -20,6 +20,7 @@ import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { usePullToRefresh } from './usePullToRefresh.js';
 import { shouldShowGestureTip } from './mobileLiveGestures.js';
+import { fetchAllStreamSummaries } from '../../utils/stream-summaries.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -193,9 +194,6 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     return 0;
   });
 
-  // Get query client for fetching and invalidating queries
-  const queryClient = useQueryClient();
-
   // Check if go2rtc is enabled (for showing MSE View button)
   useEffect(() => {
     const checkGo2rtc = async () => {
@@ -218,18 +216,14 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     isLoading: isLoadingStreams,
     error: streamsError,
     refetch: refetchStreams,
-  } = useQuery(
-    'streams',
-    '/api/streams',
-    {
-      timeout: 15000, // 15 second timeout
-      retries: 2,     // Retry twice
-      retryDelay: 1000 // 1 second between retries
-    },
-    {
-      refetchInterval: 30000 // Re-poll stream list (and status) every 30 s
-    }
-  );
+  } = useQuery({
+    queryKey: ['streams', 'webrtc-summary'],
+    queryFn: ({ signal }) => fetchAllStreamSummaries({
+      surface: 'live', signal,
+    }),
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
 
   const refreshLiveGrid = useCallback(async () => {
     try {
@@ -390,37 +384,9 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
         return [];
       }
 
-      // For WebRTC view, we need to fetch full details for each stream
-      const streamPromises = streams.map(async (stream) => {
-        try {
-          const streamId = stream.id || stream.name;
-
-          const streamDetails = await queryClient.fetchQuery({
-            queryKey: ['stream-details', streamId],
-            queryFn: async () => {
-              const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
-              if (!response.ok) {
-                throw new Error(`Failed to load details for stream ${stream.name}`);
-              }
-              return response.json();
-            },
-            staleTime: 30000 // 30 seconds
-          });
-
-          return streamDetails;
-        } catch (error) {
-          console.error(`Error loading details for stream ${stream.name}:`, error);
-          // Return the basic stream info if we can't get details
-          return stream;
-        }
-      });
-
-      const detailedStreams = await Promise.all(streamPromises);
-      console.log('Loaded detailed streams for WebRTC view:', detailedStreams);
-
       // Filter out streams that are soft deleted, administratively disabled, or not configured for streaming.
       // Streams in privacy mode (privacy_mode=true) are kept visible with a privacy overlay.
-      const filteredStreams = detailedStreams.filter(stream => {
+      const filteredStreams = streams.filter(stream => {
         // Filter out soft deleted streams
         if (stream.is_deleted) {
           console.log(`Stream ${stream.name} is soft deleted, filtering out`);

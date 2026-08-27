@@ -45,6 +45,7 @@ static bool request_accepts_gzip(const http_request_t *request) {
     char copy[1024];
     safe_strcpy(copy, header, sizeof(copy), 0);
     char *saveptr = NULL;
+    bool wildcard_allowed = false;
     for (char *token = strtok_r(copy, ",", &saveptr); token;
          token = strtok_r(NULL, ",", &saveptr)) {
         while (*token == ' ' || *token == '\t') token++;
@@ -52,11 +53,28 @@ static bool request_accepts_gzip(const http_request_t *request) {
         if (parameters) *parameters++ = '\0';
         char *end = token + strlen(token);
         while (end > token && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
-        if (strcasecmp(token, "gzip") != 0) continue;
-        if (parameters && strstr(parameters, "q=0")) return false;
-        return true;
+        if (strcasecmp(token, "gzip") != 0 && strcmp(token, "*") != 0) {
+            continue;
+        }
+        double quality = 1.0;
+        for (char *parameter = parameters; parameter;) {
+            char *next = strchr(parameter, ';');
+            if (next) *next++ = '\0';
+            while (*parameter == ' ' || *parameter == '\t') parameter++;
+            if (strncasecmp(parameter, "q=", 2) == 0) {
+                char *quality_end = NULL;
+                quality = strtod(parameter + 2, &quality_end);
+                if (quality_end == parameter + 2 || quality < 0.0 ||
+                    quality > 1.0) {
+                    quality = 0.0;
+                }
+            }
+            parameter = next;
+        }
+        if (strcasecmp(token, "gzip") == 0) return quality > 0.0;
+        wildcard_allowed = quality > 0.0;
     }
-    return false;
+    return wildcard_allowed;
 }
 
 static bool response_content_is_compressible(const char *content_type) {

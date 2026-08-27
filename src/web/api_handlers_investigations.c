@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <cjson/cJSON.h>
 
@@ -1293,6 +1294,9 @@ void handle_post_investigation_search(const http_request_t *request,
                                      "Failed to allocate search response");
         return;
     }
+    struct timespec query_started = {0};
+    struct timespec query_finished = {0};
+    clock_gettime(CLOCK_MONOTONIC, &query_started);
     if (query.camera_count > 0 &&
         db_investigation_search(&query, results, summary) != 0) {
         free(results);
@@ -1302,6 +1306,7 @@ void handle_post_investigation_search(const http_request_t *request,
                                      "Investigation search failed");
         return;
     }
+    clock_gettime(CLOCK_MONOTONIC, &query_finished);
     if (query.camera_count == 0) {
         int64_t range = (int64_t)query.end_time -
                         (int64_t)query.start_time + 1;
@@ -1531,6 +1536,15 @@ void handle_post_investigation_search(const http_request_t *request,
                           summary->unresolved_legacy_count == 0 &&
                           summary->spatial_missing_rows == 0);
 
+    double query_milliseconds =
+        (double)(query_finished.tv_sec - query_started.tv_sec) * 1000.0 +
+        (double)(query_finished.tv_nsec - query_started.tv_nsec) / 1000000.0;
+    char server_timing[96];
+    snprintf(server_timing, sizeof(server_timing), "%s;dur=%.2f",
+             query.include_results ? "investigation-results"
+                                   : "investigation-summary",
+             query_milliseconds);
+    http_response_add_header(response, "Server-Timing", server_timing);
     set_json_response(response, root);
     cJSON_Delete(root);
     free(results);

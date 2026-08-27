@@ -1,7 +1,9 @@
 #include "unity.h"
 #include "telemetry/stream_metrics.h"
 
+#include <stdatomic.h>
 #include <string.h>
+#include <time.h>
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -67,10 +69,34 @@ void test_counter_reset_does_not_underflow(void) {
     TEST_ASSERT_EQUAL_UINT64(250000, merged.bytes);
 }
 
+void test_audio_packets_do_not_make_frozen_video_healthy(void) {
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(2));
+
+    metrics_record_frame("audio-only", 512, false);
+    stream_metrics_t snapshot[2];
+    memset(snapshot, 0, sizeof(snapshot));
+    TEST_ASSERT_EQUAL_INT(1, metrics_snapshot_all(snapshot, 2));
+    TEST_ASSERT_GREATER_THAN_INT64(0, atomic_load(&snapshot[0].last_packet_ts));
+    TEST_ASSERT_EQUAL_INT64(0, atomic_load(&snapshot[0].last_frame_ts));
+
+    metrics_record_frame("audio-only", 2048, true);
+    metrics_record_segment_complete("audio-only", time(NULL) - 30,
+                                    time(NULL), 4096);
+    memset(snapshot, 0, sizeof(snapshot));
+    TEST_ASSERT_EQUAL_INT(1, metrics_snapshot_all(snapshot, 2));
+    TEST_ASSERT_GREATER_THAN_INT64(0, atomic_load(&snapshot[0].last_frame_ts));
+    TEST_ASSERT_GREATER_THAN_INT64(
+        0, atomic_load(&snapshot[0].last_completed_segment_ts));
+    TEST_ASSERT_EQUAL_INT(30, snapshot[0].expected_segment_duration);
+
+    metrics_shutdown();
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parallel_consumers_are_counted_once);
     RUN_TEST(test_sampler_uses_best_available_source_each_interval);
     RUN_TEST(test_counter_reset_does_not_underflow);
+    RUN_TEST(test_audio_packets_do_not_make_frozen_video_healthy);
     return UNITY_END();
 }

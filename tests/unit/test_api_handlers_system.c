@@ -298,6 +298,115 @@ void test_handle_get_streams_includes_motion_trigger_source(void) {
     clear_db_streams();
 }
 
+void test_handle_get_stream_summaries_are_paginated_and_credential_free(void) {
+    clear_db_streams();
+    stream_config_t alpha = make_test_stream("Alpha");
+    stream_config_t bravo = make_test_stream("Bravo");
+    stream_config_t charlie = make_test_stream("Charlie");
+    safe_strcpy(alpha.url, "rtsp://admin:alpha-secret@example/stream",
+                sizeof(alpha.url), 0);
+    memset(alpha.recording_schedule, 1, sizeof(alpha.recording_schedule));
+    memset(alpha.detection_recording_schedule, 1,
+           sizeof(alpha.detection_recording_schedule));
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&alpha));
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&bravo));
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&charlie));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.query_string,
+                "summary=true&page=2&page_size=2&sort_by=name&sort_order=asc",
+                sizeof(req.query_string), 0);
+    handle_get_streams(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    const cJSON *streams =
+        cJSON_GetObjectItemCaseSensitive(root, "streams");
+    TEST_ASSERT_TRUE(cJSON_IsArray(streams));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(streams));
+    TEST_ASSERT_EQUAL_INT(
+        3, cJSON_GetObjectItemCaseSensitive(root, "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(root, "total_pages")->valueint);
+    const cJSON *stream = cJSON_GetArrayItem(streams, 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "Charlie",
+        cJSON_GetObjectItemCaseSensitive(stream, "name")->valuestring);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(stream, "url"));
+    TEST_ASSERT_NULL(
+        cJSON_GetObjectItemCaseSensitive(stream, "onvif_password"));
+    TEST_ASSERT_NULL(
+        cJSON_GetObjectItemCaseSensitive(stream, "recording_schedule"));
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(
+        stream, "detection_recording_schedule"));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    clear_db_streams();
+}
+
+void test_stream_summary_contract_scales_to_1024_cameras(void) {
+    clear_db_streams();
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "BEGIN IMMEDIATE;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        db,
+        "INSERT INTO streams "
+        "(camera_uuid, name, url, enabled, streaming_enabled, width, height, "
+        " fps, codec, record, segment_duration) "
+        "VALUES (?, ?, 'rtsp://admin:secret@example/live', 1, 1, 1920, "
+        "1080, 25, 'h264', 1, 30);",
+        -1, &statement, NULL));
+    for (int index = 0; index < 1024; index++) {
+        char camera_uuid[CAMERA_UUID_STRING_SIZE];
+        char name[MAX_STREAM_NAME];
+        snprintf(camera_uuid, sizeof(camera_uuid),
+                 "00000000-0000-4000-8000-%012d", index);
+        snprintf(name, sizeof(name), "Camera %04d", index);
+        sqlite3_bind_text(statement, 1, camera_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, name, -1, SQLITE_TRANSIENT);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_reset(statement));
+        sqlite3_clear_bindings(statement);
+    }
+    sqlite3_finalize(statement);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "COMMIT;", NULL, NULL, NULL));
+
+    int previous_max_streams = g_config.max_streams;
+    g_config.max_streams = 1024;
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.query_string,
+                "summary=true&page=11&page_size=100&sort_by=name&sort_order=asc",
+                sizeof(req.query_string), 0);
+    handle_get_streams(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    const cJSON *streams =
+        cJSON_GetObjectItemCaseSensitive(root, "streams");
+    TEST_ASSERT_EQUAL_INT(1024,
+        cJSON_GetObjectItemCaseSensitive(root, "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(11,
+        cJSON_GetObjectItemCaseSensitive(root, "total_pages")->valueint);
+    TEST_ASSERT_EQUAL_INT(24, cJSON_GetArraySize(streams));
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(streams, 0), "url"));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    g_config.max_streams = previous_max_streams;
+    clear_db_streams();
+}
+
 void test_viewer_stream_response_redacts_credentials(void) {
     clear_db_streams();
 
@@ -1069,6 +1178,8 @@ int main(void) {
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
+    RUN_TEST(test_handle_get_stream_summaries_are_paginated_and_credential_free);
+    RUN_TEST(test_stream_summary_contract_scales_to_1024_cameras);
     RUN_TEST(test_viewer_stream_response_redacts_credentials);
     RUN_TEST(test_viewer_cannot_enable_stream_privacy_mode);
     RUN_TEST(test_handle_put_stream_parses_motion_trigger_source);

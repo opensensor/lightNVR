@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { Priority, queueThumbnailLoad } from '../../../request-queue.js';
+import { fetchAllStreamSummaries } from '../../../utils/stream-summaries.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
 import { InvestigationActions } from './InvestigationActions.jsx';
@@ -645,9 +646,10 @@ export function InvestigationView() {
   const lastUrlCursor = useRef(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } =
-    useQuery('investigation-streams', '/api/streams', {
-      timeout: 15000,
-      retries: 1,
+    useQuery({
+      queryKey: ['investigation-streams', 'summary'],
+      queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
+      staleTime: 30000,
     });
   const streams = Array.isArray(streamData) ? streamData : [];
 

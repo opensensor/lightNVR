@@ -6,6 +6,7 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
 import { fetchJSON, enhancedFetch } from '../../../fetch-utils.js';
+import { fetchAllStreamSummaries } from '../../../utils/stream-summaries.js';
 import {
   useQuery,
   useMutation,
@@ -175,10 +176,10 @@ export const recordingsAPI = {
      * @returns {Object} Query result
      */
     useStreams: () => {
-      return useQuery('streams', '/api/streams', {
-        timeout: 15000, // 15 second timeout
-        retries: 2,     // Retry twice
-        retryDelay: 1000 // 1 second between retries
+      return useQuery({
+        queryKey: ['streams', 'recordings-summary'],
+        queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
+        staleTime: 30000,
       });
     },
 
@@ -284,11 +285,7 @@ export const recordingsAPI = {
    */
   loadStreams: async () => {
     try {
-      const data = await fetchJSON('/api/streams', {
-        timeout: DEFAULT_TIMEOUT,
-        retries: DEFAULT_RETRIES,
-        retryDelay: DEFAULT_RETRY_DELAY
-      });
+      const data = await fetchAllStreamSummaries();
 
       return data || [];
     } catch (error) {

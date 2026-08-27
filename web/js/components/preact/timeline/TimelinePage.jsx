@@ -16,6 +16,7 @@ import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { isReduceMotionActive } from '../../../utils/reduceMotion.js';
+import { fetchAllStreamSummaries } from '../../../utils/stream-summaries.js';
 import {
   currentDateInputValue,
   formatDateForInput,
@@ -1039,10 +1040,10 @@ export function TimelinePage() {
   const {
     data: streamsData,
     error: streamsError
-  } = useQuery('streams', '/api/streams', {
-    timeout: 15000, // 15 second timeout
-    retries: 2,     // Retry twice
-    retryDelay: 1000 // 1 second between retries
+  } = useQuery({
+    queryKey: ['streams', 'timeline-summary'],
+    queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
+    staleTime: 30000,
   });
 
   // Handle initial data load when streams are available

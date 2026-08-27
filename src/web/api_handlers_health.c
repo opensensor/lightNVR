@@ -287,6 +287,8 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
     const char *overall_status = "healthy";
     if (streams_down > 0) overall_status = "critical";
     else if (streams_degraded > 0) overall_status = "degraded";
+    cJSON_ReplaceItemInObjectCaseSensitive(
+        health, "healthy", cJSON_CreateBool(strcmp(overall_status, "healthy") == 0));
     cJSON_AddStringToObject(health, "status", overall_status);
 
     // Streams summary object
@@ -319,6 +321,7 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddStringToObject(sd, "status", status_str);
         cJSON_AddNumberToObject(sd, "observed_fps", snaps[i].current_fps);
+        cJSON_AddNumberToObject(sd, "current_fps", snaps[i].current_fps);
         cJSON_AddNumberToObject(sd, "expected_fps", snaps[i].configured_fps);
         /* Backward-compatible names for existing API consumers. */
         cJSON_AddNumberToObject(sd, "fps", snaps[i].current_fps);

@@ -98,8 +98,8 @@ static int get_timeline_segments_for_identity(
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
         "  AND r.stream_name = ? "
-        "  AND r.start_time <= ? "
-        "  AND r.end_time   >= ? "
+        "  AND r.start_time < ? "
+        "  AND r.end_time   > ? "
         "ORDER BY r.start_time ASC "
         "LIMIT ?;";
 
@@ -125,8 +125,8 @@ static int get_timeline_segments_for_identity(
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
         "  AND r.camera_uuid = ? "
-        "  AND r.start_time <= ? "
-        "  AND r.end_time >= ? "
+        "  AND r.start_time < ? "
+        "  AND r.end_time > ? "
         "ORDER BY r.start_time ASC "
         "LIMIT ?;";
 
@@ -247,7 +247,7 @@ int get_timeline_coverage_by_camera_uuid(
         "r.protected "
         "FROM recordings r "
         "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
-        "AND r.camera_uuid = ? AND r.start_time <= ? AND r.end_time >= ? "
+        "AND r.camera_uuid = ? AND r.start_time < ? AND r.end_time > ? "
         "ORDER BY r.start_time ASC;";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -343,7 +343,7 @@ int get_timeline_segment_at_by_camera_uuid(
     if (!segment) return -1;
     memset(segment, 0, sizeof(*segment));
     int count = get_timeline_segments_by_camera_uuid(
-        camera_uuid, timestamp, timestamp, segment, 1);
+        camera_uuid, timestamp, timestamp + 1, segment, 1);
     return count < 0 ? -1 : count;
 }
 

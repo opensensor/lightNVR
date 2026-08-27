@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream, getNativeFullscreenElement, requestNativeFullscreen, exitNativeFullscreen } from './FullscreenManager.jsx';
-import { useQuery, useQueryClient } from '../../query-client.js';
+import { useQuery } from '../../query-client.js';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
@@ -19,6 +19,7 @@ import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { usePullToRefresh } from './usePullToRefresh.js';
 import { shouldShowGestureTip } from './mobileLiveGestures.js';
+import { fetchAllStreamSummaries } from '../../utils/stream-summaries.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -191,9 +192,6 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     return 0;
   });
 
-  // Get query client for fetching and invalidating queries
-  const queryClient = useQueryClient();
-
   // Check if go2rtc is enabled (for showing mode toggle)
   useEffect(() => {
     const checkGo2rtcMode = async () => {
@@ -216,18 +214,14 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     isLoading: isLoadingStreams,
     error: streamsError,
     refetch: refetchStreams,
-  } = useQuery(
-    'streams',
-    '/api/streams',
-    {
-      timeout: 15000, // 15 second timeout
-      retries: 2,     // Retry twice
-      retryDelay: 1000 // 1 second between retries
-    },
-    {
-      refetchInterval: 30000 // Re-poll stream list (and status) every 30 s
-    }
-  );
+  } = useQuery({
+    queryKey: ['streams', 'live-summary'],
+    queryFn: ({ signal }) => fetchAllStreamSummaries({
+      surface: 'live', signal,
+    }),
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
 
   const refreshLiveGrid = useCallback(async () => {
     try {
@@ -257,39 +251,7 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
           const candidateStreams = collectionFilter
             ? streamsData.filter((stream) => collectionCameraUuids.has(stream.camera_uuid))
             : streamsData;
-          // Filter and process the streams
-          // Note: filterStreamsForHLS is defined below but called here via closure
-          // We use a local function to fetch stream details to avoid hoisting issues
-          const fetchStreamDetails = async (stream) => {
-            try {
-              const streamId = stream.id || stream.name;
-              const streamDetails = await queryClient.fetchQuery({
-                queryKey: ['stream-details', streamId],
-                queryFn: async () => {
-                  const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
-                  if (!response.ok) {
-                    throw new Error(`Failed to load details for stream ${stream.name}`);
-                  }
-                  return response.json();
-                },
-                staleTime: 30000 // 30 seconds
-              });
-              return streamDetails;
-            } catch (error) {
-              console.error(`Error loading details for stream ${stream.name}:`, error);
-              return stream;
-            }
-          };
-
-          // Fetch stream details with bounded concurrency (max 3 at a time) to avoid
-          // overwhelming the backend with simultaneous /api/streams/{id} requests.
-          const BATCH_SIZE = 3;
-          const detailedStreams = [];
-          for (let i = 0; i < candidateStreams.length; i += BATCH_SIZE) {
-            const batch = candidateStreams.slice(i, i + BATCH_SIZE);
-            const batchResults = await Promise.all(batch.map(fetchStreamDetails));
-            detailedStreams.push(...batchResults);
-          }
+          const detailedStreams = candidateStreams;
           if (cancelled) return;
           console.log('Loaded detailed streams for HLS view:', detailedStreams);
 
@@ -352,7 +314,7 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     return () => { cancelled = true; };
     // selectedStream is read but intentionally omitted from the dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamsData, queryClient, collectionFilter, collectionCameraUuids, isCollectionLoading]);
+  }, [streamsData, collectionFilter, collectionCameraUuids, isCollectionLoading]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.
   useEffect(() => {
