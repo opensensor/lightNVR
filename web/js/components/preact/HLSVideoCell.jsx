@@ -773,6 +773,7 @@ export function HLSVideoCell({
         videoRef={videoRef}
         eptzConfig={stream.eptz_config}
         streamName={stream.name}
+        cameraUuid={stream.camera_uuid}
       />
 
       <LiveTileStatus
