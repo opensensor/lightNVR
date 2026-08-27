@@ -10,6 +10,8 @@
 
 LightNVR is a tiny, memory-optimized Network Video Recorder software written in C. While originally designed for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM, it can run on any Linux system.
 
+> **Free to use does not mean free to build.** About $10,000 of the maintainer's own money has gone into lightNVR's development and operation over roughly two years. If lightNVR saves you money, supports your customers, or creates value for your business, please help sustain the work through the **[lightNVR $10K Sustainability Drive](docs/SPONSORSHIP.md)** or **[sponsor directly on GitHub](https://github.com/sponsors/matteius)**.
+
 ## Overview
 
 LightNVR provides a lightweight yet powerful solution for recording and managing IP camera streams. It's designed to run efficiently on low-power, memory-constrained devices while still providing essential NVR functionality with a modern, responsive web interface.
