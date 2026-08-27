@@ -26,7 +26,7 @@ describe('stream summary pagination', () => {
         }),
       });
 
-    await expect(fetchAllStreamSummaries({ surface: 'live' })).resolves.toEqual([
+    await expect(fetchAllStreamSummaries({ surface: 'live', availability: 'live' })).resolves.toEqual([
       { name: 'Camera 001' },
       { name: 'Camera 101' },
     ]);
@@ -34,7 +34,7 @@ describe('stream summary pagination', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('page=1');
     expect(fetchMock.mock.calls[0][0]).toContain('page_size=100');
     expect(fetchMock.mock.calls[0][0]).toContain('surface=live');
+    expect(fetchMock.mock.calls[0][0]).toContain('availability=live');
     expect(fetchMock.mock.calls[1][0]).toContain('page=2');
   });
 });
-

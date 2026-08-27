@@ -122,6 +122,7 @@ typedef struct {
     /* Gap detection state */
     time_t last_segment_end_time;
     int expected_segment_duration;
+    time_t observation_persisted_at;
 
     /* Stream start time for uptime calculation */
     time_t stream_start_time;

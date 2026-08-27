@@ -52,6 +52,7 @@
 #include "web/api_handlers_storage_policies.h"
 #include "web/api_handlers_storage_pools.h"
 #include "web/api_handlers_storage_compliance.h"
+#include "web/api_handlers_workspaces.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -209,6 +210,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/settings", "POST", handle_post_settings);
     http_server_register_handler(server, "/api/settings/go2rtc/validate", "POST",
                                  handle_post_settings_go2rtc_validate);
+    http_server_register_handler(server, "/api/ui/workspaces", "GET",
+                                 handle_get_ui_workspaces);
+    http_server_register_handler(server, "/api/ui/workspaces", "PUT",
+                                 handle_put_ui_workspaces);
 
     // ICE Servers API (WebRTC TURN/STUN configuration)
     http_server_register_handler(server, "/api/ice-servers", "GET", handle_get_ice_servers);

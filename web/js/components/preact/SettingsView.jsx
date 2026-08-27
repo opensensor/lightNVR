@@ -31,6 +31,7 @@ import { MqttTab } from './settings/MqttTab.jsx';
 import { AuthTab } from './settings/AuthTab.jsx';
 import { AppearanceTab } from './settings/AppearanceTab.jsx';
 import { AdvancedTab } from './settings/AdvancedTab.jsx';
+import { WorkspacesTab } from './settings/WorkspacesTab.jsx';
 
 /**
  * Tab definitions. `id` is the URL hash fragment ("#general", "#go2rtc", …).
@@ -46,6 +47,7 @@ const TAB_DEFS = [
   { id: 'mqtt',      labelKey: 'settings.tab.mqtt',           labelFallback: 'MQTT' },
   { id: 'auth',      labelKey: 'settings.tab.auth',           labelFallback: 'Auth / Security' },
   { id: 'appearance', labelKey: 'settings.tab.appearance',    labelFallback: 'Appearance' },
+  { id: 'workspaces', labelKey: 'settings.tab.workspaces',    labelFallback: 'Workspaces' },
   { id: 'advanced',  labelKey: 'settings.tab.advanced',       labelFallback: 'Advanced' },
 ];
 
@@ -649,6 +651,8 @@ export function SettingsView() {
             t={t}
           />
 
+          <WorkspacesTab t={t} />
+
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
             <p class="text-muted-foreground">
               {t('settings.adminOnly')}
@@ -752,6 +756,7 @@ export function SettingsView() {
             t={t}
           />
         )}
+        {tab.id === 'workspaces' && <WorkspacesTab t={t} />}
         {tab.id === 'advanced' && (
           <AdvancedTab
             settings={settings}

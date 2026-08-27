@@ -1548,6 +1548,41 @@ static const char migration_0073_up[] =
 static const char migration_0073_down[] =
     "-- SQLite cannot drop a column while retaining compatibility with older builds.";
 
+static const char migration_0074_up[] =
+    "CREATE TABLE user_workspace_preferences (\n"
+    "    owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,\n"
+    "    workspace_key TEXT NOT NULL CHECK (workspace_key IN "
+    "('live.navigator','investigation')),\n"
+    "    is_visible INTEGER NOT NULL CHECK (is_visible IN (0, 1)),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "CREATE UNIQUE INDEX idx_user_workspace_preferences_owner_key "
+    "ON user_workspace_preferences(COALESCE(owner_user_id, 0), workspace_key);\n"
+    "CREATE TABLE camera_observations (\n"
+    "    camera_uuid TEXT PRIMARY KEY REFERENCES streams(camera_uuid) "
+    "ON DELETE CASCADE,\n"
+    "    first_video_at INTEGER NOT NULL DEFAULT 0,\n"
+    "    last_video_at INTEGER NOT NULL DEFAULT 0,\n"
+    "    last_recording_at INTEGER NOT NULL DEFAULT 0,\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "CREATE INDEX idx_camera_observations_last_video "
+    "ON camera_observations(last_video_at DESC, camera_uuid);\n"
+    "INSERT INTO camera_observations(camera_uuid, first_video_at, "
+    "last_video_at, last_recording_at) "
+    "SELECT r.camera_uuid, MIN(r.start_time), "
+    "MAX(COALESCE(r.end_time, r.start_time)), "
+    "MAX(COALESCE(r.end_time, r.start_time)) "
+    "FROM recordings r JOIN streams s ON s.camera_uuid = r.camera_uuid "
+    "WHERE r.camera_uuid IS NOT NULL AND r.camera_uuid <> '' "
+    "AND r.is_complete = 1 GROUP BY r.camera_uuid;";
+
+static const char migration_0074_down[] =
+    "DROP INDEX IF EXISTS idx_camera_observations_last_video;\n"
+    "DROP TABLE IF EXISTS camera_observations;\n"
+    "DROP INDEX IF EXISTS idx_user_workspace_preferences_owner_key;\n"
+    "DROP TABLE IF EXISTS user_workspace_preferences;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2060,8 +2095,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0073_down,
         .is_embedded = true
     },
+    {
+        .version = "0074",
+        .description = "add_operator_workspace_foundations",
+        .sql_up = migration_0074_up,
+        .sql_down = migration_0074_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 73
+#define EMBEDDED_MIGRATIONS_COUNT 74
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

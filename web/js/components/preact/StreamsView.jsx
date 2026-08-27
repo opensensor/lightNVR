@@ -38,6 +38,18 @@ function getInitialWorkspaceTab() {
   return view === 'inventory' || view === 'health' || view === 'events' ? view : 'streams';
 }
 
+const STREAM_AVAILABILITY_VALUES = new Set([
+  'live', 'offline', 'never_connected', 'disabled', 'all',
+]);
+
+function getInitialStreamAvailability() {
+  if (typeof window === 'undefined') return 'live';
+  const fromUrl = new URLSearchParams(window.location.search).get('availability');
+  if (STREAM_AVAILABILITY_VALUES.has(fromUrl)) return fromUrl;
+  const stored = window.localStorage.getItem('lightnvr-stream-availability');
+  return STREAM_AVAILABILITY_VALUES.has(stored) ? stored : 'live';
+}
+
 export function StreamsView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -93,6 +105,7 @@ export function StreamsView() {
   const [streamPage, setStreamPage] = useState(1);
   const [streamPageSize, setStreamPageSize] = useState(50);
   const [streamSearch, setStreamSearch] = useState('');
+  const [streamAvailability, setStreamAvailability] = useState(getInitialStreamAvailability);
   const [debouncedStreamSearch, setDebouncedStreamSearch] = useState('');
   const DEFAULT_SORT_COLUMN = 'name';
   const [sortColumn, setSortColumn] = useState(DEFAULT_SORT_COLUMN);
@@ -113,6 +126,16 @@ export function StreamsView() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [streamSearch]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('lightnvr-stream-availability', streamAvailability);
+    const url = new URL(window.location.href);
+    if (streamAvailability === 'live') url.searchParams.delete('availability');
+    else url.searchParams.set('availability', streamAvailability);
+    window.history.replaceState({}, '', url);
+    setStreamPage(1);
+  }, [streamAvailability]);
 
   // Credential-reveal toggle is now owned by StreamCard (per-card state).
   // StreamsView used to track a Set of revealed streams when the page was a
@@ -175,6 +198,7 @@ export function StreamsView() {
     page_size: String(streamPageSize),
     sort_by: sortColumn,
     sort_order: sortDirection,
+    availability: streamAvailability,
   });
   if (debouncedStreamSearch) {
     streamQueryParams.set('search', debouncedStreamSearch);
@@ -188,7 +212,7 @@ export function StreamsView() {
     isLoading
   } = useQuery(
     ['streams', 'summary', streamPage, streamPageSize, sortColumn,
-      sortDirection, debouncedStreamSearch],
+      sortDirection, debouncedStreamSearch, streamAvailability],
     streamSummaryUrl,
     {
     timeout: 10000,
@@ -1584,6 +1608,19 @@ export function StreamsView() {
               value={streamSearch}
               onInput={(event) => setStreamSearch(event.currentTarget.value)}
             />
+            <label className="sr-only" htmlFor="streams-availability">{t('availability.label')}</label>
+            <select
+              id="streams-availability"
+              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground"
+              value={streamAvailability}
+              onChange={(event) => setStreamAvailability(event.currentTarget.value)}
+            >
+              <option value="live">{t('availability.live')}</option>
+              <option value="offline">{t('availability.offline')}</option>
+              <option value="never_connected">{t('availability.neverConnected')}</option>
+              <option value="disabled">{t('availability.disabled')}</option>
+              <option value="all">{t('availability.all')}</option>
+            </select>
             <span className="font-medium">{t('streams.sortBy') || 'Sort by'}:</span>
             {[
               { key: 'name',       label: t('common.name') },

@@ -7,7 +7,7 @@ const STREAM_SUMMARY_PAGE_SIZE = 100;
  * unbounded response. Selector and live surfaces still need the complete set,
  * so they walk fixed-size pages; Stream Configuration renders a single page.
  */
-export async function fetchAllStreamSummaries({ surface = 'admin', signal } = {}) {
+export async function fetchAllStreamSummaries({ surface = 'admin', availability = 'all', signal } = {}) {
   const streams = [];
   let page = 1;
   let totalPages = 1;
@@ -19,6 +19,7 @@ export async function fetchAllStreamSummaries({ surface = 'admin', signal } = {}
       page_size: String(STREAM_SUMMARY_PAGE_SIZE),
       sort_by: 'name',
       sort_order: 'asc',
+      availability,
     });
     const response = await fetchJSON(`/api/streams?${params.toString()}`, {
       signal,
@@ -31,4 +32,3 @@ export async function fetchAllStreamSummaries({ surface = 'admin', signal } = {}
   } while (page <= totalPages);
   return streams;
 }
-

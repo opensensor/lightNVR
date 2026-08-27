@@ -51,6 +51,7 @@ describe('fleet query state', () => {
       search: 'north door',
       health: ['down'],
       enabled: 'false',
+      availability: 'offline',
       recordingModes: ['off', 'detection'],
       tagUuids: ['tag-a'],
       locationUuid: 'location-a',
@@ -82,6 +83,7 @@ describe('fleet query state', () => {
       sort_by: 'name',
       sort_order: 'asc',
       facets: true,
+      availability: 'all',
     });
   });
 
@@ -94,9 +96,10 @@ describe('fleet query state', () => {
       recordingModes: ['off'],
       tagUuids: ['tag-a'],
       enabled: 'true',
+      availability: 'never_connected',
       locationUuid: 'location-a',
       collectionUuid: 'collection-a',
-    })).toBe(6);
+    })).toBe(7);
     expect(clampFleetPage(8, 3)).toBe(3);
     expect(clampFleetPage(8, 0)).toBe(1);
   });

@@ -126,7 +126,7 @@ export function FleetView() {
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const requestBody = useMemo(
     () => buildFleetQueryRequest(state, debouncedSearch),
-    [state.locationUuid, state.collectionUuid, state.tagUuids, state.health, state.enabled, state.recordingModes, state.page, state.pageSize, state.sortBy, state.sortOrder, debouncedSearch]
+    [state.locationUuid, state.collectionUuid, state.tagUuids, state.health, state.enabled, state.availability, state.recordingModes, state.page, state.pageSize, state.sortBy, state.sortOrder, debouncedSearch]
   );
 
   const { data, error, isLoading, isFetching, refetch } = useQuery({

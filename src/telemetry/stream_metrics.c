@@ -18,6 +18,7 @@
 #include "telemetry/stream_metrics.h"
 #include "core/event_producers.h"
 #include "core/shutdown_coordinator.h"
+#include "database/db_camera_observations.h"
 #define LOG_COMPONENT "Metrics"
 #include "core/logger.h"
 #include "utils/strings.h"
@@ -36,6 +37,7 @@ static pthread_t         g_sampler_thread;
 static volatile bool     g_sampler_running = false;
 static interruptible_sleep_t g_sampler_wake;   /* woken by metrics_shutdown() */
 #define SAMPLER_INTERVAL_SEC 5
+#define OBSERVATION_PERSIST_INTERVAL_SEC 60
 
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                   */
@@ -249,6 +251,16 @@ static void *sampler_thread_func(void *arg) {
             safe_strcpy(stream_name, m->stream_name, sizeof(stream_name), 0);
             double observed_fps = m->current_fps;
             double expected_fps = cfg_fps;
+            int64_t last_recording =
+                atomic_load(&m->last_completed_segment_ts);
+            bool persist_observation =
+                (last_frame > 0 || last_recording > 0) &&
+                (m->observation_persisted_at == 0 ||
+                 difftime(now, m->observation_persisted_at) >=
+                     OBSERVATION_PERSIST_INTERVAL_SEC);
+            if (persist_observation) {
+                m->observation_persisted_at = now;
+            }
 
             /* --- Append ring buffer sample --- */
             int idx = m->ring_head;
@@ -261,6 +273,13 @@ static void *sampler_thread_func(void *arg) {
             }
 
             pthread_rwlock_unlock(&m->lock);
+
+            if (persist_observation && db_camera_observation_record(
+                    stream_name, (int64_t)last_frame,
+                    last_recording) != 0) {
+                log_debug("Could not persist observation for stream '%s'",
+                          stream_name);
+            }
 
             if (health_changed) {
                 publish_health_transition(
@@ -367,6 +386,7 @@ static int metrics_get_slot(const char *stream_name) {
                 m->ring_head = 0;
                 m->ring_count = 0;
                 m->last_segment_end_time = 0;
+                m->observation_persisted_at = 0;
                 m->configured_fps = 30.0; /* default, overridden by set_configured_fps */
                 atomic_store(&m->health_status, (int)STREAM_HEALTH_DOWN);
                 atomic_store(&m->stream_up, 0);
