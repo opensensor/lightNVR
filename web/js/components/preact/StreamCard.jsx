@@ -24,9 +24,29 @@
  * component only styles a single card.
  */
 
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { AsyncButton } from './AsyncButton.jsx';
-import { obfuscateUrlCredentials, urlHasCredentials } from '../../utils/url-utils.js';
+
+const MAX_CONCURRENT_SNAPSHOTS = 8;
+let activeSnapshotRequests = 0;
+const snapshotWaiters = [];
+
+function acquireSnapshotSlot() {
+  return new Promise((resolve) => {
+    const grant = () => {
+      activeSnapshotRequests += 1;
+      let released = false;
+      resolve(() => {
+        if (released) return;
+        released = true;
+        activeSnapshotRequests = Math.max(0, activeSnapshotRequests - 1);
+        snapshotWaiters.shift()?.();
+      });
+    };
+    if (activeSnapshotRequests < MAX_CONCURRENT_SNAPSHOTS) grant();
+    else snapshotWaiters.push(grant);
+  });
+}
 
 /**
  * Collect the active recording modes for a stream in display order.
@@ -86,11 +106,13 @@ function statusBadge(stream, t) {
     case 'Starting':
     case 'Reconnecting':
     case 'Stopping':
+    case 'Degraded':
       color = 'hsl(var(--warning, 45 93% 47%))';
       label = t
         ? (s === 'Starting' ? t('streams.starting')
           : s === 'Reconnecting' ? t('streams.reconnecting')
-          : t('streams.stopping'))
+          : s === 'Stopping' ? t('streams.stopping')
+          : t('streamHealth.degraded'))
         : s;
       break;
     case 'Error':
@@ -169,10 +191,13 @@ export function StreamCard({
   onDisable,
   t
 }) {
-  const [revealed, setRevealed] = useState(false);
   const [snapshotBroken, setSnapshotBroken] = useState(false);
+  const [snapshotRequested, setSnapshotRequested] = useState(false);
+  const snapshotContainerRef = useRef(null);
+  const snapshotReleaseRef = useRef(null);
 
-  const snapshotSrc = !snapshotBroken ? buildSnapshotUrl(stream.name) : null;
+  const snapshotSrc = snapshotRequested && !snapshotBroken
+    ? buildSnapshotUrl(stream.name) : null;
   const { color: statusColor, label: statusLabel } = statusBadge(stream, t);
   const modes = collectRecordingModes(stream, t);
   const modeText = modes.length > 0 ? modes.join(' + ') : t('streams.notRecording');
@@ -182,7 +207,38 @@ export function StreamCard({
     ? t('streams.recordingModesList', { modes: modes.join(', ') })
     : t('streams.notRecording');
   const transportLabel = protocolLabel(stream);
-  const hasAdminLauncher = !shouldHideCredentials && /^https?:\/\//i.test(stream.admin_url || '');
+  const hasAdminLauncher = false;
+
+  const finishSnapshotRequest = () => {
+    snapshotReleaseRef.current?.();
+    snapshotReleaseRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!stream.enabled || !snapshotContainerRef.current ||
+        typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+    let cancelled = false;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void acquireSnapshotSlot().then((release) => {
+        if (cancelled) {
+          release();
+          return;
+        }
+        snapshotReleaseRef.current = release;
+        setSnapshotRequested(true);
+      });
+    }, { rootMargin: '300px 0px' });
+    observer.observe(snapshotContainerRef.current);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      finishSnapshotRequest();
+    };
+  }, [stream.enabled, stream.name]);
 
   // AsyncButton handlers — return the parent promise so pending/error
   // state surfaces on the card.
@@ -198,6 +254,7 @@ export function StreamCard({
     >
       {/* Snapshot — clickable to toggle selection when in selection mode */}
       <div
+        ref={snapshotContainerRef}
         class={`relative w-full aspect-video bg-muted flex-shrink-0 ${
           selectionMode ? 'cursor-pointer' : ''
         }`}
@@ -208,7 +265,11 @@ export function StreamCard({
             src={snapshotSrc}
             alt={t('streams.snapshotFor', { name: stream.name })}
             class="w-full h-full object-cover"
-            onError={() => setSnapshotBroken(true)}
+            onLoad={finishSnapshotRequest}
+            onError={() => {
+              finishSnapshotRequest();
+              setSnapshotBroken(true);
+            }}
             loading="lazy"
           />
         ) : (
@@ -308,33 +369,16 @@ export function StreamCard({
           )}
         </div>
 
-        {/* Details disclosure — collapsed on <640px, always-open above.
-             Two parallel DOM branches so there is no flash on resize. */}
-        <details class="sm:hidden text-xs mt-1" data-stream-details="mobile">
+        {/* A single responsive details subtree keeps card DOM bounded. Full
+            source credentials/configuration are fetched only in Edit/Clone. */}
+        <details class="text-xs mt-1" data-stream-details="summary">
           <summary class="cursor-pointer text-muted-foreground select-none">
             {t('streams.details')}
           </summary>
           <div class="mt-2">
-            <DetailsBlock
-              stream={stream}
-              revealed={revealed}
-              setRevealed={setRevealed}
-              shouldHideCredentials={shouldHideCredentials}
-              hasAdminLauncher={hasAdminLauncher}
-              t={t}
-            />
+            <DetailsBlock stream={stream} t={t} />
           </div>
         </details>
-        <div class="hidden sm:block text-xs" data-stream-details="desktop">
-          <DetailsBlock
-            stream={stream}
-            revealed={revealed}
-            setRevealed={setRevealed}
-            shouldHideCredentials={shouldHideCredentials}
-            hasAdminLauncher={hasAdminLauncher}
-            t={t}
-          />
-        </div>
 
         {/* Action row */}
         <div class="flex items-center gap-1 pt-1 mt-auto border-t border-border -mx-3 px-3 -mb-1">
@@ -466,88 +510,25 @@ export function StreamCard({
  * toggle. Shared by the mobile `<details>` disclosure and the
  * always-visible desktop block.
  */
-function DetailsBlock({ stream, revealed, setRevealed, shouldHideCredentials, hasAdminLauncher, t }) {
-  const showRevealToggle = urlHasCredentials(stream.url) && !shouldHideCredentials;
-  const sourceUrlDisplay = revealed && !shouldHideCredentials
-    ? stream.url
-    : obfuscateUrlCredentials(stream.url);
+function DetailsBlock({ stream, t }) {
   return (
     <div class="space-y-1.5">
-      {/* Binding / admin URL */}
       <div class="flex items-start gap-1.5">
         <span class="font-medium text-muted-foreground flex-shrink-0">
-          {t('streams.binding')}:
+          {t('fleet.location')}:
         </span>
-        {hasAdminLauncher ? (
-          <a
-            href={stream.admin_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs truncate text-ellipsis overflow-hidden min-w-0 flex-1 text-primary hover:underline"
-            title={stream.admin_url}
-          >
-            {stream.admin_url}
-          </a>
-        ) : (
-          <span
-            class="font-mono text-xs truncate text-ellipsis overflow-hidden min-w-0 flex-1"
-            title={stream.admin_url || t('streams.notAvailable')}
-          >
-            {stream.admin_url || t('streams.notAvailable')}
-          </span>
-        )}
+        <span class="truncate min-w-0 flex-1" title={stream.location_path || ''}>
+          {stream.location_path || stream.location_name || t('streams.notAvailable')}
+        </span>
       </div>
-
-      {/* Source URL */}
       <div class="flex items-start gap-1.5">
         <span class="font-medium text-muted-foreground flex-shrink-0">
-          {t('common.url')}:
+          {t('fleet.tags')}:
         </span>
-        <span
-          class="font-mono text-xs truncate text-ellipsis overflow-hidden min-w-0 flex-1"
-          title={sourceUrlDisplay}
-        >
-          {sourceUrlDisplay}
+        <span class="truncate min-w-0 flex-1" title={stream.tags || ''}>
+          {stream.tags || t('streams.notAvailable')}
         </span>
-        {showRevealToggle && (
-          <button
-            type="button"
-            class="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
-            onClick={(e) => { e.stopPropagation(); setRevealed(v => !v); }}
-            title={revealed ? t('streams.hideCredentials') : t('streams.showCredentials')}
-            aria-label={revealed ? t('streams.hideCredentials') : t('streams.showCredentials')}
-          >
-            {revealed ? (
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
-              </svg>
-            ) : (
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            )}
-          </button>
-        )}
       </div>
-
-      {/* Sub-stream URL (if present) */}
-      {stream.sub_stream_url && (
-        <div class="flex items-start gap-1.5">
-          <span class="font-medium text-muted-foreground flex-shrink-0">
-            {t('streams.subStreamUrl') || 'Sub-stream'}:
-          </span>
-          <span
-            class="font-mono text-xs truncate text-ellipsis overflow-hidden min-w-0 flex-1"
-            title={obfuscateUrlCredentials(stream.sub_stream_url)}
-          >
-            {obfuscateUrlCredentials(stream.sub_stream_url)}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

@@ -910,6 +910,57 @@ void test_handle_post_stream_rejects_invalid_playback_transport(void) {
     http_response_free(&res);
 }
 
+void test_handle_post_stream_persists_valid_eptz_config(void) {
+    clear_db_streams();
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    static const char json_body[] =
+        "{\"name\":\"cam_eptz_post\",\"url\":\"rtsp://localhost/stream\","
+        "\"eptz_config\":\"{\\\"version\\\":1,\\\"projection\\\":\\\"equidistant\\\","
+        "\\\"mount\\\":\\\"ceiling\\\",\\\"centerX\\\":0.5,\\\"centerY\\\":0.5,"
+        "\\\"radius\\\":0.48,\\\"fov\\\":190,\\\"rotation\\\":0,"
+        "\\\"defaultYaw\\\":0,\\\"defaultTilt\\\":-45,\\\"defaultViewFov\\\":75}\"}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_eptz_post", &got));
+    TEST_ASSERT_NOT_NULL(strstr(got.eptz_config, "\"projection\":\"equidistant\""));
+
+    usleep(200000);
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_post_stream_rejects_invalid_eptz_config(void) {
+    clear_db_streams();
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    static const char json_body[] =
+        "{\"name\":\"cam_eptz_bad\",\"url\":\"rtsp://localhost/stream\","
+        "\"eptz_config\":\"{\\\"version\\\":1,\\\"projection\\\":\\\"vendor-magic\\\"}\"}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(400, res.status_code);
+    stream_config_t got;
+    TEST_ASSERT_NOT_EQUAL(0, get_stream_config_by_name("cam_eptz_bad", &got));
+    http_response_free(&res);
+}
+
 void test_get_onvif_devices_returns_persisted_inventory_metadata(void) {
     clear_onvif_inventory();
     onvif_device_info_t observed;
@@ -1035,6 +1086,8 @@ int main(void) {
     RUN_TEST(test_stream_retention_routes_require_camera_configure);
     RUN_TEST(test_handle_post_stream_persists_playback_transport);
     RUN_TEST(test_handle_post_stream_rejects_invalid_playback_transport);
+    RUN_TEST(test_handle_post_stream_persists_valid_eptz_config);
+    RUN_TEST(test_handle_post_stream_rejects_invalid_eptz_config);
     RUN_TEST(test_get_onvif_devices_returns_persisted_inventory_metadata);
     RUN_TEST(test_claim_onvif_device_api_requires_existing_stream);
     int result = UNITY_END();

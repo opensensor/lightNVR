@@ -21,6 +21,17 @@ typedef struct {
     int schedule_restricted; // -1 = unknown/legacy, 0 = no, 1 = yes
 } timeline_segment_t;
 
+/** Bounded overview interval produced from any number of recording rows. */
+typedef struct {
+    uint64_t first_recording_id;
+    time_t start_time;
+    time_t end_time;
+    uint64_t size_bytes;
+    int source_segment_count;
+    bool has_detection;
+    bool protected;
+} timeline_coverage_interval_t;
+
 /**
  * Get timeline segments for a specific stream and time range
  * 
@@ -43,6 +54,20 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
 int get_timeline_segments_by_camera_uuid(
     const char *camera_uuid, time_t start_time, time_t end_time,
     timeline_segment_t *segments, int max_segments);
+
+/**
+ * Aggregate all recording rows into zoom-sized coverage buckets. The returned
+ * interval count is bounded while source_segment_count reports the complete
+ * number of rows scanned.
+ */
+int get_timeline_coverage_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    timeline_coverage_interval_t *intervals, int max_intervals,
+    int *source_segment_count, int *bucket_seconds);
+
+/** Resolve the exact recording that contains a playback cursor. */
+int get_timeline_segment_at_by_camera_uuid(
+    const char *camera_uuid, time_t timestamp, timeline_segment_t *segment);
 
 /**
  * Handle GET request for timeline segments

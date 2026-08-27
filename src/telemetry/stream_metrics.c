@@ -372,6 +372,7 @@ static int metrics_get_slot(const char *stream_name) {
                 atomic_store(&m->stream_up, 0);
                 m->health_observed = false;
                 m->health_changed_at = 0;
+                atomic_store(&m->last_packet_ts, 0);
                 atomic_store(&m->last_frame_ts, 0);
                 atomic_store(&m->frames_total, 0);
                 atomic_store(&m->frames_dropped, 0);
@@ -386,6 +387,7 @@ static int metrics_get_slot(const char *stream_name) {
                 atomic_store(&m->recording_bytes_written, 0);
                 atomic_store(&m->recording_segments_total, 0);
                 atomic_store(&m->recording_gaps_total, 0);
+                atomic_store(&m->last_completed_segment_ts, 0);
                 for (int source = 0; source < METRICS_SOURCE_COUNT; source++) {
                     atomic_store(&m->source_frames_total[source], 0);
                     atomic_store(&m->source_bytes_received[source], 0);
@@ -442,7 +444,13 @@ void metrics_record_frame_from_source(const char *stream_name, int bytes,
     if (bytes > 0) {
         atomic_fetch_add(&m->source_bytes_received[source], (uint64_t)bytes);
     }
-    atomic_store(&m->last_frame_ts, (int_fast64_t)time(NULL));
+    time_t now = time(NULL);
+    atomic_store(&m->last_packet_ts, (int_fast64_t)now);
+    /* Audio proves that a transport session is alive, but it must never make
+     * a frozen video producer healthy. */
+    if (is_video) {
+        atomic_store(&m->last_frame_ts, (int_fast64_t)now);
+    }
 }
 
 void metrics_record_drop(const char *stream_name) {
@@ -499,6 +507,14 @@ void metrics_record_segment_complete(const char *stream_name, time_t start_time,
     }
     if (end_time > 0) {
         m->last_segment_end_time = end_time;
+        atomic_store(&m->last_completed_segment_ts,
+                     (int_fast64_t)end_time);
+    } else {
+        atomic_store(&m->last_completed_segment_ts,
+                     (int_fast64_t)time(NULL));
+    }
+    if (start_time > 0 && end_time > start_time) {
+        m->expected_segment_duration = (int)(end_time - start_time);
     }
 
     atomic_fetch_add(&m->recording_segments_total, 1);
@@ -569,6 +585,7 @@ int metrics_snapshot_all(stream_metrics_t *out_array, int max_count) {
         /* Re-read atomics into the snapshot for consistency */
         out_array[count].health_status    = atomic_load(&m->health_status);
         out_array[count].stream_up        = atomic_load(&m->stream_up);
+        out_array[count].last_packet_ts   = atomic_load(&m->last_packet_ts);
         out_array[count].last_frame_ts    = atomic_load(&m->last_frame_ts);
         out_array[count].frames_total     = atomic_load(&m->frames_total);
         out_array[count].frames_dropped   = atomic_load(&m->frames_dropped);
@@ -583,6 +600,8 @@ int metrics_snapshot_all(stream_metrics_t *out_array, int max_count) {
         out_array[count].recording_bytes_written  = atomic_load(&m->recording_bytes_written);
         out_array[count].recording_segments_total = atomic_load(&m->recording_segments_total);
         out_array[count].recording_gaps_total     = atomic_load(&m->recording_gaps_total);
+        out_array[count].last_completed_segment_ts =
+            atomic_load(&m->last_completed_segment_ts);
 
         count++;
     }

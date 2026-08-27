@@ -15,6 +15,8 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
 import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../../../utils/date-utils.js';
 import { useI18n } from '../../../i18n.js';
+import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
+import { isEptzEnabled } from '../../../utils/eptz-config.js';
 
 // Timeout for cleaning up preloaded temporary video elements (in milliseconds).
 const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
@@ -25,8 +27,9 @@ const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detecti
  * TimelinePlayer component
  * @returns {JSX.Element} TimelinePlayer component
  */
-export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false }) {
+export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false, streamConfig = null }) {
   const { t } = useI18n();
+  const eptzEnabled = isEptzEnabled(streamConfig?.eptz_config);
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
@@ -908,7 +911,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
           <video
               ref={setVideoRefs}
               className="w-full h-full object-contain"
-              controls
+              controls={!eptzEnabled}
               controlsList="nofullscreen"
               autoPlay={false}
               muted={false}
@@ -918,6 +921,12 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
               onEnded={handleEnded}
               onTimeUpdate={handleTimeUpdate}
           ></video>
+
+          <FisheyeEptzCanvas
+            videoRef={videoRef}
+            eptzConfig={streamConfig?.eptz_config}
+            streamName={streamConfig?.name}
+          />
 
           {/* Click guard — sits above the video surface to intercept Firefox's
               native click-to-play/pause behaviour.  pointerdown events still
@@ -939,7 +948,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
               Skipped entirely on touch devices: there is no mouse click-to-play
               to suppress there, and the guard would swallow taps on the big
               centred play button mobile browsers draw over the video (#453). */}
-          {!isCoarsePointer && (
+          {!isCoarsePointer && !eptzEnabled && (
             <div
               style={{
                 position: 'absolute',
@@ -954,7 +963,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
           )}
 
           {/* Detection overlay canvas */}
-          {detectionOverlayEnabled && (
+          {detectionOverlayEnabled && !eptzEnabled && (
             <canvas
               ref={canvasRef}
               className="absolute top-0 left-0 w-full h-full pointer-events-none"
@@ -1014,6 +1023,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
             id="timeline-detection-overlay"
             className="w-3.5 h-3.5 accent-primary"
             checked={detectionOverlayEnabled}
+            disabled={eptzEnabled}
             onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
           />
           <span className="text-[11px] text-foreground">

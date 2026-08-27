@@ -55,6 +55,32 @@ the sub-stream is the usual way to keep CPU and disk manageable.
 
 ---
 
+## Ceiling fisheye cameras and ePTZ
+
+LightNVR can dewarp a circular ceiling-mounted fisheye stream in the browser while it
+continues to record the original image. Edit the stream, open **Fisheye ePTZ**, enable it,
+and calibrate the optical center, image-circle radius, lens field of view, and rotation.
+The first supported lens mapping is equidistant (`radius = focal length × ray angle`).
+
+The dewarped view is available in Live View over WebRTC, MSE, or HLS and in Timeline
+playback. Drag to pan and tilt, use the mouse wheel or a two-finger pinch to zoom, and
+press **Home** or the on-video reset control to return to the configured default view.
+Each browser remembers its last virtual viewpoint per camera. The setting does not enable
+or operate mechanical ONVIF PTZ, and it never changes the stored recording.
+
+Calibration values are normalized against the source frame:
+
+- Optical center X/Y range from `0` to `1`.
+- Image-circle radius is relative to the source frame's shorter dimension; `0.5` is a
+  circle touching the shorter pair of edges.
+- Lens FOV describes the full angle across the calibrated image circle.
+- Default tilt uses `-90°` for straight down and `0°` for the horizon.
+
+WebGL2 is required. If the browser or GPU cannot create the renderer, LightNVR leaves the
+raw video visible and shows an `ePTZ unavailable` badge.
+
+---
+
 ## Known vendor interop notes
 
 These are issues that were reported against specific hardware and **have been fixed** —

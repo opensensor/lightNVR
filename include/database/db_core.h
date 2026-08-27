@@ -64,6 +64,16 @@ sqlite3 *get_db_handle(void);
 pthread_mutex_t *get_db_mutex(void);
 
 /**
+ * Open an independent read-only connection to the active database.
+ * Long analytics reads use this with WAL snapshots instead of monopolizing
+ * the application's writer mutex.
+ */
+int db_open_readonly_connection(sqlite3 **connection);
+
+/** Close a connection returned by db_open_readonly_connection(). */
+void db_close_readonly_connection(sqlite3 *connection);
+
+/**
  * Checkpoint the database WAL file
  * This ensures all changes are written to the main database file
  * 

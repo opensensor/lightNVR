@@ -1393,6 +1393,88 @@ export function StreamConfigModal({
               </AccordionSection>
             )}
 
+            {/* Browser-side fisheye ePTZ (independent of mechanical ONVIF PTZ). */}
+            <AccordionSection
+              title={t('streamsConfig.eptzTitle')}
+              isExpanded={expandedSections.eptz}
+              onToggle={() => onToggleSection('eptz')}
+              badge="WebGL2"
+            >
+              <div className="space-y-4">
+                <label className="touch-target flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="eptz-enabled"
+                    name="eptzEnabled"
+                    className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
+                    checked={!!currentStream.eptzEnabled}
+                    onChange={onInputChange}
+                  />
+                  <span className="text-sm font-medium">{t('streamsConfig.eptzEnable')}</span>
+                </label>
+                <p className="text-xs text-muted-foreground">{t('streamsConfig.eptzHelp')}</p>
+
+                {currentStream.eptzEnabled && (
+                  <>
+                    <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                      {t('streamsConfig.eptzModelHelp')}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label htmlFor="eptz-center-x" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzCenterX')}</label>
+                        <input type="number" id="eptz-center-x" name="eptzCenterX" min="0" max="1" step="0.001"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzCenterX} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-center-y" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzCenterY')}</label>
+                        <input type="number" id="eptz-center-y" name="eptzCenterY" min="0" max="1" step="0.001"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzCenterY} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-radius" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzRadius')}</label>
+                        <input type="number" id="eptz-radius" name="eptzRadius" min="0.05" max="1" step="0.001"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzRadius} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-fov" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzLensFov')}</label>
+                        <input type="number" id="eptz-fov" name="eptzFov" min="160" max="360" step="1"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzFov} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-rotation" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzRotation')}</label>
+                        <input type="number" id="eptz-rotation" name="eptzRotation" min="-360" max="360" step="1"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzRotation} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-default-yaw" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzDefaultYaw')}</label>
+                        <input type="number" id="eptz-default-yaw" name="eptzDefaultYaw" min="-360" max="360" step="1"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzDefaultYaw} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-default-tilt" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzDefaultTilt')}</label>
+                        <input type="number" id="eptz-default-tilt" name="eptzDefaultTilt" min="-90" max="30" step="1"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzDefaultTilt} onChange={onInputChange} />
+                      </div>
+                      <div>
+                        <label htmlFor="eptz-default-view-fov" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzViewFov')}</label>
+                        <input type="number" id="eptz-default-view-fov" name="eptzDefaultViewFov" min="20" max="120" step="1"
+                          className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                          value={currentStream.eptzDefaultViewFov} onChange={onInputChange} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t('streamsConfig.eptzCalibrationHelp')}</p>
+                  </>
+                )}
+              </div>
+            </AccordionSection>
+
             {/* PTZ Settings Section (ONVIF only) */}
             {currentStream.isOnvif && (
               <AccordionSection

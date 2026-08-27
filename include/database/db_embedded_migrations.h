@@ -1541,6 +1541,13 @@ static const char migration_0072_down[] =
     "DROP INDEX IF EXISTS idx_storage_policy_violations_active;\n"
     "DROP TABLE IF EXISTS storage_policy_violations;";
 
+static const char migration_0073_up[] =
+    "ALTER TABLE streams ADD COLUMN eptz_config TEXT NOT NULL DEFAULT '' "
+    "CHECK(length(eptz_config) <= 1023);";
+
+static const char migration_0073_down[] =
+    "-- SQLite cannot drop a column while retaining compatibility with older builds.";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2046,8 +2053,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0072_down,
         .is_embedded = true
     },
+    {
+        .version = "0073",
+        .description = "add_stream_eptz_config",
+        .sql_up = migration_0073_up,
+        .sql_down = migration_0073_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 72
+#define EMBEDDED_MIGRATIONS_COUNT 73
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

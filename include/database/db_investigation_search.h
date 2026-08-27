@@ -65,6 +65,8 @@ typedef struct {
     time_t cursor_timestamp;
     uint64_t cursor_id;
     int limit;
+    bool include_results;
+    bool include_summary;
 } investigation_search_query_t;
 
 typedef struct {

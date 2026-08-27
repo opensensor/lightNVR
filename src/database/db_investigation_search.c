@@ -520,7 +520,9 @@ int db_investigation_search(
     const investigation_search_query_t *query,
     investigation_search_result_t *results,
     investigation_search_summary_t *summary) {
-    if (!query || !results || !summary || query->camera_count < 1 ||
+    if (!query || !summary || (query->include_results && !results) ||
+        (!query->include_results && !query->include_summary) ||
+        query->camera_count < 1 ||
         query->camera_count > INVESTIGATION_SEARCH_MAX_CAMERAS ||
         query->label_count < 0 ||
         query->label_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
@@ -555,49 +557,53 @@ int db_investigation_search(
         query->limit < 1 || query->limit > INVESTIGATION_SEARCH_MAX_RESULTS) {
         return -1;
     }
-    sqlite3 *database = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!database || !mutex) return -1;
+
+    sqlite3 *database = NULL;
+    if (db_open_readonly_connection(&database) != 0) return -1;
     memset(summary, 0, sizeof(*summary));
 
-    pthread_mutex_lock(mutex);
-    int result = load_results(database, query, results, summary);
-    if (result == 0) result = load_total(database, query, summary);
-    if (result == 0) result = load_facet(
+    int result = 0;
+    if (query->include_results) {
+        result = load_results(database, query, results, summary);
+    }
+    if (result == 0 && query->include_summary) {
+        result = load_total(database, query, summary);
+    }
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query, "d.camera_uuid", "FROM detections d",
         summary->facets.cameras,
         &summary->facets.camera_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query, "d.label", "FROM detections d",
         summary->facets.labels,
         &summary->facets.label_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query,
         "COALESCE(NULLIF(d.zone_id, ''), 'unassigned')",
         "FROM detections d",
         summary->facets.zones, &summary->facets.zone_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query,
         "CASE WHEN d.source = '' THEN 'local' ELSE d.source END",
         "FROM detections d",
         summary->facets.sources, &summary->facets.source_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query, EVENT_TYPE_SQL, "FROM detections d",
         summary->facets.event_types,
         &summary->facets.event_type_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query, CAPTURE_METHOD_FACET_SQL,
         "FROM detections d JOIN recordings facet_recording "
         "ON facet_recording.id = " ASSOCIATED_RECORDING_ID_SQL,
         summary->facets.capture_methods,
         &summary->facets.capture_method_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query, "facet_tag.tag",
         "FROM detections d JOIN recording_tags facet_tag "
         "ON facet_tag.recording_id = " ASSOCIATED_RECORDING_ID_SQL,
         summary->facets.recording_tags,
         &summary->facets.recording_tag_count);
-    if (result == 0) result = load_facet(
+    if (result == 0 && query->include_summary) result = load_facet(
         database, query,
         "CASE WHEN facet_recording.protected = 1 "
         "THEN 'protected' ELSE 'unprotected' END",
@@ -605,11 +611,15 @@ int db_investigation_search(
         "ON facet_recording.id = " ASSOCIATED_RECORDING_ID_SQL,
         summary->facets.protection,
         &summary->facets.protection_count);
-    if (result == 0) result = load_histogram(database, query, summary);
-    if (result == 0) result = load_spatial_coverage(database, query, summary);
-    if (result == 0) {
+    if (result == 0 && query->include_summary) {
+        result = load_histogram(database, query, summary);
+    }
+    if (result == 0 && query->include_summary) {
+        result = load_spatial_coverage(database, query, summary);
+    }
+    if (result == 0 && query->include_summary) {
         result = load_unresolved_legacy_count(database, query, summary);
     }
-    pthread_mutex_unlock(mutex);
+    db_close_readonly_connection(database);
     return result;
 }

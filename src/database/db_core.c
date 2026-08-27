@@ -1084,4 +1084,38 @@ pthread_mutex_t *get_db_mutex(void) {
     return &db_mutex;
 }
 
+int db_open_readonly_connection(sqlite3 **connection) {
+    if (!connection) return -1;
+    *connection = NULL;
+    if (db_file_path[0] == '\0') {
+        log_error("Cannot open read-only database connection before initialization");
+        return -1;
+    }
+
+    int rc = sqlite3_open_v2(db_file_path, connection,
+                             SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX,
+                             NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to open read-only database connection: %s",
+                  *connection ? sqlite3_errmsg(*connection) : "unknown error");
+        if (*connection) sqlite3_close_v2(*connection);
+        *connection = NULL;
+        return -1;
+    }
+    sqlite3_busy_timeout(*connection, 10000);
+    rc = sqlite3_exec(*connection, "PRAGMA query_only=ON;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to configure read-only database connection: %s",
+                  sqlite3_errmsg(*connection));
+        sqlite3_close_v2(*connection);
+        *connection = NULL;
+        return -1;
+    }
+    return 0;
+}
+
+void db_close_readonly_connection(sqlite3 *connection) {
+    if (connection) sqlite3_close_v2(connection);
+}
+
 // These functions have been moved to db_backup.c

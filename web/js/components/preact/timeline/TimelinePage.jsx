@@ -1411,7 +1411,11 @@ export function TimelinePage() {
     return (
       <>
         {/* Video player */}
-        <TimelinePlayer videoElementRef={videoElementRef} autoFullscreen={urlParams.fullscreen} />
+        <TimelinePlayer
+          videoElementRef={videoElementRef}
+          autoFullscreen={urlParams.fullscreen}
+          streamConfig={streamsList.find((stream) => stream.name === selectedStream) || null}
+        />
 
         {/* Playback controls (includes time display) */}
         <TimelineControls />

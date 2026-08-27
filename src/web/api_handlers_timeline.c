@@ -53,14 +53,11 @@ static int get_timeline_segments_for_identity(
         return -1;
     }
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-    if (!db) {
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
         log_error("Database not initialized");
         return -1;
     }
-
-    pthread_mutex_lock(db_mutex);
 
     /*
      * Use an overlap query so that recordings which span the boundary of the
@@ -138,7 +135,7 @@ static int get_timeline_segments_for_identity(
         db, by_camera_uuid ? camera_sql : stream_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare timeline segments query: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -181,7 +178,7 @@ static int get_timeline_segments_for_identity(
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     log_info("get_timeline_segments: found %d segments for %s '%s' in range [%ld, %ld]",
              count, by_camera_uuid ? "camera" : "stream", identity,
@@ -204,6 +201,150 @@ int get_timeline_segments_by_camera_uuid(
     timeline_segment_t *segments, int max_segments) {
     return get_timeline_segments_for_identity(
         camera_uuid, true, start_time, end_time, segments, max_segments);
+}
+
+typedef struct {
+    bool occupied;
+    uint64_t first_recording_id;
+    time_t start_time;
+    time_t end_time;
+    uint64_t size_bytes;
+    int source_segment_count;
+    bool has_detection;
+    bool protected;
+} timeline_coverage_bucket_t;
+
+int get_timeline_coverage_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    timeline_coverage_interval_t *intervals, int max_intervals,
+    int *source_segment_count, int *bucket_seconds) {
+    if (!camera_uuid || camera_uuid[0] == '\0' || end_time <= start_time ||
+        !intervals || max_intervals <= 0 || !source_segment_count ||
+        !bucket_seconds) {
+        return -1;
+    }
+    *source_segment_count = 0;
+    int64_t range = (int64_t)end_time - (int64_t)start_time;
+    int resolution = (int)((range + max_intervals - 1) / max_intervals);
+    if (resolution < 1) resolution = 1;
+    *bucket_seconds = resolution;
+    int bucket_count = (int)((range + resolution - 1) / resolution);
+    if (bucket_count < 1) bucket_count = 1;
+    if (bucket_count > max_intervals) bucket_count = max_intervals;
+
+    timeline_coverage_bucket_t *buckets =
+        calloc((size_t)bucket_count, sizeof(*buckets));
+    if (!buckets) return -1;
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        free(buckets);
+        return -1;
+    }
+    const char *sql =
+        "SELECT r.id, r.start_time, r.end_time, r.size_bytes, "
+        "r.trigger_type = 'detection' OR EXISTS ("
+        "  SELECT 1 FROM detections d WHERE d.recording_id = r.id), "
+        "r.protected "
+        "FROM recordings r "
+        "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
+        "AND r.camera_uuid = ? AND r.start_time <= ? AND r.end_time >= ? "
+        "ORDER BY r.start_time ASC;";
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare timeline coverage query: %s",
+                  sqlite3_errmsg(db));
+        db_close_readonly_connection(db);
+        free(buckets);
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, camera_uuid, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        uint64_t id = (uint64_t)sqlite3_column_int64(stmt, 0);
+        time_t segment_start = (time_t)sqlite3_column_int64(stmt, 1);
+        time_t segment_end = (time_t)sqlite3_column_int64(stmt, 2);
+        uint64_t bytes = (uint64_t)sqlite3_column_int64(stmt, 3);
+        bool has_detection = sqlite3_column_int(stmt, 4) != 0;
+        bool is_protected = sqlite3_column_int(stmt, 5) != 0;
+        (*source_segment_count)++;
+
+        time_t clipped_start = segment_start < start_time
+            ? start_time : segment_start;
+        time_t clipped_end = segment_end > end_time ? end_time : segment_end;
+        int first = (int)(((int64_t)clipped_start - start_time) / resolution);
+        int last = (int)(((int64_t)clipped_end - start_time) / resolution);
+        if (first < 0) first = 0;
+        if (last >= bucket_count) last = bucket_count - 1;
+        for (int index = first; index <= last; index++) {
+            timeline_coverage_bucket_t *bucket = &buckets[index];
+            if (!bucket->occupied) {
+                bucket->occupied = true;
+                bucket->first_recording_id = id;
+                bucket->start_time = clipped_start;
+                bucket->end_time = clipped_end;
+            } else {
+                if (clipped_start < bucket->start_time) {
+                    bucket->start_time = clipped_start;
+                }
+                if (clipped_end > bucket->end_time) {
+                    bucket->end_time = clipped_end;
+                }
+            }
+            bucket->has_detection |= has_detection;
+            bucket->protected |= is_protected;
+            /* Attribute each recording once rather than once per bucket. */
+            if (index == first) {
+                bucket->source_segment_count++;
+                bucket->size_bytes += bytes;
+            }
+        }
+    }
+    sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
+    if (rc != SQLITE_DONE) {
+        free(buckets);
+        return -1;
+    }
+
+    int interval_count = 0;
+    for (int index = 0; index < bucket_count; index++) {
+        if (!buckets[index].occupied) continue;
+        timeline_coverage_interval_t *interval = &intervals[interval_count++];
+        memset(interval, 0, sizeof(*interval));
+        interval->first_recording_id = buckets[index].first_recording_id;
+        interval->start_time = buckets[index].start_time;
+        interval->end_time = buckets[index].end_time;
+        interval->size_bytes = buckets[index].size_bytes;
+        interval->source_segment_count = buckets[index].source_segment_count;
+        interval->has_detection = buckets[index].has_detection;
+        interval->protected = buckets[index].protected;
+
+        while (index + 1 < bucket_count && buckets[index + 1].occupied) {
+            index++;
+            timeline_coverage_bucket_t *next = &buckets[index];
+            if (next->end_time > interval->end_time) {
+                interval->end_time = next->end_time;
+            }
+            interval->size_bytes += next->size_bytes;
+            interval->source_segment_count += next->source_segment_count;
+            interval->has_detection |= next->has_detection;
+            interval->protected |= next->protected;
+        }
+    }
+    free(buckets);
+    return interval_count;
+}
+
+int get_timeline_segment_at_by_camera_uuid(
+    const char *camera_uuid, time_t timestamp, timeline_segment_t *segment) {
+    if (!segment) return -1;
+    memset(segment, 0, sizeof(*segment));
+    int count = get_timeline_segments_by_camera_uuid(
+        camera_uuid, timestamp, timestamp, segment, 1);
+    return count < 0 ? -1 : count;
 }
 
 static const char *timeline_segment_capture_method(

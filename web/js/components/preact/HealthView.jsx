@@ -135,6 +135,11 @@ function StreamCard({ stream, expanded, onToggle }) {
                         <div>{t('streamHealth.connectionLatency')}: <span class="text-foreground">{stream.connection_latency_ms?.toFixed(0) || 0}ms</span></div>
                         <div>{t('streamHealth.recording')}: <span class="text-foreground">{stream.recording_active ? t('streamHealth.active') : t('streamHealth.inactive')}</span></div>
                         <div>{t('streamHealth.recordingGaps')}: <span class="text-foreground">{stream.recording_gaps || 0}</span></div>
+                        <div>{t('streamHealth.sourceConnected')}: <span class="text-foreground">{stream.source_connected ? t('streamHealth.active') : t('streamHealth.inactive')}</span></div>
+                        <div>{t('streamHealth.videoAdvancing')}: <span class="text-foreground">{stream.video_advancing ? t('streamHealth.active') : t('streamHealth.inactive')}</span></div>
+                        <div>{t('streamHealth.recorderWriting')}: <span class="text-foreground">{stream.recorder_writing ? t('streamHealth.active') : t('streamHealth.inactive')}</span></div>
+                        <div>{t('streamHealth.detectorOperating')}: <span class="text-foreground">{stream.detector_operating ? t('streamHealth.active') : t('streamHealth.inactive')}</span></div>
+                        <div>{t('streamHealth.lastSegment')}: <span class="text-foreground">{formatTimeAgo(stream.last_completed_segment_ts)}</span></div>
                     </div>
                 </div>
             )}
@@ -148,9 +153,15 @@ export function HealthView() {
 
     const { data: health, isLoading, error } = useQuery(
         ['streamHealth'],
-        '/api/health?sparklines=true',
+        '/api/health',
         { timeout: 10000, retries: 1 },
-        { refetchInterval: 5000 }
+        { refetchInterval: 10000 }
+    );
+    const { data: healthHistory } = useQuery(
+        ['streamHealthHistory'],
+        '/api/health?sparklines=true&history_only=true',
+        { timeout: 15000, retries: 1 },
+        { refetchInterval: 60000, staleTime: 60000 }
     );
 
     if (isLoading && !health) {
@@ -170,7 +181,13 @@ export function HealthView() {
     }
 
     const streams = health?.streams || { total: 0, up: 0, degraded: 0, down: 0 };
-    const streamsDetail = health?.streams_detail || [];
+    const historyByName = new Map(
+        (healthHistory?.streams_detail || []).map((stream) => [stream.name, stream])
+    );
+    const streamsDetail = (health?.streams_detail || []).map((stream) => ({
+        ...stream,
+        ...(historyByName.get(stream.name) || {}),
+    }));
     const storage = health?.storage || {};
     const overallStatus = health?.status || 'healthy';
     const storagePercent = storage.used_bytes && storage.available_bytes

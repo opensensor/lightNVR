@@ -27,6 +27,8 @@ import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
 import { TileAudioButton } from './TileAudioButton.jsx';
+import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.jsx';
+import { isEptzEnabled } from '../../utils/eptz-config.js';
 import Hls from 'hls.js';
 
 /**
@@ -85,7 +87,8 @@ export function HLSVideoCell({
   const showDetections = globalShowDetections && localShowDetections;
 
   // Digital zoom: scroll to zoom, drag to pan, pinch on touch (#465).
-  const zoom = useVideoZoom();
+  const eptzEnabled = isEptzEnabled(stream.eptz_config);
+  const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
   const videoRef = useRef(null);
@@ -766,6 +769,12 @@ export function HLSVideoCell({
         }}
       />
 
+      <FisheyeEptzCanvas
+        videoRef={videoRef}
+        eptzConfig={stream.eptz_config}
+        streamName={stream.name}
+      />
+
       <LiveTileStatus
         stream={stream}
         isPlaying={isPlaying}
@@ -779,7 +788,7 @@ export function HLSVideoCell({
       {/* Detection overlay component.
           Hidden while zoomed — the canvas is sized to the cell, not to the
           transformed video, so its boxes would no longer line up. */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && !eptzEnabled && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}

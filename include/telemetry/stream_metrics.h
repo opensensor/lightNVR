@@ -87,7 +87,8 @@ typedef struct {
     time_t health_changed_at;             /* start of current health state */
 
     /* Gauges */
-    atomic_int_fast64_t last_frame_ts;    /* unix epoch seconds of last frame */
+    atomic_int_fast64_t last_packet_ts;   /* unix epoch seconds of last audio/video packet */
+    atomic_int_fast64_t last_frame_ts;    /* unix epoch seconds of last video frame */
     double current_fps;                   /* computed FPS (updated by sampler) */
     double current_bitrate_bps;           /* computed bitrate in bits/s (updated by sampler) */
     double connection_latency_ms;         /* last (re)connect latency */
@@ -111,6 +112,7 @@ typedef struct {
     atomic_uint_fast64_t recording_bytes_written;
     atomic_uint_fast64_t recording_segments_total;
     atomic_uint_fast64_t recording_gaps_total;
+    atomic_int_fast64_t last_completed_segment_ts;
 
     /* Ring buffer for sparkline data (protected by rwlock) */
     metrics_ring_sample_t ring[METRICS_RING_SIZE];

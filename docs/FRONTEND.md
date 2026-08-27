@@ -136,6 +136,7 @@ Preact is a lightweight alternative to React with the same modern API. It's used
 - **SystemView**: System dashboard with logs, memory/storage info, and restart controls
 - **UsersView**: User management with roles, API keys, TOTP/MFA setup, and password controls
 - **TimelinePage**: Timeline-based recording playback with segments, ruler, cursor, and speed controls
+- **FisheyeEptzCanvas**: WebGL2 equidistant fisheye dewarping over an existing video decoder
 - **PTZControls**: Pan-Tilt-Zoom camera controls with presets
 - **ZoneEditor**: Detection zone polygon editor
 - **DetectionOverlay**: Real-time detection result overlay on video

@@ -244,13 +244,45 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
     stream_metrics_t *metrics = calloc((size_t)maximum, sizeof(*metrics));
     if (!metrics) return;
     int metric_count = metrics_snapshot_all(metrics, maximum);
+
+    size_t table_size = 1;
+    while (table_size < (size_t)(metric_count * 2 + 1)) table_size <<= 1;
+    int *metric_index = malloc(table_size * sizeof(*metric_index));
+    if (!metric_index) {
+        free(metrics);
+        return;
+    }
+    for (size_t i = 0; i < table_size; i++) metric_index[i] = -1;
+    for (int i = 0; i < metric_count; i++) {
+        uint64_t hash = 1469598103934665603ULL;
+        for (const unsigned char *p =
+                 (const unsigned char *)metrics[i].stream_name; *p; p++) {
+            hash = (hash ^ *p) * 1099511628211ULL;
+        }
+        size_t slot = (size_t)hash & (table_size - 1);
+        while (metric_index[slot] >= 0) {
+            slot = (slot + 1) & (table_size - 1);
+        }
+        metric_index[slot] = i;
+    }
     for (int i = 0; i < count; i++) {
         if (!cameras[i].enabled) {
             cameras[i].health = FLEET_HEALTH_DISABLED;
             continue;
         }
-        for (int j = 0; j < metric_count; j++) {
-            if (strcmp(cameras[i].name, metrics[j].stream_name) != 0) continue;
+        uint64_t hash = 1469598103934665603ULL;
+        for (const unsigned char *p =
+                 (const unsigned char *)cameras[i].name; *p; p++) {
+            hash = (hash ^ *p) * 1099511628211ULL;
+        }
+        size_t slot = (size_t)hash & (table_size - 1);
+        for (size_t probes = 0; probes < table_size; probes++) {
+            int j = metric_index[slot];
+            if (j < 0) break;
+            if (strcmp(cameras[i].name, metrics[j].stream_name) != 0) {
+                slot = (slot + 1) & (table_size - 1);
+                continue;
+            }
             switch ((stream_health_status_t)metrics[j].health_status) {
                 case STREAM_HEALTH_UP:
                     cameras[i].health = FLEET_HEALTH_UP;
@@ -270,5 +302,6 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
             break;
         }
     }
+    free(metric_index);
     free(metrics);
 }

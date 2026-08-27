@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <limits.h>
+#include <pthread.h>
 #include <sqlite3.h>
 #include <curl/curl.h>
 #include <uv.h>
@@ -62,6 +63,45 @@ extern bool get_go2rtc_memory_usage(unsigned long long *memory_usage);
 
 // External declarations
 extern bool daemon_mode;
+
+#define SYSTEM_RECORDING_AGGREGATE_TTL_SECONDS 30
+#define SYSTEM_INFO_RESPONSE_TTL_SECONDS 15
+
+typedef struct {
+    pthread_mutex_t mutex;
+    time_t refreshed_at;
+    int count;
+    int64_t bytes;
+} system_recording_aggregate_cache_t;
+
+static system_recording_aggregate_cache_t recording_aggregate_cache = {
+    .mutex = PTHREAD_MUTEX_INITIALIZER,
+    .refreshed_at = 0,
+    .count = 0,
+    .bytes = 0,
+};
+
+static pthread_mutex_t system_info_response_mutex = PTHREAD_MUTEX_INITIALIZER;
+static char *system_info_response_json = NULL;
+static time_t system_info_response_refreshed_at = 0;
+
+static void get_cached_recording_aggregates(int *count, int64_t *bytes) {
+    time_t now = time(NULL);
+    pthread_mutex_lock(&recording_aggregate_cache.mutex);
+    if (recording_aggregate_cache.refreshed_at == 0 ||
+        now - recording_aggregate_cache.refreshed_at >=
+            SYSTEM_RECORDING_AGGREGATE_TTL_SECONDS) {
+        int refreshed_count = get_recording_count(
+            0, 0, NULL, 0, NULL, -1, NULL, 0, NULL, NULL);
+        int64_t refreshed_bytes = get_stream_storage_bytes(NULL);
+        if (refreshed_count >= 0) recording_aggregate_cache.count = refreshed_count;
+        if (refreshed_bytes >= 0) recording_aggregate_cache.bytes = refreshed_bytes;
+        recording_aggregate_cache.refreshed_at = now;
+    }
+    *count = recording_aggregate_cache.count;
+    *bytes = recording_aggregate_cache.bytes;
+    pthread_mutex_unlock(&recording_aggregate_cache.mutex);
+}
 
 // Copies the src string after removing whitespace and single- or double-quotes.
 static void trim_copy_value(char *dest, size_t dest_size, const char *src) {
@@ -700,6 +740,27 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         return;  // Error response already set
     }
 
+    pthread_mutex_lock(&system_info_response_mutex);
+    time_t response_now = time(NULL);
+    if (system_info_response_json &&
+        response_now - system_info_response_refreshed_at <
+            SYSTEM_INFO_RESPONSE_TTL_SECONDS) {
+        char *cached_json = strdup(system_info_response_json);
+        pthread_mutex_unlock(&system_info_response_mutex);
+        if (cached_json) {
+            http_response_set_json(res, 200, cached_json);
+            free(cached_json);
+            return;
+        }
+    } else {
+        pthread_mutex_unlock(&system_info_response_mutex);
+    }
+
+    int cached_recording_count = 0;
+    int64_t cached_recording_bytes = 0;
+    get_cached_recording_aggregates(&cached_recording_count,
+                                    &cached_recording_bytes);
+
     // Create JSON object
     cJSON *info = cJSON_CreateObject();
     if (!info) {
@@ -889,7 +950,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
             // Recording usage comes from the DB (SUM of completed recording
             // sizes) — O(1) vs walking hundreds of thousands of files on HDD.
-            int64_t db_bytes = get_stream_storage_bytes(NULL);
+            int64_t db_bytes = cached_recording_bytes;
             unsigned long long used = (db_bytes > 0) ? (unsigned long long)db_bytes : 0;
             if (used == 0) {
                 // Fallback to statvfs estimation when DB has no recordings yet
@@ -1149,23 +1210,12 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     cJSON *recordings = cJSON_CreateObject();
     if (recordings) {
         // Get recordings count from database using the db_recordings function
-        int recording_count = 0;
-
-        // Use the get_recording_count function from db_recordings.h
-        // Parameters: start_time, end_time, stream_name, has_detection
-        // Pass 0 for start_time and end_time to get all recordings
-        // Pass NULL for stream_name to get recordings from all streams
-        // Pass 0 for has_detection to get all recordings regardless of detection status
-        recording_count = get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0, NULL, NULL);
-        if (recording_count < 0) {
-            recording_count = 0; // Reset if query fails
-            log_error("Failed to get recording count from database");
-        }
+        int recording_count = cached_recording_count;
 
         // Recordings size comes from the DB (SUM of completed recording sizes).
         // Avoids a full filesystem walk that could take many minutes on HDD
         // deployments with hundreds of thousands of segments (#368).
-        int64_t recording_size_db = get_stream_storage_bytes(NULL);
+        int64_t recording_size_db = cached_recording_bytes;
         unsigned long long recording_size =
             (recording_size_db > 0) ? (unsigned long long)recording_size_db : 0;
 
@@ -1189,6 +1239,14 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     }
 
     // Send response
+    pthread_mutex_lock(&system_info_response_mutex);
+    char *cached_copy = strdup(json_str);
+    if (cached_copy) {
+        free(system_info_response_json);
+        system_info_response_json = cached_copy;
+        system_info_response_refreshed_at = time(NULL);
+    }
+    pthread_mutex_unlock(&system_info_response_mutex);
     http_response_set_json(res, 200, json_str);
 
     // Clean up

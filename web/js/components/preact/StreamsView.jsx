@@ -22,6 +22,11 @@ import {
   fetchJSON
 } from '../../query-client.js';
 import { useI18n } from '../../i18n.js';
+import {
+  eptzConfigFromForm,
+  eptzFormFields,
+  serializeEptzConfig,
+} from '../../utils/eptz-config.js';
 
 /**
  * StreamsView component
@@ -85,6 +90,13 @@ export function StreamsView() {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [onvifNetworkOverride, setOnvifNetworkOverride] = useState('auto');
+  const [streamPage, setStreamPage] = useState(1);
+  const [streamPageSize, setStreamPageSize] = useState(50);
+  const [streamSearch, setStreamSearch] = useState('');
+  const [debouncedStreamSearch, setDebouncedStreamSearch] = useState('');
+  const DEFAULT_SORT_COLUMN = 'name';
+  const [sortColumn, setSortColumn] = useState(DEFAULT_SORT_COLUMN);
+  const [sortDirection, setSortDirection] = useState('asc');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -93,6 +105,14 @@ export function StreamsView() {
     else url.searchParams.set('view', activeTab);
     window.history.replaceState({}, '', url);
   }, [activeTab]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedStreamSearch(streamSearch.trim());
+      setStreamPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [streamSearch]);
 
   // Credential-reveal toggle is now owned by StreamCard (per-card state).
   // StreamsView used to track a Set of revealed streams when the page was a
@@ -135,6 +155,7 @@ export function StreamsView() {
     detection: false,
     zones: false,
     motion: false,
+    eptz: false,
     ptz: false,
     advanced: false,
     go2rtcOverride: false,
@@ -148,15 +169,34 @@ export function StreamsView() {
     }));
   };
 
-  // Fetch streams data
+  const streamQueryParams = new URLSearchParams({
+    summary: 'true',
+    page: String(streamPage),
+    page_size: String(streamPageSize),
+    sort_by: sortColumn,
+    sort_order: sortDirection,
+  });
+  if (debouncedStreamSearch) {
+    streamQueryParams.set('search', debouncedStreamSearch);
+  }
+  const streamSummaryUrl = `/api/streams?${streamQueryParams.toString()}`;
+
+  // Fetch a bounded, credential-free administration summary. Full stream
+  // configuration remains deferred until Edit or Clone is opened.
   const {
     data: streamsResponse = [],
     isLoading
-  } = useQuery(['streams'], '/api/streams', {
+  } = useQuery(
+    ['streams', 'summary', streamPage, streamPageSize, sortColumn,
+      sortDirection, debouncedStreamSearch],
+    streamSummaryUrl,
+    {
     timeout: 10000,
     retries: 2,
     retryDelay: 1000
-  });
+    },
+    { placeholderData: (previousData) => previousData }
+  );
 
   // Fetch detection models
   const {
@@ -175,11 +215,10 @@ export function StreamsView() {
 
   // Process the response to handle both array and object formats
   const streams = Array.isArray(streamsResponse) ? streamsResponse : (streamsResponse.streams || []);
-
-  // Sorting state for the streams table
-  const DEFAULT_SORT_COLUMN = null;
-  const [sortColumn, setSortColumn] = useState(DEFAULT_SORT_COLUMN);
-  const [sortDirection, setSortDirection] = useState('asc');
+  const streamTotal = Array.isArray(streamsResponse)
+    ? streamsResponse.length : (streamsResponse.total || 0);
+  const streamTotalPages = Array.isArray(streamsResponse)
+    ? (streams.length > 0 ? 1 : 0) : (streamsResponse.total_pages || 0);
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -188,38 +227,16 @@ export function StreamsView() {
       setSortColumn(column);
       setSortDirection('asc');
     }
+    setStreamPage(1);
   };
 
-  const sortedStreams = (() => {
-    if (sortColumn === DEFAULT_SORT_COLUMN) return streams;
-    return [...streams].sort((a, b) => {
-      let aVal, bVal;
-      if (sortColumn === 'name') {
-        aVal = (a.name || '').toLowerCase();
-        bVal = (b.name || '').toLowerCase();
-      } else if (sortColumn === 'status') {
-        aVal = (a.status || '').toLowerCase();
-        bVal = (b.status || '').toLowerCase();
-      } else if (sortColumn === 'url') {
-        aVal = (a.url || '').toLowerCase();
-        bVal = (b.url || '').toLowerCase();
-      } else if (sortColumn === 'resolution') {
-        aVal = (a.width || 0) * (a.height || 0);
-        bVal = (b.width || 0) * (b.height || 0);
-      } else if (sortColumn === 'fps') {
-        aVal = a.fps || 0;
-        bVal = b.fps || 0;
-      } else if (sortColumn === 'recording') {
-        aVal = a.record ? 1 : 0;
-        bVal = b.record ? 1 : 0;
-      } else {
-        return 0;
-      }
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  })();
+  const sortedStreams = streams;
+
+  useEffect(() => {
+    if (streamTotalPages > 0 && streamPage > streamTotalPages) {
+      setStreamPage(streamTotalPages);
+    }
+  }, [streamPage, streamTotalPages]);
 
   // Default stream state
   const [currentStream, setCurrentStream] = useState({
@@ -281,7 +298,8 @@ export function StreamsView() {
     go2rtcSourceOverride: '',
     publishUrl: '',
     subStreamUrl: '',
-    detectionUrl: ''
+    detectionUrl: '',
+    ...eptzFormFields('')
   });
   const [isEditing, setIsEditing] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
@@ -653,7 +671,9 @@ export function StreamsView() {
       // Sub-stream URL
       sub_stream_url: currentStream.subStreamUrl || '',
       // Secondary stream used only for detection (e.g. MJPEG sub-stream)
-      detection_url: currentStream.detectionUrl || ''
+      detection_url: currentStream.detectionUrl || '',
+      // Client-side fisheye calibration; recording remains the raw source.
+      eptz_config: serializeEptzConfig(eptzConfigFromForm(currentStream))
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -746,9 +766,10 @@ export function StreamsView() {
       tags: '',
       motionTriggerSource: '',
       go2rtcSourceOverride: '',
-    publishUrl: '',
+      publishUrl: '',
       subStreamUrl: '',
-      detectionUrl: ''
+      detectionUrl: '',
+      ...eptzFormFields('')
     });
     setIsEditing(false);
     setIsCloning(false);
@@ -771,6 +792,7 @@ export function StreamsView() {
         staleTime: 0 // Always fetch fresh when opening modal
       });
       const stream = data.stream || {};
+      const eptzFields = eptzFormFields(stream.eptz_config);
 
       setCurrentStream({
         ...stream,
@@ -835,7 +857,8 @@ export function StreamsView() {
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
         publishUrl: stream.publish_url || '',
         subStreamUrl: stream.sub_stream_url || '',
-        detectionUrl: stream.detection_url || ''
+        detectionUrl: stream.detection_url || '',
+        ...eptzFields
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -861,6 +884,7 @@ export function StreamsView() {
         staleTime: 0
       });
       const stream = data.stream || {};
+      const eptzFields = eptzFormFields(stream.eptz_config);
 
       setCurrentStream({
         ...stream,
@@ -916,7 +940,8 @@ export function StreamsView() {
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
         publishUrl: stream.publish_url || '',
         subStreamUrl: stream.sub_stream_url || '',
-        detectionUrl: stream.detection_url || ''
+        detectionUrl: stream.detection_url || '',
+        ...eptzFields
       });
       setIsEditing(false);
       setIsCloning(true);
@@ -1550,11 +1575,19 @@ export function StreamsView() {
           {/* Sort controls — kept as a compact toolbar above the grid so
               the pre-T5 column-header sort affordances still work. */}
           <div className="flex flex-wrap items-center gap-2 mb-3 text-sm text-muted-foreground">
+            <label className="sr-only" htmlFor="streams-search">{t('streams.search')}</label>
+            <input
+              id="streams-search"
+              type="search"
+              className="min-w-56 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground"
+              placeholder={t('streams.searchPlaceholder')}
+              value={streamSearch}
+              onInput={(event) => setStreamSearch(event.currentTarget.value)}
+            />
             <span className="font-medium">{t('streams.sortBy') || 'Sort by'}:</span>
             {[
               { key: 'name',       label: t('common.name') },
               { key: 'status',     label: t('common.status') },
-              { key: 'url',        label: t('common.url') },
               { key: 'resolution', label: t('streams.resolution') },
               { key: 'fps',        label: t('streams.fps') },
               { key: 'recording',  label: t('streams.recording') },
@@ -1594,7 +1627,7 @@ export function StreamsView() {
               <div role="listitem" key={stream.name}>
                 <StreamCard
                   stream={stream}
-                  canModifyStreams={canModifyStreams}
+                  canModifyStreams={canModifyStreams && stream.can_configure !== false}
                   shouldHideCredentials={shouldHideCredentials}
                   selectionMode={selectionMode}
                   isSelected={selectedStreams.has(stream.name)}
@@ -1608,6 +1641,53 @@ export function StreamsView() {
                 />
               </div>
             ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm text-muted-foreground">
+              {t('fleet.paginationSummary', {
+                first: streamTotal === 0 ? 0 : ((streamPage - 1) * streamPageSize) + 1,
+                last: Math.min(streamPage * streamPageSize, streamTotal),
+                total: streamTotal,
+              })}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-muted-foreground" htmlFor="streams-page-size">
+                {t('fleet.perPage')}
+              </label>
+              <select
+                id="streams-page-size"
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                value={streamPageSize}
+                onChange={(event) => {
+                  setStreamPageSize(Number(event.currentTarget.value));
+                  setStreamPage(1);
+                }}
+              >
+                {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+              <button
+                type="button"
+                className="btn-secondary px-3 py-1.5"
+                disabled={streamPage <= 1}
+                onClick={() => setStreamPage((value) => Math.max(1, value - 1))}
+              >
+                {t('common.previous')}
+              </button>
+              <span className="min-w-20 text-center text-sm tabular-nums">
+                {t('fleet.pageOf', {
+                  page: streamTotalPages === 0 ? 0 : streamPage,
+                  pages: streamTotalPages,
+                })}
+              </span>
+              <button
+                type="button"
+                className="btn-secondary px-3 py-1.5"
+                disabled={streamTotalPages === 0 || streamPage >= streamTotalPages}
+                onClick={() => setStreamPage((value) => value + 1)}
+              >
+                {t('common.next')}
+              </button>
+            </div>
           </div>
         </div>
       </ContentLoader>

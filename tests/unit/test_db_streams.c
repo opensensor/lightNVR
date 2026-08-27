@@ -688,6 +688,31 @@ void test_playback_transport_is_returned_by_get_all(void) {
     TEST_ASSERT_EQUAL_STRING("mse_then_hls", out[0].playback_transport);
 }
 
+void test_eptz_config_round_trip_update_and_get_all(void) {
+    static const char first_config[] =
+        "{\"version\":1,\"projection\":\"equidistant\",\"mount\":\"ceiling\","
+        "\"centerX\":0.5,\"centerY\":0.49,\"radius\":0.47,\"fov\":190,"
+        "\"rotation\":0,\"defaultYaw\":15,\"defaultTilt\":-45,\"defaultViewFov\":75}";
+    static const char updated_config[] =
+        "{\"version\":1,\"projection\":\"equidistant\",\"mount\":\"ceiling\","
+        "\"centerX\":0.51,\"centerY\":0.5,\"radius\":0.48,\"fov\":200,"
+        "\"rotation\":90,\"defaultYaw\":0,\"defaultTilt\":-35,\"defaultViewFov\":65}";
+    stream_config_t s = make_stream("cam_eptz", true);
+    safe_strcpy(s.eptz_config, first_config, sizeof(s.eptz_config), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_eptz", &got));
+    TEST_ASSERT_EQUAL_STRING(first_config, got.eptz_config);
+
+    safe_strcpy(got.eptz_config, updated_config, sizeof(got.eptz_config), 0);
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_eptz", &got));
+
+    stream_config_t out[2];
+    TEST_ASSERT_EQUAL_INT(1, get_all_stream_configs(out, 2));
+    TEST_ASSERT_EQUAL_STRING(updated_config, out[0].eptz_config);
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -737,6 +762,7 @@ int main(void) {
     RUN_TEST(test_playback_transport_defaults_to_auto);
     RUN_TEST(test_playback_transport_round_trip_and_update);
     RUN_TEST(test_playback_transport_is_returned_by_get_all);
+    RUN_TEST(test_eptz_config_round_trip_update_and_get_all);
 
     int result = UNITY_END();
     shutdown_database();

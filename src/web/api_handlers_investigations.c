@@ -293,8 +293,12 @@ void handle_post_investigation_timeline(const http_request_t *request,
     cJSON_AddItemToObject(root, "tracks", tracks);
 
     timeline_segment_t *segments = calloc(
-        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA, sizeof(*segments));
-    if (!segments) {
+        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA + 1, sizeof(*segments));
+    timeline_coverage_interval_t *intervals = calloc(
+        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA, sizeof(*intervals));
+    if (!segments || !intervals) {
+        free(segments);
+        free(intervals);
         cJSON_Delete(root);
         cJSON_Delete(body);
         http_response_set_json_error(response, 500,
@@ -305,14 +309,36 @@ void handle_post_investigation_timeline(const http_request_t *request,
     for (int i = 0; i < camera_count; i++) {
         int segment_count = get_timeline_segments_by_camera_uuid(
             cameras[i].camera_uuid, start_time, end_time, segments,
-            INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
+            INVESTIGATION_MAX_SEGMENTS_PER_CAMERA + 1);
         if (segment_count < 0) {
             free(segments);
+            free(intervals);
             cJSON_Delete(root);
             cJSON_Delete(body);
             http_response_set_json_error(response, 500,
                                          "Failed to query investigation timeline");
             return;
+        }
+        bool aggregated =
+            segment_count > INVESTIGATION_MAX_SEGMENTS_PER_CAMERA;
+        int returned_count = segment_count;
+        int source_segment_count = segment_count;
+        int aggregation_bucket_seconds = 1;
+        if (aggregated) {
+            returned_count = get_timeline_coverage_by_camera_uuid(
+                cameras[i].camera_uuid, start_time, end_time, intervals,
+                INVESTIGATION_MAX_SEGMENTS_PER_CAMERA,
+                &source_segment_count, &aggregation_bucket_seconds);
+            if (returned_count < 0) {
+                free(segments);
+                free(intervals);
+                cJSON_Delete(root);
+                cJSON_Delete(body);
+                http_response_set_json_error(
+                    response, 500,
+                    "Failed to aggregate investigation timeline");
+                return;
+            }
         }
 
         cJSON *track = cJSON_CreateObject();
@@ -323,6 +349,7 @@ void handle_post_investigation_timeline(const http_request_t *request,
             cJSON_Delete(track_segments);
             cJSON_Delete(coverage);
             free(segments);
+            free(intervals);
             cJSON_Delete(root);
             cJSON_Delete(body);
             http_response_set_json_error(response, 500,
@@ -332,10 +359,13 @@ void handle_post_investigation_timeline(const http_request_t *request,
         cJSON_AddStringToObject(track, "camera_uuid", cameras[i].camera_uuid);
         cJSON_AddStringToObject(track, "name", cameras[i].name);
         cJSON_AddStringToObject(track, "stream_name", cameras[i].name);
-        cJSON_AddNumberToObject(track, "segment_count", segment_count);
-        cJSON_AddBoolToObject(
-            track, "truncated",
-            segment_count == INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
+        cJSON_AddNumberToObject(track, "segment_count", source_segment_count);
+        cJSON_AddNumberToObject(track, "returned_interval_count",
+                                returned_count);
+        cJSON_AddBoolToObject(track, "aggregated", aggregated);
+        cJSON_AddNumberToObject(track, "aggregation_bucket_seconds",
+                                aggregation_bucket_seconds);
+        cJSON_AddBoolToObject(track, "truncated", false);
         cJSON_AddBoolToObject(coverage, "identity_resolved", true);
         cJSON_AddNumberToObject(coverage, "requested_start",
                                 (double)start_time);
@@ -343,14 +373,105 @@ void handle_post_investigation_timeline(const http_request_t *request,
         cJSON_AddItemToObject(track, "coverage", coverage);
         cJSON_AddItemToObject(track, "segments", track_segments);
 
-        for (int j = 0; j < segment_count; j++) {
-            cJSON *item = segment_json(&segments[j]);
+        for (int j = 0; j < returned_count; j++) {
+            cJSON *item = NULL;
+            if (!aggregated) {
+                item = segment_json(&segments[j]);
+            } else {
+                item = cJSON_CreateObject();
+                if (item) {
+                    cJSON_AddNumberToObject(
+                        item, "id", (double)intervals[j].first_recording_id);
+                    cJSON_AddNumberToObject(
+                        item, "start_time", (double)intervals[j].start_time);
+                    cJSON_AddNumberToObject(
+                        item, "end_time", (double)intervals[j].end_time);
+                    cJSON_AddNumberToObject(
+                        item, "duration",
+                        (double)(intervals[j].end_time -
+                                 intervals[j].start_time));
+                    cJSON_AddNumberToObject(
+                        item, "source_segment_count",
+                        intervals[j].source_segment_count);
+                    cJSON_AddNumberToObject(
+                        item, "size_bytes", (double)intervals[j].size_bytes);
+                    cJSON_AddBoolToObject(
+                        item, "has_detection", intervals[j].has_detection);
+                    cJSON_AddBoolToObject(
+                        item, "protected", intervals[j].protected);
+                    cJSON_AddBoolToObject(item, "media_available", true);
+                    cJSON_AddBoolToObject(item, "coverage_only", true);
+                }
+            }
             if (item) cJSON_AddItemToArray(track_segments, item);
         }
         cJSON_AddItemToArray(tracks, track);
     }
 
     free(segments);
+    free(intervals);
+    set_json_response(response, root);
+    cJSON_Delete(root);
+    cJSON_Delete(body);
+}
+
+void handle_post_investigation_segment_at(const http_request_t *request,
+                                          http_response_t *response) {
+    if (!request || !response) return;
+    cJSON *body = httpd_parse_json_body(request);
+    if (!body) {
+        http_response_set_json_error(response, 400, "Invalid JSON body");
+        return;
+    }
+    time_t timestamp = 0;
+    if (!parse_epoch_seconds(body, "timestamp", &timestamp)) {
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 400,
+                                     "timestamp must be epoch seconds");
+        return;
+    }
+    const cJSON *camera_uuids =
+        cJSON_GetObjectItemCaseSensitive(body, "camera_uuids");
+    if (!cJSON_IsArray(camera_uuids) || cJSON_GetArraySize(camera_uuids) != 1) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400, "camera_uuids must contain exactly one camera");
+        return;
+    }
+
+    stream_config_t cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    fleet_camera_t fleet_cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    user_t user = {0};
+    int camera_count = resolve_authorized_cameras(
+        body, request, response, cameras, fleet_cameras, &user);
+    if (camera_count < 0) {
+        cJSON_Delete(body);
+        return;
+    }
+
+    timeline_segment_t segment = {0};
+    int count = get_timeline_segment_at_by_camera_uuid(
+        cameras[0].camera_uuid, timestamp, &segment);
+    if (count < 0) {
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to resolve playback segment");
+        return;
+    }
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to create segment response");
+        return;
+    }
+    if (count == 1) {
+        cJSON *item = segment_json(&segment);
+        if (item) cJSON_AddItemToObject(root, "segment", item);
+        else cJSON_AddNullToObject(root, "segment");
+    } else {
+        cJSON_AddNullToObject(root, "segment");
+    }
     set_json_response(response, root);
     cJSON_Delete(root);
     cJSON_Delete(body);
@@ -603,25 +724,13 @@ void handle_post_investigation_thumbnail_samples(
         return;
     }
 
-    timeline_segment_t *segments = calloc(
-        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA, sizeof(*segments));
+    timeline_segment_t *segments = calloc(1, sizeof(*segments));
     if (!segments) {
         cJSON_Delete(body);
         http_response_set_json_error(response, 500,
                                      "Failed to allocate thumbnail samples");
         return;
     }
-    int segment_count = get_timeline_segments_by_camera_uuid(
-        cameras[0].camera_uuid, start_time, end_time, segments,
-        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
-    if (segment_count < 0) {
-        free(segments);
-        cJSON_Delete(body);
-        http_response_set_json_error(response, 500,
-                                     "Failed to query recording coverage");
-        return;
-    }
-
     int actual_count = requested_count;
     time_t range_seconds = end_time - start_time;
     if ((time_t)(actual_count - 1) > range_seconds) {
@@ -659,14 +768,17 @@ void handle_post_investigation_thumbnail_samples(
             timestamp += (time_t)(((int64_t)range_seconds * i) /
                                   (actual_count - 1));
         }
-        const timeline_segment_t *match = NULL;
-        for (int j = 0; j < segment_count; j++) {
-            if (timestamp >= segments[j].start_time &&
-                timestamp <= segments[j].end_time) {
-                match = &segments[j];
-                break;
-            }
+        int match_count = get_timeline_segment_at_by_camera_uuid(
+            cameras[0].camera_uuid, timestamp, segments);
+        if (match_count < 0) {
+            cJSON_Delete(root);
+            free(segments);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 500, "Failed to resolve thumbnail sample");
+            return;
         }
+        const timeline_segment_t *match = match_count == 1 ? segments : NULL;
 
         cJSON *sample = cJSON_CreateObject();
         cJSON *thumbnail = cJSON_CreateObject();
@@ -716,9 +828,7 @@ void handle_post_investigation_thumbnail_samples(
         available_count++;
     }
 
-    cJSON_AddBoolToObject(
-        coverage, "segments_truncated",
-        segment_count == INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
+    cJSON_AddBoolToObject(coverage, "segments_truncated", false);
     cJSON_AddNumberToObject(coverage, "available_samples", available_count);
     cJSON_AddNumberToObject(coverage, "gap_samples",
                             actual_count - available_count);
@@ -1009,7 +1119,11 @@ void handle_post_investigation_search(const http_request_t *request,
         return;
     }
 
-    investigation_search_query_t query = {.protected_filter = -1};
+    investigation_search_query_t query = {
+        .protected_filter = -1,
+        .include_results = true,
+        .include_summary = true,
+    };
     if (!parse_epoch_seconds(body, "start_time", &query.start_time) ||
         !parse_epoch_seconds(body, "end_time", &query.end_time) ||
         query.end_time <= query.start_time ||
@@ -1019,6 +1133,26 @@ void handle_post_investigation_search(const http_request_t *request,
             response, 400,
             "start_time and end_time must define a range of at most 31 days");
         return;
+    }
+
+    const cJSON *include_summary =
+        cJSON_GetObjectItemCaseSensitive(body, "include_summary");
+    const cJSON *summary_only =
+        cJSON_GetObjectItemCaseSensitive(body, "summary_only");
+    if ((include_summary && !cJSON_IsBool(include_summary)) ||
+        (summary_only && !cJSON_IsBool(summary_only))) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400,
+            "include_summary and summary_only must be boolean");
+        return;
+    }
+    if (include_summary) {
+        query.include_summary = cJSON_IsTrue(include_summary);
+    }
+    if (summary_only && cJSON_IsTrue(summary_only)) {
+        query.include_results = false;
+        query.include_summary = true;
     }
 
     fleet_camera_t fleet_cameras[INVESTIGATION_SEARCH_MAX_CAMERAS] = {0};
@@ -1189,6 +1323,7 @@ void handle_post_investigation_search(const http_request_t *request,
     }
     cJSON_AddNumberToObject(root, "camera_count", camera_count);
     cJSON_AddBoolToObject(root, "selector_applied", selector_applied);
+    cJSON_AddBoolToObject(root, "summary_complete", query.include_summary);
     for (int i = 0; i < summary->result_count; i++) {
         const investigation_search_result_t *result = &results[i];
         const fleet_camera_t *camera = find_camera_context(

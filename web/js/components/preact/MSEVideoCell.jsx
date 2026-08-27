@@ -27,6 +27,8 @@ import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
 import { TileAudioButton } from './TileAudioButton.jsx';
+import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.jsx';
+import { isEptzEnabled } from '../../utils/eptz-config.js';
 
 /**
  * MSEVideoCell component
@@ -79,7 +81,8 @@ export function MSEVideoCell({
   // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
   const [localShowDetections, setLocalShowDetections] = useState(true);
   const showDetections = globalShowDetections && localShowDetections;
-  const zoom = useVideoZoom();
+  const eptzEnabled = isEptzEnabled(stream.eptz_config);
+  const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
   const videoRef = useRef(null);
@@ -747,6 +750,12 @@ export function MSEVideoCell({
         }}
       />
 
+      <FisheyeEptzCanvas
+        videoRef={videoRef}
+        eptzConfig={stream.eptz_config}
+        streamName={stream.name}
+      />
+
       <LiveTileStatus
         stream={stream}
         isPlaying={isPlaying}
@@ -758,7 +767,7 @@ export function MSEVideoCell({
       <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
 
       {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && !eptzEnabled && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}

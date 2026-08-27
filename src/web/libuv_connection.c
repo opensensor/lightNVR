@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <llhttp.h>
 #include <uv.h>
+#include <zlib.h>
 
 #include "utils/memory.h"
 #include "web/libuv_server.h"
@@ -23,6 +24,7 @@
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "utils/strings.h"
+#include "core/config.h"
 
 // Forward declaration for MIME type helper defined in libuv_file_serve.c
 extern const char *libuv_get_mime_type(const char *path);
@@ -34,6 +36,88 @@ static int on_header_value(llhttp_t *parser, const char *at, size_t length);
 static int on_headers_complete(llhttp_t *parser);
 static int on_body(llhttp_t *parser, const char *at, size_t length);
 static int on_message_complete(llhttp_t *parser);
+
+#define HTTP_COMPRESSION_MIN_BYTES 1024
+
+static bool request_accepts_gzip(const http_request_t *request) {
+    const char *header = http_request_get_header(request, "Accept-Encoding");
+    if (!header) return false;
+    char copy[1024];
+    safe_strcpy(copy, header, sizeof(copy), 0);
+    char *saveptr = NULL;
+    for (char *token = strtok_r(copy, ",", &saveptr); token;
+         token = strtok_r(NULL, ",", &saveptr)) {
+        while (*token == ' ' || *token == '\t') token++;
+        char *parameters = strchr(token, ';');
+        if (parameters) *parameters++ = '\0';
+        char *end = token + strlen(token);
+        while (end > token && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
+        if (strcasecmp(token, "gzip") != 0) continue;
+        if (parameters && strstr(parameters, "q=0")) return false;
+        return true;
+    }
+    return false;
+}
+
+static bool response_content_is_compressible(const char *content_type) {
+    return content_type &&
+        (strncasecmp(content_type, "text/", 5) == 0 ||
+         strncasecmp(content_type, "application/json", 16) == 0 ||
+         strncasecmp(content_type, "application/javascript", 22) == 0 ||
+         strncasecmp(content_type, "application/xml", 15) == 0 ||
+         strncasecmp(content_type, "image/svg+xml", 13) == 0);
+}
+
+static bool response_has_header(const http_response_t *response,
+                                const char *name) {
+    for (int i = 0; i < response->num_headers; i++) {
+        if (strcasecmp(response->headers[i].name, name) == 0) return true;
+    }
+    return false;
+}
+
+static void maybe_compress_response(const http_request_t *request,
+                                    http_response_t *response) {
+    if (!g_config.web_compression_enabled || !request_accepts_gzip(request) ||
+        !response || !response->body ||
+        response->body_length < HTTP_COMPRESSION_MIN_BYTES ||
+        !response_content_is_compressible(response->content_type) ||
+        response_has_header(response, "Content-Encoding") ||
+        response->status_code == 204 || response->status_code == 206 ||
+        response->status_code == 304 || request->method == HTTP_METHOD_HEAD) {
+        return;
+    }
+
+    z_stream stream = {0};
+    if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                     15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+        return;
+    }
+    uLong bound = deflateBound(&stream, (uLong)response->body_length);
+    unsigned char *compressed = safe_malloc((size_t)bound);
+    if (!compressed) {
+        deflateEnd(&stream);
+        return;
+    }
+    stream.next_in = (Bytef *)response->body;
+    stream.avail_in = (uInt)response->body_length;
+    stream.next_out = compressed;
+    stream.avail_out = (uInt)bound;
+    int rc = deflate(&stream, Z_FINISH);
+    size_t compressed_length = (size_t)stream.total_out;
+    deflateEnd(&stream);
+    if (rc != Z_STREAM_END || compressed_length >= response->body_length) {
+        safe_free(compressed);
+        return;
+    }
+
+    if (response->body_allocated) safe_free(response->body);
+    response->body = compressed;
+    response->body_length = compressed_length;
+    response->body_allocated = true;
+    http_response_add_header(response, "Content-Encoding", "gzip");
+    http_response_add_header(response, "Vary", "Accept-Encoding");
+}
 
 /**
  * @brief Create a new connection
@@ -509,6 +593,7 @@ static void handler_work_cb(uv_work_t *req) {
     audit_log_sensitive_operation_end(&hw->conn->request,
                                       &hw->conn->response,
                                       &hw->audit_context);
+    maybe_compress_response(&hw->conn->request, &hw->conn->response);
 }
 
 /**
@@ -584,37 +669,45 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);
 
     struct stat st;
-    if (stat(file_path, &st) == 0) {
-        if (S_ISDIR(st.st_mode)) {
-            snprintf(file_path, sizeof(file_path), "%s%s/index.html",
-                     server->config.web_root, req->path);
-            if (stat(file_path, &st) != 0) {
-                log_debug("Directory index not found: %s", file_path);
-                http_response_set_json_error(res, 404, "Directory index not found");
-                return;
-            }
-        }
+    bool original_exists = stat(file_path, &st) == 0;
+    if (original_exists && S_ISDIR(st.st_mode)) {
+        snprintf(file_path, sizeof(file_path), "%s%s/index.html",
+                 server->config.web_root, req->path);
+        original_exists = stat(file_path, &st) == 0 && S_ISREG(st.st_mode);
+    }
+
+    bool may_serve_gzip = g_config.web_compression_enabled &&
+        request_accepts_gzip(req) &&
+        http_request_get_header(req, "Range") == NULL;
+    char gz_path[MAX_PATH_LENGTH];
+    int gz_written = snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
+    struct stat gz_stat;
+    bool gzip_exists = may_serve_gzip && gz_written > 0 &&
+        (size_t)gz_written < sizeof(gz_path) &&
+        stat(gz_path, &gz_stat) == 0 && S_ISREG(gz_stat.st_mode);
+
+    if (gzip_exists) {
+        log_debug("Serving gzip static file: %s", gz_path);
+        safe_strcpy(conn->deferred_file_path, gz_path,
+                    sizeof(conn->deferred_file_path), 0);
+        safe_strcpy(conn->deferred_content_type, libuv_get_mime_type(file_path),
+                    sizeof(conn->deferred_content_type), 0);
+        safe_strcpy(conn->deferred_extra_headers,
+                    "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n",
+                    sizeof(conn->deferred_extra_headers), 0);
+        conn->deferred_file_serve = true;
+    } else if (original_exists) {
         log_debug("Serving static file: %s", file_path);
-        safe_strcpy(conn->deferred_file_path, file_path, sizeof(conn->deferred_file_path), 0);
+        safe_strcpy(conn->deferred_file_path, file_path,
+                    sizeof(conn->deferred_file_path), 0);
         conn->deferred_content_type[0] = '\0';
-        conn->deferred_extra_headers[0] = '\0';
+        safe_strcpy(conn->deferred_extra_headers,
+                    "Vary: Accept-Encoding\r\n",
+                    sizeof(conn->deferred_extra_headers), 0);
         conn->deferred_file_serve = true;
     } else {
-        char gz_path[MAX_PATH_LENGTH];
-        snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
-        if (stat(gz_path, &st) == 0 && S_ISREG(st.st_mode)) {
-            log_debug("Serving gzip static file: %s", gz_path);
-            const char *mime_type = libuv_get_mime_type(file_path);
-            safe_strcpy(conn->deferred_file_path, gz_path, sizeof(conn->deferred_file_path), 0);
-            safe_strcpy(conn->deferred_content_type, mime_type,
-                    sizeof(conn->deferred_content_type), 0);
-            safe_strcpy(conn->deferred_extra_headers, "Content-Encoding: gzip\r\n",
-                    sizeof(conn->deferred_extra_headers), 0);
-            conn->deferred_file_serve = true;
-        } else {
-            log_debug("Static file not found: %s", file_path);
-            http_response_set_json_error(res, 404, "Not Found");
-        }
+        log_debug("Static file not found: %s", file_path);
+        http_response_set_json_error(res, 404, "Not Found");
     }
 }
 

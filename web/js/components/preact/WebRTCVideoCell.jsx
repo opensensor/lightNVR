@@ -28,6 +28,8 @@ import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
+import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.jsx';
+import { isEptzEnabled } from '../../utils/eptz-config.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -147,8 +149,10 @@ export function WebRTCVideoCell({
   const [localShowDetections, setLocalShowDetections] = useState(true);
   const showDetections = globalShowDetections && localShowDetections;
 
-  // Digital zoom: scroll to zoom, drag to pan, pinch on touch (#465).
-  const zoom = useVideoZoom();
+  const eptzEnabled = isEptzEnabled(stream.eptz_config);
+  // The fisheye renderer owns gestures when active; CSS digital zoom remains
+  // available for every conventional camera.
+  const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
   const videoRef = useRef(null);
@@ -1401,6 +1405,12 @@ export function WebRTCVideoCell({
         }}
       />
 
+      <FisheyeEptzCanvas
+        videoRef={videoRef}
+        eptzConfig={stream.eptz_config}
+        streamName={stream.name}
+      />
+
       <LiveTileStatus
         stream={stream}
         isPlaying={isPlaying}
@@ -1415,7 +1425,7 @@ export function WebRTCVideoCell({
           Hidden while zoomed: the canvas is sized to the cell, not to the
           transformed video, so its boxes would sit somewhere other than the
           objects they describe. */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && !eptzEnabled && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}

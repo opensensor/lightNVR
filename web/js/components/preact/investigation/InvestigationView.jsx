@@ -69,13 +69,82 @@ function InvestigationPlayer({
   const videoRef = useRef(null);
   const cursorRef = useRef(cursor);
   const regionAnchorRef = useRef(null);
-  const segment = findSegmentAt(track.segments, cursor);
-  const [status, setStatus] = useState(segment ? 'loading' : 'gap');
+  const coverageSegment = findSegmentAt(track.segments, cursor);
+  const [resolvedSegment, setResolvedSegment] = useState(null);
+  const [resolvedGap, setResolvedGap] = useState(null);
+  const segment = track.aggregated ? resolvedSegment : coverageSegment;
+  const cursorSecond = Math.floor(cursor);
+  const [status, setStatus] = useState(coverageSegment ? 'loading' : 'gap');
   const [videoDimensions, setVideoDimensions] = useState({ width: 16, height: 9 });
 
   useEffect(() => {
     cursorRef.current = cursor;
   }, [cursor]);
+
+  useEffect(() => {
+    if (!track.aggregated) {
+      setResolvedSegment(null);
+      setResolvedGap(null);
+      return undefined;
+    }
+    if (!coverageSegment) {
+      setResolvedSegment(null);
+      setStatus('gap');
+      return undefined;
+    }
+    if (resolvedSegment && cursor >= resolvedSegment.start_time &&
+        cursor <= resolvedSegment.end_time) {
+      return undefined;
+    }
+    if (resolvedGap && cursor >= resolvedGap.start && cursor <= resolvedGap.end) {
+      setResolvedSegment(null);
+      setStatus('gap');
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setStatus('loading');
+    fetchJSON('/api/investigations/segment-at', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        camera_uuids: [track.camera_uuid],
+        timestamp: cursorSecond,
+      }),
+      signal: controller.signal,
+      timeout: 10000,
+      retries: 0,
+    }).then((data) => {
+      if (controller.signal.aborted) return;
+      if (data?.segment) {
+        setResolvedGap(null);
+        setResolvedSegment(data.segment);
+      } else {
+        const resolution = Math.max(1, track.aggregation_bucket_seconds || 1);
+        setResolvedSegment(null);
+        setResolvedGap({
+          start: Math.floor(cursor / resolution) * resolution,
+          end: (Math.floor(cursor / resolution) + 1) * resolution,
+        });
+        setStatus('gap');
+      }
+    }).catch((error) => {
+      if (!controller.signal.aborted) {
+        console.warn('Could not resolve investigation playback segment', error);
+        setStatus('error');
+      }
+    });
+    return () => controller.abort();
+  }, [
+    track.aggregated,
+    track.camera_uuid,
+    track.aggregation_bucket_seconds,
+    coverageSegment?.id,
+    cursorSecond,
+    resolvedSegment?.id,
+    resolvedGap?.start,
+    resolvedGap?.end,
+  ]);
 
   const seekToCursor = useCallback(() => {
     const video = videoRef.current;
@@ -166,7 +235,7 @@ function InvestigationPlayer({
   };
 
   return (
-    <article className="investigation-player" data-status={segment ? status : 'gap'}>
+    <article className="investigation-player" data-status={coverageSegment ? status : 'gap'}>
       <header>
         <div>
           <strong>{track.name}</strong>
@@ -196,6 +265,11 @@ function InvestigationPlayer({
             onCanPlay={() => setStatus('ready')}
             onError={() => setStatus('error')}
           />
+        ) : status === 'loading' ? (
+          <div className="investigation-gap-state">
+            <span>{t('investigation.loading')}</span>
+            <time>{formatCursorTime(cursor)}</time>
+          </div>
         ) : (
           <div className="investigation-gap-state">
             <span>{t('investigation.noFootageAtTime')}</span>
@@ -566,6 +640,7 @@ export function InvestigationView() {
   const initialQueryLoaded = useRef(false);
   const requestController = useRef(null);
   const searchRequestController = useRef(null);
+  const searchSummaryController = useRef(null);
   const thumbnailRequestController = useRef(null);
   const lastUrlCursor = useRef(null);
 
@@ -650,18 +725,20 @@ export function InvestigationView() {
           match: searchFilters.region.match,
           min_intersection: searchFilters.region.minIntersection,
         } : undefined;
+      const searchRequest = {
+        camera_uuids: cameraUuids,
+        start_time: Math.floor(searchStart),
+        end_time: Math.floor(searchEnd),
+        filters,
+        region: activeRegion,
+        cursor: pageCursor,
+        limit: 24,
+        include_summary: false,
+      };
       const data = await fetchJSON('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          camera_uuids: cameraUuids,
-          start_time: Math.floor(searchStart),
-          end_time: Math.floor(searchEnd),
-          filters,
-          region: activeRegion,
-          cursor: pageCursor,
-          limit: 24,
-        }),
+        body: JSON.stringify(searchRequest),
         signal: controller.signal,
         timeout: 30000,
         retries: 0,
@@ -670,6 +747,43 @@ export function InvestigationView() {
       setSearchPageIndex(pageIndex);
       setSearchPageCursors(pageCursors);
       setSelectedResultId(null);
+
+      /* Results are intentionally the latency-sensitive request. Totals,
+       * facets, histogram, and coverage are populated independently so their
+       * scans never delay the first result rail. */
+      searchSummaryController.current?.abort();
+      const summaryController = new AbortController();
+      searchSummaryController.current = summaryController;
+      void fetchJSON('/api/investigations/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...searchRequest,
+          cursor: null,
+          summary_only: true,
+          include_summary: true,
+        }),
+        signal: summaryController.signal,
+        timeout: 30000,
+        retries: 0,
+      }).then((summary) => {
+        if (summaryController.signal.aborted) return;
+        setSearchData((current) => current ? {
+          ...current,
+          facets: summary.facets,
+          histogram: summary.histogram,
+          coverage: summary.coverage,
+          summary_complete: true,
+          page: {
+            ...current.page,
+            total: summary.page?.total ?? current.page?.total ?? 0,
+          },
+        } : current);
+      }).catch((summaryError) => {
+        if (!summaryController.signal.aborted) {
+          console.warn('Investigation summary query failed', summaryError);
+        }
+      });
 
       const url = new URL(window.location.href);
       const filterParams = {
@@ -801,6 +915,7 @@ export function InvestigationView() {
   useEffect(() => () => {
     requestController.current?.abort();
     searchRequestController.current?.abort();
+    searchSummaryController.current?.abort();
     thumbnailRequestController.current?.abort();
   }, []);
 

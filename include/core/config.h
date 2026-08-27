@@ -42,6 +42,7 @@ typedef enum {
 } stream_protocol_t;
 
 #define PLAYBACK_TRANSPORT_MAX 24
+#define EPTZ_CONFIG_MAX 1024
 
 /** Return true when value is one of the persisted playback transport values. */
 bool playback_transport_is_valid(const char *value);
@@ -155,6 +156,9 @@ typedef struct {
     char detection_url[MAX_URL_LENGTH];
     char publish_url[MAX_URL_LENGTH];        // RTMP/RTMPS restream (publish) destination, e.g. YouTube Live ingest URL
     char playback_transport[PLAYBACK_TRANSPORT_MAX]; // auto, *_only, or an ordered fallback pair
+    // Versioned JSON for browser-side fisheye dewarping. Empty disables ePTZ.
+    // The source stream and recordings always remain untouched.
+    char eptz_config[EPTZ_CONFIG_MAX];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator

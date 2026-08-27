@@ -144,6 +144,7 @@ pkg_check_modules(FFMPEG REQUIRED
     libswresample>=5)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
+find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 
 # libyaml (optional-but-preferred) — used for go2rtc override validation
@@ -626,6 +627,7 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
+        ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
         dl
@@ -673,6 +675,7 @@ target_link_libraries(lightnvr
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
+        ZLIB::ZLIB
         ${SSL_LIBRARIES}
         atomic
         pthread
