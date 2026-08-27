@@ -206,6 +206,58 @@
 .live-availability-dot.is-never_connected { background: #f59e0b; }
 .live-availability-dot.is-disabled { background: #64748b; }
 
+.eptz-operator-toolbar {
+    position: absolute;
+    left: 50%;
+    bottom: 0.6rem;
+    transform: translateX(-50%);
+    max-width: calc(100% - 1rem);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid rgb(255 255 255 / 0.18);
+    border-radius: 0.5rem;
+    background: rgb(0 0 0 / 0.72);
+    box-shadow: 0 3px 12px rgb(0 0 0 / 0.35);
+    color: #fff;
+    backdrop-filter: blur(8px);
+}
+
+.eptz-operator-toolbar select,
+.eptz-operator-toolbar button {
+    min-height: 1.9rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: rgb(255 255 255 / 0.12);
+    color: #fff;
+    font-size: 0.72rem;
+}
+
+.eptz-operator-toolbar select {
+    min-width: 5.25rem;
+    max-width: 8.5rem;
+    padding: 0 0.35rem;
+}
+
+.eptz-operator-toolbar select option {
+    color: #111827;
+}
+
+.eptz-operator-toolbar button {
+    min-width: 1.9rem;
+    padding: 0 0.4rem;
+}
+
+.eptz-operator-toolbar button:hover,
+.eptz-operator-toolbar select:hover {
+    background: rgb(255 255 255 / 0.22);
+}
+
+.eptz-operator-toolbar button:disabled {
+    opacity: 0.45;
+}
+
 .live-layout-save {
     width: 100%;
     margin-bottom: 0.55rem;

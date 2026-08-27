@@ -16,6 +16,7 @@ import {
   flattenLocationTree,
   investigationHref,
 } from './liveOperator.js';
+import { applyEptzLayoutSlot } from '../../../utils/eptz-view.js';
 
 function formatEventTime(timestamp) {
   if (!timestamp) return '';
@@ -159,6 +160,10 @@ export function LiveOperatorNavigator({
     onApplyLayout({ cameraUuids, columns, rows });
   };
   const applyLayout = (layout) => {
+    for (const slot of layout.camera_slots || []) {
+      const stream = streams.find((candidate) => candidate.camera_uuid === slot.camera_uuid);
+      if (stream) applyEptzLayoutSlot(slot, stream);
+    }
     setSelectedLocation(layout.location_uuid || '');
     setAvailability(layout.availability || 'live');
     onApplyLayout({

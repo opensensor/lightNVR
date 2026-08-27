@@ -32,20 +32,21 @@ describe('Live operator navigator model', () => {
   test('defaults layouts and stream filters to cameras live now', () => {
     const scoped = cameraUuidsForLocation(locations, streams, 'campus');
     expect(filterLiveOperatorStreams(streams, scoped, 'live')).toEqual([streams[0]]);
-    expect(buildLiveLayoutPayload({
+    const payload = buildLiveLayoutPayload({
       name: ' Desk ', columns: 2, rows: 1, streams,
-    })).toEqual({
+    });
+    expect(payload).toMatchObject({
       name: 'Desk',
       is_shared: false,
       location_uuid: null,
       availability: 'live',
       columns: 2,
       rows: 1,
-      camera_slots: [
-        { camera_uuid: 'camera-a' },
-        { camera_uuid: 'camera-b' },
-      ],
     });
+    expect(payload.camera_slots).toEqual([
+      expect.objectContaining({ camera_uuid: 'camera-a', eptz_mode: 'dewarp' }),
+      expect.objectContaining({ camera_uuid: 'camera-b', eptz_mode: 'dewarp' }),
+    ]);
   });
 
   test('chunks recent event requests at the server selector limit', () => {

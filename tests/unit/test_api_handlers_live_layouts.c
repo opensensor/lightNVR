@@ -83,14 +83,20 @@ void test_create_and_list_layout_with_authorized_camera(void) {
              "{\"name\":\"Main desk\",\"is_shared\":false,"
              "\"location_uuid\":null,\"availability\":\"live\","
              "\"columns\":2,\"rows\":1,\"camera_slots\":["
-             "{\"camera_uuid\":\"%s\"}]}", camera.camera_uuid);
+             "{\"camera_uuid\":\"%s\",\"eptz_mode\":\"dual\","
+             "\"eptz_preset_uuid\":null,\"eptz_view\":{"
+             "\"yaw\":15,\"tilt\":-45,\"fov\":70,"
+             "\"secondary_yaw\":-165,\"secondary_tilt\":-40,"
+             "\"secondary_view_fov\":65}}]}", camera.camera_uuid);
     cJSON *created = call(handle_post_live_layout, HTTP_METHOD_POST,
                           "/api/live/layouts", body, 201);
-    TEST_ASSERT_EQUAL_STRING(
-        camera.camera_uuid,
+    cJSON *created_slot = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(created, "camera_slots"), 0);
+    TEST_ASSERT_EQUAL_STRING(camera.camera_uuid,
         cJSON_GetObjectItemCaseSensitive(
-            cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(
-                created, "camera_slots"), 0), "camera_uuid")->valuestring);
+            created_slot, "camera_uuid")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("dual", cJSON_GetObjectItemCaseSensitive(
+        created_slot, "eptz_mode")->valuestring);
     cJSON_Delete(created);
 
     cJSON *listed = call(handle_get_live_layouts, HTTP_METHOD_GET,
@@ -115,6 +121,19 @@ void test_rejects_layout_with_unknown_camera(void) {
     cJSON_Delete(json);
 }
 
+void test_rejects_invalid_eptz_layout_state(void) {
+    stream_config_t camera = create_camera();
+    char body[1024];
+    snprintf(body, sizeof(body),
+             "{\"name\":\"Invalid ePTZ\",\"availability\":\"live\","
+             "\"columns\":1,\"rows\":1,\"camera_slots\":["
+             "{\"camera_uuid\":\"%s\",\"eptz_mode\":\"cube\"}]}",
+             camera.camera_uuid);
+    cJSON *json = call(handle_post_live_layout, HTTP_METHOD_POST,
+                       "/api/live/layouts", body, 400);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -124,6 +143,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_create_and_list_layout_with_authorized_camera);
     RUN_TEST(test_rejects_layout_with_unknown_camera);
+    RUN_TEST(test_rejects_invalid_eptz_layout_state);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

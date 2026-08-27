@@ -54,6 +54,7 @@
 #include "web/api_handlers_storage_compliance.h"
 #include "web/api_handlers_workspaces.h"
 #include "web/api_handlers_live_layouts.h"
+#include "web/api_handlers_eptz_presets.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -126,6 +127,16 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_camera_tag_assignments);
     http_server_register_handler(server, "/api/cameras/#/tags", "PUT",
                                  handle_put_camera_tag_assignments);
+
+    // Browser-side fisheye ePTZ operator presets (not ONVIF PTZ presets)
+    http_server_register_handler(server, "/api/cameras/#/eptz-presets", "GET",
+                                 handle_get_eptz_presets);
+    http_server_register_handler(server, "/api/cameras/#/eptz-presets", "POST",
+                                 handle_post_eptz_preset);
+    http_server_register_handler(server, "/api/cameras/#/eptz-presets/#", "PUT",
+                                 handle_put_eptz_preset);
+    http_server_register_handler(server, "/api/cameras/#/eptz-presets/#", "DELETE",
+                                 handle_delete_eptz_preset);
 
     // Shared selector evaluation and server-side fleet inventory query
     http_server_register_handler(server, "/api/fleet/cameras/query", "POST",

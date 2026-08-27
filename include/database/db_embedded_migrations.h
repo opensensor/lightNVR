@@ -1609,6 +1609,33 @@ static const char migration_0075_down[] =
     "DROP INDEX IF EXISTS idx_live_saved_layouts_owner_name;"
     "DROP TABLE IF EXISTS live_saved_layouts;";
 
+static const char migration_0076_up[] =
+    "CREATE TABLE eptz_operator_presets ("
+    "uuid TEXT PRIMARY KEY,"
+    "camera_uuid TEXT NOT NULL REFERENCES streams(camera_uuid) ON DELETE CASCADE,"
+    "owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,"
+    "name TEXT NOT NULL COLLATE NOCASE,"
+    "is_shared INTEGER NOT NULL DEFAULT 0 CHECK (is_shared IN (0,1)),"
+    "mode TEXT NOT NULL CHECK (mode IN ('raw','dewarp','panorama','dual')),"
+    "yaw REAL NOT NULL CHECK (yaw BETWEEN -180 AND 180),"
+    "tilt REAL NOT NULL CHECK (tilt BETWEEN -90 AND 30),"
+    "view_fov REAL NOT NULL CHECK (view_fov BETWEEN 20 AND 120),"
+    "secondary_yaw REAL NOT NULL CHECK (secondary_yaw BETWEEN -180 AND 180),"
+    "secondary_tilt REAL NOT NULL CHECK (secondary_tilt BETWEEN -90 AND 30),"
+    "secondary_view_fov REAL NOT NULL CHECK (secondary_view_fov BETWEEN 20 AND 120),"
+    "revision INTEGER NOT NULL DEFAULT 1,"
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+    "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')));"
+    "CREATE UNIQUE INDEX idx_eptz_operator_presets_owner_name ON "
+    "eptz_operator_presets(camera_uuid,COALESCE(owner_user_id,0),name COLLATE NOCASE);"
+    "CREATE INDEX idx_eptz_operator_presets_visible ON "
+    "eptz_operator_presets(camera_uuid,is_shared,owner_user_id,name COLLATE NOCASE);";
+
+static const char migration_0076_down[] =
+    "DROP INDEX IF EXISTS idx_eptz_operator_presets_visible;"
+    "DROP INDEX IF EXISTS idx_eptz_operator_presets_owner_name;"
+    "DROP TABLE IF EXISTS eptz_operator_presets;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2135,8 +2162,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0075_down,
         .is_embedded = true
     },
+    {
+        .version = "0076",
+        .description = "add_eptz_operator_presets",
+        .sql_up = migration_0076_up,
+        .sql_down = migration_0076_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 75
+#define EMBEDDED_MIGRATIONS_COUNT 76
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

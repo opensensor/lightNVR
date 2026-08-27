@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { parseEptzConfig } from '../../utils/eptz-config.js';
+import { fetchJSON, useQuery, useQueryClient } from '../../query-client.js';
+import {
+  EPTZ_VIEW_MODES,
+  defaultEptzView,
+  eptzPresetPayload,
+  eptzViewFromPreset,
+  normalizeEptzView,
+  readEptzView,
+  writeEptzView,
+} from '../../utils/eptz-view.js';
+import { useI18n } from '../../i18n.js';
+import { showStatusMessage } from './ToastContainer.jsx';
 
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
@@ -28,21 +40,51 @@ uniform float u_rotation;
 uniform float u_yaw;
 uniform float u_tilt;
 uniform float u_view_fov;
+uniform float u_secondary_yaw;
+uniform float u_secondary_tilt;
+uniform float u_secondary_view_fov;
+uniform int u_mode;
 
 const float PI = 3.14159265358979323846;
 
-void main() {
-  float yaw = radians(u_yaw);
-  float polar = radians(90.0 + u_tilt);
+vec3 perspective_ray(float yaw_degrees, float tilt_degrees,
+                     float fov_degrees, vec2 ndc, float aspect) {
+  float yaw = radians(yaw_degrees);
+  float polar = radians(90.0 + tilt_degrees);
   float sin_polar = sin(polar);
   vec3 forward = vec3(sin_polar * cos(yaw), sin_polar * sin(yaw), cos(polar));
   vec3 right = vec3(-sin(yaw), cos(yaw), 0.0);
   vec3 up = normalize(cross(right, forward));
+  float tangent = tan(radians(fov_degrees) * 0.5);
+  return normalize(forward + right * (ndc.x * aspect * tangent) +
+                   up * (ndc.y * tangent));
+}
 
+void main() {
   float aspect = u_output_size.x / max(u_output_size.y, 1.0);
-  float tangent = tan(radians(u_view_fov) * 0.5);
-  vec3 ray = normalize(forward + right * (v_ndc.x * aspect * tangent) +
-                       up * (v_ndc.y * tangent));
+  vec3 ray;
+  if (u_mode == 1) {
+    float yaw = radians(u_yaw + v_ndc.x * 180.0);
+    float vertical_fov = min(u_view_fov, 110.0);
+    float polar = radians(90.0 + u_tilt - v_ndc.y * vertical_fov * 0.5);
+    ray = vec3(sin(polar) * cos(yaw), sin(polar) * sin(yaw), cos(polar));
+  } else if (u_mode == 2) {
+    if (abs(v_ndc.x) < 0.004) {
+      out_color = vec4(0.08, 0.08, 0.08, 1.0);
+      return;
+    }
+    bool secondary = v_ndc.x > 0.0;
+    vec2 local_ndc = vec2(secondary ? v_ndc.x * 2.0 - 1.0
+                                    : v_ndc.x * 2.0 + 1.0,
+                          v_ndc.y);
+    ray = perspective_ray(
+      secondary ? u_secondary_yaw : u_yaw,
+      secondary ? u_secondary_tilt : u_tilt,
+      secondary ? u_secondary_view_fov : u_view_fov,
+      local_ndc, aspect * 0.5);
+  } else {
+    ray = perspective_ray(u_yaw, u_tilt, u_view_fov, v_ndc, aspect);
+  }
 
   float theta = acos(clamp(ray.z, -1.0, 1.0));
   float lens_half_fov = radians(u_lens_fov) * 0.5;
@@ -104,65 +146,64 @@ function createProgram(gl) {
   return program;
 }
 
-function storageKey(streamName) {
-  return `lightnvr-eptz-view:${streamName || 'camera'}`;
-}
-
-function initialView(config, streamName) {
-  const fallback = {
-    yaw: config.defaultYaw,
-    tilt: config.defaultTilt,
-    fov: config.defaultViewFov,
-  };
-  if (typeof localStorage === 'undefined') return fallback;
-  try {
-    const stored = JSON.parse(localStorage.getItem(storageKey(streamName)) || 'null');
-    if (!stored || !Number.isFinite(stored.yaw) || !Number.isFinite(stored.tilt) ||
-        !Number.isFinite(stored.fov)) return fallback;
-    return {
-      yaw: wrapDegrees(stored.yaw),
-      tilt: clamp(stored.tilt, -90, 30),
-      fov: clamp(stored.fov, 20, 120),
-    };
-  } catch {
-    return fallback;
-  }
-}
-
 /**
  * GPU ePTZ surface for an already-decoded video element. It never creates a
  * decoder or network connection; live and recorded players keep ownership of
  * the source video, audio, seeking, and transport health.
  */
-export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
+export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName, cameraUuid }) {
+  const { t } = useI18n();
   const config = useMemo(() => parseEptzConfig(eptzConfig), [eptzConfig]);
+  const initialState = useMemo(() => readEptzView(
+    cameraUuid, streamName, config), [cameraUuid, streamName, config]);
+  const queryClient = useQueryClient();
   const canvasRef = useRef(null);
   const drawRef = useRef(() => {});
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
-  const viewRef = useRef(initialView(config, streamName));
+  const viewRef = useRef(initialState.primary);
+  const secondaryViewRef = useRef(initialState.secondary);
+  const modeRef = useRef(initialState.mode);
+  const presetUuidRef = useRef(initialState.presetUuid);
   const [rendererReady, setRendererReady] = useState(false);
   const [rendererError, setRendererError] = useState('');
   const [rendererEpoch, setRendererEpoch] = useState(0);
   const [viewLabel, setViewLabel] = useState(viewRef.current);
+  const [mode, setMode] = useState(initialState.mode);
+  const [selectedPresetUuid, setSelectedPresetUuid] = useState(initialState.presetUuid);
+  const [presetBusy, setPresetBusy] = useState(false);
+  const presetsQuery = useQuery({
+    queryKey: ['eptz-presets', cameraUuid],
+    queryFn: ({ signal }) => fetchJSON(
+      `/api/cameras/${encodeURIComponent(cameraUuid)}/eptz-presets`, { signal }),
+    enabled: config.enabled && !!cameraUuid,
+    staleTime: 30000,
+  });
+
+  const currentState = useCallback(() => normalizeEptzView({
+    mode: modeRef.current,
+    presetUuid: presetUuidRef.current,
+    primary: viewRef.current,
+    secondary: secondaryViewRef.current,
+  }, config), [config]);
 
   const persistView = useCallback(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      localStorage.setItem(storageKey(streamName), JSON.stringify(viewRef.current));
-    } catch {
-      // Private browsing or storage policy can reject writes; ePTZ still works.
-    }
-  }, [streamName]);
+    writeEptzView(cameraUuid, streamName, currentState(), config);
+  }, [cameraUuid, streamName, currentState, config]);
 
-  const updateView = useCallback((next, persist = false) => {
+  const updateView = useCallback((next, persist = false, target = 'primary') => {
     const view = {
       yaw: wrapDegrees(next.yaw),
       tilt: clamp(next.tilt, -90, Math.min(30, config.fov / 2 - 2)),
       fov: clamp(next.fov, 20, Math.min(120, config.fov - 2)),
     };
-    viewRef.current = view;
-    setViewLabel(view);
+    if (target === 'secondary') secondaryViewRef.current = view;
+    else {
+      viewRef.current = view;
+      setViewLabel(view);
+    }
+    presetUuidRef.current = '';
+    setSelectedPresetUuid('');
     drawRef.current();
     if (persist) persistView();
   }, [config.fov, persistView]);
@@ -170,6 +211,10 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
   const resetView = useCallback((event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
+    const defaults = defaultEptzView(config);
+    secondaryViewRef.current = defaults.secondary;
+    presetUuidRef.current = '';
+    setSelectedPresetUuid('');
     updateView({
       yaw: config.defaultYaw,
       tilt: config.defaultTilt,
@@ -177,13 +222,38 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }, true);
   }, [config.defaultTilt, config.defaultViewFov, config.defaultYaw, updateView]);
 
-  useEffect(() => {
-    viewRef.current = initialView(config, streamName);
-    setViewLabel(viewRef.current);
-  }, [config.defaultTilt, config.defaultViewFov, config.defaultYaw, streamName]);
+  const applyState = useCallback((state, persist = false) => {
+    const normalized = normalizeEptzView(state, config);
+    modeRef.current = normalized.mode;
+    viewRef.current = normalized.primary;
+    secondaryViewRef.current = normalized.secondary;
+    setMode(normalized.mode);
+    setViewLabel(normalized.primary);
+    presetUuidRef.current = normalized.presetUuid;
+    setSelectedPresetUuid(normalized.presetUuid);
+    drawRef.current();
+    if (persist) writeEptzView(cameraUuid, streamName, normalized, config);
+  }, [cameraUuid, streamName, config]);
 
   useEffect(() => {
-    if (!config.enabled) return undefined;
+    applyState(readEptzView(cameraUuid, streamName, config));
+  }, [applyState, cameraUuid, streamName, config]);
+
+  useEffect(() => {
+    const handleLayoutState = (event) => {
+      if (event.detail?.cameraUuid === cameraUuid) applyState(event.detail.state);
+    };
+    window.addEventListener('lightnvr:eptz-layout-applied', handleLayoutState);
+    return () => window.removeEventListener(
+      'lightnvr:eptz-layout-applied', handleLayoutState);
+  }, [applyState, cameraUuid]);
+
+  useEffect(() => {
+    if (!config.enabled || mode === 'raw') {
+      setRendererReady(false);
+      setRendererError('');
+      return undefined;
+    }
     const canvas = canvasRef.current;
     const video = videoRef?.current;
     if (!canvas || !video) return undefined;
@@ -243,7 +313,8 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
 
     const locations = {};
     ['source_size', 'output_size', 'center', 'radius', 'lens_fov', 'rotation',
-      'yaw', 'tilt', 'view_fov'].forEach((name) => {
+      'yaw', 'tilt', 'view_fov', 'secondary_yaw', 'secondary_tilt',
+      'secondary_view_fov', 'mode'].forEach((name) => {
       locations[name] = gl.getUniformLocation(program, `u_${name}`);
     });
 
@@ -279,6 +350,11 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
         gl.uniform1f(locations.yaw, viewRef.current.yaw);
         gl.uniform1f(locations.tilt, viewRef.current.tilt);
         gl.uniform1f(locations.view_fov, viewRef.current.fov);
+        gl.uniform1f(locations.secondary_yaw, secondaryViewRef.current.yaw);
+        gl.uniform1f(locations.secondary_tilt, secondaryViewRef.current.tilt);
+        gl.uniform1f(locations.secondary_view_fov,
+                     secondaryViewRef.current.fov);
+        gl.uniform1i(locations.mode, mode === 'panorama' ? 1 : mode === 'dual' ? 2 : 0);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         setRendererReady(true);
         setRendererError((current) => current ? '' : current);
@@ -345,7 +421,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
       if (gl && program) gl.deleteProgram(program);
     };
   }, [config.centerX, config.centerY, config.enabled, config.fov, config.radius,
-    config.rotation, rendererEpoch, streamName, videoRef]);
+    config.rotation, mode, rendererEpoch, streamName, videoRef]);
 
   const pointerPosition = (event) => ({ x: event.clientX, y: event.clientY });
   const handlePointerDown = (event) => {
@@ -354,17 +430,23 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     pointersRef.current.set(event.pointerId, pointerPosition(event));
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const pointers = Array.from(pointersRef.current.values());
+    const rect = event.currentTarget.getBoundingClientRect();
+    const target = modeRef.current === 'dual' &&
+      event.clientX > rect.left + rect.width / 2 ? 'secondary' : 'primary';
+    const targetView = target === 'secondary'
+      ? secondaryViewRef.current : viewRef.current;
     if (pointers.length === 2) {
       gestureRef.current = {
         type: 'pinch',
+        target,
         distance: Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y),
-        startFov: viewRef.current.fov,
+        startFov: targetView.fov,
       };
     } else {
       gestureRef.current = {
-        type: 'pan', pointerId: event.pointerId,
+        type: 'pan', target, pointerId: event.pointerId,
         x: event.clientX, y: event.clientY,
-        start: { ...viewRef.current },
+        start: { ...targetView },
       };
     }
   };
@@ -379,7 +461,12 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     if (gesture?.type === 'pinch' && pointers.length >= 2) {
       const distance = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
       if (gesture.distance > 0) {
-        updateView({ ...viewRef.current, fov: gesture.startFov * gesture.distance / distance });
+        const targetView = gesture.target === 'secondary'
+          ? secondaryViewRef.current : viewRef.current;
+        updateView({
+          ...targetView,
+          fov: gesture.startFov * gesture.distance / distance,
+        }, false, gesture.target);
       }
       return;
     }
@@ -390,7 +477,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
         ...gesture.start,
         yaw: gesture.start.yaw - (event.clientX - gesture.x) * degreesPerHeight,
         tilt: gesture.start.tilt + (event.clientY - gesture.y) * degreesPerHeight,
-      });
+      }, false, gesture.target);
     }
   };
 
@@ -401,9 +488,11 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     const remaining = Array.from(pointersRef.current.entries());
     if (remaining.length === 1) {
       const [pointerId, point] = remaining[0];
+      const target = gestureRef.current?.target || 'primary';
       gestureRef.current = {
-        type: 'pan', pointerId, x: point.x, y: point.y,
-        start: { ...viewRef.current },
+        type: 'pan', target, pointerId, x: point.x, y: point.y,
+        start: { ...(target === 'secondary'
+          ? secondaryViewRef.current : viewRef.current) },
       };
     } else if (remaining.length === 0) {
       gestureRef.current = null;
@@ -414,10 +503,15 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
   const handleWheel = (event) => {
     event.preventDefault();
     event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const target = modeRef.current === 'dual' &&
+      event.clientX > rect.left + rect.width / 2 ? 'secondary' : 'primary';
+    const targetView = target === 'secondary'
+      ? secondaryViewRef.current : viewRef.current;
     updateView({
-      ...viewRef.current,
-      fov: viewRef.current.fov * Math.exp(event.deltaY * 0.0015),
-    }, true);
+      ...targetView,
+      fov: targetView.fov * Math.exp(event.deltaY * 0.0015),
+    }, true, target);
   };
 
   const handleKeyDown = (event) => {
@@ -441,8 +535,101 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }
   };
 
+  const changeMode = (nextMode) => {
+    if (!EPTZ_VIEW_MODES.includes(nextMode)) return;
+    applyState({ ...currentState(), mode: nextMode, presetUuid: '' }, true);
+  };
+
+  const applyPreset = (presetUuid) => {
+    const preset = (presetsQuery.data?.presets || []).find(
+      (candidate) => candidate.uuid === presetUuid);
+    if (!preset) {
+      setSelectedPresetUuid('');
+      return;
+    }
+    applyState(eptzViewFromPreset(preset, config), true);
+  };
+
+  const savePreset = async () => {
+    const name = window.prompt(t('eptz.presetNamePrompt'))?.trim();
+    if (!name || !cameraUuid) return;
+    const isShared = presetsQuery.data?.can_share
+      ? window.confirm(t('eptz.sharePresetPrompt')) : false;
+    setPresetBusy(true);
+    try {
+      const created = await fetchJSON(
+        `/api/cameras/${encodeURIComponent(cameraUuid)}/eptz-presets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eptzPresetPayload(name, isShared, currentState())),
+          timeout: 15000,
+          retries: 0,
+        });
+      applyState(eptzViewFromPreset(created, config), true);
+      await queryClient.invalidateQueries({ queryKey: ['eptz-presets', cameraUuid] });
+    } catch (error) {
+      console.error(`[ePTZ ${streamName}] preset save failed:`, error);
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setPresetBusy(false);
+    }
+  };
+
+  const overwritePreset = async () => {
+    const preset = (presetsQuery.data?.presets || []).find(
+      (candidate) => candidate.uuid === selectedPresetUuid && candidate.owned);
+    if (!preset) return;
+    setPresetBusy(true);
+    try {
+      const updated = await fetchJSON(
+        `/api/cameras/${encodeURIComponent(cameraUuid)}/eptz-presets/${preset.uuid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...eptzPresetPayload(preset.name, preset.is_shared, currentState()),
+            revision: preset.revision,
+          }),
+          timeout: 15000,
+          retries: 0,
+        });
+      applyState(eptzViewFromPreset(updated, config), true);
+      await queryClient.invalidateQueries({ queryKey: ['eptz-presets', cameraUuid] });
+    } catch (error) {
+      console.error(`[ePTZ ${streamName}] preset update failed:`, error);
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setPresetBusy(false);
+    }
+  };
+
+  const deletePreset = async () => {
+    const preset = (presetsQuery.data?.presets || []).find(
+      (candidate) => candidate.uuid === selectedPresetUuid && candidate.owned);
+    if (!preset || !window.confirm(t('eptz.deletePresetConfirm', { name: preset.name }))) return;
+    setPresetBusy(true);
+    try {
+      await fetchJSON(
+        `/api/cameras/${encodeURIComponent(cameraUuid)}/eptz-presets/${preset.uuid}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revision: preset.revision }),
+          timeout: 15000,
+          retries: 0,
+        });
+      applyState({ ...currentState(), presetUuid: '' }, true);
+      await queryClient.invalidateQueries({ queryKey: ['eptz-presets', cameraUuid] });
+    } catch (error) {
+      console.error(`[ePTZ ${streamName}] preset delete failed:`, error);
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setPresetBusy(false);
+    }
+  };
+
   if (!config.enabled) return null;
   const zoom = config.defaultViewFov / viewLabel.fov;
+  const selectedPreset = (presetsQuery.data?.presets || []).find(
+    (preset) => preset.uuid === selectedPresetUuid);
 
   return (
     <>
@@ -470,24 +657,42 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
           onClick={(event) => event.stopPropagation()}
         />
       )}
-      {rendererReady && (
-        <button
-          type="button"
-          className="absolute px-2 py-1 rounded text-white text-xs"
-          style={{
-            zIndex: 8,
-            left: '50%',
-            bottom: '10px',
-            transform: 'translateX(-50%)',
-            background: 'rgba(0, 0, 0, 0.65)',
-          }}
-          title="Reset ePTZ view"
-          aria-label="Reset ePTZ view"
-          onClick={resetView}
-        >
-          ePTZ {zoom.toFixed(1)}× ↺
+      <div className="eptz-operator-toolbar" style={{ zIndex: 8 }}
+        onClick={(event) => event.stopPropagation()}>
+        <select value={mode} aria-label={t('eptz.viewMode')}
+          title={t('eptz.viewMode')}
+          onChange={(event) => changeMode(event.currentTarget.value)}>
+          {EPTZ_VIEW_MODES.map((value) => (
+            <option key={value} value={value}>{t(`eptz.mode.${value}`)}</option>
+          ))}
+        </select>
+        <select value={selectedPresetUuid} aria-label={t('eptz.presets')}
+          title={t('eptz.presets')}
+          onChange={(event) => applyPreset(event.currentTarget.value)}>
+          <option value="">{t('eptz.customView')}</option>
+          {(presetsQuery.data?.presets || []).map((preset) => (
+            <option key={preset.uuid} value={preset.uuid}>
+              {preset.name}{preset.is_shared ? ` · ${t('eptz.shared')}` : ''}
+            </option>
+          ))}
+        </select>
+        {presetsQuery.data?.can_modify && (
+          <button type="button" disabled={presetBusy} title={t('eptz.saveNewPreset')}
+            aria-label={t('eptz.saveNewPreset')} onClick={savePreset}>＋</button>
+        )}
+        {selectedPreset?.owned && presetsQuery.data?.can_modify && (
+          <>
+            <button type="button" disabled={presetBusy} title={t('eptz.updatePreset')}
+              aria-label={t('eptz.updatePreset')} onClick={overwritePreset}>✓</button>
+            <button type="button" disabled={presetBusy} title={t('eptz.deletePreset')}
+              aria-label={t('eptz.deletePreset')} onClick={deletePreset}>×</button>
+          </>
+        )}
+        <button type="button" title={t('eptz.resetView')}
+          aria-label={t('eptz.resetView')} onClick={resetView}>
+          {mode === 'raw' ? 'ePTZ' : `${zoom.toFixed(1)}×`} ↺
         </button>
-      )}
+      </div>
       {rendererError && (
         <span
           className="absolute bottom-2 left-2 rounded bg-amber-700/90 px-2 py-1 text-xs text-white"

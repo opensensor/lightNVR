@@ -1,3 +1,5 @@
+import { eptzLayoutSlot } from '../../../utils/eptz-view.js';
+
 export const LIVE_AVAILABILITY_OPTIONS = Object.freeze([
   'live', 'offline', 'never_connected', 'disabled', 'all',
 ]);
@@ -93,9 +95,7 @@ export function buildLiveLayoutPayload({
     availability: LIVE_AVAILABILITY_OPTIONS.includes(availability) ? availability : 'live',
     columns,
     rows,
-    camera_slots: streams.slice(0, columns * rows).map((stream) => ({
-      camera_uuid: stream.camera_uuid,
-    })),
+    camera_slots: streams.slice(0, columns * rows).map(eptzLayoutSlot),
   };
 }
 

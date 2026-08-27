@@ -926,6 +926,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false,
             videoRef={videoRef}
             eptzConfig={streamConfig?.eptz_config}
             streamName={streamConfig?.name}
+            cameraUuid={streamConfig?.camera_uuid}
           />
 
           {/* Click guard — sits above the video surface to intercept Firefox's

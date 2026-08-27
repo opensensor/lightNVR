@@ -4,6 +4,7 @@
 
 #include <cjson/cJSON.h>
 #include <ctype.h>
+#include <math.h>
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -75,6 +76,45 @@ static bool valid_slots(const char *encoded, int capacity) {
             ? cJSON_GetObjectItemCaseSensitive(slot, "camera_uuid") : NULL;
         valid = cJSON_IsString(camera) && camera->valuestring &&
             lightnvr_uuid_is_valid(camera->valuestring);
+        const cJSON *mode = cJSON_GetObjectItemCaseSensitive(
+            slot, "eptz_mode");
+        if (valid && mode) {
+            valid = cJSON_IsString(mode) && mode->valuestring &&
+                (strcmp(mode->valuestring, "raw") == 0 ||
+                 strcmp(mode->valuestring, "dewarp") == 0 ||
+                 strcmp(mode->valuestring, "panorama") == 0 ||
+                 strcmp(mode->valuestring, "dual") == 0);
+        }
+        const cJSON *preset = cJSON_GetObjectItemCaseSensitive(
+            slot, "eptz_preset_uuid");
+        if (valid && preset && !cJSON_IsNull(preset)) {
+            valid = cJSON_IsString(preset) && preset->valuestring &&
+                lightnvr_uuid_is_valid(preset->valuestring);
+        }
+        const cJSON *view = cJSON_GetObjectItemCaseSensitive(
+            slot, "eptz_view");
+        if (valid && view) {
+            static const struct {
+                const char *key;
+                double minimum;
+                double maximum;
+            } fields[] = {
+                {"yaw", -180, 180}, {"tilt", -90, 30}, {"fov", 20, 120},
+                {"secondary_yaw", -180, 180},
+                {"secondary_tilt", -90, 30},
+                {"secondary_view_fov", 20, 120},
+            };
+            valid = cJSON_IsObject(view);
+            for (size_t field = 0; valid &&
+                 field < sizeof(fields) / sizeof(fields[0]); field++) {
+                const cJSON *value = cJSON_GetObjectItemCaseSensitive(
+                    view, fields[field].key);
+                valid = cJSON_IsNumber(value) &&
+                    isfinite(value->valuedouble) &&
+                    value->valuedouble >= fields[field].minimum &&
+                    value->valuedouble <= fields[field].maximum;
+            }
+        }
         for (int previous = 0; valid && previous < index; previous++) {
             const cJSON *other = cJSON_GetObjectItemCaseSensitive(
                 cJSON_GetArrayItem(slots, previous), "camera_uuid");
