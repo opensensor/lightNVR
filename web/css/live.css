@@ -9,6 +9,271 @@
  * while still leveraging Tailwind where appropriate.
  */
 
+.live-workspace-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: stretch;
+    min-height: 0;
+}
+
+.live-operator-main {
+    min-width: 0;
+}
+
+.live-operator-navigator {
+    width: 19rem;
+    max-height: calc(100vh - 180px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.65rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+}
+
+.live-operator-navigator.is-collapsed {
+    width: 2.75rem;
+    align-items: center;
+}
+
+.live-navigator-expand,
+.live-navigator-heading button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    border-radius: 0.45rem;
+}
+
+.live-navigator-expand {
+    margin-top: 0.35rem;
+}
+
+.live-navigator-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.75rem 0.55rem;
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.live-navigator-heading div,
+.live-camera-row > span:last-child,
+.live-event-row > span:last-child,
+.live-layout-row button:first-child {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.live-navigator-heading small,
+.live-camera-row small,
+.live-event-row small,
+.live-layout-row small {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.live-navigator-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.live-navigator-tabs button {
+    padding: 0.55rem 0.25rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.78rem;
+    border-bottom: 2px solid transparent;
+}
+
+.live-navigator-tabs button.is-active {
+    color: hsl(var(--primary));
+    border-bottom-color: hsl(var(--primary));
+}
+
+.live-navigator-panel {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.55rem;
+}
+
+.live-navigator-search input,
+.live-navigator-availability {
+    width: 100%;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.45rem;
+    background: hsl(var(--background));
+    padding: 0.5rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.live-navigator-availability {
+    margin: 0.45rem 0;
+}
+
+.live-location-row,
+.live-camera-row,
+.live-layout-row,
+.live-event-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    text-align: left;
+    gap: 0.5rem;
+    border-radius: 0.4rem;
+}
+
+.live-location-row {
+    justify-content: space-between;
+    padding: 0.4rem 0.45rem 0.4rem calc(0.45rem + var(--location-depth, 0) * 0.8rem);
+    font-size: 0.78rem;
+}
+
+.live-location-row:hover,
+.live-camera-row:hover,
+.live-layout-row:hover,
+.live-event-row:hover {
+    background: hsl(var(--muted));
+}
+
+.live-location-row.is-selected {
+    background: hsl(var(--primary) / 0.14);
+    color: hsl(var(--primary));
+}
+
+.live-location-name {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 0.3rem;
+}
+
+.live-location-row > small,
+.live-camera-list-heading small {
+    color: hsl(var(--muted-foreground));
+    font-variant-numeric: tabular-nums;
+}
+
+.live-camera-list {
+    margin-top: 0.55rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid hsl(var(--border));
+}
+
+.live-camera-list-heading {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0.4rem 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.live-camera-row {
+    padding: 0.42rem;
+}
+
+.live-camera-row strong,
+.live-event-row strong,
+.live-layout-row strong {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.live-availability-dot {
+    flex: 0 0 auto;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: hsl(var(--muted-foreground));
+}
+
+.live-availability-dot.is-live { background: #22c55e; }
+.live-availability-dot.is-offline { background: #ef4444; }
+.live-availability-dot.is-never_connected { background: #f59e0b; }
+.live-availability-dot.is-disabled { background: #64748b; }
+
+.live-layout-save {
+    width: 100%;
+    margin-bottom: 0.55rem;
+}
+
+.live-layout-row {
+    padding: 0.25rem 0.35rem 0.25rem 0.5rem;
+}
+
+.live-layout-row button:first-child {
+    flex: 1 1 auto;
+    padding: 0.25rem 0;
+}
+
+.live-layout-delete {
+    flex: 0 0 auto;
+    min-width: 2rem;
+    min-height: 2rem;
+    color: hsl(var(--danger));
+}
+
+.live-event-row {
+    padding: 0.4rem;
+    text-decoration: none;
+    color: inherit;
+}
+
+.live-event-row img,
+.live-event-placeholder {
+    width: 3.4rem;
+    height: 2.3rem;
+    flex: 0 0 auto;
+    border-radius: 0.3rem;
+    object-fit: cover;
+    background: #111827;
+}
+
+.live-event-placeholder {
+    display: grid;
+    place-items: center;
+    color: #94a3b8;
+}
+
+.live-navigator-empty {
+    padding: 1rem 0.5rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+@media (max-width: 1024px) {
+    .live-workspace-shell {
+        display: block;
+    }
+
+    .live-operator-navigator,
+    .live-operator-navigator.is-collapsed {
+        width: 100%;
+        max-height: 22rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .live-operator-navigator.is-collapsed {
+        align-items: flex-start;
+        height: 3rem;
+    }
+}
+
 /* Video grid styles */
 .video-container {
     display: grid;

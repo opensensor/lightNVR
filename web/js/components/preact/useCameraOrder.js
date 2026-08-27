@@ -161,12 +161,40 @@ export function useCameraOrder(streams, _viewType) {
     setReorderMode(false);
   }, []);
 
+  /** Apply an explicit order, such as a server-backed saved Live layout. */
+  const setCameraOrder = useCallback((names) => {
+    const uniqueNames = [...new Set((names || []).filter(Boolean))];
+    const newMap = {};
+    uniqueNames.forEach((name, index) => { newMap[name] = index; });
+    saveOrder(uniqueNames);
+    setOrderMap(newMap);
+    setReorderMode(false);
+  }, []);
+
+  /** Place a camera dragged from the Navigator at a grid position. */
+  const placeCameraAtIndex = useCallback((cameraUuid, index) => {
+    const stream = streams.find((candidate) => candidate.camera_uuid === cameraUuid);
+    if (!stream || !Number.isInteger(index) || index < 0) return;
+    setOrderMap((currentMap) => {
+      const names = applyOrder(streams, currentMap)
+        .map((candidate) => candidate.name)
+        .filter((name) => name !== stream.name);
+      names.splice(Math.min(index, names.length), 0, stream.name);
+      const nextMap = {};
+      names.forEach((name, orderIndex) => { nextMap[name] = orderIndex; });
+      saveOrder(names);
+      return nextMap;
+    });
+  }, [streams]);
+
   return {
     orderedStreams,
     reorderMode,
     toggleReorderMode,
     enterReorderMode,
     resetOrder,
+    setCameraOrder,
+    placeCameraAtIndex,
     handleDragStart,
     handleDragOver,
     handleDrop,

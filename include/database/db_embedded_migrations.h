@@ -1583,6 +1583,32 @@ static const char migration_0074_down[] =
     "DROP INDEX IF EXISTS idx_user_workspace_preferences_owner_key;\n"
     "DROP TABLE IF EXISTS user_workspace_preferences;";
 
+static const char migration_0075_up[] =
+    "CREATE TABLE live_saved_layouts ("
+    "uuid TEXT PRIMARY KEY,"
+    "owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,"
+    "name TEXT NOT NULL COLLATE NOCASE,"
+    "is_shared INTEGER NOT NULL DEFAULT 0 CHECK (is_shared IN (0,1)),"
+    "location_uuid TEXT REFERENCES camera_locations(uuid) ON DELETE SET NULL,"
+    "availability TEXT NOT NULL DEFAULT 'live' CHECK (availability IN "
+    "('all','live','offline','never_connected','disabled')),"
+    "columns INTEGER NOT NULL CHECK (columns BETWEEN 1 AND 9),"
+    "rows INTEGER NOT NULL CHECK (rows BETWEEN 1 AND 9),"
+    "camera_slots_json TEXT NOT NULL DEFAULT '[]',"
+    "revision INTEGER NOT NULL DEFAULT 1,"
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+    "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+    "CHECK (columns * rows <= 36));"
+    "CREATE UNIQUE INDEX idx_live_saved_layouts_owner_name ON "
+    "live_saved_layouts(COALESCE(owner_user_id,0),name COLLATE NOCASE);"
+    "CREATE INDEX idx_live_saved_layouts_visible ON "
+    "live_saved_layouts(is_shared,owner_user_id,name COLLATE NOCASE);";
+
+static const char migration_0075_down[] =
+    "DROP INDEX IF EXISTS idx_live_saved_layouts_visible;"
+    "DROP INDEX IF EXISTS idx_live_saved_layouts_owner_name;"
+    "DROP TABLE IF EXISTS live_saved_layouts;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2102,8 +2128,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0074_down,
         .is_embedded = true
     },
+    {
+        .version = "0075",
+        .description = "add_live_saved_layouts",
+        .sql_up = migration_0075_up,
+        .sql_down = migration_0075_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 74
+#define EMBEDDED_MIGRATIONS_COUNT 75
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

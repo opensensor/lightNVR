@@ -53,6 +53,7 @@
 #include "web/api_handlers_storage_pools.h"
 #include "web/api_handlers_storage_compliance.h"
 #include "web/api_handlers_workspaces.h"
+#include "web/api_handlers_live_layouts.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -141,6 +142,16 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_put_fleet_saved_view);
     http_server_register_handler(server, "/api/fleet/views/#", "DELETE",
                                  handle_delete_fleet_saved_view);
+
+    // Per-user and administrator-shared operator Live layouts
+    http_server_register_handler(server, "/api/live/layouts", "GET",
+                                 handle_get_live_layouts);
+    http_server_register_handler(server, "/api/live/layouts", "POST",
+                                 handle_post_live_layout);
+    http_server_register_handler(server, "/api/live/layouts/#", "PUT",
+                                 handle_put_live_layout);
+    http_server_register_handler(server, "/api/live/layouts/#", "DELETE",
+                                 handle_delete_live_layout);
 
     // Saved static and selector-backed smart camera collections
     http_server_register_handler(server, "/api/camera-collections", "GET",
