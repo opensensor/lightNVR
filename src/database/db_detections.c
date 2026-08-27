@@ -1206,14 +1206,19 @@ int get_unique_detection_labels_for_streams(
         sqlite3_stmt *stmt = NULL;
         int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         free(sql);
-        if (rc == SQLITE_OK) {
-            for (int i = 0; i < batch_count; i++) {
-                sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
-                                  SQLITE_TRANSIENT);
-            }
-            sqlite3_bind_int(stmt, batch_count + 1, max_labels);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare scoped detection label query: %s",
+                      sqlite3_errmsg(db));
+            if (stmt) sqlite3_finalize(stmt);
+            final_rc = rc;
+            break;
         }
-        while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        for (int i = 0; i < batch_count; i++) {
+            sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
+                              SQLITE_TRANSIENT);
+        }
+        sqlite3_bind_int(stmt, batch_count + 1, max_labels);
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
             const char *label = (const char *)sqlite3_column_text(stmt, 0);
             if (!label) continue;
             int insert_at = 0;

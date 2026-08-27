@@ -213,6 +213,32 @@ void test_recording_tag_batch_get_preserves_input_order(void) {
     TEST_ASSERT_EQUAL_INT(0, lists[2].count);
 }
 
+void test_get_unique_recording_tags_for_streams(void) {
+    time_t now = time(NULL);
+    recording_metadata_t first = make_rec(
+        "authorized-camera", "/rec/tag-picker-1.mp4", now);
+    recording_metadata_t second = make_rec(
+        "authorized-camera", "/rec/tag-picker-2.mp4", now + 60);
+    recording_metadata_t other = make_rec(
+        "other-camera", "/rec/tag-picker-other.mp4", now + 120);
+    uint64_t first_id = add_recording_metadata(&first);
+    uint64_t second_id = add_recording_metadata(&second);
+    uint64_t other_id = add_recording_metadata(&other);
+
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(first_id, "zebra"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(second_id, "alpha"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(other_id, "secret"));
+
+    const char *stream_names[] = {"authorized-camera"};
+    char tags[MAX_RECORDING_TAGS][MAX_TAG_LENGTH];
+    int count = db_recording_tag_get_unique_for_streams(
+        stream_names, 1, tags, MAX_RECORDING_TAGS);
+
+    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_STRING("alpha", tags[0]);
+    TEST_ASSERT_EQUAL_STRING("zebra", tags[1]);
+}
+
 void test_recording_history_indexes_are_migrated(void) {
     const char *index_names[] = {
         "idx_recordings_history_start",
@@ -470,6 +496,7 @@ int main(void) {
     RUN_TEST(test_get_recording_count);
     RUN_TEST(test_get_recording_count_supports_multi_value_stream_tag_and_capture_filters);
     RUN_TEST(test_recording_tag_batch_get_preserves_input_order);
+    RUN_TEST(test_get_unique_recording_tags_for_streams);
     RUN_TEST(test_recording_history_indexes_are_migrated);
     RUN_TEST(test_capture_filters_distinguish_continuous_from_scheduled);
     RUN_TEST(test_get_recording_metadata_paginated);

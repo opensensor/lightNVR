@@ -151,6 +151,29 @@ void test_get_detection_labels_summary(void) {
     TEST_ASSERT_GREATER_THAN(0, n);
 }
 
+void test_get_unique_detection_labels_for_streams(void) {
+    detection_result_t person = make_result("person", 0.9f);
+    detection_result_t car = make_result("car", 0.8f);
+    detection_result_t dog = make_result("dog", 0.7f);
+
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "authorized-camera", &person, time(NULL) - 3, 0));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "authorized-camera", &car, time(NULL) - 2, 0));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "other-camera", &dog, time(NULL) - 1, 0));
+
+    const char *stream_names[] = {"authorized-camera"};
+    char labels[MAX_UNIQUE_DETECTION_LABELS][MAX_LABEL_LENGTH];
+    int count = get_unique_detection_labels_for_streams(
+        stream_names, 1, labels,
+        MAX_UNIQUE_DETECTION_LABELS);
+
+    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_STRING("car", labels[0]);
+    TEST_ASSERT_EQUAL_STRING("person", labels[1]);
+}
+
 void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(void) {
     time_t now = time(NULL);
     recording_metadata_t recordings[2];
@@ -377,6 +400,7 @@ int main(void) {
     RUN_TEST(test_has_detections_in_time_range_not_found);
     RUN_TEST(test_delete_old_detections);
     RUN_TEST(test_get_detection_labels_summary);
+    RUN_TEST(test_get_unique_detection_labels_for_streams);
     RUN_TEST(test_get_recording_detection_summaries_batches_linked_and_fallback_rows);
     RUN_TEST(test_update_detections_recording_id);
     RUN_TEST(test_store_max_detections);
