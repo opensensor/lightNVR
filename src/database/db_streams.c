@@ -68,6 +68,10 @@ static const char *normalized_playback_transport(const char *value) {
     return playback_transport_is_valid(value) ? value : "auto";
 }
 
+static const char *normalized_go2rtc_source_override(const char *value) {
+    return string_has_non_whitespace(value) ? value : "";
+}
+
 static bool stream_transaction_begin(sqlite3 *db, bool *owns_transaction) {
     *owns_transaction = sqlite3_get_autocommit(db) != 0;
     if (!*owns_transaction) return true;
@@ -243,7 +247,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_text(stmt, 43, stream->admin_url, -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 44, stream->privacy_mode ? 1 : 0);
         sqlite3_bind_text(stmt, 45, stream->motion_trigger_source, -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 46, stream->go2rtc_source_override, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 46,
+                          normalized_go2rtc_source_override(stream->go2rtc_source_override),
+                          -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 47, stream->sub_stream_url, -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 48, stream->audio_voice_enhancement ? 1 : 0);
         sqlite3_bind_text(stmt, 49, stream->detection_url, -1, SQLITE_STATIC);
@@ -421,7 +427,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 44, stream->admin_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 45, stream->privacy_mode ? 1 : 0);
     sqlite3_bind_text(stmt, 46, stream->motion_trigger_source, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 47, stream->go2rtc_source_override, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 47,
+                      normalized_go2rtc_source_override(stream->go2rtc_source_override),
+                      -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 48, stream->sub_stream_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 49, stream->audio_voice_enhancement ? 1 : 0);
     sqlite3_bind_text(stmt, 50, stream->detection_url, -1, SQLITE_STATIC);
@@ -610,7 +618,9 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 44, stream->admin_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 45, stream->privacy_mode ? 1 : 0);
     sqlite3_bind_text(stmt, 46, stream->motion_trigger_source, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 47, stream->go2rtc_source_override, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 47,
+                      normalized_go2rtc_source_override(stream->go2rtc_source_override),
+                      -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 48, stream->sub_stream_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 49, stream->audio_voice_enhancement ? 1 : 0);
     sqlite3_bind_text(stmt, 50, stream->detection_url, -1, SQLITE_STATIC);
@@ -1118,7 +1128,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
 
         // go2rtc source override
         const char *go2rtc_source_override = (const char *)sqlite3_column_text(stmt, COL_GO2RTC_SOURCE_OVERRIDE);
-        if (go2rtc_source_override) {
+        if (string_has_non_whitespace(go2rtc_source_override)) {
             safe_strcpy(stream->go2rtc_source_override, go2rtc_source_override, sizeof(stream->go2rtc_source_override), 0);
         } else {
             stream->go2rtc_source_override[0] = '\0';
@@ -1457,7 +1467,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
 
         // go2rtc source override
         const char *go2rtc_src_override = (const char *)sqlite3_column_text(stmt, COL_GO2RTC_SOURCE_OVERRIDE);
-        if (go2rtc_src_override) {
+        if (string_has_non_whitespace(go2rtc_src_override)) {
             safe_strcpy(s->go2rtc_source_override, go2rtc_src_override, sizeof(s->go2rtc_source_override), 0);
         } else {
             s->go2rtc_source_override[0] = '\0';

@@ -1204,7 +1204,7 @@ static int write_stream_overrides(FILE *fp) {
 
     for (int i = 0; i < count; i++) {
         if (!streams[i].enabled) continue;
-        if (streams[i].go2rtc_source_override[0] == '\0') continue;
+        if (!string_has_non_whitespace(streams[i].go2rtc_source_override)) continue;
 
         // Escape stream name for YAML double-quoted key safety
         char escaped_name[MAX_STREAM_NAME * 2];

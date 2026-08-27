@@ -451,6 +451,46 @@ void test_go2rtc_source_override_clear(void) {
     TEST_ASSERT_EQUAL_STRING("", got.go2rtc_source_override);
 }
 
+void test_go2rtc_source_override_whitespace_is_canonical_empty(void) {
+    stream_config_t s = make_stream("cam_g2r_blank", true);
+    safe_strcpy(s.go2rtc_source_override, " \t\r\n",
+                sizeof(s.go2rtc_source_override), 0);
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_g2r_blank", &got));
+    TEST_ASSERT_EQUAL_STRING("", got.go2rtc_source_override);
+
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(get_db_handle(),
+                           "SELECT length(go2rtc_source_override) FROM streams WHERE name = ?;",
+                           -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, "cam_g2r_blank", -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT(0, sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+}
+
+void test_go2rtc_source_override_legacy_whitespace_loads_empty(void) {
+    stream_config_t s = make_stream("cam_g2r_legacy_blank", true);
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&s));
+
+    exec_sql_or_fail(get_db_handle(),
+                     "UPDATE streams SET go2rtc_source_override = char(10) "
+                     "WHERE name = 'cam_g2r_legacy_blank';");
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(
+        0, get_stream_config_by_name("cam_g2r_legacy_blank", &got));
+    TEST_ASSERT_EQUAL_STRING("", got.go2rtc_source_override);
+
+    stream_config_t all[4];
+    TEST_ASSERT_EQUAL_INT(1, get_all_stream_configs(all, 4));
+    TEST_ASSERT_EQUAL_STRING("", all[0].go2rtc_source_override);
+}
+
 /* ================================================================
  * sub-stream URL tests
  * ================================================================ */
@@ -684,6 +724,8 @@ int main(void) {
     RUN_TEST(test_go2rtc_source_override_update);
     RUN_TEST(test_go2rtc_source_override_in_get_all);
     RUN_TEST(test_go2rtc_source_override_clear);
+    RUN_TEST(test_go2rtc_source_override_whitespace_is_canonical_empty);
+    RUN_TEST(test_go2rtc_source_override_legacy_whitespace_loads_empty);
     RUN_TEST(test_sub_stream_url_defaults_empty);
     RUN_TEST(test_sub_stream_url_round_trip);
     RUN_TEST(test_sub_stream_url_update);

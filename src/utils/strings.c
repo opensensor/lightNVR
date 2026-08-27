@@ -69,6 +69,21 @@ bool ends_with(const char *str, const char *suffix) {
     return strcmp(str + str_len - suffix_len, suffix) == 0;
 }
 
+bool string_has_non_whitespace(const char *value) {
+    if (!value) {
+        return false;
+    }
+
+    while (*value) {
+        if (!isspace((unsigned char)*value)) {
+            return true;
+        }
+        value++;
+    }
+
+    return false;
+}
+
 char *trim_ascii_whitespace(char *value) {
     if (!value) {
         return NULL;

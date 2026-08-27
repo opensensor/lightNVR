@@ -57,6 +57,15 @@ bool ends_with(const char *str, const char *suffix);
 char *trim_ascii_whitespace(char *value);
 
 /**
+ * Return true when a string contains at least one non-whitespace byte.
+ *
+ * This is useful for optional text fields where whitespace-only input is
+ * semantically empty but non-empty values must otherwise be preserved
+ * byte-for-byte (for example, indented YAML).
+ */
+bool string_has_non_whitespace(const char *value);
+
+/**
  * Copies up to `output_size` bytes of the input string excluding any leading
  * and trailing whitespace or non-printing characters into the output buffer.
  * Guaranteed to null-terminate the output buffer.

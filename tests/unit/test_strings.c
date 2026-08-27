@@ -257,6 +257,26 @@ void test_trim_ascii_whitespace_nonprint(void) {
 }
 
 /* ================================================================
+ * string_has_non_whitespace
+ * ================================================================ */
+
+void test_string_has_non_whitespace_null(void) {
+    TEST_ASSERT_FALSE(string_has_non_whitespace(NULL));
+}
+
+void test_string_has_non_whitespace_empty(void) {
+    TEST_ASSERT_FALSE(string_has_non_whitespace(""));
+}
+
+void test_string_has_non_whitespace_only(void) {
+    TEST_ASSERT_FALSE(string_has_non_whitespace(" \t\r\n\v\f"));
+}
+
+void test_string_has_non_whitespace_content(void) {
+    TEST_ASSERT_TRUE(string_has_non_whitespace(" \n  - rtsp://camera/ch0\n"));
+}
+
+/* ================================================================
  * copy_trimmed_value
  * ================================================================ */
 
@@ -360,6 +380,11 @@ int main(void) {
     RUN_TEST(test_trim_ascii_whitespace_newline);
     RUN_TEST(test_trim_ascii_whitespace_nonprint);
 
+    RUN_TEST(test_string_has_non_whitespace_null);
+    RUN_TEST(test_string_has_non_whitespace_empty);
+    RUN_TEST(test_string_has_non_whitespace_only);
+    RUN_TEST(test_string_has_non_whitespace_content);
+
     RUN_TEST(test_copy_trimmed_value_null_output);
     RUN_TEST(test_copy_trimmed_value_zero_output_size);
     RUN_TEST(test_copy_trimmed_value_null_input);
@@ -370,4 +395,3 @@ int main(void) {
 
     return UNITY_END();
 }
-

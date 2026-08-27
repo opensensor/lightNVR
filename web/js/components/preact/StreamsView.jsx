@@ -646,7 +646,9 @@ export function StreamsView() {
       // Cross-stream motion trigger source
       motion_trigger_source: currentStream.motionTriggerSource || '',
       // go2rtc source override
-      go2rtc_source_override: currentStream.go2rtcSourceOverride || '',
+      go2rtc_source_override: currentStream.go2rtcSourceOverride?.trim()
+        ? currentStream.go2rtcSourceOverride
+        : '',
       publish_url: currentStream.publishUrl || '',
       // Sub-stream URL
       sub_stream_url: currentStream.subStreamUrl || '',
