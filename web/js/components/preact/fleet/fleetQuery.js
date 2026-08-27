@@ -1,5 +1,6 @@
 const HEALTH_VALUES = ['unknown', 'up', 'degraded', 'down', 'disabled'];
 const RECORDING_VALUES = ['off', 'continuous', 'detection'];
+const AVAILABILITY_VALUES = ['all', 'live', 'offline', 'never_connected', 'disabled'];
 const SORT_FIELDS = ['name', 'camera_uuid', 'location', 'health', 'enabled', 'recording_mode', 'address'];
 const PAGE_SIZES = [25, 50, 100, 200];
 
@@ -7,6 +8,7 @@ export const DEFAULT_FLEET_STATE = Object.freeze({
   search: '',
   health: [],
   enabled: 'all',
+  availability: 'all',
   recordingModes: [],
   tagUuids: [],
   locationUuid: '',
@@ -41,6 +43,7 @@ export function readFleetUrlState(search = '') {
   const params = new URLSearchParams(search);
   const pageSize = parsePositiveInteger(params.get('size'), DEFAULT_FLEET_STATE.pageSize);
   const enabled = params.get('enabled');
+  const availability = params.get('availability');
   const sortBy = params.get('sort');
   const sortOrder = params.get('order');
 
@@ -48,6 +51,7 @@ export function readFleetUrlState(search = '') {
     search: (params.get('q') || '').slice(0, 255),
     health: parseList(params.get('health'), HEALTH_VALUES),
     enabled: enabled === 'true' || enabled === 'false' ? enabled : 'all',
+    availability: AVAILABILITY_VALUES.includes(availability) ? availability : 'all',
     recordingModes: parseList(params.get('recording'), RECORDING_VALUES),
     tagUuids: parseList(params.get('tags')),
     locationUuid: params.get('location') || '',
@@ -72,6 +76,7 @@ export function writeFleetUrlState(url, state) {
   setOrDelete('q', state.search.trim());
   setOrDelete('health', state.health.join(','));
   setOrDelete('enabled', state.enabled, 'all');
+  setOrDelete('availability', state.availability, 'all');
   setOrDelete('recording', state.recordingModes.join(','));
   setOrDelete('tags', state.tagUuids.join(','));
   setOrDelete('location', state.locationUuid);
@@ -122,6 +127,8 @@ export function buildFleetQueryRequest(state, search = state.search) {
     sort_order: state.sortOrder,
     facets: true,
     explain: false,
+    availability: AVAILABILITY_VALUES.includes(state.availability)
+      ? state.availability : 'all',
   };
   if (state.collectionUuid) request.collection_uuid = state.collectionUuid;
   return request;
@@ -195,7 +202,8 @@ export function toggleFleetValue(values, value) {
 
 export function countFleetFilters(state) {
   return state.health.length + state.recordingModes.length + state.tagUuids.length +
-    (state.enabled === 'all' ? 0 : 1) + (state.locationUuid ? 1 : 0) +
+    (state.enabled === 'all' ? 0 : 1) + (state.availability === 'all' ? 0 : 1) +
+    (state.locationUuid ? 1 : 0) +
     (state.collectionUuid ? 1 : 0);
 }
 
@@ -208,4 +216,4 @@ export function clampFleetPage(page, totalPages) {
   return Math.min(Math.max(1, page), totalPages);
 }
 
-export { HEALTH_VALUES, RECORDING_VALUES, SORT_FIELDS, PAGE_SIZES };
+export { AVAILABILITY_VALUES, HEALTH_VALUES, RECORDING_VALUES, SORT_FIELDS, PAGE_SIZES };

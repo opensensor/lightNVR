@@ -325,6 +325,16 @@ const char *fleet_health_state_name(fleet_health_state_t state) {
     }
 }
 
+const char *fleet_availability_state_name(fleet_availability_state_t state) {
+    switch (state) {
+        case FLEET_AVAILABILITY_LIVE: return "live";
+        case FLEET_AVAILABILITY_OFFLINE: return "offline";
+        case FLEET_AVAILABILITY_NEVER_CONNECTED: return "never_connected";
+        case FLEET_AVAILABILITY_DISABLED: return "disabled";
+        default: return "never_connected";
+    }
+}
+
 const char *fleet_camera_recording_mode(const fleet_camera_t *camera) {
     if (!camera || !camera->record) return "off";
     return camera->detection_based_recording ? "detection" : "continuous";

@@ -18,6 +18,7 @@
 #include "database/db_auth.h"
 #include "database/db_authorization.h"
 #include "database/db_camera_collections.h"
+#include "database/db_camera_observations.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
@@ -727,6 +728,64 @@ void test_saved_views_are_owner_scoped_shareable_and_revisioned(void) {
     cJSON_Delete(deleted);
 }
 
+void test_availability_distinguishes_live_offline_never_and_disabled(void) {
+    stream_config_t live = create_camera(
+        "Live Camera", "rtsp://camera/live", "", true, NULL);
+    stream_config_t offline = create_camera(
+        "Offline Camera", "rtsp://camera/offline", "", true, NULL);
+    create_camera("Never Camera", "rtsp://camera/never", "", true, NULL);
+    create_camera("Disabled Camera", "rtsp://camera/disabled", "", false,
+                  NULL);
+
+    TEST_ASSERT_EQUAL_INT(
+        0, db_camera_observation_record(offline.name, 1700000000, 1700000030));
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(4));
+    metrics_record_frame(live.name, 4096, true);
+
+    cJSON *all = call_handler(
+        handle_post_fleet_camera_query,
+        "{\"selector\":{\"version\":1,\"expression\":{\"op\":\"all\"}},"
+        "\"availability\":\"all\",\"page_size\":20}", NULL, 200);
+    cJSON *facets = cJSON_GetObjectItemCaseSensitive(all, "facets");
+    cJSON *availability = cJSON_GetObjectItemCaseSensitive(
+        facets, "availability");
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetArraySize(availability));
+    cJSON_Delete(all);
+
+    cJSON *filtered = call_handler(
+        handle_post_fleet_camera_query,
+        "{\"selector\":{\"version\":1,\"expression\":{\"op\":\"all\"}},"
+        "\"availability\":\"offline\",\"page_size\":20}", NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(filtered, "total")->valueint);
+    cJSON *camera = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(filtered, "cameras"), 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "Offline Camera",
+        cJSON_GetObjectItemCaseSensitive(camera, "name")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        "offline",
+        cJSON_GetObjectItemCaseSensitive(camera, "availability")->valuestring);
+    TEST_ASSERT_EQUAL_INT64(
+        1700000000,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            camera, "first_video_at")->valuedouble);
+    cJSON_Delete(filtered);
+
+    filtered = call_handler(
+        handle_post_fleet_camera_query,
+        "{\"selector\":{\"version\":1,\"expression\":{\"op\":\"all\"}},"
+        "\"availability\":\"live\",\"page_size\":20}", NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(filtered, "total")->valueint);
+    camera = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(filtered, "cameras"), 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "Live Camera",
+        cJSON_GetObjectItemCaseSensitive(camera, "name")->valuestring);
+    cJSON_Delete(filtered);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -744,6 +803,7 @@ int main(void) {
     RUN_TEST(test_thousand_camera_fixture_returns_only_requested_page);
     RUN_TEST(test_operational_queue_counts_follow_authorized_inventory);
     RUN_TEST(test_saved_views_are_owner_scoped_shareable_and_revisioned);
+    RUN_TEST(test_availability_distinguishes_live_offline_never_and_disabled);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

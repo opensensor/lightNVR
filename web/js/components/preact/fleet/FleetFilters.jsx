@@ -1,4 +1,4 @@
-import { HEALTH_VALUES, RECORDING_VALUES, facetCount, toggleFleetValue } from './fleetQuery.js';
+import { AVAILABILITY_VALUES, HEALTH_VALUES, RECORDING_VALUES, facetCount, toggleFleetValue } from './fleetQuery.js';
 
 const inputClasses = 'h-4 w-4 rounded border-input text-[hsl(var(--primary))] focus:ring-[hsl(var(--primary))]';
 
@@ -62,6 +62,23 @@ export function FleetFilters({ state, facets = {}, locations: locationCatalog = 
             onChange={() => onChange({ health: toggleFleetValue(state.health, value) })}
           />
         ))}
+      </FilterGroup>
+
+      <FilterGroup title={t('availability.label')}>
+        <select
+          id={`${idPrefix}-availability`}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          value={state.availability}
+          onChange={(event) => onChange({ availability: event.currentTarget.value })}
+          aria-label={t('availability.label')}
+        >
+          {AVAILABILITY_VALUES.map((value) => (
+            <option key={value} value={value}>
+              {t(`availability.${value === 'never_connected' ? 'neverConnected' : value}`)}
+              {value === 'all' ? '' : ` (${facetCount(facets, 'availability', value)})`}
+            </option>
+          ))}
+        </select>
       </FilterGroup>
 
       <FilterGroup title={t('fleet.filter.enabled')}>

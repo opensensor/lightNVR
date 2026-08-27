@@ -112,14 +112,20 @@ static int load_fleet_cameras(const char *stream_name,
         " FROM camera_locations child "
         " JOIN location_tree parent ON child.parent_uuid = parent.uuid"
         ") "
-        "SELECT s.camera_uuid, s.name, s.url, s.tags, s.enabled, s.record, "
+        "SELECT s.camera_uuid, s.name, s.url, s.tags, s.enabled, "
+        "       s.streaming_enabled, s.record, "
         "       s.detection_based_recording, s.is_onvif, s.ptz_enabled, "
         "       s.backchannel_enabled, s.location_uuid, "
         "       COALESCE(loc.name, ''), COALESCE(loc.path, ''), "
         "       COALESCE(loc.ancestors, ''), "
+        "       COALESCE(observation.first_video_at, 0), "
+        "       COALESCE(observation.last_video_at, 0), "
+        "       COALESCE(observation.last_recording_at, 0), "
         "       COALESCE(tag.uuid, ''), COALESCE(tag.label, '') "
         "FROM streams s "
         "LEFT JOIN location_tree loc ON loc.uuid = s.location_uuid "
+        "LEFT JOIN camera_observations observation "
+        "       ON observation.camera_uuid = s.camera_uuid "
         "LEFT JOIN camera_tag_assignments assignment "
         "       ON assignment.camera_uuid = s.camera_uuid "
         "LEFT JOIN camera_tags tag ON tag.uuid = assignment.tag_uuid ";
@@ -171,37 +177,48 @@ static int load_fleet_cameras(const char *stream_name,
             }
             copy_column(camera->legacy_tags, sizeof(camera->legacy_tags), stmt, 3);
             camera->enabled = sqlite3_column_int(stmt, 4) != 0;
-            camera->record = sqlite3_column_int(stmt, 5) != 0;
+            camera->streaming_enabled = sqlite3_column_int(stmt, 5) != 0;
+            camera->record = sqlite3_column_int(stmt, 6) != 0;
             camera->detection_based_recording =
-                sqlite3_column_int(stmt, 6) != 0;
-            camera->is_onvif = sqlite3_column_int(stmt, 7) != 0;
-            camera->ptz_enabled = sqlite3_column_int(stmt, 8) != 0;
-            camera->backchannel_enabled = sqlite3_column_int(stmt, 9) != 0;
+                sqlite3_column_int(stmt, 7) != 0;
+            camera->is_onvif = sqlite3_column_int(stmt, 8) != 0;
+            camera->ptz_enabled = sqlite3_column_int(stmt, 9) != 0;
+            camera->backchannel_enabled = sqlite3_column_int(stmt, 10) != 0;
             copy_column(camera->location_uuid,
-                        sizeof(camera->location_uuid), stmt, 10);
+                        sizeof(camera->location_uuid), stmt, 11);
             copy_column(camera->location_name,
-                        sizeof(camera->location_name), stmt, 11);
+                        sizeof(camera->location_name), stmt, 12);
             copy_column(camera->location_path,
-                        sizeof(camera->location_path), stmt, 12);
+                        sizeof(camera->location_path), stmt, 13);
             const char *ancestors =
-                (const char *)sqlite3_column_text(stmt, 13);
+                (const char *)sqlite3_column_text(stmt, 14);
             if (load_location_ancestors(camera, ancestors) != 0) {
                 rc = SQLITE_TOOBIG;
                 break;
             }
-            camera->health = camera->enabled ? FLEET_HEALTH_UNKNOWN
-                                             : FLEET_HEALTH_DISABLED;
+            camera->first_video_at = sqlite3_column_int64(stmt, 15);
+            camera->last_frame_ts = sqlite3_column_int64(stmt, 16);
+            camera->last_recording_at = sqlite3_column_int64(stmt, 17);
+            bool administratively_disabled =
+                !camera->enabled || !camera->streaming_enabled;
+            camera->health = administratively_disabled
+                ? FLEET_HEALTH_DISABLED : FLEET_HEALTH_UNKNOWN;
+            camera->availability = administratively_disabled
+                ? FLEET_AVAILABILITY_DISABLED
+                : camera->first_video_at > 0
+                ? FLEET_AVAILABILITY_OFFLINE
+                : FLEET_AVAILABILITY_NEVER_CONNECTED;
         }
 
-        const char *tag_uuid = (const char *)sqlite3_column_text(stmt, 14);
+        const char *tag_uuid = (const char *)sqlite3_column_text(stmt, 18);
         if (tag_uuid && tag_uuid[0] != '\0') {
             if (camera->tag_count >= FLEET_CAMERA_MAX_TAGS) {
                 rc = SQLITE_TOOBIG;
                 break;
             }
             fleet_camera_tag_t *tag = &camera->tags[camera->tag_count++];
-            copy_column(tag->uuid, sizeof(tag->uuid), stmt, 14);
-            copy_column(tag->label, sizeof(tag->label), stmt, 15);
+            copy_column(tag->uuid, sizeof(tag->uuid), stmt, 18);
+            copy_column(tag->label, sizeof(tag->label), stmt, 19);
         }
     }
     sqlite3_finalize(stmt);
@@ -268,8 +285,9 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
         metric_index[slot] = i;
     }
     for (int i = 0; i < count; i++) {
-        if (!cameras[i].enabled) {
+        if (!cameras[i].enabled || !cameras[i].streaming_enabled) {
             cameras[i].health = FLEET_HEALTH_DISABLED;
+            cameras[i].availability = FLEET_AVAILABILITY_DISABLED;
             continue;
         }
         uint64_t hash = 1469598103934665603ULL;
@@ -296,7 +314,14 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
                     cameras[i].health = FLEET_HEALTH_DOWN;
                     break;
             }
-            cameras[i].last_frame_ts = (int64_t)metrics[j].last_frame_ts;
+            int64_t runtime_last_frame =
+                (int64_t)metrics[j].last_frame_ts;
+            if (runtime_last_frame > cameras[i].last_frame_ts) {
+                cameras[i].last_frame_ts = runtime_last_frame;
+            }
+            if (cameras[i].first_video_at == 0 && runtime_last_frame > 0) {
+                cameras[i].first_video_at = runtime_last_frame;
+            }
             cameras[i].health_changed_at =
                 (int64_t)metrics[j].health_changed_at;
             cameras[i].current_fps = metrics[j].current_fps;
@@ -308,6 +333,15 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
                 (time_t)metrics[j].last_completed_segment_ts;
             cameras[i].recording_active = last_segment > 0 &&
                 difftime(now, last_segment) <= recorder_window;
+            if (runtime_last_frame > 0 &&
+                difftime(now, (time_t)runtime_last_frame) <=
+                    STREAM_HEALTH_FRAME_TIMEOUT_DOWN) {
+                cameras[i].availability = FLEET_AVAILABILITY_LIVE;
+            } else {
+                cameras[i].availability = cameras[i].first_video_at > 0
+                    ? FLEET_AVAILABILITY_OFFLINE
+                    : FLEET_AVAILABILITY_NEVER_CONNECTED;
+            }
             break;
         }
     }

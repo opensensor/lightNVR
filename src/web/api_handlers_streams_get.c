@@ -237,11 +237,14 @@ static int handle_get_stream_summaries(
     char sort_by[24] = "name";
     char sort_order[8] = "asc";
     char surface[16] = "admin";
+    char availability[24] = "all";
     http_request_get_query_param(req, "search", search, sizeof(search));
     http_request_get_query_param(req, "sort_by", sort_by, sizeof(sort_by));
     http_request_get_query_param(req, "sort_order", sort_order,
                                  sizeof(sort_order));
     http_request_get_query_param(req, "surface", surface, sizeof(surface));
+    http_request_get_query_param(req, "availability", availability,
+                                 sizeof(availability));
     if (strcmp(sort_by, "name") != 0 && strcmp(sort_by, "status") != 0 &&
         strcmp(sort_by, "resolution") != 0 && strcmp(sort_by, "fps") != 0 &&
         strcmp(sort_by, "recording") != 0) {
@@ -256,6 +259,15 @@ static int handle_get_stream_summaries(
     if (!live_surface && strcmp(surface, "admin") != 0) {
         http_response_set_json_error(res, 400,
                                      "surface must be admin or live");
+        return -1;
+    }
+    if (strcmp(availability, "all") != 0 &&
+        strcmp(availability, "live") != 0 &&
+        strcmp(availability, "offline") != 0 &&
+        strcmp(availability, "never_connected") != 0 &&
+        strcmp(availability, "disabled") != 0) {
+        http_response_set_json_error(res, 400,
+                                     "Invalid availability value");
         return -1;
     }
 
@@ -281,7 +293,10 @@ static int handle_get_stream_summaries(
             return -1;
         }
         if (live.decision != AUTHZ_DECISION_ALLOW ||
-            !stream_summary_matches(&db_streams[i], camera, search)) {
+            !stream_summary_matches(&db_streams[i], camera, search) ||
+            (strcmp(availability, "all") != 0 &&
+             strcmp(availability, fleet_availability_state_name(
+                        camera->availability)) != 0)) {
             continue;
         }
         rows[row_count++] = (stream_summary_row_t){
@@ -333,11 +348,18 @@ static int handle_get_stream_summaries(
         cJSON_AddBoolToObject(item, "isOnvif", config->is_onvif);
         cJSON_AddStringToObject(item, "tags", config->tags);
         cJSON_AddStringToObject(item, "status", summary_status(camera));
+        cJSON_AddStringToObject(
+            item, "availability",
+            fleet_availability_state_name(camera->availability));
+        cJSON_AddNumberToObject(item, "first_video_at",
+                                (double)camera->first_video_at);
         cJSON_AddNumberToObject(item, "last_frame_ts",
                                 (double)camera->last_frame_ts);
         cJSON_AddNumberToObject(item, "current_fps", camera->current_fps);
         cJSON_AddBoolToObject(item, "recording_active",
                               camera->recording_active);
+        cJSON_AddNumberToObject(item, "last_recording_at",
+                                (double)camera->last_recording_at);
         cJSON_AddBoolToObject(item, "can_configure", rows[i].can_configure);
         if (live_surface) {
             cJSON_AddBoolToObject(item, "streaming_enabled",

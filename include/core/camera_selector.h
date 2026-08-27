@@ -28,6 +28,14 @@ typedef enum {
     FLEET_HEALTH_DISABLED
 } fleet_health_state_t;
 
+typedef enum {
+    FLEET_AVAILABILITY_LIVE = 0,
+    FLEET_AVAILABILITY_OFFLINE,
+    FLEET_AVAILABILITY_NEVER_CONNECTED,
+    FLEET_AVAILABILITY_DISABLED,
+    FLEET_AVAILABILITY_COUNT
+} fleet_availability_state_t;
+
 typedef struct {
     char uuid[CAMERA_UUID_STRING_SIZE];
     char label[256];
@@ -50,14 +58,18 @@ typedef struct {
     char manufacturer[FLEET_INVENTORY_VALUE_MAX];
     char model[FLEET_INVENTORY_VALUE_MAX];
     bool enabled;
+    bool streaming_enabled;
     bool record;
     bool detection_based_recording;
     bool is_onvif;
     bool ptz_enabled;
     bool backchannel_enabled;
     fleet_health_state_t health;
+    fleet_availability_state_t availability;
     int64_t health_changed_at;
+    int64_t first_video_at;
     int64_t last_frame_ts;
+    int64_t last_recording_at;
     double current_fps;
     bool recording_active;
 } fleet_camera_t;
@@ -88,6 +100,7 @@ bool fleet_selector_matches(const fleet_selector_t *selector,
                             fleet_selector_explanation_t *explanation);
 
 const char *fleet_health_state_name(fleet_health_state_t state);
+const char *fleet_availability_state_name(fleet_availability_state_t state);
 const char *fleet_camera_recording_mode(const fleet_camera_t *camera);
 
 #endif /* LIGHTNVR_CAMERA_SELECTOR_H */

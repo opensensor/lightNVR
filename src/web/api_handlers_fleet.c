@@ -31,6 +31,7 @@ typedef struct {
     char search[FLEET_QUERY_SEARCH_MAX];
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char collection_uuid[CAMERA_UUID_STRING_SIZE];
+    char availability[24];
     bool include_facets;
     bool explain;
 } fleet_query_options_t;
@@ -149,6 +150,8 @@ static bool parse_options(const cJSON *body, bool preview,
     memset(options, 0, sizeof(*options));
     options->include_facets = true;
     safe_strcpy(options->sort_by, "name", sizeof(options->sort_by), 0);
+    safe_strcpy(options->availability, "all",
+                sizeof(options->availability), 0);
     int maximum_page_size = preview ? FLEET_PREVIEW_MAX_PAGE_SIZE
                                     : FLEET_QUERY_MAX_PAGE_SIZE;
     if (!parse_positive_int(body, "page", 1, 1000000, &options->page, res) ||
@@ -211,6 +214,23 @@ static bool parse_options(const cJSON *body, bool preview,
         safe_strcpy(options->collection_uuid, collection_uuid->valuestring,
                     sizeof(options->collection_uuid), 0);
     }
+    const cJSON *availability =
+        cJSON_GetObjectItemCaseSensitive(body, "availability");
+    if (availability) {
+        const char *value = cJSON_IsString(availability)
+            ? availability->valuestring : NULL;
+        if (!value || (strcmp(value, "all") != 0 &&
+                       strcmp(value, "live") != 0 &&
+                       strcmp(value, "offline") != 0 &&
+                       strcmp(value, "never_connected") != 0 &&
+                       strcmp(value, "disabled") != 0)) {
+            http_response_set_json_error(res, 400,
+                                         "Invalid availability value");
+            return false;
+        }
+        safe_strcpy(options->availability, value,
+                    sizeof(options->availability), 0);
+    }
     const cJSON *facets = cJSON_GetObjectItemCaseSensitive(body, "facets");
     if (facets) {
         if (!cJSON_IsBool(facets)) {
@@ -268,6 +288,7 @@ static cJSON *build_facets(fleet_camera_t **matches, int count) {
     int health_counts[FLEET_HEALTH_DISABLED + 1] = {0};
     int enabled_counts[2] = {0};
     int recording_counts[3] = {0};
+    int availability_counts[FLEET_AVAILABILITY_COUNT] = {0};
     facet_count_t *tag_facets = NULL;
     facet_count_t *location_facets = NULL;
     int tag_count = 0, tag_capacity = 0;
@@ -280,6 +301,10 @@ static cJSON *build_facets(fleet_camera_t **matches, int count) {
             health_counts[camera->health]++;
         }
         enabled_counts[camera->enabled ? 1 : 0]++;
+        if (camera->availability >= FLEET_AVAILABILITY_LIVE &&
+            camera->availability < FLEET_AVAILABILITY_COUNT) {
+            availability_counts[camera->availability]++;
+        }
         const char *mode = fleet_camera_recording_mode(camera);
         recording_counts[strcmp(mode, "off") == 0 ? 0 :
                          strcmp(mode, "continuous") == 0 ? 1 : 2]++;
@@ -312,16 +337,28 @@ static cJSON *build_facets(fleet_camera_t **matches, int count) {
     cJSON *health = cJSON_CreateArray();
     cJSON *enabled = cJSON_CreateArray();
     cJSON *recording = cJSON_CreateArray();
+    cJSON *availability = cJSON_CreateArray();
     cJSON *tags = cJSON_CreateArray();
     cJSON *locations = cJSON_CreateArray();
-    if (!root || !health || !enabled || !recording || !tags || !locations) {
+    if (!root || !health || !enabled || !recording || !availability ||
+        !tags || !locations) {
         cJSON_Delete(root);
         cJSON_Delete(health);
         cJSON_Delete(enabled);
         cJSON_Delete(recording);
+        cJSON_Delete(availability);
         cJSON_Delete(tags);
         cJSON_Delete(locations);
         goto fail;
+    }
+    for (int i = FLEET_AVAILABILITY_LIVE;
+         i < FLEET_AVAILABILITY_COUNT; i++) {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(
+            item, "value", fleet_availability_state_name(
+                (fleet_availability_state_t)i));
+        cJSON_AddNumberToObject(item, "count", availability_counts[i]);
+        cJSON_AddItemToArray(availability, item);
     }
     for (int i = FLEET_HEALTH_UNKNOWN; i <= FLEET_HEALTH_DISABLED; i++) {
         cJSON *item = cJSON_CreateObject();
@@ -362,6 +399,7 @@ static cJSON *build_facets(fleet_camera_t **matches, int count) {
     cJSON_AddItemToObject(root, "health", health);
     cJSON_AddItemToObject(root, "enabled", enabled);
     cJSON_AddItemToObject(root, "recording_mode", recording);
+    cJSON_AddItemToObject(root, "availability", availability);
     cJSON_AddItemToObject(root, "tags", tags);
     cJSON_AddItemToObject(root, "locations", locations);
     free(tag_facets);
@@ -386,10 +424,17 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
                                  fleet_camera_recording_mode(camera)) ||
         !cJSON_AddStringToObject(object, "health",
                                  fleet_health_state_name(camera->health)) ||
+        !cJSON_AddStringToObject(
+            object, "availability",
+            fleet_availability_state_name(camera->availability)) ||
         !cJSON_AddNumberToObject(object, "health_changed_at",
                                  (double)camera->health_changed_at) ||
         !cJSON_AddNumberToObject(object, "last_frame_ts",
                                  (double)camera->last_frame_ts) ||
+        !cJSON_AddNumberToObject(object, "first_video_at",
+                                 (double)camera->first_video_at) ||
+        !cJSON_AddNumberToObject(object, "last_recording_at",
+                                 (double)camera->last_recording_at) ||
         !cJSON_AddNumberToObject(object, "current_fps", camera->current_fps) ||
         !cJSON_AddBoolToObject(object, "recording_active",
                                camera->recording_active) ||
@@ -666,6 +711,12 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
             continue;
         }
         if (!camera_matches_search(&cameras[i], options.search)) continue;
+        if (strcmp(options.availability, "all") != 0 &&
+            strcmp(options.availability,
+                   fleet_availability_state_name(
+                       cameras[i].availability)) != 0) {
+            continue;
+        }
         if (!fleet_selector_matches(selector, &cameras[i], NULL)) continue;
         matches[match_count++] = &cameras[i];
     }
