@@ -19,6 +19,7 @@ instead.
 | [SOD_UNIFIED_DETECTION.md](SOD_UNIFIED_DETECTION.md) | The unified interface over RealNet and CNN models |
 | [SOD_REALNET.md](SOD_REALNET.md) | RealNet face detection integration |
 | [SUMMARY_Recording_Retention.md](SUMMARY_Recording_Retention.md) | Summary of the retention policy work (the PRD is in [prd/](../prd/PRD_Recording_Retention_Policies.md)) |
+| [ONVIF_LPR_INVESTIGATION.md](ONVIF_LPR_INVESTIGATION.md) | 2026-08-28 repository gap analysis, read-only device procedure, multi-engine alignment, privacy design, and open field-work matrix for license-plate events |
 
 Adding something here? If it describes a change you made rather than how the system
 behaves, say so in the opening line and date it — that is the difference between a useful
