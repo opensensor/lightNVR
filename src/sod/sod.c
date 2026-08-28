@@ -4759,7 +4759,13 @@ static inline void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
 		gemm_tt(M, N, K, ALPHA, A, lda, B, ldb, C, ldc);
 	}
 }
-static inline void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
+// Runtime CPU dispatch: compiles this hot path (the CNN's matrix-multiply
+// core) once per listed ISA plus a plain scalar fallback, and picks the
+// fastest one the actual CPU supports at load time via an ifunc resolver.
+// Safe on any x86-64 machine regardless of build host -- no blanket -mavx2
+// flag that would SIGILL on a CPU lacking it.
+__attribute__((target_clones("avx2,fma,default")))
+static void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
 	float *A, int lda,
 	float *B, int ldb,
 	float BETA,
