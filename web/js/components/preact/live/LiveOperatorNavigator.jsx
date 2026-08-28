@@ -11,6 +11,7 @@ import {
   buildLiveLayoutPayload,
   buildLocationTree,
   buildRecentEventsRequests,
+  cameraUuidsForLiveLayout,
   cameraUuidsForLocation,
   cameraUuidScopeKey,
   filterLiveOperatorStreams,
@@ -19,6 +20,22 @@ import {
 } from './liveOperator.js';
 
 const EMPTY_LOCATIONS = Object.freeze([]);
+
+function LiveEventThumbnail({ event }) {
+  const url = event.thumbnail?.status === 'available'
+    ? event.thumbnail?.url : null;
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [url]);
+
+  if (!url || failed) {
+    return <span className="live-event-placeholder" aria-hidden="true">◎</span>;
+  }
+  return (
+    <img src={url} alt="" loading="lazy"
+      onError={() => setFailed(true)} />
+  );
+}
 
 function formatEventTime(timestamp) {
   if (!timestamp) return '';
@@ -43,8 +60,12 @@ export function LiveOperatorNavigator({
   orderedStreams,
   columns,
   rows,
+  operatorSurface,
+  selectedPlanUuid,
   onFilterChange,
   onApplyLayout,
+  onSurfaceChange,
+  onSelectPlan,
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -60,6 +81,8 @@ export function LiveOperatorNavigator({
   const [expanded, setExpanded] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
+  const [layoutCameraScope, setLayoutCameraScope] = useState(null);
+  const [selectedLayoutUuid, setSelectedLayoutUuid] = useState('');
 
   const workspaceQuery = useQuery({
     queryKey: ['ui-workspaces'],
@@ -76,6 +99,11 @@ export function LiveOperatorNavigator({
     queryFn: ({ signal }) => fetchJSON('/api/live/layouts', { signal }),
     staleTime: 15000,
   });
+  const plansQuery = useQuery({
+    queryKey: ['operator-floor-plans'],
+    queryFn: ({ signal }) => fetchJSON('/api/live/plans', { signal }),
+    staleTime: 15000,
+  });
 
   const enabled = workspaceIsVisible(
     workspaceQuery.data, WORKSPACE_KEYS.LIVE_NAVIGATOR);
@@ -88,14 +116,20 @@ export function LiveOperatorNavigator({
     cameraUuidsForLocation(locations, streams, selectedLocation),
   [locations, streams, selectedLocation]);
   const scopedCameraKey = cameraUuidScopeKey(scopedCameraUuids);
+  const layoutCameraKey = layoutCameraScope === null
+    ? null : cameraUuidScopeKey(layoutCameraScope);
+  const effectiveCameraKey = layoutCameraKey ?? scopedCameraKey;
+  const effectiveCameraUuids = useMemo(() => new Set(
+    effectiveCameraKey ? effectiveCameraKey.split(',') : [],
+  ), [effectiveCameraKey]);
   const operatorFilter = useMemo(() => ({
     selectedLocation,
     availability,
-    cameraUuids: new Set(scopedCameraKey ? scopedCameraKey.split(',') : []),
-  }), [selectedLocation, availability, scopedCameraKey]);
+    cameraUuids: effectiveCameraUuids,
+  }), [selectedLocation, availability, effectiveCameraUuids]);
   const scopedStreams = useMemo(() => filterLiveOperatorStreams(
-    streams, scopedCameraUuids, availability),
-  [streams, scopedCameraUuids, availability]);
+    streams, effectiveCameraUuids, availability),
+  [streams, effectiveCameraUuids, availability]);
   const visibleCameras = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     if (!term) return scopedStreams;
@@ -105,10 +139,10 @@ export function LiveOperatorNavigator({
   }, [scopedStreams, search]);
 
   const eventsQuery = useQuery({
-    queryKey: ['live-recent-events', selectedLocation, scopedCameraUuids.size],
+    queryKey: ['live-recent-events', effectiveCameraKey],
     queryFn: async ({ signal }) => {
       const responses = await Promise.all(buildRecentEventsRequests(
-        [...scopedCameraUuids],
+        [...effectiveCameraUuids],
       ).map((request) => fetchJSON('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,7 +157,7 @@ export function LiveOperatorNavigator({
           .slice(0, 20),
       };
     },
-    enabled: enabled && investigationVisible && tab === 'events' && scopedCameraUuids.size > 0,
+    enabled: enabled && investigationVisible && tab === 'events' && effectiveCameraUuids.size > 0,
     staleTime: 15000,
     refetchInterval: 30000,
   });
@@ -146,6 +180,10 @@ export function LiveOperatorNavigator({
     setExpanded(new Set(tree.map((node) => node.uuid)));
   }, [tree, expanded.size]);
 
+  useEffect(() => {
+    if (operatorSurface === 'plan') setTab('plans');
+  }, [operatorSurface]);
+
   if (workspaceQuery.isLoading || !enabled) return null;
 
   const toggleCollapsed = () => {
@@ -161,17 +199,27 @@ export function LiveOperatorNavigator({
       return next;
     });
   };
+  const selectLocation = (uuid) => {
+    setSelectedLocation(uuid);
+    setLayoutCameraScope(null);
+    setSelectedLayoutUuid('');
+  };
   const loadLocation = (uuid) => {
     const cameraUuids = [...cameraUuidsForLocation(locations, streams, uuid)];
     setSelectedLocation(uuid);
     setAvailability('live');
+    setLayoutCameraScope(null);
+    setSelectedLayoutUuid('');
     onApplyLayout({ cameraUuids, columns, rows });
   };
   const applyLayout = (layout) => {
+    const cameraUuids = cameraUuidsForLiveLayout(layout);
     setSelectedLocation(layout.location_uuid || '');
     setAvailability(layout.availability || 'live');
+    setLayoutCameraScope(cameraUuids);
+    setSelectedLayoutUuid(layout.uuid);
     onApplyLayout({
-      cameraUuids: (layout.camera_slots || []).map((slot) => slot.camera_uuid),
+      cameraUuids,
       columns: layout.columns,
       rows: layout.rows,
     });
@@ -184,7 +232,7 @@ export function LiveOperatorNavigator({
       ? window.confirm(t('live.navigator.shareLayoutPrompt')) : false;
     setBusy(true);
     try {
-      await fetchJSON('/api/live/layouts', {
+      const layout = await fetchJSON('/api/live/layouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildLiveLayoutPayload({
@@ -200,6 +248,8 @@ export function LiveOperatorNavigator({
         retries: 0,
       });
       await queryClient.invalidateQueries({ queryKey: ['live-layouts'] });
+      setLayoutCameraScope(cameraUuidsForLiveLayout(layout));
+      setSelectedLayoutUuid(layout.uuid || '');
       showStatusMessage(t('live.navigator.layoutSaved', { name }), 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
@@ -219,6 +269,10 @@ export function LiveOperatorNavigator({
         retries: 0,
       });
       await queryClient.invalidateQueries({ queryKey: ['live-layouts'] });
+      if (selectedLayoutUuid === layout.uuid) {
+        setLayoutCameraScope(null);
+        setSelectedLayoutUuid('');
+      }
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -235,7 +289,7 @@ export function LiveOperatorNavigator({
     );
   }
 
-  const selectedCameraUuids = [...scopedCameraUuids];
+  const selectedCameraUuids = [...effectiveCameraUuids];
   return (
     <aside className="live-operator-navigator" aria-label={t('live.navigator.title')}>
       <div className="live-navigator-heading">
@@ -243,9 +297,12 @@ export function LiveOperatorNavigator({
         <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')}>‹</button>
       </div>
       <div className="live-navigator-tabs" role="tablist">
-        {['cameras', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (
+        {['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (
           <button key={value} type="button" role="tab" aria-selected={tab === value}
-            className={tab === value ? 'is-active' : ''} onClick={() => setTab(value)}>
+            className={tab === value ? 'is-active' : ''} onClick={() => {
+              setTab(value);
+              onSurfaceChange(value === 'plans' ? 'plan' : 'grid');
+            }}>
             {t(`live.navigator.${value}`)}
           </button>
         ))}
@@ -264,17 +321,17 @@ export function LiveOperatorNavigator({
               <option key={value} value={value}>{t(`availability.${availabilityKey(value)}`)}</option>
             ))}
           </select>
-          <button type="button" className={`live-location-row ${selectedLocation === '' ? 'is-selected' : ''}`}
-            onClick={() => setSelectedLocation('')} onDblClick={() => loadLocation('')}>
+          <button type="button" className={`live-location-row ${selectedLocation === '' && layoutCameraScope === null ? 'is-selected' : ''}`}
+            onClick={() => selectLocation('')} onDblClick={() => loadLocation('')}>
             <span>⌂ {t('live.navigator.allCameras')}</span>
             <small>{streams.filter((stream) => stream.availability === 'live').length}/{streams.length}</small>
           </button>
           <div className="live-location-tree">
             {locationRows.map((node) => (
               <button key={node.uuid} type="button"
-                className={`live-location-row ${selectedLocation === node.uuid ? 'is-selected' : ''}`}
+                className={`live-location-row ${selectedLocation === node.uuid && layoutCameraScope === null ? 'is-selected' : ''}`}
                 style={{ '--location-depth': node.depth }}
-                onClick={() => setSelectedLocation(node.uuid)}
+                onClick={() => selectLocation(node.uuid)}
                 onDblClick={() => loadLocation(node.uuid)}>
                 <span className="live-location-name">
                   {node.children.length > 0 && (
@@ -295,13 +352,18 @@ export function LiveOperatorNavigator({
             {visibleCameras.map((stream) => (
               <button key={stream.camera_uuid} type="button" draggable
                 className="live-camera-row"
+                title={`${t('live.navigator.cameras')}: ${stream.name}`}
                 onDragStart={(event) => {
                   event.dataTransfer.setData('application/x-lightnvr-camera', stream.camera_uuid);
                   event.dataTransfer.effectAllowed = 'copy';
                 }}
-                onDblClick={() => onApplyLayout({
-                  cameraUuids: [stream.camera_uuid], columns: 1, rows: 1,
-                })}>
+                onClick={() => {
+                  setLayoutCameraScope([stream.camera_uuid]);
+                  setSelectedLayoutUuid('');
+                  onApplyLayout({
+                    cameraUuids: [stream.camera_uuid], columns: 1, rows: 1,
+                  });
+                }}>
                 <span className={`live-availability-dot is-${stream.availability}`} />
                 <span><strong>{stream.name}</strong><small>{stream.location_path || t('live.navigator.unassigned')}</small></span>
               </button>
@@ -316,8 +378,10 @@ export function LiveOperatorNavigator({
           <button type="button" className="btn-primary live-layout-save" disabled={busy || !layoutsQuery.data?.can_modify}
             onClick={saveLayout}>{t('live.navigator.saveCurrent')}</button>
           {(layoutsQuery.data?.layouts || []).map((layout) => (
-            <div key={layout.uuid} className="live-layout-row">
-              <button type="button" onClick={() => applyLayout(layout)}>
+            <div key={layout.uuid}
+              className={`live-layout-row ${selectedLayoutUuid === layout.uuid ? 'is-selected' : ''}`}>
+              <button type="button" aria-current={selectedLayoutUuid === layout.uuid ? 'true' : undefined}
+                onClick={() => applyLayout(layout)}>
                 <strong>{layout.name}</strong>
                 <small>{layout.columns}×{layout.rows} · {t(`availability.${availabilityKey(layout.availability)}`)}{layout.is_shared ? ` · ${t('live.navigator.shared')}` : ''}</small>
               </button>
@@ -332,14 +396,37 @@ export function LiveOperatorNavigator({
         </div>
       )}
 
+      {tab === 'plans' && (
+        <div className="live-navigator-panel">
+          <p className="live-plan-navigator-help">Choose a building or floor. Camera previews open only when requested.</p>
+          {(plansQuery.data?.plans || []).map((plan) => {
+            const liveCount = (plan.cameras || []).filter((camera) =>
+              streams.find((stream) => stream.camera_uuid === camera.camera_uuid)?.availability === 'live').length;
+            return (
+              <div key={plan.uuid}
+                className={`live-layout-row ${selectedPlanUuid === plan.uuid ? 'is-selected' : ''}`}>
+                <button type="button" aria-current={selectedPlanUuid === plan.uuid ? 'true' : undefined}
+                  onClick={() => {
+                    onSelectPlan(plan.uuid);
+                    onSurfaceChange('plan');
+                  }}>
+                  <strong>{plan.name}</strong>
+                  <small>{liveCount}/{(plan.cameras || []).length} live · {(plan.cameras || []).length} placed</small>
+                </button>
+              </div>
+            );
+          })}
+          {!plansQuery.isLoading && (plansQuery.data?.plans || []).length === 0 &&
+            <p className="live-navigator-empty">No building plans yet. Create one in the plan workspace.</p>}
+        </div>
+      )}
+
       {tab === 'events' && (
         <div className="live-navigator-panel live-event-list">
           {eventsQuery.isLoading && <p className="live-navigator-empty">{t('live.navigator.loadingEvents')}</p>}
           {(eventsQuery.data?.results || []).map((event) => (
             <a key={event.result_id} href={investigationHref(event, selectedCameraUuids)} className="live-event-row">
-              {event.thumbnail?.url
-                ? <img src={event.thumbnail.url} alt="" loading="lazy" />
-                : <span className="live-event-placeholder">◎</span>}
+              <LiveEventThumbnail event={event} />
               <span><strong>{event.detection?.label || event.event_type}</strong>
                 <small>{event.camera?.name} · {formatEventTime(event.start_time)}</small></span>
             </a>

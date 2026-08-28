@@ -2,10 +2,14 @@ import {
   buildLiveLayoutPayload,
   buildLocationTree,
   buildRecentEventsRequests,
+  cameraUuidsForLiveLayout,
   cameraUuidsForLocation,
   cameraUuidScopeKey,
+  filterLiveNavigatorInventory,
   filterLiveOperatorStreams,
   flattenLocationTree,
+  clusterFloorPlanCameras,
+  floorPlanPayload,
 } from '../js/components/preact/live/liveOperator.js';
 
 const locations = [
@@ -56,6 +60,28 @@ describe('Live operator navigator model', () => {
     });
   });
 
+  test('keeps disabled cameras in Navigator inventory but removes deleted cameras', () => {
+    const inventory = filterLiveNavigatorInventory([
+      ...streams,
+      { camera_uuid: 'camera-disabled', availability: 'disabled' },
+      { camera_uuid: 'camera-deleted', availability: 'offline', is_deleted: true },
+    ]);
+    expect(inventory.map((stream) => stream.camera_uuid)).toEqual([
+      'camera-a', 'camera-b', 'camera-disabled',
+    ]);
+    expect(filterLiveNavigatorInventory(inventory, new Set(['camera-b'])))
+      .toEqual([streams[1]]);
+  });
+
+  test('uses the saved layout camera slots as an exact, stable scope', () => {
+    expect(cameraUuidsForLiveLayout({ camera_slots: [
+      { camera_uuid: 'camera-b' },
+      { camera_uuid: 'camera-a' },
+      { camera_uuid: 'camera-b' },
+      {},
+    ] })).toEqual(['camera-b', 'camera-a']);
+  });
+
   test('chunks recent event requests at the server selector limit', () => {
     const requests = buildRecentEventsRequests(
       Array.from({ length: 65 }, (_, index) => `camera-${index}`), 10_000,
@@ -70,5 +96,28 @@ describe('Live operator navigator model', () => {
     });
     expect(requests[0].selector.expression.values).toHaveLength(64);
     expect(requests[1].selector.expression.values).toHaveLength(1);
+  });
+
+  test('clusters dense floor-plan markers only at overview zoom', () => {
+    const cameras = Array.from({ length: 30 }, (_, index) => ({
+      camera_uuid: `camera-${index}`,
+      x: 0.1 + (index % 3) * 0.005,
+      y: 0.2 + (index % 2) * 0.005,
+    }));
+    const overview = clusterFloorPlanCameras(cameras, 1);
+    expect(overview.some((marker) => marker.kind === 'cluster')).toBe(true);
+    expect(overview.reduce((count, marker) =>
+      count + (marker.kind === 'cluster' ? marker.count : 1), 0)).toBe(30);
+    expect(clusterFloorPlanCameras(cameras, 2)).toHaveLength(30);
+  });
+
+  test('normalizes floor-plan updates without losing camera identity', () => {
+    expect(floorPlanPayload({
+      name: 'Building', canvas_width: 1200, canvas_height: 800, revision: 3,
+    }, [{ camera_uuid: 'camera-a', x: -1, y: 2, rotation: 220, fov: 0 }]))
+      .toMatchObject({
+        name: 'Building', revision: 3,
+        cameras: [{ camera_uuid: 'camera-a', x: 0, y: 1, rotation: 180, fov: 65 }],
+      });
   });
 });

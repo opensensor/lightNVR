@@ -73,6 +73,27 @@ static uint64_t create_recording(const char *camera_uuid,
     return add_recording_metadata(&recording);
 }
 
+static uint64_t create_incomplete_recording(const char *camera_uuid,
+                                            const char *stream_name,
+                                            time_t start_time) {
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, stream_name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, camera_uuid,
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/investigation-active.mp4",
+                sizeof(recording.file_path), 0);
+    safe_strcpy(recording.codec, "h264", sizeof(recording.codec), 0);
+    safe_strcpy(recording.trigger_type, "detection",
+                sizeof(recording.trigger_type), 0);
+    recording.start_time = start_time;
+    recording.is_complete = false;
+    recording.schedule_restricted = 0;
+    recording.disk_pressure_eligible = true;
+    return add_recording_metadata(&recording);
+}
+
 static void create_continuous_recordings(const char *camera_uuid,
                                          const char *stream_name,
                                          time_t start_time,
@@ -952,6 +973,37 @@ void test_search_rejects_invalid_cursor(void) {
     cJSON_Delete(json);
 }
 
+void test_search_does_not_advertise_incomplete_recording_thumbnail(void) {
+    const time_t range_start = 1700040000;
+    stream_config_t camera = create_camera("Active recording camera");
+    uint64_t recording_id = create_incomplete_recording(
+        camera.camera_uuid, camera.name, range_start);
+    insert_detection(camera.camera_uuid, camera.name, range_start + 1,
+                     "person", 0.9, "", "local", recording_id);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld}", camera.camera_uuid,
+             (long long)range_start, (long long)(range_start + 60));
+    cJSON *json = call_search(body, 200);
+    const cJSON *result = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(json, "results"), 0);
+    TEST_ASSERT_EQUAL_UINT64(
+        recording_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            result, "recording_id")->valuedouble);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        result, "media_available")));
+    const cJSON *thumbnail = cJSON_GetObjectItemCaseSensitive(
+        result, "thumbnail");
+    TEST_ASSERT_EQUAL_STRING(
+        "unavailable",
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "status")->valuestring);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(thumbnail, "url"));
+    cJSON_Delete(json);
+}
+
 void test_search_results_and_summary_can_be_loaded_independently(void) {
     const time_t range_start = 1700009000;
     stream_config_t camera = create_camera("Split Search Camera");
@@ -1170,6 +1222,7 @@ int main(void) {
     RUN_TEST(test_investigation_thumbnails_disabled_in_cpu_save_mode);
     RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
     RUN_TEST(test_search_rejects_invalid_cursor);
+    RUN_TEST(test_search_does_not_advertise_incomplete_recording_thumbnail);
     RUN_TEST(test_search_results_and_summary_can_be_loaded_independently);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);
     RUN_TEST(test_region_search_filters_boxes_and_explains_missing_metadata);

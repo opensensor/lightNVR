@@ -54,6 +54,7 @@
 #include "web/api_handlers_storage_compliance.h"
 #include "web/api_handlers_workspaces.h"
 #include "web/api_handlers_live_layouts.h"
+#include "web/api_handlers_operator_floor_plans.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -108,6 +109,18 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/locations/#", "DELETE", handle_delete_location);
     http_server_register_handler(server, "/api/cameras/#/location", "PUT",
                                  handle_put_camera_location);
+
+    // Shared spatial plans for the operator Live workspace.
+    http_server_register_handler(server, "/api/live/plans", "GET",
+                                 handle_get_operator_floor_plans);
+    http_server_register_handler(server, "/api/live/plans", "POST",
+                                 handle_post_operator_floor_plan);
+    http_server_register_handler(server, "/api/live/plans/#", "GET",
+                                 handle_get_operator_floor_plan);
+    http_server_register_handler(server, "/api/live/plans/#", "PUT",
+                                 handle_put_operator_floor_plan);
+    http_server_register_handler(server, "/api/live/plans/#", "DELETE",
+                                 handle_delete_operator_floor_plan);
 
     // Normalized camera tag dictionary and UUID-based assignments
     http_server_register_handler(server, "/api/camera-tags", "GET",

@@ -44,6 +44,23 @@ export function filterLiveOperatorStreams(streams, cameraUuids, availability) {
     (availability === 'all' || stream.availability === availability));
 }
 
+/**
+ * Build the Navigator inventory before the playback surface removes cameras
+ * that cannot currently create a video tile. Disabled cameras remain useful
+ * for availability and location inspection; soft-deleted cameras do not.
+ */
+export function filterLiveNavigatorInventory(streams, cameraUuids = null) {
+  return (streams || []).filter((stream) =>
+    !stream.is_deleted &&
+    (!cameraUuids || cameraUuids.has(stream.camera_uuid)));
+}
+
+export function cameraUuidsForLiveLayout(layout) {
+  return [...new Set((layout?.camera_slots || [])
+    .map((slot) => slot?.camera_uuid)
+    .filter(Boolean))];
+}
+
 export function buildLocationTree(locations, streams) {
   const byUuid = new Map();
   const roots = [];
@@ -136,4 +153,46 @@ export function investigationHref(event, cameraUuids = []) {
     params.set('end', String(Math.floor(event.start_time + 300)));
   }
   return `/investigation.html?${params.toString()}`;
+}
+
+export function clusterFloorPlanCameras(cameras, zoom = 1) {
+  const placements = cameras || [];
+  if (placements.length < 24 || zoom >= 1.75) {
+    return placements.map((camera) => ({ kind: 'camera', ...camera }));
+  }
+  const cellSize = Math.max(0.025, 0.085 / Math.max(1, zoom));
+  const buckets = new Map();
+  for (const camera of placements) {
+    const key = `${Math.floor(camera.x / cellSize)}:${Math.floor(camera.y / cellSize)}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(camera);
+  }
+  return [...buckets.values()].map((bucket) => {
+    if (bucket.length === 1) return { kind: 'camera', ...bucket[0] };
+    return {
+      kind: 'cluster',
+      camera_uuids: bucket.map((camera) => camera.camera_uuid),
+      count: bucket.length,
+      x: bucket.reduce((total, camera) => total + camera.x, 0) / bucket.length,
+      y: bucket.reduce((total, camera) => total + camera.y, 0) / bucket.length,
+    };
+  });
+}
+
+export function floorPlanPayload(plan, cameras) {
+  return {
+    name: plan.name,
+    location_uuid: plan.location_uuid || null,
+    parent_plan_uuid: plan.parent_plan_uuid || null,
+    canvas_width: plan.canvas_width,
+    canvas_height: plan.canvas_height,
+    revision: plan.revision,
+    cameras: (cameras || []).map((camera) => ({
+      camera_uuid: camera.camera_uuid,
+      x: Math.max(0, Math.min(1, camera.x)),
+      y: Math.max(0, Math.min(1, camera.y)),
+      rotation: Math.max(-180, Math.min(180, camera.rotation || 0)),
+      fov: Math.max(1, Math.min(180, camera.fov || 65)),
+    })),
+  };
 }

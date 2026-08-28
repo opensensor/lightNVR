@@ -294,7 +294,8 @@ static int load_results(sqlite3 *database,
         "d.label, d.confidence, d.x, d.y, d.width, d.height, "
         "COALESCE(d.zone_id, ''), COALESCE(d.track_id, -1), "
         "CASE WHEN d.source = '' THEN 'local' ELSE d.source END, "
-        "COALESCE(r.id, 0), CASE WHEN r.id IS NULL THEN 0 ELSE 1 END, "
+        "COALESCE(r.id, 0), CASE WHEN r.id IS NOT NULL "
+        "AND r.is_complete = 1 AND r.end_time IS NOT NULL THEN 1 ELSE 0 END, "
         CAPTURE_METHOD_RESULT_SQL ", COALESCE(r.protected, 0) "
         "FROM detections d LEFT JOIN recordings r ON r.id = "
         ASSOCIATED_RECORDING_ID_SQL;
