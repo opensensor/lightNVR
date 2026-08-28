@@ -382,6 +382,7 @@ export function StreamsView() {
       closeModal();
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] });
+      queryClient.invalidateQueries({ queryKey: ['fleet-cameras'] });
     },
     onError: (error, variables) => {
       if (!isEditing) {
@@ -1521,7 +1522,7 @@ export function StreamsView() {
 
       {activeTab === 'inventory' ? (
         <div role="tabpanel" id="inventory-panel" aria-labelledby="inventory-tab">
-          <FleetView />
+          <FleetView onEditCamera={openEditStreamModal} />
         </div>
       ) : activeTab === 'health' ? (
         <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
@@ -1772,7 +1773,9 @@ export function StreamsView() {
           onClose={closeModal}
           onRefreshModels={loadDetectionModels}
           audioDisabled={!!clientConfig.audio_disabled}
-          hideCredentials={shouldHideCredentials}
+          hideCredentials={isEditing
+            ? currentStream.can_control_privacy !== true
+            : shouldHideCredentials}
           transportOfferings={{
             webrtc: !clientConfig.webrtc_disabled,
             mse: !clientConfig.mse_disabled,

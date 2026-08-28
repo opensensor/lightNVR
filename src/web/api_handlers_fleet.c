@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "core/authorization.h"
 #include "core/camera_selector.h"
 #include "core/camera_collection_filter.h"
 #include "core/config.h"
@@ -413,7 +414,8 @@ fail:
 }
 
 static cJSON *camera_to_json(const fleet_camera_t *camera,
-                             const fleet_selector_t *selector, bool explain_match) {
+                             const fleet_selector_t *selector,
+                             bool explain_match, bool can_configure) {
     cJSON *object = cJSON_CreateObject();
     if (!object) return NULL;
     if (!cJSON_AddStringToObject(object, "camera_uuid", camera->camera_uuid) ||
@@ -438,6 +440,7 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
         !cJSON_AddNumberToObject(object, "current_fps", camera->current_fps) ||
         !cJSON_AddBoolToObject(object, "recording_active",
                                camera->recording_active) ||
+        !cJSON_AddBoolToObject(object, "can_configure", can_configure) ||
         !cJSON_AddStringToObject(object, "manufacturer", camera->manufacturer) ||
         !cJSON_AddStringToObject(object, "model", camera->model)) {
         goto fail;
@@ -794,9 +797,38 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
     int start = start64 < match_count ? (int)start64 : match_count;
     int end = start + options.page_size;
     if (end > match_count) end = match_count;
+    authorization_context_t *authz_context = authorization_context_create();
+    if (!authz_context) {
+        cJSON_Delete(root);
+        free(matches);
+        free(cameras);
+        camera_collection_filter_free(&collection_filter);
+        fleet_selector_free(selector);
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
     for (int i = start; i < end; i++) {
-        cJSON *item = camera_to_json(matches[i], selector, options.explain);
+        authorization_evaluation_t configure = {0};
+        if (authorization_evaluate_in_context(
+                authz_context, &user, AUTHZ_CAMERA_CONFIGURE, matches[i],
+                &configure) != 0) {
+            authorization_context_free(authz_context);
+            cJSON_Delete(root);
+            free(matches);
+            free(cameras);
+            camera_collection_filter_free(&collection_filter);
+            fleet_selector_free(selector);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        cJSON *item = camera_to_json(
+            matches[i], selector, options.explain,
+            configure.decision == AUTHZ_DECISION_ALLOW);
         if (!item) {
+            authorization_context_free(authz_context);
             cJSON_Delete(root);
             free(matches);
             free(cameras);
@@ -809,6 +841,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         }
         cJSON_AddItemToArray(items, item);
     }
+    authorization_context_free(authz_context);
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);

@@ -58,11 +58,26 @@ function CameraTags({ tags = [] }) {
   );
 }
 
-function CameraActions({ camera, t }) {
+function CameraActions({ camera, onEditCamera, t }) {
   const encodedName = encodeURIComponent(camera.name);
-  const classes = 'rounded-md border border-border px-2.5 py-1.5 text-xs font-medium no-underline hover:bg-muted focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
+  const classes = 'inline-flex min-h-8 items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs font-medium no-underline hover:bg-muted focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
+  const editLabel = `${t('common.edit')}: ${camera.name}`;
   return (
     <div className="flex flex-wrap justify-end gap-2">
+      {camera.can_configure === true && typeof onEditCamera === 'function' && (
+        <button
+          type="button"
+          className={classes}
+          onClick={() => onEditCamera(camera.name)}
+          title={editLabel}
+          aria-label={editLabel}
+        >
+          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793ZM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.829-2.828Z" />
+          </svg>
+          <span className="sr-only">{t('common.edit')}</span>
+        </button>
+      )}
       <a className={classes} href={`index.html?stream=${encodedName}`}>{t('fleet.viewLive')}</a>
       <a className={classes} href={`recordings.html?stream=${encodedName}`}>{t('nav.recordings')}</a>
     </div>
@@ -94,7 +109,7 @@ function CameraContext({ camera, locale, t }) {
   );
 }
 
-export function FleetTable({ cameras, state, onSort, locale, t, selectable = false, selectedIds, onToggleCamera, onTogglePage }) {
+export function FleetTable({ cameras, state, onSort, locale, t, selectable = false, selectedIds, onToggleCamera, onTogglePage, onEditCamera }) {
   const selectedOnPage = selectable ? cameras.filter((camera) => selectedIds.has(camera.camera_uuid)).length : 0;
   const allOnPageSelected = cameras.length > 0 && selectedOnPage === cameras.length;
   return (
@@ -141,7 +156,7 @@ export function FleetTable({ cameras, state, onSort, locale, t, selectable = fal
                 </td>
                 <td className="px-4 py-3"><CameraTags tags={camera.tags} /></td>
                 <td className="whitespace-nowrap px-4 py-3"><RecordingState camera={camera} t={t} /></td>
-                <td className="px-4 py-3"><CameraActions camera={camera} t={t} /></td>
+                <td className="px-4 py-3"><CameraActions camera={camera} onEditCamera={onEditCamera} t={t} /></td>
               </tr>
             ))}
           </tbody>
@@ -169,7 +184,7 @@ export function FleetTable({ cameras, state, onSort, locale, t, selectable = fal
               </div>
             </div>
             <CameraTags tags={camera.tags} />
-            <CameraActions camera={camera} t={t} />
+            <CameraActions camera={camera} onEditCamera={onEditCamera} t={t} />
           </article>
         ))}
       </div>

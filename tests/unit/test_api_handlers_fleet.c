@@ -34,6 +34,8 @@
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_fleet_query_test.db"
+#define OPERATOR_ROLE_UUID "00000000-0000-4000-8000-000000000002"
+#define VIEWER_ROLE_UUID "00000000-0000-4000-8000-000000000003"
 
 static stream_config_t make_stream(const char *name, const char *url,
                                    const char *tags, bool enabled) {
@@ -383,6 +385,53 @@ void test_existing_tag_rbac_is_applied_before_totals_and_facets(void) {
     cJSON_Delete(json);
 
     json = call_handler(handle_post_fleet_camera_query, "{}", NULL, 401);
+    cJSON_Delete(json);
+}
+
+void test_query_reports_camera_configure_capability_per_scope(void) {
+    stream_config_t editable = create_camera(
+        "Editable Camera", "rtsp://10.0.0.32/live", "Outdoor", true, NULL);
+    create_camera("Read Only Camera", "rtsp://10.0.0.33/live", "Indoor",
+                  true, NULL);
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("fleetviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_create_user_grant(
+               user_id, VIEWER_ROLE_UUID, "all", NULL, NULL, NULL));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             editable.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_create_user_grant(
+               user_id, OPERATOR_ROLE_UUID, "selector", selector, NULL,
+               NULL));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+
+    cJSON *json = call_handler(handle_post_fleet_camera_query, "{}",
+                               api_key, 200);
+    cJSON *cameras = cJSON_GetObjectItemCaseSensitive(json, "cameras");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(cameras));
+    cJSON *camera = NULL;
+    cJSON_ArrayForEach(camera, cameras) {
+        cJSON *name = cJSON_GetObjectItemCaseSensitive(camera, "name");
+        cJSON *can_configure =
+            cJSON_GetObjectItemCaseSensitive(camera, "can_configure");
+        TEST_ASSERT_TRUE(cJSON_IsBool(can_configure));
+        if (strcmp(name->valuestring, editable.name) == 0) {
+            TEST_ASSERT_TRUE(cJSON_IsTrue(can_configure));
+        } else {
+            TEST_ASSERT_FALSE(cJSON_IsTrue(can_configure));
+        }
+    }
     cJSON_Delete(json);
 }
 
@@ -797,6 +846,7 @@ int main(void) {
     RUN_TEST(test_query_composes_selector_search_sort_pagination_and_facets);
     RUN_TEST(test_preview_returns_bounded_match_explanation);
     RUN_TEST(test_existing_tag_rbac_is_applied_before_totals_and_facets);
+    RUN_TEST(test_query_reports_camera_configure_capability_per_scope);
     RUN_TEST(test_query_filters_by_collection_without_exposing_smart_rules);
     RUN_TEST(test_rejects_malformed_selector_and_oversized_page);
     RUN_TEST(test_recordings_filter_by_collection_uuid);
