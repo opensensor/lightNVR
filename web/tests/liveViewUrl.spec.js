@@ -26,4 +26,30 @@ describe('live view links', () => {
     expect(resolveForcedLiveTransport('/hls.html', '?mode=mse'))
       .toBe('mse');
   });
+
+  test('selects the first enabled explicit transport when Auto is disabled', () => {
+    expect(resolveForcedLiveTransport('/index.html', '', {
+      autoDisabled: true,
+      offerings: { webrtc: true, mse: true, hls: true },
+    })).toBe('webrtc');
+    expect(resolveForcedLiveTransport('/index.html', '', {
+      autoDisabled: true,
+      offerings: { webrtc: false, mse: true, hls: true },
+    })).toBe('mse');
+    expect(resolveForcedLiveTransport('/index.html', '', {
+      autoDisabled: true,
+      offerings: { webrtc: false, mse: false, hls: true },
+    })).toBe('hls');
+  });
+
+  test('explicit URLs still win when Auto is disabled', () => {
+    const options = {
+      autoDisabled: true,
+      offerings: { webrtc: true, mse: true, hls: true },
+    };
+    expect(resolveForcedLiveTransport('/index.html', '?mode=mse', options))
+      .toBe('mse');
+    expect(resolveForcedLiveTransport('/hls.html', '', options))
+      .toBe('hls');
+  });
 });

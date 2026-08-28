@@ -41,11 +41,19 @@ function legacyLayoutToColsRowsHLS(layout) {
  * LiveView component
  * @returns {JSX.Element} LiveView component
  */
-export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
+export function LiveView({isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
   const { t } = useI18n();
   const forcedTransport = resolveForcedLiveTransport(
     window.location.pathname,
-    window.location.search
+    window.location.search,
+    {
+      autoDisabled: isAutoDisabled,
+      offerings: {
+        webrtc: !isWebRTCDisabled,
+        mse: !isMseDisabled,
+        hls: !isHlsDisabled,
+      },
+    }
   );
   const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
   // Use the snapshot manager hook
@@ -554,17 +562,19 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
               tile. Each transport only renders if enabled in settings
               (#397). MSE additionally requires go2rtc to be reachable. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
-            {forcedTransport === null ? (
-              <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                Auto
-              </span>
-            ) : (
-              <a
-                href={buildLiveViewHref('/index.html', window.location.search)}
-                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
-              >
-                Auto
-              </a>
+            {!isAutoDisabled && (
+              forcedTransport === null ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  Auto
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/index.html', window.location.search)}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  Auto
+                </a>
+              )
             )}
             {!isWebRTCDisabled && (
               forcedTransport === 'webrtc' ? (

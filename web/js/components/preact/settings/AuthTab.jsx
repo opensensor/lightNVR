@@ -66,18 +66,21 @@ export function AuthTab({
           </div>
         </div>
 
-        {/* Dashboard view methods (#397) — WebRTC / HLS / MSE as independent
+        {/* Dashboard view methods (#397) — Auto / WebRTC / HLS / MSE as independent
             checkboxes.  Internally each is stored as a *_disabled flag; the
             UI presents them as positive "enable" toggles so the control
-            direction matches user intent.  Backend rejects the save if all
-            three would end up disabled. */}
+            direction matches user intent. Auto is a policy, so it does not
+            count toward the requirement to keep one concrete transport. */}
         {(() => {
           const viewMethods = [
+            { key: 'autoDisabled',   id: 'setting-auto-enabled',   label: t('settings.viewMethodAuto'), isPolicy: true },
             { key: 'webrtcDisabled', id: 'setting-webrtc-enabled', label: t('settings.viewMethodWebrtc') },
             { key: 'hlsDisabled',    id: 'setting-hls-enabled',    label: t('settings.viewMethodHls') },
             { key: 'mseDisabled',    id: 'setting-mse-enabled',    label: t('settings.viewMethodMse') },
           ];
-          const enabledCount = viewMethods.filter(m => !settings[m.key]).length;
+          const enabledTransportCount = viewMethods.filter(
+            m => !m.isPolicy && !settings[m.key]
+          ).length;
           return (
             <div data-setting-label={t('settings.enabledViewMethods')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
               <label class="font-medium">{t('settings.enabledViewMethods')}</label>
@@ -93,10 +96,12 @@ export function AuthTab({
                       onChange={(e) => handleInputChange({
                         target: { name: m.key, type: 'checkbox', checked: !e.target.checked }
                       })}
-                      /* Block the user from unchecking the last enabled method
+                      /* Block the user from unchecking the last concrete method
                          client-side; backend also rejects this, but disabling
                          the control avoids an error round-trip. */
-                      disabled={!canModifySettings || (enabledCount === 1 && !settings[m.key])}
+                      disabled={!canModifySettings || (
+                        !m.isPolicy && enabledTransportCount === 1 && !settings[m.key]
+                      )}
                     />
                     <span class="text-sm">{m.label}</span>
                   </label>

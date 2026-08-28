@@ -314,6 +314,11 @@ void test_default_config_auth_timeout(void) {
     TEST_ASSERT_EQUAL_INT(24, cfg.auth_timeout_hours);
 }
 
+void test_default_config_auto_view_enabled(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_FALSE(cfg.auto_disabled);
+}
+
 void test_default_config_web_compression_enabled(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(cfg.web_compression_enabled);
@@ -389,6 +394,7 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     load_default_config(&cfg);
     cfg.db_backup_interval_minutes = 15;
     cfg.db_backup_retention_count = 8;
+    cfg.auto_disabled = true;
     snprintf(cfg.db_post_backup_script, sizeof(cfg.db_post_backup_script), "/usr/local/bin/post-backup");
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
@@ -404,6 +410,7 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_retention_count = 8"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "post_backup_script = /usr/local/bin/post-backup"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "mp4_directory_format = year_month_day"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "auto_disabled = true"));
         fclose(saved);
     }
 
@@ -452,7 +459,8 @@ void test_env_integer_whitespace_handling(void) {
             "backup_retention_count = 12\n"
             "post_backup_script = /usr/local/bin/backup-hook\n\n"
             "[web]\n"
-            "root = %s\n",
+            "root = %s\n"
+            "auto_disabled = true\n",
             pid_path, log_path, storage_path, storage_hls_path,
             models_path, db_path, web_root);
     fclose(config_file);
@@ -474,6 +482,7 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
     TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
+    TEST_ASSERT_TRUE(cfg.auto_disabled);
 
     /* Leading whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099", 1));
@@ -555,6 +564,7 @@ int main(void) {
     RUN_TEST(test_default_config_mp4_directory_format);
     RUN_TEST(test_default_config_stream_defaults);
     RUN_TEST(test_default_config_auth_timeout);
+    RUN_TEST(test_default_config_auto_view_enabled);
     RUN_TEST(test_default_config_web_compression_enabled);
 
     RUN_TEST(test_validate_config_swap_size_zero_with_use_swap);

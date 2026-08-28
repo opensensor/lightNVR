@@ -394,6 +394,7 @@ void load_default_config(config_t *config) {
     safe_strcpy(config->web_username, "admin", 32, 0);
     // Blank means bootstrap admin/admin; db_auth_init requires first-login replacement.
     config->web_password[0] = '\0';
+    config->auto_disabled = false;   // Auto view is enabled by default
     config->webrtc_disabled = false; // WebRTC is enabled by default
     config->hls_disabled = false;    // HLS is enabled by default (#397)
     config->mse_disabled = false;    // MSE is enabled by default (#397)
@@ -852,6 +853,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->web_username, value, sizeof(config->web_username), 0);
         } else if (strcmp(name, "password") == 0) {
             safe_strcpy(config->web_password, value, sizeof(config->web_password), 0);
+        } else if (strcmp(name, "auto_disabled") == 0) {
+            config->auto_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "webrtc_disabled") == 0) {
             config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "hls_disabled") == 0) {
@@ -1750,6 +1753,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
+    fprintf(file, "auto_disabled = %s  ; Hide Auto view and use the first enabled explicit transport\n", config->auto_disabled ? "true" : "false");
     fprintf(file, "webrtc_disabled = %s  ; Hide WebRTC view on dashboard\n", config->webrtc_disabled ? "true" : "false");
     fprintf(file, "hls_disabled = %s     ; Hide HLS view on dashboard\n", config->hls_disabled ? "true" : "false");
     fprintf(file, "mse_disabled = %s     ; Hide MSE view on dashboard\n", config->mse_disabled ? "true" : "false");
@@ -1900,6 +1904,7 @@ void print_config(const config_t *config) {
     printf("    Web Auth Enabled: %s\n", config->web_auth_enabled ? "true" : "false");
     printf("    Web Username: %s\n", config->web_username);
     printf("    Web Password: %s\n", "********");
+    printf("    Auto Disabled: %s\n",   config->auto_disabled ? "true" : "false");
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
     printf("    HLS Disabled: %s\n",    config->hls_disabled ? "true" : "false");
     printf("    MSE Disabled: %s\n",    config->mse_disabled ? "true" : "false");

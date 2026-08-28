@@ -42,11 +42,19 @@ function legacyLayoutToColsRowsWebRTC(layout) {
  * WebRTCView component
  * @returns {JSX.Element} WebRTCView component
  */
-export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
+export function WebRTCView({ isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const { t } = useI18n();
   const forcedTransport = resolveForcedLiveTransport(
     window.location.pathname,
-    window.location.search
+    window.location.search,
+    {
+      autoDisabled: isAutoDisabled,
+      offerings: {
+        webrtc: !isWebRTCDisabled,
+        mse: !isMseDisabled,
+        hls: !isHlsDisabled,
+      },
+    }
   );
   const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
 
@@ -573,17 +581,19 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
           {/* Auto honors per-stream precedence; explicit modes force every tile. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
-            {forcedTransport === null ? (
-              <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                Auto
-              </span>
-            ) : (
-              <a
-                href={buildLiveViewHref('/index.html', window.location.search)}
-                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
-              >
-                Auto
-              </a>
+            {!isAutoDisabled && (
+              forcedTransport === null ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  Auto
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/index.html', window.location.search)}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  Auto
+                </a>
+              )
             )}
 
             {forcedTransport === 'webrtc' ? (

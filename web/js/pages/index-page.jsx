@@ -22,6 +22,7 @@ import { initI18n } from '../i18n.js';
  */
 function App() {
     const [viewFlags, setViewFlags] = useState({
+        autoDisabled: false,
         webrtcDisabled: false,
         hlsDisabled: false,
         mseDisabled: false,
@@ -47,6 +48,7 @@ function App() {
                     
                     setViewFlags({
                         // Membaca versi camelCase agar sinkron dengan AuthTab
+                        autoDisabled:   settings.autoDisabled !== undefined ? !!settings.autoDisabled : !!settings.auto_disabled,
                         webrtcDisabled: settings.webrtcDisabled !== undefined ? !!settings.webrtcDisabled || go2rtcOff : !!settings.webrtc_disabled || go2rtcOff,
                         hlsDisabled:    settings.hlsDisabled !== undefined ? !!settings.hlsDisabled : !!settings.hls_disabled,
                         mseDisabled:    settings.mseDisabled !== undefined ? !!settings.mseDisabled || go2rtcOff : !!settings.mse_disabled || go2rtcOff,
@@ -86,11 +88,13 @@ function App() {
             {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
             {useWebRTC
                 ? <WebRTCView 
+                    isAutoDisabled={viewFlags.autoDisabled}
                     isWebRTCDisabled={viewFlags.webrtcDisabled}
                     isHlsDisabled={viewFlags.hlsDisabled}
                     isMseDisabled={viewFlags.mseDisabled}
                   />
                 : <LiveView
+                    isAutoDisabled={viewFlags.autoDisabled}
                     isWebRTCDisabled={viewFlags.webrtcDisabled}
                     isHlsDisabled={viewFlags.hlsDisabled}
                     isMseDisabled={viewFlags.mseDisabled}

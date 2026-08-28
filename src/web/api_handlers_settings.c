@@ -410,6 +410,7 @@ void handle_get_client_config(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(config, "web_auth_enabled",
                           g_config.web_auth_enabled);
     cJSON_AddBoolToObject(config, "demo_mode", g_config.demo_mode);
+    cJSON_AddBoolToObject(config, "auto_disabled", g_config.auto_disabled);
     bool go2rtc_available = false;
     if (g_config.go2rtc_enabled) {
         int go2rtc_pid = -1;
@@ -478,6 +479,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
     cJSON_AddBoolToObject(settings, "demo_mode", g_config.demo_mode);
     // Note: web_username and web_password removed - user management is now fully database-based
+    cJSON_AddBoolToObject(settings, "auto_disabled",   g_config.auto_disabled);
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
     cJSON_AddBoolToObject(settings, "hls_disabled",    g_config.hls_disabled);
     cJSON_AddBoolToObject(settings, "mse_disabled",    g_config.mse_disabled);
@@ -801,10 +803,10 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
     // Note: web_username and web_password settings removed - user management is now fully database-based
 
-    // Dashboard view methods (#397) — WebRTC / HLS / MSE can be individually
-    // disabled.  Validate first that at least one remains enabled; reject with
-    // 400 otherwise so the UI can surface a meaningful error instead of
-    // leaving the user with a dashboard that shows nothing.
+    // Dashboard view methods (#397) — Auto / WebRTC / HLS / MSE can be
+    // individually disabled. Auto is a selection policy rather than a media
+    // transport, so at least one of the three concrete transports must remain.
+    cJSON *auto_disabled   = cJSON_GetObjectItem(settings, "auto_disabled");
     cJSON *webrtc_disabled = cJSON_GetObjectItem(settings, "webrtc_disabled");
     cJSON *hls_disabled    = cJSON_GetObjectItem(settings, "hls_disabled");
     cJSON *mse_disabled    = cJSON_GetObjectItem(settings, "mse_disabled");
@@ -817,12 +819,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             ? cJSON_IsTrue(mse_disabled)    : g_config.mse_disabled;
 
         if (new_webrtc_disabled && new_hls_disabled && new_mse_disabled) {
-            log_warn("Rejected settings: all three dashboard view methods disabled");
+            log_warn("Rejected settings: all three concrete playback transports disabled");
             cJSON_Delete(settings);
             http_response_set_json_error(res, 400,
                 "At least one dashboard view method (WebRTC, HLS, or MSE) must remain enabled");
             return;
         }
+    }
+
+    if (auto_disabled && cJSON_IsBool(auto_disabled)) {
+        g_config.auto_disabled = cJSON_IsTrue(auto_disabled);
+        settings_changed = true;
+        log_info("Updated auto_disabled: %s", g_config.auto_disabled ? "true" : "false");
     }
 
     if (webrtc_disabled && cJSON_IsBool(webrtc_disabled)) {

@@ -117,8 +117,10 @@ ALTER TABLE streams
        'webrtc_then_mse','mse_then_hls'));
 ```
 
-The existing `[web]` configuration flags `webrtc_disabled`, `mse_disabled`,
-and `hls_disabled` gate the globally offered transports. The implemented
+The `[web]` configuration flags `auto_disabled`, `webrtc_disabled`,
+`mse_disabled`, and `hls_disabled` gate the dashboard selectors and globally
+offered transports. When Auto is disabled, the bare Live URL selects the first
+enabled explicit transport (WebRTC, MSE, then HLS). The implemented
 `[web] default_playback_transport` setting supplies the initial profile for new
 streams. Shared grid order currently persists client-side through the common
 camera-order store rather than a `system_settings.live_view_grid_layout_v2`
