@@ -62,11 +62,14 @@ continues to record the original image. Edit the stream, open **Fisheye ePTZ**, 
 and calibrate the optical center, image-circle radius, lens field of view, and rotation.
 The first supported lens mapping is equidistant (`radius = focal length × ray angle`).
 
-The dewarped view is available in Live View over WebRTC, MSE, or HLS and in Timeline
-playback. Drag to pan and tilt, use the mouse wheel or a two-finger pinch to zoom, and
-press **Home** or the on-video reset control to return to the configured default view.
-Each browser remembers its last virtual viewpoint per camera. The setting does not enable
-or operate mechanical ONVIF PTZ, and it never changes the stored recording.
+The dewarped view is available in Live View over WebRTC, MSE, or HLS, in Timeline
+playback (including a selection containing multiple cameras), and in the synchronized
+Investigation players. Drag to pan and tilt, use the mouse wheel or a two-finger pinch to
+zoom, and press **Home** or the on-video reset control to return to the configured default
+view. Investigation temporarily displays the raw recording while a metadata region is
+selected so the region continues to line up with stored raw-frame coordinates. Each
+browser remembers its last virtual viewpoint per camera. The setting does not enable or
+operate mechanical ONVIF PTZ, and it never changes the stored recording.
 
 Calibration values are normalized against the source frame:
 

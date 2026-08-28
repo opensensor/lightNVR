@@ -32,3 +32,26 @@ export async function fetchAllStreamSummaries({ surface = 'admin', availability 
   } while (page <= totalPages);
   return streams;
 }
+
+/**
+ * Resolve the current stream configuration for recorded media. Camera UUID is
+ * authoritative because stream names can be changed after a recording was
+ * captured; the name remains a compatibility fallback for legacy recordings.
+ */
+export function resolveRecordedStreamSummary(
+  streams,
+  { cameraUuid = '', streamName = '' } = {},
+) {
+  if (!Array.isArray(streams)) return null;
+
+  if (cameraUuid) {
+    const byCameraUuid = streams.find((stream) => stream?.camera_uuid === cameraUuid);
+    if (byCameraUuid) return byCameraUuid;
+  }
+
+  if (streamName) {
+    return streams.find((stream) => stream?.name === streamName) || null;
+  }
+
+  return null;
+}

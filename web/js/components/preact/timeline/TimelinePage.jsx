@@ -1041,8 +1041,10 @@ export function TimelinePage() {
     data: streamsData,
     error: streamsError
   } = useQuery({
-    queryKey: ['streams', 'timeline-summary'],
-    queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
+    queryKey: ['streams', 'timeline-summary', 'live'],
+    // Historical playback needs the browser-side fisheye calibration, which
+    // is intentionally included only in the playback-oriented summary shape.
+    queryFn: ({ signal }) => fetchAllStreamSummaries({ surface: 'live', signal }),
     staleTime: 30000,
   });
 
@@ -1416,6 +1418,7 @@ export function TimelinePage() {
           videoElementRef={videoElementRef}
           autoFullscreen={urlParams.fullscreen}
           streamConfig={streamsList.find((stream) => stream.name === selectedStream) || null}
+          streamConfigs={streamsList}
         />
 
         {/* Playback controls (includes time display) */}

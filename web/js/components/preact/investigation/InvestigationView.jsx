@@ -3,8 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { Priority, queueThumbnailLoad } from '../../../request-queue.js';
-import { fetchAllStreamSummaries } from '../../../utils/stream-summaries.js';
+import {
+  fetchAllStreamSummaries,
+  resolveRecordedStreamSummary,
+} from '../../../utils/stream-summaries.js';
+import { isEptzEnabled } from '../../../utils/eptz-config.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
+import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
 import { InvestigationActions } from './InvestigationActions.jsx';
 import { InvestigationBookmarks } from './InvestigationBookmarks.jsx';
@@ -60,6 +65,7 @@ function InvestigationPlayer({
   playing,
   speed,
   primary,
+  streamConfig,
   region,
   drawingRegion,
   onRegionChange,
@@ -77,6 +83,10 @@ function InvestigationPlayer({
   const cursorSecond = Math.floor(cursor);
   const [status, setStatus] = useState(coverageSegment ? 'loading' : 'gap');
   const [videoDimensions, setVideoDimensions] = useState({ width: 16, height: 9 });
+  // Region metadata is stored in raw-frame coordinates. Keep that workflow on
+  // the raw recording so drawing and the persisted boxes stay spatially exact.
+  const eptzConfigured = isEptzEnabled(streamConfig?.eptz_config);
+  const eptzActive = eptzConfigured && !drawingRegion && !region;
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -260,7 +270,7 @@ function InvestigationPlayer({
             muted={!primary}
             playsInline
             preload="metadata"
-            controls
+            controls={!eptzActive}
             onWaiting={() => setStatus('late')}
             onPlaying={() => setStatus('ready')}
             onCanPlay={() => setStatus('ready')}
@@ -276,6 +286,13 @@ function InvestigationPlayer({
             <span>{t('investigation.noFootageAtTime')}</span>
             <time>{formatCursorTime(cursor)}</time>
           </div>
+        )}
+        {segment && eptzActive && (
+          <FisheyeEptzCanvas
+            videoRef={videoRef}
+            eptzConfig={streamConfig?.eptz_config}
+            streamName={streamConfig?.name || track.name}
+          />
         )}
         {segment && (drawingRegion || region) && (
           <div
@@ -647,8 +664,8 @@ export function InvestigationView() {
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } =
     useQuery({
-      queryKey: ['investigation-streams', 'summary'],
-      queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
+      queryKey: ['investigation-streams', 'summary', 'live'],
+      queryFn: ({ signal }) => fetchAllStreamSummaries({ surface: 'live', signal }),
       staleTime: 30000,
     });
   const streams = Array.isArray(streamData) ? streamData : [];
@@ -1748,6 +1765,10 @@ export function InvestigationView() {
                   playing={playing}
                   speed={speed}
                   primary={primaryCameraUuid === track.camera_uuid}
+                  streamConfig={resolveRecordedStreamSummary(streams, {
+                    cameraUuid: track.camera_uuid,
+                    streamName: track.name,
+                  })}
                   region={searchFilters.region?.cameraUuid === track.camera_uuid
                     ? searchFilters.region : null}
                   drawingRegion={drawingRegion &&

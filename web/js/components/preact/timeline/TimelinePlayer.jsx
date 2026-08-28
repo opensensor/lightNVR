@@ -3,7 +3,7 @@
  * Handles video playback for the timeline
  */
 
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import {
   formatPlaybackTimeLabel,
@@ -17,6 +17,7 @@ import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../
 import { useI18n } from '../../../i18n.js';
 import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
 import { isEptzEnabled } from '../../../utils/eptz-config.js';
+import { resolveRecordedStreamSummary } from '../../../utils/stream-summaries.js';
 
 // Timeout for cleaning up preloaded temporary video elements (in milliseconds).
 const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
@@ -27,9 +28,13 @@ const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detecti
  * TimelinePlayer component
  * @returns {JSX.Element} TimelinePlayer component
  */
-export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false, streamConfig = null }) {
+export function TimelinePlayer({
+  videoElementRef = null,
+  autoFullscreen = false,
+  streamConfig = null,
+  streamConfigs = [],
+}) {
   const { t } = useI18n();
-  const eptzEnabled = isEptzEnabled(streamConfig?.eptz_config);
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
@@ -44,6 +49,22 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false,
   // (transient activation requirement) prevents auto-calling requestFullscreen()
   // after a page navigation, so we surface this clear call-to-action instead.
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(autoFullscreen);
+
+  const activeSegment = currentSegmentIndex >= 0 && currentSegmentIndex < segments.length
+    ? segments[currentSegmentIndex]
+    : null;
+  const activeStreamConfig = useMemo(() => (
+    resolveRecordedStreamSummary(streamConfigs, {
+      cameraUuid: activeSegment?.camera_uuid,
+      streamName: activeSegment?.stream,
+    }) || streamConfig
+  ), [
+    activeSegment?.camera_uuid,
+    activeSegment?.stream,
+    streamConfig,
+    streamConfigs,
+  ]);
+  const eptzEnabled = isEptzEnabled(activeStreamConfig?.eptz_config);
 
   // Whether the primary pointer is coarse (finger/stylus). The click guard
   // below exists to suppress Firefox's *mouse* click-to-play on the video
@@ -924,8 +945,8 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false,
 
           <FisheyeEptzCanvas
             videoRef={videoRef}
-            eptzConfig={streamConfig?.eptz_config}
-            streamName={streamConfig?.name}
+            eptzConfig={activeStreamConfig?.eptz_config}
+            streamName={activeStreamConfig?.name || activeSegment?.stream}
           />
 
           {/* Click guard — sits above the video surface to intercept Firefox's

@@ -2220,7 +2220,7 @@
   "investigation.status.paused-by-browser": "Select play to allow media",
   "streamsConfig.eptzTitle": "Fisheye ePTZ",
   "streamsConfig.eptzEnable": "Enable browser-side fisheye ePTZ",
-  "streamsConfig.eptzHelp": "Dewarp the untouched fisheye stream in Live View and Timeline playback. This does not alter recordings or camera output.",
+  "streamsConfig.eptzHelp": "Dewarp the untouched fisheye stream in Live View, Timeline playback, and Investigation. This does not alter recordings or camera output.",
   "streamsConfig.eptzModelHelp": "Projection: equidistant circular fisheye · Mount: ceiling. Center and radius use normalized source-image coordinates.",
   "streamsConfig.eptzCenterX": "Optical center X",
   "streamsConfig.eptzCenterY": "Optical center Y",
