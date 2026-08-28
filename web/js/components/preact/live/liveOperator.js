@@ -2,6 +2,15 @@ export const LIVE_AVAILABILITY_OPTIONS = Object.freeze([
   'live', 'offline', 'never_connected', 'disabled', 'all',
 ]);
 
+/**
+ * Stable semantic identity for a camera scope. Set identity is not suitable
+ * for hook dependencies because equivalent Sets can be reconstructed while
+ * async Navigator data is loading.
+ */
+export function cameraUuidScopeKey(cameraUuids) {
+  return [...new Set(cameraUuids || [])].sort().join(',');
+}
+
 export function locationDescendantUuids(locations, rootUuid) {
   if (!rootUuid) return new Set();
   const children = new Map();

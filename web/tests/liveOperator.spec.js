@@ -3,6 +3,7 @@ import {
   buildLocationTree,
   buildRecentEventsRequests,
   cameraUuidsForLocation,
+  cameraUuidScopeKey,
   filterLiveOperatorStreams,
   flattenLocationTree,
 } from '../js/components/preact/live/liveOperator.js';
@@ -18,6 +19,13 @@ const streams = [
 ];
 
 describe('Live operator navigator model', () => {
+  test('uses camera membership rather than Set identity for effect dependencies', () => {
+    expect(cameraUuidScopeKey(new Set(['camera-b', 'camera-a']))).toBe(
+      cameraUuidScopeKey(new Set(['camera-a', 'camera-b'])));
+    expect(cameraUuidScopeKey(new Set(['camera-a', 'camera-c']))).not.toBe(
+      cameraUuidScopeKey(new Set(['camera-a', 'camera-b'])));
+  });
+
   test('aggregates nested location counts and scopes descendant cameras', () => {
     const tree = buildLocationTree(locations, streams);
     expect(tree[0]).toMatchObject({ uuid: 'campus', total: 2, live: 1 });

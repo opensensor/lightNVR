@@ -12,10 +12,13 @@ import {
   buildLocationTree,
   buildRecentEventsRequests,
   cameraUuidsForLocation,
+  cameraUuidScopeKey,
   filterLiveOperatorStreams,
   flattenLocationTree,
   investigationHref,
 } from './liveOperator.js';
+
+const EMPTY_LOCATIONS = Object.freeze([]);
 
 function formatEventTime(timestamp) {
   if (!timestamp) return '';
@@ -78,12 +81,18 @@ export function LiveOperatorNavigator({
     workspaceQuery.data, WORKSPACE_KEYS.LIVE_NAVIGATOR);
   const investigationVisible = workspaceIsVisible(
     workspaceQuery.data, WORKSPACE_KEYS.INVESTIGATION);
-  const locations = locationsQuery.data?.locations || [];
+  const locations = locationsQuery.data?.locations || EMPTY_LOCATIONS;
   const tree = useMemo(() => buildLocationTree(locations, streams), [locations, streams]);
   const locationRows = useMemo(() => flattenLocationTree(tree, expanded), [tree, expanded]);
   const scopedCameraUuids = useMemo(() =>
     cameraUuidsForLocation(locations, streams, selectedLocation),
   [locations, streams, selectedLocation]);
+  const scopedCameraKey = cameraUuidScopeKey(scopedCameraUuids);
+  const operatorFilter = useMemo(() => ({
+    selectedLocation,
+    availability,
+    cameraUuids: new Set(scopedCameraKey ? scopedCameraKey.split(',') : []),
+  }), [selectedLocation, availability, scopedCameraKey]);
   const scopedStreams = useMemo(() => filterLiveOperatorStreams(
     streams, scopedCameraUuids, availability),
   [streams, scopedCameraUuids, availability]);
@@ -124,13 +133,13 @@ export function LiveOperatorNavigator({
       onFilterChange(null);
       return;
     }
-    onFilterChange({ selectedLocation, availability, cameraUuids: scopedCameraUuids });
+    onFilterChange(operatorFilter);
     localStorage.setItem('lightnvr-live-availability', availability);
     const url = new URL(window.location.href);
     if (selectedLocation) url.searchParams.set('location', selectedLocation);
     else url.searchParams.delete('location');
     window.history.replaceState({}, '', url);
-  }, [enabled, selectedLocation, availability, scopedCameraUuids, onFilterChange]);
+  }, [enabled, selectedLocation, availability, operatorFilter, onFilterChange]);
 
   useEffect(() => {
     if (tree.length === 0 || expanded.size > 0) return;
