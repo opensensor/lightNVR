@@ -42,7 +42,11 @@ typedef struct {
     bool saw_initial_termination_time;
     bool saw_requested_lease;
     bool saw_renewed_lease;
+    bool discover_common_service;
+    bool reject_create;
     int granted_lease_seconds;
+    int pull_failures_remaining;
+    int renew_failures_remaining;
     int create_count;
     int pull_count;
     int renew_count;
@@ -108,15 +112,17 @@ static void *fake_onvif_server_main(void *arg) {
 
         if (strstr(request, "GetServices")) {
             // GetServices response
+            const char *event_path = server->discover_common_service
+                ? "/onvif/service" : "/onvif/events";
             char body[1024];
             snprintf(body, sizeof(body),
                 "<Envelope><Body><GetServicesResponse>"
                 "<Service><Namespace>http://www.onvif.org/ver10/media/wsdl</Namespace>"
                 "<XAddr>http://127.0.0.1:%d/onvif/media</XAddr></Service>"
                 "<Service><Namespace>http://www.onvif.org/ver10/events/wsdl</Namespace>"
-                "<XAddr>http://127.0.0.1:%d/onvif/events</XAddr></Service>"
+                "<XAddr>http://127.0.0.1:%d%s</XAddr></Service>"
                 "</GetServicesResponse></Body></Envelope>",
-                server->port, server->port);
+                server->port, server->port, event_path);
             send_xml_response(client_fd, body);
         } else if (strstr(request, "GetProfiles")) {
             send_xml_response(client_fd,
@@ -145,7 +151,7 @@ static void *fake_onvif_server_main(void *arg) {
             server->saw_requested_lease =
                 strstr(request,
                        "<InitialTerminationTime>PT600S</InitialTerminationTime>") != NULL;
-            if (!server->saw_requested_lease) {
+            if (server->reject_create || !server->saw_requested_lease) {
                 send_xml_response_with_status(client_fd, 400, "Bad Request",
                     "<Envelope><Body><Fault><Code><Value>SOAP-ENV:Sender</Value>"
                     "<Subcode><Value>ter:InvalidArgVal</Value></Subcode></Code>"
@@ -169,6 +175,14 @@ static void *fake_onvif_server_main(void *arg) {
             server->renew_count++;
             server->saw_renewed_lease =
                 strstr(request, "<TerminationTime>PT600S</TerminationTime>") != NULL;
+            if (server->renew_failures_remaining > 0) {
+                server->renew_failures_remaining--;
+                send_xml_response_with_status(client_fd, 400, "Bad Request",
+                    "<Envelope><Body><Fault><Code><Value>SOAP-ENV:Sender</Value>"
+                    "</Code><Reason><Text>error</Text></Reason></Fault></Body></Envelope>");
+                close(client_fd);
+                continue;
+            }
             send_xml_response(client_fd,
                 "<Envelope><Body><RenewResponse>"
                 "<CurrentTime>2026-08-28T12:00:00Z</CurrentTime>"
@@ -180,6 +194,14 @@ static void *fake_onvif_server_main(void *arg) {
                 "<Envelope><Body><UnsubscribeResponse/></Body></Envelope>");
         } else if (strstr(request, "PullMessages")) {
             server->pull_count++;
+            if (server->pull_failures_remaining > 0) {
+                server->pull_failures_remaining--;
+                send_xml_response_with_status(client_fd, 503, "Unavailable",
+                    "<Envelope><Body><Fault><Reason><Text>temporary disconnect"
+                    "</Text></Reason></Fault></Body></Envelope>");
+                close(client_fd);
+                continue;
+            }
             send_xml_response(client_fd,
                 server->pull_body
                     ? server->pull_body
@@ -285,6 +307,46 @@ void test_onvif_subscription_requests_tapo_lease(void) {
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
 }
 
+void test_onvif_transient_pull_failure_reuses_subscription(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.pull_failures_remaining = 1;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    TEST_ASSERT_EQUAL_INT(-1, detect_motion_onvif(url, "", "", &result, ""));
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(1, server.create_count);
+    TEST_ASSERT_EQUAL_INT(2, server.pull_count);
+    TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+void test_onvif_discovered_endpoint_is_not_retried_as_fallback(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.discover_common_service = true;
+    server.reject_create = true;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    TEST_ASSERT_EQUAL_INT(-1, detect_motion_onvif(url, "", "", &result, ""));
+
+    shutdown_onvif_and_stop_server(&server);
+    /* Discovered /service plus /event_service and /Events. /service must not
+     * be POSTed twice merely because it is also the first fallback. */
+    TEST_ASSERT_EQUAL_INT(3, server.create_count);
+}
+
 void test_onvif_subscription_renews_camera_granted_lease(void) {
     fake_onvif_server_t server;
     TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
@@ -306,6 +368,30 @@ void test_onvif_subscription_renews_camera_granted_lease(void) {
     TEST_ASSERT_TRUE(server.saw_renewed_lease);
     TEST_ASSERT_EQUAL_INT(2, server.pull_count);
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+void test_onvif_failed_renew_unsubscribes_before_recreate(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.granted_lease_seconds = 2;
+    server.renew_failures_remaining = 1;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+    sleep(1);
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(2, server.create_count);
+    TEST_ASSERT_EQUAL_INT(1, server.renew_count);
+    TEST_ASSERT_EQUAL_INT(2, server.pull_count);
+    /* One before replacement, one for the replacement at shutdown. */
+    TEST_ASSERT_EQUAL_INT(2, server.unsubscribe_count);
 }
 
 // A Dahua-style SMD Plus smart-detection event carrying ObjectType=Human must
@@ -456,7 +542,10 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_init_detection_system_initializes_onvif_detection);
     RUN_TEST(test_onvif_subscription_requests_tapo_lease);
+    RUN_TEST(test_onvif_transient_pull_failure_reuses_subscription);
+    RUN_TEST(test_onvif_discovered_endpoint_is_not_retried_as_fallback);
     RUN_TEST(test_onvif_subscription_renews_camera_granted_lease);
+    RUN_TEST(test_onvif_failed_renew_unsubscribes_before_recreate);
     RUN_TEST(test_onvif_smart_detection_reports_object_class);
     RUN_TEST(test_onvif_tapo_smart_event_reports_vehicle_class);
     RUN_TEST(test_onvif_profile_reports_ptz_configuration);

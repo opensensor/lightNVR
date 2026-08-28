@@ -47,6 +47,12 @@
 #define ONVIF_RENEW_NUMERATOR 4
 #define ONVIF_RENEW_DENOMINATOR 5
 
+/* Tapo event services can drop individual PullMessages connections while the
+ * underlying PullPoint remains valid. Keep retrying the same subscription and
+ * only refresh it after a sustained outage (#567). */
+#define ONVIF_PULL_FAILURE_WARN_COUNT 3
+#define ONVIF_PULL_FAILURE_REFRESH_SECONDS 120
+
 /* External UUID generator (used for wsa:MessageID). */
 extern void generate_uuid(char *uuid, size_t size);
 
@@ -70,6 +76,8 @@ typedef struct {
     time_t creation_time;
     time_t renewal_time;
     time_t expiration_time;
+    time_t first_pull_failure_time;
+    int consecutive_pull_failures;
     bool active;
 } onvif_subscription_t;
 
@@ -608,10 +616,15 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
                 log_debug("Reusing existing ONVIF subscription for %s", url);
                 pthread_mutex_unlock(&subscription_mutex);
                 return &subscriptions[i];
+            } else if (!subscriptions[i].active) {
+                log_info("ONVIF subscription for %s is inactive, creating new one", url);
+                break;
             } else {
-                // Subscription expired, remove it
-                log_info("ONVIF subscription for %s expired, creating new one", url);
-                subscriptions[i].active = false;
+                /* We missed the renewal window. Best-effort Unsubscribe avoids
+                 * consuming another slot if the camera granted a longer lease
+                 * than the timestamps indicated. */
+                log_info("ONVIF subscription for %s expired, replacing it", url);
+                unsubscribe_subscription_locked(&subscriptions[i]);
                 break;
             }
         }
@@ -630,9 +643,12 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     // Different vendors use different paths (e.g. Tapo uses "service", Lorex uses "event_service").
     char *discovered_url = discover_event_service_url(url, username, password);
     char *response = NULL;
+    char attempted_event_url[512] = {0};
 
     if (discovered_url) {
         log_info("ONVIF: Sending CreatePullPointSubscription to discovered URL: %s", discovered_url);
+        safe_strcpy(attempted_event_url, discovered_url,
+                    sizeof(attempted_event_url), 0);
         response = send_onvif_request_to_url(discovered_url, username, password, request_body,
                                               ONVIF_ACTION_CREATE_PULLPOINT);
         free(discovered_url);
@@ -642,6 +658,18 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         // Fall back through common event service path suffixes
         const char *fallback_services[] = {"service", "event_service", "Events", NULL};
         for (int i = 0; fallback_services[i] && !response; i++) {
+            char fallback_url[512];
+            int written = snprintf(fallback_url, sizeof(fallback_url),
+                                   "%s/onvif/%s", url, fallback_services[i]);
+            if (written < 0 || (size_t)written >= sizeof(fallback_url)) {
+                continue;
+            }
+            if (attempted_event_url[0] != '\0' &&
+                strcmp(attempted_event_url, fallback_url) == 0) {
+                log_debug("ONVIF: Skipping already-tried event endpoint: %s",
+                          fallback_url);
+                continue;
+            }
             log_info("ONVIF: Trying fallback event endpoint: onvif/%s", fallback_services[i]);
             response = send_onvif_request(url, username, password, request_body,
                                           fallback_services[i], ONVIF_ACTION_CREATE_PULLPOINT);
@@ -680,6 +708,10 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     // If we found a slot, use it
     if (slot >= 0) {
+        /* An inactive slot can contain failure state and an old subscription
+         * address. Start the replacement with a completely clean record. */
+        memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
+
         // Store camera URL, username, and password
         safe_strcpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url), 0);
         
@@ -706,6 +738,63 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     free(subscription_address);
     pthread_mutex_unlock(&subscription_mutex);
     return NULL;
+}
+
+/* Record a failed PullMessages call without immediately discarding the
+ * camera-side PullPoint. A transient HTTP disconnect does not invalidate the
+ * subscription and recreating on each disconnect exhausts Tapo's low limit. */
+static void note_pull_failure(const char *camera_url) {
+    pthread_mutex_lock(&subscription_mutex);
+    for (int i = 0; i < subscription_count; i++) {
+        onvif_subscription_t *subscription = &subscriptions[i];
+        if (strcmp(subscription->camera_url, camera_url) != 0 ||
+            !subscription->active) {
+            continue;
+        }
+
+        time_t now = time(NULL);
+        if (subscription->consecutive_pull_failures == 0) {
+            subscription->first_pull_failure_time = now;
+        }
+        subscription->consecutive_pull_failures++;
+
+        if (subscription->consecutive_pull_failures ==
+            ONVIF_PULL_FAILURE_WARN_COUNT) {
+            log_warn("ONVIF PullPoint for %s has failed %d consecutive pulls; "
+                     "retaining the same subscription",
+                     camera_url, subscription->consecutive_pull_failures);
+        }
+
+        if (subscription->consecutive_pull_failures >=
+                ONVIF_PULL_FAILURE_WARN_COUNT &&
+            now - subscription->first_pull_failure_time >=
+                ONVIF_PULL_FAILURE_REFRESH_SECONDS) {
+            log_warn("ONVIF PullPoint for %s has not completed a pull for %d "
+                     "seconds; unsubscribing before refresh",
+                     camera_url, ONVIF_PULL_FAILURE_REFRESH_SECONDS);
+            unsubscribe_subscription_locked(subscription);
+        }
+        break;
+    }
+    pthread_mutex_unlock(&subscription_mutex);
+}
+
+static void note_pull_success(const char *camera_url) {
+    pthread_mutex_lock(&subscription_mutex);
+    for (int i = 0; i < subscription_count; i++) {
+        onvif_subscription_t *subscription = &subscriptions[i];
+        if (strcmp(subscription->camera_url, camera_url) != 0) continue;
+
+        if (subscription->consecutive_pull_failures >=
+            ONVIF_PULL_FAILURE_WARN_COUNT) {
+            log_info("ONVIF PullPoint for %s recovered after %d failed pulls",
+                     camera_url, subscription->consecutive_pull_failures);
+        }
+        subscription->consecutive_pull_failures = 0;
+        subscription->first_pull_failure_time = 0;
+        break;
+    }
+    pthread_mutex_unlock(&subscription_mutex);
 }
 
 // Extract service name from subscription address
@@ -1106,20 +1195,11 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     if (!response) {
         log_error("Failed to pull messages from subscription");
-
-        // If pulling messages fails, the subscription might be invalid.
-        // Re-lookup by URL while holding the mutex to avoid stale pointer use.
-        pthread_mutex_lock(&subscription_mutex);
-        for (int i = 0; i < subscription_count; i++) {
-            if (strcmp(subscriptions[i].camera_url, onvif_url) == 0) {
-                subscriptions[i].active = false;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&subscription_mutex);
-
+        note_pull_failure(onvif_url);
         return -1;
     }
+
+    note_pull_success(onvif_url);
 
     // Check for motion events, capturing the object class (person/vehicle/…)
     // when the camera reports a smart detection rather than plain motion.
