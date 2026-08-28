@@ -286,11 +286,17 @@ jobs:
           retention-days: 7
 
   playwright-tests:
-    name: Playwright Integration Tests (Layer 3)
+    name: Playwright Integration Tests (Layer 3, shard ${{ matrix.shard }}/2)
     needs: unity-tests
     runs-on: ubuntu-latest
     container: debian:sid-slim
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep one worker per LightNVR instance, but split the suite across
+        # isolated jobs so shared database state cannot leak between workers.
+        shard: [1, 2]
 
     steps:
       - name: Install system dependencies
@@ -319,8 +325,11 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
+
+      - name: Checkout go2rtc submodule
+        # LiteRT is disabled for this job and is much larger than go2rtc, so
+        # avoid spending several minutes recursively cloning unused sources.
+        run: git submodule update --init --depth 1 go2rtc
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -389,62 +398,17 @@ jobs:
           ls -la config/lightnvr-test.ini || echo "Config file NOT found"
           echo ""
 
-          # Try to manually start lightNVR to see if it works
-          echo "=== Attempting manual lightNVR start for diagnostics ==="
-          mkdir -p /tmp/lightnvr-test/recordings /tmp/lightnvr-test/go2rtc
-          timeout 10 ./build/bin/lightnvr -c config/lightnvr-test.ini &
-          MANUAL_PID=$!
-          echo "Started lightNVR manually with PID: $MANUAL_PID"
-          sleep 5
-
-          # Check if it's still running
-          if kill -0 $MANUAL_PID 2>/dev/null; then
-            echo "lightNVR is running (PID: $MANUAL_PID)"
-            # Check if it's listening on port 18080
-            if curl -s -u admin:admin http://localhost:18080/api/system > /dev/null 2>&1; then
-              echo "lightNVR is responding on port 18080"
-            else
-              echo "lightNVR is NOT responding on port 18080"
-              netstat -tlpn | grep 18080 || echo "Port 18080 is not listening"
-            fi
-          else
-            echo "lightNVR process exited"
-            wait $MANUAL_PID
-            echo "Exit code: $?"
-          fi
-
-          # Check logs
-          if [ -f /tmp/lightnvr-test/lightnvr.log ]; then
-            echo "=== lightNVR log (last 50 lines) ==="
-            tail -50 /tmp/lightnvr-test/lightnvr.log
-          else
-            echo "No log file at /tmp/lightnvr-test/lightnvr.log"
-          fi
-
-          # Kill the manual instance and ALL child processes it spawned
-          # (lightNVR starts go2rtc as a child; killing only $MANUAL_PID leaves
-          #  go2rtc alive on port 11984, causing playwright's lightNVR to fail
-          #  with "Cannot start go2rtc because port 11984 is already in use")
-          kill $MANUAL_PID 2>/dev/null || true
-          pkill -TERM -f lightnvr 2>/dev/null || true
-          pkill -TERM -f go2rtc  2>/dev/null || true
-          sleep 3
-          pkill -KILL -f lightnvr 2>/dev/null || true
-          pkill -KILL -f go2rtc  2>/dev/null || true
-          sleep 1
-
-          # Clean up for actual test run
-          rm -rf /tmp/lightnvr-test
-
           echo ""
-          echo "=== Running Playwright tests ==="
+          echo "=== Running Playwright shard ${{ matrix.shard }}/2 ==="
 
-          # Run Playwright tests with output capture.
-          # Avoid ${PIPESTATUS[0]} — it is bash-only and the container
-          # shell is /bin/sh (dash).  Capture the exit code directly.
+          # Stream output into the job log while preserving a copy for the
+          # failure artifact. This also leaves useful progress visible if a
+          # runner is cancelled externally.
           RESULT=0
-          npx playwright test --project=ui > playwright-output.log 2>&1 || RESULT=$?
-          cat playwright-output.log
+          set +e
+          npx playwright test --project=ui --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-output.log
+          RESULT=${PIPESTATUS[0]}
+          set -e
 
           if [ $RESULT -ne 0 ]; then
             echo ""
@@ -467,6 +431,7 @@ jobs:
             echo ""
             exit $RESULT
           fi
+        shell: bash
         env:
           CI: true
 
@@ -474,7 +439,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 30
 
@@ -482,7 +447,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: test-screenshots
+          name: test-screenshots-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
@@ -490,7 +455,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: lightnvr-logs
+          name: lightnvr-logs-${{ matrix.shard }}
           path: |
             /tmp/lightnvr-test/
             playwright-output.log
