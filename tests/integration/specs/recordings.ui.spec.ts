@@ -182,7 +182,10 @@ test.describe('Recordings Page @ui @recordings', () => {
 
       await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
       await page.route('**/api/streams*', route => route.fulfill({
-        json: [{ name: 'cam1' }, { name: 'cam2' }, { name: 'cam3' }]
+        json: {
+          streams: [{ name: 'cam1' }, { name: 'cam2' }, { name: 'cam3' }],
+          total_pages: 1
+        }
       }));
       await page.route('**/api/recordings/detection-labels*', route => route.fulfill({
         json: { labels: ['person', 'car', 'dog'] }
@@ -293,7 +296,9 @@ test.describe('Recordings Page @ui @recordings', () => {
       });
 
       await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
-      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'cam1' }] }));
+      await page.route('**/api/streams*', route => route.fulfill({
+        json: { streams: [{ name: 'cam1' }], total_pages: 1 }
+      }));
       await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: ['person'] } }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
       await page.route('**/api/recordings?**', route => route.fulfill({ json: {
@@ -387,7 +392,9 @@ test.describe('Recordings Page @ui @recordings', () => {
       await page.route('**/api/client-config*', route => route.fulfill({
         json: { generate_thumbnails: true, thumbnails_per_recording: 1 }
       }));
-      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'front-door' }] }));
+      await page.route('**/api/streams*', route => route.fulfill({
+        json: { streams: [{ name: 'front-door' }], total_pages: 1 }
+      }));
       await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
       await page.route('**/api/recordings?**', route => route.fulfill({ json: {
@@ -536,7 +543,9 @@ test.describe('Recordings Page @ui @recordings', () => {
         localStorage.setItem('recordings_view_mode', 'table');
       });
       await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
-      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'cam1' }] }));
+      await page.route('**/api/streams*', route => route.fulfill({
+        json: { streams: [{ name: 'cam1' }], total_pages: 1 }
+      }));
       await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
       await page.route('**/api/recordings?**', route => route.fulfill({
@@ -630,7 +639,9 @@ test.describe('Recordings Page @ui @recordings', () => {
       });
 
       await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
-      await page.route('**/api/streams*', route => route.fulfill({ json: [] }));
+      await page.route('**/api/streams*', route => route.fulfill({
+        json: { streams: [], total_pages: 0 }
+      }));
       await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
       await page.route('**/api/recordings?**', route => {

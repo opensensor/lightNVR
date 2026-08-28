@@ -27,14 +27,14 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
   ];
 
   /**
-   * Produce a stream-details object that satisfies LiveView's filter:
-   * enabled + streaming_enabled + not soft-deleted, with sub_stream_url set.
+   * Produce a paginated stream-summary row that satisfies LiveView's filter
+   * and advertises the configured sub-stream without exposing its URL.
    */
-  function fullStreamDetails(name: string, subUrl: string) {
+  function streamSummary(name: string) {
     return {
+      camera_uuid: name,
       name,
       url: `rtsp://192.168.1.100/${name}`,
-      sub_stream_url: subUrl,
       enabled: true,
       streaming_enabled: true,
       is_deleted: false,
@@ -48,7 +48,9 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
       segment_duration: 30,
       record: false,
       record_audio: false,
+      has_sub_stream: true,
       go2rtc_hls_available: false,
+      availability: 'live',
     };
   }
 
@@ -60,16 +62,12 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
     });
 
     // List endpoint
-    await page.route('**/api/streams', route => route.fulfill({
-      json: STREAMS.map(s => ({ name: s.name, enabled: true, streaming_enabled: true })),
+    await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
+      json: {
+        streams: STREAMS.map(s => streamSummary(s.name)),
+        total_pages: 1,
+      },
     }));
-
-    // Per-stream details endpoint (called by LiveView for each listed stream)
-    for (const s of STREAMS) {
-      await page.route(`**/api/streams/${s.name}`, route => route.fulfill({
-        json: fullStreamDetails(s.name, s.sub_stream_url),
-      }));
-    }
 
     // Stub HLS / go2rtc endpoints so the video cells don't spam 404s.
     await page.route('**/hls/**', route => route.fulfill({ status: 204, body: '' }));

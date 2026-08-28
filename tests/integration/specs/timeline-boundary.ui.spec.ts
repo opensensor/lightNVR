@@ -15,7 +15,9 @@ function utcTimestamp(isoString: string): number {
 }
 
 async function mockTimelineApis(page: Page, stream: string, segments: Segment[], tagsById: Record<number, string[]> = {}) {
-  await page.route('**/api/streams', route => route.fulfill({ json: [{ name: stream }] }));
+  await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
+    json: { streams: [{ name: stream }], total_pages: 1 }
+  }));
   await page.route('**/api/timeline/segments?**', route => route.fulfill({ json: { segments } }));
   await page.route('**/api/timeline/segments-by-ids?**', route => route.fulfill({ json: {
     segments,
@@ -408,10 +410,10 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     ];
 
     await mockTimelineApis(page, 'front_door', segments);
-    await page.route('**/api/streams', route => route.fulfill({ json: [
-      { name: 'front_door' },
-      { name: 'garage' }
-    ] }));
+    await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({ json: {
+      streams: [{ name: 'front_door' }, { name: 'garage' }],
+      total_pages: 1
+    } }));
     await page.route('**/api/timeline/segments?**', async route => {
       const stream = new URL(route.request().url()).searchParams.get('stream');
       if (stream === 'garage') {
