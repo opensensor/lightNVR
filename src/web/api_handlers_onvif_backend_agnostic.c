@@ -352,6 +352,10 @@ void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t
         cJSON_AddStringToObject(profile, "token", profiles[i].token);
         cJSON_AddStringToObject(profile, "name", profiles[i].name);
         cJSON_AddStringToObject(profile, "video_source_token", profiles[i].video_source_token);
+        cJSON_AddStringToObject(profile, "ptz_configuration_token",
+                                profiles[i].ptz_configuration_token);
+        cJSON_AddBoolToObject(profile, "ptz_supported",
+                              profiles[i].ptz_configuration_token[0] != '\0');
         char safe_snapshot_uri[MAX_URL_LENGTH];
         char safe_stream_uri[MAX_URL_LENGTH];
 

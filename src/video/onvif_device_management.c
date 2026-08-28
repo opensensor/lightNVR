@@ -481,6 +481,20 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
                             sizeof(profiles[i].video_source_token), 0);
             }
         }
+
+        /* A PTZConfiguration attached to the selected media profile is the
+         * capability signal needed to expose mechanical PTZ controls. */
+        ezxml_t ptz_config = find_child(profile, "tt:PTZConfiguration");
+        if (!ptz_config) {
+            ptz_config = find_child_local(profile, "PTZConfiguration");
+        }
+        if (ptz_config) {
+            const char *ptz_token = ezxml_attr(ptz_config, "token");
+            if (ptz_token) {
+                safe_strcpy(profiles[i].ptz_configuration_token, ptz_token,
+                            sizeof(profiles[i].ptz_configuration_token), 0);
+            }
+        }
         
         // Get video encoder configuration
         ezxml_t video_encoder = find_child(profile, "tt:VideoEncoderConfiguration");
@@ -757,6 +771,7 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     
     // Set ONVIF flag
     config.is_onvif = true;
+    config.ptz_enabled = profile->ptz_configuration_token[0] != '\0';
     
     // Set ONVIF-specific fields
     if (username) {

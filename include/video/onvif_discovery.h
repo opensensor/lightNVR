@@ -37,6 +37,7 @@ typedef struct {
     char token[64];
     char name[64];
     char video_source_token[64];
+    char ptz_configuration_token[64];
     char snapshot_uri[MAX_URL_LENGTH];
     char stream_uri[MAX_URL_LENGTH];
     int width;

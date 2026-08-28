@@ -13,10 +13,6 @@ import { getAuthHeaders, isDemoMode, validateSession } from '../../utils/auth-ut
 import { forceNavigation } from '../../utils/navigation-utils.js';
 import { useI18n } from '../../i18n.js';
 import LanguageSelector from './common/LanguageSelector.jsx';
-import {
-  WORKSPACE_KEYS,
-  workspaceVisibilityFromResponse,
-} from '../../utils/workspace-preferences.js';
 
 const buildProfileFormData = (user = {}) => ({
   username: user.username || '',
@@ -47,7 +43,6 @@ export function Header({ version = VERSION }) {
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
   const [userRole, _setUserRole] = useState(localStorage.getItem('userrole') || null); // null = still loading
-  const [workspaceVisibility, setWorkspaceVisibility] = useState(() => workspaceVisibilityFromResponse());
   const { t } = useI18n();
 
   const setUsername = (username) => {
@@ -141,22 +136,6 @@ export function Header({ version = VERSION }) {
     setTimeout(() => clearInterval(intervalId), 5000);
     return () => clearInterval(intervalId);
   }, [currentUser?.id, syncSessionState]);
-
-  useEffect(() => {
-    let mounted = true;
-    const applyResponse = (response) => {
-      if (mounted) setWorkspaceVisibility(workspaceVisibilityFromResponse(response));
-    };
-    fetchJSON('/api/ui/workspaces', { timeout: 10000, retries: 1 })
-      .then(applyResponse)
-      .catch(() => {});
-    const onChanged = (event) => applyResponse(event.detail);
-    window.addEventListener('lightnvr:workspaces-changed', onChanged);
-    return () => {
-      mounted = false;
-      window.removeEventListener('lightnvr:workspaces-changed', onChanged);
-    };
-  }, [currentUser?.id]);
 
   const handleProfileInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
@@ -264,9 +243,6 @@ export function Header({ version = VERSION }) {
   const navItems = [
     { id: 'nav-live', href: getLiveViewHref(), label: t('nav.live') },
     { id: 'nav-recordings', href: 'recordings.html', label: t('nav.recordings') },
-    ...(workspaceVisibility[WORKSPACE_KEYS.INVESTIGATION] !== false
-      ? [{ id: 'nav-investigation', href: 'investigation.html', label: t('nav.investigation') }]
-      : []),
     { id: 'nav-streams', href: 'streams.html', label: t('nav.streams') },
     { id: 'nav-settings', href: 'settings.html', label: t('nav.settings') },
     ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: t('nav.users') }] : []),
