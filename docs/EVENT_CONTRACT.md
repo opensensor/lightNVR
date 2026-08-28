@@ -37,8 +37,9 @@ Every event uses a CloudEvents-inspired JSON envelope:
 - `severity` and `sensitivity` come from the registry, not from an individual
   producer.
 - Data is limited to 64 KiB and a complete envelope to 96 KiB.
-- Passwords, credentials, authorization values, API keys, tokens, cookies, and
-  raw filesystem-path fields are rejected recursively. Media uses an
+- Passwords, credentials, authorization values, API keys, tokens, cookies,
+  license-plate-shaped keys, and raw filesystem-path fields are rejected
+  recursively. Media uses an
   authenticated logical URL or event-media reference, never a local path.
 
 ## Initial registry
@@ -46,6 +47,7 @@ Every event uses a CloudEvents-inspired JSON envelope:
 | Type | Severity | Sensitivity | Default expiry | Expected rate | Media policy |
 | --- | --- | --- | ---: | --- | --- |
 | `io.lightnvr.detection.object.v1` | info | operational | 1 hour | high | reference allowed |
+| `io.lightnvr.recognition.license_plate.v1` | info | restricted | 1 hour | high | forbidden |
 | `io.lightnvr.camera.offline.v1` | warning | operational | 1 day | low | forbidden |
 | `io.lightnvr.camera.recovered.v1` | info | operational | 1 day | low | forbidden |
 | `io.lightnvr.stream.degraded.v1` | warning | operational | 1 day | low | forbidden |
@@ -93,6 +95,22 @@ be omitted when a camera or external detector reports a class without spatial
 metadata; when present, all four coordinates are required, normalized to
 `0.0–1.0`, and width and height must be greater than zero. `track_id`, `zone_id`,
 and an authorization-aware `snapshot_url` are optional.
+
+### `io.lightnvr.recognition.license_plate.v1`
+
+```json
+{
+  "read_id": "44444444-4444-4444-8444-444444444444",
+  "stream_name": "north-drive",
+  "source": "onvif_profile_m"
+}
+```
+
+This event means a protected read was stored. It intentionally contains no
+plate value, masked value, confidence, blind index, query token, image, or
+recording metadata. Consumers authorized to see the value use the opaque read
+ID through the LPR API; general event destinations never receive it. `read_id`
+and the camera subject must be UUIDs.
 
 ### `io.lightnvr.camera.offline.v1`
 
@@ -225,6 +243,10 @@ the immutable camera UUID, or
 `event_producer_publish_detection_for_stream()` at legacy name-only call sites.
 Both normalize and enqueue only; neither performs MQTT, snapshot, or other
 network work on the caller thread.
+
+Protected LPR ingestion uses `event_producer_publish_lpr_read()` only after the
+encrypted database insert succeeds. The producer accepts no plate argument and
+the envelope validator independently rejects plate-shaped data keys.
 
 The same producer module exposes camera offline/recovered, stream
 degraded/recovered, recording-gap, storage pressure/recovered, and storage-target

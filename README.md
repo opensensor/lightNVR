@@ -510,6 +510,7 @@ getting-started path from install to first recording.
 - [MQTT Integration](docs/MQTT_INTEGRATION.md)
 - [Camera Compatibility](docs/CAMERAS.md)
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
+- [Multiple Detection Engines](docs/DETECTION_ENGINES.md)
 - [Motion Buffer System](docs/MOTION_BUFFER.md)
 - [SOD Integration](docs/SOD_INTEGRATION.md)
 

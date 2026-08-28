@@ -17,6 +17,7 @@
 #include "utils/uuid.h"
 
 #define DETECTION_EVENT_TYPE "io.lightnvr.detection.object.v1"
+#define LPR_READ_EVENT_TYPE "io.lightnvr.recognition.license_plate.v1"
 #define CAMERA_OFFLINE_EVENT_TYPE "io.lightnvr.camera.offline.v1"
 #define CAMERA_RECOVERED_EVENT_TYPE "io.lightnvr.camera.recovered.v1"
 #define STREAM_DEGRADED_EVENT_TYPE "io.lightnvr.stream.degraded.v1"
@@ -220,6 +221,42 @@ int event_producer_publish_detection_for_stream(
     return event_producer_publish_detection(
         stream.camera_uuid, stream_name, result, occurred_at, error,
         error_size);
+}
+
+int event_producer_publish_lpr_read(
+    const char *camera_uuid, const char *stream_name, const char *read_uuid,
+    const char *source, time_t occurred_at, char *error, size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!lightnvr_uuid_is_valid(camera_uuid) ||
+        !lightnvr_uuid_is_valid(read_uuid) ||
+        !valid_text(stream_name, MAX_STREAM_NAME) ||
+        !valid_text(source, 64)) {
+        set_error(error, error_size, "protected LPR event input is invalid");
+        return -1;
+    }
+
+    char subject[EVENT_SUBJECT_MAX];
+    int subject_length = snprintf(subject, sizeof(subject), "camera/%s",
+                                  camera_uuid);
+    if (subject_length < 0 || (size_t)subject_length >= sizeof(subject)) {
+        set_error(error, error_size, "camera event subject is too long");
+        return -1;
+    }
+
+    cJSON *data = cJSON_CreateObject();
+    if (!data || !cJSON_AddStringToObject(data, "read_id", read_uuid) ||
+        !cJSON_AddStringToObject(data, "stream_name", stream_name) ||
+        !cJSON_AddStringToObject(data, "source", source)) {
+        cJSON_Delete(data);
+        set_error(error, error_size,
+                  "protected LPR event allocation failed");
+        return -1;
+    }
+
+    int result = publish_event(LPR_READ_EVENT_TYPE, subject, occurred_at, data,
+                               error, error_size);
+    cJSON_Delete(data);
+    return result;
 }
 
 int event_producer_publish_camera_offline_for_stream(

@@ -279,9 +279,9 @@ void test_action_catalog_is_stable_and_complete(void) {
     int count = 0;
     const authorization_action_metadata_t *catalog =
         authorization_action_catalog(&count);
-    TEST_ASSERT_EQUAL_INT(15, count);
+    TEST_ASSERT_EQUAL_INT(AUTHZ_ACTION_COUNT, count);
     TEST_ASSERT_EQUAL_STRING("live.view", catalog[0].key);
-    TEST_ASSERT_EQUAL_STRING("system.admin", catalog[count - 1].key);
+    TEST_ASSERT_EQUAL_STRING("lpr.delete", catalog[count - 1].key);
     for (int i = 0; i < count; i++) {
         TEST_ASSERT_EQUAL_INT(
             catalog[i].action,
@@ -515,7 +515,8 @@ void test_all_scope_admin_grant_allows_global_action_and_bumps_version(void) {
     cJSON *json = call_handler(handle_get_authorization_actions,
                                HTTP_METHOD_GET, NULL, api_key, 200);
     TEST_ASSERT_EQUAL_INT(
-        15, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+        AUTHZ_ACTION_COUNT,
+        cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
     cJSON_Delete(json);
     g_config.web_auth_enabled = false;
 }
@@ -931,7 +932,8 @@ void test_action_catalog_and_simulation_handlers(void) {
     cJSON *json = call_handler(handle_get_authorization_actions,
                                HTTP_METHOD_GET, NULL, NULL, 200);
     TEST_ASSERT_EQUAL_INT(
-        15, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+        AUTHZ_ACTION_COUNT,
+        cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
     cJSON_Delete(json);
 
     char request_body[512];

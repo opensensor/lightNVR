@@ -50,7 +50,8 @@ static bool sensitive_detail_key(const char *key) {
         contains_case_insensitive(key, "authorization") ||
         contains_case_insensitive(key, "cookie") ||
         contains_case_insensitive(key, "api_key") ||
-        contains_case_insensitive(key, "apikey")) {
+        contains_case_insensitive(key, "apikey") ||
+        contains_case_insensitive(key, "plate")) {
         return true;
     }
     return contains_case_insensitive(key, "token") &&

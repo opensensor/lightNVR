@@ -12,6 +12,8 @@
 #include <curl/curl.h>
 #include <cjson/cJSON.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <stdint.h>
 #include <time.h>
 
 #include "core/logger.h"
@@ -21,12 +23,16 @@
 #include "core/event_producers.h"
 #include "utils/strings.h"
 #include "video/onvif_detection.h"
+#include "video/onvif_event.h"
 #include "video/onvif_soap.h"
 #include "video/detection_result.h"
 #include "video/cross_stream_motion_trigger.h"
 #include "video/mp4_recording.h"
 #include "video/zone_filter.h"
 #include "database/db_detections.h"
+#include "database/db_lpr_reads.h"
+#include "database/db_streams.h"
+#include "utils/lpr_crypto.h"
 #include "ezxml.h"
 
 /* WS-Addressing action URIs for the ONVIF operations this file emits.
@@ -67,6 +73,13 @@ typedef struct {
     size_t size;
 } memory_struct_t;
 
+#define ONVIF_RESPONSE_MAX_BYTES (4U * 1024U * 1024U)
+
+static void secure_clear(void *data, size_t size) {
+    volatile unsigned char *bytes = data;
+    while (bytes && size-- > 0) *bytes++ = 0;
+}
+
 // Structure to hold ONVIF subscription information
 typedef struct {
     char camera_url[512];           // URL of the camera (used as the key for lookup)
@@ -90,8 +103,15 @@ static bool subscriptions_shutting_down = false;
 
 // Callback function for curl to write data
 static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    if (size != 0 && nmemb > SIZE_MAX / size) return 0;
     size_t realsize = size * nmemb;
     memory_struct_t *mem = (memory_struct_t *)userp;
+
+    if (mem->size > ONVIF_RESPONSE_MAX_BYTES ||
+        realsize > ONVIF_RESPONSE_MAX_BYTES - mem->size) {
+        log_warn("Rejected oversized ONVIF response");
+        return 0;
+    }
 
     char *ptr = realloc(mem->memory, mem->size + realsize + 1);
     if (!ptr) {
@@ -1020,6 +1040,69 @@ static bool has_motion_event(const char *response, char *label, size_t label_sz)
     return motion;
 }
 
+/* Parse and persist LPR reads before the legacy motion parser reduces the
+ * PullMessages envelope to detection_result_t. Plate values are never logged
+ * or placed on the general detection/event path. */
+static void store_lpr_notifications(const char *response, const char *stream_name) {
+    if (!response || !stream_name || !stream_name[0]) return;
+
+    onvif_lpr_event_t events[16] = {0};
+    int count = onvif_parse_lpr_events(response, events,
+                                       sizeof(events) / sizeof(events[0]));
+    if (count <= 0) {
+        secure_clear(events, sizeof(events));
+        return;
+    }
+
+    if (!lpr_crypto_key_available()) {
+        static atomic_bool warned_missing_key = false;
+        if (!atomic_exchange(&warned_missing_key, true)) {
+            log_warn("LPR reads are available but protected storage is disabled: "
+                     "LIGHTNVR_LPR_MASTER_KEY_HEX is not configured");
+        }
+        secure_clear(events, sizeof(events));
+        return;
+    }
+
+    stream_config_t stream;
+    if (get_stream_config_by_name(stream_name, &stream) != 0 ||
+        !stream.camera_uuid[0]) {
+        log_warn("Cannot associate ONVIF LPR notifications with stream identity");
+        secure_clear(events, sizeof(events));
+        return;
+    }
+
+    uint64_t recording_id = get_current_recording_id_for_stream(stream_name);
+    for (int i = 0; i < count; ++i) {
+        lpr_read_input_t input = {0};
+        if (db_lpr_read_from_onvif(stream.camera_uuid, stream_name,
+                                   &events[i], &input) != 0) {
+            log_debug("Ignored incomplete ONVIF LPR notification for %s", stream_name);
+            secure_clear(&input, sizeof(input));
+            continue;
+        }
+        input.recording_id = recording_id;
+        char read_uuid[LPR_READ_UUID_SIZE] = {0};
+        int stored = db_lpr_read_insert(&input, read_uuid);
+        if (stored < 0) {
+            log_warn("Failed to persist protected ONVIF LPR read for %s", stream_name);
+        } else if (stored == 0) {
+            log_debug("Stored protected ONVIF LPR read for %s", stream_name);
+            char event_error[256] = {0};
+            if (event_producer_publish_lpr_read(
+                    stream.camera_uuid, stream_name, read_uuid, input.source,
+                    (time_t)(input.observed_at_ms / 1000), event_error,
+                    sizeof(event_error)) != 0) {
+                log_debug("Protected LPR event enqueue failed for %s: %s",
+                          stream_name, event_error);
+            }
+        }
+        secure_clear(&input, sizeof(input));
+        secure_clear(read_uuid, sizeof(read_uuid));
+    }
+    secure_clear(events, sizeof(events));
+}
+
 /**
  * Initialize the ONVIF detection system
  */
@@ -1140,7 +1223,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     if (strlen(username) == 0 || strlen(password) == 0) {
         log_debug("ONVIF Detection: Using camera without authentication (empty credentials)");
     } else {
-        log_debug("ONVIF Detection: Using camera with authentication (username: %s)", username);
+        log_debug("ONVIF Detection: Using camera with authentication");
     }
 
     log_debug("ONVIF Detection: Starting detection with URL: %s", onvif_url);
@@ -1204,7 +1287,9 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     // Check for motion events, capturing the object class (person/vehicle/…)
     // when the camera reports a smart detection rather than plain motion.
     char event_label[MAX_LABEL_LENGTH] = {0};
+    store_lpr_notifications(response, stream_name);
     bool motion_detected = has_motion_event(response, event_label, sizeof(event_label));
+    secure_clear(response, strlen(response));
     free(response);
 
     if (motion_detected) {

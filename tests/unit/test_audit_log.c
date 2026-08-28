@@ -159,6 +159,7 @@ void test_web_helper_redacts_sensitive_detail_fields(void) {
     cJSON *details = cJSON_CreateObject();
     cJSON_AddStringToObject(details, "password", "do-not-store");
     cJSON_AddStringToObject(details, "bearer_token", "also-secret");
+    cJSON_AddStringToObject(details, "license_plate", "TEST123");
     cJSON_AddStringToObject(details, "api_token_uuid", "safe-id");
     cJSON_AddStringToObject(details, "reason", "operator request");
     audit_log_append(&req, &user, "example.update", "example", "target-1",
@@ -172,8 +173,11 @@ void test_web_helper_redacts_sensitive_detail_fields(void) {
     TEST_ASSERT_EQUAL_INT(1, page.count);
     TEST_ASSERT_NULL(strstr(page.events[0].details_json, "do-not-store"));
     TEST_ASSERT_NULL(strstr(page.events[0].details_json, "also-secret"));
+    TEST_ASSERT_NULL(strstr(page.events[0].details_json, "TEST123"));
     TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
                                 "\"password\":\"[REDACTED]\""));
+    TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
+                                "\"license_plate\":\"[REDACTED]\""));
     TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
                                 "\"api_token_uuid\":\"safe-id\""));
     db_audit_page_free(&page);

@@ -45,10 +45,9 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
     // Initialize device info
     memset(device_info, 0, sizeof(onvif_device_info_t));
     
-    // Log the first 500 characters of the response for debugging
-    char debug_buffer[501];
-    safe_strcpy(debug_buffer, response, 501, 0);
-    log_info("Parsing response: %s...", debug_buffer);
+    // Discovery XML can contain serial numbers, addresses, and vendor-specific
+    // metadata.  Keep diagnostics structural rather than logging the payload.
+    log_debug("Parsing ONVIF discovery response (%zu bytes)", strlen(response));
     
     // Check if this is a valid ONVIF response and not a probe message
     if (strstr(response, "Probe") && !strstr(response, "ProbeMatch")) {
@@ -638,8 +637,8 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
             // Null-terminate the buffer
             buffer[ret] = '\0';
 
-            // Dump the full response for debugging
-            log_info("Full response: %s", buffer);
+            log_debug("Received ONVIF discovery response payload (%d bytes)",
+                      (int)ret);
 
             // Parse device information
             if (parse_device_info(buffer, &devices[count]) == 0) {

@@ -26,6 +26,17 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .default_expiry_seconds = 3600,
     },
     {
+        .type = "io.lightnvr.recognition.license_plate.v1",
+        .family = "recognition",
+        .description = "A protected license-plate read was stored",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_RESTRICTED,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_HIGH,
+        .subject_kind = EVENT_SUBJECT_CAMERA,
+        .default_expiry_seconds = 3600,
+    },
+    {
         .type = "io.lightnvr.camera.offline.v1",
         .family = "camera",
         .description = "Camera connectivity declared offline",
@@ -192,6 +203,7 @@ static bool forbidden_data_key(const char *key) {
         contains_case_insensitive(key, "cookie") ||
         contains_case_insensitive(key, "api_key") ||
         contains_case_insensitive(key, "apikey") ||
+        contains_case_insensitive(key, "plate") ||
         contains_case_insensitive(key, "token")) {
         return true;
     }
@@ -362,6 +374,23 @@ static int validate_type_data(const char *type, const cJSON *data,
                           "detection zone_id must be a non-empty string");
                 return -1;
             }
+        }
+    } else if (strcmp(
+                   type,
+                   "io.lightnvr.recognition.license_plate.v1") == 0) {
+        const cJSON *read_id = required_field(data, "read_id", cJSON_String,
+                                              error, error_size);
+        const cJSON *stream_name = required_field(
+            data, "stream_name", cJSON_String, error, error_size);
+        const cJSON *source = required_field(data, "source", cJSON_String,
+                                             error, error_size);
+        if (!read_id || !stream_name || !source) return -1;
+        if (!lightnvr_uuid_is_valid(read_id->valuestring) ||
+            !valid_text(stream_name->valuestring, 256, false) ||
+            !valid_text(source->valuestring, 64, false)) {
+            set_error(error, error_size,
+                      "protected license-plate event data is invalid");
+            return -1;
         }
     } else if (strcmp(type, "io.lightnvr.camera.offline.v1") == 0) {
         const cJSON *reason = required_field(data, "reason", cJSON_String,

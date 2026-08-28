@@ -61,6 +61,7 @@
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_streams.h"
+#include "database/db_detection_engines.h"
 #include "core/url_utils.h"
 #include "storage/storage_manager_streams_cache.h"
 #include "telemetry/stream_metrics.h"
@@ -136,6 +137,9 @@ static bool should_annotate_continuous(unified_detection_ctx_t *ctx);
 static void *onvif_detection_thread_func(void *arg);
 static int   start_onvif_detection_thread(unified_detection_ctx_t *ctx);
 static void  stop_onvif_detection_thread(unified_detection_ctx_t *ctx);
+static bool  runtime_has_engine_type(const unified_detection_ctx_t *ctx,
+                                     const char *engine_type);
+static void  unload_runtime_models(unified_detection_ctx_t *ctx);
 /**
  * Determine the actual API URL to use for detection based on the configured
  * model path and global configuration.
@@ -272,6 +276,122 @@ static bool is_onvif_detection_model(const char *model_path) {
         return false;
     }
     return strcmp(model_path, "onvif") == 0;
+}
+
+static bool runtime_has_engine_type(const unified_detection_ctx_t *ctx,
+                                    const char *engine_type) {
+    if (!ctx || !engine_type) return false;
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        if (ctx->engines[i].enabled &&
+            strcmp(ctx->engines[i].engine_type, engine_type) == 0) return true;
+    }
+    return false;
+}
+
+static void unload_runtime_models(unified_detection_ctx_t *ctx) {
+    if (!ctx) return;
+    if (ctx->model) {
+        unload_detection_model(ctx->model);
+        ctx->model = NULL;
+    }
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        if (ctx->engine_models[i]) {
+            unload_detection_model(ctx->engine_models[i]);
+            ctx->engine_models[i] = NULL;
+        }
+    }
+}
+
+static void load_runtime_engine_config(unified_detection_ctx_t *ctx,
+                                       const char *legacy_model,
+                                       float legacy_threshold,
+                                       int legacy_interval) {
+    stream_detection_engine_t stored[MAX_DETECTION_ENGINES_PER_STREAM];
+    int count = db_detection_engines_list(
+        ctx->stream_name, stored, MAX_DETECTION_ENGINES_PER_STREAM);
+    ctx->engine_count = 0;
+    ctx->recording_grace_interval = legacy_interval;
+
+    if (count > 0) {
+        for (int i = 0; i < count; ++i) {
+            if (!stored[i].enabled) continue;
+            ctx->engines[ctx->engine_count++] = stored[i];
+        }
+    }
+
+    /* The migration stores the legacy model exactly as it appears in the
+     * stream row, while older startup paths may already have resolved it
+     * against models_path. Preserve that resolved value for the compatibility
+     * engine, then resolve relative paths for every additional object engine. */
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        stream_detection_engine_t *engine = &ctx->engines[i];
+        if (strcmp(engine->engine_key, "legacy-primary") == 0 &&
+            legacy_model && legacy_model[0]) {
+            safe_strcpy(engine->model_path, legacy_model,
+                        sizeof(engine->model_path), 0);
+        }
+        if (!engine->model_path[0] &&
+            (strcmp(engine->engine_type, "motion") == 0 ||
+             strcmp(engine->engine_type, "onvif") == 0)) {
+            safe_strcpy(engine->model_path, engine->engine_type,
+                        sizeof(engine->model_path), 0);
+        }
+        if (strcmp(engine->engine_type, "object") == 0 &&
+            engine->model_path[0] && engine->model_path[0] != '/') {
+            char resolved[MAX_PATH_LENGTH];
+            const char *base = g_config.models_path[0]
+                ? g_config.models_path : "/etc/lightnvr/models";
+            int written = snprintf(resolved, sizeof(resolved), "%s/%s", base,
+                                   engine->model_path);
+            if (written > 0 && (size_t)written < sizeof(resolved)) {
+                safe_strcpy(engine->model_path, resolved,
+                            sizeof(engine->model_path), 0);
+            } else {
+                log_warn("[%s] Detection engine %s model path is too long",
+                         ctx->stream_name, engine->engine_key);
+            }
+        }
+    }
+
+    /* Embedded/older databases and the external-trigger-only empty model keep
+     * the exact pre-migration behavior. */
+    if (ctx->engine_count == 0 && legacy_model && legacy_model[0]) {
+        stream_detection_engine_t *engine = &ctx->engines[0];
+        memset(engine, 0, sizeof(*engine));
+        safe_strcpy(engine->engine_key, "legacy-primary",
+                    sizeof(engine->engine_key), 0);
+        safe_strcpy(engine->model_path, legacy_model,
+                    sizeof(engine->model_path), 0);
+        const char *type = is_motion_detection_model(legacy_model) ? "motion" :
+                           is_onvif_detection_model(legacy_model) ? "onvif" :
+                           is_api_detection(legacy_model) ? "api" : "object";
+        safe_strcpy(engine->engine_type, type, sizeof(engine->engine_type), 0);
+        engine->enabled = true;
+        engine->threshold = legacy_threshold;
+        engine->interval_seconds = legacy_interval;
+        ctx->engine_count = 1;
+    }
+
+    int minimum = 0;
+    int maximum = 0;
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        int interval = ctx->engines[i].interval_seconds > 0
+            ? ctx->engines[i].interval_seconds : DEFAULT_DETECTION_INTERVAL;
+        if (minimum == 0 || interval < minimum) minimum = interval;
+        if (interval > maximum) maximum = interval;
+    }
+    if (minimum > 0) ctx->detection_interval = minimum;
+    ctx->recording_grace_interval = maximum > 0 ? maximum : ctx->detection_interval;
+    ctx->has_onvif_engine = runtime_has_engine_type(ctx, "onvif");
+
+    /* The existing single-engine dispatch uses these compatibility fields.
+     * Point it at the configured engine so a stream with one custom engine
+     * behaves correctly even when the legacy stream model is empty/disabled. */
+    if (ctx->engine_count == 1) {
+        safe_strcpy(ctx->model_path, ctx->engines[0].model_path,
+                    sizeof(ctx->model_path), 0);
+        ctx->detection_threshold = ctx->engines[0].threshold;
+    }
 }
 
 /**
@@ -411,7 +531,7 @@ void shutdown_unified_detection_system(void) {
 
             // Stop the ONVIF detection thread before freeing ctx.
             // Must happen before free() to avoid use-after-free in the thread.
-            if (is_onvif_detection_model(ctx->model_path)) {
+            if (ctx->has_onvif_engine) {
                 stop_onvif_detection_thread(ctx);
             }
 
@@ -431,6 +551,7 @@ void shutdown_unified_detection_system(void) {
                 mp4_writer_close(ctx->mp4_writer);
                 ctx->mp4_writer = NULL;
             }
+            unload_runtime_models(ctx);
 
             // Only destroy mutexes if thread has stopped
             if (atomic_load(&ctx->state) == UDT_STATE_STOPPED) {
@@ -1042,6 +1163,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // Use the global segment_duration config for chunking detection recordings (same as continuous recordings)
     ctx->segment_duration = (global_cfg && global_cfg->mp4_segment_duration > 0) ? global_cfg->mp4_segment_duration : 30;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
+    load_runtime_engine_config(ctx, model_path, threshold, ctx->detection_interval);
     ctx->record_audio = config.record_audio && !(global_cfg && global_cfg->audio_disabled);
     ctx->annotation_only = annotation_only;
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
@@ -1085,7 +1207,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // gray-level change (fraction of 255) required to count a pixel as
     // changed.  Coupling them meant a 50% threshold demanded a 127-level
     // pixel change, making detection nearly impossible (issue #448).
-    if (is_motion_detection_model(model_path)) {
+    if (runtime_has_engine_type(ctx, "motion")) {
         configure_motion_detection(stream_name,
                                    DEFAULT_MOTION_SENSITIVITY,
                                    DEFAULT_MOTION_MIN_AREA_RATIO,
@@ -1143,7 +1265,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // For ONVIF model: cache connection parameters and start the background
     // polling thread BEFORE the UDT starts reading packets.  This ensures a
     // motion flag is available on the very first detection check.
-    if (is_onvif_detection_model(model_path)) {
+    if (ctx->has_onvif_engine) {
         extract_onvif_base_url(config.url, config.onvif_port,
                                ctx->onvif_url_cached, sizeof(ctx->onvif_url_cached));
         safe_strcpy(ctx->onvif_username_cached, config.onvif_username,
@@ -1896,7 +2018,7 @@ static void *unified_detection_thread_func(void *arg) {
     // Must happen before disconnect_from_stream() and before any free(),
     // because the ONVIF thread still holds a pointer to ctx.
     // pthread_join blocks for at most CURLOPT_TIMEOUT + subscription overhead (≤ ~12 s).
-    if (is_onvif_detection_model(ctx->model_path)) {
+    if (ctx->has_onvif_engine) {
         stop_onvif_detection_thread(ctx);
     }
 
@@ -1915,6 +2037,7 @@ static void *unified_detection_thread_func(void *arg) {
     // Cleanup
     av_packet_free(&pkt);
     av_frame_free(&frame);
+    unload_runtime_models(ctx);
 
     atomic_store(&ctx->state, UDT_STATE_STOPPED);
     log_info("[%s] Unified detection thread exiting", stream_name);
@@ -2669,7 +2792,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
      * internally so we only need to check the threshold on its result.
      * If the snapshot is unavailable we fall through to the shared
      * frame-decode path below. */
-    if (is_api_detection(ctx->model_path)) {
+    if (ctx->engine_count <= 1 && is_api_detection(ctx->model_path)) {
         log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
 
         uint64_t rec_id = detection_link_recording_id(ctx);
@@ -2712,7 +2835,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
      * detect_motion_onvif() is NOT called here.  A dedicated background thread
      * (start_onvif_detection_thread) polls the camera and writes the result
      * into ctx->onvif_motion_detected, keeping av_read_frame() unblocked. */
-    if (is_onvif_detection_model(ctx->model_path)) {
+    if (ctx->engine_count <= 1 && is_onvif_detection_model(ctx->model_path)) {
         bool triggered = (atomic_load(&ctx->onvif_motion_detected) != 0);
         if (triggered) {
             pthread_mutex_lock(&ctx->mutex);
@@ -2785,12 +2908,106 @@ static uint8_t *frame_to_rgb24(const AVFrame *frame) {
     return rgb_buf;
 }
 
+static void append_engine_result(unified_detection_ctx_t *ctx,
+                                 const stream_detection_engine_t *engine,
+                                 detection_result_t *combined,
+                                 detection_result_t *candidate) {
+    if (candidate->count <= 0) return;
+    filter_detections_by_zones(ctx->stream_name, candidate);
+    filter_detections_by_stream_objects(ctx->stream_name, candidate);
+    for (int i = 0; i < candidate->count && combined->count < MAX_DETECTIONS; ++i) {
+        if (candidate->detections[i].confidence < engine->threshold) continue;
+        combined->detections[combined->count++] = candidate->detections[i];
+        log_info("[%s] Detection engine %s: %s (%.1f%%)",
+                 ctx->stream_name, engine->engine_key,
+                 candidate->detections[i].label,
+                 candidate->detections[i].confidence * 100.0f);
+    }
+}
+
+/* Multi-engine frame fan-out. A decoded frame is converted to RGB once and
+ * shared by every due local engine. ONVIF remains an asynchronous event
+ * source. API engines are deliberately isolated until their legacy helper no
+ * longer persists internally; running them here would duplicate rows/events. */
+static bool detect_with_runtime_engines(unified_detection_ctx_t *ctx,
+                                        AVFrame *frame, time_t now,
+                                        detection_result_t *combined) {
+    bool any_due_frame_engine = false;
+    bool onvif_triggered = false;
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        stream_detection_engine_t *engine = &ctx->engines[i];
+        if (!engine->enabled ||
+            (ctx->engine_last_run[i] > 0 &&
+             now - ctx->engine_last_run[i] < engine->interval_seconds)) continue;
+        if (strcmp(engine->engine_type, "motion") == 0 ||
+            strcmp(engine->engine_type, "object") == 0) {
+            any_due_frame_engine = true;
+        } else if (strcmp(engine->engine_type, "onvif") == 0) {
+            ctx->engine_last_run[i] = now;
+            if (atomic_load(&ctx->onvif_motion_detected)) onvif_triggered = true;
+        } else if (strcmp(engine->engine_type, "api") == 0) {
+            if (!ctx->engine_load_failed[i]) {
+                log_warn("[%s] Additional API engine %s is isolated from local fan-out "
+                         "to prevent duplicate persistence", ctx->stream_name,
+                         engine->engine_key);
+                ctx->engine_load_failed[i] = true;
+            }
+            ctx->engine_last_run[i] = now;
+        }
+    }
+
+    uint8_t *rgb = any_due_frame_engine ? frame_to_rgb24(frame) : NULL;
+    if (any_due_frame_engine && !rgb) return onvif_triggered;
+
+    for (int i = 0; i < ctx->engine_count; ++i) {
+        stream_detection_engine_t *engine = &ctx->engines[i];
+        if (!engine->enabled ||
+            (ctx->engine_last_run[i] > 0 &&
+             now - ctx->engine_last_run[i] < engine->interval_seconds)) continue;
+        detection_result_t candidate;
+        memset(&candidate, 0, sizeof(candidate));
+        int result = -1;
+
+        if (strcmp(engine->engine_type, "motion") == 0) {
+            result = detect_motion(ctx->stream_name, rgb, frame->width,
+                                   frame->height, 3, now, &candidate);
+        } else if (strcmp(engine->engine_type, "object") == 0) {
+            if (!ctx->engine_models[i] && !ctx->engine_load_failed[i]) {
+                ctx->engine_models[i] = load_detection_model(
+                    engine->model_path, engine->threshold);
+                if (!ctx->engine_models[i]) {
+                    ctx->engine_load_failed[i] = true;
+                    log_error("[%s] Detection engine %s failed to load model",
+                              ctx->stream_name, engine->engine_key);
+                }
+            }
+            if (ctx->engine_models[i]) {
+                result = detect_objects(ctx->engine_models[i], rgb, frame->width,
+                                        frame->height, 3, &candidate);
+            }
+        } else {
+            continue;
+        }
+        ctx->engine_last_run[i] = now;
+        if (result == 0) append_engine_result(ctx, engine, combined, &candidate);
+        else if (!ctx->engine_load_failed[i])
+            log_warn("[%s] Detection engine %s failed", ctx->stream_name,
+                     engine->engine_key);
+    }
+    free(rgb);
+    return combined->count > 0 || onvif_triggered;
+}
+
 static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
                                     AVFrame *frame, time_t now,
                                     detection_result_t *result) {
     if (!ctx || !frame || !result) return false;
 
     memset(result, 0, sizeof(*result));
+
+    if (ctx->engine_count > 1) {
+        return detect_with_runtime_engines(ctx, frame, now, result);
+    }
 
     int width  = frame->width;
     int height = frame->height;
@@ -2923,7 +3140,7 @@ static void report_detections(unified_detection_ctx_t *ctx,
                                const detection_result_t *result, time_t now) {
     if (!ctx || !result || result->count == 0) return;
 
-    if (!is_api_detection(ctx->model_path)) {
+    if (ctx->engine_count > 1 || !is_api_detection(ctx->model_path)) {
         uint64_t rec_id = detection_link_recording_id(ctx);
 
         if (store_detections_in_db_for_camera(
@@ -2997,7 +3214,8 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
                 /* detection_interval is forced > 0 in start_unified_detection_thread
                  * (zero / negative fall back to DEFAULT_DETECTION_INTERVAL), so the
                  * lookback is always at least 1 s + grace_period. */
-                time_t lookback = now - (ctx->detection_interval + g_config.detection_grace_period);
+                time_t lookback = now - (ctx->recording_grace_interval +
+                                          g_config.detection_grace_period);
                 int updated = update_detections_recording_id(
                     ctx->stream_name, ctx->current_recording_id, lookback);
                 if (updated > 0)
@@ -3022,7 +3240,8 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
         // grace_period applies — otherwise (e.g. interval=5s, grace=2s) a continuous
         // scene would drop to post-buffer between samples and fragment the clip.
         // This mirrors the detection-linking lookback above.
-        time_t grace_window = (time_t)ctx->detection_interval + (time_t)g_config.detection_grace_period;
+        time_t grace_window = (time_t)ctx->recording_grace_interval +
+                             (time_t)g_config.detection_grace_period;
         if (since_last > grace_window) {
             log_info("[%s] No detection for %lds, entering post-buffer (%d seconds)",
                      ctx->stream_name, (long)since_last, ctx->post_buffer_seconds);

@@ -55,6 +55,8 @@
 #include "web/api_handlers_workspaces.h"
 #include "web/api_handlers_live_layouts.h"
 #include "web/api_handlers_operator_floor_plans.h"
+#include "web/api_handlers_lpr.h"
+#include "web/api_handlers_detection_engines.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -198,6 +200,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Stream Retention API
     http_server_register_handler(server, "/api/streams/#/retention", "GET", handle_get_stream_retention);
     http_server_register_handler(server, "/api/streams/#/retention", "PUT", handle_put_stream_retention);
+    http_server_register_handler(server, "/api/streams/#/detection-engines", "GET",
+                                 handle_get_detection_engines);
+    http_server_register_handler(server, "/api/streams/#/detection-engines", "PUT",
+                                 handle_put_detection_engines);
 
     // Stream Refresh API
     http_server_register_handler(server, "/api/streams/#/refresh", "POST", handle_post_stream_refresh);
@@ -259,6 +265,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Detection API
     http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
+    http_server_register_handler(server, "/api/lpr/search", "POST", handle_post_lpr_search);
+    http_server_register_handler(server, "/api/lpr/export", "POST", handle_post_lpr_export);
+    http_server_register_handler(server, "/api/lpr/reads/#", "DELETE", handle_delete_lpr_read);
     // Detection event snapshots (saved on MQTT publish, see issue #449)
     http_server_register_handler(server, "/api/snapshots/#/#", "GET", handle_get_detection_snapshot);
 

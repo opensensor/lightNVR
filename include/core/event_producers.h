@@ -24,6 +24,15 @@ int event_producer_publish_detection_for_stream(
     time_t occurred_at, char *error, size_t error_size);
 
 /*
+ * Publish a restricted notification that a protected LPR read exists. The
+ * envelope contains only the opaque read UUID and operational context; plate
+ * text and derived plate identifiers are forbidden from the event bus.
+ */
+int event_producer_publish_lpr_read(
+    const char *camera_uuid, const char *stream_name, const char *read_uuid,
+    const char *source, time_t occurred_at, char *error, size_t error_size);
+
+/*
  * Operational producers resolve mutable stream names to immutable camera UUIDs
  * before enqueueing. They perform no MQTT or other network I/O.
  */

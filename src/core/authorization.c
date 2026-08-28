@@ -47,6 +47,14 @@ static const authorization_action_metadata_t action_catalog[] = {
      "Manage users, roles, and grants", false, true, true},
     {AUTHZ_SYSTEM_ADMIN, "system.admin", "System administration",
      "Change or control the lightNVR system", false, true, true},
+    {AUTHZ_LPR_READ, "lpr.read", "License plates",
+     "View protected plate values", true, false, true},
+    {AUTHZ_LPR_SEARCH, "lpr.search", "License plates",
+     "Search protected plate reads", true, false, true},
+    {AUTHZ_LPR_EXPORT, "lpr.export", "License plates",
+     "Export protected plate reads", true, false, true},
+    {AUTHZ_LPR_DELETE, "lpr.delete", "License plates",
+     "Permanently delete protected plate reads", true, true, true},
 };
 
 _Static_assert(sizeof(action_catalog) / sizeof(action_catalog[0]) ==

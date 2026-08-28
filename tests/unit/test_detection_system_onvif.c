@@ -451,6 +451,42 @@ void test_onvif_tapo_smart_event_reports_vehicle_class(void) {
     TEST_ASSERT_EQUAL_STRING("vehicle", result.detections[0].label);
 }
 
+/* A Profile M license-plate notification is not a motion event. Until the
+ * structured LPR ingestion path exists, the motion detector must ignore it
+ * rather than silently turning a sensitive recognition read into a generic
+ * recording trigger. This is a synthetic standards-shaped payload, not a
+ * captured device fixture. */
+void test_onvif_license_plate_event_does_not_trigger_motion(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.pull_body =
+        "<Envelope><Body><PullMessagesResponse><NotificationMessage>"
+        "<Topic>tns1:RuleEngine/Recognition/LicensePlate</Topic>"
+        "<Message><tt:Message UtcTime=\"2026-08-28T12:00:00Z\" "
+        "PropertyOperation=\"Changed\"><tt:Source>"
+        "<tt:SimpleItem Name=\"VideoSourceConfigurationToken\" "
+        "Value=\"source-1\"/></tt:Source><tt:Data>"
+        "<tt:ElementItem Name=\"LicensePlateInfo\">"
+        "<tt:LicensePlateInfo>"
+        "<tt:PlateNumber Likelihood=\"0.95\">TEST123</tt:PlateNumber>"
+        "<tt:CountryCode Likelihood=\"0.90\">US</tt:CountryCode>"
+        "</tt:LicensePlateInfo></tt:ElementItem>"
+        "</tt:Data></tt:Message></Message>"
+        "</NotificationMessage></PullMessagesResponse></Body></Envelope>";
+
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(0, result.count);
+}
+
 void test_onvif_profile_reports_ptz_configuration(void) {
     fake_onvif_server_t server;
     TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
@@ -548,6 +584,7 @@ int main(void) {
     RUN_TEST(test_onvif_failed_renew_unsubscribes_before_recreate);
     RUN_TEST(test_onvif_smart_detection_reports_object_class);
     RUN_TEST(test_onvif_tapo_smart_event_reports_vehicle_class);
+    RUN_TEST(test_onvif_license_plate_event_does_not_trigger_motion);
     RUN_TEST(test_onvif_profile_reports_ptz_configuration);
     RUN_TEST(test_onvif_detection_links_to_active_continuous_recording);
     int result = UNITY_END();

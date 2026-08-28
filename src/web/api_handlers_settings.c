@@ -490,6 +490,20 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
     cJSON_AddNumberToObject(settings, "max_storage_size", (double)g_config.max_storage_size);
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
+    {
+        char lpr_retention[32] = {0};
+        int days = 30;
+        if (db_get_system_setting("lpr_retention_days", lpr_retention,
+                                  sizeof(lpr_retention)) == 0) {
+            char *end = NULL;
+            long parsed = strtol(lpr_retention, &end, 10);
+            if (end != lpr_retention && *end == '\0' && parsed >= 1 &&
+                parsed <= 36500) {
+                days = (int)parsed;
+            }
+        }
+        cJSON_AddNumberToObject(settings, "lpr_retention_days", days);
+    }
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddNumberToObject(settings, "storage_min_free_pct", g_config.storage_min_free_pct);
     cJSON_AddNumberToObject(settings, "storage_pressure_warning_pct", g_config.storage_pressure_warning_pct);
@@ -1033,6 +1047,32 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         set_retention_days(g_config.retention_days);
         settings_changed = true;
         log_info("Updated retention_days: %d", g_config.retention_days);
+    }
+
+    // Protected LPR metadata is retained independently of video.
+    cJSON *lpr_retention_days = cJSON_GetObjectItem(
+        settings, "lpr_retention_days");
+    if (lpr_retention_days) {
+        if (!cJSON_IsNumber(lpr_retention_days) ||
+            lpr_retention_days->valuedouble !=
+                (double)lpr_retention_days->valueint ||
+            lpr_retention_days->valueint < 1 ||
+            lpr_retention_days->valueint > 36500) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(
+                res, 400,
+                "lpr_retention_days must be an integer between 1 and 36500");
+            return;
+        }
+        char value[32];
+        snprintf(value, sizeof(value), "%d", lpr_retention_days->valueint);
+        if (db_set_system_setting("lpr_retention_days", value) != 0) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(
+                res, 500, "Failed to save LPR retention setting");
+            return;
+        }
+        log_info("Updated protected LPR retention policy");
     }
     
     // Auto delete oldest

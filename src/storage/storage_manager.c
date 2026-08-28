@@ -21,6 +21,8 @@
 #include "database/db_recordings.h"
 #include "database/db_storage_targets.h"
 #include "database/db_detections.h"
+#include "database/db_lpr_reads.h"
+#include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "core/config.h"
 #include "core/event_producers.h"
@@ -413,8 +415,6 @@ int apply_retention_policy(void) {
 
     if (stream_count == 0) {
         log_debug("No streams found for retention policy");
-        free(stream_names);
-        return 0;
     }
 
     if (stream_count == MAX_STREAMS_BATCH) {
@@ -575,6 +575,34 @@ int apply_retention_policy(void) {
 
     free(batch);
     free(stream_names);
+
+    // LPR metadata has an independent policy because its sensitivity and
+    // deletion obligations do not necessarily match either video or generic
+    // detection retention. Work in the same bounded batches/time budget.
+    char lpr_days_text[32] = {0};
+    if (time(NULL) - budget_start < RETENTION_TIME_BUDGET_SEC &&
+        db_get_system_setting("lpr_retention_days", lpr_days_text,
+                              sizeof(lpr_days_text)) == 0) {
+        char *end = NULL;
+        long lpr_days = strtol(lpr_days_text, &end, 10);
+        if (end != lpr_days_text && *end == '\0' && lpr_days > 0 &&
+            lpr_days <= 36500) {
+            int64_t cutoff_ms = ((int64_t)time(NULL) -
+                                 (int64_t)lpr_days * 86400) * 1000;
+            int lpr_deleted = 0;
+            int pruned = 0;
+            do {
+                pruned = db_lpr_reads_prune(cutoff_ms,
+                                            MAX_DETECTIONS_PER_BATCH);
+                if (pruned > 0) lpr_deleted += pruned;
+            } while (pruned == MAX_DETECTIONS_PER_BATCH &&
+                     time(NULL) - budget_start < RETENTION_TIME_BUDGET_SEC);
+            if (lpr_deleted > 0) {
+                log_info("Deleted %d protected LPR reads past %ld-day retention",
+                         lpr_deleted, lpr_days);
+            }
+        }
+    }
 
     // Phase 3: Clean up orphaned database entries (files that no longer exist)
     // Safety check: verify storage is actually accessible before orphan cleanup.

@@ -27,6 +27,7 @@
 #include "video/detection_result.h"
 #include "video/mp4_writer.h"
 #include "video/stream_manager.h"
+#include "database/db_detection_engines.h"
 
 // Maximum number of unified detection threads
 #define MAX_UNIFIED_DETECTION_THREADS MAX_STREAMS
@@ -97,6 +98,17 @@ typedef struct {
     bool model_load_failed;          // Set on first load_detection_model() failure to suppress
                                      // per-frame retry/log spam. Once true, the stream has been
                                      // driven into STREAM_STATE_ERROR via handle_stream_error().
+
+    // Ordered engine set loaded from stream_detection_engines. The legacy
+    // single-model fields above remain the compatibility view used when only
+    // one engine is configured.
+    stream_detection_engine_t engines[MAX_DETECTION_ENGINES_PER_STREAM];
+    detection_model_t engine_models[MAX_DETECTION_ENGINES_PER_STREAM];
+    bool engine_load_failed[MAX_DETECTION_ENGINES_PER_STREAM];
+    time_t engine_last_run[MAX_DETECTION_ENGINES_PER_STREAM];
+    int engine_count;
+    int recording_grace_interval;
+    bool has_onvif_engine;
     
     // Connection state
     atomic_int_fast64_t last_packet_time;

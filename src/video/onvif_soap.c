@@ -164,12 +164,7 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
     /* ezxml_parse_str modifies the buffer in-place, so make a copy */
     char *buf = malloc(response_len + 1);
     if (!buf) {
-        /* Fallback: just log raw truncated response */
-        char snippet[256];
-        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
-        memcpy(snippet, response, n);
-        snippet[n] = '\0';
-        log_error("[%s] SOAP fault (raw): %s", ctx, snippet);
+        log_error("[%s] SOAP fault could not be parsed (allocation failed)", ctx);
         return;
     }
     memcpy(buf, response, response_len);
@@ -177,12 +172,7 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
 
     ezxml_t xml = ezxml_parse_str(buf, response_len);
     if (!xml) {
-        /* Could not parse XML at all — log raw snippet */
-        char snippet[512];
-        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
-        memcpy(snippet, response, n);
-        snippet[n] = '\0';
-        log_error("[%s] SOAP fault response (unparseable): %s", ctx, snippet);
+        log_error("[%s] SOAP fault response is not parseable XML", ctx);
         free(buf);
         return;
     }
@@ -198,12 +188,7 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
     ezxml_t fault = body ? find_with_ns(body, "Fault", env_ns, env_ns_count) : NULL;
 
     if (!fault) {
-        /* No Fault element found — log raw snippet */
-        char snippet[512];
-        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
-        memcpy(snippet, response, n);
-        snippet[n] = '\0';
-        log_error("[%s] SOAP error response (no Fault element): %s", ctx, snippet);
+        log_error("[%s] SOAP error response has no Fault element", ctx);
         ezxml_free(xml);
         free(buf);
         return;
@@ -240,41 +225,21 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
 
     bool have_reason = (reason_str && reason_str[0] != '\0');
 
-    /* Build and log the message */
+    /* Log only schema-level codes. Fault reason/detail text is vendor-controlled
+     * and may echo credentials, plate values, URLs, or other request data. */
     if (code_str && code_str[0] != '\0') {
         if (subcode_str && subcode_str[0] != '\0') {
             log_error("[%s] SOAP Fault: Code=%s, Subcode=%s, Reason=%s",
-                      ctx,
-                      code_str,
-                      subcode_str,
-                      have_reason ? reason_str : "(none)");
+                      ctx, code_str, subcode_str,
+                      have_reason ? "provided" : "none");
         } else {
             log_error("[%s] SOAP Fault: Code=%s, Reason=%s",
-                      ctx,
-                      code_str,
-                      have_reason ? reason_str : "(none)");
+                      ctx, code_str, have_reason ? "provided" : "none");
         }
     } else if (have_reason) {
-        log_error("[%s] SOAP Fault: %s", ctx, reason_str);
+        log_error("[%s] SOAP Fault: Reason provided", ctx);
     } else {
-        /* Could not extract anything useful — log raw */
-        char snippet[512];
-        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
-        memcpy(snippet, response, n);
-        snippet[n] = '\0';
-        log_error("[%s] SOAP Fault (could not extract details): %s", ctx, snippet);
-    }
-
-    /* Extra diagnostic: when the structured fault lacks a Reason — as happens
-     * with strict ONVIF servers like Reolink (#374) — dump a snippet of the
-     * raw XML so future bug reports include enough for us to spot vendor
-     * quirks (Subcode values, Detail elements, etc.) without needing a pcap. */
-    if (!have_reason && code_str && code_str[0] != '\0') {
-        char snippet[768];
-        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
-        memcpy(snippet, response, n);
-        snippet[n] = '\0';
-        log_error("[%s] SOAP Fault raw XML (no Reason/Text): %s", ctx, snippet);
+        log_error("[%s] SOAP Fault without structured code or reason", ctx);
     }
 
     ezxml_free(xml);

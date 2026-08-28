@@ -48,6 +48,7 @@ deny/error outcomes remain durable without writing on every media segment.
 | Stream create/update/delete/test/refresh | `camera.configure` | Centralized; redacted success/failure/error operation outcomes include stable camera identity |
 | Manual recording and recording-schedule changes | `camera.configure` | Centralized per camera with outcome audit |
 | Stream retention GET/PUT | `camera.configure` | Centralized per camera; PUT outcome audited |
+| Stream detection-engine GET/PUT | `camera.configure` | Centralized per camera; custom-engine replacement preserves the legacy-managed engine and audits the outcome |
 | Zones, imaging, day/night, and motion trigger | `camera.configure` | Centralized per camera with mutation outcome audit |
 | ONVIF discovery/test/profile/add | `camera.configure` | Centralized; credentials/URLs are excluded from audit details and created cameras retain stable identity where available |
 | Location/tag/collection mutations and camera assignments | `camera.configure` | Centralized global configuration authority with redacted outcomes; numeric legacy role is not an access bypass |
@@ -67,6 +68,19 @@ deny/error outcomes remain durable without writing on every media segment.
 | Single/file/batch deletion | `recording.delete` | Centralized; open-ended filters require an all-fleet grant; progress is bound to creator user and exact scoped token; outcomes audited |
 | `GET /api/recordings/batch-delete/progress/#` | creator binding | Authenticated; other users/tokens receive non-disclosing `404` |
 | `POST /api/recordings/sync` | `storage.configure` | Centralized with outcome audit |
+
+## Protected license-plate reads
+
+| Routes | Action | Enforcement |
+| --- | --- | --- |
+| `POST /api/lpr/search` | `lpr.search` and `lpr.read` | Centralized for the required camera UUID; mandatory bounded time scope; query value is never audited |
+| `POST /api/lpr/export` | `lpr.export`, `lpr.search`, and `lpr.read` | Centralized for the required camera UUID; bounded JSON export and value-free outcome audit |
+| `DELETE /api/lpr/reads/#` | `lpr.delete` | Database resolves the opaque read to immutable camera identity before centralized authorization and deletion audit |
+| LPR retention in `GET/POST /api/settings` | `system.admin` | Existing centralized settings boundary and mutation audit; independent of video retention |
+
+The migration grants LPR actions only to Administrator. `recordings.replay`
+does not imply plate visibility. General event notifications contain only an
+opaque read UUID and cannot be used to bypass these read/search boundaries.
 
 Every recording ID/path resolves to recording metadata and a camera before a
 resource action is evaluated. Client-supplied collection expansion is never an

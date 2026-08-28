@@ -1,6 +1,7 @@
 # ONVIF Detection
 
-This document describes the ONVIF detection feature in LightNVR, which allows motion detection using ONVIF events from IP cameras.
+This document describes camera-side ONVIF motion/smart-event detection and the
+protected ONVIF license-plate-recognition (LPR/ANPR) ingestion path.
 
 ## Overview
 
@@ -13,6 +14,12 @@ ONVIF (Open Network Video Interface Forum) is a global standard for IP-based sec
 3. It periodically polls for new events
 4. When a motion event is detected, it creates a detection result with a "motion" label
 5. This detection result is stored in the database and can trigger recording
+
+License-plate notifications take a separate path. LightNVR recognizes the
+Profile M `RuleEngine/Recognition/LicensePlate` topic and fixture-backed vendor
+`LicensePlate`, `ANPR`, `ALPR`, and `LPR` topics, parses their structured
+attributes, and writes them to protected LPR storage. An LPR notification is
+not reduced to generic motion and does not trigger recording by itself.
 
 ## Advantages
 
@@ -67,13 +74,89 @@ The ONVIF detection feature is implemented in the following files:
 
 - `include/video/onvif_detection.h`: Header file for ONVIF detection
 - `src/video/onvif_detection.c`: Implementation of ONVIF detection
+- `src/video/onvif_event.c`: Structured standard/vendor LPR parser
+- `src/database/db_lpr_reads.c`: Protected persistence and bounded search
+- `src/utils/lpr_crypto.c`: Encryption and keyed lookup primitives
 
 The implementation uses the following components:
 
 - CURL for HTTP requests
-- mbedTLS for cryptographic operations (SHA-1 hashing, Base64 encoding, random number generation)
+- mbedTLS for ONVIF authentication plus AES-256-GCM and HMAC-SHA-256 LPR
+  protection
 - cJSON for parsing responses
 - pthread for thread management
+
+## Protected LPR storage
+
+LPR storage fails closed unless `LIGHTNVR_LPR_MASTER_KEY_HEX` contains exactly
+64 hexadecimal characters (a 256-bit key). Generate and inject this value from
+the deployment's secret manager; never place it in `lightnvr.ini`, a unit file
+checked into source control, logs, or a database backup.
+
+```bash
+openssl rand -hex 32
+```
+
+The canonical plate value is encrypted with AES-256-GCM. Exact search uses a
+domain-separated HMAC blind index. Partial search decrypts only a bounded set
+of candidates inside the required camera/time range, so the database does not
+contain plaintext prefix or n-gram indexes. Other recognition attributes and
+recording correlation are stored in the dedicated `lpr_reads` table. Repeated
+reads with the same camera, value, source, topic, object/correlation IDs, and
+five-second time bucket are suppressed.
+
+The master key must remain stable across restarts and must be backed up
+separately under the site's key-management policy. A database restored without
+the matching key retains ciphertext but cannot reveal or search exact plate
+values. Key rotation/re-encryption is not implemented yet.
+
+The general event bus receives only the restricted
+`io.lightnvr.recognition.license_plate.v1` envelope containing `read_id`,
+`stream_name`, and `source`. Event-envelope validation rejects data keys
+containing `plate`, and audit logging redacts them defensively.
+
+## LPR API
+
+All queries are POST bodies so plate criteria never appear in URLs or access
+logs. `camera_uuid`, `start_at`, and `end_at` are required; timestamps are Unix
+milliseconds and the maximum range is 366 days.
+
+```http
+POST /api/lpr/search
+Content-Type: application/json
+
+{
+  "camera_uuid": "11111111-1111-4111-8111-111111111111",
+  "start_at": 1787920000000,
+  "end_at": 1787930000000,
+  "match": "exact",
+  "plate": "TEST123",
+  "limit": 50
+}
+```
+
+`match` may be omitted, `exact`, or `partial`; partial terms canonicalize to at
+least three alphanumeric characters. Search is capped at 100 results.
+
+- `POST /api/lpr/search` requires camera-scoped `lpr.search` and `lpr.read`.
+- `POST /api/lpr/export` accepts the same body, is capped at 1,000 JSON rows,
+  adds a download disposition, and also requires `lpr.export`.
+- `DELETE /api/lpr/reads/{read_uuid}` requires camera-scoped `lpr.delete` and
+  permanently removes the protected metadata row. It does not delete video.
+
+Searches and exports audit the match mode, camera/time scope, result count, and
+a keyed query fingerprint—never the query value. Deletions audit only the
+opaque read ID. The four LPR actions are granted only to the built-in
+Administrator role by migration; delegated roles must receive them explicitly.
+
+LPR metadata retention is independent of video retention. The
+`lpr_retention_days` system setting defaults to 30, accepts 1–36500, is exposed
+through `GET/POST /api/settings`, and is applied by the bounded retention pass.
+
+## Multiple engines
+
+ONVIF can coexist with local motion and object models through the per-stream
+detection-engine API. See [Multiple Detection Engines](DETECTION_ENGINES.md).
 
 ## Testing
 
@@ -110,9 +193,16 @@ If you're unsure whether your camera requires authentication:
 2. If that fails with authentication errors, configure the proper credentials
 3. Check the logs - they will indicate whether authentication is being used
 
-## Future Improvements
+## Current limitations
 
-- Support for other ONVIF event types (not just motion)
-- Automatic discovery of ONVIF cameras
-- Configuration of motion detection parameters through ONVIF
-- Support for ONVIF Analytics events
+- No production camera capability is inferred from placement or stream names;
+  device-specific Profile M support still requires authenticated read-only
+  discovery and a sanitized event fixture.
+- The implemented LPR adapter consumes PullPoint notification XML. ONVIF
+  metadata RTSP tracks, ONVIF MQTT brokers, and vendor REST/CGI interfaces need
+  separate fixture-backed adapters.
+- LightNVR does not create or modify camera analytics rules, brokers, exposure,
+  illumination, firmware, or other device configuration.
+- An ONVIF engine currently runs inside the existing detection-thread
+  lifecycle. It can be combined with other engines, but a standalone analytics
+  collector independent of detection recording remains future work.

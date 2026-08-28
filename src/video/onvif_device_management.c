@@ -62,14 +62,14 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         return NULL;
     }
     
-    // Log the request details
+    // Log only operation-level state; SOAP bodies and identities may contain
+    // credentials or sensitive device metadata.
     log_info("Sending SOAP request to: %s", device_url);
-    log_info("Request body: %s", request_body);
     
     // Create security header if authentication is required
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
         security_header = onvif_create_security_header(username, password);
-        log_info("Using authentication with username: %s", username);
+        log_info("Using ONVIF authentication");
     } else {
         security_header = strdup("");
         log_info("No authentication credentials provided");
@@ -97,7 +97,8 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         headers = curl_slist_append(headers, soap_action_header);
     }
     
-    // Set up CURL options with more verbose debugging
+    // Set up CURL options.  Do not enable libcurl's wire logging here: the
+    // outgoing SOAP envelope can contain a WS-Security credential header.
     curl_easy_setopt(curl, CURLOPT_URL, device_url);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, soap_envelope);
@@ -106,7 +107,7 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Enable verbose output
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
     
     // Perform the request
     res = curl_easy_perform(curl);
@@ -167,12 +168,9 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         }
     }
 
-    // Log response if available
     if (response) {
-        // Log first 200 characters of response for debugging
-        char debug_response[201];
-        safe_strcpy(debug_response, response, 201, 0);
-        log_info("Response (first 200 chars): %s", debug_response);
+        log_debug("Received ONVIF device management response (%zu bytes)",
+                  strlen(response));
     }
     
     // Clean up
@@ -777,8 +775,7 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     if (username) {
         safe_strcpy(config.onvif_username, username, sizeof(config.onvif_username), 0);
         
-        // For onvif_simple_server compatibility, log the username
-        log_info("Setting ONVIF username for stream %s: %s", stream_name, username);
+        log_info("Setting ONVIF authentication identity for stream %s", stream_name);
     }
     
     if (password) {

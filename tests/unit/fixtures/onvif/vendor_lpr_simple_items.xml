@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Envelope>
+  <Body>
+    <NotificationMessage>
+      <Topic>vendor:Analytics/ANPR/Result</Topic>
+      <Message>
+        <Message UtcTime="2026-08-28T12:35:01Z">
+          <Data>
+            <SimpleItem Name="PlateNo" Value="SAMPLE9"/>
+            <SimpleItem Name="Confidence" Value="87"/>
+            <SimpleItem Name="Country" Value="US"/>
+            <SimpleItem Name="State" Value="YY"/>
+            <SimpleItem Name="LaneID" Value="north"/>
+          </Data>
+        </Message>
+      </Message>
+    </NotificationMessage>
+    <NotificationMessage>
+      <Topic>vendor:Analytics/ANPR/Result</Topic>
+      <Message>
+        <Message UtcTime="2026-08-28T12:35:02Z">
+          <Data>
+            <SimpleItem Name="State" Value="false"/>
+            <SimpleItem Name="PlateNo" Value="IGNORED1"/>
+          </Data>
+        </Message>
+      </Message>
+    </NotificationMessage>
+  </Body>
+</Envelope>
