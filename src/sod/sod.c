@@ -63,6 +63,9 @@
 #include <limits.h>
 /* Local includes */
 #include "sod/sod.h"
+#ifdef SOD_ENABLE_INGENIC_MXU
+#include "sod_ingenic_mxu.h"
+#endif
 /* Forward declaration */
 typedef struct SySet SySet;
 typedef struct SyBlob SyBlob;
@@ -4654,6 +4657,11 @@ static inline void gemm_nn(int M, int N, int K, float ALPHA,
 	float *C, int ldc)
 {
 	register int i, j, k;
+#ifdef SOD_ENABLE_INGENIC_MXU
+	if (sod_ingenic_gemm_nn(M, N, K, ALPHA, A, lda, B, ldb, C, ldc)) {
+		return;
+	}
+#endif
 	i = 0;
 	for (;;) {
 		if (i >= M)break;
@@ -4759,12 +4767,19 @@ static inline void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
 		gemm_tt(M, N, K, ALPHA, A, lda, B, ldb, C, ldc);
 	}
 }
-// Runtime CPU dispatch: compiles this hot path (the CNN's matrix-multiply
-// core) once per listed ISA plus a plain scalar fallback, and picks the
-// fastest one the actual CPU supports at load time via an ifunc resolver.
-// Safe on any x86-64 machine regardless of build host -- no blanket -mavx2
-// flag that would SIGILL on a CPU lacking it.
+// On supported x86 GCC/Clang toolchains, runtime CPU dispatch compiles this
+// hot path once per listed ISA plus a plain scalar fallback and selects the
+// fastest compatible version at load time. Other architectures retain the
+// scalar implementation; AVX2/FMA target names are not valid there.
+#if defined(__i386__) || defined(__x86_64__)
+# if defined(__clang__)
+#  if __has_attribute(target_clones)
 __attribute__((target_clones("avx2,fma,default")))
+#  endif
+# elif defined(__GNUC__) && __GNUC__ >= 6
+__attribute__((target_clones("avx2,fma,default")))
+# endif
+#endif
 static void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
 	float *A, int lda,
 	float *B, int ldb,
