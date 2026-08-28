@@ -8,13 +8,28 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
+#include <sqlite3.h>
 
 #include "unity.h"
+#include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
+#include "database/db_core.h"
+#include "database/db_recordings.h"
 #include "video/detection.h"
+#include "video/mp4_recording.h"
+#include "video/mp4_writer.h"
 #include "video/onvif_detection.h"
+
+#define TEST_DB_PATH "/tmp/lightnvr_unit_onvif_test.db"
+
+extern config_t g_config;
+
+static mp4_writer_t g_annotation_writer;
+static bool g_annotation_writer_registered;
+static int g_saved_max_streams;
 
 typedef struct {
     int listen_fd;
@@ -155,9 +170,19 @@ static void stop_fake_onvif_server(fake_onvif_server_t *server) {
 
 void setUp(void) {
     init_shutdown_coordinator();
+    sqlite3_exec(get_db_handle(), "DELETE FROM detections;", NULL, NULL, NULL);
+    sqlite3_exec(get_db_handle(), "DELETE FROM recordings;", NULL, NULL, NULL);
+    memset(&g_annotation_writer, 0, sizeof(g_annotation_writer));
+    g_annotation_writer_registered = false;
+    g_saved_max_streams = g_config.max_streams;
 }
 
 void tearDown(void) {
+    if (g_annotation_writer_registered) {
+        unregister_mp4_writer_for_stream("onvif-link");
+        g_annotation_writer_registered = false;
+    }
+    g_config.max_streams = g_saved_max_streams;
     shutdown_detection_system();
     shutdown_coordinator_cleanup();
 }
@@ -229,13 +254,83 @@ void test_onvif_smart_detection_reports_object_class(void) {
     TEST_ASSERT_EQUAL_STRING("person", result.detections[0].label);
 }
 
+/* Regression for #547: ONVIF used to hardcode recording_id=0 when it stored
+ * the parsed event, bypassing the annotation linkage used by every frame-based
+ * detector. Verify the actual persisted foreign key against a live writer ID. */
+void test_onvif_detection_links_to_active_continuous_recording(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.pull_body =
+        "<Envelope><Body><PullMessagesResponse><NotificationMessage>"
+        "<Topic>tns1:RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Message><Data>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"true\"/>"
+        "</Data></Message></Message>"
+        "</NotificationMessage></PullMessagesResponse></Body></Envelope>";
+
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    /* The normal application configures the registry capacity before starting
+     * writers. Keep init_detection_system() on this test's intentionally empty
+     * config, then expose one registry slot for the writer under test. */
+    g_config.max_streams = 1;
+
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    snprintf(recording.stream_name, sizeof(recording.stream_name),
+             "%s", "onvif-link");
+    snprintf(recording.file_path, sizeof(recording.file_path),
+             "%s", "/tmp/onvif-link.mp4");
+    snprintf(recording.codec, sizeof(recording.codec), "%s", "h264");
+    snprintf(recording.trigger_type, sizeof(recording.trigger_type),
+             "%s", "continuous");
+    recording.start_time = time(NULL) - 10;
+    recording.is_complete = false;
+    recording.retention_tier = RETENTION_TIER_STANDARD;
+
+    uint64_t recording_id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, recording_id);
+    g_annotation_writer.current_recording_id = recording_id;
+    TEST_ASSERT_EQUAL_INT(0, register_mp4_writer_for_stream(
+        "onvif-link", &g_annotation_writer));
+    g_annotation_writer_registered = true;
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(
+        url, "", "", &result, "onvif-link"));
+    stop_fake_onvif_server(&server);
+
+    TEST_ASSERT_EQUAL_INT(1, result.count);
+
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT recording_id FROM detections "
+        "WHERE stream_name = 'onvif-link' LIMIT 1;", -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_UINT64(recording_id,
+                             (uint64_t)sqlite3_column_int64(stmt, 0));
+    sqlite3_finalize(stmt);
+}
+
 int main(void) {
+    unlink(TEST_DB_PATH);
+    if (init_database(TEST_DB_PATH) != 0) {
+        fprintf(stderr, "FATAL: init_database failed\n");
+        return 1;
+    }
     init_logger();
     UNITY_BEGIN();
     RUN_TEST(test_init_detection_system_initializes_onvif_detection);
     RUN_TEST(test_onvif_subscription_uses_pull_messages_keepalive);
     RUN_TEST(test_onvif_smart_detection_reports_object_class);
+    RUN_TEST(test_onvif_detection_links_to_active_continuous_recording);
     int result = UNITY_END();
     shutdown_logger();
+    shutdown_database();
+    unlink(TEST_DB_PATH);
     return result;
 }

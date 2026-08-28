@@ -20,6 +20,94 @@
 #define MAX_MULTI_FILTER_VALUES 32
 #define MAX_MULTI_FILTER_VALUE_LEN 128
 
+/*
+ * Link detections which arrived while a recording segment was rotating or
+ * before its database ID became visible to producers. The caller holds the
+ * database mutex and has already marked recording_id complete, so its exact
+ * [start_time, end_time] interval is available for an unambiguous backfill.
+ *
+ * The bounded stream/time lookup uses the partial annotation index added by
+ * migration 0047, so segment completion never scans the full detections table.
+ * Existing links are never overwritten.
+ */
+static int backfill_recording_detection_links_locked(sqlite3 *db,
+                                                     uint64_t recording_id) {
+    sqlite3_stmt *stmt = NULL;
+    const char *recording_sql =
+        "SELECT stream_name, camera_uuid, start_time, end_time "
+        "FROM recordings "
+        "WHERE id = ? AND is_complete = 1 AND end_time IS NOT NULL;";
+
+    int rc = sqlite3_prepare_v2(db, recording_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare completed recording lookup: %s",
+                  sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)recording_id);
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return 0;
+    }
+    if (rc != SQLITE_ROW) {
+        log_error("Failed to load completed recording for detection backfill: %s",
+                  sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    char stream_name[MAX_STREAM_NAME];
+    char camera_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    const unsigned char *db_stream_name = sqlite3_column_text(stmt, 0);
+    const unsigned char *db_camera_uuid = sqlite3_column_text(stmt, 1);
+    safe_strcpy(stream_name,
+                db_stream_name ? (const char *)db_stream_name : "",
+                sizeof(stream_name), 0);
+    safe_strcpy(camera_uuid,
+                db_camera_uuid ? (const char *)db_camera_uuid : "",
+                sizeof(camera_uuid), 0);
+    time_t start_time = (time_t)sqlite3_column_int64(stmt, 2);
+    time_t end_time = (time_t)sqlite3_column_int64(stmt, 3);
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+
+    const char *update_sql =
+        "UPDATE detections "
+        "SET recording_id = ?, "
+        "    camera_uuid = COALESCE(NULLIF(camera_uuid, ''), NULLIF(?, '')) "
+        "WHERE recording_id IS NULL "
+        "  AND stream_name = ? "
+        "  AND timestamp >= ? "
+        "  AND timestamp <= ?;";
+
+    rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare recording detection-link backfill: %s",
+                  sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)recording_id);
+    sqlite3_bind_text(stmt, 2, camera_uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)end_time);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to backfill recording detection links: %s",
+                  sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    int linked = sqlite3_changes(db);
+    sqlite3_finalize(stmt);
+    return linked;
+}
+
 static int parse_csv_filter_values(const char *csv,
                                    char values[][MAX_MULTI_FILTER_VALUE_LEN],
                                    int max_values) {
@@ -241,6 +329,21 @@ int update_recording_metadata(uint64_t id, time_t end_time,
 
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
+
+    if (is_complete && end_time > 0) {
+        int linked = backfill_recording_detection_links_locked(db, id);
+        if (linked > 0) {
+            log_debug("Linked %d unassigned detections to completed recording %llu",
+                      linked, (unsigned long long)id);
+        } else if (linked < 0) {
+            /* Recording finalization succeeded. Keep that durable result even
+             * if the annotation repair failed; the error above is actionable
+             * and timestamp fallbacks continue to serve legacy rows. */
+            log_warn("Recording %llu completed but detection-link backfill failed",
+                     (unsigned long long)id);
+        }
+    }
+
     pthread_mutex_unlock(db_mutex);
 
     return 0;

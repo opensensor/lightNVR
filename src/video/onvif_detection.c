@@ -21,6 +21,7 @@
 #include "video/onvif_soap.h"
 #include "video/detection_result.h"
 #include "video/cross_stream_motion_trigger.h"
+#include "video/mp4_recording.h"
 #include "video/zone_filter.h"
 #include "database/db_detections.h"
 #include "ezxml.h"
@@ -923,8 +924,17 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
                 log_warn("Failed to filter detections by zones, storing all detections");
             }
 
-            // Store the detection in the database (no recording_id linkage for ONVIF)
-            store_detections_in_db(stream_name, result, event_timestamp, 0);
+            /* ONVIF detections are produced by this polling thread rather than
+             * report_detections(), so they must resolve annotation-mode linkage
+             * here. Passing 0 unconditionally left every ONVIF detection with a
+             * NULL recording_id even while a continuous segment was active
+             * (issue #547). A segment-close backfill in db_recordings covers the
+             * narrow rotation window where the writer has not published its new
+             * recording ID yet. */
+            uint64_t recording_id =
+                get_current_recording_id_for_stream(stream_name);
+            store_detections_in_db(stream_name, result, event_timestamp,
+                                   recording_id);
 
             // Enqueue the event and trigger recording if detections remain.
             if (result->count > 0) {

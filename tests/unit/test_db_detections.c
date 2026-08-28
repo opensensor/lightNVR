@@ -256,6 +256,57 @@ void test_update_detections_recording_id(void) {
     TEST_ASSERT_GREATER_OR_EQUAL(0, updated);
 }
 
+/* Regression for #547: a detection can arrive after the continuous writer
+ * closes one segment but before the next segment publishes its database ID.
+ * Finalizing the segment must repair every unlinked detection whose timestamp
+ * is actually contained by that recording, without capturing adjacent rows. */
+void test_completed_recording_backfills_contained_detection_links(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t recording = make_recording(
+        "cam_rotation", "/tmp/cam-rotation.mp4", now - 20, 0);
+    recording.is_complete = false;
+    recording.id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, recording.id);
+
+    detection_result_t contained = make_result("person", 0.95f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "cam_rotation", &contained, now - 10, 0));
+
+    detection_result_t after_segment = make_result("vehicle", 0.90f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "cam_rotation", &after_segment, now + 10, 0));
+
+    detection_result_t other_stream = make_result("animal", 0.85f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "cam_rotation_other", &other_stream, now - 10, 0));
+
+    TEST_ASSERT_EQUAL_INT(0, update_recording_metadata(
+        recording.id, now, 4096, true));
+
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT label, COALESCE(recording_id, 0) FROM detections "
+        "WHERE label IN ('person', 'vehicle', 'animal') ORDER BY label;",
+        -1, &stmt, NULL));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("animal", sqlite3_column_text(stmt, 0));
+    TEST_ASSERT_EQUAL_UINT64(0, (uint64_t)sqlite3_column_int64(stmt, 1));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("person", sqlite3_column_text(stmt, 0));
+    TEST_ASSERT_EQUAL_UINT64(recording.id,
+                             (uint64_t)sqlite3_column_int64(stmt, 1));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("vehicle", sqlite3_column_text(stmt, 0));
+    TEST_ASSERT_EQUAL_UINT64(0, (uint64_t)sqlite3_column_int64(stmt, 1));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
 /* max detections boundary */
 void test_store_max_detections(void) {
     detection_result_t r;
@@ -403,6 +454,7 @@ int main(void) {
     RUN_TEST(test_get_unique_detection_labels_for_streams);
     RUN_TEST(test_get_recording_detection_summaries_batches_linked_and_fallback_rows);
     RUN_TEST(test_update_detections_recording_id);
+    RUN_TEST(test_completed_recording_backfills_contained_detection_links);
     RUN_TEST(test_store_max_detections);
     RUN_TEST(test_external_motion_interval_spans_later_recording_segment);
     RUN_TEST(test_recent_detection_queries_do_not_scan_full_stream_history);
