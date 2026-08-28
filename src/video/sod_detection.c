@@ -315,13 +315,64 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     }
 
 #ifdef SOD_ENABLED
+    // Pre-shrink the frame with swscale before the per-pixel HWC->CHW/float
+    // conversion below, instead of converting at full camera resolution only
+    // for sod_cnn_prepare_image to immediately downsize it to the network's
+    // small fixed input. We can't resize all the way to the network's exact
+    // input size ourselves: sod_cnn_prepare_image() skips its resize (and
+    // returns a stale/uninitialized buffer) whenever the image handed to it
+    // already matches net.w/net.h exactly, so we stop at 2x the network size
+    // and let it do that final hop. conv_width/conv_height (not the original
+    // width/height) become the pixel space of everything downstream, since
+    // that's the size sod_cnn_prepare_image actually saw.
+    int net_w = 0, net_h = 0, net_c = 0;
+    int conv_width = width;
+    int conv_height = height;
+    const unsigned char *conv_source = frame_data;
+    uint8_t *resized_frame = NULL;
+    struct SwsContext *resize_ctx = NULL;
+
+    if (channels == 3 &&
+        sod_cnn_get_network_size((sod_cnn *)m->sod, &net_w, &net_h, &net_c) == 0 &&
+        net_w > 0 && net_h > 0 && net_c == channels) {
+        int intermediate_w = net_w * 2;
+        int intermediate_h = net_h * 2;
+
+        if (intermediate_w < width && intermediate_h < height) {
+            resize_ctx = sws_getContext(width, height, AV_PIX_FMT_RGB24,
+                                         intermediate_w, intermediate_h, AV_PIX_FMT_RGB24,
+                                         SWS_AREA, NULL, NULL, NULL);
+            if (resize_ctx) {
+                resized_frame = (uint8_t *)malloc((size_t)intermediate_w * intermediate_h * channels);
+                if (resized_frame) {
+                    uint8_t *dst_data[4] = {resized_frame, NULL, NULL, NULL};
+                    int dst_linesize[4] = {intermediate_w * channels, 0, 0, 0};
+                    const uint8_t *src_data[4] = {frame_data, NULL, NULL, NULL};
+                    int src_linesize[4] = {width * channels, 0, 0, 0};
+                    sws_scale(resize_ctx, src_data, src_linesize, 0, height, dst_data, dst_linesize);
+
+                    conv_width = intermediate_w;
+                    conv_height = intermediate_h;
+                    conv_source = resized_frame;
+                } else {
+                    log_warn("Failed to allocate pre-resize buffer (%dx%d), using full-resolution frame",
+                             intermediate_w, intermediate_h);
+                    sws_freeContext(resize_ctx);
+                    resize_ctx = NULL;
+                }
+            }
+        }
+    }
+
     // Step 1: Create a SOD image
     log_info("Step 1: Creating SOD image from frame data (dimensions: %dx%d, channels: %d)",
-            width, height, channels);
+            conv_width, conv_height, channels);
 
-    sod_img img = sod_make_image(width, height, channels);
+    sod_img img = sod_make_image(conv_width, conv_height, channels);
     if (!img.data) {
         log_error("Failed to create SOD image");
+        free(resized_frame);
+        if (resize_ctx) sws_freeContext(resize_ctx);
         return -1;
     }
 
@@ -329,18 +380,22 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     log_info("Step 2: Copying frame data to SOD image");
 
     // Calculate the total size of the image data with overflow check
-    size_t pixel_count = (size_t)width * (size_t)height;
-    if (pixel_count / width != height) { // Check for overflow
-        log_error("Integer overflow in image dimensions: width=%d, height=%d", width, height);
+    size_t pixel_count = (size_t)conv_width * (size_t)conv_height;
+    if (pixel_count / conv_width != conv_height) { // Check for overflow
+        log_error("Integer overflow in image dimensions: width=%d, height=%d", conv_width, conv_height);
         sod_free_image(img);
+        free(resized_frame);
+        if (resize_ctx) sws_freeContext(resize_ctx);
         return -1;
     }
 
     size_t total_size = pixel_count * channels;
     if (total_size / pixel_count != channels) { // Check for overflow
         log_error("Integer overflow in total size calculation: width=%d, height=%d, channels=%d",
-                 width, height, channels);
+                 conv_width, conv_height, channels);
         sod_free_image(img);
+        free(resized_frame);
+        if (resize_ctx) sws_freeContext(resize_ctx);
         return -1;
     }
 
@@ -350,6 +405,8 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         log_error("Failed to allocate temporary buffer for image data conversion (size=%zu bytes)",
                  total_size * sizeof(float));
         sod_free_image(img);
+        free(resized_frame);
+        if (resize_ctx) sws_freeContext(resize_ctx);
         return -1;
     }
 
@@ -358,22 +415,22 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 
     // Convert the frame data from HWC to CHW format and from 0-255 to 0-1 range
     for (int c = 0; c < channels; c++) {
-        for (int h = 0; h < height; h++) {
-            for (int w = 0; w < width; w++) {
+        for (int h = 0; h < conv_height; h++) {
+            for (int w = 0; w < conv_width; w++) {
                 // Calculate the index in the SOD image (CHW format) with overflow checks
-                size_t c_offset = (size_t)c * (size_t)height * (size_t)width;
-                size_t h_offset = (size_t)h * (size_t)width;
+                size_t c_offset = (size_t)c * (size_t)conv_height * (size_t)conv_width;
+                size_t h_offset = (size_t)h * (size_t)conv_width;
                 size_t sod_idx = c_offset + h_offset + w;
 
                 // Calculate the index in the frame data (HWC format) with overflow checks
-                size_t row_offset = (size_t)h * (size_t)width * (size_t)channels;
+                size_t row_offset = (size_t)h * (size_t)conv_width * (size_t)channels;
                 size_t pixel_offset = (size_t)w * (size_t)channels;
                 size_t frame_idx = row_offset + pixel_offset + c;
 
                 // Make sure the indices are within bounds
                 if (sod_idx < total_size && frame_idx < total_size) {
                     // Convert from 0-255 to 0-1 range
-                    temp_buffer[sod_idx] = frame_data[frame_idx] / 255.0f;
+                    temp_buffer[sod_idx] = conv_source[frame_idx] / 255.0f;
                 } else {
                     log_warn("Index out of bounds: sod_idx=%zu, frame_idx=%zu, total_size=%zu",
                              sod_idx, frame_idx, total_size);
@@ -389,11 +446,16 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         log_error("SOD image data pointer is NULL");
         free(temp_buffer);
         sod_free_image(img);
+        free(resized_frame);
+        if (resize_ctx) sws_freeContext(resize_ctx);
         return -1;
     }
 
-    // Free the temporary buffer
+    // Free the temporary buffer and the pre-resize scratch buffer/context —
+    // conv_source is not read again past this point.
     free(temp_buffer);
+    free(resized_frame);
+    if (resize_ctx) sws_freeContext(resize_ctx);
 
     log_info("Step 3: Successfully copied frame data to SOD image");
 
@@ -479,10 +541,12 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
                 box->zName ? box->zName : "unknown");
 
         // CRITICAL FIX: Add extra validation for box values
+        // Bounds are checked against conv_width/conv_height (the size actually
+        // passed to sod_cnn_prepare_image), not the original frame dimensions.
         if (box->x < 0 || box->y < 0 || box->w <= 0 || box->h <= 0 ||
-            box->x + box->w > width || box->y + box->h > height) {
+            box->x + box->w > conv_width || box->y + box->h > conv_height) {
             log_warn("Box %d has invalid coordinates (x=%d, y=%d, w=%d, h=%d, img_w=%d, img_h=%d), skipping",
-                    i, box->x, box->y, box->w, box->h, width, height);
+                    i, box->x, box->y, box->w, box->h, conv_width, conv_height);
             continue;
         }
 
@@ -506,11 +570,15 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         if (confidence > 1.0f) confidence = 1.0f;
         if (confidence < 0.0f) confidence = 0.0f;
 
-        // Convert pixel coordinates to normalized 0-1 range with safety checks
-        float x = (width > 0) ? ((float)box->x / width) : 0.0f;
-        float y = (height > 0) ? ((float)box->y / height) : 0.0f;
-        float w = (width > 0) ? ((float)box->w / width) : 0.0f;
-        float h = (height > 0) ? ((float)box->h / height) : 0.0f;
+        // Convert pixel coordinates to normalized 0-1 range with safety checks.
+        // Normalized against conv_width/conv_height, not the original frame
+        // size: sod_cnn_prepare_image derives its pixel-coordinate scaling
+        // from whatever image it was actually handed (conv_width x conv_height
+        // here), so that's the space box->x/y/w/h are reported in.
+        float x = (conv_width > 0) ? ((float)box->x / conv_width) : 0.0f;
+        float y = (conv_height > 0) ? ((float)box->y / conv_height) : 0.0f;
+        float w = (conv_width > 0) ? ((float)box->w / conv_width) : 0.0f;
+        float h = (conv_height > 0) ? ((float)box->h / conv_height) : 0.0f;
 
         // Clamp values to [0.0, 1.0] range
         x = (x < 0.0f) ? 0.0f : (x > 1.0f ? 1.0f : x);
