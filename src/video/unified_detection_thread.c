@@ -1042,7 +1042,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // Use the global segment_duration config for chunking detection recordings (same as continuous recordings)
     ctx->segment_duration = (global_cfg && global_cfg->mp4_segment_duration > 0) ? global_cfg->mp4_segment_duration : 30;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
-    ctx->record_audio = config.record_audio;
+    ctx->record_audio = config.record_audio && !(global_cfg && global_cfg->audio_disabled);
     ctx->annotation_only = annotation_only;
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
 

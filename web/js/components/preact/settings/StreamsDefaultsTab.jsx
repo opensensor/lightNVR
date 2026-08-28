@@ -9,6 +9,34 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
   return (
     <div class="space-y-6">
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">
+          {t('settings.audioCompliance')}
+        </h3>
+        <div data-setting-label={t('settings.disableAudioGlobally')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          <label for="setting-audio-disabled" class="font-medium">
+            {t('settings.disableAudioGlobally')}
+          </label>
+          <div class="col-span-2">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                id="setting-audio-disabled"
+                name="audioDisabled"
+                class="h-4 w-4 rounded border-input"
+                checked={settings.audioDisabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span>{t('settings.audioDisabled')}</span>
+            </label>
+            <p class="hint text-sm text-muted-foreground mt-2">
+              {t('settings.audioComplianceHelp')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.streamsDefaults') || 'Streams Defaults'}</h3>
         <p class="text-sm text-muted-foreground mb-4">
           {t('settings.streamsDefaultsDescription') || 'Defaults applied to new streams. Per-stream overrides always win.'}

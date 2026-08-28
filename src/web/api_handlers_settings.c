@@ -410,6 +410,7 @@ void handle_get_client_config(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(config, "web_auth_enabled",
                           g_config.web_auth_enabled);
     cJSON_AddBoolToObject(config, "demo_mode", g_config.demo_mode);
+    cJSON_AddBoolToObject(config, "audio_disabled", g_config.audio_disabled);
     cJSON_AddBoolToObject(config, "auto_disabled", g_config.auto_disabled);
     bool go2rtc_available = false;
     if (g_config.go2rtc_enabled) {
@@ -479,6 +480,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
     cJSON_AddBoolToObject(settings, "demo_mode", g_config.demo_mode);
     // Note: web_username and web_password removed - user management is now fully database-based
+    cJSON_AddBoolToObject(settings, "audio_disabled",  g_config.audio_disabled);
     cJSON_AddBoolToObject(settings, "auto_disabled",   g_config.auto_disabled);
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
     cJSON_AddBoolToObject(settings, "hls_disabled",    g_config.hls_disabled);
@@ -802,6 +804,24 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     }
 
     // Note: web_username and web_password settings removed - user management is now fully database-based
+
+    // Instance-wide audio compliance policy. When go2rtc is active, restart
+    // its media workers so every registered source is rebuilt video-only.
+    cJSON *audio_disabled = cJSON_GetObjectItem(settings, "audio_disabled");
+    if (audio_disabled && cJSON_IsBool(audio_disabled)) {
+        bool new_audio_disabled = cJSON_IsTrue(audio_disabled);
+        if (new_audio_disabled != g_config.audio_disabled) {
+            g_config.audio_disabled = new_audio_disabled;
+            settings_changed = true;
+            if (g_config.go2rtc_enabled) {
+                go2rtc_config_changed = true;
+                go2rtc_becoming_enabled = true;
+            }
+            log_info("Updated audio_disabled: %s%s",
+                     g_config.audio_disabled ? "true" : "false",
+                     g_config.go2rtc_enabled ? "; restarting go2rtc media workers" : "");
+        }
+    }
 
     // Dashboard view methods (#397) — Auto / WebRTC / HLS / MSE can be
     // individually disabled. Auto is a selection policy rather than a media

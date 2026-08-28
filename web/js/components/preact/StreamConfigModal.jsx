@@ -290,6 +290,7 @@ export function StreamConfigModal({
   onSave,
   onClose,
   onRefreshModels,
+  audioDisabled = false,
   hideCredentials = false,
   transportOfferings = { webrtc: true, mse: true, hls: true }
 }) {
@@ -878,6 +879,15 @@ export function StreamConfigModal({
                 {/* Audio Settings */}
                 <div className="border-t border-border pt-4">
                   <h5 className="text-sm font-semibold mb-3">{t('streamsConfig.audioSettings')}</h5>
+                  {audioDisabled ? (
+                    <div className="p-3 rounded-md bg-muted border border-border">
+                      <p className="text-sm font-medium">{t('streamsConfig.audioDisabledByPolicy')}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {t('streamsConfig.audioDisabledByPolicyHelp')}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-center space-x-4">
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
@@ -922,6 +932,8 @@ export function StreamConfigModal({
                   <p className="text-sm text-muted-foreground mt-2">
                     {t('streamsConfig.audioSettingsHelp')}
                   </p>
+                    </>
+                  )}
                 </div>
 
                 {/* AI Detection Settings - nested under recording */}

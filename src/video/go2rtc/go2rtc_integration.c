@@ -528,7 +528,7 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
         return false;
     }
 
-    if (config.go2rtc_source_override[0] != '\0') {
+    if (!g_config.audio_disabled && config.go2rtc_source_override[0] != '\0') {
         log_info("Stream %s is YAML-defined by go2rtc source override; restarting go2rtc to load config",
                  stream_name);
         return go2rtc_integration_restart_process();
@@ -639,7 +639,7 @@ static bool recover_stream_scoped(const stream_config_t *config) {
         return false;
     }
 
-    if (config->go2rtc_source_override[0] == '\0') {
+    if (g_config.audio_disabled || config->go2rtc_source_override[0] == '\0') {
         return go2rtc_integration_reload_stream(config->name);
     }
 
@@ -1506,7 +1506,7 @@ bool go2rtc_integration_register_all_streams(void) {
             // Skip main stream API registration when go2rtc source override is set —
             // the main stream is already defined in go2rtc.yaml.
             // Sub-stream registration still proceeds via API regardless.
-            if (streams[i].go2rtc_source_override[0] != '\0') {
+            if (!g_config.audio_disabled && streams[i].go2rtc_source_override[0] != '\0') {
                 log_info("Skipping main stream API registration for %s (has go2rtc source override)", streams[i].name);
             } else {
                 log_info("Registering stream %s with go2rtc", streams[i].name);
@@ -1618,7 +1618,7 @@ bool go2rtc_sync_streams_from_database(void) {
 
         // Skip main stream API sync when override is set (defined in go2rtc.yaml),
         // but still fall through to sub-stream registration below.
-        if (db_streams[i].go2rtc_source_override[0] != '\0') {
+        if (!g_config.audio_disabled && db_streams[i].go2rtc_source_override[0] != '\0') {
             log_debug("Skipping main stream API sync for %s (has go2rtc source override)", db_streams[i].name);
             skipped++;
         } else if (go2rtc_api_stream_exists(db_streams[i].name)) {
@@ -1816,7 +1816,9 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *buffer, size_
     if (api_port == 0) {
         api_port = 1984; // Fallback to default port
     }
-    snprintf(buffer, buffer_size, "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream.m3u8?src=%s", api_port, encoded_name);
+    snprintf(buffer, buffer_size,
+             "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream.m3u8?src=%s%s",
+             api_port, encoded_name, g_config.audio_disabled ? "&video" : "");
 
     log_info("Generated go2rtc HLS URL for stream %s: %s", stream_name, buffer);
     return true;
@@ -1846,7 +1848,7 @@ static bool go2rtc_integration_reload_stream_config_locked(
         have_config = true;
     }
 
-    if (have_config && config.go2rtc_source_override[0] != '\0') {
+    if (have_config && !g_config.audio_disabled && config.go2rtc_source_override[0] != '\0') {
         log_info("Stream %s uses a go2rtc source override; restarting go2rtc to reload YAML config",
                  stream_name);
         return go2rtc_integration_restart_process();
@@ -1998,7 +2000,7 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
         return false;
     }
 
-    if (config.go2rtc_source_override[0] != '\0') {
+    if (!g_config.audio_disabled && config.go2rtc_source_override[0] != '\0') {
         log_info("Stream %s has go2rtc source override; restarting go2rtc so YAML source is loaded",
                  stream_name);
         return go2rtc_integration_restart_process();
@@ -2015,7 +2017,7 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
 
     // Check for go2rtc source override — main stream is defined in go2rtc.yaml
     // and doesn't need API registration, but sub-stream still needs it.
-    bool skip_main = (config.go2rtc_source_override[0] != '\0');
+    bool skip_main = (!g_config.audio_disabled && config.go2rtc_source_override[0] != '\0');
 
     // Determine username and password
     // Priority: 1) onvif fields, 2) extracted from URL

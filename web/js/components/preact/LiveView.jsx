@@ -41,7 +41,7 @@ function legacyLayoutToColsRowsHLS(layout) {
  * LiveView component
  * @returns {JSX.Element} LiveView component
  */
-export function LiveView({isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
+export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
   const { t } = useI18n();
   const forcedTransport = resolveForcedLiveTransport(
     window.location.pathname,
@@ -908,6 +908,7 @@ export function LiveView({isAutoDisabled = false, isWebRTCDisabled, isHlsDisable
                   )}
                   <PlaybackTransportCell
                     stream={stream}
+                    audioDisabled={audioDisabled}
                     offerings={{
                       webrtc: !isWebRTCDisabled,
                       mse: !isMseDisabled,

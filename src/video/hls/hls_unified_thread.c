@@ -2370,7 +2370,7 @@ int start_hls_unified_stream(const char *stream_name) {
         // to request only the video track. Without this, go2rtc defaults to
         // serving video+audio which triggers phantom audio track issues (FFmpeg
         // sub-processes trying to transcode Opus audio) that corrupt the stream.
-        if (rtsp_url_success && !config.record_audio) {
+        if (rtsp_url_success && (!config.record_audio || g_config.audio_disabled)) {
             size_t url_len = strlen(actual_url);
             const char *suffix = "?video";
             size_t suffix_len = strlen(suffix);

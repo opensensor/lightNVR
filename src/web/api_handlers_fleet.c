@@ -463,7 +463,7 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
             goto fail;
         }
     }
-    if (camera->backchannel_enabled) {
+    if (camera->backchannel_enabled && !g_config.audio_disabled) {
         cJSON *capability = cJSON_CreateString("backchannel");
         if (!capability || !cJSON_AddItemToArray(capabilities, capability)) {
             cJSON_Delete(capability);

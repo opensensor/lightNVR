@@ -42,7 +42,7 @@ function legacyLayoutToColsRowsWebRTC(layout) {
  * WebRTCView component
  * @returns {JSX.Element} WebRTCView component
  */
-export function WebRTCView({ isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
+export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const { t } = useI18n();
   const forcedTransport = resolveForcedLiveTransport(
     window.location.pathname,
@@ -929,6 +929,7 @@ export function WebRTCView({ isAutoDisabled = false, isWebRTCDisabled, isHlsDisa
                   )}
                   <PlaybackTransportCell
                     stream={stream}
+                    audioDisabled={audioDisabled}
                     offerings={{
                       webrtc: !isWebRTCDisabled,
                       mse: !isMseDisabled,

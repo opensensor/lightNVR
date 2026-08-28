@@ -86,6 +86,7 @@ export function WebRTCVideoCell({
   alwaysFullscreenOnTap = false,
   onRequestReorder,
   mobileGesturesDisabled = false,
+  audioDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -179,24 +180,27 @@ export function WebRTCVideoCell({
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    videoElement.muted = !enabled;
-    videoElement.volume = enabled ? 1 : 0;
+    const effectiveEnabled = enabled && !audioDisabled;
+    videoElement.muted = !effectiveEnabled;
+    videoElement.volume = effectiveEnabled ? 1 : 0;
 
     if (videoElement.srcObject) {
       videoElement.srcObject.getAudioTracks().forEach((track) => {
-        track.enabled = true;
+        track.enabled = !audioDisabled;
       });
     }
-  }, []);
+  }, [audioDisabled]);
 
   // Effect to directly set the muted property on the video element.
   // This is necessary because React/Preact doesn't always update the muted attribute correctly.
   useEffect(() => {
-    audioEnabledRef.current = audioEnabled;
-    applyAudioPlaybackState(audioEnabled);
+    const effectiveEnabled = audioEnabled && !audioDisabled;
+    audioEnabledRef.current = effectiveEnabled;
+    if (audioDisabled && audioEnabled) setAudioEnabled(false);
+    applyAudioPlaybackState(effectiveEnabled);
 
     if (videoRef.current) {
-      console.log(`Set video muted=${!audioEnabled} for stream ${stream?.name || 'unknown'}`);
+      console.log(`Set video muted=${!effectiveEnabled} for stream ${stream?.name || 'unknown'}`);
 
       // Debug: Log audio track info
       if (videoRef.current.srcObject) {
@@ -210,9 +214,10 @@ export function WebRTCVideoCell({
         })));
       }
     }
-  }, [audioEnabled, applyAudioPlaybackState, stream?.name]);
+  }, [audioDisabled, audioEnabled, applyAudioPlaybackState, stream?.name]);
 
   const handleAudioToggle = useCallback(() => {
+    if (audioDisabled) return;
     const nextEnabled = !audioEnabledRef.current;
     audioEnabledRef.current = nextEnabled;
     setAudioEnabled(nextEnabled);
@@ -247,14 +252,14 @@ export function WebRTCVideoCell({
         }
       });
     }
-  }, [applyAudioPlaybackState, stream?.name, t]);
+  }, [audioDisabled, applyAudioPlaybackState, stream?.name, t]);
 
   const mobileGestures = useMobileTileGestures({
     streamName: stream.name,
     cellRef,
     videoRef,
     audioEnabled,
-    onToggleAudio: handleAudioToggle,
+    onToggleAudio: audioDisabled ? undefined : handleAudioToggle,
     onRequestReorder,
     disabled: zoom.isZoomed || mobileGesturesDisabled,
   });
@@ -732,9 +737,11 @@ export function WebRTCVideoCell({
     // Add video transceiver
     pc.addTransceiver('video', {direction: 'recvonly'});
 
-    // Add audio transceiver for backchannel support if enabled
-    // Use sendrecv to allow both receiving audio from camera and sending audio to camera
-    if (stream.backchannel_enabled) {
+    // Under the instance compliance policy, do not advertise audio at all.
+    if (audioDisabled) {
+      console.log(`Audio disabled by instance policy for stream ${stream.name}`);
+    } else if (stream.backchannel_enabled) {
+      // Use sendrecv to allow both receiving audio from camera and sending audio to camera.
       console.log(`Adding audio transceiver with sendrecv for backchannel on stream ${stream.name}`);
       const audioTransceiver = pc.addTransceiver('audio', {direction: 'sendrecv'});
       // Store reference to the audio sender for later use
@@ -1034,7 +1041,7 @@ export function WebRTCVideoCell({
     // /api/streams status refetch doesn't tear down healthy connections when
     // it produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, effectiveUseSubStream, t, applyAudioPlaybackState]);
+  }, [stream?.name, retryCount, effectiveUseSubStream, audioDisabled, t, applyAudioPlaybackState]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -1230,7 +1237,7 @@ export function WebRTCVideoCell({
 
   // Start push-to-talk (acquire microphone and send audio)
   const startTalking = useCallback(async () => {
-    if (!stream.backchannel_enabled || !audioSenderRef.current) {
+    if (audioDisabled || !stream.backchannel_enabled || !audioSenderRef.current) {
       console.warn('Backchannel not enabled or audio sender not available');
       return;
     }
@@ -1271,11 +1278,11 @@ export function WebRTCVideoCell({
         setMicrophoneError(t('live.microphoneErrorWithMessage', { message: err.message }));
       }
     }
-  }, [stream, startAudioLevelMonitoring, t]);
+  }, [audioDisabled, stream, startAudioLevelMonitoring, t]);
 
   // Stop push-to-talk (stop sending audio)
   const stopTalking = useCallback(async () => {
-    if (!stream.backchannel_enabled) return;
+    if (audioDisabled || !stream.backchannel_enabled) return;
 
     try {
       // Stop audio level monitoring
@@ -1297,7 +1304,7 @@ export function WebRTCVideoCell({
     } catch (err) {
       console.error(`Failed to stop backchannel audio for stream ${stream.name}:`, err);
     }
-  }, [stream, stopAudioLevelMonitoring]);
+  }, [audioDisabled, stream, stopAudioLevelMonitoring]);
 
   // Toggle talk mode handler
   const handleTalkToggle = useCallback(() => {
@@ -1394,7 +1401,7 @@ export function WebRTCVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted={!audioEnabled}
+        muted={audioDisabled || !audioEnabled}
         playsInline
         style={{
           width: '100%',
@@ -1419,7 +1426,7 @@ export function WebRTCVideoCell({
         showLabels={showLabels}
       />
 
-      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} audioAvailable={!audioDisabled} />
 
       {/* Detection overlay component.
           Hidden while zoomed: the canvas is sized to the cell, not to the
@@ -1631,7 +1638,7 @@ export function WebRTCVideoCell({
           </svg>
         </button>}
         {/* Audio playback toggle button (for hearing camera audio) */}
-        {isPlaying && (
+        {!audioDisabled && isPlaying && (
           <button
             className={`audio-toggle-btn ${audioEnabled ? 'active' : ''}`}
             title={audioEnabled ? t('live.muteCameraAudio') : t('live.unmuteCameraAudio')}
@@ -1665,7 +1672,7 @@ export function WebRTCVideoCell({
           </button>
         )}
         {/* Two-way audio controls for backchannel */}
-        {stream.backchannel_enabled && isPlaying && (
+        {!audioDisabled && stream.backchannel_enabled && isPlaying && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
             {/* Mode toggle button */}
             <button

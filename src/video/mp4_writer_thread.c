@@ -265,7 +265,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                                         db_stream_config.audio_voice_enhancement);
 
             // Update audio recording setting if it has changed
-            int has_audio = db_stream_config.record_audio ? 1 : 0;
+            int has_audio = (db_stream_config.record_audio && !g_config.audio_disabled) ? 1 : 0;
             if (thread_ctx->writer->has_audio != has_audio) {
                 log_info("Updating audio recording setting for stream %s from %s to %s (from database)",
                         stream_name,

@@ -205,7 +205,12 @@ export function useMobileTileGestures({
   };
 }
 
-export function MobileTileContextMenu({ gestures, audioEnabled, canReorder = gestures.canReorder }) {
+export function MobileTileContextMenu({
+  gestures,
+  audioEnabled,
+  audioAvailable = true,
+  canReorder = gestures.canReorder,
+}) {
   const { t } = useI18n();
   const menuRef = useRef(null);
   useEffect(() => {
@@ -235,9 +240,11 @@ export function MobileTileContextMenu({ gestures, audioEnabled, canReorder = ges
           if (event.key === 'Escape') gestures.closeMenu();
         }}
       >
-        <button type="button" role="menuitem" onClick={action(gestures.toggleAudio)}>
-          {t(audioEnabled ? 'live.muteCameraAudio' : 'live.unmuteCameraAudio')}
-        </button>
+        {audioAvailable && (
+          <button type="button" role="menuitem" onClick={action(gestures.toggleAudio)}>
+            {t(audioEnabled ? 'live.muteCameraAudio' : 'live.unmuteCameraAudio')}
+          </button>
+        )}
         <button type="button" role="menuitem" onClick={action(gestures.takeSnapshot)}>
           {t('live.takeSnapshot')}
         </button>

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "core/config.h"
 #include "core/logger.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_thread.h"
@@ -18,6 +19,7 @@ void setUp(void) {
     writer.creation_time = time(NULL);
     writer.thread_ctx = &thread_ctx;
     thread_ctx.running = 1;
+    g_config.audio_disabled = false;
 }
 
 void tearDown(void) {
@@ -54,6 +56,17 @@ static void test_long_segment_still_marks_truly_stale_recording_dead(void) {
     TEST_ASSERT_EQUAL_INT(0, mp4_writer_is_recording(&writer));
 }
 
+static void test_audio_setting_is_enabled_when_policy_allows_it(void) {
+    mp4_writer_set_audio(&writer, 1);
+    TEST_ASSERT_EQUAL_INT(1, writer.has_audio);
+}
+
+static void test_global_audio_policy_overrides_writer_setting(void) {
+    g_config.audio_disabled = true;
+    mp4_writer_set_audio(&writer, 1);
+    TEST_ASSERT_EQUAL_INT(0, writer.has_audio);
+}
+
 int main(void) {
     init_logger();
 
@@ -63,6 +76,8 @@ int main(void) {
     RUN_TEST(test_default_timeout_marks_stale_recording_dead);
     RUN_TEST(test_long_segment_extends_watchdog_timeout);
     RUN_TEST(test_long_segment_still_marks_truly_stale_recording_dead);
+    RUN_TEST(test_audio_setting_is_enabled_when_policy_allows_it);
+    RUN_TEST(test_global_audio_policy_overrides_writer_setting);
     int result = UNITY_END();
 
     shutdown_logger();

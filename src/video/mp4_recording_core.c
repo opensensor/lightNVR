@@ -314,7 +314,7 @@ static void *mp4_recording_thread(void *arg) {
         // to request only the video track. Without this, go2rtc defaults to
         // serving video+audio which triggers phantom audio track issues (FFmpeg
         // sub-processes trying to transcode Opus audio) that corrupt the MP4.
-        if (success && !ctx->config.record_audio) {
+        if (success && (!ctx->config.record_audio || g_config.audio_disabled)) {
             size_t url_len = strlen(actual_url);
             const char *suffix = "?video";
             size_t suffix_len = strlen(suffix);

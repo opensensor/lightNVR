@@ -757,7 +757,7 @@ export function StreamsView() {
       priority: '5',
       segment: 30,
       record: true,
-      recordAudio: true,
+      recordAudio: !clientConfig.audio_disabled,
       audioVoiceEnhancement: false,
       backchannelEnabled: false,
       isOnvif: false,
@@ -1269,7 +1269,7 @@ export function StreamsView() {
       priority: '5', // Medium
       segment_duration: 30,
       record: true,
-      record_audio: true,
+      record_audio: !clientConfig.audio_disabled,
       audio_voice_enhancement: false,
       backchannel_enabled: false,
       // Backend expects camelCase key 'isOnvif'
@@ -1771,6 +1771,7 @@ export function StreamsView() {
           onSave={handleSubmit}
           onClose={closeModal}
           onRefreshModels={loadDetectionModels}
+          audioDisabled={!!clientConfig.audio_disabled}
           hideCredentials={shouldHideCredentials}
           transportOfferings={{
             webrtc: !clientConfig.webrtc_disabled,

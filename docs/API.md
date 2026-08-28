@@ -1676,6 +1676,8 @@ GET /api/settings
 Requires effective `system.admin` and returns the full system configuration.
 Viewer/player bootstrap code must not use this endpoint.
 
+The `audio_disabled` boolean is the instance-wide audio compliance policy.
+
 The storage fields include `mp4_directory_format`, one of `flat`,
 `year_month`, or `year_month_day`.
 
@@ -1687,7 +1689,8 @@ GET /api/client-config
 
 Requires authentication but no global administrative action. Returns only the
 browser runtime contract: authentication/demo flags, go2rtc readiness and safe
-player flags/port/timeouts, plus thumbnail controls. It intentionally omits
+player flags/port/timeouts (including `audio_disabled` so Live View can remove
+audio controls), plus thumbnail controls. It intentionally omits
 paths, credentials, integration settings, and go2rtc stream inventory.
 
 #### Update Settings
@@ -1697,6 +1700,9 @@ POST /api/settings
 ```
 
 Updates system configuration settings.
+
+Setting `audio_disabled` to `true` suppresses live listening, talkback, and
+audio in newly written recordings. Existing recording files are unchanged.
 
 `mp4_directory_format` accepts only the three safe presets returned by the
 GET endpoint; arbitrary `strftime` templates are rejected with HTTP 400.

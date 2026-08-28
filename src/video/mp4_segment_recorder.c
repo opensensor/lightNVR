@@ -27,6 +27,7 @@
 #include <libavutil/time.h>
 #include <libavutil/mathematics.h>
 
+#include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 #include "video/mp4_writer.h"
@@ -263,6 +264,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                    record_segment_started_cb started_cb,
                    record_segment_activity_cb activity_cb, void *cb_ctx,
                    atomic_int *shutdown_flag) {
+    if (g_config.audio_disabled) {
+        has_audio = 0;
+    }
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -1348,7 +1352,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             }
         }
         // Process audio packets - only if audio is enabled and we have an audio output stream
-        else if (has_audio && audio_stream_idx >= 0 && pkt->stream_index == audio_stream_idx && out_audio_stream) {
+        else if (has_audio && !g_config.audio_disabled && audio_stream_idx >= 0 &&
+                 pkt->stream_index == audio_stream_idx && out_audio_stream) {
             // Skip audio packets until we've found the first video keyframe
             if (!found_first_keyframe) {
                 av_packet_unref(pkt);

@@ -159,6 +159,7 @@ function getDefaultSettings() {
   return {
     go2rtc_enabled: true,
     go2rtc_api_port: 1984,
+    audio_disabled: false,
     auto_disabled: false,
     webrtc_disabled: false,
     hls_disabled: false,

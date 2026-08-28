@@ -85,8 +85,9 @@ static int go2rtc_init_session(go2rtc_strategy_data_t *data) {
     simple_url_escape(data->stream_name, encoded_name, MAX_STREAM_NAME * 3);
 
     char url[1024];
-    snprintf(url, sizeof(url), "%s/api/stream.m3u8?src=%s", 
-             data->go2rtc_url, encoded_name);
+    snprintf(url, sizeof(url), "%s/api/stream.m3u8?src=%s%s",
+             data->go2rtc_url, encoded_name,
+             g_config.audio_disabled ? "&video" : "");
     
     CURL *curl = curl_easy_init();
     if (!curl) {
@@ -421,4 +422,3 @@ pre_buffer_strategy_t* create_go2rtc_strategy(const char *stream_name,
 
     return strategy;
 }
-

@@ -167,6 +167,38 @@ void test_generate_startup_config_writes_db_override_file(void) {
     remove_tree(root_dir);
 }
 
+void test_audio_policy_keeps_db_override_dormant(void) {
+    load_default_config(&g_config);
+    g_config.audio_disabled = true;
+    g_config.go2rtc_api_port = 31984;
+    g_config.go2rtc_rtsp_port = 31554;
+    g_config.go2rtc_webrtc_enabled = false;
+
+    char root_template[] = "/tmp/lightnvr-go2rtc-audio-policy-XXXXXX";
+    char *root_dir = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(root_dir);
+
+    char config_dir[256];
+    snprintf(config_dir, sizeof(config_dir), "%s/go2rtc", root_dir);
+
+    char db_path[256];
+    snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", root_dir);
+
+    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        "go2rtc_config_override", "streams:\n  bypass: rtsp://camera/audio\n"));
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config(
+        "/bin/true", config_dir, g_config.go2rtc_api_port));
+
+    char override_path[PATH_MAX];
+    snprintf(override_path, sizeof(override_path), "%s/override.yaml", config_dir);
+    TEST_ASSERT_NOT_EQUAL(0, access(override_path, F_OK));
+
+    shutdown_database();
+    remove_tree(root_dir);
+}
+
 /**
  * Post-T2 refactor assertion: the base go2rtc.yaml generator must NEVER append
  * the user config override as a tail block — that caused duplicate top-level
@@ -242,6 +274,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);
     RUN_TEST(test_generate_startup_config_writes_db_override_file);
+    RUN_TEST(test_audio_policy_keeps_db_override_dormant);
     RUN_TEST(test_base_config_has_no_user_override_append_block);
     RUN_TEST(test_override_helpers_are_linkable_stubs);
     return UNITY_END();

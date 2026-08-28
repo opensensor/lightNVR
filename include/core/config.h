@@ -243,6 +243,7 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
+    bool audio_disabled;   // Instance policy: no audio playback, recording, or talk
     bool auto_disabled;    // Hide Auto view and select an explicit transport
     bool webrtc_disabled;  // Hide WebRTC view on the dashboard (#397)
     bool hls_disabled;     // Hide HLS view on the dashboard (#397)

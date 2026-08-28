@@ -122,7 +122,9 @@ static bool go2rtc_rtsp_fragment_key_supported(const char *key, size_t len) {
 
 // Rewrite `url` in place, dropping unsupported fragment tokens. Returns true if a
 // "#noaudio" intent token was present so the caller can suppress the audio source.
-static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size, const char *stream_id) {
+static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size,
+                                           const char *stream_id,
+                                           bool force_video_only) {
     char *hash = strchr(url, '#');
     if (!hash) {
         return false;
@@ -152,6 +154,10 @@ static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size, const cha
             suppress_audio = true;
             log_info("Stream %s: '#noaudio' in source URL -> suppressing go2rtc audio producer",
                      stream_id);
+        } else if (force_video_only && key_len == 5 &&
+                   strncasecmp(tok, "media", 5) == 0) {
+            // Replace any operator-supplied media selector with the enforced
+            // video-only selector appended by the caller.
         } else if (go2rtc_rtsp_fragment_key_supported(tok, key_len)) {
             if (out + tok_len + 1 < url_size && out + tok_len + 1 < sizeof(rebuilt)) {
                 rebuilt[out++] = '#';
@@ -236,6 +242,12 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
     bool publish_enabled = (get_stream_config_by_name(stream_id, &pub_cfg) == 0 &&
                             pub_cfg.publish_url[0] != '\0');
 
+    if (g_config.audio_disabled) {
+        backchannel_enabled = false;
+        record_audio = false;
+        log_info("Stream %s: enforcing instance-wide video-only audio policy", stream_id);
+    }
+
     // Use a static buffer for the modified URL to avoid memory allocation issues
     char modified_url[URL_BUFFER_SIZE];
     safe_strcpy(modified_url, stream_url, URL_BUFFER_SIZE, 0);
@@ -262,10 +274,12 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
     // Drop fragment tokens go2rtc can't act on (e.g. a hand-added "#noaudio")
     // before we append our own, and honor a "#noaudio" request by suppressing the
     // audio producer below. Only native rtsp:// sources are sanitized. (#429)
-    bool suppress_audio = false;
+    bool suppress_audio = g_config.audio_disabled;
 
     if (is_rtsp) {
-        suppress_audio = go2rtc_sanitize_rtsp_fragments(modified_url, URL_BUFFER_SIZE, stream_id);
+        suppress_audio = go2rtc_sanitize_rtsp_fragments(
+            modified_url, URL_BUFFER_SIZE, stream_id, g_config.audio_disabled
+        ) || suppress_audio;
 
         char fragment_params[256] = {0};
         int offset = 0;
@@ -290,6 +304,12 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
          * the control socket active, so retain the shorter fault timeout there. */
         if (!udp_transport) {
             offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#timeout=30");
+        }
+
+        if (g_config.audio_disabled) {
+            offset += snprintf(fragment_params + offset,
+                               sizeof(fragment_params) - offset,
+                               "#media=video");
         }
 
         if (backchannel_enabled) {

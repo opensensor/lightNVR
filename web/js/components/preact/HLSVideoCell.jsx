@@ -50,6 +50,7 @@ export function HLSVideoCell({
   alwaysFullscreenOnTap = false,
   onRequestReorder,
   mobileGesturesDisabled = false,
+  audioDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -101,6 +102,7 @@ export function HLSVideoCell({
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
   const cellAbortRef = useRef(null);     // Cancels a queued/in-flight gated preflight on unmount
   const handleMobileAudioToggle = () => {
+    if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
     setAudioEnabled(nextEnabled);
     if (videoRef.current) {
@@ -121,10 +123,16 @@ export function HLSVideoCell({
     cellRef,
     videoRef,
     audioEnabled,
-    onToggleAudio: handleMobileAudioToggle,
+    onToggleAudio: audioDisabled ? undefined : handleMobileAudioToggle,
     onRequestReorder,
     disabled: zoom.isZoomed || mobileGesturesDisabled,
   });
+
+  useEffect(() => {
+    if (!audioDisabled) return;
+    setAudioEnabled(false);
+    if (videoRef.current) videoRef.current.muted = true;
+  }, [audioDisabled]);
 
   /**
    * Refresh the stream's go2rtc registration
@@ -231,7 +239,7 @@ export function HLSVideoCell({
 
           // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
           // Using &mp4=flac for best codec compatibility (H264/H265 + AAC/PCMA/PCMU/PCM)
-          hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(effectiveName)}&mp4=flac`;
+          hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(effectiveName)}&mp4=flac${audioDisabled ? '&video' : ''}`;
           usingGo2rtc = true;
           console.log(`[HLS ${stream.name}] Using go2rtc HLS: ${hlsStreamUrl}`);
           console.log(`[HLS ${stream.name}] go2rtc base URL: ${go2rtcBaseUrl}`);
@@ -585,7 +593,7 @@ export function HLSVideoCell({
     // /api/streams status refetch doesn't tear down healthy players when it
     // produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, hlsMode, useSubStream, t]);
+  }, [stream?.name, retryCount, hlsMode, useSubStream, audioDisabled, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -758,7 +766,7 @@ export function HLSVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted={!audioEnabled}
+        muted={audioDisabled || !audioEnabled}
         playsInline
         style={{
           width: '100%',
@@ -783,7 +791,7 @@ export function HLSVideoCell({
         showLabels={showLabels}
       />
 
-      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} audioAvailable={!audioDisabled} />
 
       {/* Detection overlay component.
           Hidden while zoomed — the canvas is sized to the cell, not to the
@@ -1092,11 +1100,13 @@ export function HLSVideoCell({
           </svg>
         </button>
         <PictureInPictureButton videoRef={videoRef} disabled={!isPlaying} />
-        <TileAudioButton
-          enabled={audioEnabled}
-          onToggle={handleMobileAudioToggle}
-          disabled={!isPlaying}
-        />
+        {!audioDisabled && (
+          <TileAudioButton
+            enabled={audioEnabled}
+            onToggle={handleMobileAudioToggle}
+            disabled={!isPlaying}
+          />
+        )}
         <button
           className="fullscreen-btn"
           title={t('live.toggleFullscreen')}

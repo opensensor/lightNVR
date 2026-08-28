@@ -65,6 +65,7 @@ username = admin
 ; avoid the default admin/admin ever being valid; afterwards manage users in the web UI.
 ; password =
 auth_timeout_hours = 24  ; Session timeout in hours (default: 24)
+audio_disabled = false  ; Instance-wide audio compliance policy
 ; trusted_proxy_cidrs = 127.0.0.1/32,::1/128  ; Only trust X-Forwarded-For from these reverse proxies
 web_thread_pool_size = 8
 
@@ -267,6 +268,7 @@ auth_enabled = true
 username = admin
 ; password = ; only read when the admin account is first created
 auth_timeout_hours = 24
+audio_disabled = false
 ; trusted_proxy_cidrs = 127.0.0.1/32,::1/128
 web_thread_pool_size = 8
 ```
@@ -278,6 +280,13 @@ web_thread_pool_size = 8
 - `username`: Username for web interface authentication
 - `password`: Password used **only** when the admin account is first created. If unset, the account is created as `admin` / `admin` — see the warning below. Once the account exists this setting is ignored; passwords live in the database and are changed from **Settings → Users**.
 - `auth_timeout_hours`: Session timeout in hours (default: 24)
+- `audio_disabled`: Instance-wide compliance policy (default: false). When true,
+  LightNVR prevents audio in new recordings, live listening, and two-way talk;
+  the Live View audio controls are removed. Per-stream audio settings and
+  custom go2rtc source/config overrides cannot bypass the policy. Existing
+  recording files are not rewritten or deleted.
+  Container deployments may set the equivalent
+  `LIGHTNVR_AUDIO_DISABLED=true` environment variable.
 - `trusted_proxy_cidrs`: Comma- or newline-separated list of IPv4/IPv6 CIDRs allowed to set `X-Forwarded-For` / `X-Real-IP` headers. Required when running behind a reverse proxy (nginx, Caddy, Traefik, Kubernetes ingress) — without it, the audit log, login allow-list, and rate limiter all see every request as coming from the proxy itself. See [Reverse Proxy & HTTPS](REVERSE_PROXY.md).
 - `web_thread_pool_size`: Number of worker threads for the web server (default: 8)
 

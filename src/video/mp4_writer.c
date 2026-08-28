@@ -26,6 +26,7 @@
 #include <libavutil/avutil.h>
 #include <libavutil/time.h>
 
+#include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 #include "video/mp4_writer.h"
@@ -46,9 +47,10 @@ void mp4_writer_set_audio(mp4_writer_t *writer, int enable) {
         return;
     }
 
-    writer->has_audio = enable ? 1 : 0;
+    int effective_enable = enable && !g_config.audio_disabled;
+    writer->has_audio = effective_enable ? 1 : 0;
     log_info("%s audio recording for stream %s",
-            enable ? "Enabled" : "Disabled", writer->stream_name);
+            effective_enable ? "Enabled" : "Disabled", writer->stream_name);
 }
 
 /**
@@ -141,7 +143,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     writer->last_packet_time = time(NULL);
 
     // If this is an audio packet and audio is disabled, silently drop it
-    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && !writer->has_audio) {
+    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO &&
+        (g_config.audio_disabled || !writer->has_audio)) {
         // Just return success without doing anything
         return 0;
     }

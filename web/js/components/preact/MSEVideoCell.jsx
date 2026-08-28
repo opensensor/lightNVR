@@ -49,6 +49,7 @@ export function MSEVideoCell({
   alwaysFullscreenOnTap = false,
   onRequestReorder,
   mobileGesturesDisabled = false,
+  audioDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -103,6 +104,7 @@ export function MSEVideoCell({
   // Cell-scoped abort: cancels a queued/in-flight gated attempt on unmount
   const cellAbortRef = useRef(null);
   const handleMobileAudioToggle = () => {
+    if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
     setAudioEnabled(nextEnabled);
     if (videoRef.current) {
@@ -123,7 +125,7 @@ export function MSEVideoCell({
     cellRef,
     videoRef,
     audioEnabled,
-    onToggleAudio: handleMobileAudioToggle,
+    onToggleAudio: audioDisabled ? undefined : handleMobileAudioToggle,
     onRequestReorder,
     disabled: zoom.isZoomed || mobileGesturesDisabled,
   });
@@ -148,9 +150,16 @@ export function MSEVideoCell({
    */
   const getCodecs = (isSupported) => {
     return CODECS
+      .filter(codec => !audioDisabled || !['mp4a.', 'flac', 'opus'].some(prefix => codec.startsWith(prefix)))
       .filter(codec => isSupported(`video/mp4; codecs="${codec}"`))
       .join(',');
   };
+
+  useEffect(() => {
+    if (!audioDisabled) return;
+    setAudioEnabled(false);
+    if (videoRef.current) videoRef.current.muted = true;
+  }, [audioDisabled]);
 
   /**
    * Settle the pending stream-connection-gate promise (if any).
@@ -634,7 +643,7 @@ export function MSEVideoCell({
       }
       cleanup();
     };
-  }, [stream?.name, retryCount, useSubStream]);
+  }, [stream?.name, retryCount, useSubStream, audioDisabled]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -739,7 +748,7 @@ export function MSEVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted={!audioEnabled}
+        muted={audioDisabled || !audioEnabled}
         playsInline
         style={{
           width: '100%',
@@ -764,7 +773,7 @@ export function MSEVideoCell({
         showLabels={showLabels}
       />
 
-      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} audioAvailable={!audioDisabled} />
 
       {/* Detection overlay component */}
       {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && !eptzEnabled && (
@@ -1058,11 +1067,13 @@ export function MSEVideoCell({
 
           <PictureInPictureButton videoRef={videoRef} disabled={!isPlaying} />
 
-          <TileAudioButton
-            enabled={audioEnabled}
-            onToggle={handleMobileAudioToggle}
-            disabled={!isPlaying}
-          />
+          {!audioDisabled && (
+            <TileAudioButton
+              enabled={audioEnabled}
+              onToggle={handleMobileAudioToggle}
+              disabled={!isPlaying}
+            />
+          )}
 
           {/* Fullscreen button */}
           <button
