@@ -329,7 +329,11 @@ jobs:
       - name: Checkout go2rtc submodule
         # LiteRT is disabled for this job and is much larger than go2rtc, so
         # avoid spending several minutes recursively cloning unused sources.
-        run: git submodule update --init --depth 1 go2rtc
+        run: |
+          # actions/checkout records safe.directory outside the job container;
+          # add it inside the container before invoking Git in a later step.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 go2rtc
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
