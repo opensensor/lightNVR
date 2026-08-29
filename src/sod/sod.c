@@ -4762,9 +4762,13 @@ static inline void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
 // Runtime CPU dispatch: compiles this hot path (the CNN's matrix-multiply
 // core) once per listed ISA plus a plain scalar fallback, and picks the
 // fastest one the actual CPU supports at load time via an ifunc resolver.
-// Safe on any x86-64 machine regardless of build host -- no blanket -mavx2
-// flag that would SIGILL on a CPU lacking it.
+// Safe on any x86/x86-64 machine regardless of build host -- no blanket
+// -mavx2 flag that would SIGILL on a CPU lacking it. "avx2"/"fma" are x86
+// feature names; the attribute must be gated to x86 targets or it's a hard
+// compile error on ARM/other architectures LightNVR also ships for.
+#if defined(__x86_64__) || defined(__i386__)
 __attribute__((target_clones("avx2,fma,default")))
+#endif
 static void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
 	float *A, int lda,
 	float *B, int ldb,
