@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import { buildFleetSavedViewPayload } from './fleetQuery.js';
 
 export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
@@ -10,6 +11,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
   const [name, setName] = useState('');
   const [shared, setShared] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   const selected = useMemo(
     () => views.find((view) => view.uuid === selectedUuid) || null,
     [selectedUuid, views]
@@ -46,13 +48,13 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
     }
   };
 
-  const remove = async () => {
-    if (!selected?.owned || !window.confirm(t('fleet.views.deleteConfirm', { name: selected.name }))) return;
+  const remove = async (view) => {
+    if (!view?.owned) return;
     try {
-      await fetchJSON(`/api/fleet/views/${encodeURIComponent(selected.uuid)}`, {
+      await fetchJSON(`/api/fleet/views/${encodeURIComponent(view.uuid)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revision: selected.revision }),
+        body: JSON.stringify({ revision: view.revision }),
       });
       setSelectedUuid('');
       await onRefresh();
@@ -84,7 +86,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
             {t('fleet.views.saveCurrent')}
           </button>
           {selected?.owned && (
-            <button type="button" className="btn-secondary text-[hsl(var(--danger))]" onClick={remove}>
+            <button type="button" className="btn-secondary text-[hsl(var(--danger))]" onClick={() => setDeleteCandidate(selected)}>
               {t('common.delete')}
             </button>
           )}
@@ -116,6 +118,16 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
           </div>
         </form>
       )}
+      <ConfirmDialog
+        isOpen={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => remove(deleteCandidate)}
+        title={t('fleet.views.title')}
+        message={deleteCandidate ? t('fleet.views.deleteConfirm', { name: deleteCandidate.name }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </section>
   );
 }

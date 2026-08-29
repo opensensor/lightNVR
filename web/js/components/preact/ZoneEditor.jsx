@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'preact/hooks';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
+import { AlertDialog } from './common/ModalDialog.jsx';
 
 /**
  * ZoneEditor Component
@@ -26,6 +27,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [draggedPoint, setDraggedPoint] = useState(null); // { zoneIndex, pointIndex }
   const [draggedZone, setDraggedZone] = useState(null); // { zoneIndex, startX, startY }
+  const [saveError, setSaveError] = useState('');
 
   // Load zones from the backend API
   useEffect(() => {
@@ -458,7 +460,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       onClose();
     } catch (error) {
       console.error('Failed to save zones:', error);
-      alert(t('zoneEditor.failedToSaveZones', { message: error.message }));
+      setSaveError(t('zoneEditor.failedToSaveZones', { message: error.message }));
     }
   };
 
@@ -469,7 +471,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     setZoneList(newZones);
   };
 
-  return (
+  return <>
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
       <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
@@ -644,5 +646,12 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         </div>
       </div>
     </div>
-  );
+    <AlertDialog
+      isOpen={Boolean(saveError)}
+      onClose={() => setSaveError('')}
+      title={t('zoneEditor.title')}
+      message={saveError}
+      closeLabel={t('common.close')}
+    />
+  </>;
 }

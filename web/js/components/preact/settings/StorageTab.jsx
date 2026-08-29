@@ -9,6 +9,7 @@ import { useCallback, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 
 const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
 
@@ -166,6 +167,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
   const [editor, setEditor] = useState(null);
   const [busyKey, setBusyKey] = useState('');
+  const [deleteTargetCandidate, setDeleteTargetCandidate] = useState(null);
   const targets = data?.targets || [];
 
   const saveTarget = async () => {
@@ -227,7 +229,6 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   };
 
   const deleteTarget = async (target) => {
-    if (!window.confirm(t('settings.storageTargets.deleteConfirm', { name: target.name }))) return;
     setBusyKey(target.uuid);
     try {
       await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}?revision=${encodeURIComponent(target.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
@@ -285,13 +286,23 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                 {canModifySettings && <div class="flex flex-wrap gap-2 xl:justify-end">
                   <button type="button" class="btn-secondary" onClick={() => probeTarget(target)} disabled={!!busyKey}>{busyKey === target.uuid ? t('settings.storageTargets.probing') : t('settings.storageTargets.test')}</button>
                   <button type="button" class="btn-secondary" onClick={() => setEditor(targetToEditor(target))} disabled={!!editor || !!busyKey}>{t('common.edit')}</button>
-                  <button type="button" class="rounded-md border border-[hsl(var(--danger)/0.55)] px-3 py-2 text-sm text-[hsl(var(--danger))] disabled:opacity-50" onClick={() => deleteTarget(target)} disabled={cannotDelete || !!busyKey} title={cannotDelete ? t('settings.storageTargets.deleteLocked') : ''}>{t('common.delete')}</button>
+                  <button type="button" class="rounded-md border border-[hsl(var(--danger)/0.55)] px-3 py-2 text-sm text-[hsl(var(--danger))] disabled:opacity-50" onClick={() => setDeleteTargetCandidate(target)} disabled={cannotDelete || !!busyKey} title={cannotDelete ? t('settings.storageTargets.deleteLocked') : ''}>{t('common.delete')}</button>
                 </div>}
               </div>
             </article>
           );
         })}
       </div>}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetCandidate)}
+        onClose={() => setDeleteTargetCandidate(null)}
+        onConfirm={() => deleteTarget(deleteTargetCandidate)}
+        title={t('settings.storageTargets.title')}
+        message={deleteTargetCandidate ? t('settings.storageTargets.deleteConfirm', { name: deleteTargetCandidate.name }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }
@@ -301,6 +312,7 @@ function StoragePoolsPanel({ canModifySettings, t }) {
   const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
   const [editor, setEditor] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [deletePoolCandidate, setDeletePoolCandidate] = useState(null);
   const pools = poolsQuery.data?.pools || [];
   const targets = targetsQuery.data?.targets || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
@@ -319,7 +331,6 @@ function StoragePoolsPanel({ canModifySettings, t }) {
     } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusy(false); }
   };
   const remove = async (pool) => {
-    if (!window.confirm(t('settings.storagePools.deleteConfirm', { name: pool.name }))) return;
     setBusy(true);
     try {
       await fetchJSON(`/api/storage-pools/${encodeURIComponent(pool.uuid)}?revision=${encodeURIComponent(pool.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
@@ -339,8 +350,9 @@ function StoragePoolsPanel({ canModifySettings, t }) {
     </div>}
     {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
     {error && <p class="py-6 text-sm text-[hsl(var(--danger))]">{error.message}</p>}
-    {!loading && !error && <div class="divide-y divide-border">{pools.map((pool) => <article key={pool.uuid} class="py-4 first:pt-4 last:pb-0"><div class="flex justify-between gap-3"><div><div class="flex items-center gap-2"><h4 class="font-semibold">{pool.name}</h4><span class={`rounded-full px-2 py-0.5 text-xs ${pool.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(pool.enabled ? 'settings.storagePools.active' : 'settings.storagePools.inactive')}</span></div><p class="text-xs text-muted-foreground mt-1">{t(`settings.storagePools.strategyValue.${pool.strategy}`)} · {(pool.members || []).map((member) => targetNames.get(member.target_uuid) || member.target_uuid).join(' → ')}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(pool)} disabled={busy || !!editor}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => remove(pool)} disabled={busy}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+    {!loading && !error && <div class="divide-y divide-border">{pools.map((pool) => <article key={pool.uuid} class="py-4 first:pt-4 last:pb-0"><div class="flex justify-between gap-3"><div><div class="flex items-center gap-2"><h4 class="font-semibold">{pool.name}</h4><span class={`rounded-full px-2 py-0.5 text-xs ${pool.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(pool.enabled ? 'settings.storagePools.active' : 'settings.storagePools.inactive')}</span></div><p class="text-xs text-muted-foreground mt-1">{t(`settings.storagePools.strategyValue.${pool.strategy}`)} · {(pool.members || []).map((member) => targetNames.get(member.target_uuid) || member.target_uuid).join(' → ')}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(pool)} disabled={busy || !!editor}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => setDeletePoolCandidate(pool)} disabled={busy}>{t('common.delete')}</button></div>}</div></article>)}</div>}
     {!loading && !error && pools.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePools.empty')}</p>}
+    <ConfirmDialog isOpen={Boolean(deletePoolCandidate)} onClose={() => setDeletePoolCandidate(null)} onConfirm={() => remove(deletePoolCandidate)} title={t('settings.storagePools.title')} message={deletePoolCandidate ? t('settings.storagePools.deleteConfirm', { name: deletePoolCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
   </div>;
 }
 
@@ -451,6 +463,7 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
   const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
   const [editor, setEditor] = useState(null);
   const [busyKey, setBusyKey] = useState('');
+  const [deletePolicyCandidate, setDeletePolicyCandidate] = useState(null);
   const policies = policiesQuery.data?.policies || [];
   const targets = targetsQuery.data?.targets || [];
   const pools = poolsQuery.data?.pools || [];
@@ -508,7 +521,6 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
     } finally { setBusyKey(''); }
   };
   const deletePolicy = async (policy) => {
-    if (!window.confirm(t('settings.storagePolicies.deleteConfirm', { name: policy.name }))) return;
     setBusyKey(policy.uuid);
     try {
       await fetchJSON(`/api/storage-policies/${encodeURIComponent(policy.uuid)}?revision=${encodeURIComponent(policy.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
@@ -525,8 +537,9 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
       {editor && <StoragePolicyEditor value={editor} targets={targets} pools={pools} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={updateEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onPreview={previewPolicy} onSave={savePolicy} busy={!!busyKey} previewing={busyKey === 'preview'} saving={busyKey === (editor.uuid || 'new')} t={t} />}
       {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
       {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), poolsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
-      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: policy.primary_pool_uuid ? poolNames.get(policy.primary_pool_uuid) || policy.primary_pool_uuid : targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{t('settings.storagePolicies.lifecycleSummary', { minimum: policy.minimum_retention_days, desired: policy.desired_retention_days, maximum: policy.maximum_retention_days, copies: policy.required_copy_count })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => deletePolicy(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: policy.primary_pool_uuid ? poolNames.get(policy.primary_pool_uuid) || policy.primary_pool_uuid : targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{t('settings.storagePolicies.lifecycleSummary', { minimum: policy.minimum_retention_days, desired: policy.desired_retention_days, maximum: policy.maximum_retention_days, copies: policy.required_copy_count })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => setDeletePolicyCandidate(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
       {!loading && !error && policies.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePolicies.empty')}</p>}
+      <ConfirmDialog isOpen={Boolean(deletePolicyCandidate)} onClose={() => setDeletePolicyCandidate(null)} onConfirm={() => deletePolicy(deletePolicyCandidate)} title={t('settings.storagePolicies.title')} message={deletePolicyCandidate ? t('settings.storagePolicies.deleteConfirm', { name: deletePolicyCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
     </div>
   );
 }

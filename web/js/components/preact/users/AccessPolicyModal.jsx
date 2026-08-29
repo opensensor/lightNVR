@@ -3,6 +3,7 @@ import { fetchJSON } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { CameraValuePicker, CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import {
   ALL_CAMERAS_SELECTOR,
   actionRequiresCamera,
@@ -153,6 +154,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   const [tab, setTab] = useState('grants');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
   const [error, setError] = useState('');
   const [roles, setRoles] = useState([]);
   const [actions, setActions] = useState([]);
@@ -230,13 +232,15 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     createDraftGrant(roles[0]?.uuid || '', 'all'),
   ]);
 
-  const save = async () => {
+  const save = async ({ skipEmptyConfirmation = false } = {}) => {
     if (validationCode) {
       showStatusMessage(t(`access.policy.validation.${validationCode}`), 'error', 7000);
       return;
     }
-    if (grants.length === 0 &&
-        !window.confirm(t('access.policy.emptyConfirm', { username: user.username }))) return;
+    if (grants.length === 0 && !skipEmptyConfirmation) {
+      setConfirmEmpty(true);
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetchJSON(`/api/authorization/users/${encodeURIComponent(user.id)}`, {
@@ -288,6 +292,16 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
           <div className="flex gap-2"><button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.cancel')}</button><button type="button" className="btn-primary" onClick={save} disabled={saving || loading || policyVersion < 1 || !dirty || Boolean(validationCode)}>{saving ? t('common.saving') : t('common.saveChanges')}</button></div>
         </footer>
       </section>
+      <ConfirmDialog
+        isOpen={confirmEmpty}
+        onClose={() => setConfirmEmpty(false)}
+        onConfirm={() => save({ skipEmptyConfirmation: true })}
+        title={t('access.policy.title', { username: user.username })}
+        message={t('access.policy.emptyConfirm', { username: user.username })}
+        confirmLabel={t('common.saveChanges')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }

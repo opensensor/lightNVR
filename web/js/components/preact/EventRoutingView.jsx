@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { EventDestinationEditor } from './events/EventDestinationEditor.jsx';
 import { EventRouteEditor } from './events/EventRouteEditor.jsx';
+import { ConfirmDialog } from './common/ModalDialog.jsx';
 import {
   groupCatalog,
   readEventSection,
@@ -113,6 +114,7 @@ export function EventRoutingView() {
   const [routeEditor, setRouteEditor] = useState(null);
   const [destinationEditor, setDestinationEditor] = useState(null);
   const [busyKey, setBusyKey] = useState('');
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
 
   const routesQuery = useQuery(['event-routes'], '/api/event-routes', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const destinationsQuery = useQuery(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
@@ -164,7 +166,6 @@ export function EventRoutingView() {
     try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !route.enabled, revision: route.revision }), timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t(route.enabled ? 'events.route.disabled' : 'events.route.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
   const deleteRoute = async (route) => {
-    if (!window.confirm(t('events.route.deleteConfirm', { name: route.name }))) return;
     setBusyKey(route.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}?revision=${encodeURIComponent(route.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t('events.route.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
@@ -182,7 +183,6 @@ export function EventRoutingView() {
     try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !destination.enabled, revision: destination.revision }), timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t(destination.enabled ? 'events.destination.pausedMessage' : 'events.destination.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
   const deleteDestination = async (destination) => {
-    if (!window.confirm(t('events.destination.deleteConfirm', { name: destination.name }))) return;
     setBusyKey(destination.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}?revision=${encodeURIComponent(destination.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t('events.destination.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
@@ -196,9 +196,24 @@ export function EventRoutingView() {
     <div className="py-2" aria-labelledby="events-title">
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--primary))]">{t('events.eyebrow')}</div><h1 id="events-title" className="mt-1 text-3xl font-bold">{t('events.title')}</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('events.description')}</p></div><div className="flex flex-wrap gap-2">{section === 'routes' && <button type="button" className="btn-primary" onClick={() => setRouteEditor({})}>{t('events.route.add')}</button>}{section === 'destinations' && <button type="button" className="btn-primary" onClick={() => setDestinationEditor({})}>{t('events.destination.add')}</button>}<button type="button" className="btn-secondary" onClick={refresh}>{t('common.refresh')}</button></div></div>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"><SummaryCard label={t('events.summary.routes')} value={routes.length} detail={t('events.summary.enabled', { count: activeRoutes })} /><SummaryCard label={t('events.summary.destinations')} value={destinations.length + 1} detail={t('events.summary.managedActive', { count: activeDestinations })} /><SummaryCard label={t('events.summary.types')} value={eventTypes.length} detail={t('events.summary.registry')} /><SummaryCard label={t('events.summary.interface')} value="MQTT" detail={t('events.summary.interfaceHelp')} /></div>
-      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"><div className="flex flex-wrap gap-1 border-b border-border bg-muted/15 p-2" role="tablist" aria-label={t('events.title')}>{sections.map(([key, label, count]) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`rounded-md px-3 py-2 text-sm font-medium ${section === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setSection(key)}>{label}<span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums">{count}</span></button>)}</div><LoadingOrError loading={loading} error={error} onRetry={refresh} t={t}>{section === 'routes' ? <RouteList routes={routes} destinationNames={destinationNames} busyKey={busyKey} onEdit={setRouteEditor} onToggle={toggleRoute} onDelete={deleteRoute} onAdd={() => setRouteEditor({})} t={t} /> : section === 'destinations' ? <DestinationList defaultDestination={defaultDestination} destinations={destinations} routes={routes} busyKey={busyKey} onEdit={setDestinationEditor} onToggle={toggleDestination} onDelete={deleteDestination} onAdd={() => setDestinationEditor({})} t={t} /> : <EventCatalog eventTypes={eventTypes} t={t} />}</LoadingOrError></div>
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"><div className="flex flex-wrap gap-1 border-b border-border bg-muted/15 p-2" role="tablist" aria-label={t('events.title')}>{sections.map(([key, label, count]) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`rounded-md px-3 py-2 text-sm font-medium ${section === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setSection(key)}>{label}<span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums">{count}</span></button>)}</div><LoadingOrError loading={loading} error={error} onRetry={refresh} t={t}>{section === 'routes' ? <RouteList routes={routes} destinationNames={destinationNames} busyKey={busyKey} onEdit={setRouteEditor} onToggle={toggleRoute} onDelete={(route) => setDeleteCandidate({ kind: 'route', item: route })} onAdd={() => setRouteEditor({})} t={t} /> : section === 'destinations' ? <DestinationList defaultDestination={defaultDestination} destinations={destinations} routes={routes} busyKey={busyKey} onEdit={setDestinationEditor} onToggle={toggleDestination} onDelete={(destination) => setDeleteCandidate({ kind: 'destination', item: destination })} onAdd={() => setDestinationEditor({})} t={t} /> : <EventCatalog eventTypes={eventTypes} t={t} />}</LoadingOrError></div>
       {routeEditor && <EventRouteEditor key={routeEditor.uuid || 'new'} route={routeEditor.uuid ? routeEditor : null} catalog={eventTypes} destinations={destinationOptions} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onPreview={previewRoute} onSave={saveRoute} onClose={() => setRouteEditor(null)} t={t} />}
       {destinationEditor && <EventDestinationEditor key={destinationEditor.uuid || 'new'} destination={destinationEditor.uuid ? destinationEditor : null} onSave={saveDestination} onClose={() => setDestinationEditor(null)} t={t} />}
+      <ConfirmDialog
+        isOpen={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => deleteCandidate?.kind === 'route'
+          ? deleteRoute(deleteCandidate.item) : deleteDestination(deleteCandidate.item)}
+        title={t('common.delete')}
+        message={deleteCandidate
+          ? t(deleteCandidate.kind === 'route'
+            ? 'events.route.deleteConfirm' : 'events.destination.deleteConfirm',
+          { name: deleteCandidate.item.name })
+          : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }

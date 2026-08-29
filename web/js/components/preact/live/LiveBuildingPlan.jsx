@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { TextInputDialog } from '../common/ModalDialog.jsx';
 import { useI18n } from '../../../i18n.js';
 import { clusterFloorPlanCameras, floorPlanPayload } from './liveOperator.js';
 
@@ -44,6 +45,7 @@ export function LiveBuildingPlan({
   const [center, setCenter] = useState({ x: 0.5, y: 0.5 });
   const [busy, setBusy] = useState(false);
   const [cameraSearch, setCameraSearch] = useState('');
+  const [createPlanOpen, setCreatePlanOpen] = useState(false);
 
   const plansQuery = useQuery({
     queryKey: ['operator-floor-plans'],
@@ -101,9 +103,7 @@ export function LiveBuildingPlan({
     return <div className="live-plan-state is-error">{plansQuery.error.message}</div>;
   }
 
-  const createPlan = async () => {
-    const name = window.prompt('Name this building or floor plan')?.trim();
-    if (!name) return;
+  const createPlan = async (name) => {
     setBusy(true);
     try {
       const created = await fetchJSON('/api/live/plans', {
@@ -118,25 +118,42 @@ export function LiveBuildingPlan({
       await queryClient.invalidateQueries({ queryKey: ['operator-floor-plans'] });
       onSelectPlan(created.uuid);
       showStatusMessage(`Created ${name}`, 'success', 2500);
+      return true;
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
+  const createPlanDialog = (
+    <TextInputDialog
+      isOpen={createPlanOpen}
+      onClose={() => setCreatePlanOpen(false)}
+      onSubmit={createPlan}
+      title="Create building plan"
+      description="Give this building or floor a clear name. You can place cameras after it is created."
+      inputLabel="Plan name"
+      placeholder="Main building · First floor"
+      confirmLabel="Create plan"
+      cancelLabel={t('common.cancel')}
+    />
+  );
+
   if (!plan) {
-    return (
+    return <>
       <section className="live-plan-empty">
         <div className="live-plan-empty-icon">⌖</div>
         <h3>Build a spatial camera view</h3>
         <p>A plan shows status markers for the whole site and opens video only when an operator requests it.</p>
         {plansQuery.data?.can_modify && (
           <button type="button" className="btn-primary" disabled={busy}
-            onClick={createPlan}>Create building plan</button>
+            onClick={() => setCreatePlanOpen(true)}>Create building plan</button>
         )}
       </section>
-    );
+      {createPlanDialog}
+    </>;
   }
 
   const width = plan.canvas_width || 1200;
@@ -232,7 +249,7 @@ export function LiveBuildingPlan({
     setCenter(focus);
   };
 
-  return (
+  return <>
     <section className={`live-building-plan ${editing ? 'is-editing' : ''}`}>
       <header className="live-plan-toolbar">
         <div>
@@ -264,7 +281,7 @@ export function LiveBuildingPlan({
             </>
           ) : plansQuery.data?.can_modify && (
             <>
-              <button type="button" onClick={createPlan} disabled={busy}>New plan</button>
+              <button type="button" onClick={() => setCreatePlanOpen(true)} disabled={busy}>New plan</button>
               <button type="button" className="btn-primary" onClick={startEditing}>Edit layout</button>
             </>
           )}
@@ -458,5 +475,6 @@ export function LiveBuildingPlan({
         </aside>
       </div>
     </section>
-  );
+    {createPlanDialog}
+  </>;
 }

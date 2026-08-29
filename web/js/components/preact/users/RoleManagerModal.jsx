@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import {
   actionIsEnforced,
   groupActionsByCategory,
@@ -30,6 +31,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
   const [policyVersion, setPolicyVersion] = useState(0);
   const [selectedUuid, setSelectedUuid] = useState('');
   const [draft, setDraft] = useState(roleToDraft(null));
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const load = useCallback(async (preferredUuid = '') => {
     setLoading(true);
@@ -121,8 +123,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
   };
 
   const deleteRole = async () => {
-    if (!draft.uuid || draft.builtin ||
-        !window.confirm(t('access.roles.deleteConfirm', { name: draft.name }))) return;
+    if (!draft.uuid || draft.builtin) return;
     setSaving(true);
     try {
       await fetchJSON(`/api/authorization/roles/${encodeURIComponent(draft.uuid)}`, {
@@ -196,13 +197,23 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
               {destructive && !draft.builtin && <p className="mt-4 rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-sm">{t('access.roles.destructiveWarning')}</p>}
 
               <footer className="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-                {draft.uuid && !draft.builtin && <button type="button" className="btn-danger mr-auto" onClick={deleteRole} disabled={saving}>{t('common.delete')}</button>}
+                {draft.uuid && !draft.builtin && <button type="button" className="btn-danger mr-auto" onClick={() => setConfirmDelete(true)} disabled={saving}>{t('common.delete')}</button>}
                 {!draft.builtin && <button type="submit" className="btn-primary" disabled={saving || !draft.name.trim() || draft.actions.length === 0}>{saving ? t('common.saving') : t('common.saveChanges')}</button>}
               </footer>
             </form>
           </div>
         )}
       </section>
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={deleteRole}
+        title={t('access.roles.title')}
+        message={t('access.roles.deleteConfirm', { name: draft.name })}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import { buildLocationRows, locationParentOptions } from './fleetOrganization.js';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
@@ -80,10 +81,10 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
 
 function LocationsTab({ locations, loading, onRefresh, t }) {
   const [editor, setEditor] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   const rows = useMemo(() => buildLocationRows(locations), [locations]);
 
   const deleteLocation = async (location) => {
-    if (!window.confirm(t('fleet.organization.deleteLocationConfirm', { name: location.name }))) return;
     try {
       await fetchJSON(`/api/locations/${location.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.locationDeleted'), 'success');
@@ -128,7 +129,7 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
                     {!location.is_system && <>
                       <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ parentUuid: location.uuid })}>{t('fleet.organization.addChild')}</button>
                       <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: location })}>{t('common.edit')}</button>
-                      <button type="button" className="px-2 py-1 text-[hsl(var(--danger))] hover:underline disabled:cursor-not-allowed disabled:opacity-40" disabled={occupied} title={occupied ? t('fleet.organization.locationNotEmpty') : ''} onClick={() => deleteLocation(location)}>{t('common.delete')}</button>
+                      <button type="button" className="px-2 py-1 text-[hsl(var(--danger))] hover:underline disabled:cursor-not-allowed disabled:opacity-40" disabled={occupied} title={occupied ? t('fleet.organization.locationNotEmpty') : ''} onClick={() => setDeleteCandidate(location)}>{t('common.delete')}</button>
                     </>}
                   </td>
                 </tr>
@@ -138,6 +139,16 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
           </tbody>
         </table>
       </div>
+      <ConfirmDialog
+        isOpen={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => deleteLocation(deleteCandidate)}
+        title={t('fleet.organization.locations')}
+        message={deleteCandidate ? t('fleet.organization.deleteLocationConfirm', { name: deleteCandidate.name }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }
@@ -219,9 +230,9 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
 
 function TagsTab({ tags, loading, onRefresh, t }) {
   const [editor, setEditor] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   const sortedTags = useMemo(() => [...tags].sort((left, right) => left.label.localeCompare(right.label)), [tags]);
   const deleteTag = async (tag) => {
-    if (!window.confirm(t('fleet.organization.deleteTagConfirm', { name: tag.label, count: tag.camera_count }))) return;
     try {
       await fetchJSON(`/api/camera-tags/${tag.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.tagDeleted'), 'success');
@@ -257,7 +268,7 @@ function TagsTab({ tags, loading, onRefresh, t }) {
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: tag })}>{t('common.edit')}</button>
                   {tags.length > 1 && <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: tag, mode: 'merge' })}>{t('fleet.organization.merge')}</button>}
-                  <button type="button" className="px-2 py-1 text-[hsl(var(--danger))] hover:underline" onClick={() => deleteTag(tag)}>{t('common.delete')}</button>
+                  <button type="button" className="px-2 py-1 text-[hsl(var(--danger))] hover:underline" onClick={() => setDeleteCandidate(tag)}>{t('common.delete')}</button>
                 </td>
               </tr>
             ))}
@@ -265,6 +276,16 @@ function TagsTab({ tags, loading, onRefresh, t }) {
           </tbody>
         </table>
       </div>
+      <ConfirmDialog
+        isOpen={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => deleteTag(deleteCandidate)}
+        title={t('fleet.organization.tags')}
+        message={deleteCandidate ? t('fleet.organization.deleteTagConfirm', { name: deleteCandidate.label, count: deleteCandidate.camera_count }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }

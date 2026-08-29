@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import { CollectionSelectorBuilder } from './CollectionSelectorBuilder.jsx';
 import { StaticCollectionMembers } from './StaticCollectionMembers.jsx';
 
@@ -158,6 +159,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
   const [editorLoading, setEditorLoading] = useState(false);
   const [previews, setPreviews] = useState({});
   const [previewingUuid, setPreviewingUuid] = useState('');
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
 
   useEffect(() => {
     const handleKey = (event) => { if (event.key === 'Escape' && !editorLoading) onClose(); };
@@ -200,7 +202,6 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
   };
 
   const deleteCollection = async (collection) => {
-    if (!window.confirm(t('collections.deleteConfirm', { name: collection.name }))) return;
     try {
       await fetchJSON(`/api/camera-collections/${collection.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('collections.deleted'), 'success');
@@ -220,9 +221,19 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
         <div className="overflow-y-auto p-4">
           {editorSpec
             ? <CollectionEditor spec={editorSpec} locations={locations} tags={tags} t={t} onCancel={() => setEditorSpec(null)} onSaved={async () => { setEditorSpec(null); await onRefresh(); }} />
-            : <CollectionList collections={collections} loading={loading || editorLoading} isAdmin={isAdmin} previews={previews} previewingUuid={previewingUuid} onPreview={previewCollection} onEdit={editCollection} onDelete={deleteCollection} onCreate={() => setEditorSpec({ collection: null, members: [] })} t={t} />}
+            : <CollectionList collections={collections} loading={loading || editorLoading} isAdmin={isAdmin} previews={previews} previewingUuid={previewingUuid} onPreview={previewCollection} onEdit={editCollection} onDelete={setDeleteCandidate} onCreate={() => setEditorSpec({ collection: null, members: [] })} t={t} />}
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={Boolean(deleteCandidate)}
+        onClose={() => setDeleteCandidate(null)}
+        onConfirm={() => deleteCollection(deleteCandidate)}
+        title={t('collections.title')}
+        message={deleteCandidate ? t('collections.deleteConfirm', { name: deleteCandidate.name }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        variant="danger"
+      />
     </div>
   );
 }

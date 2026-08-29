@@ -4,6 +4,7 @@ import { formatLocalDateTime } from '../../../utils/date-utils.js';
 import { useI18n } from '../../../i18n.js';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../common/ModalDialog.jsx';
 import { groupActionsByCategory } from './authorizationPolicy.js';
 import {
   DEFAULT_TOKEN_SELECTOR,
@@ -135,6 +136,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   const [revealed, setRevealed] = useState(null);
   const [secretCopied, setSecretCopied] = useState(false);
   const [secretConfirmed, setSecretConfirmed] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -217,7 +219,6 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   };
 
   const revokeToken = async (token) => {
-    if (!window.confirm(t('tokens.revokeConfirm', { description: token.description }))) return;
     setRevokingUuid(token.uuid);
     try {
       await fetchJSON(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens/${encodeURIComponent(token.uuid)}`, {
@@ -237,7 +238,6 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   };
 
   const generateLegacyKey = async () => {
-    if (!window.confirm(t('tokens.legacy.confirm'))) return;
     setLegacyGenerating(true);
     try {
       const response = await fetchJSON(`/api/auth/users/${encodeURIComponent(currentUser.id)}/api-key`, {
@@ -318,7 +318,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
                   <section className="space-y-3 rounded-lg border border-border p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{t('tokens.existingTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('tokens.existingDescription')}</p></div>{inactiveCount > 0 && <label className="touch-target flex cursor-pointer items-center gap-2 text-xs"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.currentTarget.checked)} />{t('tokens.showInactive', { count: inactiveCount })}</label>}</div>
                     <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-1">
-                      {visibleTokens.map((token) => <TokenCard key={token.uuid} token={token} collections={collections} revoking={revokingUuid === token.uuid} onRevoke={revokeToken} t={t} />)}
+                      {visibleTokens.map((token) => <TokenCard key={token.uuid} token={token} collections={collections} revoking={revokingUuid === token.uuid} onRevoke={(candidate) => setConfirmation({ kind: 'revoke', token: candidate })} t={t} />)}
                       {visibleTokens.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center"><h4 className="font-semibold">{t('tokens.emptyTitle')}</h4><p className="mt-1 text-sm text-muted-foreground">{t('tokens.emptyDescription')}</p></div>}
                     </div>
                   </section>
@@ -326,13 +326,28 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
 
                 <details className="rounded-lg border border-[hsl(var(--warning))] bg-[hsl(var(--warning)/0.07)] p-4">
                   <summary className="cursor-pointer font-semibold">{t('tokens.legacy.title')}</summary>
-                  <div className="mt-3 border-t border-border pt-3"><p className="text-sm text-muted-foreground">{t('tokens.legacy.description')}</p><p className="mt-2 text-sm font-medium text-[hsl(var(--warning-foreground))]">{t('tokens.legacy.warning')}</p><button type="button" className="btn-secondary mt-3" disabled={legacyGenerating} onClick={generateLegacyKey}>{legacyGenerating ? t('users.generatingApiKey') : t('tokens.legacy.generate')}</button></div>
+                  <div className="mt-3 border-t border-border pt-3"><p className="text-sm text-muted-foreground">{t('tokens.legacy.description')}</p><p className="mt-2 text-sm font-medium text-[hsl(var(--warning-foreground))]">{t('tokens.legacy.warning')}</p><button type="button" className="btn-secondary mt-3" disabled={legacyGenerating} onClick={() => setConfirmation({ kind: 'legacy' })}>{legacyGenerating ? t('users.generatingApiKey') : t('tokens.legacy.generate')}</button></div>
                 </details>
               </div>
             )}
           </div>
         )}
       </section>
+      <ConfirmDialog
+        isOpen={Boolean(confirmation)}
+        onClose={() => setConfirmation(null)}
+        onConfirm={() => confirmation?.kind === 'revoke'
+          ? revokeToken(confirmation.token) : generateLegacyKey()}
+        title={confirmation?.kind === 'revoke'
+          ? t('tokens.revoke') : t('tokens.legacy.title')}
+        message={confirmation?.kind === 'revoke'
+          ? t('tokens.revokeConfirm', { description: confirmation.token.description })
+          : t('tokens.legacy.confirm')}
+        confirmLabel={confirmation?.kind === 'revoke'
+          ? t('tokens.revoke') : t('tokens.legacy.generate')}
+        cancelLabel={t('common.cancel')}
+        variant={confirmation?.kind === 'revoke' ? 'danger' : 'warning'}
+      />
     </div>
   );
 }

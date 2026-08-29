@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.jsx';
 import { useI18n } from '../../../i18n.js';
 import {
   WORKSPACE_KEYS,
@@ -83,6 +84,8 @@ export function LiveOperatorNavigator({
   const [busy, setBusy] = useState(false);
   const [layoutCameraScope, setLayoutCameraScope] = useState(null);
   const [selectedLayoutUuid, setSelectedLayoutUuid] = useState('');
+  const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
+  const [deleteLayoutTarget, setDeleteLayoutTarget] = useState(null);
 
   const workspaceQuery = useQuery({
     queryKey: ['ui-workspaces'],
@@ -225,11 +228,8 @@ export function LiveOperatorNavigator({
     });
     showStatusMessage(t('live.navigator.layoutLoaded', { name: layout.name }), 'success', 2500);
   };
-  const saveLayout = async () => {
-    const name = window.prompt(t('live.navigator.layoutNamePrompt'))?.trim();
-    if (!name) return;
-    const isShared = layoutsQuery.data?.can_share
-      ? window.confirm(t('live.navigator.shareLayoutPrompt')) : false;
+  const saveLayout = async (name, shareRequested) => {
+    const isShared = layoutsQuery.data?.can_share ? shareRequested : false;
     setBusy(true);
     try {
       const layout = await fetchJSON('/api/live/layouts', {
@@ -251,14 +251,15 @@ export function LiveOperatorNavigator({
       setLayoutCameraScope(cameraUuidsForLiveLayout(layout));
       setSelectedLayoutUuid(layout.uuid || '');
       showStatusMessage(t('live.navigator.layoutSaved', { name }), 'success', 2500);
+      return true;
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
+      return false;
     } finally {
       setBusy(false);
     }
   };
   const deleteLayout = async (layout) => {
-    if (!window.confirm(t('live.navigator.deleteLayoutConfirm', { name: layout.name }))) return;
     setBusy(true);
     try {
       await fetchJSON(`/api/live/layouts/${layout.uuid}`, {
@@ -290,7 +291,7 @@ export function LiveOperatorNavigator({
   }
 
   const selectedCameraUuids = [...effectiveCameraUuids];
-  return (
+  return <>
     <aside className="live-operator-navigator" aria-label={t('live.navigator.title')}>
       <div className="live-navigator-heading">
         <div><strong>{t('live.navigator.title')}</strong><small>{t('live.navigator.subtitle')}</small></div>
@@ -376,7 +377,7 @@ export function LiveOperatorNavigator({
       {tab === 'views' && (
         <div className="live-navigator-panel">
           <button type="button" className="btn-primary live-layout-save" disabled={busy || !layoutsQuery.data?.can_modify}
-            onClick={saveLayout}>{t('live.navigator.saveCurrent')}</button>
+            onClick={() => setSaveLayoutOpen(true)}>{t('live.navigator.saveCurrent')}</button>
           {(layoutsQuery.data?.layouts || []).map((layout) => (
             <div key={layout.uuid}
               className={`live-layout-row ${selectedLayoutUuid === layout.uuid ? 'is-selected' : ''}`}>
@@ -387,7 +388,7 @@ export function LiveOperatorNavigator({
               </button>
               {layout.owned && layoutsQuery.data?.can_modify && (
                 <button type="button" className="live-layout-delete" disabled={busy}
-                  title={t('common.delete')} onClick={() => deleteLayout(layout)}>×</button>
+                  title={t('common.delete')} onClick={() => setDeleteLayoutTarget(layout)}>×</button>
               )}
             </div>
           ))}
@@ -436,5 +437,27 @@ export function LiveOperatorNavigator({
         </div>
       )}
     </aside>
-  );
+    <TextInputDialog
+      isOpen={saveLayoutOpen}
+      onClose={() => setSaveLayoutOpen(false)}
+      onSubmit={saveLayout}
+      title={t('live.navigator.layoutNamePrompt')}
+      inputLabel={t('common.name')}
+      confirmLabel={t('common.saveChanges')}
+      cancelLabel={t('common.cancel')}
+      checkboxLabel={layoutsQuery.data?.can_share
+        ? t('live.navigator.shareLayoutPrompt') : undefined}
+    />
+    <ConfirmDialog
+      isOpen={Boolean(deleteLayoutTarget)}
+      onClose={() => setDeleteLayoutTarget(null)}
+      onConfirm={() => deleteLayout(deleteLayoutTarget)}
+      title={t('common.delete')}
+      message={deleteLayoutTarget
+        ? t('live.navigator.deleteLayoutConfirm', { name: deleteLayoutTarget.name }) : ''}
+      confirmLabel={t('common.delete')}
+      cancelLabel={t('common.cancel')}
+      variant="danger"
+    />
+  </>;
 }
