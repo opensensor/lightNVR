@@ -330,12 +330,14 @@ static void proxy_async_cb(uv_async_t *handle) {
 
 bool go2rtc_proxy_path_matches(const char *path) {
     if (!path) return false;
-    // Only intercept paths registered under the /go2rtc/ prefix.
-    // lightNVR has its own /api/streams handler for stream management — do NOT
-    // intercept those.  The go2rtc proxy handlers are registered at:
-    //   /go2rtc/api/streams, /go2rtc/api/stream.m3u8,
-    //   /go2rtc/api/hls/*, /go2rtc/api/frame.jpeg
-    return strncmp(path, "/go2rtc/", 8) == 0;
+    // Only intercept the HTTP endpoints registered by libuv_api_handlers.
+    // WebRTC SDP and MSE WebSockets connect directly to go2rtc and must never
+    // enter this extra libcurl proxy hop.
+    return strcmp(path, "/go2rtc/api/streams") == 0 ||
+           strcmp(path, "/go2rtc/api/reload") == 0 ||
+           strcmp(path, "/go2rtc/api/stream.m3u8") == 0 ||
+           strncmp(path, "/go2rtc/api/hls/", 16) == 0 ||
+           strcmp(path, "/go2rtc/api/frame.jpeg") == 0;
 }
 
 int go2rtc_proxy_thread_init(uv_loop_t *loop) {

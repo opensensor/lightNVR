@@ -80,7 +80,7 @@ export async function getGo2rtcApiPort() {
  *
  * Over HTTP (local dev): lightNVR's built-in /go2rtc/* proxy only handles HLS
  * and snapshots (not WebRTC). WebRTC must connect directly to go2rtc's port
- * for lower latency and because the curl-based proxy can't handle the SDP exchange.
+ * to avoid the latency and buffering of an extra HTTP proxy hop.
  *
  * @returns {Promise<string>} - go2rtc base URL (e.g., "https://hostname/go2rtc" or "http://hostname:1984/go2rtc")
  */

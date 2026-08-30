@@ -37,6 +37,7 @@
 #include "database/db_streams.h"
 #include "web/api_handlers_auth.h"
 #include "web/api_handlers_go2rtc_proxy.h"
+#include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_users.h"
 
@@ -833,6 +834,27 @@ void test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filena
                                                         true));
 }
 
+void test_go2rtc_proxy_only_intercepts_supported_http_paths(void) {
+    TEST_ASSERT_TRUE(
+        go2rtc_proxy_path_matches("/go2rtc/api/streams"));
+    TEST_ASSERT_TRUE(
+        go2rtc_proxy_path_matches("/go2rtc/api/reload"));
+    TEST_ASSERT_TRUE(
+        go2rtc_proxy_path_matches("/go2rtc/api/stream.m3u8"));
+    TEST_ASSERT_TRUE(
+        go2rtc_proxy_path_matches("/go2rtc/api/hls/segment.m4s"));
+    TEST_ASSERT_TRUE(
+        go2rtc_proxy_path_matches("/go2rtc/api/frame.jpeg"));
+
+    TEST_ASSERT_FALSE(
+        go2rtc_proxy_path_matches("/go2rtc/api/webrtc"));
+    TEST_ASSERT_FALSE(go2rtc_proxy_path_matches("/go2rtc/api/ws"));
+    TEST_ASSERT_FALSE(
+        go2rtc_proxy_path_matches("/go2rtc/api/streams/private"));
+    TEST_ASSERT_FALSE(go2rtc_proxy_path_matches("/go2rtc/"));
+    TEST_ASSERT_FALSE(go2rtc_proxy_path_matches(NULL));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -882,6 +904,7 @@ int main(void) {
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
     RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);
     RUN_TEST(test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filename_as_camera);
+    RUN_TEST(test_go2rtc_proxy_only_intercepts_supported_http_paths);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

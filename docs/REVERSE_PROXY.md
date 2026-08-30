@@ -5,14 +5,14 @@ LightNVR's HTTP server does not terminate TLS itself.  For HTTPS — and for any
 This doc covers the two things that aren't obvious if you've never put a reverse proxy in front of an NVR:
 
 1. **You have to forward two upstream services**, not one — lightNVR on port 8080 and go2rtc on port 1984.
-2. **WebSocket upgrade headers are mandatory** for the `/go2rtc/*` path or MSE live view and WebRTC SDP exchange will fail silently.
+2. **WebSocket upgrade headers are mandatory** for MSE. The same `/go2rtc/*` route carries ordinary WebRTC SDP HTTP requests directly to go2rtc without an extra LightNVR proxy hop.
 
 ## Upstream services
 
 | Path on the reverse proxy | Upstream | Why |
 | --- | --- | --- |
 | `/` (everything except `/go2rtc/`) | `http://127.0.0.1:8080` | lightNVR's HTTP server. Serves the dashboard, REST API (`/api/*`), HLS segments (`/hls/*`), and lightNVR's internal go2rtc HTTP-only proxy at `/go2rtc/api/streams`, `/go2rtc/api/stream.m3u8`, `/go2rtc/api/hls/*`, `/go2rtc/api/frame.jpeg`. |
-| `/go2rtc/*` | `http://127.0.0.1:1984` | go2rtc's own HTTP/WS server. Required because lightNVR's built-in `/go2rtc/*` proxy is HTTP-only (uses libcurl) and cannot handle WebSocket upgrades — and **MSE live view and WebRTC SDP exchange both need WebSocket**. |
+| `/go2rtc/*` | `http://127.0.0.1:1984` | go2rtc's own HTTP/WS server. MSE requires its WebSocket endpoint; WebRTC SDP is also routed here directly to avoid LightNVR's buffered libcurl proxy. |
 
 > **Why two upstreams instead of one?** lightNVR proxies a curated subset of go2rtc endpoints internally (HLS segments and snapshots) because those benefit from lightNVR's concurrency limiter and auth. Everything else — `/go2rtc/api/ws` for MSE, `/go2rtc/api/webrtc` SDP, and the go2rtc admin UI — needs to reach go2rtc directly. When you're proxying HTTPS, the cleanest fix is to route the whole `/go2rtc/*` prefix to go2rtc and let the frontend (which detects `https:` and switches routing automatically) pick the right path.  See `web/js/utils/settings-utils.js#getGo2rtcBaseUrl` / `#getGo2rtcWebSocketUrl` for the client-side logic.
 
@@ -29,7 +29,7 @@ The value is a comma- or newline-separated list of IPv4/IPv6 CIDRs that may legi
 
 ## Example: nginx
 
-This config — adapted from a working deployment by @dpw13 — terminates HTTPS, forwards `/` to lightNVR, and forwards `/go2rtc/*` to go2rtc.  WebSocket upgrades are wired up on both locations because lightNVR uses WS for some live-view paths and go2rtc uses WS for MSE + WebRTC.
+This config — adapted from a working deployment by @dpw13 — terminates HTTPS, forwards `/` to lightNVR, and forwards `/go2rtc/*` to go2rtc. WebSocket upgrades are wired up on both locations because LightNVR uses WS for some live-view paths and go2rtc uses WS for MSE; WebRTC signaling uses ordinary HTTP on the same direct route.
 
 ```nginx
 # Redirect HTTP → HTTPS
@@ -71,8 +71,8 @@ server {
         proxy_pass http://127.0.0.1:8080;
     }
 
-    # /go2rtc/* → go2rtc (bypasses lightNVR's HTTP-only internal proxy
-    # so MSE WebSockets and WebRTC SDP can be upgraded)
+    # /go2rtc/* → go2rtc (bypasses LightNVR's buffered HTTP proxy;
+    # MSE is upgraded here and WebRTC SDP stays on the direct path)
     location /go2rtc/ {
         proxy_pass http://127.0.0.1:1984;
     }
@@ -147,7 +147,7 @@ After starting the proxy, walk through this checklist with the browser dev tools
 ## Common pitfalls
 
 - **Forgot `Upgrade` / `Connection` headers.** MSE live view fails to start; the WebSocket request returns 200 (or HTML) instead of 101.  In nginx, this is `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";` plus `proxy_http_version 1.1;` in the appropriate scope.
-- **Routed only `/` to lightNVR and skipped `/go2rtc/*`.** HLS and snapshots work (those go through lightNVR's internal HTTP-only proxy), but anything live (MSE/WebRTC) breaks the moment WebSocket is needed.
+- **Routed only `/` to LightNVR and skipped `/go2rtc/*`.** HLS and snapshots work through LightNVR's internal HTTP proxy, but MSE WebSockets and WebRTC SDP never reach go2rtc directly.
 - **Mixed `http:` / `https:` content.** The frontend detects `window.location.protocol` and switches its go2rtc URLs to `https://yourhost/go2rtc`.  If you serve the dashboard over `https:` but the browser ends up requesting `http://yourhost:1984/...` directly, your reverse proxy isn't intercepting `/go2rtc/*` — re-check the location/router ordering.
 - **`trusted_proxy_cidrs` left empty.** Audit log and rate limiter see every request as coming from the proxy (`127.0.0.1` or the container bridge IP).  Login allow-lists effectively disable themselves because everyone looks local.
 - **`proxy_read_timeout` at nginx's 60s default.** A WebSocket sitting idle (e.g., a paused live view, or a sub-stream with low frame rate) gets torn down after a minute.  Bump it to something like an hour for the proxy paths that carry streaming traffic.
