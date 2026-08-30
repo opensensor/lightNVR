@@ -243,7 +243,8 @@ void test_recording_history_indexes_are_migrated(void) {
     const char *index_names[] = {
         "idx_recordings_history_start",
         "idx_detections_recording_id",
-        "idx_detections_unlinked_stream_time_label"
+        "idx_detections_unlinked_stream_time_label",
+        "idx_detections_stream_label"
     };
 
     sqlite3_stmt *stmt = NULL;

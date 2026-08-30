@@ -267,10 +267,8 @@ int db_recording_tag_get_unique_for_streams(
     const char *const *stream_names, int stream_count,
     char tags[][MAX_TAG_LENGTH], int max_tags) {
     if (!stream_names || stream_count <= 0 || !tags || max_tags <= 0) return 0;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mtx = get_db_mutex();
-    if (!db || !mtx) return -1;
-    pthread_mutex_lock(mtx);
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) return -1;
     int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
     int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
     if (batch_limit > 256) batch_limit = 256;
@@ -336,7 +334,7 @@ int db_recording_tag_get_unique_for_streams(
             break;
         }
     }
-    pthread_mutex_unlock(mtx);
+    db_close_readonly_connection(db);
     return final_rc == SQLITE_DONE ? count : -1;
 }
 

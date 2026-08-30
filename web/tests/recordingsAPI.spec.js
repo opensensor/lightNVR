@@ -191,6 +191,21 @@ describe('recordingsAPI', () => {
     expect(result).toEqual([]);
   });
 
+  test('filter option loaders retain their tolerant default behavior', async () => {
+    fetchJSON.mockRejectedValue(new Error('metadata unavailable'));
+
+    await expect(recordingsAPI.getAllDetectionLabels()).resolves.toEqual([]);
+    await expect(recordingsAPI.getAllRecordingTags()).resolves.toEqual([]);
+  });
+
+  test('filter option loaders can surface failures to lazy-loading UI', async () => {
+    const error = new Error('metadata unavailable');
+    fetchJSON.mockRejectedValue(error);
+
+    await expect(recordingsAPI.getAllDetectionLabels({ throwOnError: true })).rejects.toBe(error);
+    await expect(recordingsAPI.getAllRecordingTags({ throwOnError: true })).rejects.toBe(error);
+  });
+
   test('deleteSelectedRecordingsHttp delegates response handling to shared helper', async () => {
     const response = { json: jest.fn() };
     const expected = { succeeded: 2, failed: 0 };

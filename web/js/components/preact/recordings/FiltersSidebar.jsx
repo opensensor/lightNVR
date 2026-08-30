@@ -7,6 +7,14 @@ import { useState, useEffect } from 'preact/hooks';
 import { recordingsAPI } from './recordingsAPI.jsx';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
+import {
+  FILTER_OPTIONS_ERROR,
+  FILTER_OPTIONS_IDLE,
+  FILTER_OPTIONS_LOADED,
+  FILTER_OPTIONS_LOADING,
+  areFilterOptionsInteractive,
+  shouldLoadFilterOptions
+} from './lazyFilterOptions.js';
 import { AsyncButton } from '../AsyncButton.jsx';
 import { useI18n } from '../../../i18n.js';
 
@@ -80,6 +88,8 @@ const DEFAULT_SECTIONS = {
 const CAPTURE_METHOD_OPTIONS = ['continuous', 'scheduled', 'detection', 'motion', 'manual'];
 
 const getCountBadge = (values) => (values.length > 0 ? `${values.length} selected` : null);
+const loadDetectionLabelOptions = () => recordingsAPI.getAllDetectionLabels({ throwOnError: true });
+const loadRecordingTagOptions = () => recordingsAPI.getAllRecordingTags({ throwOnError: true });
 
 /**
  * FiltersSidebar component
@@ -107,13 +117,41 @@ export function FiltersSidebar({
 
   const [availableDetectionLabels, setAvailableDetectionLabels] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
+  const [detectionLabelsStatus, setDetectionLabelsStatus] = useState(FILTER_OPTIONS_IDLE);
+  const [recordingTagsStatus, setRecordingTagsStatus] = useState(FILTER_OPTIONS_IDLE);
 
   useEffect(() => {
-    recordingsAPI.getAllRecordingTags().then(setAvailableTags);
-    recordingsAPI.getAllDetectionLabels().then(setAvailableDetectionLabels);
-  }, []);
+    if (!shouldLoadFilterOptions(sections.detectionObject, detectionLabelsStatus)) return;
+
+    setDetectionLabelsStatus(FILTER_OPTIONS_LOADING);
+    loadDetectionLabelOptions()
+      .then((labels) => {
+        setAvailableDetectionLabels(labels);
+        setDetectionLabelsStatus(FILTER_OPTIONS_LOADED);
+      })
+      .catch(() => setDetectionLabelsStatus(FILTER_OPTIONS_ERROR));
+  }, [sections.detectionObject, detectionLabelsStatus]);
+
+  useEffect(() => {
+    if (!shouldLoadFilterOptions(sections.tag, recordingTagsStatus)) return;
+
+    setRecordingTagsStatus(FILTER_OPTIONS_LOADING);
+    loadRecordingTagOptions()
+      .then((tags) => {
+        setAvailableTags(tags);
+        setRecordingTagsStatus(FILTER_OPTIONS_LOADED);
+      })
+      .catch(() => setRecordingTagsStatus(FILTER_OPTIONS_ERROR));
+  }, [sections.tag, recordingTagsStatus]);
 
   const toggleSection = (key) => {
+    const willExpand = !sections[key];
+    if (willExpand && key === 'detectionObject' && detectionLabelsStatus === FILTER_OPTIONS_ERROR) {
+      setDetectionLabelsStatus(FILTER_OPTIONS_IDLE);
+    }
+    if (willExpand && key === 'tag' && recordingTagsStatus === FILTER_OPTIONS_ERROR) {
+      setRecordingTagsStatus(FILTER_OPTIONS_IDLE);
+    }
     setSections((prev) => {
       const next = { ...prev, [key]: !prev[key] };
       localStorage.setItem('recordings_filters_sections', JSON.stringify(next));
@@ -277,20 +315,40 @@ export function FiltersSidebar({
           </FilterSection>
 
           <FilterSection title={t('recordings.detectionObjects')} badge={getCountBadge(filters.detectionLabels)} isExpanded={sections.detectionObject} onToggle={() => toggleSection('detectionObject')}>
+            {/* Native select popups snapshot their options when opened. Keep
+                this disabled until the async list is present so an early
+                click cannot leave the popup permanently empty. */}
             <select
               id="detection-label-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               defaultValue=""
+              disabled={!areFilterOptionsInteractive(detectionLabelsStatus)}
+              aria-busy={detectionLabelsStatus === FILTER_OPTIONS_LOADING}
               onChange={(e) => {
                 if (e.target.value) addMultiFilterValue('detectionLabels', e.target.value);
                 e.target.value = '';
               }}
             >
-              <option value="">{t('recordings.addDetectionObject')}</option>
+              <option value="">
+                {detectionLabelsStatus === FILTER_OPTIONS_ERROR
+                  ? t('common.retry')
+                  : (areFilterOptionsInteractive(detectionLabelsStatus)
+                    ? t('recordings.addDetectionObject')
+                    : t('common.loading'))}
+              </option>
               {availableDetectionLabels.map((label) => (
                 <option key={label} value={label}>{label}</option>
               ))}
             </select>
+            {detectionLabelsStatus === FILTER_OPTIONS_ERROR && (
+              <button
+                type="button"
+                className="btn-secondary w-full text-xs"
+                onClick={() => setDetectionLabelsStatus(FILTER_OPTIONS_IDLE)}
+              >
+                {t('common.retry')}
+              </button>
+            )}
             <SelectedValues
               values={filters.detectionLabels}
               onRemove={(value) => removeMultiFilterValue('detectionLabels', value)}
@@ -328,16 +386,33 @@ export function FiltersSidebar({
               id="tag-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               defaultValue=""
+              disabled={!areFilterOptionsInteractive(recordingTagsStatus)}
+              aria-busy={recordingTagsStatus === FILTER_OPTIONS_LOADING}
               onChange={(e) => {
                 if (e.target.value) addMultiFilterValue('tags', e.target.value);
                 e.target.value = '';
               }}
             >
-              <option value="">{t('recordings.addTag')}</option>
+              <option value="">
+                {recordingTagsStatus === FILTER_OPTIONS_ERROR
+                  ? t('common.retry')
+                  : (areFilterOptionsInteractive(recordingTagsStatus)
+                    ? t('recordings.addTag')
+                    : t('common.loading'))}
+              </option>
               {availableTags.map((tag) => (
                 <option key={tag} value={tag}>{tag}</option>
               ))}
             </select>
+            {recordingTagsStatus === FILTER_OPTIONS_ERROR && (
+              <button
+                type="button"
+                className="btn-secondary w-full text-xs"
+                onClick={() => setRecordingTagsStatus(FILTER_OPTIONS_IDLE)}
+              >
+                {t('common.retry')}
+              </button>
+            )}
             <SelectedValues
               values={filters.tags}
               onRemove={(value) => removeMultiFilterValue('tags', value)}

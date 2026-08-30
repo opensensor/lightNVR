@@ -1735,6 +1735,14 @@ static const char migration_0078_down[] =
     "DROP INDEX IF EXISTS idx_lpr_reads_camera_time;"
     "DROP TABLE IF EXISTS lpr_reads;";
 
+static const char migration_0079_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_detections_stream_label "
+    "ON detections(stream_name,label) "
+    "WHERE label IS NOT NULL AND TRIM(label)<>'';";
+
+static const char migration_0079_down[] =
+    "DROP INDEX IF EXISTS idx_detections_stream_label;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2282,8 +2290,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0078_down,
         .is_embedded = true
     },
+    {
+        .version = "0079",
+        .description = "add_scoped_detection_label_index",
+        .sql_up = migration_0079_up,
+        .sql_down = migration_0079_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 78
+#define EMBEDDED_MIGRATIONS_COUNT 79
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

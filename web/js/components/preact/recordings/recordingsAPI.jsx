@@ -746,7 +746,7 @@ export const recordingsAPI = {
    * Get all unique recording tags
    * @returns {Promise<string[]>} Array of unique tags
    */
-  getAllRecordingTags: async () => {
+  getAllRecordingTags: async ({ throwOnError = false } = {}) => {
     try {
       const data = await fetchJSON('/api/recordings/tags', {
         timeout: 10000,
@@ -756,6 +756,7 @@ export const recordingsAPI = {
       return data.tags || [];
     } catch (error) {
       console.error('Error fetching recording tags:', error);
+      if (throwOnError) throw error;
       return [];
     }
   },
@@ -764,7 +765,7 @@ export const recordingsAPI = {
    * Get all unique detection labels
    * @returns {Promise<string[]>} Array of unique detection labels
    */
-  getAllDetectionLabels: async () => {
+  getAllDetectionLabels: async ({ throwOnError = false } = {}) => {
     try {
       const data = await fetchJSON('/api/recordings/detection-labels', {
         timeout: 10000,
@@ -774,6 +775,7 @@ export const recordingsAPI = {
       return data.labels || [];
     } catch (error) {
       console.error('Error fetching detection labels:', error);
+      if (throwOnError) throw error;
       return [];
     }
   },

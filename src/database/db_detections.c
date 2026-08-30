@@ -1176,11 +1176,9 @@ int get_unique_detection_labels_for_streams(
     const char *const *stream_names, int stream_count,
     char labels[][MAX_LABEL_LENGTH], int max_labels) {
     if (!stream_names || stream_count <= 0 || !labels || max_labels <= 0) return 0;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-    if (!db || !db_mutex) return -1;
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) return -1;
     memset(labels, 0, (size_t)max_labels * MAX_LABEL_LENGTH);
-    pthread_mutex_lock(db_mutex);
     int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
     int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
     if (batch_limit > 256) batch_limit = 256;
@@ -1244,7 +1242,7 @@ int get_unique_detection_labels_for_streams(
             break;
         }
     }
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
     return final_rc == SQLITE_DONE ? count : -1;
 }
 
