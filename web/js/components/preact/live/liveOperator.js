@@ -199,6 +199,38 @@ export function floorPlanCanvasFromImage(width, height) {
   };
 }
 
+/**
+ * Coverage wedges are illustrative cones derived from the stored placement:
+ * FOV clamped to the API's 1-180° range, rotation to -180-180°. Missing or
+ * corrupt values fall back to the schema defaults.
+ */
+export function normalizeCoverage(placement) {
+  return {
+    fov: Number.isFinite(placement?.fov)
+      ? Math.min(180, Math.max(1, placement.fov)) : 65,
+    rotation: Number.isFinite(placement?.rotation)
+      ? Math.min(180, Math.max(-180, placement.rotation)) : 0,
+  };
+}
+
+/**
+ * SVG path for a coverage sector centered on the origin, opening along +x so
+ * a rotate(rotation) transform aims the centerline. Endpoints are rounded to
+ * three decimals so 180° boundaries never emit degenerate float noise.
+ */
+export function coverageWedgePath(fov, radius = 55) {
+  const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 55;
+  const { fov: degrees } = normalizeCoverage({ fov });
+  const halfAngle = (degrees * Math.PI) / 360;
+  const format = (value) => {
+    const fixed = value.toFixed(3);
+    return fixed === '-0.000' ? '0.000' : fixed;
+  };
+  const x = format(safeRadius * Math.cos(halfAngle));
+  const y = format(safeRadius * Math.sin(halfAngle));
+  return `M 0 0 L ${x} -${y} A ${safeRadius} ${safeRadius} 0 0 1 ${x} ${y} Z`;
+}
+
 export function floorPlanPayload(plan, cameras) {
   return {
     name: plan.name,
@@ -207,12 +239,15 @@ export function floorPlanPayload(plan, cameras) {
     canvas_width: plan.canvas_width,
     canvas_height: plan.canvas_height,
     revision: plan.revision,
-    cameras: (cameras || []).map((camera) => ({
-      camera_uuid: camera.camera_uuid,
-      x: Math.max(0, Math.min(1, camera.x)),
-      y: Math.max(0, Math.min(1, camera.y)),
-      rotation: Math.max(-180, Math.min(180, camera.rotation || 0)),
-      fov: Math.max(1, Math.min(180, camera.fov || 65)),
-    })),
+    cameras: (cameras || []).map((camera) => {
+      const coverage = normalizeCoverage(camera);
+      return {
+        camera_uuid: camera.camera_uuid,
+        x: Math.max(0, Math.min(1, camera.x)),
+        y: Math.max(0, Math.min(1, camera.y)),
+        rotation: coverage.rotation,
+        fov: coverage.fov,
+      };
+    }),
   };
 }

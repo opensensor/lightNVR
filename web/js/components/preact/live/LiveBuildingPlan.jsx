@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.jsx';
 import { useI18n } from '../../../i18n.js';
 import {
   clusterFloorPlanCameras,
+  coverageWedgePath,
   floorPlanCanvasFromImage,
   floorPlanPayload,
+  normalizeCoverage,
 } from './liveOperator.js';
 
 const BACKGROUND_MAX_BYTES = 768 * 1024;
@@ -69,6 +71,65 @@ function availabilityLabel(stream, t) {
   return t(`availability.${stream.availability || 'offline'}`);
 }
 
+function coverageValueLabel(value) {
+  return `${Number(value.toFixed(3))}`;
+}
+
+function PlanCoverageControl({ id, label, value, minimum, maximum, onChange }) {
+  const normalized = clamp(value, minimum, maximum);
+  const [draft, setDraft] = useState(coverageValueLabel(normalized));
+
+  useEffect(() => {
+    setDraft(coverageValueLabel(normalized));
+  }, [id, normalized]);
+
+  const updateDraft = (candidate) => {
+    setDraft(candidate);
+    if (candidate.trim() === '') return;
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum) {
+      onChange(parsed);
+    }
+  };
+  const commitDraft = () => {
+    const parsed = draft.trim() === '' ? NaN : Number(draft);
+    const committed = Number.isFinite(parsed)
+      ? clamp(parsed, minimum, maximum) : normalized;
+    setDraft(coverageValueLabel(committed));
+    if (committed !== normalized) onChange(committed);
+  };
+  const draftNumber = draft.trim() === '' ? NaN : Number(draft);
+  const draftValid = Number.isFinite(draftNumber) &&
+    draftNumber >= minimum && draftNumber <= maximum;
+
+  return (
+    <div className="live-plan-coverage-field">
+      <label htmlFor={`${id}-range`}>{label}</label>
+      <div className="live-plan-coverage-row">
+        <input id={`${id}-range`} type="range"
+          min={minimum} max={maximum} step="1"
+          value={normalized}
+          aria-valuetext={`${coverageValueLabel(normalized)} degrees`}
+          onInput={(event) => onChange(Number(event.currentTarget.value))} />
+        <input id={`${id}-number`} type="number"
+          min={minimum} max={maximum} step="1"
+          aria-label={`${label} in degrees`}
+          aria-invalid={!draftValid}
+          value={draft}
+          onInput={(event) => updateDraft(event.currentTarget.value)}
+          onBlur={commitDraft}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setDraft(coverageValueLabel(normalized));
+            }
+          }} />
+      </div>
+    </div>
+  );
+}
+
 export function LiveBuildingPlan({
   streams,
   selectedPlanUuid,
@@ -77,6 +138,7 @@ export function LiveBuildingPlan({
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const panelUid = useId();
   const svgRef = useRef(null);
   const fileInputRef = useRef(null);
   const interactionRef = useRef(null);
@@ -148,6 +210,7 @@ export function LiveBuildingPlan({
   const selectedStream = streamsByUuid.get(selectedCameraUuid);
   const selectedPlacement = cameras.find(
     (camera) => camera.camera_uuid === selectedCameraUuid);
+  const selectedCoverage = selectedPlacement ? normalizeCoverage(selectedPlacement) : null;
   const indexedCameras = useMemo(() => {
     const term = cameraSearch.trim().toLocaleLowerCase();
     return cameras.map((camera) => ({
@@ -738,12 +801,13 @@ export function LiveBuildingPlan({
               }
               const stream = streamsByUuid.get(marker.camera_uuid);
               const selected = marker.camera_uuid === selectedCameraUuid;
+              const coverage = normalizeCoverage(marker);
               return (
                 <g key={marker.camera_uuid}
                   className={`live-plan-camera is-${stream?.availability || 'never_connected'} ${selected ? 'is-selected' : ''}`}
                   transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                   tabIndex="0" role="button"
-                  aria-label={`${stream?.name || 'Camera'}; ${availabilityLabel(stream, t)}`}
+                  aria-label={`${stream?.name || 'Camera'}; ${availabilityLabel(stream, t)}; facing ${coverageValueLabel(coverage.rotation)}° with a ${coverageValueLabel(coverage.fov)}° view`}
                   onPointerDown={(event) => handleCameraPointerDown(event, marker.camera_uuid)}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -755,8 +819,8 @@ export function LiveBuildingPlan({
                     event.stopPropagation();
                     if (!editing && stream) onOpenCamera(stream);
                   }}>
-                  <path d="M 3 -10 L 55 -28 L 55 28 Z"
-                    transform={`rotate(${marker.rotation || 0})`}
+                  <path d={coverageWedgePath(coverage.fov)}
+                    transform={`rotate(${coverage.rotation})`}
                     className="live-plan-fov" />
                   <circle r="17" className="live-plan-camera-ring" />
                   <path d="M -8 -6 H 5 A 3 3 0 0 1 8 -3 V 6 H -8 Z M 8 -3 L 14 -8 V 8 L 8 3 Z"
@@ -827,18 +891,25 @@ export function LiveBuildingPlan({
                 <button type="button" className="btn-primary"
                   onClick={() => onOpenCamera(selectedStream)}>Open live camera</button>
               )}
-              {editing && (
+              {editing && selectedCoverage && (
                 <div className="live-plan-placement-controls">
-                  <span>Camera direction</span>
-                  <div>
-                    <button type="button" onClick={() => updateSelectedPlacement({
-                      rotation: clamp((selectedPlacement.rotation || 0) - 15, -180, 180),
-                    })}>↺ 15°</button>
-                    <strong>{Math.round(selectedPlacement.rotation || 0)}°</strong>
-                    <button type="button" onClick={() => updateSelectedPlacement({
-                      rotation: clamp((selectedPlacement.rotation || 0) + 15, -180, 180),
-                    })}>15° ↻</button>
-                  </div>
+                  <PlanCoverageControl
+                    key={`rotation-${selectedCameraUuid}`}
+                    id={`${panelUid}-rotation`}
+                    label="Camera direction"
+                    value={selectedCoverage.rotation}
+                    minimum={-180}
+                    maximum={180}
+                    onChange={(rotation) => updateSelectedPlacement({ rotation })} />
+                  <PlanCoverageControl
+                    key={`fov-${selectedCameraUuid}`}
+                    id={`${panelUid}-fov`}
+                    label="Field of view"
+                    value={selectedCoverage.fov}
+                    minimum={1}
+                    maximum={180}
+                    onChange={(fov) => updateSelectedPlacement({ fov })} />
+                  <small>Wedges show direction and angle only; distance on the plan is not calibrated.</small>
                   <button type="button" className="live-plan-remove-camera"
                     onClick={() => {
                       setDraftCameras((current) => current.filter((camera) =>
