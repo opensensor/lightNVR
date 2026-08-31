@@ -1,10 +1,11 @@
 /**
- * Sub-stream ↔ main-stream swap on per-cell fullscreen (#366)
+ * Sub-stream ↔ main-stream swap on per-cell fullscreen (#366, #578)
  *
- * When a stream is configured with sub_stream_url and rendered in a grid
- * (>1 cell), the video cell uses the `{name}_sub` go2rtc source. Entering
- * native fullscreen on that specific cell must swap it to the main stream
- * so the user sees full-resolution video, not the low-res dashboard feed.
+ * When a stream is configured with sub_stream_url and rendered on the
+ * dashboard, the video cell uses the `{name}_sub` go2rtc source regardless
+ * of the selected grid size. Entering native fullscreen on that specific
+ * cell must swap it to the main stream so the user sees full-resolution
+ * video, not the low-res dashboard feed.
  *
  * We assert this via the `data-sub-stream` attribute on each `.video-cell`,
  * which mirrors the `useSubStream` prop resolved by LiveView / WebRTCView.
@@ -119,13 +120,26 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
     await expect(cellB).toHaveAttribute('data-sub-stream', 'true');
   });
 
-  test('single-stream layout never uses sub-stream', async ({ page }) => {
+  test('single-stream layout uses sub-stream until fullscreen', async ({ page }) => {
     await page.goto('/index.html?cols=1&rows=1&stream=cam_a', { waitUntil: 'domcontentloaded' });
 
     const cellA = page.locator('.video-cell[data-stream-name="cam_a"]').first();
     await expect(cellA).toBeVisible({ timeout: 15000 });
 
-    // 1×1 layout always shows the main stream (full-screen/recording quality).
+    // Grid dimensions do not select stream quality: a 1×1 dashboard tile
+    // still uses the configured low-resolution source.
+    await expect(cellA).toHaveAttribute('data-sub-stream', 'true');
+
+    await page.evaluate(() => {
+      const target = document.querySelector('.video-cell[data-stream-name="cam_a"]');
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        get: () => target,
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    // Only actual fullscreen upgrades the tile to the main stream.
     await expect(cellA).toHaveAttribute('data-sub-stream', 'false');
   });
 });
