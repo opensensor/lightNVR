@@ -19,6 +19,8 @@
 // Test database path
 #define TEST_DB_PATH "/tmp/test_db.sqlite"
 #define TEST_BACKUP_PATH "/tmp/test_db.sqlite.bak"
+#define TEST_LARGE_DB_PATH "/tmp/test_db_large.sqlite"
+#define TEST_LARGE_BACKUP_PATH "/tmp/test_db_large.sqlite.bak"
 
 // Signal handler for simulating a crash
 static void simulate_crash(int sig) {
@@ -173,6 +175,82 @@ static int test_backup(void) {
     return 0;
 }
 
+// Exercise more than one bounded sqlite3_backup_step() batch.  The production
+// regression only appears once databases are large enough to fill the cgroup's
+// filesystem cache, so the tiny recovery fixture above is not sufficient.
+static int test_large_incremental_backup(void) {
+    sqlite3 *source = NULL;
+    sqlite3 *backup = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+
+    unlink(TEST_LARGE_DB_PATH);
+    unlink(TEST_LARGE_BACKUP_PATH);
+
+    rc = sqlite3_open(TEST_LARGE_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create large backup fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set large backup fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create large backup table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_prepare_v2(source,
+        "INSERT INTO payload(data) VALUES(zeroblob(?));", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to prepare large backup fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_bind_int(stmt, 1, 20 * 1024 * 1024);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        printf("Failed to populate large backup fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    sqlite3_close(source);
+    source = NULL;
+
+    if (backup_database(TEST_LARGE_DB_PATH, TEST_LARGE_BACKUP_PATH) != 0) {
+        printf("Failed to create multi-batch database backup\n");
+        goto cleanup;
+    }
+
+    rc = sqlite3_open_v2(TEST_LARGE_BACKUP_PATH, &backup, SQLITE_OPEN_READONLY, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to open multi-batch backup: %s\n", sqlite3_errmsg(backup));
+        goto cleanup;
+    }
+    rc = sqlite3_prepare_v2(backup,
+        "SELECT length(data) FROM payload WHERE id = 1;", -1, &stmt, NULL);
+    if (rc != SQLITE_OK || sqlite3_step(stmt) != SQLITE_ROW ||
+        sqlite3_column_int(stmt, 0) != 20 * 1024 * 1024) {
+        printf("Multi-batch backup did not preserve its payload\n");
+        goto cleanup;
+    }
+
+    printf("Large incremental database backup verified successfully\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    if (backup) sqlite3_close(backup);
+    unlink(TEST_LARGE_DB_PATH);
+    unlink(TEST_LARGE_BACKUP_PATH);
+    return result;
+}
+
 // Test restore functionality
 static int test_restore(void) {
     // Restore the database from backup
@@ -209,6 +287,11 @@ int main(void) {
     // Create a backup
     if (test_backup() != 0) {
         printf("Test failed: Could not create backup\n");
+        return 1;
+    }
+
+    if (test_large_incremental_backup() != 0) {
+        printf("Test failed: Large incremental backup failed\n");
         return 1;
     }
     

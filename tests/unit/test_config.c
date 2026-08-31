@@ -100,7 +100,7 @@ void test_default_config_db_path_nonempty(void) {
 
 void test_default_config_db_backup_settings(void) {
     load_default_config(&cfg);
-    TEST_ASSERT_EQUAL_INT(60, cfg.db_backup_interval_minutes);
+    TEST_ASSERT_EQUAL_INT(0, cfg.db_backup_interval_minutes);
     /* Each retained backup is a full copy of the database, so this count
      * multiplies disk usage by the database size. */
     TEST_ASSERT_EQUAL_INT(6, cfg.db_backup_retention_count);

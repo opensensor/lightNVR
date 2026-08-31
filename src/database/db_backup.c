@@ -26,6 +26,54 @@
 static bool backup_in_progress = false;
 static pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Copy in bounded batches so a large database backup cannot populate the
+ * container's entire page cache in one sqlite3_backup_step() call.  At the
+ * usual 4 KiB SQLite page size this is 16 MiB per batch. */
+#define BACKUP_STEP_PAGES 4096
+#define BACKUP_BUSY_RETRIES 50
+#define BACKUP_BUSY_RETRY_US 100000
+#define BACKUP_VERIFY_PROGRESS_OPS 100000
+
+static void release_file_cache(int fd, const char *path) {
+#ifdef POSIX_FADV_DONTNEED
+    int advise_rc = posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+    if (advise_rc != 0 && advise_rc != EINVAL && advise_rc != ENOSYS) {
+        log_warn("Failed to release filesystem cache for %s: %s",
+                 path, strerror(advise_rc));
+    }
+#else
+    (void)fd;
+    (void)path;
+#endif
+}
+
+static void release_path_cache(const char *path) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT) {
+            log_warn("Failed to open path for cache release: %s (%s)",
+                     path, strerror(errno));
+        }
+        return;
+    }
+
+    release_file_cache(fd, path);
+    close(fd);
+}
+
+typedef struct {
+    int fd;
+    const char *path;
+} cache_release_progress_t;
+
+static int release_cache_during_verification(void *opaque) {
+    cache_release_progress_t *progress = (cache_release_progress_t *)opaque;
+    if (progress && progress->fd >= 0) {
+        release_file_cache(progress->fd, progress->path);
+    }
+    return 0;
+}
+
 static int sync_path_to_disk(const char *path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
@@ -39,6 +87,10 @@ static int sync_path_to_disk(const char *path) {
         return -1;
     }
 
+    /* A backup is recovery data, not a hot working set.  Keeping every page
+     * resident after a full copy and verification can OOM a memory-limited
+     * NVR whose database is measured in gigabytes. */
+    release_file_cache(fd, path);
     close(fd);
     return 0;
 }
@@ -102,6 +154,8 @@ int backup_database(const char *source_path, const char *dest_path) {
     sqlite3 *dest_db = NULL;
     sqlite3_backup *backup = NULL;
     char temp_path[PATH_MAX];
+    int source_cache_fd = -1;
+    int dest_cache_fd = -1;
     
     pthread_mutex_lock(&backup_mutex);
     if (backup_in_progress) {
@@ -129,6 +183,15 @@ int backup_database(const char *source_path, const char *dest_path) {
                   source_db ? sqlite3_errmsg(source_db) : sqlite3_errstr(rc));
         goto cleanup;
     }
+
+    /* Pin one WAL snapshot across the incremental steps.  Without an explicit
+     * read transaction, every live detection/recording write can restart an
+     * online backup from page one between batches. */
+    rc = sqlite3_exec(source_db, "BEGIN;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to start backup snapshot: %s", sqlite3_errmsg(source_db));
+        goto cleanup;
+    }
     
     // Open the destination database
     rc = sqlite3_open_v2(temp_path, &dest_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
@@ -136,6 +199,17 @@ int backup_database(const char *source_path, const char *dest_path) {
         log_error("Failed to open destination database for backup: %s",
                   dest_db ? sqlite3_errmsg(dest_db) : sqlite3_errstr(rc));
         goto cleanup;
+    }
+
+    source_cache_fd = open(source_path, O_RDONLY | O_CLOEXEC);
+    if (source_cache_fd < 0) {
+        log_warn("Could not open source database for cache control: %s",
+                 strerror(errno));
+    }
+    dest_cache_fd = open(temp_path, O_RDWR | O_CLOEXEC);
+    if (dest_cache_fd < 0) {
+        log_warn("Could not open backup database for cache control: %s",
+                 strerror(errno));
     }
     
     // Initialize the backup
@@ -145,11 +219,44 @@ int backup_database(const char *source_path, const char *dest_path) {
         goto cleanup;
     }
     
-    // Perform the backup
-    rc = sqlite3_backup_step(backup, -1);
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to perform backup: %s", sqlite3_errmsg(dest_db));
-        goto cleanup;
+    /* Copy incrementally and discard each batch from the kernel page cache.
+     * The destination is fdatasync()'d first so POSIX_FADV_DONTNEED can evict
+     * clean pages instead of leaving the full backup charged to the cgroup.
+     * Source pages are clean and can be discarded immediately. */
+    int busy_retries = 0;
+    while (1) {
+        rc = sqlite3_backup_step(backup, BACKUP_STEP_PAGES);
+        if (rc == SQLITE_BUSY || rc == SQLITE_LOCKED) {
+            if (++busy_retries > BACKUP_BUSY_RETRIES) {
+                log_error("Database backup remained busy after %d retries",
+                          BACKUP_BUSY_RETRIES);
+                goto cleanup;
+            }
+            usleep(BACKUP_BUSY_RETRY_US);
+            continue;
+        }
+        if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+            log_error("Failed to perform backup: %s", sqlite3_errmsg(dest_db));
+            goto cleanup;
+        }
+
+        busy_retries = 0;
+        if (dest_cache_fd >= 0) {
+            if (fdatasync(dest_cache_fd) != 0) {
+                log_error("Failed to flush backup batch for %s: %s",
+                          temp_path, strerror(errno));
+                rc = SQLITE_IOERR_FSYNC;
+                goto cleanup;
+            }
+            release_file_cache(dest_cache_fd, temp_path);
+        }
+        if (source_cache_fd >= 0) {
+            release_file_cache(source_cache_fd, source_path);
+        }
+
+        if (rc == SQLITE_DONE) {
+            break;
+        }
     }
     
     // Finish the backup
@@ -160,7 +267,22 @@ int backup_database(const char *source_path, const char *dest_path) {
         goto cleanup;
     }
 
-    if (run_integrity_check(dest_db, temp_path) != 0) {
+    /* Retain the full integrity guarantee, but release clean pages as SQLite
+     * scans the backup.  Without the progress callback this second full-file
+     * pass recreates the multi-gigabyte cache footprint bounded above. */
+    cache_release_progress_t verification_progress = {
+        .fd = dest_cache_fd,
+        .path = temp_path,
+    };
+    if (dest_cache_fd >= 0) {
+        sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
+                                 release_cache_during_verification,
+                                 &verification_progress);
+    }
+    int verification_rc = run_integrity_check(dest_db, temp_path);
+    sqlite3_progress_handler(dest_db, 0, NULL, NULL);
+    if (verification_rc != 0) {
+        rc = SQLITE_CORRUPT;
         goto cleanup;
     }
     
@@ -170,12 +292,25 @@ int backup_database(const char *source_path, const char *dest_path) {
     sqlite3_close(dest_db);
     dest_db = NULL;
 
+    if (source_cache_fd >= 0) {
+        release_file_cache(source_cache_fd, source_path);
+        close(source_cache_fd);
+        source_cache_fd = -1;
+    }
+    if (dest_cache_fd >= 0) {
+        release_file_cache(dest_cache_fd, temp_path);
+        close(dest_cache_fd);
+        dest_cache_fd = -1;
+    }
+
     if (rename(temp_path, dest_path) != 0) {
         log_error("Failed to publish backup %s -> %s: %s", temp_path, dest_path, strerror(errno));
+        rc = SQLITE_IOERR;
         goto cleanup;
     }
 
     if (sync_path_to_disk(dest_path) != 0 || sync_parent_directory(dest_path) != 0) {
+        rc = SQLITE_IOERR_FSYNC;
         goto cleanup;
     }
     
@@ -192,8 +327,21 @@ cleanup:
     if (dest_db) {
         sqlite3_close(dest_db);
     }
+    if (source_cache_fd >= 0) {
+        close(source_cache_fd);
+    }
+    if (dest_cache_fd >= 0) {
+        close(dest_cache_fd);
+    }
     if (rc != 0) {
         unlink(temp_path);
+    }
+
+    if (rc == 0) {
+        /* The source was scanned sequentially solely for this backup.  Drop
+         * those pages once more in case SQLite read ahead after the last batch. */
+        release_path_cache(source_path);
+        release_path_cache(dest_path);
     }
 
     pthread_mutex_lock(&backup_mutex);

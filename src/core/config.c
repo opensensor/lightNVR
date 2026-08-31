@@ -140,7 +140,7 @@ static const env_config_mapping_t env_config_mappings[] = {
 
     // Database settings
     {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db", 0, false},
-    {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 60, false},
+    {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 0, false},
     {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 6, false},
     {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
     {"DB_STARTUP_CHECK",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_startup_check),           0, NULL, DB_STARTUP_CHECK_QUICK, false},
@@ -382,7 +382,10 @@ void load_default_config(config_t *config) {
 
     // Database settings
     safe_strcpy(config->db_path, "/var/lib/lightnvr/lightnvr.db", MAX_PATH_LENGTH, 0);
-    config->db_backup_interval_minutes = 60;
+    /* Full runtime backups are opt-in.  Large, continuously-written NVR
+     * databases can otherwise create substantial periodic I/O and page-cache
+     * pressure.  Initial and clean-shutdown backups remain enabled. */
+    config->db_backup_interval_minutes = 0;
     config->db_backup_retention_count = 6;
     config->db_post_backup_script[0] = '\0';
     config->db_startup_check = DB_STARTUP_CHECK_QUICK;
