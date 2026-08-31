@@ -13,5 +13,11 @@ void handle_put_operator_floor_plan(const http_request_t *req,
                                     http_response_t *res);
 void handle_delete_operator_floor_plan(const http_request_t *req,
                                        http_response_t *res);
+void handle_get_operator_floor_plan_background(const http_request_t *req,
+                                               http_response_t *res);
+void handle_put_operator_floor_plan_background(const http_request_t *req,
+                                               http_response_t *res);
+void handle_delete_operator_floor_plan_background(const http_request_t *req,
+                                                  http_response_t *res);
 
 #endif /* LIGHTNVR_API_HANDLERS_OPERATOR_FLOOR_PLANS_H */

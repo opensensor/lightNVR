@@ -9,6 +9,7 @@ import {
   filterLiveOperatorStreams,
   flattenLocationTree,
   clusterFloorPlanCameras,
+  floorPlanCanvasFromImage,
   floorPlanPayload,
 } from '../js/components/preact/live/liveOperator.js';
 
@@ -109,6 +110,23 @@ describe('Live operator navigator model', () => {
     expect(overview.reduce((count, marker) =>
       count + (marker.kind === 'cluster' ? marker.count : 1), 0)).toBe(30);
     expect(clusterFloorPlanCameras(cameras, 2)).toHaveLength(30);
+  });
+
+  test('sizes the plan canvas from the uploaded background aspect ratio', () => {
+    expect(floorPlanCanvasFromImage(4000, 1600))
+      .toEqual({ canvas_width: 2000, canvas_height: 800 });
+    expect(floorPlanCanvasFromImage(640, 480))
+      .toEqual({ canvas_width: 2000, canvas_height: 1500 });
+    const tiny = floorPlanCanvasFromImage(300, 150);
+    expect(tiny.canvas_width).toBeGreaterThanOrEqual(400);
+    expect(tiny.canvas_height).toBeGreaterThanOrEqual(300);
+    const huge = floorPlanCanvasFromImage(900000, 900000);
+    expect(huge.canvas_width).toBeLessThanOrEqual(4000);
+    expect(huge.canvas_height).toBeLessThanOrEqual(4000);
+    expect(floorPlanCanvasFromImage(1000, 50)).toBeNull();
+    expect(floorPlanCanvasFromImage(0, 100)).toBeNull();
+    expect(floorPlanCanvasFromImage(Infinity, 100)).toBeNull();
+    expect(floorPlanCanvasFromImage(Number.MIN_VALUE, 100)).toBeNull();
   });
 
   test('normalizes floor-plan updates without losing camera identity', () => {

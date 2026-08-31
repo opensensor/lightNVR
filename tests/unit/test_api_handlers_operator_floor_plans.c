@@ -22,9 +22,12 @@
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_api_operator_floor_plans.db"
 
-static cJSON *call(void (*handler)(const http_request_t *, http_response_t *),
-                   http_method_t method, const char *path, const char *body,
-                   int expected_status) {
+static char test_storage_path[MAX_PATH_LENGTH];
+
+static cJSON *call_raw(
+    void (*handler)(const http_request_t *, http_response_t *),
+    http_method_t method, const char *path, const void *body, size_t body_len,
+    const char *content_type, int expected_status) {
     http_request_t request;
     http_response_t response;
     http_request_init(&request);
@@ -33,8 +36,15 @@ static cJSON *call(void (*handler)(const http_request_t *, http_response_t *),
     safe_strcpy(request.path, path, sizeof(request.path), 0);
     safe_strcpy(request.client_ip, "127.0.0.1",
                 sizeof(request.client_ip), 0);
-    request.body = (void *)(body ? body : "");
-    request.body_len = body ? strlen(body) : 0;
+    request.body = (void *)body;
+    request.body_len = body_len;
+    if (content_type) {
+        safe_strcpy(request.headers[0].name, "Content-Type",
+                    sizeof(request.headers[0].name), 0);
+        safe_strcpy(request.headers[0].value, content_type,
+                    sizeof(request.headers[0].value), 0);
+        request.num_headers = 1;
+    }
     handler(&request, &response);
     if (response.status_code != expected_status) {
         fprintf(stderr, "floor plan API expected %d, got %d: %s\n",
@@ -47,6 +57,13 @@ static cJSON *call(void (*handler)(const http_request_t *, http_response_t *),
     TEST_ASSERT_NOT_NULL(json);
     http_response_free(&response);
     return json;
+}
+
+static cJSON *call(void (*handler)(const http_request_t *, http_response_t *),
+                   http_method_t method, const char *path, const char *body,
+                   int expected_status) {
+    return call_raw(handler, method, path, body, body ? strlen(body) : 0,
+                    body ? "application/json" : NULL, expected_status);
 }
 
 static stream_config_t create_camera(void) {
@@ -131,17 +148,113 @@ void test_rejects_unknown_camera_placement(void) {
     cJSON_Delete(json);
 }
 
+void test_upload_replace_and_remove_background(void) {
+    static const unsigned char png[] = {
+        0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    static const unsigned char jpeg[] = {0xFF, 0xD8, 0xFF, 0xE0};
+    cJSON *created = call(handle_post_operator_floor_plan, HTTP_METHOD_POST,
+                          "/api/live/plans", "{\"name\":\"Background\"}",
+                          201);
+    char uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(uuid, cJSON_GetObjectItemCaseSensitive(
+        created, "uuid")->valuestring, sizeof(uuid), 0);
+    cJSON_Delete(created);
+
+    char endpoint[128];
+    snprintf(endpoint, sizeof(endpoint), "/api/live/plans/%s/background",
+             uuid);
+    cJSON *json = call_raw(handle_put_operator_floor_plan_background,
+                           HTTP_METHOD_PUT, endpoint, jpeg, sizeof(jpeg),
+                           "image/png", 400);
+    cJSON_Delete(json);
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT, endpoint, "<svg", 4,
+                    "image/svg+xml", 415);
+    cJSON_Delete(json);
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT, endpoint, png, sizeof(png),
+                    "image/png garbage", 415);
+    cJSON_Delete(json);
+
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT, endpoint, png, sizeof(png),
+                    "image/png", 200);
+    TEST_ASSERT_EQUAL_STRING("image/png",
+        cJSON_GetObjectItemCaseSensitive(json, "background_mime")->valuestring);
+    TEST_ASSERT_EQUAL_INT64(1, (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "revision")->valuedouble);
+    cJSON_Delete(json);
+
+    char png_path[MAX_PATH_LENGTH + 128];
+    char jpeg_path[MAX_PATH_LENGTH + 128];
+    snprintf(png_path, sizeof(png_path), "%s/floor_plans/%s.png",
+             test_storage_path, uuid);
+    snprintf(jpeg_path, sizeof(jpeg_path), "%s/floor_plans/%s.jpg",
+             test_storage_path, uuid);
+    TEST_ASSERT_EQUAL_INT(0, access(png_path, F_OK));
+
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT, endpoint, jpeg, sizeof(jpeg),
+                    "image/jpeg; charset=binary", 200);
+    TEST_ASSERT_EQUAL_STRING("image/jpeg",
+        cJSON_GetObjectItemCaseSensitive(json, "background_mime")->valuestring);
+    TEST_ASSERT_EQUAL_INT64(1, (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "revision")->valuedouble);
+    cJSON_Delete(json);
+    TEST_ASSERT_NOT_EQUAL(0, access(png_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(jpeg_path, F_OK));
+
+    json = call(handle_delete_operator_floor_plan_background,
+                HTTP_METHOD_DELETE, endpoint, NULL, 200);
+    TEST_ASSERT_TRUE(cJSON_IsNull(
+        cJSON_GetObjectItemCaseSensitive(json, "background_mime")));
+    TEST_ASSERT_EQUAL_INT64(1, (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "revision")->valuedouble);
+    cJSON_Delete(json);
+    TEST_ASSERT_NOT_EQUAL(0, access(jpeg_path, F_OK));
+
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT,
+                    "/api/live/plans/00000000-0000-4000-8000-000000000000/background",
+                    png, sizeof(png), "image/png", 404);
+    cJSON_Delete(json);
+
+    json = call_raw(handle_put_operator_floor_plan_background,
+                    HTTP_METHOD_PUT, endpoint, png, sizeof(png),
+                    "image/png", 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(0, access(png_path, F_OK));
+
+    char plan_endpoint[128];
+    snprintf(plan_endpoint, sizeof(plan_endpoint), "/api/live/plans/%s", uuid);
+    json = call(handle_delete_operator_floor_plan, HTTP_METHOD_DELETE,
+                plan_endpoint, "{\"revision\":1}", 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_NOT_EQUAL(0, access(png_path, F_OK));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
         fprintf(stderr, "FATAL: init_database failed\n");
         return 1;
     }
+    snprintf(test_storage_path, sizeof(test_storage_path),
+             "/tmp/lightnvr_unit_api_operator_floor_plans_storage_%ld",
+             (long)getpid());
+    safe_strcpy(g_config.storage_path, test_storage_path,
+                sizeof(g_config.storage_path), 0);
     UNITY_BEGIN();
     RUN_TEST(test_create_list_update_and_delete_authorized_plan);
     RUN_TEST(test_rejects_unknown_camera_placement);
+    RUN_TEST(test_upload_replace_and_remove_background);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
+    char background_directory[MAX_PATH_LENGTH + 32];
+    snprintf(background_directory, sizeof(background_directory),
+             "%s/floor_plans", test_storage_path);
+    rmdir(background_directory);
+    rmdir(test_storage_path);
     return result;
 }

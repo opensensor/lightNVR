@@ -1743,6 +1743,14 @@ static const char migration_0079_up[] =
 static const char migration_0079_down[] =
     "DROP INDEX IF EXISTS idx_detections_stream_label;";
 
+static const char migration_0080_up[] =
+    "ALTER TABLE operator_floor_plans ADD COLUMN background_mime TEXT "
+    "CHECK (background_mime IS NULL OR background_mime IN ('image/png', "
+    "'image/jpeg'));";
+
+static const char migration_0080_down[] =
+    "ALTER TABLE operator_floor_plans DROP COLUMN background_mime;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2297,8 +2305,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0079_down,
         .is_embedded = true
     },
+    {
+        .version = "0080",
+        .description = "add_floor_plan_background",
+        .sql_up = migration_0080_up,
+        .sql_down = migration_0080_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 79
+#define EMBEDDED_MIGRATIONS_COUNT 80
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

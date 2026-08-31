@@ -1,12 +1,53 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
-import { TextInputDialog } from '../common/ModalDialog.jsx';
+import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.jsx';
 import { useI18n } from '../../../i18n.js';
-import { clusterFloorPlanCameras, floorPlanPayload } from './liveOperator.js';
+import {
+  clusterFloorPlanCameras,
+  floorPlanCanvasFromImage,
+  floorPlanPayload,
+} from './liveOperator.js';
+
+const BACKGROUND_MAX_BYTES = 768 * 1024;
+const BACKGROUND_TYPES = ['image/png', 'image/jpeg'];
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function clampCenter(coordinate, zoom) {
+  return {
+    x: clamp(coordinate.x, 0.5 / zoom, 1 - 0.5 / zoom),
+    y: clamp(coordinate.y, 0.5 / zoom, 1 - 0.5 / zoom),
+  };
+}
+
+function parseCanvasDimension(value, minimum, maximum) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= minimum && number <= maximum
+    ? number : null;
+}
+
+function planBackgroundUrl(plan, localVersion) {
+  const version = `${plan.updated_at || plan.revision}-${localVersion}`;
+  return `/api/live/plans/${plan.uuid}/background?v=${version}`;
+}
+
+function loadImageSize(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read the image dimensions'));
+    };
+    image.src = url;
+  });
 }
 
 function PlanCameraPreview({ stream }) {
@@ -37,15 +78,27 @@ export function LiveBuildingPlan({
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const svgRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const interactionRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  const zoomRef = useRef(1);
+  const centerRef = useRef({ x: 0.5, y: 0.5 });
+  const canvasSizeRef = useRef({ width: 1200, height: 800 });
   const [editing, setEditing] = useState(false);
   const [draftCameras, setDraftCameras] = useState([]);
+  const [draftSize, setDraftSize] = useState(null);
+  const [draftRevision, setDraftRevision] = useState(null);
   const [selectedCameraUuid, setSelectedCameraUuid] = useState('');
   const [placementCameraUuid, setPlacementCameraUuid] = useState('');
   const [zoom, setZoom] = useState(1);
   const [center, setCenter] = useState({ x: 0.5, y: 0.5 });
+  const [backgroundVersion, setBackgroundVersion] = useState(0);
+  const [panning, setPanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraSearch, setCameraSearch] = useState('');
   const [createPlanOpen, setCreatePlanOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const plansQuery = useQuery({
     queryKey: ['operator-floor-plans'],
@@ -54,6 +107,7 @@ export function LiveBuildingPlan({
   });
   const plans = plansQuery.data?.plans || [];
   const plan = plans.find((item) => item.uuid === selectedPlanUuid) || plans[0] || null;
+  const canModify = Boolean(plansQuery.data?.can_modify);
   const streamsByUuid = useMemo(() => new Map(
     (streams || []).map((stream) => [stream.camera_uuid, stream]),
   ), [streams]);
@@ -65,11 +119,19 @@ export function LiveBuildingPlan({
   useEffect(() => {
     setEditing(false);
     setDraftCameras([]);
+    setDraftSize(null);
+    setDraftRevision(null);
     setSelectedCameraUuid('');
     setPlacementCameraUuid('');
+    interactionRef.current = null;
+    setPanning(false);
     setZoom(1);
     setCenter({ x: 0.5, y: 0.5 });
+    setBackgroundVersion(0);
   }, [plan?.uuid]);
+
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { centerRef.current = center; }, [center]);
 
   const cameras = editing ? draftCameras : (plan?.cameras || []);
   const placedUuids = useMemo(() => new Set(
@@ -95,6 +157,40 @@ export function LiveBuildingPlan({
       (stream?.name || '').toLocaleLowerCase().includes(term))
       .sort((a, b) => (a.stream?.name || '').localeCompare(b.stream?.name || ''));
   }, [cameras, streamsByUuid, cameraSearch]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const onWheel = (event) => {
+      const matrix = svg.getScreenCTM();
+      const canvasSize = canvasSizeRef.current;
+      if (!matrix || !canvasSize.width || !canvasSize.height) return;
+      const currentZoom = zoomRef.current;
+      const nextZoom = clamp(
+        currentZoom * Math.exp(-event.deltaY * 0.0015), 1, 4);
+      if (nextZoom === currentZoom) return;
+      event.preventDefault();
+      const focus = clampCenter(centerRef.current, currentZoom);
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      const transformed = point.matrixTransform(matrix.inverse());
+      const cursor = {
+        x: transformed.x / canvasSize.width,
+        y: transformed.y / canvasSize.height,
+      };
+      const nextCenter = clampCenter({
+        x: cursor.x - (cursor.x - focus.x) * currentZoom / nextZoom,
+        y: cursor.y - (cursor.y - focus.y) * currentZoom / nextZoom,
+      }, nextZoom);
+      zoomRef.current = nextZoom;
+      centerRef.current = nextCenter;
+      setZoom(nextZoom);
+      setCenter(nextCenter);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [plan?.uuid]);
 
   if (plansQuery.isLoading) {
     return <div className="live-plan-state">Loading building plans…</div>;
@@ -127,13 +223,148 @@ export function LiveBuildingPlan({
     }
   };
 
+  const replacePlanInCache = (updated) => {
+    queryClient.setQueryData(['operator-floor-plans'], (current) => ({
+      ...(current || {}),
+      plans: (current?.plans || []).map((item) =>
+        item.uuid === updated.uuid ? updated : item),
+    }));
+  };
+
+  const renamePlan = async (name) => {
+    setBusy(true);
+    try {
+      const updated = await fetchJSON(`/api/live/plans/${plan.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(floorPlanPayload({ ...plan, name }, plan.cameras)),
+        timeout: 15000,
+        retries: 0,
+      });
+      replacePlanInCache(updated);
+      showStatusMessage(`Renamed to ${updated.name}`, 'success', 2500);
+      return true;
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deletePlan = async () => {
+    setBusy(true);
+    try {
+      await fetchJSON(`/api/live/plans/${plan.uuid}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revision: plan.revision }),
+        timeout: 15000,
+        retries: 0,
+      });
+      setEditing(false);
+      setDraftCameras([]);
+      setDraftSize(null);
+      setDraftRevision(null);
+      setSelectedCameraUuid('');
+      onSelectPlan('');
+      await queryClient.invalidateQueries({ queryKey: ['operator-floor-plans'] });
+      showStatusMessage(`Deleted ${plan.name}`, 'success', 2500);
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadBackground = async (file) => {
+    if (!file || busy) return;
+    if (!BACKGROUND_TYPES.includes(file.type)) {
+      showStatusMessage('Background must be a PNG or JPEG image', 'error', 5000);
+      return;
+    }
+    if (file.size > BACKGROUND_MAX_BYTES) {
+      showStatusMessage(
+        'Background image too large; maximum is 768 KB', 'error', 5000);
+      return;
+    }
+    setBusy(true);
+    try {
+      const imageSize = await loadImageSize(file);
+      const canvasSize = floorPlanCanvasFromImage(imageSize.width, imageSize.height);
+      const uploaded = await fetchJSON(`/api/live/plans/${plan.uuid}/background`, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+        timeout: 30000,
+        retries: 0,
+      });
+      replacePlanInCache(uploaded);
+      setBackgroundVersion((current) => current + 1);
+      if (!canvasSize) {
+        showStatusMessage(
+          'Uploaded, but the image aspect ratio does not fit any valid canvas size',
+          'warning', 5000);
+        return;
+      }
+      if (editing) {
+        setDraftSize(canvasSize);
+        showStatusMessage(
+          `Background updated for ${uploaded.name}; save the layout to apply its canvas size`,
+          'success', 3500);
+        return;
+      }
+      if (canvasSize.canvas_width !== uploaded.canvas_width ||
+        canvasSize.canvas_height !== uploaded.canvas_height) {
+        try {
+          const resized = await fetchJSON(`/api/live/plans/${plan.uuid}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(floorPlanPayload(
+              { ...uploaded, ...canvasSize }, uploaded.cameras)),
+            timeout: 15000,
+            retries: 0,
+          });
+          replacePlanInCache(resized);
+        } catch (resizeError) {
+          showStatusMessage(
+            `Background uploaded, but the canvas was not resized: ${resizeError.message}`,
+            'warning', 6000);
+          return;
+        }
+      }
+      showStatusMessage(`Background updated for ${uploaded.name}`, 'success', 2500);
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBackground = async () => {
+    setBusy(true);
+    try {
+      const updated = await fetchJSON(`/api/live/plans/${plan.uuid}/background`, {
+        method: 'DELETE',
+        timeout: 15000,
+        retries: 0,
+      });
+      replacePlanInCache(updated);
+      showStatusMessage('Background removed', 'success', 2500);
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const createPlanDialog = (
     <TextInputDialog
       isOpen={createPlanOpen}
       onClose={() => setCreatePlanOpen(false)}
       onSubmit={createPlan}
       title="Create building plan"
-      description="Give this building or floor a clear name. You can place cameras after it is created."
+      description="Give this building or floor a clear name. Upload a floor plan image and place cameras after it is created."
       inputLabel="Plan name"
       placeholder="Main building · First floor"
       confirmLabel="Create plan"
@@ -146,8 +377,8 @@ export function LiveBuildingPlan({
       <section className="live-plan-empty">
         <div className="live-plan-empty-icon">⌖</div>
         <h3>Build a spatial camera view</h3>
-        <p>A plan shows status markers for the whole site and opens video only when an operator requests it.</p>
-        {plansQuery.data?.can_modify && (
+        <p>A plan shows status markers for the whole site and opens video only when an operator requests it. Upload a scanned floor plan, a site drawing, or a snapshot from your NVR software to map cameras onto real rooms.</p>
+        {canModify && (
           <button type="button" className="btn-primary" disabled={busy}
             onClick={() => setCreatePlanOpen(true)}>Create building plan</button>
         )}
@@ -156,16 +387,19 @@ export function LiveBuildingPlan({
     </>;
   }
 
-  const width = plan.canvas_width || 1200;
-  const height = plan.canvas_height || 800;
+  const persistedWidth = plan.canvas_width || 1200;
+  const persistedHeight = plan.canvas_height || 800;
+  const draftWidthValue = draftSize?.canvas_width ?? persistedWidth;
+  const draftHeightValue = draftSize?.canvas_height ?? persistedHeight;
+  const draftWidth = parseCanvasDimension(draftWidthValue, 400, 4000);
+  const draftHeight = parseCanvasDimension(draftHeightValue, 300, 4000);
+  const canvasSizeValid = draftWidth !== null && draftHeight !== null;
+  const width = editing ? (draftWidth ?? persistedWidth) : persistedWidth;
+  const height = editing ? (draftHeight ?? persistedHeight) : persistedHeight;
+  canvasSizeRef.current = { width, height };
   const viewWidth = width / zoom;
   const viewHeight = height / zoom;
-  const halfX = 0.5 / zoom;
-  const halfY = 0.5 / zoom;
-  const safeCenter = {
-    x: clamp(center.x, halfX, 1 - halfX),
-    y: clamp(center.y, halfY, 1 - halfY),
-  };
+  const safeCenter = clampCenter(center, zoom);
   const viewBox = [
     safeCenter.x * width - viewWidth / 2,
     safeCenter.y * height - viewHeight / 2,
@@ -173,6 +407,10 @@ export function LiveBuildingPlan({
     viewHeight,
   ].join(' ');
   const markerScale = 1 / zoom;
+  const sizeForSave = {
+    canvas_width: draftWidth ?? persistedWidth,
+    canvas_height: draftHeight ?? persistedHeight,
+  };
 
   const pointFromEvent = (event) => {
     const svg = svgRef.current;
@@ -208,11 +446,15 @@ export function LiveBuildingPlan({
 
   const startEditing = () => {
     setDraftCameras((plan.cameras || []).map((camera) => ({ ...camera })));
+    setDraftSize(null);
+    setDraftRevision(plan.revision);
     setEditing(true);
   };
   const cancelEditing = () => {
     setEditing(false);
     setDraftCameras([]);
+    setDraftSize(null);
+    setDraftRevision(null);
     setPlacementCameraUuid('');
   };
   const savePlan = async () => {
@@ -221,18 +463,22 @@ export function LiveBuildingPlan({
       const updated = await fetchJSON(`/api/live/plans/${plan.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(floorPlanPayload(plan, draftCameras)),
+        body: JSON.stringify({
+          ...floorPlanPayload({
+            ...plan,
+            ...sizeForSave,
+            revision: draftRevision ?? plan.revision,
+          }, draftCameras),
+        }),
         timeout: 15000,
         retries: 0,
       });
-      queryClient.setQueryData(['operator-floor-plans'], (current) => ({
-        ...(current || {}),
-        plans: (current?.plans || []).map((item) =>
-          item.uuid === updated.uuid ? updated : item),
-      }));
+      replacePlanInCache(updated);
       setEditing(false);
+      setDraftSize(null);
+      setDraftRevision(null);
       setPlacementCameraUuid('');
-      showStatusMessage(`Saved ${plan.name}`, 'success', 2500);
+      showStatusMessage(`Saved ${updated.name}`, 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -241,13 +487,106 @@ export function LiveBuildingPlan({
   };
 
   const pan = (dx, dy) => setCenter((current) => ({
-    x: clamp(current.x + dx / zoom, halfX, 1 - halfX),
-    y: clamp(current.y + dy / zoom, halfY, 1 - halfY),
+    x: clamp(current.x + dx / zoom, 0.5 / zoom, 1 - 0.5 / zoom),
+    y: clamp(current.y + dy / zoom, 0.5 / zoom, 1 - 0.5 / zoom),
   }));
   const setPlanZoom = (nextZoom, focus = center) => {
-    setZoom(clamp(nextZoom, 1, 4));
-    setCenter(focus);
+    const clampedZoom = clamp(nextZoom, 1, 4);
+    const clampedCenter = clampCenter(focus, clampedZoom);
+    zoomRef.current = clampedZoom;
+    centerRef.current = clampedCenter;
+    setZoom(clampedZoom);
+    setCenter(clampedCenter);
   };
+
+  const handleSurfacePointerDown = (event) => {
+    suppressClickRef.current = false;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (editing && placementCameraUuid) return;
+    const matrix = svgRef.current?.getScreenCTM();
+    if (!matrix) return;
+    const screenPlanWidth = Math.hypot(matrix.a, matrix.b) * width;
+    const screenPlanHeight = Math.hypot(matrix.c, matrix.d) * height;
+    if (!screenPlanWidth || !screenPlanHeight) return;
+    interactionRef.current = {
+      mode: 'pan',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: clampCenter(centerRef.current, zoomRef.current),
+      zoom: zoomRef.current,
+      screenPlanWidth,
+      screenPlanHeight,
+      moved: false,
+    };
+  };
+
+  const handleCameraPointerDown = (event, cameraUuid) => {
+    if (!editing) return;
+    event.stopPropagation();
+    suppressClickRef.current = false;
+    interactionRef.current = {
+      mode: 'camera',
+      pointerId: event.pointerId,
+      cameraUuid,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    setSelectedCameraUuid(cameraUuid);
+    setPlacementCameraUuid(cameraUuid);
+  };
+
+  /**
+   * Capture the pointer only once a real drag starts; capturing on plain
+   * pointerdown would retarget click events away from camera markers.
+   */
+  const beginDrag = (interaction, event) => {
+    interaction.moved = true;
+    suppressClickRef.current = true;
+    try {
+      svgRef.current?.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be gone on some browsers.
+    }
+    if (interaction.mode === 'pan') setPanning(true);
+  };
+
+  const handleSurfacePointerMove = (event) => {
+    const interaction = interactionRef.current;
+    if (!interaction || event.pointerId !== interaction.pointerId) return;
+    const dx = event.clientX - interaction.startX;
+    const dy = event.clientY - interaction.startY;
+    if (!interaction.moved && Math.hypot(dx, dy) < 4) return;
+    if (!interaction.moved) beginDrag(interaction, event);
+    if (interaction.mode === 'camera') {
+      const point = pointFromEvent(event);
+      if (point) {
+        setDraftCameras((current) => current.map((camera) =>
+          camera.camera_uuid === interaction.cameraUuid
+            ? { ...camera, ...point } : camera));
+      }
+      return;
+    }
+    setCenter(clampCenter({
+      x: interaction.origin.x - dx / interaction.screenPlanWidth,
+      y: interaction.origin.y - dy / interaction.screenPlanHeight,
+    }, interaction.zoom));
+  };
+
+  const handleSurfacePointerEnd = (event) => {
+    if (!interactionRef.current ||
+      event.pointerId !== interactionRef.current.pointerId) return;
+    interactionRef.current = null;
+    setPanning(false);
+    try {
+      svgRef.current?.releasePointerCapture(event.pointerId);
+    } catch {
+      // Capture may already be released when the pointer left the window.
+    }
+  };
+
+  const openBackgroundPicker = () => fileInputRef.current?.click();
 
   return <>
     <section className={`live-building-plan ${editing ? 'is-editing' : ''}`}>
@@ -270,32 +609,66 @@ export function LiveBuildingPlan({
             <button type="button" onClick={() => setPlanZoom(zoom + 0.5)}
               disabled={zoom >= 4} title="Zoom in">+</button>
             <button type="button" onClick={() => {
-              setZoom(1); setCenter({ x: 0.5, y: 0.5 });
+              setPlanZoom(1, { x: 0.5, y: 0.5 });
             }} title="Fit plan">Fit</button>
           </div>
           {editing ? (
             <>
+              {canModify && (
+                <button type="button" onClick={openBackgroundPicker}
+                  disabled={busy}>Background…</button>
+              )}
               <button type="button" onClick={cancelEditing} disabled={busy}>Cancel</button>
               <button type="button" className="btn-primary" onClick={savePlan}
-                disabled={busy}>Save plan</button>
+                disabled={busy || !canvasSizeValid}>Save plan</button>
             </>
-          ) : plansQuery.data?.can_modify && (
+          ) : canModify && (
             <>
+              <button type="button" onClick={openBackgroundPicker}
+                disabled={busy}
+                title="Upload a PNG or JPEG image as the plan background">
+                {plan.background_mime ? 'Replace background' : 'Upload background'}
+              </button>
+              {plan.background_mime && (
+                <button type="button" onClick={removeBackground} disabled={busy}>
+                  Remove background
+                </button>
+              )}
+              <button type="button" onClick={() => setRenameOpen(true)} disabled={busy}>
+                Rename
+              </button>
+              <button type="button" onClick={() => setDeleteOpen(true)} disabled={busy}>
+                Delete
+              </button>
               <button type="button" onClick={() => setCreatePlanOpen(true)} disabled={busy}>New plan</button>
-              <button type="button" className="btn-primary" onClick={startEditing}>Edit layout</button>
+              <button type="button" className="btn-primary" onClick={startEditing}
+                disabled={busy}>Edit layout</button>
             </>
           )}
         </div>
       </header>
+
+      <input ref={fileInputRef} type="file" accept="image/png,image/jpeg"
+        className="live-plan-file-input" aria-hidden="true" tabIndex="-1"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) uploadBackground(file);
+        }} />
 
       <div className="live-plan-workspace">
         <div className="live-plan-canvas-wrap">
           {editing && placementCameraUuid && (
             <div className="live-plan-placement-hint">Click the plan to position {streamsByUuid.get(placementCameraUuid)?.name}</div>
           )}
-          <svg ref={svgRef} className="live-plan-canvas"
+          <svg ref={svgRef} className={`live-plan-canvas ${panning ? 'is-panning' : ''}`}
             viewBox={viewBox} role="img" aria-label={`${plan.name} camera plan`}
+            onPointerDown={handleSurfacePointerDown}
+            onPointerMove={handleSurfacePointerMove}
+            onPointerUp={handleSurfacePointerEnd}
+            onPointerCancel={handleSurfacePointerEnd}
             onClick={(event) => {
+              if (suppressClickRef.current) return;
               if (!editing || !placementCameraUuid) return;
               const point = pointFromEvent(event);
               if (point) placeCamera(placementCameraUuid, point);
@@ -323,19 +696,27 @@ export function LiveBuildingPlan({
             <rect width={width} height={height} className="live-plan-ground" />
             <rect width={width} height={height}
               fill={`url(#plan-grid-${plan.uuid})`} />
-            <rect x={width * 0.07} y={height * 0.08}
-              width={width * 0.86} height={height * 0.84}
-              rx="8" className="live-plan-building-shell" />
-            <path d={`M ${width * 0.38} ${height * 0.08} V ${height * 0.38}
-              M ${width * 0.38} ${height * 0.62} V ${height * 0.92}
-              M ${width * 0.68} ${height * 0.08} V ${height * 0.38}
-              M ${width * 0.68} ${height * 0.62} V ${height * 0.92}
-              M ${width * 0.07} ${height * 0.38} H ${width * 0.93}
-              M ${width * 0.07} ${height * 0.62} H ${width * 0.93}`}
-              className="live-plan-interior-walls" />
-            <rect x={width * 0.44} y={height * 0.35}
-              width={width * 0.12} height={height * 0.3}
-              className="live-plan-corridor" />
+            {plan.background_mime ? (
+              <image href={planBackgroundUrl(plan, backgroundVersion)} x="0" y="0"
+                width={width} height={height}
+                preserveAspectRatio="none" className="live-plan-background" />
+            ) : (
+              <>
+                <rect x={width * 0.07} y={height * 0.08}
+                  width={width * 0.86} height={height * 0.84}
+                  rx="8" className="live-plan-building-shell" />
+                <path d={`M ${width * 0.38} ${height * 0.08} V ${height * 0.38}
+                  M ${width * 0.38} ${height * 0.62} V ${height * 0.92}
+                  M ${width * 0.68} ${height * 0.08} V ${height * 0.38}
+                  M ${width * 0.68} ${height * 0.62} V ${height * 0.92}
+                  M ${width * 0.07} ${height * 0.38} H ${width * 0.93}
+                  M ${width * 0.07} ${height * 0.62} H ${width * 0.93}`}
+                  className="live-plan-interior-walls" />
+                <rect x={width * 0.44} y={height * 0.35}
+                  width={width * 0.12} height={height * 0.3}
+                  className="live-plan-corridor" />
+              </>
+            )}
 
             {renderedMarkers.map((marker) => {
               const markerX = marker.x * width;
@@ -348,6 +729,7 @@ export function LiveBuildingPlan({
                     transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (suppressClickRef.current) return;
                       setPlanZoom(zoom + 1, { x: marker.x, y: marker.y });
                     }}>
                     <circle r="27" /><text textAnchor="middle" dy="6">{marker.count}</text>
@@ -362,10 +744,16 @@ export function LiveBuildingPlan({
                   transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                   tabIndex="0" role="button"
                   aria-label={`${stream?.name || 'Camera'}; ${availabilityLabel(stream, t)}`}
+                  onPointerDown={(event) => handleCameraPointerDown(event, marker.camera_uuid)}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (suppressClickRef.current) return;
                     setSelectedCameraUuid(marker.camera_uuid);
                     if (editing) setPlacementCameraUuid(marker.camera_uuid);
+                  }}
+                  onDblClick={(event) => {
+                    event.stopPropagation();
+                    if (!editing && stream) onOpenCamera(stream);
                   }}>
                   <path d="M 3 -10 L 55 -28 L 55 28 Z"
                     transform={`rotate(${marker.rotation || 0})`}
@@ -380,6 +768,18 @@ export function LiveBuildingPlan({
               );
             })}
           </svg>
+          {!plan.background_mime && !editing && (
+            <div className="live-plan-background-hint">
+              <strong>No floor plan image yet</strong>
+              <p>The rooms shown here are only a placeholder. {canModify
+                ? 'Upload a scanned plan, site drawing, or PNG/JPEG export (up to 768 KB) to map the real building.'
+                : 'An administrator can upload a plan of the real building.'}</p>
+              {canModify && (
+                <button type="button" className="btn-primary" disabled={busy}
+                  onClick={openBackgroundPicker}>Upload floor plan image</button>
+              )}
+            </div>
+          )}
           <div className="live-plan-legend">
             <span><i className="is-live" />Live</span>
             <span><i className="is-offline" />Offline</span>
@@ -389,6 +789,32 @@ export function LiveBuildingPlan({
         </div>
 
         <aside className="live-plan-details" aria-live="polite">
+          {editing && (
+            <div className="live-plan-settings">
+              <div><strong>Plan canvas</strong></div>
+              <label>Width
+                <input type="number" min="400" max="4000" step="10"
+                  value={draftWidthValue} aria-invalid={draftWidth === null}
+                  onInput={(event) => setDraftSize({
+                    canvas_width: event.currentTarget.value,
+                    canvas_height: draftHeightValue,
+                  })} />
+              </label>
+              <label>Height
+                <input type="number" min="300" max="4000" step="10"
+                  value={draftHeightValue} aria-invalid={draftHeight === null}
+                  onInput={(event) => setDraftSize({
+                    canvas_width: draftWidthValue,
+                    canvas_height: event.currentTarget.value,
+                  })} />
+              </label>
+              <small className={canvasSizeValid ? '' : 'is-error'}>
+                {canvasSizeValid
+                  ? 'Uploading a background image resizes the canvas to match it.'
+                  : 'Width must be 400–4000 and height must be 300–4000.'}
+              </small>
+            </div>
+          )}
           {selectedStream && selectedPlacement ? (
             <>
               <PlanCameraPreview stream={selectedStream} />
@@ -426,7 +852,9 @@ export function LiveBuildingPlan({
           ) : (
             <div className="live-plan-details-empty">
               <strong>Select a camera</strong>
-              <span>Inspect status and open one live view on demand.</span>
+              <span>{editing
+                ? 'Drag placed markers to fine-tune. Inspect status and open one live view on demand.'
+                : 'Inspect status and open one live view on demand.'}</span>
             </div>
           )}
 
@@ -476,5 +904,27 @@ export function LiveBuildingPlan({
       </div>
     </section>
     {createPlanDialog}
+    <TextInputDialog
+      isOpen={renameOpen}
+      onClose={() => setRenameOpen(false)}
+      onSubmit={renamePlan}
+      title="Rename plan"
+      description="Plans are shared with every operator on this site."
+      inputLabel="Plan name"
+      initialValue={plan.name}
+      maxLength={127}
+      confirmLabel="Rename plan"
+      cancelLabel={t('common.cancel')}
+    />
+    <ConfirmDialog
+      isOpen={deleteOpen}
+      onClose={() => setDeleteOpen(false)}
+      onConfirm={deletePlan}
+      title="Delete plan"
+      message={`Delete “${plan.name}” and its uploaded background? Camera placements on this plan are removed; the cameras themselves are untouched.`}
+      confirmLabel="Delete plan"
+      cancelLabel={t('common.cancel')}
+      variant="danger"
+    />
   </>;
 }

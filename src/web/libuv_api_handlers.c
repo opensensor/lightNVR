@@ -117,13 +117,20 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_operator_floor_plans);
     http_server_register_handler(server, "/api/live/plans", "POST",
                                  handle_post_operator_floor_plan);
+    // Specific child routes must precede the single-plan wildcard routes.
+    http_server_register_handler(server, "/api/live/plans/#/background", "GET",
+                                 handle_get_operator_floor_plan_background);
+    http_server_register_handler(server, "/api/live/plans/#/background", "PUT",
+                                 handle_put_operator_floor_plan_background);
+    http_server_register_handler(server, "/api/live/plans/#/background",
+                                 "DELETE",
+                                 handle_delete_operator_floor_plan_background);
     http_server_register_handler(server, "/api/live/plans/#", "GET",
                                  handle_get_operator_floor_plan);
     http_server_register_handler(server, "/api/live/plans/#", "PUT",
                                  handle_put_operator_floor_plan);
     http_server_register_handler(server, "/api/live/plans/#", "DELETE",
                                  handle_delete_operator_floor_plan);
-
     // Normalized camera tag dictionary and UUID-based assignments
     http_server_register_handler(server, "/api/camera-tags", "GET",
                                  handle_get_camera_tags);

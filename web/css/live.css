@@ -356,6 +356,10 @@
     align-items: center;
     gap: 0.35rem;
 }
+.live-plan-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
 
 .live-plan-toolbar-actions > button:not(.btn-primary),
 .live-plan-zoom button {
@@ -419,6 +423,66 @@
     stroke-width: 2;
     stroke-dasharray: 9 7;
 }
+
+.live-plan-file-input { display: none; }
+.live-plan-canvas.is-panning { cursor: grabbing; }
+.live-building-plan:not(.is-editing) .live-plan-canvas { cursor: grab; }
+.live-building-plan.is-editing .live-plan-camera { cursor: grab; }
+
+.live-plan-background-hint {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: grid;
+    justify-items: center;
+    gap: 0.5rem;
+    max-width: min(28rem, calc(100% - 2rem));
+    padding: 1.1rem 1.3rem;
+    border: 1px dashed rgb(148 163 184 / 0.5);
+    border-radius: 0.65rem;
+    background: rgb(3 10 18 / 0.88);
+    color: #e2e8f0;
+    text-align: center;
+    backdrop-filter: blur(4px);
+}
+.live-plan-background-hint strong { font-size: 0.9rem; }
+.live-plan-background-hint p {
+    margin: 0;
+    color: #a9bdd2;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.live-plan-settings {
+    display: grid;
+    gap: 0.45rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+    font-size: 0.78rem;
+}
+.live-plan-settings label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.live-plan-settings input {
+    width: 6.5rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.35rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font: inherit;
+}
+.live-plan-settings input[aria-invalid="true"] {
+    border-color: hsl(var(--danger));
+}
+.live-plan-settings small { color: hsl(var(--muted-foreground)); }
+.live-plan-settings small.is-error { color: hsl(var(--danger)); }
 
 .live-plan-camera {
     color: #f59e0b;

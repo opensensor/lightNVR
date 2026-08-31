@@ -179,6 +179,26 @@ export function clusterFloorPlanCameras(cameras, zoom = 1) {
   });
 }
 
+/**
+ * Fit an uploaded background image into a valid plan canvas: the long side
+ * targets 2000 px while aspect ratio is preserved and both sides respect the
+ * backend CHECK bounds (width 400-4000, height 300-4000). Returns null for
+ * aspect ratios that cannot satisfy both constraints.
+ */
+export function floorPlanCanvasFromImage(width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) ||
+    !(width > 0) || !(height > 0)) return null;
+  const scale = 2000 / Math.max(width, height);
+  const lower = Math.max(400 / width, 300 / height);
+  const upper = Math.min(4000 / width, 4000 / height);
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower > upper) return null;
+  const fitted = Math.max(lower, Math.min(upper, scale));
+  return {
+    canvas_width: Math.round(Math.min(4000, Math.max(400, width * fitted))),
+    canvas_height: Math.round(Math.min(4000, Math.max(300, height * fitted))),
+  };
+}
+
 export function floorPlanPayload(plan, cameras) {
   return {
     name: plan.name,

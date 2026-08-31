@@ -110,6 +110,43 @@ void test_rejects_duplicate_or_out_of_bounds_placements(void) {
         db_operator_floor_plan_create(&plan, markers, 1));
 }
 
+void test_set_and_clear_background_without_revision_bump(void) {
+    operator_floor_plan_t plan = make_plan("Warehouse");
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_create(&plan, NULL, 0));
+    TEST_ASSERT_EQUAL_STRING("", plan.background_mime);
+
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_set_background(plan.uuid, "image/png"));
+    operator_floor_plan_t current;
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_get(plan.uuid, &current));
+    TEST_ASSERT_EQUAL_STRING("image/png", current.background_mime);
+    TEST_ASSERT_EQUAL_INT64(1, current.revision);
+
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_INVALID,
+        db_operator_floor_plan_set_background(plan.uuid, "image/svg+xml"));
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_NOT_FOUND,
+        db_operator_floor_plan_set_background(
+            "00000000-0000-4000-8000-000000000000", "image/jpeg"));
+
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_set_background(plan.uuid, NULL));
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_get(plan.uuid, &current));
+    TEST_ASSERT_EQUAL_STRING("", current.background_mime);
+    TEST_ASSERT_EQUAL_INT64(1, current.revision);
+
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_set_background(plan.uuid, "image/jpeg"));
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_set_background(plan.uuid, ""));
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_get(plan.uuid, &current));
+    TEST_ASSERT_EQUAL_STRING("", current.background_mime);
+    TEST_ASSERT_EQUAL_INT64(1, current.revision);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -119,6 +156,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_create_update_and_delete_plan_camera_placements);
     RUN_TEST(test_rejects_duplicate_or_out_of_bounds_placements);
+    RUN_TEST(test_set_and_clear_background_without_revision_bump);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

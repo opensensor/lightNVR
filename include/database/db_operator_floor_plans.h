@@ -16,6 +16,7 @@ typedef struct {
     char parent_plan_uuid[CAMERA_UUID_STRING_SIZE];
     int canvas_width;
     int canvas_height;
+    char background_mime[16];
     int64_t revision;
     int64_t created_at;
     int64_t updated_at;
@@ -54,5 +55,7 @@ db_operator_floor_plan_result_t db_operator_floor_plan_update(
     int64_t expected_revision);
 db_operator_floor_plan_result_t db_operator_floor_plan_delete(
     const char *uuid, int64_t expected_revision);
+db_operator_floor_plan_result_t db_operator_floor_plan_set_background(
+    const char *uuid, const char *background_mime);
 
 #endif /* LIGHTNVR_DB_OPERATOR_FLOOR_PLANS_H */

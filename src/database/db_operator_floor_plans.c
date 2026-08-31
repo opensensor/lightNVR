@@ -15,7 +15,8 @@
 
 #define PLAN_FIELDS \
     "uuid,name,COALESCE(location_uuid,''),COALESCE(parent_plan_uuid,'')," \
-    "canvas_width,canvas_height,revision,created_at,updated_at"
+    "canvas_width,canvas_height,COALESCE(background_mime,'')," \
+    "revision,created_at,updated_at"
 
 static void copy_column(char *destination, size_t size,
                         sqlite3_stmt *statement, int column) {
@@ -33,9 +34,11 @@ static void populate_plan(sqlite3_stmt *statement,
                 statement, 3);
     plan->canvas_width = sqlite3_column_int(statement, 4);
     plan->canvas_height = sqlite3_column_int(statement, 5);
-    plan->revision = sqlite3_column_int64(statement, 6);
-    plan->created_at = sqlite3_column_int64(statement, 7);
-    plan->updated_at = sqlite3_column_int64(statement, 8);
+    copy_column(plan->background_mime, sizeof(plan->background_mime),
+                statement, 6);
+    plan->revision = sqlite3_column_int64(statement, 7);
+    plan->created_at = sqlite3_column_int64(statement, 8);
+    plan->updated_at = sqlite3_column_int64(statement, 9);
 }
 
 static bool valid_name(const char *name) {
@@ -48,6 +51,12 @@ static bool valid_name(const char *name) {
     return true;
 }
 
+static bool valid_background_mime(const char *background_mime) {
+    return background_mime[0] == '\0' ||
+        strcmp(background_mime, "image/png") == 0 ||
+        strcmp(background_mime, "image/jpeg") == 0;
+}
+
 static bool valid_plan(const operator_floor_plan_t *plan, bool require_uuid) {
     return plan && (!require_uuid || lightnvr_uuid_is_valid(plan->uuid)) &&
         valid_name(plan->name) &&
@@ -58,7 +67,8 @@ static bool valid_plan(const operator_floor_plan_t *plan, bool require_uuid) {
         (plan->parent_plan_uuid[0] == '\0' || plan->uuid[0] == '\0' ||
          strcmp(plan->uuid, plan->parent_plan_uuid) != 0) &&
         plan->canvas_width >= 400 && plan->canvas_width <= 4000 &&
-        plan->canvas_height >= 300 && plan->canvas_height <= 4000;
+        plan->canvas_height >= 300 && plan->canvas_height <= 4000 &&
+        valid_background_mime(plan->background_mime);
 }
 
 static bool valid_cameras(const operator_floor_plan_camera_t *cameras,
@@ -408,4 +418,42 @@ db_operator_floor_plan_result_t db_operator_floor_plan_delete(
     if (result != SQLITE_DONE) return DB_OPERATOR_FLOOR_PLAN_ERROR;
     return changed == 1 ? DB_OPERATOR_FLOOR_PLAN_OK
                         : DB_OPERATOR_FLOOR_PLAN_STALE;
+}
+
+db_operator_floor_plan_result_t db_operator_floor_plan_set_background(
+    const char *uuid, const char *background_mime) {
+    sqlite3 *database = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!database || !mutex || !lightnvr_uuid_is_valid(uuid) ||
+        !valid_background_mime(background_mime ? background_mime : "")) {
+        return DB_OPERATOR_FLOOR_PLAN_INVALID;
+    }
+    // The in-memory representation uses an empty string for SQL NULL.
+    // Accept that same representation here so callers do not accidentally
+    // attempt to store a value rejected by the table CHECK constraint.
+    if (background_mime && background_mime[0] == '\0') background_mime = NULL;
+    pthread_mutex_lock(mutex);
+    operator_floor_plan_t existing;
+    db_operator_floor_plan_result_t outcome =
+        get_locked(database, uuid, &existing);
+    if (outcome == DB_OPERATOR_FLOOR_PLAN_OK) {
+        sqlite3_stmt *statement = NULL;
+        int result = sqlite3_prepare_v2(
+            database,
+            "UPDATE operator_floor_plans SET background_mime=?,"
+            "updated_at=strftime('%s','now') WHERE uuid=?;",
+            -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            if (background_mime) sqlite3_bind_text(
+                statement, 1, background_mime, -1, SQLITE_TRANSIENT);
+            else sqlite3_bind_null(statement, 1);
+            sqlite3_bind_text(statement, 2, uuid, -1, SQLITE_TRANSIENT);
+            result = sqlite3_step(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+        outcome = result == SQLITE_DONE ? DB_OPERATOR_FLOOR_PLAN_OK
+                                        : DB_OPERATOR_FLOOR_PLAN_ERROR;
+    }
+    pthread_mutex_unlock(mutex);
+    return outcome;
 }
