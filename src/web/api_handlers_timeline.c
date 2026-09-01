@@ -134,7 +134,9 @@ static int get_timeline_segments_for_identity(
     int rc = sqlite3_prepare_v2(
         db, by_camera_uuid ? camera_sql : stream_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        log_error("Failed to prepare timeline segments query: %s", sqlite3_errmsg(db));
+        log_error("Failed to prepare timeline segments query: %s "
+                  "(code=%d, extended_code=%d)",
+                  sqlite3_errmsg(db), rc, sqlite3_extended_errcode(db));
         db_close_readonly_connection(db);
         return -1;
     }
