@@ -56,6 +56,26 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       git cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       GCC_MAJOR="$(gcc -dumpfullversion -dumpversion | cut -d. -f1)" && \
+      # Multi-Arch: same packages must be installed at identical versions. \
+      # During sid transitions one architecture can publish a newer rebuild \
+      # first, so pin PCRE2 to the newest version shared by amd64 and armhf \
+      # before APT resolves the armhf development dependency graph. \
+      PCRE2_COMMON_VERSION="$( \
+        apt-cache madison libpcre2-8-0:amd64 | awk '{print $3}' | \
+        while read -r version; do \
+          apt-cache madison libpcre2-8-0:armhf | awk '{print $3}' | \
+            grep -Fqx "$version" && { echo "$version"; break; }; \
+        done \
+      )" && \
+      if [ -z "$PCRE2_COMMON_VERSION" ]; then \
+        echo "No libpcre2-8-0 version is shared by amd64 and armhf"; \
+        apt-cache policy libpcre2-8-0:amd64 libpcre2-8-0:armhf; \
+        exit 1; \
+      fi && \
+      echo "Using shared libpcre2-8-0 version $PCRE2_COMMON_VERSION" && \
+      apt-get install -y --no-install-recommends \
+        "libpcre2-8-0:amd64=$PCRE2_COMMON_VERSION" \
+        "libpcre2-8-0:armhf=$PCRE2_COMMON_VERSION" && \
       apt-get install -y --no-install-recommends \
         clang:amd64 binutils-arm-linux-gnueabihf:amd64 \
         "libstdc++-${GCC_MAJOR}-dev:armhf" \
