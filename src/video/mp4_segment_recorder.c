@@ -112,6 +112,16 @@ static int64_t calculate_frame_duration_from_stream(const AVStream *stream) {
     return 1;
 }
 
+void mp4_segment_rescale_packet_ts(AVPacket *pkt,
+                                   const AVStream *input_stream,
+                                   const AVStream *output_stream) {
+    if (!pkt || !input_stream || !output_stream) {
+        return;
+    }
+
+    av_packet_rescale_ts(pkt, input_stream->time_base, output_stream->time_base);
+}
+
 /**
  * Clamp DTS/PTS values for MP4 output to avoid exceeding container limits.
  *
@@ -860,6 +870,19 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    log_debug("Video packet time base: input=%d/%d, muxer=%d/%d",
+              input_ctx->streams[video_stream_idx]->time_base.num,
+              input_ctx->streams[video_stream_idx]->time_base.den,
+              out_video_stream->time_base.num,
+              out_video_stream->time_base.den);
+    if (out_audio_stream && audio_stream_idx >= 0) {
+        log_debug("Audio packet time base: input=%d/%d, muxer=%d/%d",
+                  input_ctx->streams[audio_stream_idx]->time_base.num,
+                  input_ctx->streams[audio_stream_idx]->time_base.den,
+                  out_audio_stream->time_base.num,
+                  out_audio_stream->time_base.den);
+    }
+
     // Initialize packet - ensure it's properly allocated and initialized
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -1164,6 +1187,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // Set output stream index
                     pkt->stream_index = out_video_stream->index;
 
+                    // avformat_write_header() may replace the requested output
+                    // time base (MP4 commonly selects 1/90000). All timestamp
+                    // normalization above is in the input stream time base, so
+                    // convert immediately before handing the packet to the muxer.
+                    mp4_segment_rescale_packet_ts(
+                        pkt, input_ctx->streams[video_stream_idx], out_video_stream);
+
                     // Write packet
                     ret = av_interleaved_write_frame(output_ctx, pkt);
                     if (ret < 0) {
@@ -1296,6 +1326,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // Set output stream index
             pkt->stream_index = out_video_stream->index;
+
+            // The muxer is free to change out_video_stream->time_base in
+            // avformat_write_header(). Preserve the media duration by converting
+            // the normalized input timestamps to that final output time base.
+            mp4_segment_rescale_packet_ts(
+                pkt, input_ctx->streams[video_stream_idx], out_video_stream);
 
             // Write packet
             ret = av_interleaved_write_frame(output_ctx, pkt);
@@ -1522,10 +1558,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 transcoded_pkt->pts = pkt->pts;
                 transcoded_pkt->duration = pkt->duration;
 
+                mp4_segment_rescale_packet_ts(
+                    transcoded_pkt, input_ctx->streams[audio_stream_idx], out_audio_stream);
+
                 ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
                 av_packet_free(&transcoded_pkt);
             } else {
                 // Write packet directly (compatible codec)
+                mp4_segment_rescale_packet_ts(
+                    pkt, input_ctx->streams[audio_stream_idx], out_audio_stream);
                 ret = av_interleaved_write_frame(output_ctx, pkt);
             }
             if (ret < 0) {
