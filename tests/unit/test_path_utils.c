@@ -216,6 +216,38 @@ void test_recording_directory_format_rejects_templates(void) {
 }
 
 /* ================================================================
+ * build_recording_transcode_cache_path — on-demand HEVC->H.264
+ * playback cache location, mirrors the thumbnails/<id>_<n>.jpg
+ * convention so cleanup can key off the recording id alone.
+ * ================================================================ */
+
+void test_transcode_cache_path_builds_expected_path(void) {
+    char path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(0, build_recording_transcode_cache_path(
+        "/mnt/storage/lightnvr/recordings", 42, path, sizeof(path)));
+    TEST_ASSERT_EQUAL_STRING(
+        "/mnt/storage/lightnvr/recordings/transcoded/42.mp4", path);
+}
+
+void test_transcode_cache_path_rejects_null_storage_path(void) {
+    char path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(-1, build_recording_transcode_cache_path(
+        NULL, 42, path, sizeof(path)));
+}
+
+void test_transcode_cache_path_rejects_zero_id(void) {
+    char path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(-1, build_recording_transcode_cache_path(
+        "/recordings", 0, path, sizeof(path)));
+}
+
+void test_transcode_cache_path_rejects_too_small_buffer(void) {
+    char path[8];
+    TEST_ASSERT_EQUAL_INT(-1, build_recording_transcode_cache_path(
+        "/mnt/storage/lightnvr/recordings", 42, path, sizeof(path)));
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -253,6 +285,11 @@ int main(void) {
     RUN_TEST(test_recording_directory_presets);
     RUN_TEST(test_recording_directory_uses_direct_mp4_root);
     RUN_TEST(test_recording_directory_format_rejects_templates);
+
+    RUN_TEST(test_transcode_cache_path_builds_expected_path);
+    RUN_TEST(test_transcode_cache_path_rejects_null_storage_path);
+    RUN_TEST(test_transcode_cache_path_rejects_zero_id);
+    RUN_TEST(test_transcode_cache_path_rejects_too_small_buffer);
 
     return UNITY_END();
 }

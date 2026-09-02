@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <time.h>
 
 #include "core/config.h"
@@ -52,5 +53,17 @@ int build_mp4_recording_directory_for_placement(
 int prepare_placed_mp4_recording_path(
     const config_t *config, const char *stream_name, time_t timestamp,
     char *output, size_t output_size, storage_placement_t *placement);
+
+/**
+ * Build the on-demand HEVC->H.264 playback-cache path for a recording,
+ * mirroring the thumbnails/<id>_<n>.jpg convention so cleanup can key off
+ * the recording id alone rather than mirroring the mp4 hierarchy.
+ *
+ * Example: <storage_path>/transcoded/<recording_id>.mp4
+ */
+int build_recording_transcode_cache_path(const char *storage_path,
+                                         uint64_t recording_id,
+                                         char *output,
+                                         size_t output_size);
 
 #endif /* LIGHTNVR_RECORDING_PATH_H */

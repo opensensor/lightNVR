@@ -81,6 +81,20 @@ int build_mp4_recording_directory_at_root(
     return (written < 0 || (size_t)written >= output_size) ? -1 : 0;
 }
 
+int build_recording_transcode_cache_path(const char *storage_path,
+                                         uint64_t recording_id,
+                                         char *output,
+                                         size_t output_size) {
+    if (!storage_path || storage_path[0] == '\0' || recording_id == 0 ||
+        !output || output_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(output, output_size, "%s/transcoded/%llu.mp4",
+                           storage_path, (unsigned long long)recording_id);
+    return (written < 0 || (size_t)written >= output_size) ? -1 : 0;
+}
+
 static int effective_placement_root(
     const config_t *config, const storage_placement_t *placement,
     char root[MAX_PATH_LENGTH]) {

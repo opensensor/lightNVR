@@ -24,6 +24,7 @@
 #include "database/db_lpr_reads.h"
 #include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
+#include "video/recording_path.h"
 #include "core/config.h"
 #include "core/event_producers.h"
 #include "core/logger.h"
@@ -104,6 +105,16 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
     }
 
     delete_recording_thumbnails(recording->id);
+
+    char transcode_cache_path[MAX_PATH_LENGTH];
+    if (build_recording_transcode_cache_path(g_config.storage_path, recording->id,
+                                             transcode_cache_path,
+                                             sizeof(transcode_cache_path)) == 0) {
+        if (unlink(transcode_cache_path) != 0 && errno != ENOENT) {
+            log_warn("%s: failed to delete transcode cache %s: %s",
+                     context, transcode_cache_path, strerror(errno));
+        }
+    }
 
     if (delete_recording_metadata(recording->id) != 0) {
         log_warn("%s: failed to delete recording metadata for ID %llu",

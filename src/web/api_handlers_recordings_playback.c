@@ -16,6 +16,8 @@
 #include "core/config.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "video/recording_path.h"
+#include "video/recording_transcode.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/play/:id
@@ -79,9 +81,30 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
 
     log_info("Serving file for playback: %s (%ld bytes)", recording.file_path, st.st_size);
 
+    // Most browsers have no royalty-free HEVC decoder for an HTML5 <video>
+    // element, so an HEVC recording (e.g. FrontDoor, whose native stream is
+    // HEVC and whose recordings are a raw stream-copy of it) fails in-browser
+    // with "no video with supported format and MIME type found" even though
+    // it plays fine in a local player. Transparently swap in a cached H.264
+    // copy when that's the case; the original file on disk is untouched.
+    const char *serve_path = recording.file_path;
+    char transcode_cache_path[MAX_PATH_LENGTH];
+    if (recording_needs_hevc_transcode(recording.file_path) &&
+        build_recording_transcode_cache_path(g_config.storage_path, id,
+                                             transcode_cache_path,
+                                             sizeof(transcode_cache_path)) == 0) {
+        if (ensure_recording_transcode_cache(recording.file_path, transcode_cache_path) == 0) {
+            serve_path = transcode_cache_path;
+        } else {
+            log_warn("Failed to prepare HEVC playback cache for recording %llu, "
+                     "serving original file (browser playback may fail)",
+                     (unsigned long long)id);
+        }
+    }
+
     // Determine content type based on file extension
     const char *content_type = "video/mp4"; // Default
-    const char *file_ext = strrchr(recording.file_path, '.');
+    const char *file_ext = strrchr(serve_path, '.');
     if (file_ext) {
         file_ext++; // Skip the '.'
         if (strcasecmp(file_ext, "mp4") == 0) {
@@ -95,7 +118,7 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
         }
     }
 
-    log_info("Using content type: %s for file: %s", content_type, recording.file_path);
+    log_info("Using content type: %s for file: %s", content_type, serve_path);
 
     // Build headers with CORS and range support
     const char *headers = "Accept-Ranges: bytes\r\n"
@@ -112,8 +135,8 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
     // Serve the file using backend-agnostic function
     // Note: This is async and will complete in background callbacks
     log_info("Serving file for playback using backend-agnostic file server");
-    if (http_serve_file(req, res, recording.file_path, content_type, headers) != 0) {
-        log_error("Failed to serve file: %s", recording.file_path);
+    if (http_serve_file(req, res, serve_path, content_type, headers) != 0) {
+        log_error("Failed to serve file: %s", serve_path);
         http_response_set_json_error(res, 500, "Failed to serve file");
         return;
     }
