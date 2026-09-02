@@ -132,19 +132,28 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
 
     /* tmp_path doesn't end in .mp4 (it carries a .tmp.<pid> suffix so a
      * concurrent request never observes a half-written cache file), so
-     * ffmpeg can't infer the muxer from the extension — force it. */
+     * ffmpeg can't infer the muxer from the extension — force it.
+     *
+     * -c:a aac re-encodes audio when the source has an audio stream — the
+     * recording's own writer (mp4_writer.c) already transcodes any PCM a
+     * camera sends to AAC before it ever reaches an MP4 container, so a
+     * source recording's audio, when present, is always AAC already; this
+     * just carries it through instead of silently dropping it. When the
+     * source has no audio stream, ffmpeg's default stream selection simply
+     * produces no audio output track, so this is a no-op for video-only
+     * sources (e.g. any recording made while audio_disabled is set). */
     char *argv_vaapi[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error",
         "-hwaccel", "vaapi", "-hwaccel_device", VAAPI_RENDER_NODE,
         "-hwaccel_output_format", "vaapi",
         "-i", (char *)original_path,
-        "-c:v", "h264_vaapi", "-an",
+        "-c:v", "h264_vaapi", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL
     };
     char *argv_software[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error",
         "-i", (char *)original_path,
-        "-c:v", "libx264", "-an",
+        "-c:v", "libx264", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL
     };
 

@@ -38,6 +38,7 @@
 static char g_test_dir[256];
 static char g_hevc_fixture[320];
 static char g_h264_fixture[320];
+static char g_hevc_with_audio_fixture[320];
 
 static int run_ffmpeg(const char *args_joined_by_space_command) {
     /* Test-only helper: build known-good fixture files with the real
@@ -73,6 +74,37 @@ void setUp(void) {
              "-c:v libx264 -pix_fmt yuv420p \"%s\"", g_h264_fixture);
     TEST_ASSERT_EQUAL_INT(0, run_ffmpeg(args));
     TEST_ASSERT_TRUE(file_exists_nonempty(g_h264_fixture));
+
+    /* mp4_writer.c already transcodes any PCM audio a camera sends (e.g.
+     * pcm_alaw) to AAC before writing the MP4 — MP4 can't mux raw PCM at
+     * all — so a real recording's audio track is always AAC by the time
+     * this feature ever sees it. Match that here. */
+    snprintf(g_hevc_with_audio_fixture, sizeof(g_hevc_with_audio_fixture),
+             "%s/hevc_with_audio_source.mp4", g_test_dir);
+    snprintf(args, sizeof(args),
+             "-f lavfi -i testsrc=size=64x64:rate=1:duration=1 "
+             "-f lavfi -i sine=frequency=1000:duration=1 "
+             "-c:v libx265 -pix_fmt yuv420p -c:a aac \"%s\"",
+             g_hevc_with_audio_fixture);
+    TEST_ASSERT_EQUAL_INT(0, run_ffmpeg(args));
+    TEST_ASSERT_TRUE(file_exists_nonempty(g_hevc_with_audio_fixture));
+}
+
+/* Test-only helper: read back the first audio stream's codec name via
+ * ffprobe. Returns an empty string if the file has no audio stream. */
+static void probe_audio_codec_name(const char *path, char *out, size_t out_size) {
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd),
+             "ffprobe -v error -select_streams a:0 -show_entries stream=codec_name "
+             "-of default=noprint_wrappers=1:nokey=1 \"%s\"", path);
+    out[0] = '\0';
+    FILE *p = popen(cmd, "r");
+    if (!p) return;
+    if (fgets(out, (int)out_size, p)) {
+        size_t len = strlen(out);
+        if (len > 0 && out[len - 1] == '\n') out[len - 1] = '\0';
+    }
+    pclose(p);
 }
 
 static void remove_tree(const char *path) {
@@ -144,6 +176,18 @@ void test_ensure_cache_skips_retranscode_when_cache_already_exists(void) {
     TEST_ASSERT_EQUAL_STRING("not-a-real-video", buf);
 }
 
+void test_ensure_cache_transcodes_audio_to_aac_when_source_has_audio(void) {
+    char cache_path[320];
+    snprintf(cache_path, sizeof(cache_path), "%s/cache_with_audio_out.mp4", g_test_dir);
+
+    TEST_ASSERT_EQUAL_INT(0, ensure_recording_transcode_cache(g_hevc_with_audio_fixture, cache_path));
+    TEST_ASSERT_TRUE(file_exists_nonempty(cache_path));
+
+    char codec_name[64];
+    probe_audio_codec_name(cache_path, codec_name, sizeof(codec_name));
+    TEST_ASSERT_EQUAL_STRING("aac", codec_name);
+}
+
 void test_ensure_cache_creates_missing_parent_directory(void) {
     /* Production cache paths live under <storage_path>/transcoded/, which
      * won't exist on a fresh install — the function must create it. */
@@ -187,6 +231,7 @@ int main(void) {
     RUN_TEST(test_needs_transcode_fails_open_for_null_path);
 
     RUN_TEST(test_ensure_cache_transcodes_hevc_source_to_playable_h264);
+    RUN_TEST(test_ensure_cache_transcodes_audio_to_aac_when_source_has_audio);
     RUN_TEST(test_ensure_cache_creates_missing_parent_directory);
     RUN_TEST(test_ensure_cache_skips_retranscode_when_cache_already_exists);
     RUN_TEST(test_ensure_cache_fails_gracefully_for_missing_source);
