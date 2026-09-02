@@ -27,6 +27,10 @@ import {
   eptzFormFields,
   serializeEptzConfig,
 } from '../../utils/eptz-config.js';
+import {
+  getInitialStreamAvailability,
+  hasStreamSummaryFilters,
+} from '../../utils/stream-availability.js';
 
 /**
  * StreamsView component
@@ -36,18 +40,6 @@ function getInitialWorkspaceTab() {
   if (typeof window === 'undefined') return 'streams';
   const view = new URLSearchParams(window.location.search).get('view');
   return view === 'inventory' || view === 'health' || view === 'events' ? view : 'streams';
-}
-
-const STREAM_AVAILABILITY_VALUES = new Set([
-  'live', 'offline', 'never_connected', 'disabled', 'all',
-]);
-
-function getInitialStreamAvailability() {
-  if (typeof window === 'undefined') return 'live';
-  const fromUrl = new URLSearchParams(window.location.search).get('availability');
-  if (STREAM_AVAILABILITY_VALUES.has(fromUrl)) return fromUrl;
-  const stored = window.localStorage.getItem('lightnvr-stream-availability');
-  return STREAM_AVAILABILITY_VALUES.has(stored) ? stored : 'live';
 }
 
 export function StreamsView() {
@@ -129,9 +121,8 @@ export function StreamsView() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('lightnvr-stream-availability', streamAvailability);
     const url = new URL(window.location.href);
-    if (streamAvailability === 'live') url.searchParams.delete('availability');
+    if (streamAvailability === 'all') url.searchParams.delete('availability');
     else url.searchParams.set('availability', streamAvailability);
     window.history.replaceState({}, '', url);
     setStreamPage(1);
@@ -243,6 +234,10 @@ export function StreamsView() {
     ? streamsResponse.length : (streamsResponse.total || 0);
   const streamTotalPages = Array.isArray(streamsResponse)
     ? (streams.length > 0 ? 1 : 0) : (streamsResponse.total_pages || 0);
+  const streamResultsFiltered = hasStreamSummaryFilters(
+    debouncedStreamSearch,
+    streamAvailability
+  );
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -1534,12 +1529,6 @@ export function StreamsView() {
         </div>
       ) : (
         <div role="tabpanel" id="streams-panel" aria-labelledby="streams-tab">
-          <ContentLoader
-              isLoading={isLoading}
-              hasData={hasData}
-              loadingMessage={t('streams.loadingStreams')}
-              emptyMessage={canModifyStreams ? t('streams.noStreamsConfiguredYetAdd') : t('streams.noStreamsConfiguredYet')}
-          >
         <div className="streams-container">
           {/* Bulk action toolbar — visible in selection mode. Retained
               from the pre-T5 table layout so bulk enable/disable/delete
@@ -1651,6 +1640,17 @@ export function StreamsView() {
             ))}
           </div>
 
+          <ContentLoader
+              isLoading={isLoading}
+              hasData={hasData}
+              loadingMessage={t('streams.loadingStreams')}
+              emptyMessage={streamResultsFiltered
+                ? t('streams.noStreamsMatchFilters')
+                : canModifyStreams
+                  ? t('streams.noStreamsConfiguredYetAdd')
+                  : t('streams.noStreamsConfiguredYet')}
+          >
+          <>
           {/* Responsive card grid — explicit breakpoints so the grid
               caps at 4 columns on ultra-wide (≥1536 px) displays while
               still reflowing down to 1 column at ≤640 px (PRD §5.5 /
@@ -1727,8 +1727,9 @@ export function StreamsView() {
               </button>
             </div>
           </div>
+          </>
+          </ContentLoader>
         </div>
-      </ContentLoader>
         </div>
       )}
 

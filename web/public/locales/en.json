@@ -1368,6 +1368,7 @@
   "streams.sortBy": "Sort by",
   "streams.search": "Search streams",
   "streams.searchPlaceholder": "Search cameras, locations, or tags",
+  "streams.noStreamsMatchFilters": "No streams match the current filters.",
   "streamHealth.sourceConnected": "Source connected",
   "streamHealth.videoAdvancing": "Video advancing",
   "streamHealth.recorderWriting": "Recorder writing",
