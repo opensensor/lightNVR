@@ -26,7 +26,10 @@ import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbo
 import { shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.js';
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
-import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
+import {
+  shouldEnterFullscreenFromTap,
+  shouldToggleFullscreenFromDoubleClick,
+} from './useAlwaysFullscreenOnTap.js';
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.jsx';
 import { isEptzEnabled } from '../../utils/eptz-config.js';
@@ -1374,8 +1377,11 @@ export function WebRTCVideoCell({
         }
       }}
       onDblClick={(event) => {
-        if (!alwaysFullscreenOnTap
-            && shouldEnterFullscreenFromTap(event, true, zoom.isZoomed)) {
+        if (shouldToggleFullscreenFromDoubleClick(
+          event,
+          alwaysFullscreenOnTap,
+          zoom.isZoomed
+        )) {
           onToggleFullscreen(stream.name, event, cellRef.current);
         }
       }}

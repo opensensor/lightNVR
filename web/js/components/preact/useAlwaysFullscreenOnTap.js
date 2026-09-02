@@ -26,14 +26,28 @@ export function useAlwaysFullscreenOnTap() {
   return [enabled, setEnabled];
 }
 
+function isFullscreenGestureTarget(event) {
+  const target = event?.target;
+  return !(target && typeof target.closest === 'function'
+    && target.closest('button, a, input, select, textarea, [role="button"], [role="menu"]'));
+}
+
 export function shouldEnterFullscreenFromTap(event, enabled, zoomed = false, documentObject = globalThis.document) {
   if (!enabled || zoomed || documentObject?.fullscreenElement || documentObject?.webkitFullscreenElement) {
     return false;
   }
-  const target = event?.target;
-  if (target && typeof target.closest === 'function'
-      && target.closest('button, a, input, select, textarea, [role="button"], [role="menu"]')) {
-    return false;
-  }
-  return true;
+  return isFullscreenGestureTarget(event);
+}
+
+/**
+ * Double-click is a fullscreen toggle, unlike the optional single-tap entry
+ * gesture. It must remain active while a tile is already fullscreen so the
+ * second double-click can reach the shared exitFullscreen path.
+ */
+export function shouldToggleFullscreenFromDoubleClick(
+  event,
+  alwaysFullscreenOnTap,
+  zoomed = false
+) {
+  return !alwaysFullscreenOnTap && !zoomed && isFullscreenGestureTarget(event);
 }
