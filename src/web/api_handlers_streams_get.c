@@ -238,6 +238,7 @@ static int handle_get_stream_summaries(
     char sort_order[8] = "asc";
     char surface[16] = "admin";
     char availability[24] = "all";
+    char include_admin_url_param[8] = {0};
     http_request_get_query_param(req, "search", search, sizeof(search));
     http_request_get_query_param(req, "sort_by", sort_by, sizeof(sort_by));
     http_request_get_query_param(req, "sort_order", sort_order,
@@ -245,6 +246,12 @@ static int handle_get_stream_summaries(
     http_request_get_query_param(req, "surface", surface, sizeof(surface));
     http_request_get_query_param(req, "availability", availability,
                                  sizeof(availability));
+    bool include_admin_url =
+        http_request_get_query_param(
+            req, "include_admin_url", include_admin_url_param,
+            sizeof(include_admin_url_param)) > 0 &&
+        (strcmp(include_admin_url_param, "true") == 0 ||
+         strcmp(include_admin_url_param, "1") == 0);
     if (strcmp(sort_by, "name") != 0 && strcmp(sort_by, "status") != 0 &&
         strcmp(sort_by, "resolution") != 0 && strcmp(sort_by, "fps") != 0 &&
         strcmp(sort_by, "recording") != 0) {
@@ -361,6 +368,11 @@ static int handle_get_stream_summaries(
         cJSON_AddNumberToObject(item, "last_recording_at",
                                 (double)camera->last_recording_at);
         cJSON_AddBoolToObject(item, "can_configure", rows[i].can_configure);
+        if (!live_surface && include_admin_url) {
+            cJSON_AddStringToObject(
+                item, "admin_url",
+                rows[i].can_configure ? config->admin_url : "");
+        }
         if (live_surface) {
             cJSON_AddBoolToObject(item, "streaming_enabled",
                                   config->streaming_enabled);

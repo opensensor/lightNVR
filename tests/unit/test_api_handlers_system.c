@@ -305,6 +305,8 @@ void test_handle_get_stream_summaries_are_paginated_and_credential_free(void) {
     stream_config_t charlie = make_test_stream("Charlie");
     safe_strcpy(alpha.url, "rtsp://admin:alpha-secret@example/stream",
                 sizeof(alpha.url), 0);
+    safe_strcpy(charlie.admin_url, "https://charlie.example/admin",
+                sizeof(charlie.admin_url), 0);
     memset(alpha.recording_schedule, 1, sizeof(alpha.recording_schedule));
     memset(alpha.detection_recording_schedule, 1,
            sizeof(alpha.detection_recording_schedule));
@@ -317,7 +319,8 @@ void test_handle_get_stream_summaries_are_paginated_and_credential_free(void) {
     http_request_init(&req);
     http_response_init(&res);
     safe_strcpy(req.query_string,
-                "summary=true&page=2&page_size=2&sort_by=name&sort_order=asc",
+                "summary=true&include_admin_url=true&page=2&page_size=2"
+                "&sort_by=name&sort_order=asc",
                 sizeof(req.query_string), 0);
     handle_get_streams(&req, &res);
 
@@ -335,6 +338,9 @@ void test_handle_get_stream_summaries_are_paginated_and_credential_free(void) {
     TEST_ASSERT_EQUAL_STRING(
         "Charlie",
         cJSON_GetObjectItemCaseSensitive(stream, "name")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        "https://charlie.example/admin",
+        cJSON_GetObjectItemCaseSensitive(stream, "admin_url")->valuestring);
     TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(stream, "url"));
     TEST_ASSERT_NULL(
         cJSON_GetObjectItemCaseSensitive(stream, "onvif_password"));
@@ -345,6 +351,45 @@ void test_handle_get_stream_summaries_are_paginated_and_credential_free(void) {
 
     cJSON_Delete(root);
     http_response_free(&res);
+    clear_db_streams();
+}
+
+void test_viewer_stream_summary_redacts_admin_url(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("summary_viewer_cam");
+    safe_strcpy(s.admin_url, "http://admin:secret@camera.local/",
+                sizeof(s.admin_url), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.query_string,
+                "summary=true&surface=admin&include_admin_url=true",
+                sizeof(req.query_string), 0);
+    int64_t viewer_id = add_api_key_user(&req, "summary_viewer_get",
+                                         USER_ROLE_VIEWER);
+    g_config.web_auth_enabled = true;
+
+    handle_get_streams(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    const cJSON *streams = cJSON_GetObjectItemCaseSensitive(root, "streams");
+    TEST_ASSERT_TRUE(cJSON_IsArray(streams));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(streams));
+    const cJSON *stream = cJSON_GetArrayItem(streams, 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "", cJSON_GetObjectItemCaseSensitive(stream, "admin_url")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(
+        cJSON_GetObjectItemCaseSensitive(stream, "can_configure")));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    g_config.web_auth_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user(viewer_id));
     clear_db_streams();
 }
 
@@ -1180,6 +1225,7 @@ int main(void) {
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
     RUN_TEST(test_handle_get_stream_summaries_are_paginated_and_credential_free);
     RUN_TEST(test_stream_summary_contract_scales_to_1024_cameras);
+    RUN_TEST(test_viewer_stream_summary_redacts_admin_url);
     RUN_TEST(test_viewer_stream_response_redacts_credentials);
     RUN_TEST(test_viewer_cannot_enable_stream_privacy_mode);
     RUN_TEST(test_handle_put_stream_parses_motion_trigger_source);

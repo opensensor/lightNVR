@@ -207,7 +207,8 @@ export function StreamCard({
     ? t('streams.recordingModesList', { modes: modes.join(', ') })
     : t('streams.notRecording');
   const transportLabel = protocolLabel(stream);
-  const hasAdminLauncher = false;
+  const hasAdminLauncher = !shouldHideCredentials &&
+    /^https?:\/\//i.test(stream.admin_url || '');
 
   const finishSnapshotRequest = () => {
     snapshotReleaseRef.current?.();

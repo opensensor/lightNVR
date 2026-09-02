@@ -185,6 +185,8 @@ export function StreamsView() {
 
   const streamQueryParams = new URLSearchParams({
     summary: 'true',
+    surface: 'admin',
+    include_admin_url: 'true',
     page: String(streamPage),
     page_size: String(streamPageSize),
     sort_by: sortColumn,
@@ -196,8 +198,8 @@ export function StreamsView() {
   }
   const streamSummaryUrl = `/api/streams?${streamQueryParams.toString()}`;
 
-  // Fetch a bounded, credential-free administration summary. Full stream
-  // configuration remains deferred until Edit or Clone is opened.
+  // Fetch a bounded administration summary, opting into only the camera admin
+  // launcher URL. Full stream configuration remains deferred to Edit/Clone.
   const {
     data: streamsResponse = [],
     isLoading

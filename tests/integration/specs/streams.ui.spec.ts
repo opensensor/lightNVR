@@ -353,6 +353,39 @@ test.describe('Streams Page @ui @streams', () => {
   });
 
   test.describe('Stream Details', () => {
+    test('should link to the configured camera admin page', async ({ page }) => {
+      const adminUrl = 'https://camera.example/admin';
+      await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
+        json: {
+          streams: [{
+            name: 'admin_link_camera',
+            admin_url: adminUrl,
+            enabled: true,
+            status: 'Running',
+            width: 1920,
+            height: 1080,
+            fps: 25,
+            codec: 'h264',
+            protocol: 0,
+            record: true,
+            can_configure: true,
+          }],
+          total: 1,
+          total_pages: 1,
+        },
+      }));
+
+      const streamsPage = new StreamsPage(page);
+      await streamsPage.goto({ waitForNetworkIdle: true });
+
+      const card = streamsPage.getStreamByName('admin_link_camera');
+      const adminLink = card.locator('a[title="Open Camera Admin Page"]');
+      await expect(adminLink).toBeVisible();
+      await expect(adminLink).toHaveAttribute('href', adminUrl);
+      await expect(adminLink).toHaveAttribute('target', '_blank');
+      await expect(adminLink).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+
     test('should show stream card with name and URL', async ({ page }) => {
       const streamsPage = new StreamsPage(page);
       await streamsPage.goto({ waitForNetworkIdle: true });
