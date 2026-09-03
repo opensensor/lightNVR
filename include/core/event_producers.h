@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "telemetry/system_health_evaluator.h"
 #include "video/detection_result.h"
 
 /*
@@ -71,5 +72,14 @@ int event_producer_publish_storage_target_unavailable(
 int event_producer_publish_storage_target_recovered(
     const char *target_uuid, const char *current_state, int64_t downtime_ms,
     bool is_default, time_t occurred_at, char *error, size_t error_size);
+
+/*
+ * Publish one already-persisted evaluator transition using the event identity
+ * stored with that transition. Replaying the same event_id is safe: durable
+ * outbox destinations deduplicate by source, event identity, and destination.
+ */
+int event_producer_publish_system_health_transition(
+    const system_health_transition_t *transition, const char *event_id,
+    char *error, size_t error_size);
 
 #endif /* LIGHTNVR_CORE_EVENT_PRODUCERS_H */

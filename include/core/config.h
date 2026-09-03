@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "telemetry/system_health_policy.h"
+
 // Maximum length for path strings
 #define MAX_PATH_LENGTH 512
 // Maximum length for stream names
@@ -335,6 +337,10 @@ typedef struct {
     bool mqtt_ha_discovery;               // Enable HA MQTT auto-discovery (default: false)
     char mqtt_ha_discovery_prefix[128];   // HA discovery topic prefix (default: "homeassistant")
     int mqtt_ha_snapshot_interval;        // Snapshot publish interval in seconds (default: 30, 0=disabled)
+
+    // Host and hardware health. Structured condition overrides live in the
+    // system_settings table; only these non-sensitive scalars are in the INI.
+    system_health_policy_settings_t health;
 
     // In-process LiteRT (TFLite) detection engine.
     // Runtime knobs only; per-model state (path, labels) lives elsewhere.

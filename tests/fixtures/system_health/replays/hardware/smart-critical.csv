@@ -1,0 +1,6 @@
+# t24-replay-v1: SMART/NVMe critical signal and deterministic recovery
+# expect=storage.device_critical:open;storage.device_critical:material;storage.device_critical:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,storage.device.critical,device-0,device,available,1,boolean,0,1
+20000,storage.device.critical,device-0,device,available,0,boolean,0,1
+40000,storage.device.critical,device-0,device,available,0,boolean,0,1

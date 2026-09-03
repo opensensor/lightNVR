@@ -16,6 +16,7 @@
 #include "web/api_handlers_health.h"
 #include "web/api_handlers_settings.h"
 #include "web/api_handlers_system.h"
+#include "web/api_handlers_system_health.h"
 #include "web/api_handlers_zones.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_imaging.h"
@@ -258,6 +259,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // System API
     http_server_register_handler(server, "/api/system", "GET", handle_get_system_info);
     http_server_register_handler(server, "/api/system/info", "GET", handle_get_system_info);
+    http_server_register_handler(server, "/api/system/health/incidents", "GET",
+                                 handle_get_system_health_incidents);
+    http_server_register_handler(server, "/api/system/health", "GET",
+                                 handle_get_system_health);
     http_server_register_handler(server, "/api/system/logs", "GET", handle_get_system_logs);
     http_server_register_handler(server, "/api/system/restart", "POST", handle_post_system_restart);
     http_server_register_handler(server, "/api/system/shutdown", "POST", handle_post_system_shutdown);

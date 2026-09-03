@@ -1,0 +1,4 @@
+usage_usec 10
+nr_periods 1
+nr_throttled 0
+throttled_usec 0

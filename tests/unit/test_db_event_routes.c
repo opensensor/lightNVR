@@ -19,6 +19,8 @@
 #define TEST_DB_PATH "/tmp/lightnvr_unit_event_routes.db"
 #define DETECTION_TYPE "io.lightnvr.detection.object.v1"
 #define OFFLINE_TYPE "io.lightnvr.camera.offline.v1"
+#define HEALTH_ALERT_TYPE "io.lightnvr.system.health_alert.v1"
+#define HEALTH_RECOVERED_TYPE "io.lightnvr.system.health_recovered.v1"
 
 static event_route_t valid_route(const char *name) {
     event_route_t route;
@@ -207,6 +209,68 @@ void test_route_validates_types_scope_predicates_and_schedule(void) {
     TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
 }
 
+void test_health_predicates_are_bounded_and_system_scope_is_explicit(void) {
+    char error[EVENT_ROUTE_VALIDATION_ERROR_MAX] = {0};
+    event_route_t route = valid_route("Host health");
+    safe_strcpy(route.event_types[0], HEALTH_ALERT_TYPE,
+                sizeof(route.event_types[0]), 0);
+    safe_strcpy(route.event_types[1], HEALTH_RECOVERED_TYPE,
+                sizeof(route.event_types[1]), 0);
+    safe_strcpy(route.predicate_json,
+                "{\"version\":1,\"health\":{"
+                "\"condition_codes_any\":[\"memory.available_low\"],"
+                "\"severities_any\":[\"warning\",\"critical\"]}}",
+                sizeof(route.predicate_json), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_OK,
+        db_event_route_validate(&route, error, sizeof(error)));
+
+    safe_strcpy(route.predicate_json,
+                "{\"version\":1,\"health\":{"
+                "\"condition_codes_any\":[\"memory.typo\"]}}",
+                sizeof(route.predicate_json), 0);
+    error[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_INVALID,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "unknown value"));
+
+    safe_strcpy(route.predicate_json,
+                "{\"version\":1,\"health\":{"
+                "\"severities_any\":[\"emergency\"]}}",
+                sizeof(route.predicate_json), 0);
+    error[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_INVALID,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "unknown value"));
+
+    safe_strcpy(route.event_types[1], OFFLINE_TYPE,
+                sizeof(route.event_types[1]), 0);
+    safe_strcpy(route.predicate_json,
+                "{\"version\":1,\"health\":{"
+                "\"severities_any\":[\"warning\"]}}",
+                sizeof(route.predicate_json), 0);
+    error[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_INVALID,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "only system health"));
+
+    route.event_type_count = 1;
+    safe_strcpy(route.scope_type, "selector", sizeof(route.scope_type), 0);
+    safe_strcpy(route.selector_json,
+                "{\"version\":1,\"expression\":{\"op\":\"all\"}}",
+                sizeof(route.selector_json), 0);
+    safe_strcpy(route.predicate_json, "{\"version\":1}",
+                sizeof(route.predicate_json), 0);
+    error[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_INVALID,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "only camera event types"));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -217,6 +281,7 @@ int main(void) {
     RUN_TEST(test_route_crud_uses_revision_compare_and_swap);
     RUN_TEST(test_route_name_is_unique_case_insensitively);
     RUN_TEST(test_route_validates_types_scope_predicates_and_schedule);
+    RUN_TEST(test_health_predicates_are_bounded_and_system_scope_is_explicit);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

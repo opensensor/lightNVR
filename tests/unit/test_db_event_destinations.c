@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "database/db_core.h"
+#include "database/db_embedded_migrations.h"
 #include "database/db_event_destinations.h"
 #include "unity.h"
 #include "utils/memory.h"
@@ -82,6 +83,7 @@ void test_destination_crud_redacts_password_and_uses_revision(void) {
                           db_event_destination_get_by_key(key, &loaded));
     TEST_ASSERT_EQUAL_STRING(destination.uuid, loaded.uuid);
     TEST_ASSERT_TRUE(loaded.password_configured);
+    TEST_ASSERT_EQUAL_STRING("", loaded.status_topic_template);
 
     char password[EVENT_DESTINATION_PASSWORD_MAX] = {0};
     TEST_ASSERT_EQUAL_INT(
@@ -91,12 +93,16 @@ void test_destination_crud_redacts_password_and_uses_revision(void) {
     TEST_ASSERT_EQUAL_STRING("top-secret-value", password);
     secure_zero_memory(password, sizeof(password));
 
-    safe_strcpy(loaded.description, "Updated bridge",
-                sizeof(loaded.description), 0);
+    safe_strcpy(loaded.status_topic_template,
+                "fleet/status/{installation_uuid}/{destination_uuid}",
+                sizeof(loaded.status_topic_template), 0);
     TEST_ASSERT_EQUAL_INT(
         DB_EVENT_DESTINATION_OK,
         db_event_destination_update(&loaded, 1, NULL, false));
     TEST_ASSERT_EQUAL_INT64(2, loaded.revision);
+    TEST_ASSERT_EQUAL_STRING(
+        "fleet/status/{installation_uuid}/{destination_uuid}",
+        loaded.status_topic_template);
     TEST_ASSERT_TRUE(loaded.password_configured);
     TEST_ASSERT_EQUAL_INT(
         DB_EVENT_DESTINATION_STALE,
@@ -150,6 +156,46 @@ void test_destination_validates_topics_credentials_and_tls(void) {
         db_event_destination_validate(&destination, "secret", true, error,
                                       sizeof(error)));
 
+    safe_strcpy(destination.status_topic_template,
+                "fleet/status/{installation_uuid}/{destination_uuid}",
+                sizeof(destination.status_topic_template), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+    safe_strcpy(destination.status_topic_template,
+                "fleet/status/{destination_uuid}",
+                sizeof(destination.status_topic_template), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "status topic"));
+    safe_strcpy(destination.status_topic_template,
+                "fleet/+/{installation_uuid}",
+                sizeof(destination.status_topic_template), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+    safe_strcpy(destination.status_topic_template,
+                "fleet/{unknown}/{installation_uuid}",
+                sizeof(destination.status_topic_template), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+    destination = valid_destination("Validation");
+    memset(destination.status_topic_template, 'a', 480U);
+    safe_strcpy(destination.status_topic_template + 480U,
+                "/{installation_uuid}",
+                sizeof(destination.status_topic_template) - 480U, 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+
+    destination = valid_destination("Validation");
     safe_strcpy(destination.topic_template, "events/{type}/missing-subject",
                 sizeof(destination.topic_template), 0);
     TEST_ASSERT_EQUAL_INT(
@@ -222,6 +268,66 @@ void test_destination_validates_topics_credentials_and_tls(void) {
         DB_EVENT_DESTINATION_INVALID,
         db_event_destination_validate(&destination, "secret", true, error,
                                       sizeof(error)));
+}
+
+static const migration_t *migration_0082(void) {
+    for (size_t index = 0U; index < EMBEDDED_MIGRATIONS_COUNT; ++index) {
+        if (strcmp(embedded_migrations_data[index].version, "0082") == 0)
+            return &embedded_migrations_data[index];
+    }
+    return NULL;
+}
+
+static bool table_has_column(sqlite3 *db, const char *column) {
+    sqlite3_stmt *statement = NULL;
+    bool found = false;
+    if (sqlite3_prepare_v2(db, "PRAGMA table_info(event_destinations);", -1,
+                           &statement, NULL) == SQLITE_OK) {
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            const char *name =
+                (const char *)sqlite3_column_text(statement, 1);
+            if (name && strcmp(name, column) == 0) {
+                found = true;
+                break;
+            }
+        }
+    }
+    sqlite3_finalize(statement);
+    return found;
+}
+
+void test_status_topic_migration_upgrades_old_profiles_and_downgrades(void) {
+    const migration_t *migration = migration_0082();
+    TEST_ASSERT_NOT_NULL(migration);
+    sqlite3 *database = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(":memory:", &database));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(database,
+                     "CREATE TABLE event_destinations(uuid TEXT PRIMARY KEY,"
+                     "name TEXT NOT NULL);"
+                     "INSERT INTO event_destinations VALUES('old','Old');",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_exec(database, migration->sql_up, NULL,
+                                       NULL, NULL));
+    TEST_ASSERT_TRUE(table_has_column(database, "status_topic_template"));
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            database,
+            "SELECT status_topic_template FROM event_destinations "
+            "WHERE uuid='old';", -1, &statement, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(statement));
+    TEST_ASSERT_EQUAL_STRING(
+        "", (const char *)sqlite3_column_text(statement, 0));
+    sqlite3_finalize(statement);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_exec(database, migration->sql_down, NULL,
+                                       NULL, NULL));
+    TEST_ASSERT_FALSE(table_has_column(database, "status_topic_template"));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(database));
 }
 
 void test_destination_delete_is_blocked_by_routes_and_active_delivery(void) {
@@ -297,6 +403,7 @@ int main(void) {
     RUN_TEST(test_destination_crud_redacts_password_and_uses_revision);
     RUN_TEST(test_destination_name_is_unique_case_insensitively);
     RUN_TEST(test_destination_validates_topics_credentials_and_tls);
+    RUN_TEST(test_status_topic_migration_upgrades_old_profiles_and_downgrades);
     RUN_TEST(test_destination_delete_is_blocked_by_routes_and_active_delivery);
     int result = UNITY_END();
     shutdown_database();

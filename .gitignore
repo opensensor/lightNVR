@@ -49,6 +49,9 @@ cmake_install.cmake
 Makefile
 *.cmake
 !cmake/toolchains/*.cmake
+!tests/unit/cmake/
+!tests/unit/cmake/system_health/
+!tests/unit/cmake/system_health/*.cmake
 !CMakeLists.txt
 
 # IDE files

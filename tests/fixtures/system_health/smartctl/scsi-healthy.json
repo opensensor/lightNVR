@@ -1,0 +1,1 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,4],"exit_status":0},"device":{"name":"/dev/sdb","protocol":"SCSI"},"smart_status":{"passed":true},"temperature":{"current":33},"scsi_grown_defect_list":2,"scsi_error_counter_log":{"read":{"total_uncorrected_errors":1},"write":{"total_uncorrected_errors":2},"verify":{"total_uncorrected_errors":3}}}

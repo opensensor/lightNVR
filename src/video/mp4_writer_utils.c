@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <signal.h>
+#include <errno.h>
 
 // Define PATH_MAX if not defined
 #ifndef PATH_MAX
@@ -38,6 +39,7 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/ffmpeg_utils.h"
+#include "telemetry/recording_io_metrics.h"
 
 // Structure to hold audio transcoding context
 typedef struct {
@@ -159,6 +161,8 @@ static int init_audio_transcoder(const char *stream_name,
     // Create decoder context
     audio_transcoders[slot].decoder_ctx = avcodec_alloc_context3(decoder);
     if (!audio_transcoders[slot].decoder_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate decoder context for %s", stream_name);
         goto cleanup;
     }
@@ -183,6 +187,8 @@ static int init_audio_transcoder(const char *stream_name,
     // Create encoder context
     audio_transcoders[slot].encoder_ctx = avcodec_alloc_context3(encoder);
     if (!audio_transcoders[slot].encoder_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate encoder context for %s", stream_name);
         goto cleanup;
     }
@@ -241,6 +247,11 @@ static int init_audio_transcoder(const char *stream_name,
                               audio_transcoders[slot].decoder_ctx->sample_rate,
                               0, NULL);
     if (ret < 0 || !audio_transcoders[slot].swr_ctx) {
+        if (ret == AVERROR(ENOMEM) || !audio_transcoders[slot].swr_ctx) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        ENOMEM);
+        }
         log_ffmpeg_error(ret, "Failed to allocate SwrContext");
         goto cleanup;
     }
@@ -254,6 +265,8 @@ static int init_audio_transcoder(const char *stream_name,
         audio_transcoders[slot].decoder_ctx->sample_rate,
         0, NULL);
     if (!audio_transcoders[slot].swr_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate SwrContext for %s", stream_name);
         ret = AVERROR(ENOMEM);
         goto cleanup;
@@ -282,6 +295,9 @@ static int init_audio_transcoder(const char *stream_name,
             nb_ch,
             enc_frame_size * 4);
         if (!audio_transcoders[slot].fifo) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        ENOMEM);
             log_error("Failed to allocate audio FIFO for %s", stream_name);
             goto cleanup;
         }
@@ -291,6 +307,8 @@ static int init_audio_transcoder(const char *stream_name,
     // Allocate frame and packets
     audio_transcoders[slot].frame = av_frame_alloc();
     if (!audio_transcoders[slot].frame) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate frame for %s", stream_name);
         goto cleanup;
     }
@@ -298,18 +316,24 @@ static int init_audio_transcoder(const char *stream_name,
     // Allocate resampled frame for format-converted audio
     audio_transcoders[slot].resampled_frame = av_frame_alloc();
     if (!audio_transcoders[slot].resampled_frame) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate resampled frame for %s", stream_name);
         goto cleanup;
     }
 
     audio_transcoders[slot].in_pkt = av_packet_alloc();
     if (!audio_transcoders[slot].in_pkt) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate input packet for %s", stream_name);
         goto cleanup;
     }
 
     audio_transcoders[slot].out_pkt = av_packet_alloc();
     if (!audio_transcoders[slot].out_pkt) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate output packet for %s", stream_name);
         goto cleanup;
     }
@@ -657,6 +681,11 @@ int transcode_audio_packet(const char *stream_name,
 
         ret = av_frame_get_buffer(resampled, 0);
         if (ret < 0) {
+            if (ret == AVERROR(ENOMEM)) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_ALLOCATE,
+                                            ret);
+            }
             log_ffmpeg_error(ret, "Failed to allocate resampled frame buffer");
             return ret;
         }
@@ -676,6 +705,9 @@ int transcode_audio_packet(const char *stream_name,
             ret = av_audio_fifo_write(audio_transcoders[transcoder_idx].fifo,
                                       (void **)resampled->data, resampled->nb_samples);
             if (ret < resampled->nb_samples) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_ALLOCATE,
+                                            ENOMEM);
                 log_error("Failed to write samples to audio FIFO for %s", stream_name);
                 return AVERROR(ENOMEM);
             }
@@ -787,6 +819,8 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
     // Allocate output codec parameters
     *transcoded_params = avcodec_parameters_alloc();
     if (!*transcoded_params) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate transcoded codec parameters for %s",
                 stream_name ? stream_name : "unknown");
         ret = AVERROR(ENOMEM);
@@ -814,6 +848,8 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
     // Create decoder context
     decoder_ctx = avcodec_alloc_context3(decoder);
     if (!decoder_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate decoder context for %s",
                 stream_name ? stream_name : "unknown");
         ret = AVERROR(ENOMEM);
@@ -840,6 +876,8 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
     // Create encoder context
     encoder_ctx = avcodec_alloc_context3(encoder);
     if (!encoder_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate encoder context for %s",
                 stream_name ? stream_name : "unknown");
         ret = AVERROR(ENOMEM);
@@ -1049,6 +1087,8 @@ int apply_h264_annexb_filter(AVPacket *packet, enum AVCodecID codec_id) {
     // Create a new packet for the filtered data
     AVPacket *new_pkt = av_packet_alloc();
     if (!new_pkt) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         return AVERROR(ENOMEM);
     }
 
@@ -1056,6 +1096,10 @@ int apply_h264_annexb_filter(AVPacket *packet, enum AVCodecID codec_id) {
     int new_size = packet->size + 4;
     int ret = av_new_packet(new_pkt, new_size);
     if (ret < 0) {
+        if (ret == AVERROR(ENOMEM)) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE, ret);
+        }
         av_packet_free(&new_pkt);
         return ret;
     }
@@ -1116,6 +1160,8 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
     // First, ensure the directory exists
     char *dir_path = malloc(PATH_MAX);
     if (!dir_path) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate memory for directory path");
         return -1;
     }
@@ -1149,11 +1195,19 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 
     // Create directory if it doesn't exist
     if (mkdir_recursive(dir_path) != 0) {
+        int directory_error = errno;
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_FILESYSTEM,
+                                    directory_error);
         log_warn("Failed to create directory: %s", dir_path);
     }
 
     // Set permissions to ensure it's writable
     if (chmod_path(dir_path, 0755)) {
+        int permission_error = errno;
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_FILESYSTEM,
+                                    permission_error);
         log_warn("Failed to set permissions: %s", dir_path);
     }
 
@@ -1165,6 +1219,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
     // Create output format context
     ret = avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", writer->output_path);
     if (ret < 0 || !writer->output_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE,
+                                    ret < 0 ? ret : ENOMEM);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to create output format context for MP4 writer: %s", error_buf);
@@ -1181,6 +1238,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
         if (!out_stream) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        ENOMEM);
             log_error("Failed to create output stream for MP4 writer");
             avformat_free_context(writer->output_ctx);
             writer->output_ctx = NULL;
@@ -1285,6 +1345,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                              writer->stream_name ? writer->stream_name : "unknown");
                 }
             } else {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_ALLOCATE,
+                                            ENOMEM);
                 log_error("Failed to create audio stream for %s — recording video-only",
                           writer->stream_name ? writer->stream_name : "unknown");
                 writer->has_audio = 0;
@@ -1325,6 +1388,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                     
                     AVStream *dummy_video = avformat_new_stream(writer->output_ctx, NULL);
                     if (!dummy_video) {
+                        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                    RECORDING_IO_OPERATION_ALLOCATE,
+                                                    ENOMEM);
                         log_error("Failed to create dummy video stream for MP4 writer");
                         avcodec_parameters_free(&transcoded_params);
                         avformat_free_context(writer->output_ctx);
@@ -1345,6 +1411,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                     // Now add the transcoded audio stream
                     AVStream *audio_stream = avformat_new_stream(writer->output_ctx, NULL);
                     if (!audio_stream) {
+                        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                    RECORDING_IO_OPERATION_ALLOCATE,
+                                                    ENOMEM);
                         log_error("Failed to create audio stream for MP4 writer");
                         avcodec_parameters_free(&transcoded_params);
                         avformat_free_context(writer->output_ctx);
@@ -1421,6 +1490,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 
             AVStream *dummy_video = avformat_new_stream(writer->output_ctx, NULL);
             if (!dummy_video) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_ALLOCATE,
+                                            ENOMEM);
                 log_error("Failed to create dummy video stream for MP4 writer");
                 avformat_free_context(writer->output_ctx);
                 writer->output_ctx = NULL;
@@ -1451,6 +1523,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 
         AVStream *dummy_video = avformat_new_stream(writer->output_ctx, NULL);
         if (!dummy_video) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        ENOMEM);
             log_error("Failed to create dummy video stream for MP4 writer");
             avformat_free_context(writer->output_ctx);
             writer->output_ctx = NULL;
@@ -1470,6 +1545,9 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         // Now add the audio stream
         AVStream *audio_stream = avformat_new_stream(writer->output_ctx, NULL);
         if (!audio_stream) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        ENOMEM);
             log_error("Failed to create audio stream for MP4 writer");
             avformat_free_context(writer->output_ctx);
             writer->output_ctx = NULL;
@@ -1522,6 +1600,8 @@ skip_audio_stream:
     // Open output file
     ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_OPEN, ret);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to open output file for MP4 writer: %s (error: %s)",
@@ -1547,10 +1627,17 @@ skip_audio_stream:
     // Write file header
     ret = avformat_write_header(writer->output_ctx, &opts);
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_HEADER, ret);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write header for MP4 writer: %s", error_buf);
-        avio_closep(&writer->output_ctx->pb);
+        int close_ret = avio_closep(&writer->output_ctx->pb);
+        if (close_ret < 0) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_CLOSE,
+                                        close_ret);
+        }
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
         av_dict_free(&opts);
@@ -1810,6 +1897,8 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     // Create a new audio stream in the output
     audio_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!audio_stream) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to create audio stream for MP4 writer for %s",
                  writer->stream_name ? writer->stream_name : "unknown");
         avcodec_parameters_free(&local_codec_params);

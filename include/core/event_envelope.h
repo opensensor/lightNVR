@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_CORE_EVENT_ENVELOPE_H
 #define LIGHTNVR_CORE_EVENT_ENVELOPE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -43,7 +44,8 @@ typedef enum {
 
 typedef enum {
     EVENT_SUBJECT_CAMERA = 0,
-    EVENT_SUBJECT_STORAGE
+    EVENT_SUBJECT_STORAGE,
+    EVENT_SUBJECT_SYSTEM
 } event_subject_kind_t;
 
 typedef struct {
@@ -51,6 +53,9 @@ typedef struct {
     const char *family;
     const char *description;
     event_severity_t severity;
+    bool dynamic_severity;
+    event_severity_t minimum_severity;
+    event_severity_t maximum_severity;
     event_sensitivity_t sensitivity;
     event_media_policy_t media_policy;
     event_expected_rate_t expected_rate;
@@ -68,6 +73,7 @@ typedef struct {
     char datacontenttype[EVENT_CONTENT_TYPE_MAX];
     time_t occurred_at;
     time_t expires_at;
+    event_severity_t severity;
     cJSON *data;
 } event_envelope_t;
 
@@ -90,6 +96,17 @@ int event_envelope_create(event_envelope_t *event, const char *type,
                           const char *source, const char *subject,
                           time_t occurred_at, const cJSON *data,
                           char *error, size_t error_size);
+
+/*
+ * Create with a producer-selected severity and optional persisted identity.
+ * event_id=NULL generates a new UUID; a supplied ID is validated and retained
+ * verbatim for crash-safe outbox reconciliation.
+ */
+int event_envelope_create_with_severity_and_id(
+    event_envelope_t *event, const char *type, const char *source,
+    const char *subject, time_t occurred_at, const cJSON *data,
+    event_severity_t severity, const char *event_id,
+    char *error, size_t error_size);
 
 /*
  * Validate a constructed or decoded envelope against the registry contract.

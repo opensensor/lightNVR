@@ -1,0 +1,1 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,4],"exit_status":0},"smart_status":{"passed":true},"ata_smart_attributes":{"table":[{"id":198,"raw":{"value":9007199254740992}}]}}

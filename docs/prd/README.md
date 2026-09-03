@@ -41,8 +41,9 @@ and policy primitives established earlier.
 | 7 | [ONVIF 02 — Metadata & Edge Recovery](ONVIF_02_Metadata_Edge_Recovery.md) | Profile M analytics and Profile G recording backfill | Later |
 | 8a | [Operations 01 — Backup & Restore](OPS_01_Backup_Restore.md) | Complete, verified, operator-safe system recovery | Later |
 | 8b | [Operations 02 — Evidence Cases & Integrity](OPS_02_Evidence_Cases_Integrity.md) | Case holds, chain of custody, and verifiable exports | Later |
-| 8c | [UXD 04 — Maps & Operator Views](UXD_04_Maps_Operator_Views.md) | Spatial navigation, shared layouts, and camera sequences | Later |
-| 8d | [Privacy 01 — Masking & Exclusion Zones](PRIVACY_01_Masking_Exclusion_Zones.md) | Camera-side privacy masks with explicit software fallback | Later |
+| 8c | [Operations 03 — Host & Hardware Health](OPS_03_Host_Hardware_Health.md) | OS/container pressure, hardware precursors, incident events, and loss-of-contact signaling | Implemented; physical threshold calibration remains |
+| 8d | [UXD 04 — Maps & Operator Views](UXD_04_Maps_Operator_Views.md) | Spatial navigation, shared layouts, and camera sequences | Later |
+| 8e | [Privacy 01 — Masking & Exclusion Zones](PRIVACY_01_Masking_Exclusion_Zones.md) | Camera-side privacy masks with explicit software fallback | Later |
 
 The numeric ordering expresses dependency order, not release promises; the
 “Later” entries remain deliberately unscheduled. SSO is not a standalone

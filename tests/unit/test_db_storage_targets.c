@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "database/db_core.h"
@@ -337,6 +338,73 @@ void test_validation_canonicalizes_root_so_aliases_cannot_diverge(void) {
     unlink(link_path);
 }
 
+void test_child_probe_result_preserves_watermarks_and_normalizes_failures(void) {
+    storage_target_health_update_t update;
+    memset(&update, 0, sizeof(update));
+    update.available = true;
+    update.capacity_bytes = 1000U;
+    update.available_bytes = 50U;
+    update.filesystem_device = 0x123U;
+    update.probed_at = (int64_t)time(NULL);
+    safe_strcpy(update.normalized_error, "none",
+                sizeof(update.normalized_error), 0);
+    storage_target_t target;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_record_health(
+                              default_uuid, &update, &target));
+    TEST_ASSERT_EQUAL_STRING("degraded", target.health_status);
+    TEST_ASSERT_EQUAL_UINT64(50U, target.available_bytes);
+    TEST_ASSERT_EQUAL_UINT64(0x123U, target.filesystem_device);
+
+    update.available_bytes = 500U;
+    update.probed_at++;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_record_health(
+                              default_uuid, &update, &target));
+    TEST_ASSERT_EQUAL_STRING("healthy", target.health_status);
+
+    update.write_checked = true;
+    update.writeable = false;
+    update.probed_at++;
+    safe_strcpy(update.normalized_error, "read_only",
+                sizeof(update.normalized_error), 0);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_record_health(
+                              default_uuid, &update, &target));
+    TEST_ASSERT_EQUAL_STRING("unavailable", target.health_status);
+    TEST_ASSERT_EQUAL_STRING("read_only", target.last_error);
+
+    safe_strcpy(update.normalized_error, "/private/raw/path",
+                sizeof(update.normalized_error), 0);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_INVALID,
+                          db_storage_target_record_health(
+                              default_uuid, &update, &target));
+}
+
+void test_recording_growth_forecast_is_bounded_by_target(void) {
+    sqlite3 *db = get_db_handle();
+    int64_t now = (int64_t)time(NULL);
+    char sql[1024];
+    int length = snprintf(
+        sql, sizeof(sql),
+        "INSERT INTO recordings(stream_name,file_path,start_time,size_bytes,"
+        "storage_target_uuid) VALUES('growth-a','%s/a.mp4',%lld,600,'%s'),"
+        "('growth-b','%s/b.mp4',%lld,600,'%s');",
+        default_root, (long long)(now - 60), default_uuid,
+        default_root, (long long)now, default_uuid);
+    TEST_ASSERT_GREATER_THAN_INT(0, length);
+    TEST_ASSERT_LESS_THAN_INT((int)sizeof(sql), length);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_exec(db, sql, NULL, NULL, NULL));
+    double rate = 0.0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_storage_target_recording_growth_bps(default_uuid, &rate));
+    TEST_ASSERT_TRUE(rate > 19.9 && rate < 20.1);
+    TEST_ASSERT_EQUAL_INT(
+        -1, db_storage_target_recording_growth_bps(
+                "not-a-valid-uuid", &rate));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(second_root));
@@ -357,6 +425,8 @@ int main(void) {
     RUN_TEST(test_unavailable_target_can_be_staged_disabled_but_not_enabled);
     RUN_TEST(test_validation_rejects_root_and_traversal_paths);
     RUN_TEST(test_validation_canonicalizes_root_so_aliases_cannot_diverge);
+    RUN_TEST(test_child_probe_result_preserves_watermarks_and_normalizes_failures);
+    RUN_TEST(test_recording_growth_forecast_is_bounded_by_target);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

@@ -18,6 +18,7 @@
 #include "core/camera_selector.h"
 #include "database/db_core.h"
 #include "database/db_event_destinations.h"
+#include "telemetry/system_health_types.h"
 #include "utils/strings.h"
 
 #define EVENT_ROUTE_SELECT_FIELDS \
@@ -127,12 +128,77 @@ static bool route_has_type(const event_route_t *route, const char *type) {
     return false;
 }
 
+static bool route_types_are_family(const event_route_t *route,
+                                   const char *family) {
+    if (!route || !family || route->event_type_count < 1) return false;
+    for (int index = 0; index < route->event_type_count; index++) {
+        const event_type_definition_t *definition =
+            event_registry_find(route->event_types[index]);
+        if (!definition || strcmp(definition->family, family) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool route_types_are_camera_subjects(const event_route_t *route) {
+    if (!route || route->event_type_count < 1) return false;
+    for (int index = 0; index < route->event_type_count; index++) {
+        const event_type_definition_t *definition =
+            event_registry_find(route->event_types[index]);
+        if (!definition || definition->subject_kind != EVENT_SUBJECT_CAMERA) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool valid_health_severity(const char *value) {
+    return value && (strcmp(value, "warning") == 0 ||
+                     strcmp(value, "error") == 0 ||
+                     strcmp(value, "critical") == 0);
+}
+
+static bool valid_health_condition_array(const cJSON *array, char *error,
+                                         size_t error_size) {
+    const char *field = "predicate.health.condition_codes_any";
+    if (!valid_string_array(array, field, error, error_size)) return false;
+    int count = cJSON_GetArraySize(array);
+    for (int index = 0; index < count; index++) {
+        system_health_condition_t condition;
+        const cJSON *item = cJSON_GetArrayItem(array, index);
+        if (!system_health_condition_from_code(item->valuestring,
+                                               &condition)) {
+            set_error(error, error_size, "%s contains unknown value '%s'",
+                      field, item->valuestring);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool valid_health_severity_array(const cJSON *array, char *error,
+                                        size_t error_size) {
+    const char *field = "predicate.health.severities_any";
+    if (!valid_string_array(array, field, error, error_size)) return false;
+    int count = cJSON_GetArraySize(array);
+    for (int index = 0; index < count; index++) {
+        const cJSON *item = cJSON_GetArrayItem(array, index);
+        if (!valid_health_severity(item->valuestring)) {
+            set_error(error, error_size, "%s contains unknown value '%s'",
+                      field, item->valuestring);
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool valid_predicate(const event_route_t *route, char *error,
                             size_t error_size) {
     cJSON *root = cJSON_Parse(route->predicate_json);
-    const char *const root_fields[] = {"version", "detection"};
+    const char *const root_fields[] = {"version", "detection", "health"};
     if (!cJSON_IsObject(root) ||
-        !validate_object_keys(root, root_fields, 2, "predicate", error,
+        !validate_object_keys(root, root_fields, 3, "predicate", error,
                               error_size) ||
         !version_is_one(root, "predicate", error, error_size)) {
         cJSON_Delete(root);
@@ -143,51 +209,88 @@ static bool valid_predicate(const event_route_t *route, char *error,
     }
     const cJSON *detection =
         cJSON_GetObjectItemCaseSensitive(root, "detection");
-    if (!detection) {
-        cJSON_Delete(root);
-        return true;
-    }
-    const char *const detection_fields[] = {
-        "labels_any", "min_confidence", "zone_ids_any"
-    };
-    if (!cJSON_IsObject(detection) ||
-        !route_has_type(route, "io.lightnvr.detection.object.v1") ||
-        !validate_object_keys(detection, detection_fields, 3,
-                              "predicate.detection", error, error_size)) {
-        if (cJSON_IsObject(detection) &&
-            !route_has_type(route, "io.lightnvr.detection.object.v1")) {
-            set_error(error, error_size,
-                      "detection predicate requires the detection event type");
-        } else if (!cJSON_IsObject(detection)) {
-            set_error(error, error_size,
-                      "predicate.detection must be an object");
+    bool valid = true;
+    if (detection) {
+        const char *const detection_fields[] = {
+            "labels_any", "min_confidence", "zone_ids_any"
+        };
+        if (!cJSON_IsObject(detection) ||
+            !route_has_type(route, "io.lightnvr.detection.object.v1") ||
+            !validate_object_keys(detection, detection_fields, 3,
+                                  "predicate.detection", error, error_size)) {
+            if (cJSON_IsObject(detection) &&
+                !route_has_type(route, "io.lightnvr.detection.object.v1")) {
+                set_error(error, error_size,
+                          "detection predicate requires the detection event type");
+            } else if (!cJSON_IsObject(detection)) {
+                set_error(error, error_size,
+                          "predicate.detection must be an object");
+            }
+            cJSON_Delete(root);
+            return false;
         }
-        cJSON_Delete(root);
-        return false;
+        const cJSON *labels =
+            cJSON_GetObjectItemCaseSensitive(detection, "labels_any");
+        const cJSON *confidence =
+            cJSON_GetObjectItemCaseSensitive(detection, "min_confidence");
+        const cJSON *zones =
+            cJSON_GetObjectItemCaseSensitive(detection, "zone_ids_any");
+        if (!labels && !confidence && !zones) {
+            set_error(error, error_size,
+                      "predicate.detection requires at least one filter");
+            cJSON_Delete(root);
+            return false;
+        }
+        valid = (!labels || valid_string_array(
+                          labels, "predicate.detection.labels_any", error,
+                          error_size)) &&
+            (!zones || valid_string_array(
+                           zones, "predicate.detection.zone_ids_any", error,
+                           error_size));
+        if (valid && confidence &&
+            (!cJSON_IsNumber(confidence) || confidence->valuedouble < 0.0 ||
+             confidence->valuedouble > 1.0)) {
+            set_error(error, error_size,
+                      "predicate.detection.min_confidence must be from 0 to 1");
+            valid = false;
+        }
     }
-    const cJSON *labels =
-        cJSON_GetObjectItemCaseSensitive(detection, "labels_any");
-    const cJSON *confidence =
-        cJSON_GetObjectItemCaseSensitive(detection, "min_confidence");
-    const cJSON *zones =
-        cJSON_GetObjectItemCaseSensitive(detection, "zone_ids_any");
-    if (!labels && !confidence && !zones) {
-        set_error(error, error_size,
-                  "predicate.detection requires at least one filter");
-        cJSON_Delete(root);
-        return false;
+    const cJSON *health = cJSON_GetObjectItemCaseSensitive(root, "health");
+    if (valid && health) {
+        const char *const health_fields[] = {
+            "condition_codes_any", "severities_any"
+        };
+        if (!cJSON_IsObject(health)) {
+            set_error(error, error_size, "predicate.health must be an object");
+            valid = false;
+        } else if (!route_types_are_family(route, "system_health")) {
+            set_error(error, error_size,
+                      "health predicate requires only system health event types");
+            valid = false;
+        } else if (!validate_object_keys(health, health_fields, 2,
+                                         "predicate.health", error,
+                                         error_size)) {
+            valid = false;
+        } else {
+            const cJSON *conditions = cJSON_GetObjectItemCaseSensitive(
+                health, "condition_codes_any");
+            const cJSON *severities = cJSON_GetObjectItemCaseSensitive(
+                health, "severities_any");
+            if (!conditions && !severities) {
+                set_error(error, error_size,
+                          "predicate.health requires at least one filter");
+                valid = false;
+            } else {
+                valid = (!conditions || valid_health_condition_array(
+                            conditions, error, error_size)) &&
+                    (!severities || valid_health_severity_array(
+                                      severities, error, error_size));
+            }
+        }
     }
-    bool valid = (!labels || valid_string_array(
-                      labels, "predicate.detection.labels_any", error,
-                      error_size)) &&
-        (!zones || valid_string_array(
-                       zones, "predicate.detection.zone_ids_any", error,
-                       error_size));
-    if (valid && confidence &&
-        (!cJSON_IsNumber(confidence) || confidence->valuedouble < 0.0 ||
-         confidence->valuedouble > 1.0)) {
+    if (valid && detection && health) {
         set_error(error, error_size,
-                  "predicate.detection.min_confidence must be from 0 to 1");
+                  "predicate cannot combine detection and health filters");
         valid = false;
     }
     cJSON_Delete(root);
@@ -354,6 +457,11 @@ db_event_route_result_t db_event_route_validate(
             return DB_EVENT_ROUTE_INVALID;
         }
     } else if (strcmp(route->scope_type, "selector") == 0) {
+        if (!route_types_are_camera_subjects(route)) {
+            set_error(error, error_size,
+                      "camera selector requires only camera event types");
+            return DB_EVENT_ROUTE_INVALID;
+        }
         cJSON *json = cJSON_Parse(route->selector_json);
         char selector_error[FLEET_SELECTOR_ERROR_MAX] = {0};
         fleet_selector_t *selector =

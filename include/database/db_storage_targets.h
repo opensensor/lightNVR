@@ -60,6 +60,19 @@ typedef enum {
     DB_STORAGE_TARGET_ERROR = -8
 } db_storage_target_result_t;
 
+/** Path-free result produced by the bounded health probe worker. */
+typedef struct {
+    bool available;
+    bool write_checked;
+    bool writeable;
+    bool cleanup_failed;
+    uint64_t capacity_bytes;
+    uint64_t available_bytes;
+    uint64_t filesystem_device;
+    int64_t probed_at;
+    char normalized_error[32];
+} storage_target_health_update_t;
+
 db_storage_target_result_t db_storage_target_validate(
     storage_target_t *target, char *error, size_t error_size);
 int db_storage_target_count(void);
@@ -78,6 +91,15 @@ db_storage_target_result_t db_storage_target_delete(
 db_storage_target_result_t db_storage_target_probe(
     const char *uuid, bool write_test, storage_target_t *target);
 int db_storage_target_refresh_health(void);
+
+/* Persist an already-completed child-process probe without touching its path. */
+db_storage_target_result_t db_storage_target_record_health(
+    const char *uuid, const storage_target_health_update_t *update,
+    storage_target_t *target);
+
+/* Rolling 24-hour recording growth rate used by health capacity forecasts. */
+int db_storage_target_recording_growth_bps(const char *uuid,
+                                           double *bytes_per_second);
 
 /*
  * Ensure an upgraded installation has one stable default target and attach

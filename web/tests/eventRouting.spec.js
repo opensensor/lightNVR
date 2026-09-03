@@ -6,6 +6,8 @@ import {
   createDestinationDraft,
   destinationToDraft,
   groupCatalog,
+  healthConditionsFromSettings,
+  healthSeveritiesFromCatalog,
   readEventSection,
   routeToDraft,
   splitList,
@@ -63,6 +65,29 @@ describe('event routing workspace helpers', () => {
     expect(validateDestinationDraft({ ...draft, topicTemplate: `${'a'.repeat(400)}/{type}/{subject_id}` })).toBe('topic');
   });
 
+  test('keeps presence status topics explicit and validates their bounded tokens', () => {
+    const draft = {
+      ...createDestinationDraft('01234567-89ab-cdef-0123-456789abcdef'),
+      name: 'Bridge',
+      host: 'mqtt.example.test',
+    };
+    expect(buildDestinationPayload(draft, true).broker.status_topic_template).toBe('');
+    expect(validateDestinationDraft({
+      ...draft,
+      statusTopicTemplate: 'lightnvr/status/{installation_uuid}/{destination_uuid}',
+    })).toBe('');
+    expect(validateDestinationDraft({
+      ...draft, statusTopicTemplate: 'lightnvr/status/{destination_uuid}',
+    })).toBe('status_topic');
+    expect(validateDestinationDraft({
+      ...draft, statusTopicTemplate: 'lightnvr/status/{installation_uuid}/#',
+    })).toBe('status_topic');
+    const mapped = destinationToDraft({
+      broker: { status_topic_template: 'presence/{installation_uuid}' },
+    });
+    expect(mapped.statusTopicTemplate).toBe('presence/{installation_uuid}');
+  });
+
   test('round trips a route draft and emits the complete versioned contract', () => {
     const route = {
       uuid: 'route-1',
@@ -103,6 +128,63 @@ describe('event routing workspace helpers', () => {
     expect(validateRouteDraft({ ...base, scheduleEnabled: true, windows: [] })).toBe('schedule_window');
     expect(buildRoutePayload(base, true).camera_scope).toEqual({ type: 'all' });
     expect(ALL_CAMERAS_SELECTOR.expression.op).toBe('all');
+  });
+
+  test('round trips registry-backed health predicates and excludes camera selectors', () => {
+    const catalog = [{
+      type: 'io.lightnvr.system.health.v1',
+      family: 'system_health',
+      subject_kind: 'system',
+      minimum_severity: 'warning',
+      maximum_severity: 'critical',
+    }];
+    const healthConditions = [{ code: 'host.memory.pressure' }];
+    const healthSeverities = healthSeveritiesFromCatalog(
+      catalog, ['io.lightnvr.system.health.v1']);
+    expect(healthSeverities).toEqual(['warning', 'error', 'critical']);
+
+    const draft = {
+      ...EMPTY_ROUTE_DRAFT,
+      name: 'Critical host health',
+      destination: 'mqtt:destination-1',
+      eventTypes: ['io.lightnvr.system.health.v1'],
+      healthFilterEnabled: true,
+      healthConditionCodes: ['host.memory.pressure'],
+      healthSeverities: ['critical'],
+    };
+    const registries = { catalog, healthConditions, healthSeverities };
+    expect(validateRouteDraft(draft, registries)).toBe('');
+    expect(buildRoutePayload(draft, true).predicate.health).toEqual({
+      condition_codes_any: ['host.memory.pressure'],
+      severities_any: ['critical'],
+    });
+    expect(routeToDraft(buildRoutePayload(draft, true))).toMatchObject({
+      healthFilterEnabled: true,
+      healthConditionCodes: ['host.memory.pressure'],
+      healthSeverities: ['critical'],
+    });
+    expect(validateRouteDraft({
+      ...draft, healthConditionCodes: ['filesystem./private/path'],
+    }, registries)).toBe('health_condition');
+    expect(validateRouteDraft({
+      ...draft, scopeType: 'selector', selector: ALL_CAMERAS_SELECTOR,
+    }, registries)).toBe('system_scope');
+  });
+
+  test('derives condition choices only from the effective-policy registry', () => {
+    expect(healthConditionsFromSettings({
+      health_effective_policy: {
+        conditions: [
+          { code: 'host.cpu.sustained', unit: 'ratio' },
+          { code: 'host.cpu.sustained', unit: 'ratio' },
+          { code: 'filesystem.read_only', unit: 'boolean' },
+        ],
+      },
+    })).toEqual([
+      { code: 'host.cpu.sustained', unit: 'ratio' },
+      { code: 'filesystem.read_only', unit: 'boolean' },
+    ]);
+    expect(healthConditionsFromSettings({})).toEqual([]);
   });
 
   test('normalizes lists, catalog groups, and subsection URL state', () => {

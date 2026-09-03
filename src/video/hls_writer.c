@@ -27,6 +27,7 @@
 #include "video/detection_frame_processing.h"
 #include "video/streams.h"
 #include "video/stream_manager.h"
+#include "telemetry/recording_io_metrics.h"
 
 // Forward declarations from detection_stream.c
 extern int is_detection_stream_reader_running(const char *stream_name);
@@ -82,6 +83,8 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     // Use calloc instead of malloc to ensure memory is initialized to zero
     segments = (segment_info_t *)calloc((size_t)segment_count, sizeof(segment_info_t));
     if (!segments) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate memory for segment cleanup");
         closedir(dir);
         return;
@@ -134,8 +137,12 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
                 if (unlink(filepath) == 0) {
                     log_debug("Deleted old HLS segment: %s", segments[j].filename);
                 } else {
+                    int unlink_error = errno;
+                    recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                                RECORDING_IO_OPERATION_FILESYSTEM,
+                                                unlink_error);
                     log_warn("Failed to delete old HLS segment: %s (error: %s)",
-                            segments[j].filename, strerror(errno));
+                            segments[j].filename, strerror(unlink_error));
                 }
             }
         }
@@ -160,6 +167,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Allocate writer structure
     hls_writer_t *writer = (hls_writer_t *)calloc(1, sizeof(hls_writer_t));
     if (!writer) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate HLS writer");
         return NULL;
     }
@@ -188,6 +197,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Ensure the output directory exists and is writable
     // This will also update the writer's output_dir field with the safe path if needed
     if (ensure_hls_directory(writer->output_dir, MAX_PATH_LENGTH, writer->stream_name)) {
+        int directory_error = errno;
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_FILESYSTEM,
+                                    directory_error);
         log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
         pthread_mutex_destroy(&writer->mutex);
         free(writer);
@@ -203,6 +216,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         &writer->output_ctx, NULL, "hls", output_path);
 
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ret);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to allocate output context for HLS: %s", error_buf);
@@ -269,6 +284,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
                     AVIO_FLAG_WRITE, NULL, &options);
 
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_OPEN, ret);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to open HLS output file: %s", error_buf);
@@ -304,6 +321,8 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Create output stream
     AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!out_stream) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to create output stream for HLS");
         return -1;
     }
@@ -347,6 +366,8 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     AVDictionary *options = NULL;
     ret = avformat_write_header(writer->output_ctx, &options);
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_HEADER, ret);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write HLS header: %s", error_buf);
@@ -400,6 +421,10 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     time_t now = time(NULL);
     if (now - writer->last_cleanup_time >= 10) {
         if (ensure_hls_directory(writer->output_dir, MAX_PATH_LENGTH, writer->stream_name)) {
+            int directory_error = errno;
+            recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                        RECORDING_IO_OPERATION_FILESYSTEM,
+                                        directory_error);
             log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
             return -1;
         }
@@ -425,6 +450,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     // Use av_packet_alloc instead of stack allocation to ensure proper alignment
     AVPacket *out_pkt_ptr = av_packet_alloc();
     if (!out_pkt_ptr) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate packet for stream %s", writer->stream_name);
         return -1;
     }
@@ -438,7 +465,13 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
-    if (av_packet_ref(out_pkt_ptr, pkt) < 0) {
+    int packet_ref_ret = av_packet_ref(out_pkt_ptr, pkt);
+    if (packet_ref_ret < 0) {
+        if (packet_ref_ret == AVERROR(ENOMEM)) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        packet_ref_ret);
+        }
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         av_packet_free(&out_pkt_ptr);
         return -1;
@@ -467,6 +500,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     // Create a new packet with space for the start code
     AVPacket *new_pkt_ptr = av_packet_alloc();
     if (!new_pkt_ptr) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate new packet for H.264 conversion for stream %s",
                  writer->stream_name);
         av_packet_free(&out_pkt_ptr);
@@ -474,7 +509,13 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Allocate a new buffer with space for the start code
-    if (av_new_packet(new_pkt_ptr, out_pkt_ptr->size + 4) < 0) {
+    int packet_alloc_ret = av_new_packet(new_pkt_ptr, out_pkt_ptr->size + 4);
+    if (packet_alloc_ret < 0) {
+        if (packet_alloc_ret == AVERROR(ENOMEM)) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                        RECORDING_IO_OPERATION_ALLOCATE,
+                                        packet_alloc_ret);
+        }
         log_error("Failed to allocate new packet for H.264 conversion for stream %s",
                  writer->stream_name);
         av_packet_free(&new_pkt_ptr);
@@ -612,6 +653,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
     // Handle write errors
     if (result < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                    RECORDING_IO_OPERATION_PACKET, result);
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(result, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing HLS packet for stream %s: %s", writer->stream_name, error_buf);
@@ -937,6 +980,9 @@ void hls_writer_close(hls_writer_t *writer) {
             sigaction(SIGALRM, &sa_old, NULL);
 
             if (ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                            RECORDING_IO_OPERATION_TRAILER,
+                                            ret);
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
@@ -966,7 +1012,12 @@ void hls_writer_close(hls_writer_t *writer) {
             alarm(5); // 5 second timeout for AVIO close
 
             // Close the AVIO context
-            avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
+            int close_ret = avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
+            if (close_ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                            RECORDING_IO_OPERATION_CLOSE,
+                                            close_ret);
+            }
 
             // Cancel the alarm and restore signal handler
             alarm(0);
@@ -1013,14 +1064,24 @@ void hls_writer_close(hls_writer_t *writer) {
         // Write trailer if not already written
         if (writer->initialized) {
             log_info("Writing trailer for stream %s during cleanup", stream_name);
-            av_write_trailer(writer->output_ctx);
+            int trailer_ret = av_write_trailer(writer->output_ctx);
+            if (trailer_ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                            RECORDING_IO_OPERATION_TRAILER,
+                                            trailer_ret);
+            }
             writer->initialized = 0;
         }
 
         // Close AVIO context if it exists
         if (writer->output_ctx->pb) {
             log_info("Closing AVIO context during final cleanup for stream %s", stream_name);
-            avio_closep(&writer->output_ctx->pb);
+            int close_ret = avio_closep(&writer->output_ctx->pb);
+            if (close_ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
+                                            RECORDING_IO_OPERATION_CLOSE,
+                                            close_ret);
+            }
         }
 
         // Free all streams in the output context

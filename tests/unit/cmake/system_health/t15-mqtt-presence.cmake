@@ -1,0 +1,1 @@
+add_layer2_test(test_mqtt_presence)

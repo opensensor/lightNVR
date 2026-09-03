@@ -23,6 +23,8 @@
 #define TEST_DB_PATH "/tmp/lightnvr_unit_event_router.db"
 #define DETECTION_TYPE "io.lightnvr.detection.object.v1"
 #define OFFLINE_TYPE "io.lightnvr.camera.offline.v1"
+#define HEALTH_ALERT_TYPE "io.lightnvr.system.health_alert.v1"
+#define HEALTH_RECOVERED_TYPE "io.lightnvr.system.health_recovered.v1"
 #define EVENT_SOURCE \
     "urn:lightnvr:11111111-1111-4111-8111-111111111111"
 
@@ -120,6 +122,38 @@ static event_envelope_t detection_event(const char *camera_uuid,
     return event;
 }
 
+static event_envelope_t health_event(const char *type, const char *code,
+                                     event_severity_t severity,
+                                     const char *previous_severity) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "incident_id",
+                            "33333333-3333-4333-8333-333333333333");
+    cJSON_AddStringToObject(data, "code", code);
+    cJSON_AddStringToObject(data, "scope", "host");
+    cJSON_AddStringToObject(data, "resource", "host");
+    if (strcmp(type, HEALTH_RECOVERED_TYPE) == 0) {
+        cJSON_AddStringToObject(data, "state", "recovered");
+        cJSON_AddStringToObject(data, "previous_severity",
+                                previous_severity);
+        cJSON_AddNumberToObject(data, "duration_ms", 42000);
+        cJSON_AddObjectToObject(data, "safe_observation");
+    } else {
+        cJSON_AddStringToObject(data, "state", "open");
+        cJSON_AddStringToObject(data, "severity",
+                                event_severity_name(severity));
+        cJSON_AddObjectToObject(data, "observed");
+        cJSON_AddObjectToObject(data, "threshold");
+    }
+    event_envelope_t event;
+    char error[256] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, event_envelope_create_with_severity_and_id(
+               &event, type, EVENT_SOURCE, "system/host", 1786991400, data,
+               severity, NULL, error, sizeof(error)));
+    cJSON_Delete(data);
+    return event;
+}
+
 void setUp(void) {
     event_router_shutdown();
     sqlite3 *db = get_db_handle();
@@ -188,6 +222,45 @@ void test_selector_predicate_and_utc_schedule_must_all_match(void) {
     event = detection_event(north.camera_uuid, "person", 0.91, "entry",
                             1786951800);
     TEST_ASSERT_EQUAL_INT(EVENT_ROUTER_NO_MATCH,
+                          event_router_evaluate(&event));
+    event_envelope_clear(&event);
+}
+
+void test_system_health_scope_and_condition_severity_predicates(void) {
+    event_route_t route = route_definition("Memory warnings",
+                                           HEALTH_ALERT_TYPE);
+    safe_strcpy(route.event_types[1], HEALTH_RECOVERED_TYPE,
+                sizeof(route.event_types[1]), 0);
+    route.event_type_count = 2;
+    safe_strcpy(route.predicate_json,
+                "{\"version\":1,\"health\":{"
+                "\"condition_codes_any\":[\"memory.available_low\"],"
+                "\"severities_any\":[\"warning\"]}}",
+                sizeof(route.predicate_json), 0);
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
+
+    event_envelope_t event = health_event(
+        HEALTH_ALERT_TYPE, "memory.available_low", EVENT_SEVERITY_WARNING,
+        NULL);
+    TEST_ASSERT_EQUAL_INT(EVENT_ROUTER_MATCH,
+                          event_router_evaluate(&event));
+    event_envelope_clear(&event);
+
+    event = health_event(HEALTH_ALERT_TYPE, "memory.available_low",
+                         EVENT_SEVERITY_CRITICAL, NULL);
+    TEST_ASSERT_EQUAL_INT(EVENT_ROUTER_NO_MATCH,
+                          event_router_evaluate(&event));
+    event_envelope_clear(&event);
+
+    event = health_event(HEALTH_ALERT_TYPE, "thermal.high",
+                         EVENT_SEVERITY_WARNING, NULL);
+    TEST_ASSERT_EQUAL_INT(EVENT_ROUTER_NO_MATCH,
+                          event_router_evaluate(&event));
+    event_envelope_clear(&event);
+
+    event = health_event(HEALTH_RECOVERED_TYPE, "memory.available_low",
+                         EVENT_SEVERITY_INFO, "warning");
+    TEST_ASSERT_EQUAL_INT(EVENT_ROUTER_MATCH,
                           event_router_evaluate(&event));
     event_envelope_clear(&event);
 }
@@ -385,6 +458,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_empty_routes_default_but_disabled_route_is_quiet);
     RUN_TEST(test_selector_predicate_and_utc_schedule_must_all_match);
+    RUN_TEST(test_system_health_scope_and_condition_severity_predicates);
     RUN_TEST(test_iana_timezone_and_overnight_windows_use_occurrence_time);
     RUN_TEST(test_route_mutation_invalidates_cache_and_timezone_failure_is_closed);
     RUN_TEST(test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance);

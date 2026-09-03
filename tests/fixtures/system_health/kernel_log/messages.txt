@@ -1,0 +1,7 @@
+6,100,1000,-;EXT4-fs error: remounting filesystem read-only
+3,101,1001,-;blk_update_request: I/O error, dev sda
+0,102,1002,-;mce: Machine check: hardware error
+0,103,1003,-;thermal thermal_zone0: critical temperature reached, thermal shutdown
+3,104,1004,-;Out of memory: Killed process 1234 (secret-process)
+3,104,1004,-;Out of memory: Killed process 1234 (secret-process)
+6,105,1005,-;ordinary kernel message with /private/path serial ABC123

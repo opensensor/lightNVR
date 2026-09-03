@@ -1,0 +1,8 @@
+# t24-replay-v1: sustained warning, debounced material change, and recovery
+# expect=network.error_rate:open;network.error_rate:material;network.error_rate:material;network.error_rate:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,network.error_drop_ratio,primary,host,available,0.02,ratio,1,1
+20000,network.error_drop_ratio,primary,host,available,0.02,ratio,1,1
+30000,network.error_drop_ratio,primary,host,available,0.03,ratio,1,1
+50000,network.error_drop_ratio,primary,host,available,0.0,ratio,0,1
+70000,network.error_drop_ratio,primary,host,available,0.0,ratio,0,1

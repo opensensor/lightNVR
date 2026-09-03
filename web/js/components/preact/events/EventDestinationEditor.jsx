@@ -111,6 +111,22 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
               <Field label={t('events.destination.keepalive')}>
                 <input className={fieldClasses} type="number" min="5" max="3600" value={draft.keepaliveSeconds} onInput={(event) => update({ keepaliveSeconds: event.currentTarget.value })} />
               </Field>
+              <div className="md:col-span-3">
+                <Field label={t('events.destination.statusTopicTemplate')} help={t('events.destination.statusTopicHelp')}>
+                  <input
+                    className={`${fieldClasses} font-mono`}
+                    value={draft.statusTopicTemplate}
+                    maxLength="511"
+                    placeholder="lightnvr/v1/status/{installation_uuid}/{destination_uuid}"
+                    onInput={(event) => update({ statusTopicTemplate: event.currentTarget.value })}
+                  />
+                </Field>
+                <p className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  {draft.statusTopicTemplate
+                    ? t('events.destination.statusTopicEnabled')
+                    : t('events.destination.statusTopicDisabled')}
+                </p>
+              </div>
             </div>
           </section>
 

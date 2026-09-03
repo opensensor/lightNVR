@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -13,6 +14,8 @@
 #include "core/event_bus.h"
 #include "core/event_envelope.h"
 #include "core/event_identity.h"
+#include "core/event_router.h"
+#include "core/mqtt_delivery_worker.h"
 #include "database/db_streams.h"
 #include "utils/uuid.h"
 
@@ -29,6 +32,10 @@
     "io.lightnvr.storage.target_unavailable.v1"
 #define STORAGE_TARGET_RECOVERED_EVENT_TYPE \
     "io.lightnvr.storage.target_recovered.v1"
+#define SYSTEM_HEALTH_ALERT_EVENT_TYPE \
+    "io.lightnvr.system.health_alert.v1"
+#define SYSTEM_HEALTH_RECOVERED_EVENT_TYPE \
+    "io.lightnvr.system.health_recovered.v1"
 
 static void set_error(char *error, size_t error_size, const char *message) {
     if (!error || error_size == 0) return;
@@ -39,9 +46,10 @@ static bool valid_text(const char *value, size_t maximum) {
     return value && value[0] != '\0' && strnlen(value, maximum) < maximum;
 }
 
-static int publish_event(const char *type, const char *subject,
-                         time_t occurred_at, const cJSON *data,
-                         char *error, size_t error_size) {
+static int publish_event_with_severity_and_id(
+    const char *type, const char *subject, time_t occurred_at,
+    const cJSON *data, event_severity_t severity, const char *event_id,
+    char *error, size_t error_size) {
     char source[EVENT_SOURCE_MAX];
     if (event_identity_get_source(source, sizeof(source)) != 0) {
         set_error(error, error_size, "event identity is not initialized");
@@ -49,14 +57,115 @@ static int publish_event(const char *type, const char *subject,
     }
 
     event_envelope_t event;
-    if (event_envelope_create(&event, type, source, subject, occurred_at, data,
-                              error, error_size) != 0) {
+    if (event_envelope_create_with_severity_and_id(
+            &event, type, source, subject, occurred_at, data, severity,
+            event_id, error, error_size) != 0) {
         return -1;
     }
     event_bus_result_t publish_result =
         event_bus_publish(&event, error, error_size);
     event_envelope_clear(&event);
     return publish_result == EVENT_BUS_OK ? 0 : -1;
+}
+
+static int publish_event(const char *type, const char *subject,
+                         time_t occurred_at, const cJSON *data,
+                         char *error, size_t error_size) {
+    const event_type_definition_t *definition = event_registry_find(type);
+    if (!definition) {
+        set_error(error, error_size, "event type is not registered");
+        return -1;
+    }
+    return publish_event_with_severity_and_id(
+        type, subject, occurred_at, data, definition->severity, NULL, error,
+        error_size);
+}
+
+static int durably_enqueue_event(const event_envelope_t *event,
+                                 char *error, size_t error_size) {
+    event_route_delivery_plan_t plan = {0};
+    event_router_result_t route_result =
+        event_router_evaluate_delivery(event, &plan);
+    if (route_result == EVENT_ROUTER_ERROR) {
+        event_route_delivery_plan_clear(&plan);
+        set_error(error, error_size, "event route evaluation failed");
+        return -1;
+    }
+    if (route_result == EVENT_ROUTER_DEFAULT) {
+        if (!g_config.mqtt_enabled) {
+            event_route_delivery_plan_clear(&plan);
+            return 0;
+        }
+        event_outbox_enqueue_result_t result = mqtt_delivery_worker_enqueue(
+            event, g_config.mqtt_topic_prefix, NULL);
+        event_route_delivery_plan_clear(&plan);
+        if (result == EVENT_OUTBOX_ENQUEUED ||
+            result == EVENT_OUTBOX_DUPLICATE) {
+            return 0;
+        }
+        set_error(error, error_size, "durable event outbox enqueue failed");
+        return -1;
+    }
+    if (route_result == EVENT_ROUTER_NO_MATCH) {
+        event_route_delivery_plan_clear(&plan);
+        return 0;
+    }
+
+    bool failed = false;
+    bool destination_accepted[EVENT_ROUTE_MAX_COUNT] = {false};
+    for (size_t index = 0; index < plan.count; index++) {
+        const event_route_delivery_plan_entry_t *entry = &plan.entries[index];
+        bool duplicate_destination = false;
+        for (size_t previous = 0; previous < index; previous++) {
+            if (strcmp(plan.entries[previous].destination_key,
+                       entry->destination_key) == 0) {
+                duplicate_destination = true;
+                break;
+            }
+        }
+        if (duplicate_destination) continue;
+        event_outbox_enqueue_result_t result;
+        if (strcmp(entry->destination_key,
+                   EVENT_ROUTE_DEFAULT_DESTINATION) == 0) {
+            if (!g_config.mqtt_enabled) continue;
+            result = mqtt_delivery_worker_enqueue(
+                event, g_config.mqtt_topic_prefix, NULL);
+        } else {
+            result = mqtt_delivery_worker_enqueue_destination(
+                event, entry->destination_key, entry->topic_template, NULL);
+        }
+        if (result != EVENT_OUTBOX_ENQUEUED &&
+            result != EVENT_OUTBOX_DUPLICATE) {
+            failed = true;
+        } else {
+            destination_accepted[index] = true;
+        }
+    }
+    if (!failed) {
+        for (size_t index = 0; index < plan.count; index++) {
+            const event_route_delivery_plan_entry_t *entry =
+                &plan.entries[index];
+            bool duplicate_destination = false;
+            for (size_t previous = 0; previous < index; previous++) {
+                if (strcmp(plan.entries[previous].destination_key,
+                           entry->destination_key) == 0) {
+                    duplicate_destination = true;
+                    break;
+                }
+            }
+            if (!duplicate_destination && destination_accepted[index] &&
+                event_router_record_destination_enqueued(
+                    event, &plan, entry->destination_key) != 0) {
+                failed = true;
+            }
+        }
+    }
+    event_route_delivery_plan_clear(&plan);
+    if (failed) {
+        set_error(error, error_size, "durable event route enqueue failed");
+        return -1;
+    }
+    return 0;
 }
 
 static int camera_subject_for_stream(
@@ -401,9 +510,206 @@ int event_producer_publish_storage_pressure(
         set_error(error, error_size, "storage pressure event allocation failed");
         return -1;
     }
-    int result = publish_event(
+    event_severity_t severity = strcmp(level, "warning") == 0
+        ? EVENT_SEVERITY_WARNING : EVENT_SEVERITY_CRITICAL;
+    int result = publish_event_with_severity_and_id(
         STORAGE_PRESSURE_EVENT_TYPE, "system/storage", occurred_at, data,
-        error, error_size);
+        severity, NULL, error, error_size);
+    cJSON_Delete(data);
+    return result;
+}
+
+static bool system_health_event_severity(
+    system_health_severity_t health, event_severity_t *event) {
+    if (!event) return false;
+    switch (health) {
+        case SYSTEM_HEALTH_SEVERITY_WARNING:
+            *event = EVENT_SEVERITY_WARNING;
+            return true;
+        case SYSTEM_HEALTH_SEVERITY_ERROR:
+            *event = EVENT_SEVERITY_ERROR;
+            return true;
+        case SYSTEM_HEALTH_SEVERITY_CRITICAL:
+            *event = EVENT_SEVERITY_CRITICAL;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static const char *system_health_event_subject(system_health_scope_t scope) {
+    switch (scope) {
+        case SYSTEM_HEALTH_SCOPE_PROCESS: return "system/process";
+        case SYSTEM_HEALTH_SCOPE_CONTAINER: return "system/container";
+        case SYSTEM_HEALTH_SCOPE_HOST: return "system/host";
+        case SYSTEM_HEALTH_SCOPE_FILESYSTEM:
+        case SYSTEM_HEALTH_SCOPE_DEVICE: return "system/storage";
+        default: return NULL;
+    }
+}
+
+static const char *system_health_event_state(
+    system_health_incident_action_t action) {
+    switch (action) {
+        case SYSTEM_HEALTH_INCIDENT_OPEN:
+        case SYSTEM_HEALTH_INCIDENT_ONE_SHOT: return "open";
+        case SYSTEM_HEALTH_INCIDENT_ESCALATE: return "escalated";
+        case SYSTEM_HEALTH_INCIDENT_MATERIAL_CHANGE: return "updated";
+        case SYSTEM_HEALTH_INCIDENT_RECOVER: return "recovered";
+    }
+    return NULL;
+}
+
+static cJSON *system_health_observation_json(
+    const system_health_observation_t *observation) {
+    cJSON *result = cJSON_CreateObject();
+    if (!result) return NULL;
+    bool valid = false;
+    if (observation->value_valid && isfinite(observation->value)) {
+        valid = cJSON_AddNumberToObject(result, "value", observation->value) &&
+            cJSON_AddStringToObject(result, "unit",
+                                    system_health_unit_name(observation->unit));
+    } else {
+        valid = cJSON_AddStringToObject(
+            result, "capability",
+            system_health_capability_name(observation->capability));
+    }
+    if (!valid) {
+        cJSON_Delete(result);
+        return NULL;
+    }
+    return result;
+}
+
+static bool add_owned_json(cJSON *parent, const char *name, cJSON **item) {
+    if (!parent || !name || !item || !*item ||
+        !cJSON_AddItemToObject(parent, name, *item)) {
+        return false;
+    }
+    *item = NULL;
+    return true;
+}
+
+int event_producer_publish_system_health_transition(
+    const system_health_transition_t *transition, const char *event_id,
+    char *error, size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!transition || !transition->persisted ||
+        !lightnvr_uuid_is_valid(event_id) ||
+        !lightnvr_uuid_is_valid(transition->event_id) ||
+        strcmp(transition->event_id, event_id) != 0 ||
+        !lightnvr_uuid_is_valid(transition->incident_id) ||
+        transition->condition < 0 ||
+        transition->condition >= SYSTEM_HEALTH_CONDITION_COUNT ||
+        !valid_text(transition->subject, SYSTEM_HEALTH_ID_LENGTH) ||
+        transition->observed_at_ms <= 0) {
+        set_error(error, error_size,
+                  "persisted system health transition input is invalid");
+        return -1;
+    }
+    const char *type = transition->action == SYSTEM_HEALTH_INCIDENT_RECOVER
+        ? SYSTEM_HEALTH_RECOVERED_EVENT_TYPE : SYSTEM_HEALTH_ALERT_EVENT_TYPE;
+    const char *subject = system_health_event_subject(transition->scope);
+    const char *state = system_health_event_state(transition->action);
+    const char *code = system_health_condition_code(transition->condition);
+    event_severity_t severity = EVENT_SEVERITY_INFO;
+    system_health_severity_t payload_severity =
+        transition->action == SYSTEM_HEALTH_INCIDENT_RECOVER
+            ? transition->previous_severity : transition->severity;
+    if (!subject || !state || !code ||
+        !system_health_event_severity(payload_severity, &severity)) {
+        set_error(error, error_size,
+                  "system health transition classification is invalid");
+        return -1;
+    }
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON *observation = system_health_observation_json(
+        &transition->observation);
+    bool valid = data && observation &&
+        cJSON_AddStringToObject(data, "incident_id",
+                               transition->incident_id) &&
+        cJSON_AddStringToObject(data, "code", code) &&
+        cJSON_AddStringToObject(data, "scope",
+                               system_health_scope_name(transition->scope)) &&
+        cJSON_AddStringToObject(data, "resource", transition->subject) &&
+        cJSON_AddStringToObject(data, "state", state);
+    if (!valid) {
+        cJSON_Delete(observation);
+        cJSON_Delete(data);
+        set_error(error, error_size,
+                  "system health event allocation failed");
+        return -1;
+    }
+    if (transition->action == SYSTEM_HEALTH_INCIDENT_RECOVER) {
+        valid = cJSON_AddStringToObject(
+                    data, "previous_severity",
+                    system_health_severity_name(payload_severity)) &&
+            cJSON_AddNumberToObject(data, "duration_ms",
+                                    (double)transition->incident_duration_ms) &&
+            add_owned_json(data, "safe_observation", &observation);
+    } else {
+        cJSON *threshold = cJSON_CreateObject();
+        const char *operator_name =
+            transition->threshold_direction ==
+                    SYSTEM_HEALTH_THRESHOLD_LOWER_IS_WORSE
+                ? "lt"
+                : transition->threshold_direction ==
+                          SYSTEM_HEALTH_THRESHOLD_HIGHER_IS_WORSE
+                      ? "gt" : "event";
+        char first_observed_at[EVENT_TIME_MAX];
+        time_t first_observed =
+            (time_t)(transition->first_observed_at_ms / 1000);
+        bool threshold_valid = threshold &&
+            isfinite(transition->threshold_value) &&
+            format_event_time(first_observed, first_observed_at) == 0 &&
+            cJSON_AddStringToObject(threshold, "operator", operator_name) &&
+            cJSON_AddNumberToObject(threshold, "value",
+                                    transition->threshold_value) &&
+            cJSON_AddNumberToObject(threshold, "for_ms",
+                                    transition->threshold_for_ms);
+        if (!threshold_valid) {
+            cJSON_Delete(threshold);
+            valid = false;
+        } else {
+            valid = cJSON_AddStringToObject(
+                        data, "severity",
+                        system_health_severity_name(payload_severity)) &&
+                add_owned_json(data, "observed", &observation) &&
+                add_owned_json(data, "threshold", &threshold) &&
+                cJSON_AddStringToObject(data, "first_observed_at",
+                                        first_observed_at);
+            cJSON_Delete(threshold);
+        }
+    }
+    if (!valid) {
+        cJSON_Delete(observation);
+        cJSON_Delete(data);
+        set_error(error, error_size,
+                  "system health event allocation failed");
+        return -1;
+    }
+    if (transition->action == SYSTEM_HEALTH_INCIDENT_RECOVER) {
+        severity = EVENT_SEVERITY_INFO;
+    }
+    time_t occurred_at = (time_t)(transition->observed_at_ms / 1000);
+    char source[EVENT_SOURCE_MAX];
+    event_envelope_t event;
+    int result = -1;
+    if (event_identity_get_source(source, sizeof(source)) != 0) {
+        set_error(error, error_size, "event identity is not initialized");
+    } else if (event_envelope_create_with_severity_and_id(
+                   &event, type, source, subject, occurred_at, data, severity,
+                   event_id, error, error_size) == 0) {
+        result = durably_enqueue_event(&event, error, error_size);
+        if (result == 0) {
+            /* The durable route is authoritative. The bus handoff notifies
+             * other in-process consumers and may harmlessly hit outbox
+             * duplicate detection in the MQTT compatibility adapter. */
+            (void)event_bus_publish(&event, NULL, 0);
+        }
+        event_envelope_clear(&event);
+    }
     cJSON_Delete(data);
     return result;
 }

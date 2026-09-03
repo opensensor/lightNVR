@@ -47,6 +47,7 @@ covers a blank or broken web UI specifically.
 | Document | What it covers |
 |---|---|
 | [CONFIGURATION.md](CONFIGURATION.md) | `lightnvr.ini` — every section and key |
+| [configuration/system-health.md](configuration/system-health.md) | Host-health cadence, policy profiles, providers, overrides, upgrade and rollback |
 | [ZONE_CONFIGURATION.md](ZONE_CONFIGURATION.md) | Polygon detection zones, class filters, thresholds |
 | [REVERSE_PROXY.md](REVERSE_PROXY.md) | Running behind nginx / Caddy / Traefik, HTTPS, `trusted_proxy_cidrs` |
 | [GO2RTC_CONFIG_OVERRIDE.md](GO2RTC_CONFIG_OVERRIDE.md) | Overriding the generated go2rtc configuration |
@@ -59,6 +60,7 @@ covers a blank or broken web UI specifically.
 | [TROUBLESHOOTING_WEB_INTERFACE.md](TROUBLESHOOTING_WEB_INTERFACE.md) | Blank page, 404s, asset and login problems |
 | [SYSLOG.md](SYSLOG.md) | Sending logs to syslog / journald |
 | [QUICKREF_Retention_API.md](QUICKREF_Retention_API.md) | Retention API quick reference |
+| [api/system-health.md](api/system-health.md) | Operational health API, incidents, capability semantics and Prometheus metrics |
 
 ## Integrate
 
@@ -67,6 +69,7 @@ covers a blank or broken web UI specifically.
 | [API.md](API.md) | The REST API |
 | [EVENT_CONTRACT.md](EVENT_CONTRACT.md) | Versioned operational event envelope, registry, schemas, and privacy rules |
 | [MQTT_INTEGRATION.md](MQTT_INTEGRATION.md) | Publishing detection events, with Home Assistant examples |
+| [mqtt/system-health.md](mqtt/system-health.md) | Health events, retained presence/LWT, and external staleness detection |
 | [CAMERAS.md](CAMERAS.md) | Camera compatibility, finding RTSP URLs, vendor interop notes |
 | [ONVIF_DETECTION.md](ONVIF_DETECTION.md) | ONVIF discovery and camera-side motion events |
 | [GO2RTC_INTEGRATION.md](GO2RTC_INTEGRATION.md) | How LightNVR drives go2rtc |

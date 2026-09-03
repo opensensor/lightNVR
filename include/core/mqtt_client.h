@@ -5,6 +5,7 @@
 #include <time.h>
 #include "core/config.h"
 #include "core/event_envelope.h"
+#include "core/mqtt_presence.h"
 #include "video/detection_result.h"
 
 #ifdef ENABLE_MQTT
@@ -33,6 +34,9 @@ int mqtt_connect(void);
  * @return true if connected, false otherwise
  */
 bool mqtt_is_connected(void);
+
+/** Copy bounded default-broker connection/presence counters. */
+void mqtt_get_presence_stats(mqtt_presence_stats_t *stats);
 
 /**
  * Publish a detection event to MQTT
@@ -142,6 +146,9 @@ int mqtt_reinit(const config_t *config);
 static inline int mqtt_init(const config_t *config) { (void)config; return 0; }
 static inline int mqtt_connect(void) { return 0; }
 static inline bool mqtt_is_connected(void) { return false; }
+static inline void mqtt_get_presence_stats(mqtt_presence_stats_t *stats) {
+    mqtt_presence_get_stats(stats);
+}
 static inline int mqtt_publish_detection(const char *stream_name, const detection_result_t *result, time_t timestamp) {
     (void)stream_name; (void)result; (void)timestamp; return 0;
 }

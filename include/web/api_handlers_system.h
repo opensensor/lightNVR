@@ -8,6 +8,14 @@
  */
 void handle_get_system_info(const http_request_t *request, http_response_t *response);
 
+/** Current operational health. This does not affect liveness status. */
+void handle_get_system_health(const http_request_t *request,
+                              http_response_t *response);
+
+/** Bounded, cursor-paginated operational incident history. */
+void handle_get_system_health_incidents(const http_request_t *request,
+                                        http_response_t *response);
+
 /**
  * Handle GET request for system logs
  */

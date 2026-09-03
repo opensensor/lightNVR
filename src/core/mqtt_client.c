@@ -15,10 +15,15 @@
 #include <cjson/cJSON.h>
 
 #include "core/mqtt_client.h"
+#include "core/event_identity.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
 #include "core/version.h"
+#include "telemetry/collectors/linux_restart.h"
+#include "telemetry/system_health.h"
+#include "telemetry/system_health_evaluator.h"
 #include "database/db_streams.h"
+#include "utils/uuid.h"
 #include "utils/strings.h"
 #include "utils/interruptible_sleep.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
@@ -53,6 +58,13 @@ static pthread_t ha_motion_thread;
 static interruptible_sleep_t ha_snapshot_wake;
 static interruptible_sleep_t ha_motion_wake;
 
+// General default-broker presence runs independently of HA discovery and of
+// the health sampler/evaluator threads.
+static volatile bool presence_running = false;
+static bool presence_thread_started = false;
+static pthread_t presence_thread;
+static interruptible_sleep_t presence_wake;
+
 // Motion state tracking per stream
 #define MAX_MOTION_STREAMS 16
 #define MOTION_OFF_DELAY_SEC 30
@@ -76,6 +88,128 @@ static void on_disconnect(struct mosquitto *mosq, void *userdata, int rc);
 static void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg);
 static void on_publish(struct mosquitto *mosq, void *userdata, int mid);
 static void on_log(struct mosquitto *mosq, void *userdata, int level, const char *str);
+
+static int64_t mqtt_wall_time_ms(void) {
+    struct timespec value;
+    if (clock_gettime(CLOCK_REALTIME, &value) != 0) return 0;
+    return (int64_t)value.tv_sec * 1000 + value.tv_nsec / 1000000;
+}
+
+static mqtt_operational_state_t current_operational_state(
+    size_t *active_count) {
+    if (active_count) *active_count = 0U;
+    system_health_snapshot_t snapshot;
+    bool baseline_known = system_health_snapshot_copy(&snapshot) &&
+                          snapshot.sequence > 0U &&
+                          snapshot.observation_count > 0U;
+    system_health_incident_view_t incidents[SYSTEM_HEALTH_MAX_INCIDENTS];
+    size_t count = system_health_evaluator_service_active_copy(
+        incidents, SYSTEM_HEALTH_MAX_INCIDENTS);
+    if (active_count) *active_count = count;
+    system_health_severity_t maximum = SYSTEM_HEALTH_SEVERITY_NONE;
+    for (size_t index = 0; index < count; ++index) {
+        if (incidents[index].severity > maximum)
+            maximum = incidents[index].severity;
+    }
+    if (maximum == SYSTEM_HEALTH_SEVERITY_CRITICAL)
+        return MQTT_OPERATIONAL_CRITICAL;
+    if (maximum == SYSTEM_HEALTH_SEVERITY_ERROR)
+        return MQTT_OPERATIONAL_ERROR;
+    if (maximum == SYSTEM_HEALTH_SEVERITY_WARNING)
+        return MQTT_OPERATIONAL_WARNING;
+    return baseline_known ? MQTT_OPERATIONAL_HEALTHY
+                          : MQTT_OPERATIONAL_UNKNOWN;
+}
+
+static int publish_presence(mqtt_presence_state_t state) {
+    size_t active_count = 0U;
+    mqtt_operational_state_t operational =
+        current_operational_state(&active_count);
+    char topic[MQTT_PRESENCE_TOPIC_MAX];
+    char payload[MQTT_PRESENCE_PAYLOAD_MAX];
+    int64_t now = mqtt_wall_time_ms();
+    if (mqtt_presence_build(state, operational, active_count, now,
+                            topic, sizeof(topic), payload,
+                            sizeof(payload)) != 0) return -1;
+    int result = mqtt_publish_raw(topic, payload, true);
+    mqtt_presence_record_publish(result == 0, now);
+    return result;
+}
+
+static void *presence_thread_main(void *argument) {
+    (void)argument;
+    while (presence_running) {
+        uint32_t interval = mqtt_config
+            ? mqtt_config->health.presence_interval_seconds : 60U;
+        if (interval == 0U) interval = 60U;
+        interruptible_sleep_wait(&presence_wake, (int)interval);
+        if (!presence_running) break;
+        if (mqtt_is_connected()) (void)publish_presence(MQTT_PRESENCE_ONLINE);
+    }
+    return NULL;
+}
+
+static int mqtt_start_presence_service(void) {
+    if (presence_thread_started) return 0;
+    if (interruptible_sleep_init(&presence_wake) != 0) return -1;
+    presence_running = true;
+    if (pthread_create(&presence_thread, NULL, presence_thread_main, NULL) != 0) {
+        presence_running = false;
+        interruptible_sleep_destroy(&presence_wake);
+        return -1;
+    }
+    presence_thread_started = true;
+    return 0;
+}
+
+static void mqtt_stop_presence_service(bool publish_stopping) {
+    if (!presence_thread_started) return;
+    presence_running = false;
+    interruptible_sleep_wake(&presence_wake);
+    pthread_join(presence_thread, NULL);
+    presence_thread_started = false;
+    interruptible_sleep_destroy(&presence_wake);
+    if (publish_stopping && mqtt_is_connected())
+        (void)publish_presence(MQTT_PRESENCE_STOPPING);
+}
+
+static int configure_presence_will(const config_t *config) {
+    char source[EVENT_SOURCE_MAX];
+    static const char urn_prefix[] = "urn:lightnvr:";
+    if (event_identity_get_source(source, sizeof(source)) != 0 ||
+        strncmp(source, urn_prefix, sizeof(urn_prefix) - 1U) != 0)
+        return -1;
+    const char *installation_uuid = source + sizeof(urn_prefix) - 1U;
+
+    system_health_process_run_t run;
+    memset(&run, 0, sizeof(run));
+    if (!system_health_evaluator_service_copy_run(&run)) {
+        if (lightnvr_uuid_generate_v4(run.run_id) != 0) return -1;
+        linux_restart_evidence_t evidence;
+        if (linux_restart_read_evidence("/proc", run.run_id, 1U,
+                                        &evidence) != 0)
+            return -1;
+        snprintf(run.boot_id, sizeof(run.boot_id), "%s", evidence.boot_id);
+    }
+    if (mqtt_presence_configure(
+            config->mqtt_topic_prefix, installation_uuid, run.run_id,
+            run.boot_id, "process,container,host,filesystem",
+            LIGHTNVR_VERSION_STRING) != 0) return -1;
+
+    char topic[MQTT_PRESENCE_TOPIC_MAX];
+    char payload[MQTT_PRESENCE_PAYLOAD_MAX];
+    if (mqtt_presence_build_will(mqtt_wall_time_ms(), topic, sizeof(topic),
+                                 payload, sizeof(payload)) != 0) return -1;
+    int result = mosquitto_will_set(mosq, topic, (int)strlen(payload), payload,
+                                    config->mqtt_qos, true);
+    if (result != MOSQ_ERR_SUCCESS) {
+        log_warn("MQTT: Failed to configure presence LWT: %s",
+                 mosquitto_strerror(result));
+        return -1;
+    }
+    log_info("MQTT: Presence LWT configured on %s", topic);
+    return 0;
+}
 
 /**
  * Initialize the MQTT client
@@ -157,17 +291,10 @@ int mqtt_init(const config_t *config) {
         }
     }
 
-    // Set up Last Will and Testament for HA availability tracking
-    if (config->mqtt_ha_discovery) {
-        char lwt_topic[MAX_TOPIC_LENGTH];
-        snprintf(lwt_topic, sizeof(lwt_topic), "%s/availability", config->mqtt_topic_prefix);
-        rc = mosquitto_will_set(mosq, lwt_topic, (int)strlen("offline"), "offline",
-                                config->mqtt_qos, true);
-        if (rc != MOSQ_ERR_SUCCESS) {
-            log_warn("MQTT: Failed to set LWT: %s (continuing anyway)", mosquitto_strerror(rc));
-        } else {
-            log_info("MQTT: LWT set on topic %s", lwt_topic);
-        }
+    // Presence is a general broker contract, not conditional on HA discovery.
+    // Failure leaves MQTT usable and is reported explicitly in the log.
+    if (configure_presence_will(config) != 0) {
+        log_warn("MQTT: General installation presence is unavailable");
     }
 
     pthread_mutex_unlock(&mqtt_mutex);
@@ -207,6 +334,10 @@ int mqtt_connect(void) {
     }
     
     pthread_mutex_unlock(&mqtt_mutex);
+
+    if (mqtt_start_presence_service() != 0) {
+        log_warn("MQTT: Failed to start presence heartbeat worker");
+    }
     
     log_info("MQTT: Connecting to broker %s:%d...", 
              mqtt_config->mqtt_broker_host, mqtt_config->mqtt_broker_port);
@@ -222,6 +353,10 @@ bool mqtt_is_connected(void) {
     bool result = connected;
     pthread_mutex_unlock(&mqtt_mutex);
     return result;
+}
+
+void mqtt_get_presence_stats(mqtt_presence_stats_t *stats) {
+    mqtt_presence_get_stats(stats);
 }
 
 // Connection callback
@@ -244,6 +379,9 @@ static void on_connect(struct mosquitto *m, void *userdata, int rc) {
         connected = true;
         log_info("MQTT: Connected to broker successfully");
         pthread_mutex_unlock(&mqtt_mutex);
+
+        mqtt_presence_record_connected();
+        (void)publish_presence(MQTT_PRESENCE_ONLINE);
 
         // Publish availability "online" for HA discovery
         if (mqtt_config && mqtt_config->mqtt_ha_discovery) {
@@ -286,6 +424,7 @@ static void on_disconnect(struct mosquitto *m, void *userdata, int rc) {
     if (shutting_down) {
         // Still update the flag without mutex during shutdown - it's a simple write
         connected = false;
+        mqtt_presence_record_disconnected();
         pthread_mutex_lock(&publish_ack_mutex);
         if (publish_ack_waiting) {
             publish_ack_failed = true;
@@ -303,10 +442,12 @@ static void on_disconnect(struct mosquitto *m, void *userdata, int rc) {
     if (shutting_down) {
         pthread_mutex_unlock(&mqtt_mutex);
         connected = false;
+        mqtt_presence_record_disconnected();
         return;
     }
     connected = false;
     pthread_mutex_unlock(&mqtt_mutex);
+    mqtt_presence_record_disconnected();
 
     pthread_mutex_lock(&publish_ack_mutex);
     if (publish_ack_waiting) {
@@ -804,6 +945,82 @@ static cJSON *build_ha_origin_block(void) {
     return origin;
 }
 
+static int publish_ha_health_discovery(void) {
+    char status_topic[MQTT_PRESENCE_TOPIC_MAX];
+    char installation_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    if (mqtt_presence_copy_topic(status_topic, sizeof(status_topic)) != 0 ||
+        mqtt_presence_copy_installation_uuid(
+            installation_uuid, sizeof(installation_uuid)) != 0)
+        return 0;
+
+    struct health_entity {
+        const char *suffix;
+        const char *name;
+        const char *value_template;
+        const char *icon;
+    } entities[] = {
+        {"system_health", "System Health", "{{ value_json.overall_state }}",
+         "mdi:heart-pulse"},
+        {"active_health_incidents", "Active Health Incidents",
+         "{{ value_json.active_incidents }}", "mdi:alert-circle-outline"},
+    };
+    int published = 0;
+    for (size_t index = 0; index < sizeof(entities) / sizeof(entities[0]);
+         ++index) {
+        char topic[MAX_TOPIC_LENGTH];
+        int written = snprintf(
+            topic, sizeof(topic), "%s/sensor/lightnvr/%s_%s/config",
+            mqtt_config->mqtt_ha_discovery_prefix, installation_uuid,
+            entities[index].suffix);
+        if (written < 0 || (size_t)written >= sizeof(topic)) continue;
+        cJSON *payload = cJSON_CreateObject();
+        if (!payload) continue;
+        char unique_id[160];
+        written = snprintf(unique_id, sizeof(unique_id), "lightnvr_%s_%s",
+                           installation_uuid, entities[index].suffix);
+        if (written < 0 || (size_t)written >= sizeof(unique_id)) {
+            cJSON_Delete(payload);
+            continue;
+        }
+        cJSON_AddStringToObject(payload, "unique_id", unique_id);
+        cJSON_AddStringToObject(payload, "name", entities[index].name);
+        cJSON_AddStringToObject(payload, "state_topic", status_topic);
+        cJSON_AddStringToObject(payload, "value_template",
+                                entities[index].value_template);
+        cJSON_AddStringToObject(payload, "icon", entities[index].icon);
+
+        cJSON *availability = cJSON_CreateObject();
+        cJSON *availability_list = cJSON_CreateArray();
+        cJSON *device = build_ha_device_block();
+        cJSON *origin = build_ha_origin_block();
+        if (!availability || !availability_list || !device || !origin) {
+            cJSON_Delete(availability);
+            cJSON_Delete(availability_list);
+            cJSON_Delete(device);
+            cJSON_Delete(origin);
+            cJSON_Delete(payload);
+            continue;
+        }
+        cJSON_AddStringToObject(availability, "topic", status_topic);
+        cJSON_AddStringToObject(availability, "value_template",
+                                "{{ value_json.state }}");
+        cJSON_AddStringToObject(availability, "payload_available", "online");
+        cJSON_AddStringToObject(availability, "payload_not_available", "offline");
+        cJSON_AddItemToArray(availability_list, availability);
+        cJSON_AddItemToObject(payload, "availability", availability_list);
+        cJSON_AddItemToObject(payload, "device", device);
+        cJSON_AddItemToObject(payload, "origin", origin);
+
+        char *json = cJSON_PrintUnformatted(payload);
+        cJSON_Delete(payload);
+        if (json) {
+            if (mqtt_publish_raw(topic, json, true) == 0) ++published;
+            free(json);
+        }
+    }
+    return published;
+}
+
 /**
  * Publish Home Assistant MQTT discovery messages for all configured streams.
  */
@@ -819,6 +1036,8 @@ int mqtt_publish_ha_discovery(void) {
 
     log_info("MQTT HA: Publishing Home Assistant discovery messages...");
 
+    int published = publish_ha_health_discovery();
+
     // Get all configured streams.
     // Heap-allocated: sizeof(stream_config_t) is >6 KB today and will grow to
     // ~12 KB after the T11 `go2rtc_source_override` bump. 16 entries on the
@@ -831,15 +1050,13 @@ int mqtt_publish_ha_discovery(void) {
     }
     int num_streams = get_all_stream_configs(streams, MAX_MOTION_STREAMS);
     if (num_streams <= 0) {
-        log_warn("MQTT HA: No streams configured, skipping discovery");
+        log_warn("MQTT HA: No streams configured; published system discovery only");
         free(streams);
         return 0;
     }
 
     const char *prefix = mqtt_config->mqtt_ha_discovery_prefix;
     const char *topic_prefix = mqtt_config->mqtt_topic_prefix;
-    int published = 0;
-
     for (int i = 0; i < num_streams; i++) {
         if (!streams[i].enabled || streams[i].name[0] == '\0') {
             continue;
@@ -1536,6 +1753,7 @@ static bool mqtt_disconnect_internal(void) {
             had_timeout = true;
         }
         connected = false;
+        mqtt_presence_record_disconnected();
         log_info("MQTT: Forced disconnect without mutex");
         return !had_timeout;
     }
@@ -1549,6 +1767,7 @@ static bool mqtt_disconnect_internal(void) {
     }
 
     connected = false;
+    mqtt_presence_record_disconnected();
 
     pthread_mutex_unlock(&mqtt_mutex);
 
@@ -1560,6 +1779,7 @@ static bool mqtt_disconnect_internal(void) {
  * Disconnect from the MQTT broker (public API)
  */
 void mqtt_disconnect(void) {
+    mqtt_stop_presence_service(true);
     mqtt_disconnect_internal();
 }
 
@@ -1568,6 +1788,10 @@ void mqtt_disconnect(void) {
  */
 void mqtt_cleanup(void) {
     log_info("MQTT: Starting cleanup...");
+
+    // Stop the non-durable heartbeat and publish a best-effort retained
+    // stopping document while the connection and network loop still exist.
+    mqtt_stop_presence_service(true);
 
     // Stop HA background services first
     mqtt_stop_ha_services();

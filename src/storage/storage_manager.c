@@ -219,6 +219,11 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
 
     log_info("Storage manager initialized with path: %s", storage_path);
 
+    /* Registration must precede system_health_start(). Scheduled refreshes
+     * only wake this bounded slow-tier collector. */
+    (void)storage_target_health_register(
+        "/", storage_path, g_config.health.write_probe_enabled);
+
     // Start the storage manager thread with a default interval of 1 hour
     if (start_storage_manager_thread(3600) != 0) {
         log_warn("Failed to start storage manager thread, automatic tasks will not be performed");

@@ -1,0 +1,1 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,4],"exit_status":2,"messages":[{"string":"Device is in STANDBY mode, exit(2)"}]},"device":{"name":"/dev/sda","protocol":"ATA"},"power_mode":{"name":"STANDBY"}}

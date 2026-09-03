@@ -1,0 +1,2 @@
+36 25 8:1 / / rw,relatime - ext4 /dev/root rw
+41 36 8:17 / /mnt/recordings rw,relatime - ext4 /dev/sdb1 rw

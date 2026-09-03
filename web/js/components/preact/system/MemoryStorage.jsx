@@ -1,133 +1,83 @@
-/**
- * MemoryStorage Component
- * Displays memory and storage information with progress bars
- */
-
+/** Memory and storage facts sourced from the completed health snapshot. */
 import { useI18n } from '../../../i18n.js';
 
-/**
- * MemoryStorage component
- * @param {Object} props Component props
- * @param {Object} props.systemInfo System information object
- * @param {Function} props.formatBytes Function to format bytes to human-readable size
- * @returns {JSX.Element} MemoryStorage component
- */
+export function metricKnown(section, value) {
+  return Number.isFinite(value) && (!section?.capability || section.capability === 'available');
+}
+
+export function boundedPercent(used, total) {
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null;
+  return Math.max(0, Math.min(100, used / total * 100));
+}
+
+function Meter({ value, label, unknown }) {
+  const known = Number.isFinite(value);
+  return (
+    <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={known ? value : undefined} aria-valuetext={known ? `${value.toFixed(1)}%` : unknown}>
+      <div className="h-2.5 rounded-full" style={{ backgroundColor: known ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: known ? `${value}%` : '100%' }}></div>
+    </div>
+  );
+}
+
+function CapacityRow({ label, section, formatBytes, unknown }) {
+  const totalKnown = metricKnown(section, section?.total);
+  const usedKnown = metricKnown(section, section?.used);
+  const percent = totalKnown && usedKnown ? boundedPercent(section.used, section.total) : null;
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between gap-2 mb-1">
+        <span className="font-medium">{label}:</span>
+        <span>{totalKnown && usedKnown ? `${formatBytes(section.used)} / ${formatBytes(section.total)}` : unknown}</span>
+      </div>
+      <Meter value={percent} label={label} unknown={unknown} />
+      {!totalKnown || !usedKnown ? <p className="mt-1 text-xs text-muted-foreground">{section?.capability || unknown}</p> : null}
+    </div>
+  );
+}
+
 export function MemoryStorage({ systemInfo, formatBytes }) {
   const { t } = useI18n();
-  // Get memory usage values
-  const lightNvrMemoryUsed = systemInfo.memory?.used || 0;
-  const go2rtcMemoryUsed = systemInfo.go2rtcMemory?.used || 0;
-  const detectorMemoryUsed = systemInfo.detectorMemory?.used || 0;
-  const totalSystemMemory = systemInfo.memory?.total || 0;
-
-  // Calculate combined memory usage (all three processes)
-  const combinedMemoryUsed = lightNvrMemoryUsed + go2rtcMemoryUsed + detectorMemoryUsed;
-
-  // Calculate the percentage of total system memory used by all processes combined
-  const combinedMemoryPercent = totalSystemMemory ?
-    (combinedMemoryUsed / totalSystemMemory * 100).toFixed(1) : 0;
-
-  // Calculate the percentage of each process relative to their combined usage
-  // This ensures the slivers add up to the total width of the progress bar
-  const lightNvrSlicePercent = combinedMemoryUsed ?
-    (lightNvrMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
-
-  const go2rtcSlicePercent = combinedMemoryUsed ?
-    (go2rtcMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
-
-  const detectorSlicePercent = combinedMemoryUsed ?
-    (detectorMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
-
-  // These variables ensure the slivers add up to 100% of the combined usage bar
+  const unknown = t('common.unknown');
+  const processSections = [
+    { name: 'LightNVR', section: systemInfo.memory, badge: 'bg-primary/10 text-primary' },
+    { name: 'go2rtc', section: systemInfo.go2rtcMemory, badge: 'badge-success' },
+    { name: 'detector', section: systemInfo.detectorMemory, badge: 'badge-warning' },
+  ];
+  const processValues = processSections.map(({ section }) => metricKnown(section, section?.used) ? section.used : null);
+  const totalSystemMemory = metricKnown(systemInfo.systemMemory, systemInfo.systemMemory?.total)
+    ? systemInfo.systemMemory.total : null;
+  const allProcessesKnown = processValues.every(Number.isFinite);
+  const combinedMemoryUsed = allProcessesKnown ? processValues.reduce((sum, value) => sum + value, 0) : null;
+  const combinedMemoryPercent = boundedPercent(combinedMemoryUsed, totalSystemMemory);
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
       <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.memoryAndStorage')}</h3>
       <div className="space-y-4">
         <div>
-          <div className="flex justify-between mb-1">
+          <div className="flex flex-wrap justify-between gap-2 mb-1">
             <span className="font-medium">{t('system.processMemory')}:</span>
             <div className="flex flex-wrap justify-end gap-1">
-              <span className="inline-block px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--primary-muted))', color: 'hsl(var(--primary))'}}>
-                LightNVR: {formatBytes(lightNvrMemoryUsed)}
-              </span>
-              <span className="inline-block px-2 py-0.5 text-xs rounded badge-success">
-                go2rtc: {formatBytes(go2rtcMemoryUsed)}
-              </span>
-              <span className="inline-block px-2 py-0.5 text-xs rounded badge-warning">
-                detector: {formatBytes(detectorMemoryUsed)}
-              </span>
+              {processSections.map(({ name, section, badge }) => (
+                <span key={name} className={`inline-block px-2 py-0.5 text-xs rounded ${badge}`}>
+                  {name}: {metricKnown(section, section?.used) ? formatBytes(section.used) : unknown}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>{t('system.combinedMemory', { used: formatBytes(combinedMemoryUsed), total: formatBytes(totalSystemMemory) })}</span>
-            <span>{t('system.percentOfTotalMemory', { percent: combinedMemoryPercent })}</span>
+          <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground mb-1">
+            <span>{allProcessesKnown && Number.isFinite(totalSystemMemory)
+              ? t('system.combinedMemory', { used: formatBytes(combinedMemoryUsed), total: formatBytes(totalSystemMemory) })
+              : t('system.health.valueUnavailable')}</span>
+            <span>{Number.isFinite(combinedMemoryPercent)
+              ? t('system.percentOfTotalMemory', { percent: combinedMemoryPercent.toFixed(1) })
+              : unknown}</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
-            <div className="flex h-full" style={{ width: `${combinedMemoryPercent}%` }}>
-              <div className="h-2.5" style={{ width: `${lightNvrSlicePercent}%`, backgroundColor: 'hsl(var(--primary))' }}></div>
-              <div className="h-2.5" style={{ width: `${go2rtcSlicePercent}%`, backgroundColor: 'hsl(var(--success))' }}></div>
-              <div className="h-2.5" style={{ width: `${detectorSlicePercent}%`, backgroundColor: 'hsl(var(--warning))' }}></div>
-            </div>
-          </div>
+          <Meter value={combinedMemoryPercent} label={t('system.processMemory')} unknown={unknown} />
         </div>
-        <div>
-          <div className="flex justify-between mb-1">
-            <span className="font-medium">{t('system.systemMemory')}:</span>
-            <span>
-              {systemInfo.systemMemory?.used ? formatBytes(systemInfo.systemMemory.used) : '0'} /
-              {systemInfo.systemMemory?.total ? formatBytes(systemInfo.systemMemory.total) : '0'}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-            <div
-              className="h-2.5 rounded-full"
-              style={{
-                backgroundColor: 'hsl(var(--primary))',
-                width: `${systemInfo.systemMemory?.total ?
-                  (systemInfo.systemMemory.used / systemInfo.systemMemory.total * 100).toFixed(1) : 0}%`
-              }}
-            ></div>
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between mb-1">
-            <span className="font-medium">{t('system.lightNvrStorage')}:</span>
-            <span>
-              {systemInfo.disk?.used ? formatBytes(systemInfo.disk.used) : '0'} /
-              {systemInfo.disk?.total ? formatBytes(systemInfo.disk.total) : '0'}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-            <div
-              className="h-2.5 rounded-full"
-              style={{
-                backgroundColor: 'hsl(var(--primary))',
-                width: `${systemInfo.disk?.total ?
-                  (systemInfo.disk.used / systemInfo.disk.total * 100).toFixed(1) : 0}%`
-              }}
-            ></div>
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between mb-1">
-            <span className="font-medium">{t('system.systemStorage')}:</span>
-            <span>
-              {systemInfo.systemDisk?.used ? formatBytes(systemInfo.systemDisk.used) : '0'} /
-              {systemInfo.systemDisk?.total ? formatBytes(systemInfo.systemDisk.total) : '0'}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-            <div
-              className="h-2.5 rounded-full"
-              style={{
-                backgroundColor: 'hsl(var(--primary))',
-                width: `${systemInfo.systemDisk?.total ?
-                  (systemInfo.systemDisk.used / systemInfo.systemDisk.total * 100).toFixed(1) : 0}%`
-              }}
-            ></div>
-          </div>
-        </div>
+        <CapacityRow label={t('system.systemMemory')} section={systemInfo.systemMemory} formatBytes={formatBytes} unknown={unknown} />
+        <CapacityRow label={t('system.lightNvrStorage')} section={systemInfo.disk} formatBytes={formatBytes} unknown={unknown} />
+        <CapacityRow label={t('system.systemStorage')} section={systemInfo.systemDisk} formatBytes={formatBytes} unknown={unknown} />
       </div>
     </div>
   );

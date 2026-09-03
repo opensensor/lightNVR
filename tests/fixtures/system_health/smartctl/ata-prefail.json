@@ -1,0 +1,1 @@
+{"json_format_version":[1,0],"smartctl":{"version":[7,4],"exit_status":24},"device":{"name":"/dev/sda","protocol":"ATA"},"smart_status":{"passed":false},"temperature":{"current":45},"ata_smart_attributes":{"table":[{"id":5,"raw":{"value":8}},{"id":197,"raw":{"value":2}},{"id":198,"raw":{"value":4}},{"id":199,"raw":{"value":9}}]}}

@@ -132,6 +132,8 @@ static cJSON *destination_to_json(const event_destination_t *destination) {
     cJSON_AddStringToObject(broker, "client_id", destination->client_id);
     cJSON_AddStringToObject(broker, "topic_template",
                            destination->topic_template);
+    cJSON_AddStringToObject(broker, "status_topic_template",
+                           destination->status_topic_template);
     cJSON_AddNumberToObject(broker, "keepalive_seconds",
                             destination->keepalive_seconds);
     cJSON_AddNumberToObject(broker, "qos", destination->qos);
@@ -248,10 +250,10 @@ static bool apply_broker(const cJSON *broker,
                          event_destination_t *destination,
                          http_response_t *res) {
     const char *const fields[] = {
-        "host", "port", "client_id", "topic_template", "keepalive_seconds",
-        "qos"
+        "host", "port", "client_id", "topic_template",
+        "status_topic_template", "keepalive_seconds", "qos"
     };
-    return object_has_only(broker, fields, 6, "broker", res) &&
+    return object_has_only(broker, fields, 7, "broker", res) &&
         copy_string_field(broker, "host", destination->broker_host,
                           sizeof(destination->broker_host), res) &&
         apply_integer_field(broker, "port", 1, 65535,
@@ -261,6 +263,9 @@ static bool apply_broker(const cJSON *broker,
         copy_string_field(broker, "topic_template",
                           destination->topic_template,
                           sizeof(destination->topic_template), res) &&
+        copy_string_field(broker, "status_topic_template",
+                          destination->status_topic_template,
+                          sizeof(destination->status_topic_template), res) &&
         apply_integer_field(broker, "keepalive_seconds", 5, 3600,
                             &destination->keepalive_seconds, res) &&
         apply_integer_field(broker, "qos", 0, 2, &destination->qos, res);

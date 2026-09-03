@@ -1,0 +1,27 @@
+# t24-replay-v1: independent byte and inode exhaustion with recovery dwell
+# expect=filesystem.bytes_low:open;filesystem.inodes_low:open;filesystem.bytes_low:escalate;filesystem.inodes_low:escalate;filesystem.bytes_low:material;filesystem.inodes_low:material;filesystem.bytes_low:recover;filesystem.inodes_low:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,filesystem.available_bytes,recording,filesystem,available,100,bytes,0,1
+0,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+0,filesystem.available_inodes,recording,filesystem,available,80,count,0,1
+0,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
+20000,filesystem.available_bytes,recording,filesystem,available,100,bytes,0,1
+20000,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+20000,filesystem.available_inodes,recording,filesystem,available,80,count,0,1
+20000,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
+40000,filesystem.available_bytes,recording,filesystem,available,40,bytes,0,1
+40000,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+40000,filesystem.available_inodes,recording,filesystem,available,40,count,0,1
+40000,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
+60000,filesystem.available_bytes,recording,filesystem,available,40,bytes,0,1
+60000,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+60000,filesystem.available_inodes,recording,filesystem,available,40,count,0,1
+60000,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
+80000,filesystem.available_bytes,recording,filesystem,available,300,bytes,0,1
+80000,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+80000,filesystem.available_inodes,recording,filesystem,available,300,count,0,1
+80000,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
+100000,filesystem.available_bytes,recording,filesystem,available,300,bytes,0,1
+100000,filesystem.capacity_bytes,recording,filesystem,available,1000,bytes,0,1
+100000,filesystem.available_inodes,recording,filesystem,available,300,count,0,1
+100000,filesystem.capacity_inodes,recording,filesystem,available,1000,count,0,1
