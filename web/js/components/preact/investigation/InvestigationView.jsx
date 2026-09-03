@@ -22,6 +22,7 @@ import {
   formatCursorTime,
   formatDateTimeLocal,
   histogramEventTime,
+  investigationPlayerAspectRatio,
   normalizedRegionRectangle,
   narrowThumbnailWindow,
   parseDateTimeLocal,
@@ -71,9 +72,13 @@ function InvestigationPlayer({
   onRegionChange,
   onRegionComplete,
   onMakePrimary,
+  onPlayingChange,
+  onSeek,
   t,
 }) {
   const videoRef = useRef(null);
+  const videoShellRef = useRef(null);
+  const videoFrameRef = useRef(null);
   const cursorRef = useRef(cursor);
   const regionAnchorRef = useRef(null);
   const coverageSegment = findSegmentAt(track.segments, cursor);
@@ -83,14 +88,37 @@ function InvestigationPlayer({
   const cursorSecond = Math.floor(cursor);
   const [status, setStatus] = useState(coverageSegment ? 'loading' : 'gap');
   const [videoDimensions, setVideoDimensions] = useState({ width: 16, height: 9 });
+  const [frameDimensions, setFrameDimensions] = useState({ width: 16, height: 9 });
   // Region metadata is stored in raw-frame coordinates. Keep that workflow on
   // the raw recording so drawing and the persisted boxes stay spatially exact.
   const eptzConfigured = isEptzEnabled(streamConfig?.eptz_config);
   const eptzActive = eptzConfigured && !drawingRegion && !region;
+  const playerAspectRatio = investigationPlayerAspectRatio(
+    videoDimensions.width, videoDimensions.height,
+  );
 
   useEffect(() => {
     cursorRef.current = cursor;
   }, [cursor]);
+
+  useEffect(() => {
+    const frame = videoFrameRef.current;
+    if (!frame) return undefined;
+    const updateFrameDimensions = () => {
+      const bounds = frame.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      setFrameDimensions((current) =>
+        Math.abs(current.width - bounds.width) < 0.5 &&
+        Math.abs(current.height - bounds.height) < 0.5
+          ? current
+          : { width: bounds.width, height: bounds.height });
+    };
+    updateFrameDimensions();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(updateFrameDimensions);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!track.aggregated) {
@@ -221,8 +249,31 @@ function InvestigationPlayer({
     }
   }, [playing, speed, segment?.id]);
 
+  const toggleFullscreen = useCallback(async () => {
+    const shell = videoShellRef.current;
+    if (!shell) return;
+    const fullscreenElement = document.fullscreenElement ||
+      document.webkitFullscreenElement;
+    try {
+      if (fullscreenElement === shell) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        await exit?.call(document);
+        return;
+      }
+      const request = shell.requestFullscreen || shell.webkitRequestFullscreen;
+      if (request) {
+        await request.call(shell);
+      } else if (videoRef.current?.webkitEnterFullscreen) {
+        videoRef.current.webkitEnterFullscreen();
+      }
+    } catch (error) {
+      console.warn('Could not toggle investigation player fullscreen', error);
+    }
+  }, []);
+
   const regionContent = videoContentBox(
-    16, 9, videoDimensions.width, videoDimensions.height,
+    frameDimensions.width, frameDimensions.height,
+    videoDimensions.width, videoDimensions.height,
   );
   const pointFromEvent = (event) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -263,84 +314,120 @@ function InvestigationPlayer({
           {primary ? t('investigation.primaryAudio') : t('investigation.makePrimary')}
         </button>
       </header>
-      <div className="investigation-video-frame">
-        {segment ? (
-          <video
-            ref={videoRef}
-            muted={!primary}
-            playsInline
-            preload="metadata"
-            controls={!eptzActive}
-            onWaiting={() => setStatus('late')}
-            onPlaying={() => setStatus('ready')}
-            onCanPlay={() => setStatus('ready')}
-            onError={() => setStatus('error')}
-          />
-        ) : status === 'loading' ? (
-          <div className="investigation-gap-state">
-            <span>{t('investigation.loading')}</span>
-            <time>{formatCursorTime(cursor)}</time>
-          </div>
-        ) : (
-          <div className="investigation-gap-state">
-            <span>{t('investigation.noFootageAtTime')}</span>
-            <time>{formatCursorTime(cursor)}</time>
-          </div>
-        )}
-        {segment && eptzActive && (
-          <FisheyeEptzCanvas
-            videoRef={videoRef}
-            eptzConfig={streamConfig?.eptz_config}
-            streamName={streamConfig?.name || track.name}
-          />
-        )}
-        {segment && (drawingRegion || region) && (
-          <div
-            className={`investigation-region-layer ${drawingRegion ? 'is-drawing' : ''}`}
-            style={{
-              left: `${regionContent.left * 100}%`,
-              top: `${regionContent.top * 100}%`,
-              width: `${regionContent.width * 100}%`,
-              height: `${regionContent.height * 100}%`,
-            }}
-            aria-label={drawingRegion ? t('investigation.drawRegionPrompt') : undefined}
-            onPointerDown={(event) => {
-              if (!drawingRegion || (event.button !== undefined && event.button !== 0)) return;
-              event.preventDefault();
-              const point = pointFromEvent(event);
-              if (!point) return;
-              regionAnchorRef.current = point;
-              event.currentTarget.setPointerCapture?.(event.pointerId);
-            }}
-            onPointerMove={(event) => {
-              if (!drawingRegion || !regionAnchorRef.current) return;
-              const rectangle = normalizedRegionRectangle(
-                regionAnchorRef.current, pointFromEvent(event),
-              );
-              if (rectangle) onRegionChange(rectangle);
-            }}
-            onPointerUp={finishRegion}
-            onPointerCancel={() => {
-              regionAnchorRef.current = null;
-              onRegionComplete();
-            }}
-          >
-            {region && (
-              <span
-                className="investigation-region-rectangle"
-                style={{
-                  left: `${region.x * 100}%`,
-                  top: `${region.y * 100}%`,
-                  width: `${region.width * 100}%`,
-                  height: `${region.height * 100}%`,
-                }}
-              />
-            )}
-            {drawingRegion && !region && (
-              <span className="investigation-region-prompt">
-                {t('investigation.drawRegionPrompt')}
-              </span>
-            )}
+      <div className="investigation-video-shell" ref={videoShellRef}>
+        <div
+          className="investigation-video-frame"
+          ref={videoFrameRef}
+          style={{ aspectRatio: playerAspectRatio }}
+        >
+          {segment ? (
+            <video
+              ref={videoRef}
+              muted={!primary}
+              playsInline
+              preload="metadata"
+              controls={!eptzActive}
+              onWaiting={() => setStatus('late')}
+              onPlaying={() => setStatus('ready')}
+              onCanPlay={() => setStatus('ready')}
+              onError={() => setStatus('error')}
+            />
+          ) : status === 'loading' ? (
+            <div className="investigation-gap-state">
+              <span>{t('investigation.loading')}</span>
+              <time>{formatCursorTime(cursor)}</time>
+            </div>
+          ) : (
+            <div className="investigation-gap-state">
+              <span>{t('investigation.noFootageAtTime')}</span>
+              <time>{formatCursorTime(cursor)}</time>
+            </div>
+          )}
+          {segment && eptzActive && (
+            <FisheyeEptzCanvas
+              videoRef={videoRef}
+              eptzConfig={streamConfig?.eptz_config}
+              streamName={streamConfig?.name || track.name}
+            />
+          )}
+          {segment && (drawingRegion || region) && (
+            <div
+              className={`investigation-region-layer ${drawingRegion ? 'is-drawing' : ''}`}
+              style={{
+                left: `${regionContent.left * 100}%`,
+                top: `${regionContent.top * 100}%`,
+                width: `${regionContent.width * 100}%`,
+                height: `${regionContent.height * 100}%`,
+              }}
+              aria-label={drawingRegion ? t('investigation.drawRegionPrompt') : undefined}
+              onPointerDown={(event) => {
+                if (!drawingRegion || (event.button !== undefined && event.button !== 0)) return;
+                event.preventDefault();
+                const point = pointFromEvent(event);
+                if (!point) return;
+                regionAnchorRef.current = point;
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!drawingRegion || !regionAnchorRef.current) return;
+                const rectangle = normalizedRegionRectangle(
+                  regionAnchorRef.current, pointFromEvent(event),
+                );
+                if (rectangle) onRegionChange(rectangle);
+              }}
+              onPointerUp={finishRegion}
+              onPointerCancel={() => {
+                regionAnchorRef.current = null;
+                onRegionComplete();
+              }}
+            >
+              {region && (
+                <span
+                  className="investigation-region-rectangle"
+                  style={{
+                    left: `${region.x * 100}%`,
+                    top: `${region.y * 100}%`,
+                    width: `${region.width * 100}%`,
+                    height: `${region.height * 100}%`,
+                  }}
+                />
+              )}
+              {drawingRegion && !region && (
+                <span className="investigation-region-prompt">
+                  {t('investigation.drawRegionPrompt')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {segment && (
+          <div className="investigation-player-controls">
+            <button
+              type="button"
+              onClick={() => onPlayingChange(!playing)}
+              aria-label={playing ? t('investigation.pause') : t('investigation.play')}
+            >
+              <span aria-hidden="true">{playing ? '❚❚' : '▶'}</span>
+              <span>{playing ? t('investigation.pause') : t('investigation.play')}</span>
+            </button>
+            <input
+              type="range"
+              min={segment.start_time}
+              max={segment.end_time}
+              step="0.1"
+              value={Math.max(segment.start_time, Math.min(segment.end_time, cursor))}
+              aria-label={t('investigation.sharedCursor')}
+              onInput={(event) => onSeek(Number(event.target.value))}
+            />
+            <time>
+              {formatUtils.formatDuration(Math.max(0, cursor - segment.start_time))}
+              {' / '}
+              {formatUtils.formatDuration(segment.end_time - segment.start_time)}
+            </time>
+            <button type="button" onClick={toggleFullscreen}>
+              <span aria-hidden="true">⛶</span>
+              <span>{t('timeline.fullscreen')}</span>
+            </button>
           </div>
         )}
       </div>
@@ -1778,6 +1865,11 @@ export function InvestigationView() {
                   onMakePrimary={() => {
                     setDrawingRegion(false);
                     setPrimaryCameraUuid(track.camera_uuid);
+                  }}
+                  onPlayingChange={setPlaying}
+                  onSeek={(value) => {
+                    setPlaying(false);
+                    setCursor(value);
                   }}
                   t={t}
                 />

@@ -6,6 +6,7 @@ import {
   findSegmentAt,
   formatDateTimeLocal,
   histogramEventTime,
+  investigationPlayerAspectRatio,
   nextAvailableTimestamp,
   narrowThumbnailWindow,
   normalizedRegionRectangle,
@@ -137,6 +138,13 @@ test('videoContentBox accounts for letterboxing and pillarboxing', () => {
   expect(letterboxed.width).toBe(1);
   expect(letterboxed.top).toBeCloseTo(0.119047619);
   expect(letterboxed.height).toBeCloseTo(0.761904762);
+});
+
+test('investigation players adopt the loaded recording aspect ratio', () => {
+  expect(investigationPlayerAspectRatio(2560, 1920)).toBe('2560 / 1920');
+  expect(investigationPlayerAspectRatio(1920, 1080)).toBe('1920 / 1080');
+  expect(investigationPlayerAspectRatio(0, 0)).toBe('16 / 9');
+  expect(investigationPlayerAspectRatio('unknown', 1080)).toBe('16 / 9');
 });
 
 test('normalizedRegionRectangle supports reverse drag and clamps to the image', () => {
