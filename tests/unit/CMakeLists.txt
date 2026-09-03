@@ -248,8 +248,13 @@ add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer p
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.
-file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
+if(CMAKE_VERSION VERSION_LESS "3.12")
+    file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
+else()
+    file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
+endif()
 list(SORT SYSTEM_HEALTH_TEST_FRAGMENTS)
 foreach(SYSTEM_HEALTH_TEST_FRAGMENT IN LISTS SYSTEM_HEALTH_TEST_FRAGMENTS)
     include("${SYSTEM_HEALTH_TEST_FRAGMENT}")

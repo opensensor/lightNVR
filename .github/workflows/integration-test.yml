@@ -203,6 +203,7 @@ jobs:
             libmosquitto-dev \
             mosquitto \
             mosquitto-clients \
+            lcov \
             jq \
             shellcheck \
             ca-certificates \
@@ -231,7 +232,9 @@ jobs:
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=OFF \
             -DENABLE_LITERT=OFF \
-            -DENABLE_MQTT=ON
+            -DENABLE_MQTT=ON \
+            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           cmake --build build/health-ci -- -j2
 
       - name: Build MQTT-disabled variant
@@ -256,7 +259,7 @@ jobs:
           ctest --test-dir build/health-ci --output-on-failure \
             -R 'test_db_system_health_incidents$|test_mqtt_presence$|test_mqtt_destination_client$|test_api_handlers_(system_health|metrics)$|test_system_health_(self_observability|restart)$'
           npm --prefix web ci
-          npm --prefix web test -- --runInBand
+          TZ=America/New_York npm --prefix web test -- --runInBand
           npm --prefix web run build
 
       - name: Optional P3 provider contract gate
@@ -289,6 +292,32 @@ jobs:
               tests/integration/specs/system-health-mqtt.api.spec.ts \
               tests/integration/specs/system-health.ui.spec.ts \
               tests/integration/specs/system-health-settings.ui.spec.ts
+
+      - name: Generate system health coverage report
+        if: always()
+        run: |
+          lcov --capture \
+               --directory build/health-ci \
+               --output-file build/health-ci/coverage.info \
+               --ignore-errors mismatch
+          lcov --remove build/health-ci/coverage.info \
+               '/usr/*' \
+               '*/third_party/*' \
+               '*/external/*' \
+               '*/tests/*' \
+               --output-file build/health-ci/coverage_filtered.info \
+               --ignore-errors unused
+          lcov --list build/health-ci/coverage_filtered.info
+
+      - name: Upload system health coverage to Codecov
+        uses: codecov/codecov-action@v7
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/health-ci/coverage_filtered.info
+          flags: system-health
+          name: lightnvr-system-health-coverage
+          fail_ci_if_error: false
 
       - name: Upload health test artifacts
         uses: actions/upload-artifact@v7

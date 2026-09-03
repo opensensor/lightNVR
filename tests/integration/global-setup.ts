@@ -345,7 +345,6 @@ async function markSetupComplete(): Promise<void> {
 }
 
 async function ensureHealthTestViewer(): Promise<void> {
-  if (!SKIP_GO2RTC) return;
   console.log('Ensuring the health UI viewer fixture exists...');
   const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/auth/users`, {
     method: 'POST',
