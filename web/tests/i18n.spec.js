@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   __resetI18nStateForTests,
   getBrowserPreferredLocale,
@@ -8,6 +10,56 @@ import {
   setLocalePreference,
   t,
 } from '../js/i18n.js';
+
+const ptBrCatalog = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../public/locales/pt-BR.json'),
+  'utf8',
+));
+
+const REPORTED_PT_BR_TRANSLATIONS = {
+  'availability.live': 'Ao vivo agora',
+  'availability.neverConnected': 'Nunca conectada',
+  'live.navigator.title': 'Navegador',
+  'live.navigator.subtitle': 'Locais, layouts e atividade',
+  'live.navigator.search': 'Buscar uma câmera...',
+  'live.plan.emptyTitle': 'Crie uma visualização espacial das câmeras',
+  'investigation.experimental': 'Espaço de trabalho experimental',
+  'investigation.title': 'Investigação',
+  'investigation.query': 'Janela de investigação',
+  'investigation.cameraSelection': 'Seleção de câmeras',
+  'investigation.applyWindow': 'Aplicar intervalo de tempo',
+  'investigation.minimumConfidence': 'Confiança mínima',
+  'investigation.metadataRegionSearch': 'Pesquisa por região de metadados',
+  'investigation.resultCount': '{count} eventos correspondentes',
+  'investigation.noResults': 'Nenhum evento persistido corresponde à câmera, ao período e aos filtros selecionados.',
+  'investigation.bookmarks.save': 'Salvar marcador',
+  'investigation.actions.open': 'Proteger / baixar',
+  'streams.configuration': 'Configuração',
+  'streams.inventory': 'Inventário',
+  'fleet.title': 'Inventário de Câmeras',
+  'fleet.searchPlaceholder': 'Pesquisar nome, endereço, local, tag, fabricante ou modelo...',
+  'fleet.paginationSummary': 'Exibindo {first}–{last} de {total}',
+  'events.title': 'Eventos e Roteamento',
+  'events.accessDenied': 'Acesso negado - privilégios insuficientes',
+  'settings.reduceMotion': 'Reduzir movimento',
+  'workspaces.title': 'Espaços de trabalho do operador',
+  'workspaces.liveNavigator': 'Navegador ao vivo aprimorado',
+  'workspaces.investigationDescription': 'Pesquise, correlacione, proteja e exporte evidências gravadas.',
+};
+
+test('pt-BR includes the reported operator workspace translations', () => {
+  expect(ptBrCatalog).toMatchObject(REPORTED_PT_BR_TRANSLATIONS);
+});
+
+test('the footer keeps the LightNVR brand out of localization', () => {
+  const footerSource = fs.readFileSync(
+    path.resolve(__dirname, '../js/components/preact/Footer.jsx'),
+    'utf8',
+  );
+
+  expect(footerSource).toContain('LightNVR © {year}');
+  expect(footerSource).not.toContain("t('footer.tagline')");
+});
 
 function createJsonResponse(payload) {
   return {

@@ -1,7 +1,21 @@
 import { useEffect, useState } from 'preact/hooks';
 import { fetchJSON, useMutation, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
-import { workspaceVisibilityFromResponse } from '../../../utils/workspace-preferences.js';
+import {
+  WORKSPACE_KEYS,
+  workspaceVisibilityFromResponse,
+} from '../../../utils/workspace-preferences.js';
+
+const WORKSPACE_TRANSLATION_KEYS = Object.freeze({
+  [WORKSPACE_KEYS.LIVE_NAVIGATOR]: {
+    label: 'workspaces.liveNavigator',
+    description: 'workspaces.liveNavigatorDescription',
+  },
+  [WORKSPACE_KEYS.INVESTIGATION]: {
+    label: 'workspaces.investigation',
+    description: 'workspaces.investigationDescription',
+  },
+});
 
 export function WorkspacesTab({ t }) {
   const queryClient = useQueryClient();
@@ -57,26 +71,32 @@ export function WorkspacesTab({ t }) {
         <p className="text-sm text-[hsl(var(--danger))]">{t('workspaces.loadError')}</p>
       ) : (
         <div className="divide-y divide-border rounded-md border border-border">
-          {(data?.workspaces || []).map((workspace) => (
-            <label
-              key={workspace.key}
-              data-setting-label={`${workspace.label} ${workspace.description}`}
-              className="flex min-h-16 items-center justify-between gap-4 p-4"
-            >
-              <span className="min-w-0">
-                <span className="block font-medium">{workspace.label}</span>
-                <span className="mt-1 block text-sm text-muted-foreground">{workspace.description}</span>
-              </span>
-              <input
-                type="checkbox"
-                className="h-5 w-5 shrink-0 rounded border-input"
-                checked={visibility[workspace.key] !== false}
-                disabled={!workspace.configurable || mutation.isPending}
-                onChange={(event) => toggle(workspace.key, event.currentTarget.checked)}
-                aria-label={t('workspaces.showWorkspace', { name: workspace.label })}
-              />
-            </label>
-          ))}
+          {(data?.workspaces || []).map((workspace) => {
+            const translationKeys = WORKSPACE_TRANSLATION_KEYS[workspace.key];
+            const label = translationKeys ? t(translationKeys.label) : workspace.label;
+            const description = translationKeys
+              ? t(translationKeys.description) : workspace.description;
+            return (
+              <label
+                key={workspace.key}
+                data-setting-label={`${label} ${description}`}
+                className="flex min-h-16 items-center justify-between gap-4 p-4"
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium">{label}</span>
+                  <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 shrink-0 rounded border-input"
+                  checked={visibility[workspace.key] !== false}
+                  disabled={!workspace.configurable || mutation.isPending}
+                  onChange={(event) => toggle(workspace.key, event.currentTarget.checked)}
+                  aria-label={t('workspaces.showWorkspace', { name: label })}
+                />
+              </label>
+            );
+          })}
         </div>
       )}
       <p className="text-xs text-muted-foreground">{t('workspaces.authorizationNote')}</p>

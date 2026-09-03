@@ -21,22 +21,25 @@ export function AppearanceTab({ reduceMotionPref, handleReduceMotionChange, t })
 
           {/* UXD T4 — Reduce Motion preference (§5.4).
               Auto respects prefers-reduced-motion; On/Off force-override. */}
-          <div data-setting-label="Reduce motion" class="mt-6 pt-4 border-t border-border">
+          <div data-setting-label={t('settings.reduceMotion')} class="mt-6 pt-4 border-t border-border">
             <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <div class="font-medium">Reduce motion</div>
+                <div class="font-medium">{t('settings.reduceMotion')}</div>
                 <p class="text-sm text-muted-foreground mt-0.5">
-                  Disables non-essential animations and transitions.
-                  Auto follows your operating system preference.
+                  {t('settings.reduceMotionHelp')}
                 </p>
               </div>
               <div
                 role="radiogroup"
-                aria-label="Reduce motion preference"
+                aria-label={t('settings.reduceMotionPreference')}
                 class="inline-flex rounded-md border border-border bg-background p-0.5 self-start md:self-auto"
               >
                 {REDUCE_MOTION_VALUES.map((value) => {
-                  const labelMap = { auto: 'Auto', on: 'On', off: 'Off' };
+                  const labelMap = {
+                    auto: t('settings.reduceMotionAuto'),
+                    on: t('settings.reduceMotionOn'),
+                    off: t('settings.reduceMotionOff'),
+                  };
                   const isActive = reduceMotionPref === value;
                   return (
                     <button

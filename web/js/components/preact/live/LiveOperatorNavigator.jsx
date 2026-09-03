@@ -399,7 +399,7 @@ export function LiveOperatorNavigator({
 
       {tab === 'plans' && (
         <div className="live-navigator-panel">
-          <p className="live-plan-navigator-help">Choose a building or floor. Camera previews open only when requested.</p>
+          <p className="live-plan-navigator-help">{t('live.plan.navigatorHelp')}</p>
           {(plansQuery.data?.plans || []).map((plan) => {
             const liveCount = (plan.cameras || []).filter((camera) =>
               streams.find((stream) => stream.camera_uuid === camera.camera_uuid)?.availability === 'live').length;
@@ -418,7 +418,7 @@ export function LiveOperatorNavigator({
             );
           })}
           {!plansQuery.isLoading && (plansQuery.data?.plans || []).length === 0 &&
-            <p className="live-navigator-empty">No building plans yet. Create one in the plan workspace.</p>}
+            <p className="live-navigator-empty">{t('live.plan.noPlans')}</p>}
         </div>
       )}
 

@@ -439,8 +439,8 @@ export function LiveBuildingPlan({
     return <>
       <section className="live-plan-empty">
         <div className="live-plan-empty-icon">⌖</div>
-        <h3>Build a spatial camera view</h3>
-        <p>A plan shows status markers for the whole site and opens video only when an operator requests it. Upload a scanned floor plan, a site drawing, or a snapshot from your NVR software to map cameras onto real rooms.</p>
+        <h3>{t('live.plan.emptyTitle')}</h3>
+        <p>{t('live.plan.emptyDescription')}</p>
         {canModify && (
           <button type="button" className="btn-primary" disabled={busy}
             onClick={() => setCreatePlanOpen(true)}>Create building plan</button>

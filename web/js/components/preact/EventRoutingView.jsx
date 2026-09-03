@@ -23,7 +23,7 @@ function EmptyState({ title, description, action, actionLabel }) {
 
 function LoadingOrError({ loading, error, onRetry, children, t }) {
   if (loading) return <div className="p-12 text-center text-sm text-muted-foreground">{t('common.loading')}</div>;
-  if (error) return <div className="p-12 text-center"><h3 className="font-semibold text-[hsl(var(--danger))]">{t('events.loadError')}</h3><p className="mt-1 text-sm text-muted-foreground">{error.message}</p><button type="button" className="btn-secondary mt-4" onClick={onRetry}>{t('common.retry')}</button></div>;
+  if (error) return <div className="p-12 text-center"><h3 className="font-semibold text-[hsl(var(--danger))]">{t('events.loadError')}</h3><p className="mt-1 text-sm text-muted-foreground">{error.status === 403 ? t('events.accessDenied') : error.message}</p><button type="button" className="btn-secondary mt-4" onClick={onRetry}>{t('common.retry')}</button></div>;
   return children;
 }
 

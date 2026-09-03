@@ -23,7 +23,7 @@ export function Footer() {
     <footer class="bg-card text-card-foreground py-3 px-4 mt-4 shadow-inner backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.8)] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <div class="container mx-auto flex justify-between items-center">
         <div class="text-sm text-muted-foreground">
-          {t('footer.tagline')} © {year}
+          LightNVR © {year}
         </div>
         <div>
           <a href="https://github.com/opensensor/lightnvr" class="text-sm no-underline hover:underline"
@@ -34,4 +34,3 @@ export function Footer() {
     </footer>
   );
 }
-
