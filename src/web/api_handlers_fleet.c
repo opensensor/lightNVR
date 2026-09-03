@@ -16,6 +16,7 @@
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
 #include "web/api_handlers_fleet.h"
+#include "web/fleet_health.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
 
@@ -681,6 +682,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         return;
     }
     fleet_camera_enrich_runtime_health(cameras, camera_count);
+    fleet_health_enrich_go2rtc_activity(cameras, camera_count);
     /* Drop unauthorized cameras before anything derived from the inventory is
      * computed, so totals, facets, and pagination cannot disclose cameras
      * outside the caller's scope. */

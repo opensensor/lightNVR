@@ -9,6 +9,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/fleet_health.h"
 #define LOG_COMPONENT "StreamsAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -469,6 +470,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
      * contracts. This is keyed by stream name internally, so the legacy list
      * no longer performs a linear runtime lookup for every camera. */
     fleet_camera_enrich_runtime_health(fleet_cameras, fleet_camera_count);
+    fleet_health_enrich_go2rtc_activity(fleet_cameras, fleet_camera_count);
 
     char summary_param[8] = {0};
     bool summary_request =

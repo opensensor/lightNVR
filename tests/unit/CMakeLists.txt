@@ -215,6 +215,7 @@ if(YAML_FOUND)
 endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
+    add_layer2_test_with_curl(test_go2rtc_stream_activity)
     add_executable(fake_go2rtc_server fake_go2rtc_server.c)
     set_target_properties(fake_go2rtc_server PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

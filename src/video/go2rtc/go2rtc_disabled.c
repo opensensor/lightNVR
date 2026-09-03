@@ -25,6 +25,21 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 }
 bool go2rtc_api_remove_stream(const char *stream_id) { UNUSED(stream_id); return true; }
 bool go2rtc_api_stream_exists(const char *stream_id) { UNUSED(stream_id); return false; }
+bool go2rtc_api_parse_stream_activity_json(
+    const char *json, go2rtc_stream_activity_t *streams, size_t stream_count) {
+    UNUSED(json);
+    if (streams) {
+        for (size_t i = 0; i < stream_count; i++) streams[i].video_active = false;
+    }
+    return false;
+}
+bool go2rtc_api_get_stream_activity(go2rtc_stream_activity_t *streams,
+                                    size_t stream_count) {
+    if (streams) {
+        for (size_t i = 0; i < stream_count; i++) streams[i].video_active = false;
+    }
+    return false;
+}
 bool go2rtc_api_get_webrtc_url(const char *stream_id, char *buffer, size_t buffer_size) {
     UNUSED(stream_id); UNUSED(buffer); UNUSED(buffer_size); return false;
 }

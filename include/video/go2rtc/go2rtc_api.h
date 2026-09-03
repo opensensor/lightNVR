@@ -10,6 +10,16 @@
 #include <stddef.h>
 
 /**
+ * A caller-owned primary/alternate stream name pair and go2rtc's current video
+ * activity. Name pointers only need to remain valid for the duration of a call.
+ */
+typedef struct {
+    const char *stream_name;
+    const char *alternate_stream_name;
+    bool video_active;
+} go2rtc_stream_activity_t;
+
+/**
  * @brief Base path prefix for go2rtc API endpoints
  *
  * This must match the base_path setting in go2rtc.yaml.
@@ -64,6 +74,27 @@ bool go2rtc_api_remove_stream(const char *stream_id);
  * @return true if stream exists, false otherwise
  */
 bool go2rtc_api_stream_exists(const char *stream_id);
+
+/**
+ * Parse a go2rtc /api/streams response and mark entries whose producers have
+ * received video packets. Idle registered sources and audio-only producers do
+ * not count as active video.
+ *
+ * Exposed separately from the HTTP request for deterministic tests.
+ *
+ * @return true when json contains a valid stream map, false otherwise
+ */
+bool go2rtc_api_parse_stream_activity_json(
+    const char *json, go2rtc_stream_activity_t *streams, size_t stream_count);
+
+/**
+ * Fetch one bulk /api/streams snapshot and populate current video activity for
+ * every requested stream name.
+ *
+ * @return true when go2rtc returned a valid stream map, false otherwise
+ */
+bool go2rtc_api_get_stream_activity(go2rtc_stream_activity_t *streams,
+                                    size_t stream_count);
 
 /**
  * @brief Get the WebRTC URL for a stream
