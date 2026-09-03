@@ -246,4 +246,13 @@ add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body 
 add_layer3_test(test_cross_stream_motion_trigger)
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
 
+# Health tasks register their tests in independent fragments so parallel work
+# never needs to modify this shared list.
+file(GLOB SYSTEM_HEALTH_TEST_FRAGMENTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/system_health/*.cmake")
+list(SORT SYSTEM_HEALTH_TEST_FRAGMENTS)
+foreach(SYSTEM_HEALTH_TEST_FRAGMENT IN LISTS SYSTEM_HEALTH_TEST_FRAGMENTS)
+    include("${SYSTEM_HEALTH_TEST_FRAGMENT}")
+endforeach()
+
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")

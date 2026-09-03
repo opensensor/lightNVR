@@ -70,6 +70,13 @@ void handle_post_settings(const http_request_t *req, http_response_t *res);
  */
 void handle_get_system_info(const http_request_t *req, http_response_t *res);
 
+/** @brief Admin-only operational health; separate from /api/health liveness. */
+void handle_get_system_health(const http_request_t *req, http_response_t *res);
+
+/** @brief Admin-only cursor-paginated operational incident history. */
+void handle_get_system_health_incidents(const http_request_t *req,
+                                        http_response_t *res);
+
 /**
  * @brief Handler for GET /api/system/logs
  */

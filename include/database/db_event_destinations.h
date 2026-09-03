@@ -13,6 +13,7 @@
 #define EVENT_DESTINATION_HOST_MAX 256
 #define EVENT_DESTINATION_CLIENT_ID_MAX 128
 #define EVENT_DESTINATION_TOPIC_TEMPLATE_MAX 512
+#define EVENT_DESTINATION_STATUS_TOPIC_TEMPLATE_MAX 512
 #define EVENT_DESTINATION_USERNAME_MAX 128
 #define EVENT_DESTINATION_PASSWORD_MAX 256
 #define EVENT_DESTINATION_TLS_MODE_MAX 16
@@ -22,6 +23,10 @@
 #define EVENT_DESTINATION_KEY_PREFIX "mqtt:"
 #define EVENT_DESTINATION_DEFAULT_TOPIC_TEMPLATE \
     "lightnvr/v1/events/{type}/{subject_id}"
+#define EVENT_DESTINATION_STATUS_INSTALLATION_PLACEHOLDER \
+    "{installation_uuid}"
+#define EVENT_DESTINATION_STATUS_DESTINATION_PLACEHOLDER \
+    "{destination_uuid}"
 
 typedef struct {
     char uuid[EVENT_DESTINATION_UUID_MAX];
@@ -33,6 +38,7 @@ typedef struct {
     int broker_port;
     char client_id[EVENT_DESTINATION_CLIENT_ID_MAX];
     char topic_template[EVENT_DESTINATION_TOPIC_TEMPLATE_MAX];
+    char status_topic_template[EVENT_DESTINATION_STATUS_TOPIC_TEMPLATE_MAX];
     char username[EVENT_DESTINATION_USERNAME_MAX];
     bool password_configured;
     char tls_mode[EVENT_DESTINATION_TLS_MODE_MAX];

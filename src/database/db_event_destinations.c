@@ -20,7 +20,8 @@
 
 #define EVENT_DESTINATION_SELECT_FIELDS \
     "uuid,name,description,enabled,destination_type,broker_host," \
-    "broker_port,client_id,topic_template,username,(password<>'')," \
+    "broker_port,client_id,topic_template,status_topic_template," \
+    "username,(password<>'')," \
     "tls_mode,ca_file,cert_file,key_file,keepalive_seconds,qos," \
     "revision,created_at,updated_at"
 
@@ -98,6 +99,52 @@ static bool valid_topic_template(const char *topic) {
         maximum_expanded_length < EVENT_OUTBOX_TOPIC_MAX;
 }
 
+static bool valid_status_topic_template(const char *topic) {
+    if (!valid_text(topic, EVENT_DESTINATION_STATUS_TOPIC_TEMPLATE_MAX,
+                    false)) {
+        return false;
+    }
+    if (topic[0] == '\0') return true;
+
+    bool has_installation_uuid = false;
+    size_t maximum_expanded_length = 0U;
+    for (size_t index = 0U; topic[index] != '\0';) {
+        if (topic[index] == '+' || topic[index] == '#' ||
+            topic[index] == '}') {
+            return false;
+        }
+        if (topic[index] != '{') {
+            maximum_expanded_length++;
+            index++;
+            continue;
+        }
+        if (strncmp(topic + index,
+                    EVENT_DESTINATION_STATUS_INSTALLATION_PLACEHOLDER,
+                    sizeof(EVENT_DESTINATION_STATUS_INSTALLATION_PLACEHOLDER)
+                        - 1U) == 0) {
+            has_installation_uuid = true;
+            maximum_expanded_length += 36U;
+            index += sizeof(
+                EVENT_DESTINATION_STATUS_INSTALLATION_PLACEHOLDER) - 1U;
+        } else if (strncmp(
+                       topic + index,
+                       EVENT_DESTINATION_STATUS_DESTINATION_PLACEHOLDER,
+                       sizeof(
+                           EVENT_DESTINATION_STATUS_DESTINATION_PLACEHOLDER)
+                           - 1U) == 0) {
+            maximum_expanded_length += 36U;
+            index += sizeof(
+                EVENT_DESTINATION_STATUS_DESTINATION_PLACEHOLDER) - 1U;
+        } else {
+            return false;
+        }
+        if (maximum_expanded_length >= EVENT_OUTBOX_TOPIC_MAX) return false;
+    }
+    return has_installation_uuid && topic[0] != '/' &&
+           topic[strlen(topic) - 1U] != '/' &&
+           maximum_expanded_length < EVENT_OUTBOX_TOPIC_MAX;
+}
+
 static bool valid_password(const char *password) {
     return valid_text(password, EVENT_DESTINATION_PASSWORD_MAX, false);
 }
@@ -134,9 +181,11 @@ db_event_destination_result_t db_event_destination_validate(
     }
     if (!valid_text(destination->client_id,
                     sizeof(destination->client_id), true) ||
-        !valid_topic_template(destination->topic_template)) {
+        !valid_topic_template(destination->topic_template) ||
+        !valid_status_topic_template(destination->status_topic_template)) {
         set_error(error, error_size,
-                  "client ID or topic template is invalid");
+                  "client ID, event topic template, or status topic template "
+                  "is invalid");
         return DB_EVENT_DESTINATION_INVALID;
     }
     if (!valid_text(destination->username,
@@ -208,23 +257,25 @@ static void populate(sqlite3_stmt *statement,
                 statement, 7);
     copy_column(destination->topic_template,
                 sizeof(destination->topic_template), statement, 8);
+    copy_column(destination->status_topic_template,
+                sizeof(destination->status_topic_template), statement, 9);
     copy_column(destination->username, sizeof(destination->username),
-                statement, 9);
+                statement, 10);
     destination->password_configured =
-        sqlite3_column_int(statement, 10) != 0;
+        sqlite3_column_int(statement, 11) != 0;
     copy_column(destination->tls_mode, sizeof(destination->tls_mode),
-                statement, 11);
-    copy_column(destination->ca_file, sizeof(destination->ca_file),
                 statement, 12);
-    copy_column(destination->cert_file, sizeof(destination->cert_file),
+    copy_column(destination->ca_file, sizeof(destination->ca_file),
                 statement, 13);
-    copy_column(destination->key_file, sizeof(destination->key_file),
+    copy_column(destination->cert_file, sizeof(destination->cert_file),
                 statement, 14);
-    destination->keepalive_seconds = sqlite3_column_int(statement, 15);
-    destination->qos = sqlite3_column_int(statement, 16);
-    destination->revision = sqlite3_column_int64(statement, 17);
-    destination->created_at = sqlite3_column_int64(statement, 18);
-    destination->updated_at = sqlite3_column_int64(statement, 19);
+    copy_column(destination->key_file, sizeof(destination->key_file),
+                statement, 15);
+    destination->keepalive_seconds = sqlite3_column_int(statement, 16);
+    destination->qos = sqlite3_column_int(statement, 17);
+    destination->revision = sqlite3_column_int64(statement, 18);
+    destination->created_at = sqlite3_column_int64(statement, 19);
+    destination->updated_at = sqlite3_column_int64(statement, 20);
 }
 
 static db_event_destination_result_t get_locked(
@@ -354,18 +405,20 @@ static void bind_update_fields(sqlite3_stmt *statement,
                       SQLITE_TRANSIENT);
     sqlite3_bind_text(statement, 8, destination->topic_template, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_text(statement, 9, destination->username, -1,
+    sqlite3_bind_text(statement, 9, destination->status_topic_template, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_text(statement, 10, destination->tls_mode, -1,
+    sqlite3_bind_text(statement, 10, destination->username, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_text(statement, 11, destination->ca_file, -1,
+    sqlite3_bind_text(statement, 11, destination->tls_mode, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_text(statement, 12, destination->cert_file, -1,
+    sqlite3_bind_text(statement, 12, destination->ca_file, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_text(statement, 13, destination->key_file, -1,
+    sqlite3_bind_text(statement, 13, destination->cert_file, -1,
                       SQLITE_TRANSIENT);
-    sqlite3_bind_int(statement, 14, destination->keepalive_seconds);
-    sqlite3_bind_int(statement, 15, destination->qos);
+    sqlite3_bind_text(statement, 14, destination->key_file, -1,
+                      SQLITE_TRANSIENT);
+    sqlite3_bind_int(statement, 15, destination->keepalive_seconds);
+    sqlite3_bind_int(statement, 16, destination->qos);
 }
 
 db_event_destination_result_t db_event_destination_create(
@@ -389,9 +442,10 @@ db_event_destination_result_t db_event_destination_create(
     const char *sql =
         "INSERT INTO event_destinations("
         "uuid,name,description,enabled,destination_type,broker_host,"
-        "broker_port,client_id,topic_template,username,password,tls_mode,"
+        "broker_port,client_id,topic_template,status_topic_template,"
+        "username,password,tls_mode,"
         "ca_file,cert_file,key_file,keepalive_seconds,qos) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
     pthread_mutex_lock(mutex);
     if (count_locked(db) >= EVENT_DESTINATION_MAX_COUNT) {
         pthread_mutex_unlock(mutex);
@@ -416,20 +470,22 @@ db_event_destination_result_t db_event_destination_create(
                           SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 9, destination->topic_template, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 10, destination->username, -1,
+        sqlite3_bind_text(statement, 10, destination->status_topic_template,
+                          -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 11, destination->username, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 11, password, -1,
+        sqlite3_bind_text(statement, 12, password, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 12, destination->tls_mode, -1,
+        sqlite3_bind_text(statement, 13, destination->tls_mode, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 13, destination->ca_file, -1,
+        sqlite3_bind_text(statement, 14, destination->ca_file, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 14, destination->cert_file, -1,
+        sqlite3_bind_text(statement, 15, destination->cert_file, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 15, destination->key_file, -1,
+        sqlite3_bind_text(statement, 16, destination->key_file, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_int(statement, 16, destination->keepalive_seconds);
-        sqlite3_bind_int(statement, 17, destination->qos);
+        sqlite3_bind_int(statement, 17, destination->keepalive_seconds);
+        sqlite3_bind_int(statement, 18, destination->qos);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -466,13 +522,15 @@ db_event_destination_result_t db_event_destination_update(
     const char *sql = replace_password
         ? "UPDATE event_destinations SET name=?,description=?,enabled=?,"
           "destination_type=?,broker_host=?,broker_port=?,client_id=?,"
-          "topic_template=?,username=?,tls_mode=?,ca_file=?,cert_file=?,"
+          "topic_template=?,status_topic_template=?,username=?,tls_mode=?,"
+          "ca_file=?,cert_file=?,"
           "key_file=?,keepalive_seconds=?,qos=?,password=?,"
           "revision=revision+1,updated_at=strftime('%s','now') "
           "WHERE uuid=? AND revision=?;"
         : "UPDATE event_destinations SET name=?,description=?,enabled=?,"
           "destination_type=?,broker_host=?,broker_port=?,client_id=?,"
-          "topic_template=?,username=?,tls_mode=?,ca_file=?,cert_file=?,"
+          "topic_template=?,status_topic_template=?,username=?,tls_mode=?,"
+          "ca_file=?,cert_file=?,"
           "key_file=?,keepalive_seconds=?,qos=?,"
           "revision=revision+1,updated_at=strftime('%s','now') "
           "WHERE uuid=? AND revision=?;";
@@ -492,7 +550,7 @@ db_event_destination_result_t db_event_destination_update(
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
     if (result == SQLITE_OK) {
         bind_update_fields(statement, destination, normalized_name);
-        int index = 16;
+        int index = 17;
         if (replace_password) {
             sqlite3_bind_text(statement, index++, password, -1,
                               SQLITE_TRANSIENT);

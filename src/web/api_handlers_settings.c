@@ -35,6 +35,7 @@
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
 #include "storage/storage_manager.h"
+#include "telemetry/system_health_policy.h"
 #include "utils/yaml_validate.h"
 
 /**
@@ -61,6 +62,238 @@ static bool is_safe_storage_path(const char *path) {
         }
     }
     return true;
+}
+
+static bool health_setting_key_allowed(const char *name) {
+    static const char *const keys[] = {
+        "health_enabled", "health_profile", "health_fast_interval_seconds",
+        "health_normal_interval_seconds", "health_slow_interval_seconds",
+        "health_device_interval_seconds", "health_write_probe_enabled",
+        "health_hardware_provider", "health_presence_interval_seconds",
+        "health_incident_retention_days", "health_condition_overrides"
+    };
+    for (size_t index = 0; index < sizeof(keys) / sizeof(keys[0]); ++index) {
+        if (strcmp(name, keys[index]) == 0) return true;
+    }
+    return false;
+}
+
+static int health_json_u32(const cJSON *settings, const char *name,
+                           uint32_t *destination, bool *touched,
+                           char error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH]) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(settings, name);
+    if (!item) return 0;
+    *touched = true;
+    if (!cJSON_IsNumber(item) || item->valuedouble < 0.0 ||
+        item->valuedouble > (double)UINT32_MAX) {
+        snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                 "%s must be a non-negative whole number", name);
+        return -1;
+    }
+    uint32_t parsed = (uint32_t)item->valuedouble;
+    if ((double)parsed != item->valuedouble) {
+        snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                 "%s must be a non-negative whole number", name);
+        return -1;
+    }
+    *destination = parsed;
+    return 0;
+}
+
+static int health_json_bool(const cJSON *settings, const char *name,
+                            bool *destination, bool *touched,
+                            char error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH]) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(settings, name);
+    if (!item) return 0;
+    *touched = true;
+    if (!cJSON_IsBool(item)) {
+        snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                 "%s must be boolean", name);
+        return -1;
+    }
+    *destination = cJSON_IsTrue(item);
+    return 0;
+}
+
+static int health_json_string(const cJSON *settings, const char *name,
+                              char *destination, size_t destination_size,
+                              bool *touched,
+                              char error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH]) {
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(settings, name);
+    if (!item) return 0;
+    *touched = true;
+    if (!cJSON_IsString(item) || !item->valuestring ||
+        strlen(item->valuestring) >= destination_size) {
+        snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                 "%s must be a bounded string", name);
+        return -1;
+    }
+    safe_strcpy(destination, item->valuestring, destination_size, 0);
+    return 0;
+}
+
+/*
+ * Prepare a complete policy without mutating g_config or the active snapshot.
+ * Return 1 for an update, 0 when no health field is present, -1 for a client
+ * validation error, or -2 when the existing DB value cannot be read.
+ */
+static int prepare_health_policy_update(
+    const cJSON *settings, system_health_policy_t *candidate,
+    char **canonical_out, bool *persist_overrides,
+    char error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH]) {
+    bool touched = false;
+    *canonical_out = NULL;
+    *persist_overrides = false;
+    error[0] = '\0';
+
+    for (const cJSON *item = settings->child; item; item = item->next) {
+        if (item->string && strncmp(item->string, "health_", 7U) == 0 &&
+            !health_setting_key_allowed(item->string)) {
+            snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                     "unknown health setting: %.96s", item->string);
+            return -1;
+        }
+    }
+
+    system_health_policy_settings_t scalar = g_config.health;
+    if (health_json_bool(settings, "health_enabled", &scalar.enabled,
+                         &touched, error) != 0 ||
+        health_json_string(settings, "health_profile", scalar.profile,
+                           sizeof(scalar.profile), &touched, error) != 0 ||
+        health_json_u32(settings, "health_fast_interval_seconds",
+                        &scalar.fast_interval_seconds, &touched, error) != 0 ||
+        health_json_u32(settings, "health_normal_interval_seconds",
+                        &scalar.normal_interval_seconds, &touched, error) != 0 ||
+        health_json_u32(settings, "health_slow_interval_seconds",
+                        &scalar.slow_interval_seconds, &touched, error) != 0 ||
+        health_json_u32(settings, "health_device_interval_seconds",
+                        &scalar.device_interval_seconds, &touched, error) != 0 ||
+        health_json_bool(settings, "health_write_probe_enabled",
+                         &scalar.write_probe_enabled, &touched, error) != 0 ||
+        health_json_string(settings, "health_hardware_provider",
+                           scalar.hardware_provider,
+                           sizeof(scalar.hardware_provider), &touched,
+                           error) != 0 ||
+        health_json_u32(settings, "health_presence_interval_seconds",
+                        &scalar.presence_interval_seconds, &touched, error) != 0 ||
+        health_json_u32(settings, "health_incident_retention_days",
+                        &scalar.incident_retention_days, &touched, error) != 0) {
+        return -1;
+    }
+
+    const cJSON *override_object = cJSON_GetObjectItemCaseSensitive(
+        settings, "health_condition_overrides");
+    char *override_json = NULL;
+    if (override_object) {
+        touched = true;
+        *persist_overrides = true;
+        if (!cJSON_IsObject(override_object)) {
+            snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                     "health_condition_overrides must be an object");
+            return -1;
+        }
+        override_json = cJSON_PrintUnformatted(override_object);
+        if (!override_json) {
+            snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                     "could not allocate health overrides");
+            return -2;
+        }
+    }
+    if (!touched) return 0;
+
+    if (!override_json) {
+        size_t stored_length = 0;
+        int result = db_get_system_setting_alloc(
+            SYSTEM_HEALTH_OVERRIDES_SETTING_KEY, &override_json,
+            &stored_length);
+        (void)stored_length;
+        if (result < 0) {
+            snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                     "could not read existing health overrides");
+            return -2;
+        }
+    }
+
+    char *canonical = calloc(SYSTEM_HEALTH_OVERRIDE_JSON_MAX + 1U, 1U);
+    if (!canonical) {
+        free(override_json);
+        snprintf(error, SYSTEM_HEALTH_POLICY_ERROR_LENGTH,
+                 "could not allocate health policy");
+        return -2;
+    }
+    int result = system_health_policy_build(
+        &scalar, override_json, candidate, canonical,
+        SYSTEM_HEALTH_OVERRIDE_JSON_MAX + 1U, error);
+    free(override_json);
+    if (result != 0) {
+        free(canonical);
+        return -1;
+    }
+    *canonical_out = canonical;
+    return 1;
+}
+
+static void add_health_settings_json(cJSON *settings) {
+    cJSON_AddBoolToObject(settings, "health_enabled", g_config.health.enabled);
+    cJSON_AddStringToObject(settings, "health_profile", g_config.health.profile);
+    cJSON_AddNumberToObject(settings, "health_fast_interval_seconds",
+                            g_config.health.fast_interval_seconds);
+    cJSON_AddNumberToObject(settings, "health_normal_interval_seconds",
+                            g_config.health.normal_interval_seconds);
+    cJSON_AddNumberToObject(settings, "health_slow_interval_seconds",
+                            g_config.health.slow_interval_seconds);
+    cJSON_AddNumberToObject(settings, "health_device_interval_seconds",
+                            g_config.health.device_interval_seconds);
+    cJSON_AddBoolToObject(settings, "health_write_probe_enabled",
+                          g_config.health.write_probe_enabled);
+    cJSON_AddStringToObject(settings, "health_hardware_provider",
+                            g_config.health.hardware_provider);
+    cJSON_AddNumberToObject(settings, "health_presence_interval_seconds",
+                            g_config.health.presence_interval_seconds);
+    cJSON_AddNumberToObject(settings, "health_incident_retention_days",
+                            g_config.health.incident_retention_days);
+
+    char *stored = NULL;
+    size_t stored_length = 0;
+    int db_result = db_get_system_setting_alloc(
+        SYSTEM_HEALTH_OVERRIDES_SETTING_KEY, &stored, &stored_length);
+    (void)stored_length;
+    system_health_policy_t candidate;
+    char *canonical = calloc(SYSTEM_HEALTH_OVERRIDE_JSON_MAX + 1U, 1U);
+    char error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH];
+    error[0] = '\0';
+    int build_result = canonical
+        ? system_health_policy_build(&g_config.health,
+                                     db_result == 0 ? stored : NULL,
+                                     &candidate, canonical,
+                                     SYSTEM_HEALTH_OVERRIDE_JSON_MAX + 1U,
+                                     error)
+        : -1;
+    free(stored);
+
+    if (db_result >= 0 && build_result == 0) {
+        cJSON *overrides = cJSON_Parse(canonical);
+        if (overrides) {
+            cJSON_AddItemToObject(settings, "health_condition_overrides",
+                                  overrides);
+        }
+        char *effective_json = calloc(65536U, 1U);
+        if (effective_json &&
+            system_health_policy_serialize(&candidate, effective_json,
+                                           65536U) == 0) {
+            cJSON *effective = cJSON_Parse(effective_json);
+            if (effective) {
+                cJSON_AddItemToObject(settings, "health_effective_policy",
+                                      effective);
+            }
+        }
+        free(effective_json);
+    } else {
+        log_error("Rejected persisted health policy; active policy unchanged: %s",
+                  build_result == 0 ? "atomic replacement failed" : error);
+        cJSON_AddNullToObject(settings, "health_condition_overrides");
+    }
+    free(canonical);
 }
 
 /**
@@ -485,6 +718,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
     cJSON_AddBoolToObject(settings, "hls_disabled",    g_config.hls_disabled);
     cJSON_AddBoolToObject(settings, "mse_disabled",    g_config.mse_disabled);
+    add_health_settings_json(settings);
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
     cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
@@ -2146,6 +2380,28 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Database path changed successfully");
     }
 
+        // Health settings are staged as one complete policy after every other
+        // request validation path above. Nothing active changes on a bad
+        // scalar, partial override, wrong unit, or invalid threshold order.
+        system_health_policy_t health_candidate;
+        system_health_policy_settings_t prior_health_settings = g_config.health;
+        char *health_canonical = NULL;
+        bool persist_health_overrides = false;
+        char health_error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH];
+        int health_update = prepare_health_policy_update(
+            settings, &health_candidate, &health_canonical,
+            &persist_health_overrides, health_error);
+        if (health_update < 0) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(
+                res, health_update == -1 ? 400 : 500, health_error);
+            return;
+        }
+        if (health_update == 1) {
+            g_config.health = health_candidate.settings;
+            settings_changed = true;
+        }
+
         // Save settings if changed
         if (settings_changed) {
             // Use the loaded config path - save_config will handle this automatically
@@ -2164,6 +2420,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             }
             
             if (save_result != 0) {
+                if (health_update == 1) g_config.health = prior_health_settings;
+                free(health_canonical);
                 log_error("Failed to save configuration, error code: %d", save_result);
                 cJSON_Delete(settings);
                 http_response_set_json_error(res, 500, "Failed to save configuration");
@@ -2171,6 +2429,49 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             }
             
             log_info("Configuration saved successfully");
+
+            if (health_update == 1) {
+                char *previous_overrides = NULL;
+                size_t previous_overrides_length = 0;
+                int previous_result = 1;
+                if (persist_health_overrides) {
+                    previous_result = db_get_system_setting_alloc(
+                        SYSTEM_HEALTH_OVERRIDES_SETTING_KEY,
+                        &previous_overrides, &previous_overrides_length);
+                    (void)previous_overrides_length;
+                    if (previous_result < 0 || db_set_system_setting(
+                            SYSTEM_HEALTH_OVERRIDES_SETTING_KEY,
+                            health_canonical) != 0) {
+                        free(previous_overrides);
+                        g_config.health = prior_health_settings;
+                        (void)save_config(&g_config, config_path);
+                        free(health_canonical);
+                        cJSON_Delete(settings);
+                        http_response_set_json_error(
+                            res, 500, "Failed to persist health overrides");
+                        return;
+                    }
+                }
+                if (system_health_policy_replace(&health_candidate,
+                                                 health_error) != 0) {
+                    if (persist_health_overrides) {
+                        db_set_system_setting(
+                            SYSTEM_HEALTH_OVERRIDES_SETTING_KEY,
+                            previous_result == 0 && previous_overrides
+                                ? previous_overrides
+                                : "{\"version\":1,\"conditions\":[]}");
+                    }
+                    free(previous_overrides);
+                    g_config.health = prior_health_settings;
+                    (void)save_config(&g_config, config_path);
+                    free(health_canonical);
+                    cJSON_Delete(settings);
+                    http_response_set_json_error(
+                        res, 500, "Failed to activate health policy");
+                    return;
+                }
+                free(previous_overrides);
+            }
 
             // Do NOT re-read the config from disk here. Every setting above is
             // already applied to g_config in place and persisted by
@@ -2185,6 +2486,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         } else {
             log_info("No settings changed");
         }
+        free(health_canonical);
 
         // Dispatch go2rtc and MQTT background workers outside settings_changed
         // so that DB-backed overrides (go2rtc_config_override in system_settings)

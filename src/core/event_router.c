@@ -23,6 +23,8 @@
 #include "utils/uuid.h"
 
 #define DETECTION_EVENT_TYPE "io.lightnvr.detection.object.v1"
+#define HEALTH_ALERT_EVENT_TYPE "io.lightnvr.system.health_alert.v1"
+#define HEALTH_RECOVERED_EVENT_TYPE "io.lightnvr.system.health_recovered.v1"
 #define ROUTER_FILTER_MAX_VALUES 64
 #define ROUTER_FILTER_VALUE_MAX 128
 #define ROUTER_SCHEDULE_MAX_WINDOWS 64
@@ -41,6 +43,13 @@ typedef struct {
     bool has_min_confidence;
     double min_confidence;
 } compiled_detection_predicate_t;
+
+typedef struct {
+    char conditions[ROUTER_FILTER_MAX_VALUES][ROUTER_FILTER_VALUE_MAX];
+    int condition_count;
+    char severities[ROUTER_FILTER_MAX_VALUES][ROUTER_FILTER_VALUE_MAX];
+    int severity_count;
+} compiled_health_predicate_t;
 
 typedef struct {
     unsigned char days;
@@ -64,6 +73,7 @@ typedef struct {
     event_destination_t destination;
     fleet_selector_t *selector;
     compiled_detection_predicate_t detection;
+    compiled_health_predicate_t health;
     compiled_schedule_window_t windows[ROUTER_SCHEDULE_MAX_WINDOWS];
     int window_count;
     compiled_timezone_t timezone;
@@ -335,27 +345,37 @@ static bool compile_predicate(compiled_route_t *compiled) {
     }
     const cJSON *detection =
         cJSON_GetObjectItemCaseSensitive(root, "detection");
-    if (!detection) {
-        cJSON_Delete(root);
-        return true;
-    }
-    const cJSON *labels =
-        cJSON_GetObjectItemCaseSensitive(detection, "labels_any");
-    const cJSON *zones =
-        cJSON_GetObjectItemCaseSensitive(detection, "zone_ids_any");
-    const cJSON *confidence =
-        cJSON_GetObjectItemCaseSensitive(detection, "min_confidence");
-    bool valid = copy_filter_values(labels, compiled->detection.labels,
-                                    &compiled->detection.label_count) &&
-        copy_filter_values(zones, compiled->detection.zones,
-                           &compiled->detection.zone_count);
-    if (valid && confidence) {
-        if (!cJSON_IsNumber(confidence)) {
-            valid = false;
-        } else {
-            compiled->detection.has_min_confidence = true;
-            compiled->detection.min_confidence = confidence->valuedouble;
+    bool valid = true;
+    if (detection) {
+        const cJSON *labels =
+            cJSON_GetObjectItemCaseSensitive(detection, "labels_any");
+        const cJSON *zones =
+            cJSON_GetObjectItemCaseSensitive(detection, "zone_ids_any");
+        const cJSON *confidence =
+            cJSON_GetObjectItemCaseSensitive(detection, "min_confidence");
+        valid = copy_filter_values(labels, compiled->detection.labels,
+                                   &compiled->detection.label_count) &&
+            copy_filter_values(zones, compiled->detection.zones,
+                               &compiled->detection.zone_count);
+        if (valid && confidence) {
+            if (!cJSON_IsNumber(confidence)) {
+                valid = false;
+            } else {
+                compiled->detection.has_min_confidence = true;
+                compiled->detection.min_confidence = confidence->valuedouble;
+            }
         }
+    }
+    const cJSON *health = cJSON_GetObjectItemCaseSensitive(root, "health");
+    if (valid && health) {
+        const cJSON *conditions = cJSON_GetObjectItemCaseSensitive(
+            health, "condition_codes_any");
+        const cJSON *severities = cJSON_GetObjectItemCaseSensitive(
+            health, "severities_any");
+        valid = copy_filter_values(conditions, compiled->health.conditions,
+                                   &compiled->health.condition_count) &&
+            copy_filter_values(severities, compiled->health.severities,
+                               &compiled->health.severity_count);
     }
     cJSON_Delete(root);
     return valid;
@@ -533,12 +553,33 @@ static bool string_matches(const char *value,
 
 static bool predicate_matches(const compiled_route_t *route,
                               const event_envelope_t *event) {
-    if (strcmp(event->type, DETECTION_EVENT_TYPE) != 0 ||
-        (route->detection.label_count == 0 &&
-         route->detection.zone_count == 0 &&
-         !route->detection.has_min_confidence)) {
-        return true;
+    bool has_detection = route->detection.label_count > 0 ||
+        route->detection.zone_count > 0 ||
+        route->detection.has_min_confidence;
+    bool has_health = route->health.condition_count > 0 ||
+        route->health.severity_count > 0;
+    if (has_health) {
+        if (strcmp(event->type, HEALTH_ALERT_EVENT_TYPE) != 0 &&
+            strcmp(event->type, HEALTH_RECOVERED_EVENT_TYPE) != 0) {
+            return false;
+        }
+        const cJSON *code =
+            cJSON_GetObjectItemCaseSensitive(event->data, "code");
+        const char *severity_value = event_severity_name(event->severity);
+        if (strcmp(event->type, HEALTH_RECOVERED_EVENT_TYPE) == 0) {
+            const cJSON *previous = cJSON_GetObjectItemCaseSensitive(
+                event->data, "previous_severity");
+            severity_value = cJSON_IsString(previous)
+                ? previous->valuestring : "";
+        }
+        return cJSON_IsString(code) &&
+            string_matches(code->valuestring, route->health.conditions,
+                           route->health.condition_count) &&
+            string_matches(severity_value, route->health.severities,
+                           route->health.severity_count);
     }
+    if (!has_detection) return true;
+    if (strcmp(event->type, DETECTION_EVENT_TYPE) != 0) return false;
     const cJSON *detections =
         cJSON_GetObjectItemCaseSensitive(event->data, "detections");
     const cJSON *item = NULL;

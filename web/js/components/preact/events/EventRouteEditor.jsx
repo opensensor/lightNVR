@@ -4,7 +4,9 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import {
   DEFAULT_SCHEDULE_WINDOW,
   EMPTY_ROUTE_DRAFT,
+  HEALTH_EVENT_FAMILY,
   buildRoutePayload,
+  healthSeveritiesFromCatalog,
   routeToDraft,
   shortEventType,
   validateRouteDraft,
@@ -66,6 +68,8 @@ function ScheduleWindow({ window, index, onChange, onRemove, t }) {
 
 function PreviewResult({ preview, t }) {
   if (!preview) return null;
+  const hasSystemEvents = (preview.event_types || []).some(
+    (eventType) => eventType.subject_kind === 'system');
   return (
     <div className="rounded-lg border border-[hsl(var(--primary)/0.35)] bg-[hsl(var(--primary)/0.06)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -83,18 +87,37 @@ function PreviewResult({ preview, t }) {
         </div>
       )}
       <p className="mt-3 text-xs text-muted-foreground">{t('events.route.previewNoPublish')}</p>
+      {hasSystemEvents && (
+        <p className="mt-2 rounded-md border border-border bg-card p-3 text-xs font-medium">
+          {t('events.route.systemPreviewHelp')}
+        </p>
+      )}
     </div>
   );
 }
 
-export function EventRouteEditor({ route, catalog, destinations, locations, tags, onPreview, onSave, onClose, t }) {
+export function EventRouteEditor({ route, catalog, healthConditions, healthRegistryUnavailable, destinations, locations, tags, onPreview, onSave, onClose, t }) {
   const creating = !route;
   const [draft, setDraft] = useState(() => route ? routeToDraft(route) : { ...EMPTY_ROUTE_DRAFT, eventTypes: [], windows: [] });
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const validationCode = useMemo(() => validateRouteDraft(draft), [draft]);
+  const healthSeverities = useMemo(
+    () => healthSeveritiesFromCatalog(catalog, draft.eventTypes),
+    [catalog, draft.eventTypes]
+  );
+  const validationCode = useMemo(() => validateRouteDraft(draft, {
+    catalog,
+    healthConditions,
+    healthSeverities,
+  }), [catalog, draft, healthConditions, healthSeverities]);
   const detectionSelected = draft.eventTypes.includes(DETECTION_TYPE);
+  const selectedDefinitions = draft.eventTypes.map(
+    (type) => catalog.find((eventType) => eventType.type === type)).filter(Boolean);
+  const healthSelected = selectedDefinitions.some(
+    (eventType) => eventType.family === HEALTH_EVENT_FAMILY);
+  const cameraOnly = selectedDefinitions.length === draft.eventTypes.length &&
+    selectedDefinitions.every((eventType) => eventType.subject_kind === 'camera');
 
   useEffect(() => {
     const handleKey = (event) => {
@@ -118,10 +141,26 @@ export function EventRouteEditor({ route, catalog, destinations, locations, tags
       : [...draft.eventTypes, type];
     update({
       eventTypes,
+      scopeType: eventTypes.some((selectedType) =>
+        catalog.find((eventType) => eventType.type === selectedType)?.subject_kind !== 'camera')
+        ? 'all' : draft.scopeType,
       detectionFilterEnabled: type === DETECTION_TYPE && !eventTypes.includes(DETECTION_TYPE)
         ? false : draft.detectionFilterEnabled,
+      healthFilterEnabled: eventTypes.some((selectedType) =>
+        catalog.find((eventType) => eventType.type === selectedType)?.family === HEALTH_EVENT_FAMILY)
+        ? draft.healthFilterEnabled : false,
     });
   };
+  const toggleHealthCondition = (code) => update({
+    healthConditionCodes: draft.healthConditionCodes.includes(code)
+      ? draft.healthConditionCodes.filter((value) => value !== code)
+      : [...draft.healthConditionCodes, code],
+  });
+  const toggleHealthSeverity = (severity) => update({
+    healthSeverities: draft.healthSeverities.includes(severity)
+      ? draft.healthSeverities.filter((value) => value !== severity)
+      : [...draft.healthSeverities, severity],
+  });
   const updateWindow = (index, nextWindow) => update({ windows: draft.windows.map((window, windowIndex) => windowIndex === index ? nextWindow : window) });
   const removeWindow = (index) => update({ windows: draft.windows.filter((_, windowIndex) => windowIndex !== index) });
   const setScheduled = (enabled) => update({
@@ -212,8 +251,53 @@ export function EventRouteEditor({ route, catalog, destinations, locations, tags
             </section>
           )}
 
+          {healthSelected && (
+            <section className="border-t border-border pt-5">
+              <label className="touch-target flex cursor-pointer items-start gap-3">
+                <input className="mt-1" type="checkbox" checked={draft.healthFilterEnabled} onChange={(event) => update({ healthFilterEnabled: event.currentTarget.checked })} />
+                <span>
+                  <span className="block font-semibold">{t('events.route.healthFilters')}</span>
+                  <span className="block text-sm text-muted-foreground">{t('events.route.healthFiltersHelp')}</span>
+                </span>
+              </label>
+              {draft.healthFilterEnabled && (
+                <div className="mt-4 space-y-4">
+                  {healthRegistryUnavailable || healthConditions.length === 0 ? (
+                    <p className="rounded-md border border-[hsl(var(--warning)/0.5)] bg-[hsl(var(--warning)/0.1)] p-3 text-sm">
+                      {t('events.route.healthRegistryUnavailable')}
+                    </p>
+                  ) : (
+                    <fieldset>
+                      <legend className="text-sm font-semibold">{t('events.route.healthConditions')}</legend>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {healthConditions.map((condition) => (
+                          <label key={condition.code} className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 text-sm">
+                            <input className="mt-1" type="checkbox" checked={draft.healthConditionCodes.includes(condition.code)} onChange={() => toggleHealthCondition(condition.code)} />
+                            <span><span className="block">{condition.code.replace(/[._]/g, ' ')}</span><code className="block text-[10px] text-muted-foreground">{condition.code}</code></span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  )}
+                  <fieldset>
+                    <legend className="text-sm font-semibold">{t('events.route.healthSeverities')}</legend>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      {healthSeverities.map((severity) => (
+                        <label key={severity} className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                          <input type="checkbox" checked={draft.healthSeverities.includes(severity)} onChange={() => toggleHealthSeverity(severity)} />
+                          {severity}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="border-t border-border pt-5">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.cameraScope')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.cameraScopeHelp')}</p></div><select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={draft.scopeType} onChange={(event) => update({ scopeType: event.currentTarget.value })}><option value="all">{t('events.route.allCameras')}</option><option value="selector">{t('events.route.dynamicScope')}</option></select></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.cameraScope')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.cameraScopeHelp')}</p></div><select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={draft.scopeType} onChange={(event) => update({ scopeType: event.currentTarget.value })}><option value="all">{t('events.route.allCameras')}</option><option value="selector" disabled={!cameraOnly}>{t('events.route.dynamicScope')}</option></select></div>
+            {!cameraOnly && <p className="mt-3 rounded-md border border-border bg-muted/20 p-3 text-sm font-medium">{t('events.route.systemScopeHelp')}</p>}
             {draft.scopeType === 'selector' && <div className="mt-4"><CollectionSelectorBuilder key={route?.uuid || 'new-route'} initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection idPrefix={`event-route-${route?.uuid || 'new'}`} onChange={handleSelectorChange} t={t} /></div>}
           </section>
 

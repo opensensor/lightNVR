@@ -1,0 +1,3 @@
+2:cpu,cpuacct:/camera
+3:memory:/camera
+4:pids:/camera

@@ -120,6 +120,8 @@ void test_destination_crud_is_secretless_versioned_and_audited(void) {
         "\"broker\":{\"host\":\"mqtt.sjc.example\","
         "\"port\":8883,"
         "\"topic_template\":\"sjc/{type}/{subject_id}\","
+        "\"status_topic_template\":"
+        "\"sjc/status/{installation_uuid}/{destination_uuid}\","
         "\"keepalive_seconds\":45,\"qos\":1},"
         "\"authentication\":{\"username\":\"publisher\","
         "\"password\":\"not-in-responses\"},"
@@ -144,6 +146,15 @@ void test_destination_crud_is_secretless_versioned_and_audited(void) {
         authentication, "password_configured")));
     TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(authentication,
                                                        "password"));
+    cJSON *broker = cJSON_GetObjectItemCaseSensitive(json, "broker");
+    TEST_ASSERT_EQUAL_STRING(
+        "sjc/status/{installation_uuid}/{destination_uuid}",
+        cJSON_GetObjectItemCaseSensitive(
+            broker, "status_topic_template")->valuestring);
+    char *serialized = cJSON_PrintUnformatted(json);
+    TEST_ASSERT_NOT_NULL(serialized);
+    TEST_ASSERT_NULL(strstr(serialized, "not-in-responses"));
+    free(serialized);
     cJSON_Delete(json);
 
     json = call(handle_get_event_destinations, HTTP_METHOD_GET,
@@ -160,10 +171,21 @@ void test_destination_crud_is_secretless_versioned_and_audited(void) {
     char path[128];
     snprintf(path, sizeof(path), "/api/event-destinations/%s", uuid);
     json = call(handle_put_event_destination, HTTP_METHOD_PUT, path, NULL,
-                "{\"revision\":1,\"description\":\"Updated\"}", NULL,
+                "{\"revision\":1,\"description\":\"Updated\","
+                "\"broker\":{\"status_topic_template\":\"\"}}", NULL,
                 200);
     TEST_ASSERT_EQUAL_INT(2,
         cJSON_GetObjectItemCaseSensitive(json, "revision")->valueint);
+    TEST_ASSERT_EQUAL_STRING(
+        "", cJSON_GetObjectItemCaseSensitive(
+                cJSON_GetObjectItemCaseSensitive(json, "broker"),
+                "status_topic_template")->valuestring);
+    cJSON_Delete(json);
+
+    json = call(handle_put_event_destination, HTTP_METHOD_PUT, path, NULL,
+                "{\"revision\":1,\"broker\":{"
+                "\"status_topic_template\":"
+                "\"stale/{installation_uuid}\"}}", NULL, 409);
     cJSON_Delete(json);
 
     char password[EVENT_DESTINATION_PASSWORD_MAX] = {0};
@@ -214,6 +236,13 @@ void test_invalid_fields_and_insecure_tls_combinations_fail_closed(void) {
                 "\"host\":\"mqtt.example\"},\"tls\":{"
                 "\"mode\":\"custom_ca\",\"ca_file\":\"relative.pem\"}}",
                 NULL, 400);
+    cJSON_Delete(json);
+    json = call(handle_post_event_destination, HTTP_METHOD_POST,
+                "/api/event-destinations", NULL,
+                "{\"name\":\"Bad presence\",\"broker\":{"
+                "\"host\":\"mqtt.example\","
+                "\"status_topic_template\":"
+                "\"status/+/{installation_uuid}\"}}", NULL, 400);
     cJSON_Delete(json);
 }
 

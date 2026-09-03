@@ -7,6 +7,7 @@ import { EventRouteEditor } from './events/EventRouteEditor.jsx';
 import { ConfirmDialog } from './common/ModalDialog.jsx';
 import {
   groupCatalog,
+  healthConditionsFromSettings,
   readEventSection,
   shortEventType,
   writeEventSection,
@@ -84,6 +85,7 @@ function DestinationList({ defaultDestination, destinations, routes, busyKey, on
                   <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('events.destination.broker')}</dt><dd className="mt-0.5 font-mono text-xs break-all">{destination.broker?.host}:{destination.broker?.port}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('events.destination.topic')}</dt><dd className="mt-0.5 truncate font-mono text-xs" title={destination.broker?.topic_template}>{destination.broker?.topic_template}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('events.destination.presence')}</dt><dd className="mt-0.5 truncate font-mono text-xs" title={destination.broker?.status_topic_template || ''}>{destination.broker?.status_topic_template || t('common.disabled')}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('events.destination.security')}</dt><dd className="mt-0.5">{t(`events.destination.tls.${destination.tls?.mode || 'system'}`)} · QoS {destination.broker?.qos}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('events.destination.routes')}</dt><dd className="mt-0.5">{routeCounts.get(destination.key) || 0}</dd></div>
                   </dl>
@@ -119,6 +121,7 @@ export function EventRoutingView() {
   const routesQuery = useQuery(['event-routes'], '/api/event-routes', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const destinationsQuery = useQuery(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const catalogQuery = useQuery(['event-catalog'], '/api/events/catalog', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 60000 });
+  const healthRegistryQuery = useQuery(['settings-health-registry'], '/api/settings', { cache: 'no-store', timeout: 15000, retries: 0 }, { staleTime: 60000 });
   const locationsQuery = useQuery(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
   const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
 
@@ -131,6 +134,10 @@ export function EventRoutingView() {
   const destinations = destinationsQuery.data?.destinations || [];
   const defaultDestination = destinationsQuery.data?.default_destination;
   const eventTypes = catalogQuery.data?.event_types || [];
+  const healthConditions = useMemo(
+    () => healthConditionsFromSettings(healthRegistryQuery.data),
+    [healthRegistryQuery.data]
+  );
   const destinationOptions = useMemo(() => [
     defaultDestination || { key: 'mqtt:default', name: t('events.destination.default'), managed: false },
     ...destinations,
@@ -197,7 +204,7 @@ export function EventRoutingView() {
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--primary))]">{t('events.eyebrow')}</div><h1 id="events-title" className="mt-1 text-3xl font-bold">{t('events.title')}</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('events.description')}</p></div><div className="flex flex-wrap gap-2">{section === 'routes' && <button type="button" className="btn-primary" onClick={() => setRouteEditor({})}>{t('events.route.add')}</button>}{section === 'destinations' && <button type="button" className="btn-primary" onClick={() => setDestinationEditor({})}>{t('events.destination.add')}</button>}<button type="button" className="btn-secondary" onClick={refresh}>{t('common.refresh')}</button></div></div>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"><SummaryCard label={t('events.summary.routes')} value={routes.length} detail={t('events.summary.enabled', { count: activeRoutes })} /><SummaryCard label={t('events.summary.destinations')} value={destinations.length + 1} detail={t('events.summary.managedActive', { count: activeDestinations })} /><SummaryCard label={t('events.summary.types')} value={eventTypes.length} detail={t('events.summary.registry')} /><SummaryCard label={t('events.summary.interface')} value="MQTT" detail={t('events.summary.interfaceHelp')} /></div>
       <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"><div className="flex flex-wrap gap-1 border-b border-border bg-muted/15 p-2" role="tablist" aria-label={t('events.title')}>{sections.map(([key, label, count]) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`rounded-md px-3 py-2 text-sm font-medium ${section === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setSection(key)}>{label}<span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums">{count}</span></button>)}</div><LoadingOrError loading={loading} error={error} onRetry={refresh} t={t}>{section === 'routes' ? <RouteList routes={routes} destinationNames={destinationNames} busyKey={busyKey} onEdit={setRouteEditor} onToggle={toggleRoute} onDelete={(route) => setDeleteCandidate({ kind: 'route', item: route })} onAdd={() => setRouteEditor({})} t={t} /> : section === 'destinations' ? <DestinationList defaultDestination={defaultDestination} destinations={destinations} routes={routes} busyKey={busyKey} onEdit={setDestinationEditor} onToggle={toggleDestination} onDelete={(destination) => setDeleteCandidate({ kind: 'destination', item: destination })} onAdd={() => setDestinationEditor({})} t={t} /> : <EventCatalog eventTypes={eventTypes} t={t} />}</LoadingOrError></div>
-      {routeEditor && <EventRouteEditor key={routeEditor.uuid || 'new'} route={routeEditor.uuid ? routeEditor : null} catalog={eventTypes} destinations={destinationOptions} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onPreview={previewRoute} onSave={saveRoute} onClose={() => setRouteEditor(null)} t={t} />}
+      {routeEditor && <EventRouteEditor key={routeEditor.uuid || 'new'} route={routeEditor.uuid ? routeEditor : null} catalog={eventTypes} healthConditions={healthConditions} healthRegistryUnavailable={Boolean(healthRegistryQuery.error)} destinations={destinationOptions} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onPreview={previewRoute} onSave={saveRoute} onClose={() => setRouteEditor(null)} t={t} />}
       {destinationEditor && <EventDestinationEditor key={destinationEditor.uuid || 'new'} destination={destinationEditor.uuid ? destinationEditor : null} onSave={saveDestination} onClose={() => setDestinationEditor(null)} t={t} />}
       <ConfirmDialog
         isOpen={Boolean(deleteCandidate)}

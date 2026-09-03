@@ -17,6 +17,7 @@ import { MemoryStorage } from './system/MemoryStorage.jsx';
 import { StreamStorage } from './system/StreamStorage.jsx';
 import { StorageHealth } from './system/StorageHealth.jsx';
 import { NetworkInfo } from './system/NetworkInfo.jsx';
+import { SystemHealth } from './system/SystemHealth.jsx';
 import { StreamsInfo } from './system/StreamsInfo.jsx';
 import { WebServiceInfo } from './system/WebServiceInfo.jsx';
 import { VersionsTable } from './system/VersionsTable.jsx';
@@ -260,14 +261,24 @@ export function SystemView() {
         canControlSystem={canControlSystem}
       />
 
-      <ContentLoader
-        isLoading={isLoading}
-        hasData={hasData}
-        loadingMessage={t('system.loadingSystemInformation')}
-        emptyMessage={t('system.systemInformationUnavailable')}
-      >
-        <div className="mb-4 border-b border-border" role="tablist" aria-label={t('system.sections')}>
+      <div className="mb-4 border-b border-border" role="tablist" aria-label={t('system.sections')}>
           <div className="flex gap-2">
+            <button
+              type="button"
+              id="health-tab"
+              role="tab"
+              data-testid="health-tab"
+              aria-selected={activeTab === 'health'}
+              aria-controls="health-panel"
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'health'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab('health')}
+            >
+              {t('system.health.tab')}
+            </button>
             <button
               type="button"
               id="system-tab"
@@ -301,9 +312,20 @@ export function SystemView() {
               {t('system.versions')}
             </button>
           </div>
-        </div>
+      </div>
 
-        {activeTab === 'system' ? (
+      {activeTab === 'health' ? (
+        <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
+          <SystemHealth />
+        </div>
+      ) : (
+        <ContentLoader
+          isLoading={isLoading}
+          hasData={hasData}
+          loadingMessage={t('system.loadingSystemInformation')}
+          emptyMessage={t('system.systemInformationUnavailable')}
+        >
+          {activeTab === 'system' ? (
           <div role="tabpanel" id="system-panel" aria-labelledby="system-tab">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
@@ -352,8 +374,9 @@ export function SystemView() {
           <div role="tabpanel" id="versions-panel" aria-labelledby="versions-tab">
             <VersionsTable versions={systemInfo.versions} />
           </div>
-        )}
-      </ContentLoader>
+          )}
+        </ContentLoader>
+      )}
 
       <ClearLogsModal
         isOpen={showClearLogsModal}

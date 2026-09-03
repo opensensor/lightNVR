@@ -73,6 +73,18 @@ syslog_enabled = false
 syslog_ident = lightnvr
 syslog_facility = LOG_USER
 
+[health]
+enabled = true
+profile = balanced
+fast_interval_seconds = 10
+normal_interval_seconds = 60
+slow_interval_seconds = 300
+device_interval_seconds = 900
+write_probe_enabled = true
+hardware_provider = auto
+presence_interval_seconds = 60
+incident_retention_days = 90
+
 [storage]
 path = /var/lib/lightnvr/data/recordings
 max_size = 0  ; 0 means unlimited, otherwise bytes

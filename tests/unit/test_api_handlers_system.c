@@ -175,6 +175,23 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     cJSON *uptime = cJSON_GetObjectItemCaseSensitive(root, "uptime");
     TEST_ASSERT_TRUE(cJSON_IsNumber(uptime));
     TEST_ASSERT_TRUE(uptime->valuedouble >= 0.0);
+    cJSON *cpu = cJSON_GetObjectItemCaseSensitive(root, "cpu");
+    cJSON *system_memory = cJSON_GetObjectItemCaseSensitive(root,
+                                                            "systemMemory");
+    cJSON *disk = cJSON_GetObjectItemCaseSensitive(root, "disk");
+    cJSON *network = cJSON_GetObjectItemCaseSensitive(root, "network");
+    TEST_ASSERT_TRUE(cJSON_IsObject(cpu));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(cpu,
+                                                          "usageCapability"));
+    TEST_ASSERT_TRUE(cJSON_IsObject(system_memory));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(system_memory,
+                                                          "capability"));
+    TEST_ASSERT_TRUE(cJSON_IsObject(disk));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(disk,
+                                                          "capability"));
+    TEST_ASSERT_TRUE(cJSON_IsObject(network));
+    TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(
+        network, "interfaces")));
 
     cJSON_Delete(root);
     http_response_free(&res);

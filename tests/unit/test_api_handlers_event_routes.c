@@ -25,6 +25,8 @@
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_api_event_routes.db"
 #define DETECTION_TYPE "io.lightnvr.detection.object.v1"
+#define HEALTH_ALERT_TYPE "io.lightnvr.system.health_alert.v1"
+#define HEALTH_RECOVERED_TYPE "io.lightnvr.system.health_recovered.v1"
 
 static const char *method_name(http_method_t method) {
     switch (method) {
@@ -138,6 +140,18 @@ static void remove_user(const char *username) {
     }
 }
 
+static cJSON *catalog_type(cJSON *catalog, const char *type) {
+    cJSON *types = cJSON_GetObjectItemCaseSensitive(catalog, "event_types");
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, types) {
+        const cJSON *value = cJSON_GetObjectItemCaseSensitive(item, "type");
+        if (cJSON_IsString(value) && strcmp(value->valuestring, type) == 0) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
@@ -157,8 +171,23 @@ void tearDown(void) {
 void test_catalog_and_route_crud_are_versioned_and_audited(void) {
     cJSON *json = call(handle_get_event_catalog, HTTP_METHOD_GET,
                        "/api/events/catalog", NULL, NULL, NULL, 200);
-    TEST_ASSERT_EQUAL_INT(11,
+    TEST_ASSERT_EQUAL_INT(13,
         cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+    cJSON *health = catalog_type(json, HEALTH_ALERT_TYPE);
+    TEST_ASSERT_NOT_NULL(health);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(health, "dynamic_severity")));
+    TEST_ASSERT_EQUAL_STRING(
+        "warning",
+        cJSON_GetObjectItemCaseSensitive(health,
+                                         "minimum_severity")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        "critical",
+        cJSON_GetObjectItemCaseSensitive(health,
+                                         "maximum_severity")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        "system",
+        cJSON_GetObjectItemCaseSensitive(health, "subject_kind")->valuestring);
     cJSON_Delete(json);
 
     const char *create_body =
@@ -273,6 +302,59 @@ void test_invalid_drafts_and_viewer_mutations_fail_closed(void) {
     cJSON_Delete(json);
 }
 
+void test_system_health_preview_has_dynamic_range_and_no_camera_matches(void) {
+    create_camera("Unrelated Camera");
+    const char *body =
+        "{\"name\":\"Host memory\","
+        "\"event_types\":[\"" HEALTH_ALERT_TYPE "\",\""
+        HEALTH_RECOVERED_TYPE "\"],"
+        "\"predicate\":{\"version\":1,\"health\":{"
+        "\"condition_codes_any\":[\"memory.available_low\"],"
+        "\"severities_any\":[\"warning\"]}}}";
+    cJSON *json = call(handle_post_event_route_preview, HTTP_METHOD_POST,
+                       "/api/event-routes/preview", NULL, body, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetObjectItemCaseSensitive(
+               json, "matched_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetArraySize(
+               cJSON_GetObjectItemCaseSensitive(json, "camera_sample")));
+    cJSON *types = cJSON_GetObjectItemCaseSensitive(json, "event_types");
+    cJSON *alert = cJSON_GetArrayItem(types, 0);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(alert, "dynamic_severity")));
+    TEST_ASSERT_EQUAL_STRING(
+        "warning",
+        cJSON_GetObjectItemCaseSensitive(alert,
+                                         "minimum_severity")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        "critical",
+        cJSON_GetObjectItemCaseSensitive(alert,
+                                         "maximum_severity")->valuestring);
+    cJSON_Delete(json);
+
+    json = call(
+        handle_post_event_route_preview, HTTP_METHOD_POST,
+        "/api/event-routes/preview", NULL,
+        "{\"name\":\"Invalid health selector\","
+        "\"event_types\":[\"" HEALTH_ALERT_TYPE "\"],"
+        "\"camera_scope\":{\"type\":\"selector\",\"selector\":{"
+        "\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+        "\"values\":[\"22222222-2222-4222-8222-222222222222\"]}}}}",
+        NULL, 400);
+    cJSON_Delete(json);
+
+    json = call(
+        handle_post_event_route_preview, HTTP_METHOD_POST,
+        "/api/event-routes/preview", NULL,
+        "{\"name\":\"Invalid health code\","
+        "\"event_types\":[\"" HEALTH_ALERT_TYPE "\"],"
+        "\"predicate\":{\"version\":1,\"health\":{"
+        "\"condition_codes_any\":[\"memory.typo\"]}}}",
+        NULL, 400);
+    cJSON_Delete(json);
+}
+
 void test_route_api_accepts_an_existing_managed_destination(void) {
     event_destination_t destination = create_destination();
     char destination_key[EVENT_DESTINATION_KEY_MAX];
@@ -309,6 +391,7 @@ int main(void) {
     RUN_TEST(test_catalog_and_route_crud_are_versioned_and_audited);
     RUN_TEST(test_preview_resolves_fleet_selector_without_publishing);
     RUN_TEST(test_invalid_drafts_and_viewer_mutations_fail_closed);
+    RUN_TEST(test_system_health_preview_has_dynamic_range_and_no_camera_matches);
     RUN_TEST(test_route_api_accepts_an_existing_managed_destination);
     int result = UNITY_END();
     shutdown_database();

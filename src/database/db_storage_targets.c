@@ -588,6 +588,115 @@ static int persist_health(const storage_target_t *target) {
     return result == SQLITE_DONE ? 0 : -1;
 }
 
+static bool valid_normalized_probe_error(const char *value) {
+    static const char *const allowed[] = {
+        "none", "not_found", "permission", "read_only", "no_space",
+        "io", "timed_out", "busy", "invalid", "other", "mount_absent"
+    };
+    if (!value) return false;
+    for (size_t index = 0; index < sizeof(allowed) / sizeof(allowed[0]);
+         ++index) {
+        if (strcmp(value, allowed[index]) == 0) return true;
+    }
+    return false;
+}
+
+db_storage_target_result_t db_storage_target_record_health(
+    const char *uuid, const storage_target_health_update_t *update,
+    storage_target_t *target) {
+    if (!lightnvr_uuid_is_valid(uuid) || !update || update->probed_at <= 0 ||
+        update->capacity_bytes > (uint64_t)INT64_MAX ||
+        update->available_bytes > update->capacity_bytes ||
+        update->filesystem_device > (uint64_t)INT64_MAX ||
+        (update->cleanup_failed &&
+         (!update->write_checked || !update->writeable)) ||
+        (!update->write_checked && update->writeable) ||
+        (!update->available && update->writeable) ||
+        !valid_normalized_probe_error(update->normalized_error) ||
+        (update->available &&
+         strcmp(update->normalized_error, "none") != 0 &&
+         !(update->write_checked &&
+           (!update->writeable || update->cleanup_failed))) ||
+        (!update->available &&
+         strcmp(update->normalized_error, "none") == 0)) {
+        return DB_STORAGE_TARGET_INVALID;
+    }
+    storage_target_t snapshot;
+    db_storage_target_result_t result = db_storage_target_get(uuid, &snapshot);
+    if (result != DB_STORAGE_TARGET_OK) return result;
+    snapshot.last_probe_at = update->probed_at;
+    snapshot.capacity_bytes = update->capacity_bytes;
+    snapshot.available_bytes = update->available_bytes;
+    snapshot.filesystem_device = update->filesystem_device;
+    safe_strcpy(snapshot.last_error,
+                strcmp(update->normalized_error, "none") == 0
+                    ? "" : update->normalized_error,
+                sizeof(snapshot.last_error), 0);
+    if (!snapshot.enabled) {
+        safe_strcpy(snapshot.health_status, "disabled",
+                    sizeof(snapshot.health_status), 0);
+    } else if (!update->available ||
+               (update->write_checked && !update->writeable)) {
+        safe_strcpy(snapshot.health_status, "unavailable",
+                    sizeof(snapshot.health_status), 0);
+    } else {
+        double used_pct = update->capacity_bytes > 0
+            ? 100.0 * (double)(update->capacity_bytes -
+                               update->available_bytes) /
+                (double)update->capacity_bytes
+            : 100.0;
+        bool degraded = update->cleanup_failed ||
+            update->available_bytes <= snapshot.reserve_bytes ||
+            used_pct >= snapshot.high_watermark_pct;
+        safe_strcpy(snapshot.health_status,
+                    degraded ? "degraded" : "healthy",
+                    sizeof(snapshot.health_status), 0);
+        snapshot.last_success_at = update->probed_at;
+    }
+    if (persist_health(&snapshot) != 0) return DB_STORAGE_TARGET_ERROR;
+    return db_storage_target_get(uuid, target ? target : &snapshot);
+}
+
+int db_storage_target_recording_growth_bps(const char *uuid,
+                                           double *bytes_per_second) {
+    if (!bytes_per_second || (uuid && !lightnvr_uuid_is_valid(uuid))) return -1;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    const char *sql =
+        "SELECT COALESCE(SUM(CASE WHEN size_bytes>0 THEN size_bytes ELSE 0 END),"
+        "0),MIN(start_time),COUNT(*),"
+        "strftime('%s','now') FROM recordings "
+        "WHERE start_time>=strftime('%s','now')-86400 "
+        "AND (? IS NULL OR storage_target_uuid=?);";
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        if (uuid) {
+            sqlite3_bind_text(statement, 1, uuid, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(statement, 2, uuid, -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(statement, 1);
+            sqlite3_bind_null(statement, 2);
+        }
+        result = sqlite3_step(statement);
+    }
+    if (result == SQLITE_ROW) {
+        uint64_t bytes = (uint64_t)sqlite3_column_int64(statement, 0);
+        int64_t first = sqlite3_column_int64(statement, 1);
+        int64_t count = sqlite3_column_int64(statement, 2);
+        int64_t now = sqlite3_column_int64(statement, 3);
+        int64_t span = count > 0 && now > first ? now - first : 0;
+        *bytes_per_second = span >= 60
+            ? (double)bytes / (double)span : 0.0;
+        result = SQLITE_DONE;
+    }
+    if (statement) sqlite3_finalize(statement);
+    pthread_mutex_unlock(mutex);
+    return result == SQLITE_DONE ? 0 : -1;
+}
+
 db_storage_target_result_t db_storage_target_probe(
     const char *uuid, bool write_test, storage_target_t *target) {
     storage_target_t snapshot;

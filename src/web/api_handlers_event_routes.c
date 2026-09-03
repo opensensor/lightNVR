@@ -22,6 +22,38 @@
 
 #define EVENT_ROUTE_PREVIEW_MAX_CAMERAS 20
 
+static const char *subject_kind_name(event_subject_kind_t kind) {
+    switch (kind) {
+        case EVENT_SUBJECT_CAMERA: return "camera";
+        case EVENT_SUBJECT_STORAGE: return "storage";
+        case EVENT_SUBJECT_SYSTEM: return "system";
+    }
+    return "unknown";
+}
+
+static event_severity_t definition_minimum_severity(
+    const event_type_definition_t *definition) {
+    return definition->dynamic_severity ? definition->minimum_severity
+                                        : definition->severity;
+}
+
+static event_severity_t definition_maximum_severity(
+    const event_type_definition_t *definition) {
+    return definition->dynamic_severity ? definition->maximum_severity
+                                        : definition->severity;
+}
+
+static bool route_has_camera_event(const event_route_t *route) {
+    for (int index = 0; index < route->event_type_count; index++) {
+        const event_type_definition_t *definition =
+            event_registry_find(route->event_types[index]);
+        if (definition && definition->subject_kind == EVENT_SUBJECT_CAMERA) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool authorize_events(const http_request_t *req, http_response_t *res,
                              user_t *user) {
     authorization_evaluation_t evaluation;
@@ -467,6 +499,16 @@ void handle_get_event_catalog(const http_request_t *req,
                                 definitions[index].description);
         cJSON_AddStringToObject(item, "severity",
                                 event_severity_name(definitions[index].severity));
+        cJSON_AddBoolToObject(item, "dynamic_severity",
+                              definitions[index].dynamic_severity);
+        cJSON_AddStringToObject(
+            item, "minimum_severity",
+            event_severity_name(definition_minimum_severity(
+                &definitions[index])));
+        cJSON_AddStringToObject(
+            item, "maximum_severity",
+            event_severity_name(definition_maximum_severity(
+                &definitions[index])));
         cJSON_AddStringToObject(
             item, "sensitivity",
             event_sensitivity_name(definitions[index].sensitivity));
@@ -476,10 +518,8 @@ void handle_get_event_catalog(const http_request_t *req,
         cJSON_AddStringToObject(
             item, "expected_rate",
             event_expected_rate_name(definitions[index].expected_rate));
-        cJSON_AddStringToObject(
-            item, "subject_kind",
-            definitions[index].subject_kind == EVENT_SUBJECT_CAMERA
-                ? "camera" : "storage");
+        cJSON_AddStringToObject(item, "subject_kind",
+            subject_kind_name(definitions[index].subject_kind));
         cJSON_AddNumberToObject(item, "default_expiry_seconds",
                                 definitions[index].default_expiry_seconds);
         cJSON_AddItemToArray(types, item);
@@ -705,7 +745,9 @@ void handle_post_event_route_preview(const http_request_t *req,
         return;
     }
     int matched_count = 0;
-    for (int index = 0; index < camera_count; index++) {
+    bool includes_camera_events = route_has_camera_event(&route);
+    for (int index = 0; includes_camera_events && index < camera_count;
+         index++) {
         bool matches = !selector ||
             fleet_selector_matches(selector, &cameras[index], NULL);
         if (!matches) continue;
@@ -730,6 +772,16 @@ void handle_post_event_route_preview(const http_request_t *req,
                                     definition->expected_rate));
         cJSON_AddStringToObject(item, "severity",
                                 event_severity_name(definition->severity));
+        cJSON_AddBoolToObject(item, "dynamic_severity",
+                              definition->dynamic_severity);
+        cJSON_AddStringToObject(
+            item, "minimum_severity",
+            event_severity_name(definition_minimum_severity(definition)));
+        cJSON_AddStringToObject(
+            item, "maximum_severity",
+            event_severity_name(definition_maximum_severity(definition)));
+        cJSON_AddStringToObject(item, "subject_kind",
+                               subject_kind_name(definition->subject_kind));
         cJSON_AddItemToArray(types, item);
     }
     cJSON_AddNumberToObject(root, "matched_camera_count", matched_count);

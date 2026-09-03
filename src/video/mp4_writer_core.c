@@ -33,6 +33,7 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "telemetry/recording_io_metrics.h"
 
 extern active_recording_t active_recordings[MAX_STREAMS];
 
@@ -42,6 +43,8 @@ extern active_recording_t active_recordings[MAX_STREAMS];
 mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name) {
     mp4_writer_t *writer = calloc(1, sizeof(mp4_writer_t));
     if (!writer) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate memory for MP4 writer");
         return NULL;
     }
@@ -189,6 +192,8 @@ void mp4_writer_close(mp4_writer_t *writer) {
         if (writer->is_initialized && writer->output_ctx->pb) {
             int ret = av_write_trailer(writer->output_ctx);
             if (ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_TRAILER, ret);
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_warn("Failed to write trailer for MP4 writer: %s", error_buf);
@@ -196,7 +201,12 @@ void mp4_writer_close(mp4_writer_t *writer) {
         }
 
         if (writer->output_ctx->pb) {
-            avio_closep(&writer->output_ctx->pb);
+            int close_ret = avio_closep(&writer->output_ctx->pb);
+            if (close_ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_CLOSE,
+                                            close_ret);
+            }
         }
 
         /* Free codec parameters for every stream in the output context */
@@ -225,8 +235,12 @@ void mp4_writer_close(mp4_writer_t *writer) {
             log_info("Final file size for %s: %llu bytes",
                      writer->output_path, (unsigned long long)size_bytes);
         } else {
+            int stat_error = errno;
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_FILESYSTEM,
+                                        stat_error);
             log_warn("Failed to stat '%s' during close: %s",
-                     writer->output_path, strerror(errno));
+                     writer->output_path, strerror(stat_error));
         }
 
         /* Use st.st_mtime as end_time baseline: after avio_closep() this is the

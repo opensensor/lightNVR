@@ -79,9 +79,7 @@ static bool shed_lower_priority_locked(event_severity_t incoming_severity,
         event_node_t *candidate = NULL;
         for (event_node_t *node = BUS.head; node;
              previous = node, node = node->next) {
-            const event_type_definition_t *definition =
-                event_registry_find(node->event.type);
-            if (definition && definition->severity < incoming_severity) {
+            if (node->event.severity < incoming_severity) {
                 candidate = node;
                 candidate_previous = previous;
                 break;
@@ -266,9 +264,6 @@ event_bus_result_t event_bus_publish(const event_envelope_t *event,
         return EVENT_BUS_ALLOCATION_FAILED;
     }
     node->serialized_size = serialized_size;
-    const event_type_definition_t *definition =
-        event_registry_find(node->event.type);
-
     pthread_mutex_lock(&BUS.mutex);
     if (!BUS.initialized || !BUS.running) {
         pthread_mutex_unlock(&BUS.mutex);
@@ -277,10 +272,9 @@ event_bus_result_t event_bus_publish(const event_envelope_t *event,
         return EVENT_BUS_NOT_RUNNING;
     }
     bool has_capacity = queue_has_capacity_locked(serialized_size);
-    if (!has_capacity && definition &&
-        definition->severity >= EVENT_SEVERITY_ERROR) {
+    if (!has_capacity && node->event.severity >= EVENT_SEVERITY_ERROR) {
         has_capacity =
-            shed_lower_priority_locked(definition->severity, serialized_size);
+            shed_lower_priority_locked(node->event.severity, serialized_size);
     }
     if (!has_capacity) {
         BUS.stats.dropped_events++;

@@ -4,6 +4,8 @@ export const ALL_CAMERAS_SELECTOR = {
 };
 
 export const DEFAULT_TOPIC_TEMPLATE = 'lightnvr/v1/events/{type}/{subject_id}';
+export const HEALTH_EVENT_FAMILY = 'system_health';
+export const HEALTH_SEVERITY_ORDER = ['warning', 'error', 'critical'];
 
 export const EMPTY_DESTINATION_DRAFT = {
   name: '',
@@ -13,6 +15,7 @@ export const EMPTY_DESTINATION_DRAFT = {
   port: 8883,
   clientId: '',
   topicTemplate: DEFAULT_TOPIC_TEMPLATE,
+  statusTopicTemplate: '',
   keepaliveSeconds: 60,
   qos: 1,
   username: '',
@@ -40,6 +43,9 @@ export const EMPTY_ROUTE_DRAFT = {
   labels: '',
   zones: '',
   minConfidence: '',
+  healthFilterEnabled: false,
+  healthConditionCodes: [],
+  healthSeverities: [],
   scheduleEnabled: false,
   timezone: 'UTC',
   windows: [],
@@ -89,6 +95,7 @@ export function destinationToDraft(destination) {
     port: destination.broker?.port ?? 8883,
     clientId: destination.broker?.client_id || '',
     topicTemplate: destination.broker?.topic_template || DEFAULT_TOPIC_TEMPLATE,
+    statusTopicTemplate: destination.broker?.status_topic_template || '',
     keepaliveSeconds: destination.broker?.keepalive_seconds ?? 60,
     qos: destination.broker?.qos ?? 1,
     username: destination.authentication?.username || '',
@@ -129,6 +136,7 @@ export function buildDestinationPayload(draft, creating = false) {
       port: integer(draft.port, 8883),
       client_id: String(draft.clientId || '').trim(),
       topic_template: String(draft.topicTemplate || '').trim(),
+      status_topic_template: String(draft.statusTopicTemplate || '').trim(),
       keepalive_seconds: integer(draft.keepaliveSeconds, 60),
       qos: integer(draft.qos, 1),
     },
@@ -152,6 +160,15 @@ export function validateDestinationDraft(draft) {
   if (topic.length >= 512 || !topic.includes('{type}') || !topic.includes('{subject_id}') ||
       /[+#{]/.test(expandedTopic) || expandedTopic.includes('}') ||
       topic.startsWith('/') || topic.endsWith('/') || expandedTopic.length >= 512) return 'topic';
+  const statusTopic = String(draft.statusTopicTemplate || '').trim();
+  const expandedStatusTopic = statusTopic
+    .split('{installation_uuid}').join('x'.repeat(36))
+    .split('{destination_uuid}').join('x'.repeat(36));
+  if (statusTopic && (statusTopic.length >= 512 ||
+      !statusTopic.includes('{installation_uuid}') ||
+      /[+#{]/.test(expandedStatusTopic) || expandedStatusTopic.includes('}') ||
+      statusTopic.startsWith('/') || statusTopic.endsWith('/') ||
+      expandedStatusTopic.length >= 512)) return 'status_topic';
   const port = Number(draft.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return 'port';
   const keepalive = Number(draft.keepaliveSeconds);
@@ -173,6 +190,7 @@ export function validateDestinationDraft(draft) {
 export function routeToDraft(route) {
   if (!route) return { ...EMPTY_ROUTE_DRAFT, selector: ALL_CAMERAS_SELECTOR, windows: [] };
   const detection = route.predicate?.detection;
+  const health = route.predicate?.health;
   const windows = Array.isArray(route.schedule?.windows)
     ? route.schedule.windows.map((window) => ({ ...window, days: [...(window.days || [])] }))
     : [];
@@ -189,6 +207,9 @@ export function routeToDraft(route) {
     labels: (detection?.labels_any || []).join(', '),
     zones: (detection?.zone_ids_any || []).join(', '),
     minConfidence: detection?.min_confidence ?? '',
+    healthFilterEnabled: Boolean(health),
+    healthConditionCodes: [...(health?.condition_codes_any || [])],
+    healthSeverities: [...(health?.severities_any || [])],
     scheduleEnabled: windows.length > 0,
     timezone: route.schedule?.timezone || 'UTC',
     windows,
@@ -213,6 +234,14 @@ export function buildRoutePayload(draft, creating = false) {
       detection.min_confidence = Number(draft.minConfidence);
     }
     predicate.detection = detection;
+  }
+  if (draft.healthFilterEnabled) {
+    const health = {};
+    const conditions = uniqueStrings(draft.healthConditionCodes);
+    const severities = uniqueStrings(draft.healthSeverities);
+    if (conditions.length) health.condition_codes_any = conditions;
+    if (severities.length) health.severities_any = severities;
+    predicate.health = health;
   }
   const payload = {
     name: String(draft.name || '').trim(),
@@ -248,16 +277,38 @@ export function buildRoutePayload(draft, creating = false) {
 
 const CLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export function validateRouteDraft(draft) {
+export function validateRouteDraft(draft, registries = {}) {
   if (!String(draft.name || '').trim()) return 'name';
   if (!draft.destination) return 'destination';
   if (!Array.isArray(draft.eventTypes) || draft.eventTypes.length === 0) return 'event_types';
   if (draft.scopeType === 'selector' && (!draft.selector || draft.selectorError)) return 'selector';
+  const catalog = Array.isArray(registries.catalog) ? registries.catalog : [];
+  const selectedDefinitions = draft.eventTypes
+    .map((type) => catalog.find((entry) => entry.type === type))
+    .filter(Boolean);
+  if (draft.scopeType === 'selector' && selectedDefinitions.some(
+    (entry) => entry.subject_kind !== 'camera')) return 'system_scope';
   if (draft.detectionFilterEnabled) {
     if (!draft.eventTypes.includes('io.lightnvr.detection.object.v1')) return 'detection_type';
     const confidence = draft.minConfidence === '' ? null : Number(draft.minConfidence);
     if (!splitList(draft.labels).length && !splitList(draft.zones).length && confidence === null) return 'detection_filter';
     if (confidence !== null && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) return 'confidence';
+  }
+  if (draft.healthFilterEnabled) {
+    if (draft.detectionFilterEnabled) return 'predicate_mix';
+    if (selectedDefinitions.length !== draft.eventTypes.length ||
+        selectedDefinitions.some((entry) => entry.family !== HEALTH_EVENT_FAMILY))
+      return 'health_type';
+    const conditions = uniqueStrings(draft.healthConditionCodes);
+    const severities = uniqueStrings(draft.healthSeverities);
+    if (!conditions.length && !severities.length) return 'health_filter';
+    const conditionRegistry = new Set(
+      (registries.healthConditions || []).map((entry) => entry.code || entry.condition));
+    if (conditions.some((code) => !conditionRegistry.has(code)))
+      return 'health_condition';
+    const severityRegistry = new Set(registries.healthSeverities || []);
+    if (severities.some((severity) => !severityRegistry.has(severity)))
+      return 'health_severity';
   }
   if (!String(draft.timezone || '').trim()) return 'timezone';
   if (draft.scheduleEnabled) {
@@ -279,6 +330,34 @@ export function validateRouteDraft(draft) {
     return !Number.isInteger(value) || value < minimum || value > maximum;
   })) return 'suppression';
   return '';
+}
+
+export function healthConditionsFromSettings(settings) {
+  const conditions = settings?.health_effective_policy?.conditions;
+  if (!Array.isArray(conditions)) return [];
+  const seen = new Set();
+  return conditions.filter((condition) => {
+    const code = condition?.code || condition?.condition;
+    if (!code || seen.has(code)) return false;
+    seen.add(code);
+    return true;
+  }).map((condition) => ({ ...condition, code: condition.code || condition.condition }));
+}
+
+export function healthSeveritiesFromCatalog(catalog, selectedTypes = []) {
+  const selected = new Set(selectedTypes);
+  const healthTypes = (catalog || []).filter((entry) =>
+    entry.family === HEALTH_EVENT_FAMILY &&
+    (selected.size === 0 || selected.has(entry.type)));
+  const allowed = new Set();
+  healthTypes.forEach((entry) => {
+    const minimum = HEALTH_SEVERITY_ORDER.indexOf(entry.minimum_severity);
+    const maximum = HEALTH_SEVERITY_ORDER.indexOf(entry.maximum_severity);
+    if (minimum < 0 || maximum < minimum) return;
+    HEALTH_SEVERITY_ORDER.slice(minimum, maximum + 1)
+      .forEach((severity) => allowed.add(severity));
+  });
+  return HEALTH_SEVERITY_ORDER.filter((severity) => allowed.has(severity));
 }
 
 export function groupCatalog(eventTypes) {

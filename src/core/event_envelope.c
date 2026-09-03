@@ -96,6 +96,9 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .family = "storage",
         .description = "Storage usage crossed an operational threshold",
         .severity = EVENT_SEVERITY_CRITICAL,
+        .dynamic_severity = true,
+        .minimum_severity = EVENT_SEVERITY_WARNING,
+        .maximum_severity = EVENT_SEVERITY_CRITICAL,
         .sensitivity = EVENT_SENSITIVITY_INTERNAL,
         .media_policy = EVENT_MEDIA_FORBIDDEN,
         .expected_rate = EVENT_RATE_LOW,
@@ -133,6 +136,31 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .media_policy = EVENT_MEDIA_FORBIDDEN,
         .expected_rate = EVENT_RATE_LOW,
         .subject_kind = EVENT_SUBJECT_STORAGE,
+        .default_expiry_seconds = 604800,
+    },
+    {
+        .type = "io.lightnvr.system.health_alert.v1",
+        .family = "system_health",
+        .description = "A host or hardware health incident changed state",
+        .severity = EVENT_SEVERITY_WARNING,
+        .dynamic_severity = true,
+        .minimum_severity = EVENT_SEVERITY_WARNING,
+        .maximum_severity = EVENT_SEVERITY_CRITICAL,
+        .sensitivity = EVENT_SENSITIVITY_INTERNAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_SYSTEM,
+        .default_expiry_seconds = 604800,
+    },
+    {
+        .type = "io.lightnvr.system.health_recovered.v1",
+        .family = "system_health",
+        .description = "A host or hardware health incident recovered",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_INTERNAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_SYSTEM,
         .default_expiry_seconds = 604800,
     },
 };
@@ -292,6 +320,7 @@ static const cJSON *required_field(const cJSON *data, const char *name,
     if (expected_type == cJSON_String) valid = cJSON_IsString(field);
     if (expected_type == cJSON_Number) valid = cJSON_IsNumber(field);
     if (expected_type == cJSON_Array) valid = cJSON_IsArray(field);
+    if (expected_type == cJSON_Object) valid = cJSON_IsObject(field);
     if (!valid) {
         char message[160];
         snprintf(message, sizeof(message),
@@ -302,8 +331,36 @@ static const cJSON *required_field(const cJSON *data, const char *name,
     return field;
 }
 
-static int validate_type_data(const char *type, const cJSON *data,
+static bool valid_health_token(const char *value) {
+    if (!valid_text(value, 65, false)) return false;
+    for (const unsigned char *cursor = (const unsigned char *)value; *cursor;
+         ++cursor) {
+        if (!isalnum(*cursor) && *cursor != '.' && *cursor != '_' &&
+            *cursor != '-') return false;
+    }
+    return true;
+}
+
+static bool system_subject_matches_scope(const char *subject,
+                                         const char *scope) {
+    if (!subject || !scope) return false;
+    if (strcmp(scope, "host") == 0) return strcmp(subject, "system/host") == 0;
+    if (strcmp(scope, "container") == 0) {
+        return strcmp(subject, "system/container") == 0;
+    }
+    if (strcmp(scope, "process") == 0) {
+        return strcmp(subject, "system/process") == 0;
+    }
+    if (strcmp(scope, "filesystem") == 0 || strcmp(scope, "device") == 0) {
+        return strcmp(subject, "system/storage") == 0;
+    }
+    return false;
+}
+
+static int validate_type_data(const event_envelope_t *event,
                               char *error, size_t error_size) {
+    const char *type = event->type;
+    const cJSON *data = event->data;
     if (strcmp(type, "io.lightnvr.detection.object.v1") == 0) {
         const cJSON *count = required_field(data, "count", cJSON_Number, error,
                                             error_size);
@@ -547,6 +604,69 @@ static int validate_type_data(const char *type, const cJSON *data,
                       "storage target recovered data is invalid");
             return -1;
         }
+    } else if (strcmp(type, "io.lightnvr.system.health_alert.v1") == 0) {
+        const cJSON *incident_id = required_field(
+            data, "incident_id", cJSON_String, error, error_size);
+        const cJSON *code = required_field(
+            data, "code", cJSON_String, error, error_size);
+        const cJSON *scope = required_field(
+            data, "scope", cJSON_String, error, error_size);
+        const cJSON *resource = required_field(
+            data, "resource", cJSON_String, error, error_size);
+        const cJSON *state = required_field(
+            data, "state", cJSON_String, error, error_size);
+        const cJSON *severity = required_field(
+            data, "severity", cJSON_String, error, error_size);
+        const cJSON *observed = required_field(
+            data, "observed", cJSON_Object, error, error_size);
+        const cJSON *threshold = required_field(
+            data, "threshold", cJSON_Object, error, error_size);
+        if (!incident_id || !code || !scope || !resource || !state ||
+            !severity || !observed || !threshold) return -1;
+        bool valid_state = strcmp(state->valuestring, "open") == 0 ||
+            strcmp(state->valuestring, "escalated") == 0 ||
+            strcmp(state->valuestring, "updated") == 0;
+        if (!lightnvr_uuid_is_valid(incident_id->valuestring) ||
+            !valid_health_token(code->valuestring) ||
+            !valid_health_token(resource->valuestring) || !valid_state ||
+            !system_subject_matches_scope(event->subject, scope->valuestring) ||
+            strcmp(severity->valuestring,
+                   event_severity_name(event->severity)) != 0) {
+            set_error(error, error_size,
+                      "system health alert data or severity is invalid");
+            return -1;
+        }
+    } else if (strcmp(type, "io.lightnvr.system.health_recovered.v1") == 0) {
+        const cJSON *incident_id = required_field(
+            data, "incident_id", cJSON_String, error, error_size);
+        const cJSON *code = required_field(
+            data, "code", cJSON_String, error, error_size);
+        const cJSON *scope = required_field(
+            data, "scope", cJSON_String, error, error_size);
+        const cJSON *resource = required_field(
+            data, "resource", cJSON_String, error, error_size);
+        const cJSON *state = required_field(
+            data, "state", cJSON_String, error, error_size);
+        const cJSON *previous = required_field(
+            data, "previous_severity", cJSON_String, error, error_size);
+        const cJSON *duration = required_field(
+            data, "duration_ms", cJSON_Number, error, error_size);
+        const cJSON *safe = required_field(
+            data, "safe_observation", cJSON_Object, error, error_size);
+        if (!incident_id || !code || !scope || !resource || !state ||
+            !previous || !duration || !safe) return -1;
+        bool valid_previous = strcmp(previous->valuestring, "warning") == 0 ||
+            strcmp(previous->valuestring, "error") == 0 ||
+            strcmp(previous->valuestring, "critical") == 0;
+        if (!lightnvr_uuid_is_valid(incident_id->valuestring) ||
+            !valid_health_token(code->valuestring) ||
+            !valid_health_token(resource->valuestring) ||
+            strcmp(state->valuestring, "recovered") != 0 || !valid_previous ||
+            duration->valuedouble < 0 ||
+            !system_subject_matches_scope(event->subject, scope->valuestring)) {
+            set_error(error, error_size, "system health recovery data is invalid");
+            return -1;
+        }
     }
     return 0;
 }
@@ -653,9 +773,26 @@ int event_envelope_validate(const event_envelope_t *event, char *error,
                       "camera event subject must use camera/<uuid>");
             return -1;
         }
-    } else if (strcmp(event->subject, "system/storage") != 0) {
+    } else if (definition->subject_kind == EVENT_SUBJECT_STORAGE &&
+               strcmp(event->subject, "system/storage") != 0) {
         set_error(error, error_size,
                   "storage event subject must use system/storage");
+        return -1;
+    } else if (definition->subject_kind == EVENT_SUBJECT_SYSTEM &&
+               strcmp(event->subject, "system/host") != 0 &&
+               strcmp(event->subject, "system/container") != 0 &&
+               strcmp(event->subject, "system/process") != 0 &&
+               strcmp(event->subject, "system/storage") != 0) {
+        set_error(error, error_size,
+                  "system event subject is not a supported logical scope");
+        return -1;
+    }
+    event_severity_t minimum = definition->dynamic_severity
+        ? definition->minimum_severity : definition->severity;
+    event_severity_t maximum = definition->dynamic_severity
+        ? definition->maximum_severity : definition->severity;
+    if (event->severity < minimum || event->severity > maximum) {
+        set_error(error, error_size, "event severity is outside the registered range");
         return -1;
     }
     if (!valid_event_time(event->time) || event->occurred_at <= 0 ||
@@ -669,7 +806,7 @@ int event_envelope_validate(const event_envelope_t *event, char *error,
         return -1;
     }
     if (validate_data_node(event->data, 0, error, error_size) != 0 ||
-        validate_type_data(event->type, event->data, error, error_size) != 0) {
+        validate_type_data(event, error, error_size) != 0) {
         return -1;
     }
     return 0;
@@ -701,6 +838,22 @@ int event_envelope_create(event_envelope_t *event, const char *type,
                           const char *source, const char *subject,
                           time_t occurred_at, const cJSON *data, char *error,
                           size_t error_size) {
+    const event_type_definition_t *definition = event_registry_find(type);
+    if (!definition) {
+        if (error && error_size > 0) error[0] = '\0';
+        set_error(error, error_size, "event type is not registered");
+        return -1;
+    }
+    return event_envelope_create_with_severity_and_id(
+        event, type, source, subject, occurred_at, data, definition->severity,
+        NULL, error, error_size);
+}
+
+int event_envelope_create_with_severity_and_id(
+    event_envelope_t *event, const char *type, const char *source,
+    const char *subject, time_t occurred_at, const cJSON *data,
+    event_severity_t severity, const char *event_id, char *error,
+    size_t error_size) {
     if (error && error_size > 0) error[0] = '\0';
     if (!event) {
         set_error(error, error_size, "event output is required");
@@ -727,7 +880,15 @@ int event_envelope_create(event_envelope_t *event, const char *type,
     event->occurred_at = occurred_at > 0 ? occurred_at : time(NULL);
     const event_type_definition_t *definition = event_registry_find(type);
     event->expires_at = event->occurred_at + definition->default_expiry_seconds;
-    if (lightnvr_uuid_generate_v4(event->id) != 0 ||
+    event->severity = severity;
+    int identity_result = 0;
+    if (event_id) {
+        if (!lightnvr_uuid_is_valid(event_id)) identity_result = -1;
+        else snprintf(event->id, sizeof(event->id), "%s", event_id);
+    } else {
+        identity_result = lightnvr_uuid_generate_v4(event->id);
+    }
+    if (identity_result != 0 ||
         format_event_time(event->occurred_at, event->time) != 0) {
         set_error(error, error_size, "event identity or timestamp generation failed");
         event_envelope_clear(event);
@@ -750,8 +911,7 @@ int event_envelope_create(event_envelope_t *event, const char *type,
 char *event_envelope_serialize(const event_envelope_t *event, char *error,
                                size_t error_size) {
     if (event_envelope_validate(event, error, error_size) != 0) return NULL;
-    const event_type_definition_t *definition =
-        event_registry_find(event->type);
+    const event_type_definition_t *definition = event_registry_find(event->type);
     cJSON *root = cJSON_CreateObject();
     if (!root) {
         set_error(error, error_size, "event envelope allocation failed");
@@ -767,7 +927,7 @@ char *event_envelope_serialize(const event_envelope_t *event, char *error,
         cJSON_AddStringToObject(root, "datacontenttype",
                                event->datacontenttype) &&
         cJSON_AddStringToObject(root, "severity",
-                               event_severity_name(definition->severity)) &&
+                               event_severity_name(event->severity)) &&
         cJSON_AddStringToObject(
             root, "sensitivity",
             event_sensitivity_name(definition->sensitivity));

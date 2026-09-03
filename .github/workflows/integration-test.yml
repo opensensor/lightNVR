@@ -47,6 +47,12 @@ jobs:
         with:
           submodules: false
 
+      - name: Check embedded migration generation
+        run: |
+          python3 tests/unit/test_embedded_migration_generator.py
+          python3 scripts/generate_embedded_migrations.py \
+            --check db/migrations include/database/db_embedded_migrations.h
+
       - name: Build Unity tests
         run: |
           mkdir -p build
@@ -164,6 +170,135 @@ jobs:
         with:
           name: unity-test-results
           path: build/Testing/
+          retention-days: 7
+
+  system-health-tests:
+    name: System Health Release Gates (P0/P1, P2/P4, optional P3)
+    needs: unity-tests
+    runs-on: ubuntu-latest
+    container: debian:sid-slim
+    timeout-minutes: 30
+
+    steps:
+      - name: Install build and broker dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            git \
+            build-essential \
+            cmake \
+            pkg-config \
+            python3 \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libswresample-dev \
+            libsqlite3-dev \
+            libuv1-dev \
+            libllhttp-dev \
+            libcurl4-openssl-dev \
+            libcjson-dev \
+            libmbedtls-dev \
+            libmosquitto-dev \
+            mosquitto \
+            mosquitto-clients \
+            jq \
+            shellcheck \
+            ca-certificates \
+            curl \
+            xz-utils
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Build MQTT-enabled health binaries
+        run: |
+          cmake -S . -B build/health-ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF \
+            -DENABLE_GO2RTC=OFF \
+            -DENABLE_LITERT=OFF \
+            -DENABLE_MQTT=ON
+          cmake --build build/health-ci -- -j2
+
+      - name: Build MQTT-disabled variant
+        run: |
+          cmake -S . -B build/health-no-mqtt-ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF \
+            -DENABLE_GO2RTC=OFF \
+            -DENABLE_LITERT=OFF \
+            -DENABLE_MQTT=OFF
+          cmake --build build/health-no-mqtt-ci \
+            --target lightnvr test_system_health_policy -- -j2
+
+      - name: P0/P1 portable collection and incident gate
+        run: |
+          ctest --test-dir build/health-ci --output-on-failure \
+            -R 'test_system_health_(types|proc|cgroup|filesystem|process|thermal|network|clock|policy|sampler|evaluator|storage)$|test_recording_io_metrics$|test_health_helper_runner$'
+
+      - name: P2/P4 event, presence, API, and UI-unit gate
+        run: |
+          ctest --test-dir build/health-ci --output-on-failure \
+            -R 'test_db_system_health_incidents$|test_mqtt_presence$|test_mqtt_destination_client$|test_api_handlers_(system_health|metrics)$|test_system_health_(self_observability|restart)$'
+          npm --prefix web ci
+          npm --prefix web test -- --runInBand
+          npm --prefix web run build
+
+      - name: Optional P3 provider contract gate
+        run: |
+          ctest --test-dir build/health-ci --output-on-failure \
+            -R 'test_system_health_hardware$|test_smartctl_provider$|test_kernel_log_provider$'
+
+      - name: Deterministic replay and resource gates
+        run: |
+          build/health-ci/bin/test_system_health_benchmark \
+            --samples 360 --heap-limit-bytes 524288 --cpu-ratio-limit 0.005
+          SYSTEM_HEALTH_BENCHMARK="$GITHUB_WORKSPACE/build/health-ci/bin/test_system_health_benchmark" \
+            T24_SKIP_DOCKER=1 scripts/run-system-health-replay.sh --all
+
+      - name: Real-broker LWT and stale-heartbeat gate
+        run: |
+          LIGHTNVR_TEST_BIN="$GITHUB_WORKSPACE/build/health-ci/bin/lightnvr" \
+            LIGHTNVR_TEST_CONFIG="$GITHUB_WORKSPACE/config/lightnvr-health-test.ini" \
+            scripts/test-system-health-presence.sh
+
+      - name: Health API, MQTT, and browser integration gate
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          LIGHTNVR_TEST_BIN="$GITHUB_WORKSPACE/build/health-ci/bin/lightnvr" \
+            LIGHTNVR_TEST_CONFIG="$GITHUB_WORKSPACE/config/lightnvr-health-test.ini" \
+            LIGHTNVR_SKIP_GO2RTC=1 \
+            npx playwright test \
+              tests/integration/specs/system-health.api.spec.ts \
+              tests/integration/specs/system-health-mqtt.api.spec.ts \
+              tests/integration/specs/system-health.ui.spec.ts \
+              tests/integration/specs/system-health-settings.ui.spec.ts
+
+      - name: Upload health test artifacts
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: system-health-test-results
+          path: |
+            build/health-ci/Testing/
+            playwright-report/
+            test-results/
           retention-days: 7
 
   go2rtc-unit-tests:

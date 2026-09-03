@@ -1,0 +1,15 @@
+# t24-replay-v1: memory exhaustion plus swap counter churn/reset evidence
+# MEMORY_SWAP_THRASH currently has no evaluator mapping; swap rows must not fabricate an incident.
+# expect=memory.available_low:open;memory.oom_kill:one_shot;memory.available_low:material;memory.available_low:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,host.memory.available_ratio,host,host,available,0.10,ratio,0,1
+0,host.vm.swap_in_pages_delta,host,host,available,800,count,0,1
+0,host.vm.swap_out_pages_delta,host,host,available,900,count,0,1
+20000,host.memory.available_ratio,host,host,available,0.10,ratio,0,1
+20000,host.vm.swap_in_pages_delta,host,host,available,1200,count,0,1
+20000,host.vm.swap_out_pages_delta,host,host,available,1400,count,0,1
+40000,host.memory.oom_kills_delta,host,host,available,1,count,0,1
+40000,host.vm.swap_in_pages_delta,host,host,available,0,count,0,1
+40000,host.vm.swap_out_pages_delta,host,host,available,0,count,0,1
+60000,host.memory.available_ratio,host,host,available,0.30,ratio,0,1
+80000,host.memory.available_ratio,host,host,available,0.30,ratio,0,1

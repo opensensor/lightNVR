@@ -1,0 +1,8 @@
+# t24-replay-v1: an established sensor disappears; stale incident waits for stale_after
+# expect=health.collector_stale:open
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,thermal.temperature_celsius,sensor-0,device,available,45,celsius,0,1
+0,thermal.critical_celsius,sensor-0,device,available,90,celsius,0,1
+200000,thermal.temperature_celsius,sensor-0,device,permission_denied,0,celsius,0,1
+400000,thermal.temperature_celsius,sensor-0,device,permission_denied,0,celsius,0,1
+420000,thermal.temperature_celsius,sensor-0,device,permission_denied,0,celsius,0,1

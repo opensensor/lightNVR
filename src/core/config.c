@@ -63,6 +63,21 @@ static int safe_atoi(const char *str, int fallback) {
     return parsed;
 }
 
+static bool parse_bool_strict(const char *value, bool *result) {
+    if (!value || !result) return false;
+    if (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
+        strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0) {
+        *result = true;
+        return true;
+    }
+    if (strcasecmp(value, "false") == 0 || strcmp(value, "0") == 0 ||
+        strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
+        *result = false;
+        return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // Environment Variable Override Support
 // ============================================================================
@@ -516,6 +531,9 @@ void load_default_config(config_t *config) {
     config->mqtt_ha_discovery = false;          // Disabled by default
     safe_strcpy(config->mqtt_ha_discovery_prefix, "homeassistant", sizeof(config->mqtt_ha_discovery_prefix), 0);
     config->mqtt_ha_snapshot_interval = 30;     // 30 seconds default
+
+    // Host and hardware health defaults from OPS-03.
+    system_health_policy_settings_defaults(&config->health);
 }
 
 // Ensure all required directories exist
@@ -579,6 +597,13 @@ static int ensure_directories(const config_t *config) {
 // Validate and normalize configuration values
 int validate_config(config_t *config) {
     if (!config) return -1;
+
+    char health_error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH];
+    if (system_health_policy_validate_settings(&config->health,
+                                               health_error) != 0) {
+        log_error("Invalid health configuration: %s", health_error);
+        return -1;
+    }
 
     if (config->auth_absolute_timeout_hours < config->auth_timeout_hours) {
         log_warn("auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping to the idle timeout",
@@ -724,6 +749,44 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 else if (strcmp(value, "LOG_LOCAL7") == 0) config->syslog_facility = LOG_LOCAL7;
                 else config->syslog_facility = LOG_USER; // Default
             }
+        }
+    }
+    // Host and hardware health. Invalid/unknown health keys fail the complete
+    // INI load instead of being silently clamped or ignored.
+    else if (strcmp(section, "health") == 0) {
+        bool parsed_bool;
+        if (strcmp(name, "enabled") == 0) {
+            if (!parse_bool_strict(value, &parsed_bool)) return 0;
+            config->health.enabled = parsed_bool;
+        } else if (strcmp(name, "profile") == 0) {
+            safe_strcpy(config->health.profile, value,
+                        sizeof(config->health.profile), 0);
+        } else if (strcmp(name, "fast_interval_seconds") == 0) {
+            config->health.fast_interval_seconds =
+                (uint32_t)safe_atoi(value, -1);
+        } else if (strcmp(name, "normal_interval_seconds") == 0) {
+            config->health.normal_interval_seconds =
+                (uint32_t)safe_atoi(value, -1);
+        } else if (strcmp(name, "slow_interval_seconds") == 0) {
+            config->health.slow_interval_seconds =
+                (uint32_t)safe_atoi(value, -1);
+        } else if (strcmp(name, "device_interval_seconds") == 0) {
+            config->health.device_interval_seconds =
+                (uint32_t)safe_atoi(value, -1);
+        } else if (strcmp(name, "write_probe_enabled") == 0) {
+            if (!parse_bool_strict(value, &parsed_bool)) return 0;
+            config->health.write_probe_enabled = parsed_bool;
+        } else if (strcmp(name, "hardware_provider") == 0) {
+            safe_strcpy(config->health.hardware_provider, value,
+                        sizeof(config->health.hardware_provider), 0);
+        } else if (strcmp(name, "presence_interval_seconds") == 0) {
+            config->health.presence_interval_seconds =
+                (uint32_t)safe_atoi(value, -1);
+        } else if (strcmp(name, "incident_retention_days") == 0) {
+            config->health.incident_retention_days =
+                (uint32_t)safe_atoi(value, -1);
+        } else {
+            return 0;
         }
     }
     // Storage settings
@@ -1673,6 +1736,28 @@ int save_config(const config_t *config, const char *path) {
         default: /* facility_name already set to "LOG_USER" above */ break;
     }
     fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
+
+    // Structured condition overrides intentionally are not written here; they
+    // are one canonical, bounded system_settings value.
+    fprintf(file, "[health]\n");
+    fprintf(file, "enabled = %s\n", config->health.enabled ? "true" : "false");
+    fprintf(file, "profile = %s\n", config->health.profile);
+    fprintf(file, "fast_interval_seconds = %u\n",
+            config->health.fast_interval_seconds);
+    fprintf(file, "normal_interval_seconds = %u\n",
+            config->health.normal_interval_seconds);
+    fprintf(file, "slow_interval_seconds = %u\n",
+            config->health.slow_interval_seconds);
+    fprintf(file, "device_interval_seconds = %u\n",
+            config->health.device_interval_seconds);
+    fprintf(file, "write_probe_enabled = %s\n",
+            config->health.write_probe_enabled ? "true" : "false");
+    fprintf(file, "hardware_provider = %s\n",
+            config->health.hardware_provider);
+    fprintf(file, "presence_interval_seconds = %u\n",
+            config->health.presence_interval_seconds);
+    fprintf(file, "incident_retention_days = %u\n\n",
+            config->health.incident_retention_days);
     
     // Write storage settings
     fprintf(file, "[storage]\n");
@@ -1888,6 +1973,15 @@ void print_config(const config_t *config) {
     printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
     printf("    Retention Days: %d\n", config->retention_days);
     printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");
+
+    printf("  Health Settings:\n");
+    printf("    Enabled: %s\n", config->health.enabled ? "true" : "false");
+    printf("    Profile: %s\n", config->health.profile);
+    printf("    Sampling intervals: %u/%u/%u/%u seconds\n",
+           config->health.fast_interval_seconds,
+           config->health.normal_interval_seconds,
+           config->health.slow_interval_seconds,
+           config->health.device_interval_seconds);
     
     printf("  Models Settings:\n");
     printf("    Models Path: %s\n", config->models_path);

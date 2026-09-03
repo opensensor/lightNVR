@@ -566,6 +566,8 @@ list(APPEND VIDEO_SOURCES ${FFMPEG_LEAK_DETECTOR_SOURCES})
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
 file(GLOB TELEMETRY_SOURCES "src/telemetry/*.c")
+file(GLOB HEALTH_COLLECTOR_SOURCES "src/telemetry/collectors/*.c")
+file(GLOB HEALTH_PROVIDER_SOURCES "src/telemetry/providers/*.c")
 
 # Add unified HLS thread sources explicitly to ensure they're included
 set(HLS_UNIFIED_THREAD_SOURCES
@@ -597,6 +599,8 @@ set(SOURCES
         ${HLS_SOURCES}
         ${HLS_UNIFIED_THREAD_SOURCES}
         ${TELEMETRY_SOURCES}
+        ${HEALTH_COLLECTOR_SOURCES}
+        ${HEALTH_PROVIDER_SOURCES}
         ${EZXML_SOURCES}
         ${LITERT_ENGINE_SOURCES}
 )
@@ -645,6 +649,8 @@ set(REBUILD_RECORDINGS_SOURCES
     src/core/path_utils.c
     src/utils/strings.c
     src/utils/uuid.c
+    src/telemetry/system_health_policy.c
+    src/telemetry/system_health_types.c
     src/database/db_camera_tags.c
     src/database/db_core.c
     src/database/db_streams.c
@@ -710,8 +716,11 @@ endif()
 
 # Link MQTT library if enabled
 if(ENABLE_MQTT AND MOSQUITTO_FOUND)
-    target_link_libraries(lightnvr ${MOSQUITTO_LIBRARIES})
-    target_include_directories(lightnvr PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
+    if(MOSQUITTO_LIBRARY_DIRS)
+        target_link_directories(lightnvr_lib PUBLIC ${MOSQUITTO_LIBRARY_DIRS})
+    endif()
+    target_link_libraries(lightnvr_lib PUBLIC ${MOSQUITTO_LIBRARIES})
+    target_include_directories(lightnvr_lib PUBLIC ${MOSQUITTO_INCLUDE_DIRS})
 endif()
 
 # Link LiteRT if enabled

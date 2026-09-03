@@ -1,0 +1,15 @@
+# t24-replay-v1: primary-link degradation, reset-safe error ratio, and recovery
+# expect=network.error_rate:open;network.link_down:open;network.error_rate:material;network.link_down:material;network.error_rate:recover;network.link_down:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,network.primary,primary,host,available,1,boolean,1,1
+0,network.carrier,primary,host,available,0,boolean,1,1
+0,network.error_drop_ratio,primary,host,available,0.02,ratio,1,1
+20000,network.primary,primary,host,available,1,boolean,1,1
+20000,network.carrier,primary,host,available,0,boolean,1,1
+20000,network.error_drop_ratio,primary,host,available,0.02,ratio,1,1
+40000,network.primary,primary,host,available,1,boolean,0,1
+40000,network.carrier,primary,host,available,1,boolean,0,1
+40000,network.error_drop_ratio,primary,host,available,0.0,ratio,0,1
+60000,network.primary,primary,host,available,1,boolean,0,1
+60000,network.carrier,primary,host,available,1,boolean,0,1
+60000,network.error_drop_ratio,primary,host,available,0.0,ratio,0,1

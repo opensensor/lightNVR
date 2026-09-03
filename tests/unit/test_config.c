@@ -114,6 +114,32 @@ void test_default_config_db_startup_check_is_quick(void) {
     TEST_ASSERT_EQUAL_INT(DB_STARTUP_CHECK_QUICK, cfg.db_startup_check);
 }
 
+void test_default_config_health_matches_ops03(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.health.enabled);
+    TEST_ASSERT_EQUAL_STRING("balanced", cfg.health.profile);
+    TEST_ASSERT_EQUAL_UINT32(10U, cfg.health.fast_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(60U, cfg.health.normal_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(300U, cfg.health.slow_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(900U, cfg.health.device_interval_seconds);
+    TEST_ASSERT_TRUE(cfg.health.write_probe_enabled);
+    TEST_ASSERT_EQUAL_STRING("auto", cfg.health.hardware_provider);
+    TEST_ASSERT_EQUAL_UINT32(60U, cfg.health.presence_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(90U, cfg.health.incident_retention_days);
+}
+
+void test_validate_config_rejects_unsafe_health_values(void) {
+    load_default_config(&cfg);
+    cfg.health.fast_interval_seconds = 1U;
+    TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_UINT32(1U, cfg.health.fast_interval_seconds);
+
+    load_default_config(&cfg);
+    snprintf(cfg.health.hardware_provider,
+             sizeof(cfg.health.hardware_provider), "%s", "/bin/x");
+    TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
+}
+
 void test_validate_config_clamps_out_of_range_startup_check(void) {
     load_default_config(&cfg);
     cfg.db_startup_check = 99;
@@ -401,6 +427,9 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     cfg.db_backup_retention_count = 8;
     cfg.audio_disabled = true;
     cfg.auto_disabled = true;
+    snprintf(cfg.health.profile, sizeof(cfg.health.profile), "%s",
+             "conservative");
+    cfg.health.presence_interval_seconds = 120U;
     snprintf(cfg.db_post_backup_script, sizeof(cfg.db_post_backup_script), "/usr/local/bin/post-backup");
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
@@ -418,6 +447,10 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "mp4_directory_format = year_month_day"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "audio_disabled = true"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "auto_disabled = true"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "[health]"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "profile = conservative"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer,
+                                    "presence_interval_seconds = 120"));
         fclose(saved);
     }
 
@@ -465,6 +498,17 @@ void test_env_integer_whitespace_handling(void) {
             "backup_interval_minutes = 45\n"
             "backup_retention_count = 12\n"
             "post_backup_script = /usr/local/bin/backup-hook\n\n"
+            "[health]\n"
+            "enabled = true\n"
+            "profile = conservative\n"
+            "fast_interval_seconds = 15\n"
+            "normal_interval_seconds = 90\n"
+            "slow_interval_seconds = 360\n"
+            "device_interval_seconds = 1200\n"
+            "write_probe_enabled = false\n"
+            "hardware_provider = disabled\n"
+            "presence_interval_seconds = 120\n"
+            "incident_retention_days = 120\n\n"
             "[web]\n"
             "root = %s\n"
             "audio_disabled = false\n"
@@ -498,6 +542,15 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
     TEST_ASSERT_TRUE(cfg.audio_disabled);
     TEST_ASSERT_TRUE(cfg.auto_disabled);
+    TEST_ASSERT_EQUAL_STRING("conservative", cfg.health.profile);
+    TEST_ASSERT_EQUAL_UINT32(15U, cfg.health.fast_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(90U, cfg.health.normal_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(360U, cfg.health.slow_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(1200U, cfg.health.device_interval_seconds);
+    TEST_ASSERT_FALSE(cfg.health.write_probe_enabled);
+    TEST_ASSERT_EQUAL_STRING("disabled", cfg.health.hardware_provider);
+    TEST_ASSERT_EQUAL_UINT32(120U, cfg.health.presence_interval_seconds);
+    TEST_ASSERT_EQUAL_UINT32(120U, cfg.health.incident_retention_days);
 
     /* Leading whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_AUDIO_DISABLED"));
@@ -553,6 +606,8 @@ int main(void) {
     RUN_TEST(test_default_config_storage_path_nonempty);
     RUN_TEST(test_default_config_db_path_nonempty);
     RUN_TEST(test_default_config_db_backup_settings);
+    RUN_TEST(test_default_config_health_matches_ops03);
+    RUN_TEST(test_validate_config_rejects_unsafe_health_values);
     RUN_TEST(test_default_config_models_path_nonempty);
     RUN_TEST(test_default_config_null_safe);
 

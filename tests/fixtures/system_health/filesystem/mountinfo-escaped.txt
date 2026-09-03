@@ -1,0 +1,1 @@
+42 36 8:18 / /mnt/camera\040archive rw,relatime - ext4 /dev/sdc1 rw

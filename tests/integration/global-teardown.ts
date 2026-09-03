@@ -7,10 +7,21 @@
  */
 
 import { existsSync, readFileSync, rmSync } from 'fs';
+import path from 'path';
 
-const TEST_DIR = '/tmp/lightnvr-test';
+const TEST_DIR = process.env.LIGHTNVR_TEST_DIR || '/tmp/lightnvr-test';
+
+function validateTestDir(): void {
+  const resolvedTestDir = path.resolve(TEST_DIR);
+  if (!resolvedTestDir.startsWith('/tmp/lightnvr-') || resolvedTestDir === '/tmp/lightnvr-') {
+    throw new Error(
+      `LIGHTNVR_TEST_DIR must be a dedicated /tmp/lightnvr-* directory, got ${TEST_DIR}`,
+    );
+  }
+}
 
 async function stopLightNVR(): Promise<void> {
+  validateTestDir();
   console.log('Stopping lightNVR...');
 
   // Try our test PID file first, then fall back to lightNVR's PID file
@@ -80,6 +91,7 @@ async function cleanupTestDirectories(): Promise<void> {
   console.log('Cleaning up test directories...');
   if (existsSync(TEST_DIR)) {
     try {
+      validateTestDir();
       rmSync(TEST_DIR, { recursive: true, force: true });
       console.log('Test directories removed');
     } catch (e) {
@@ -100,4 +112,3 @@ async function globalTeardown(): Promise<void> {
 }
 
 export default globalTeardown;
-

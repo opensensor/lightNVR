@@ -176,9 +176,9 @@ event_outbox_enqueue_result_t db_event_outbox_enqueue(
     }
     int shed = 0;
     while (!has_capacity(rows, bytes, serialized_bytes, &bounds)) {
-        int changed = delete_candidate_locked(db, true, definition->severity);
-        if (changed == 0 && definition->severity >= EVENT_SEVERITY_ERROR) {
-            changed = delete_candidate_locked(db, false, definition->severity);
+        int changed = delete_candidate_locked(db, true, event->severity);
+        if (changed == 0 && event->severity >= EVENT_SEVERITY_ERROR) {
+            changed = delete_candidate_locked(db, false, event->severity);
             if (changed > 0) shed += changed;
         }
         if (changed < 0 || (changed == 0) ||
@@ -213,7 +213,7 @@ event_outbox_enqueue_result_t db_event_outbox_enqueue(
         sqlite3_bind_text(stmt, 6, topic, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 7, serialized, -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(stmt, 8, serialized_bytes);
-        sqlite3_bind_int(stmt, 9, (int)definition->severity);
+        sqlite3_bind_int(stmt, 9, (int)event->severity);
         sqlite3_bind_int64(stmt, 10, now);
         sqlite3_bind_int64(stmt, 11, (int64_t)event->expires_at);
         sqlite3_bind_int64(stmt, 12, now);

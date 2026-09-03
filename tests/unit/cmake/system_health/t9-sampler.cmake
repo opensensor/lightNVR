@@ -1,0 +1,2 @@
+add_layer2_test(test_system_health_sampler)
+add_layer2_test(test_health_helper_runner)

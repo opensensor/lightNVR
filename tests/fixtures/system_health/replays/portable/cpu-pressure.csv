@@ -1,0 +1,11 @@
+# t24-replay-v1: transient spike, sustained pressure, escalation, recovery dwell
+# expect=cpu.saturation:open;cpu.saturation:escalate;cpu.saturation:material;cpu.saturation:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,host.cpu.busy_ratio,host,host,available,0.92,ratio,1,1
+10000,host.cpu.busy_ratio,host,host,available,0.50,ratio,0,1
+40000,host.cpu.busy_ratio,host,host,available,0.92,ratio,1,1
+60000,host.cpu.busy_ratio,host,host,available,0.92,ratio,1,1
+80000,host.cpu.busy_ratio,host,host,available,0.97,ratio,1,1
+100000,host.cpu.busy_ratio,host,host,available,0.97,ratio,1,1
+120000,host.cpu.busy_ratio,host,host,available,0.50,ratio,0,1
+140000,host.cpu.busy_ratio,host,host,available,0.50,ratio,0,1

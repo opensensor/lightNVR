@@ -14,6 +14,9 @@ import { useI18n } from '../../../i18n.js';
  */
 export function SystemInfo({ systemInfo, formatUptime }) {
   const { t } = useI18n();
+  const cpuKnown = systemInfo.cpu?.usageCapability === 'available' &&
+    Number.isFinite(systemInfo.cpu?.usage);
+  const uptimeKnown = Number.isFinite(systemInfo.uptime) && systemInfo.uptime >= 0;
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
@@ -25,7 +28,7 @@ export function SystemInfo({ systemInfo, formatUptime }) {
         </div>
         <div className="flex justify-between">
           <span className="font-medium">{t('system.uptime')}:</span>
-          <span>{systemInfo.uptime ? formatUptime(systemInfo.uptime) : t('common.unknown')}</span>
+          <span>{uptimeKnown ? formatUptime(systemInfo.uptime) : t('common.unknown')}</span>
         </div>
         <div className="flex justify-between">
           <span className="font-medium">{t('system.cpuModel')}:</span>
@@ -37,13 +40,13 @@ export function SystemInfo({ systemInfo, formatUptime }) {
         </div>
         <div className="flex justify-between items-center">
           <span className="font-medium">{t('system.cpuUsage')}:</span>
-          <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+          <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={t('system.cpuUsage')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={cpuKnown ? Math.max(0, Math.min(100, systemInfo.cpu.usage)) : undefined} aria-valuetext={cpuKnown ? `${systemInfo.cpu.usage.toFixed(1)}%` : t('common.unknown')}>
             <div
               className="h-2.5 rounded-full"
-              style={{ backgroundColor: 'hsl(var(--primary))', width: `${systemInfo.cpu?.usage || 0}%` }}
+              style={{ backgroundColor: cpuKnown ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: cpuKnown ? `${Math.max(0, Math.min(100, systemInfo.cpu.usage))}%` : '100%' }}
             ></div>
           </div>
-          <span>{systemInfo.cpu?.usage ? `${systemInfo.cpu.usage.toFixed(1)}%` : t('common.unknown')}</span>
+          <span>{cpuKnown ? `${systemInfo.cpu.usage.toFixed(1)}%` : t('common.unknown')}</span>
         </div>
       </div>
     </div>

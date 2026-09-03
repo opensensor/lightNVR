@@ -1,0 +1,12 @@
+# t24-replay-v1: startup grace suppresses sync noise; backward jump is immediate
+# expect=clock.jump:open;clock.unsynchronized:open;clock.jump:material;clock.unsynchronized:material;clock.jump:recover;clock.unsynchronized:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,clock.startup_grace,clock,host,available,1,boolean,0,1
+0,clock.synchronized,clock,host,available,0,boolean,0,1
+10000,clock.startup_grace,clock,host,available,0,boolean,0,1
+10000,clock.jump_seconds,clock,host,available,-5,seconds,0,1
+10000,clock.synchronized,clock,host,available,0,boolean,0,1
+30000,clock.jump_seconds,clock,host,available,0,seconds,0,1
+30000,clock.synchronized,clock,host,available,1,boolean,0,1
+50000,clock.jump_seconds,clock,host,available,0,seconds,0,1
+50000,clock.synchronized,clock,host,available,1,boolean,0,1

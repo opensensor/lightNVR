@@ -52,6 +52,8 @@
 #include "video/cross_stream_motion_trigger.h"
 #include "telemetry/stream_metrics.h"
 #include "telemetry/player_telemetry.h"
+#include "telemetry/system_health.h"
+#include "telemetry/system_health_evaluator.h"
 
 // Include go2rtc headers if USE_GO2RTC is defined
 #ifdef USE_GO2RTC
@@ -68,6 +70,7 @@ void init_recordings_system(void);
 #include "database/db_authorization.h"
 #include "database/db_storage_targets.h"
 #include "database/db_recordings_sync.h"
+#include "database/db_system_settings.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
 #include "web/libuv_server.h"
@@ -775,6 +778,39 @@ int main(int argc, char *argv[]) {
     (void)storage_target_refresh_health_and_publish();
     log_info("Storage manager initialized");
 
+    // Build the immutable health policy only after database and storage
+    // prerequisites are live. Collector registration is complete before any
+    // evaluator or sampler worker can observe a partial startup state.
+    char *health_overrides = NULL;
+    size_t health_overrides_length = 0U;
+    int health_overrides_result = db_get_system_setting_alloc(
+        SYSTEM_HEALTH_OVERRIDES_SETTING_KEY, &health_overrides,
+        &health_overrides_length);
+    (void)health_overrides_length;
+    system_health_policy_t health_policy;
+    char health_policy_error[SYSTEM_HEALTH_POLICY_ERROR_LENGTH];
+    if (health_overrides_result < 0 || system_health_policy_build(
+            &g_config.health,
+            health_overrides_result == 0 ? health_overrides : NULL,
+            &health_policy, NULL, 0U, health_policy_error) != 0) {
+        log_warn("Host health policy unavailable: %s",
+                 health_overrides_result < 0 ? "stored overrides could not be read"
+                                             : health_policy_error);
+    } else if (system_health_policy_replace(&health_policy,
+                                            health_policy_error) != 0) {
+        log_warn("Host health policy could not be activated: %s",
+                 health_policy_error);
+    }
+    free(health_overrides);
+
+    system_health_options_t health_options;
+    if (system_health_options_from_policy(&g_config.health,
+                                          default_recording_root,
+                                          &health_options) != 0 ||
+        system_health_init(&health_options) != 0) {
+        log_warn("Host health sampler could not be initialized");
+    }
+
     // Start recording sync thread to ensure database file sizes are accurate
     log_info("Starting recording sync thread...");
     if (start_recording_sync_thread(60) != 0) {
@@ -803,7 +839,7 @@ int main(int argc, char *argv[]) {
             // Create the directory in our storage path
             if (mkdir_recursive(storage_web_path)) {
                 log_error("Failed to create web root in storage path: %s", strerror(errno));
-                return EXIT_FAILURE;
+                goto cleanup;
             }
 
             // Create parent directory for symlink if needed
@@ -826,11 +862,20 @@ int main(int argc, char *argv[]) {
             // Try to create it directly
             if (mkdir_recursive(config.web_root)) {
                 log_error("Failed to create web root directory");
-                return EXIT_FAILURE;
+                goto cleanup;
             }
 
             log_info("Created web root directory: %s", config.web_root);
         }
+    }
+
+    if (system_health_evaluator_service_start() != 0) {
+        log_warn("Host health evaluator could not be started");
+    }
+    if (system_health_start() != 0) {
+        log_warn("Host health sampler workers could not be started");
+    } else if (g_config.health.enabled) {
+        log_info("Host health sampler started");
     }
 
     // Initialize stream state manager (use runtime max from config)
@@ -1259,24 +1304,6 @@ int main(int argc, char *argv[]) {
 
     log_info("Shutting down LightNVR... (running=%d, restart_requested=%d)", running, restart_requested);
 
-    // CRITICAL: Stop the web server IMMEDIATELY to prevent serving requests during shutdown
-    // This must happen before any cleanup operations to ensure no new requests are processed
-    log_info("Stopping web server to prevent requests during shutdown...");
-    if (http_server) {
-        http_server_stop(http_server);
-        http_server_destroy(http_server);
-        http_server = NULL;
-    }
-
-    // Stop health check system to prevent it from trying to restart the web server
-    log_info("Stopping health check system...");
-    cleanup_health_check_system();
-
-    // Shutdown telemetry subsystem
-    log_info("Shutting down telemetry...");
-    metrics_shutdown();
-    player_telemetry_shutdown();
-
     // Now that we're in the main thread (not signal handler), we can safely
     // call initiate_shutdown() which uses mutexes and logging
     initiate_shutdown();
@@ -1284,6 +1311,17 @@ int main(int argc, char *argv[]) {
     // Cleanup
 cleanup:
     log_info("Starting cleanup process...");
+
+    // Stop request producers before any state they can inspect is dismantled.
+    // Keeping this at the shared cleanup label also covers partial startup.
+    log_info("Stopping web server to prevent requests during shutdown...");
+    if (http_server) {
+        http_server_stop(http_server);
+        http_server_destroy(http_server);
+        http_server = NULL;
+    }
+    log_info("Stopping health check system...");
+    cleanup_health_check_system();
 
     // Cancel any pending alarm from signal_handler to prevent interference with cleanup
     // alarm(0) cancels any previously set alarm - this is async-signal-safe
@@ -1391,8 +1429,15 @@ cleanup:
         sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
-        // Note: Web server and health check system were already stopped before the fork
-        // to prevent serving requests during shutdown
+        // Probe collection may block in a kernel filesystem call, so stop and
+        // join host-health workers only after the cleanup watchdog is active.
+        // The evaluator is stopped next while persistence is still available;
+        // general telemetry follows, exactly once.
+        log_info("Shutting down host health and telemetry...");
+        system_health_shutdown();
+        system_health_evaluator_service_shutdown(true);
+        metrics_shutdown();
+        player_telemetry_shutdown();
 
         // Clean up go2rtc integration (inside watchdog-protected block)
         // This includes stopping the health monitor thread which can block
@@ -1629,6 +1674,12 @@ cleanup:
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
+
+        log_info("Shutting down host health and telemetry...");
+        system_health_shutdown();
+        system_health_evaluator_service_shutdown(true);
+        metrics_shutdown();
+        player_telemetry_shutdown();
 
         // Note: Health check system and web server were already stopped before the fork attempt
         // to prevent serving requests during shutdown

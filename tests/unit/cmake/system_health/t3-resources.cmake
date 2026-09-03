@@ -1,0 +1,4 @@
+add_layer2_test(test_system_health_process)
+add_layer2_test(test_system_health_filesystem)
+target_compile_definitions(test_system_health_filesystem PRIVATE
+    SYSTEM_HEALTH_FILESYSTEM_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/system_health/filesystem")

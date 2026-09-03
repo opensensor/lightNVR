@@ -1,0 +1,9 @@
+# t24-replay-v1: permission loss becomes stale; recovery requires available dwell
+# expect=health.collector_stale:open;health.collector_stale:material;health.collector_stale:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,host.cpu.busy_ratio,host,host,available,0.1,ratio,0,1
+200000,host.cpu.busy_ratio,host,host,permission_denied,0,ratio,0,1
+400000,host.cpu.busy_ratio,host,host,permission_denied,0,ratio,0,1
+420000,host.cpu.busy_ratio,host,host,permission_denied,0,ratio,0,1
+440000,host.cpu.busy_ratio,host,host,available,0.1,ratio,0,1
+460000,host.cpu.busy_ratio,host,host,available,0.1,ratio,0,1

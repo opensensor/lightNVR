@@ -24,12 +24,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "video/pre_detection_buffer.h"
 #include "video/packet_buffer.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "utils/strings.h"
+#include "telemetry/recording_io_metrics.h"
 
 // Strategy private data
 typedef struct {
@@ -58,6 +60,8 @@ static int memory_packet_strategy_init(pre_buffer_strategy_t *self,
                                                 BUFFER_MODE_MEMORY);
 
     if (!data->packet_buffer) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to create packet buffer for %s", data->stream_name);
         return -1;
     }
@@ -164,6 +168,8 @@ static int flush_packet_to_file(const AVPacket *packet, void *user_data) {
 
     AVPacket *pkt = av_packet_clone(packet);
     if (!pkt) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         return -1;
     }
 
@@ -189,6 +195,10 @@ static int flush_packet_to_file(const AVPacket *packet, void *user_data) {
     }
 
     int ret = av_interleaved_write_frame(ctx->output_ctx, pkt);
+    if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_PACKET, ret);
+    }
     av_packet_free(&pkt);
 
     return ret;
@@ -207,6 +217,9 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
     AVFormatContext *output_ctx = NULL;
     int ret = avformat_alloc_output_context2(&output_ctx, NULL, "mp4", output_path);
     if (ret < 0 || !output_ctx) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE,
+                                    ret < 0 ? ret : ENOMEM);
         log_error("Failed to create output context for %s", output_path);
         return -1;
     }
@@ -216,6 +229,8 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
     // TODO: Get codec info from stream configuration
     AVStream *out_stream = avformat_new_stream(output_ctx, NULL);
     if (!out_stream) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to create output stream");
         avformat_free_context(output_ctx);
         return -1;
@@ -230,6 +245,8 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
     if (!(output_ctx->oformat->flags & AVFMT_NOFILE)) {
         ret = avio_open(&output_ctx->pb, output_path, AVIO_FLAG_WRITE);
         if (ret < 0) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_OPEN, ret);
             log_error("Failed to open output file: %s", output_path);
             avformat_free_context(output_ctx);
             return -1;
@@ -243,9 +260,16 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
     ret = avformat_write_header(output_ctx, &opts);
     av_dict_free(&opts);
     if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_HEADER, ret);
         log_error("Failed to write header");
         if (!(output_ctx->oformat->flags & AVFMT_NOFILE)) {
-            avio_closep(&output_ctx->pb);
+            int close_ret = avio_closep(&output_ctx->pb);
+            if (close_ret < 0) {
+                recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                            RECORDING_IO_OPERATION_CLOSE,
+                                            close_ret);
+            }
         }
         avformat_free_context(output_ctx);
         return -1;
@@ -264,10 +288,20 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
     int flushed = packet_buffer_flush(data->packet_buffer, flush_packet_to_file, &ctx);
 
     // Write trailer and cleanup
-    av_write_trailer(output_ctx);
+    int trailer_ret = av_write_trailer(output_ctx);
+    if (trailer_ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_TRAILER,
+                                    trailer_ret);
+    }
 
     if (!(output_ctx->oformat->flags & AVFMT_NOFILE)) {
-        avio_closep(&output_ctx->pb);
+        int close_ret = avio_closep(&output_ctx->pb);
+        if (close_ret < 0) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_CLOSE,
+                                        close_ret);
+        }
     }
     avformat_free_context(output_ctx);
 
@@ -308,12 +342,16 @@ pre_buffer_strategy_t* create_memory_packet_strategy(const char *stream_name,
 
     pre_buffer_strategy_t *strategy = calloc(1, sizeof(pre_buffer_strategy_t));
     if (!strategy) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate memory packet strategy");
         return NULL;
     }
 
     memory_packet_strategy_data_t *data = calloc(1, sizeof(memory_packet_strategy_data_t));
     if (!data) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate memory packet strategy data");
         free(strategy);
         return NULL;
@@ -351,4 +389,3 @@ pre_buffer_strategy_t* create_memory_packet_strategy(const char *stream_name,
 
     return strategy;
 }
-

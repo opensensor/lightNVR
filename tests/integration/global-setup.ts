@@ -13,10 +13,13 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import path from 'path';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const TEST_DIR = '/tmp/lightnvr-test';
+const TEST_DIR = process.env.LIGHTNVR_TEST_DIR || '/tmp/lightnvr-test';
 const TEST_RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
-const LIGHTNVR_BIN = path.join(PROJECT_ROOT, 'build/bin/lightnvr');
-const LIGHTNVR_CONFIG = path.join(PROJECT_ROOT, 'config/lightnvr-test.ini');
+const LIGHTNVR_BIN = process.env.LIGHTNVR_TEST_BIN ||
+  path.join(PROJECT_ROOT, 'build/bin/lightnvr');
+const LIGHTNVR_CONFIG = process.env.LIGHTNVR_TEST_CONFIG ||
+  path.join(PROJECT_ROOT, 'config/lightnvr-test.ini');
+const SKIP_GO2RTC = process.env.LIGHTNVR_SKIP_GO2RTC === '1';
 const LIGHTNVR_PORT = 18080;
 const GO2RTC_API_PORT = 11984;
 const GO2RTC_RTSP_PORT = 18554;
@@ -69,6 +72,13 @@ async function waitForService(url: string, timeoutMs: number = 30000, auth?: str
 async function setupTestDirectories(): Promise<void> {
   console.log('Setting up test directories...');
 
+  const resolvedTestDir = path.resolve(TEST_DIR);
+  if (!resolvedTestDir.startsWith('/tmp/lightnvr-') || resolvedTestDir === '/tmp/lightnvr-') {
+    throw new Error(
+      `LIGHTNVR_TEST_DIR must be a dedicated /tmp/lightnvr-* directory, got ${TEST_DIR}`,
+    );
+  }
+
   // Clean up any existing test directory to ensure fresh state
   if (existsSync(TEST_DIR)) {
     console.log('Cleaning up existing test directory...');
@@ -87,8 +97,8 @@ async function setupTestDirectories(): Promise<void> {
     `${TEST_DIR}/recordings/mp4`,
     `${TEST_DIR}/recordings/hls`,
     `${TEST_DIR}/models`,
-    `${TEST_DIR}/go2rtc`,
   ];
+  if (!SKIP_GO2RTC) dirs.push(`${TEST_DIR}/go2rtc`);
 
   for (const dir of dirs) {
     mkdirSync(dir, { recursive: true });
@@ -111,12 +121,16 @@ async function startLightNVR(): Promise<void> {
   }
   console.log(`lightNVR config found at: ${LIGHTNVR_CONFIG}`);
 
-  // Check if go2rtc binary exists (lightNVR will try to start it)
-  const go2rtcPath = path.join(PROJECT_ROOT, 'go2rtc', 'go2rtc');
-  if (!existsSync(go2rtcPath)) {
-    throw new Error(`go2rtc binary not found at ${go2rtcPath}. Build go2rtc first.`);
+  if (!SKIP_GO2RTC) {
+    // Check if go2rtc binary exists (lightNVR will try to start it)
+    const go2rtcPath = path.join(PROJECT_ROOT, 'go2rtc', 'go2rtc');
+    if (!existsSync(go2rtcPath)) {
+      throw new Error(`go2rtc binary not found at ${go2rtcPath}. Build go2rtc first.`);
+    }
+    console.log(`go2rtc binary found at: ${go2rtcPath}`);
+  } else {
+    console.log('Skipping go2rtc binary check for health-only integration tests');
   }
-  console.log(`go2rtc binary found at: ${go2rtcPath}`);
 
   // Check if web dist exists
   const webDistPath = path.join(PROJECT_ROOT, 'web', 'dist');
@@ -129,7 +143,9 @@ async function startLightNVR(): Promise<void> {
   console.log(`Test directories: ${TEST_DIR}`);
   console.log(`  - exists: ${existsSync(TEST_DIR)}`);
   console.log(`  - recordings: ${existsSync(TEST_DIR + '/recordings')}`);
-  console.log(`  - go2rtc: ${existsSync(TEST_DIR + '/go2rtc')}`);
+  if (!SKIP_GO2RTC) {
+    console.log(`  - go2rtc: ${existsSync(TEST_DIR + '/go2rtc')}`);
+  }
 
   // Check if already running
   try {
@@ -217,7 +233,7 @@ async function startLightNVR(): Promise<void> {
   const authHeader = 'Basic ' + Buffer.from('admin:admin').toString('base64');
   const ready = await waitForService(
     `http://localhost:${LIGHTNVR_PORT}/api/system`,
-    45000,  // 45 seconds - increased to allow for go2rtc startup
+    SKIP_GO2RTC ? 30000 : 45000,
     authHeader
   );
 
@@ -249,7 +265,7 @@ async function startLightNVR(): Promise<void> {
       console.error('Failed to list test directory: ' + e);
     }
 
-    throw new Error('lightNVR failed to start within 45 seconds');
+    throw new Error(`lightNVR failed to start within ${SKIP_GO2RTC ? 30 : 45} seconds`);
   }
   console.log('lightNVR is ready');
 }
@@ -267,7 +283,7 @@ async function waitForGo2rtc(): Promise<void> {
   if (!ready) {
     // Try to get more diagnostic information
     console.error('go2rtc failed to start. Checking lightNVR logs...');
-    const logPath = '/tmp/lightnvr-test/lightnvr.log';
+    const logPath = `${TEST_DIR}/lightnvr.log`;
     if (existsSync(logPath)) {
       const logs = readFileSync(logPath, 'utf8');
       const lastLines = logs.split('\n').slice(-50).join('\n');
@@ -325,6 +341,27 @@ async function markSetupComplete(): Promise<void> {
     }
   } catch (e) {
     console.warn(`Error marking setup as complete: ${e}`);
+  }
+}
+
+async function ensureHealthTestViewer(): Promise<void> {
+  if (!SKIP_GO2RTC) return;
+  console.log('Ensuring the health UI viewer fixture exists...');
+  const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/auth/users`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      username: 'test_viewer',
+      password: 'TestViewer123!',
+      role: 2,
+      is_active: true,
+    }),
+  });
+  if (!response.ok && response.status !== 409) {
+    throw new Error(`Could not create health UI viewer fixture (${response.status})`);
   }
 }
 
@@ -388,19 +425,23 @@ async function globalSetup(): Promise<void> {
   await setupTestDirectories();
   await startLightNVR();
   await markSetupComplete();
-  await waitForGo2rtc();
+  await ensureHealthTestViewer();
+  if (!SKIP_GO2RTC) {
+    await waitForGo2rtc();
 
-  // Register virtual streams with go2rtc first
-  await registerTestStreamsWithGo2rtc();
+    // Register virtual streams with go2rtc first
+    await registerTestStreamsWithGo2rtc();
 
-  // Add streams to lightNVR using go2rtc RTSP endpoints
-  await addStreamsToLightNVR();
+    // Add streams to lightNVR using go2rtc RTSP endpoints
+    await addStreamsToLightNVR();
 
-  // Give streams time to initialize
-  await sleep(3000);
+    // Give streams time to initialize
+    await sleep(3000);
+  } else {
+    console.log('Skipping go2rtc readiness and stream initialization');
+  }
 
   console.log('\n✓ Test environment ready\n');
 }
 
 export default globalSetup;
-

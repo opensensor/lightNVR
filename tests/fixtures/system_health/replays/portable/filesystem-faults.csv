@@ -1,0 +1,12 @@
+# t24-replay-v1: read-only, EIO, and recovery; unavailable evidence never recovers
+# expect=filesystem.read_only:open;filesystem.write_failed:open;storage.device_critical:one_shot;filesystem.read_only:material;filesystem.write_failed:material;filesystem.read_only:recover;filesystem.write_failed:recover
+elapsed_ms,metric,resource,scope,capability,value,unit,service_degraded,recording_expected
+0,filesystem.read_only,recording,filesystem,available,1,boolean,1,1
+0,filesystem.write_failed,recording,filesystem,available,1,boolean,1,1
+0,kernel.block_io_error_delta,recording,device,available,1,count,1,1
+10000,filesystem.read_only,recording,filesystem,permission_denied,0,boolean,1,1
+10000,filesystem.write_failed,recording,filesystem,error,0,boolean,1,1
+20000,filesystem.read_only,recording,filesystem,available,0,boolean,0,1
+20000,filesystem.write_failed,recording,filesystem,available,0,boolean,0,1
+40000,filesystem.read_only,recording,filesystem,available,0,boolean,0,1
+40000,filesystem.write_failed,recording,filesystem,available,0,boolean,0,1
