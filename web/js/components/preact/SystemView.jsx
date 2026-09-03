@@ -127,6 +127,8 @@ export function SystemView() {
   const roleLoading = userRole === null;
   // Only admin can restart/shutdown system; default to false while loading
   const canControlSystem = !roleLoading && userRole === 'admin';
+  // Operational health endpoints require the same system-admin permission.
+  const canViewSystemHealth = canControlSystem;
 
   // Define all query hooks next
   const {
@@ -263,22 +265,24 @@ export function SystemView() {
 
       <div className="mb-4 border-b border-border" role="tablist" aria-label={t('system.sections')}>
           <div className="flex gap-2">
-            <button
-              type="button"
-              id="health-tab"
-              role="tab"
-              data-testid="health-tab"
-              aria-selected={activeTab === 'health'}
-              aria-controls="health-panel"
-              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'health'
-                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setActiveTab('health')}
-            >
-              {t('system.health.tab')}
-            </button>
+            {canViewSystemHealth && (
+              <button
+                type="button"
+                id="health-tab"
+                role="tab"
+                data-testid="health-tab"
+                aria-selected={activeTab === 'health'}
+                aria-controls="health-panel"
+                className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === 'health'
+                    ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setActiveTab('health')}
+              >
+                {t('system.health.tab')}
+              </button>
+            )}
             <button
               type="button"
               id="system-tab"
@@ -314,7 +318,7 @@ export function SystemView() {
           </div>
       </div>
 
-      {activeTab === 'health' ? (
+      {activeTab === 'health' && canViewSystemHealth ? (
         <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
           <SystemHealth />
         </div>

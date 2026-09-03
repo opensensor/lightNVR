@@ -81,3 +81,29 @@ test.describe('System Health operator view @ui @system', () => {
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
   });
 });
+
+test.describe('System Health authorization @ui @system', () => {
+  test('does not expose administrator health data to viewers', async ({ page }) => {
+    await login(page, USERS.viewer);
+    await page.route('**/api/system/info', (route) => route.fulfill({ json: systemInfo }));
+
+    let healthRequestCount = 0;
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/api/system/health' || path === '/api/system/health/incidents') {
+        healthRequestCount += 1;
+      }
+    });
+
+    const roleLoaded = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/api/auth/verify' && response.status() === 200);
+    await page.goto('/system.html', { waitUntil: 'domcontentloaded' });
+    const session = await (await roleLoaded).json();
+
+    expect(session.role).toBe('viewer');
+    await expect(page.getByTestId('system-tab')).toBeVisible();
+    await expect(page.getByTestId('health-tab')).toHaveCount(0);
+    await expect(page.getByTestId('system-health-view')).toHaveCount(0);
+    expect(healthRequestCount).toBe(0);
+  });
+});
