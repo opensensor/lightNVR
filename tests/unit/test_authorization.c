@@ -29,8 +29,10 @@
 #include "database/db_locations.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
+#include "telemetry/stream_metrics.h"
 #include "utils/strings.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_health.h"
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_investigations.h"
 #include "web/api_handlers_locations.h"
@@ -2002,6 +2004,69 @@ void test_metrics_require_system_admin_authorization(void) {
     g_config.web_auth_enabled = false;
 }
 
+void test_stream_health_filters_camera_metrics_by_live_view_scope(void) {
+    stream_config_t visible = create_camera("Health Visible", "Outdoor");
+    stream_config_t hidden = create_camera("Health Hidden", "Indoor");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("healthviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             visible.camera_uuid);
+    create_grant(user_id, "00000000-0000-4000-8000-000000000003",
+                 "selector", selector, NULL);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(4));
+    metrics_record_frame(visible.name, 1024, true);
+    metrics_record_frame(hidden.name, 2048, true);
+    g_config.web_auth_enabled = true;
+
+    cJSON *json = call_handler_path(
+        handle_get_health, HTTP_METHOD_GET, "/api/health", NULL, api_key, 200);
+    cJSON *streams = cJSON_GetObjectItemCaseSensitive(json, "streams");
+    cJSON *details = cJSON_GetObjectItemCaseSensitive(json, "streams_detail");
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(streams, "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(details));
+    TEST_ASSERT_EQUAL_STRING(
+        visible.name,
+        cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(details, 0),
+                                         "name")->valuestring);
+    cJSON_Delete(json);
+
+    json = call_handler_path(
+        handle_get_health, HTTP_METHOD_GET,
+        "/api/health?sparklines=true&history_only=true", NULL, api_key, 200);
+    details = cJSON_GetObjectItemCaseSensitive(json, "streams_detail");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(details));
+    TEST_ASSERT_EQUAL_STRING(
+        visible.name,
+        cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(details, 0),
+                                         "name")->valuestring);
+    cJSON_Delete(json);
+
+    /* Keep unauthenticated process probes healthy without disclosing cameras. */
+    json = call_handler_path(handle_get_health, HTTP_METHOD_GET,
+                             "/api/health", NULL, NULL, 200);
+    streams = cJSON_GetObjectItemCaseSensitive(json, "streams");
+    details = cJSON_GetObjectItemCaseSensitive(json, "streams_detail");
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetObjectItemCaseSensitive(streams, "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(details));
+    cJSON_Delete(json);
+
+    g_config.web_auth_enabled = false;
+    metrics_shutdown();
+}
+
 void test_user_create_rejects_retired_allowed_tags_field(void) {
     cJSON *json = call_handler_path(
         handle_users_create, HTTP_METHOD_POST, "/api/auth/users",
@@ -2583,6 +2648,7 @@ int main(void) {
     RUN_TEST(test_streams_reject_empty_camera_uuid);
     RUN_TEST(test_player_telemetry_requires_live_view_authorization);
     RUN_TEST(test_metrics_require_system_admin_authorization);
+    RUN_TEST(test_stream_health_filters_camera_metrics_by_live_view_scope);
     RUN_TEST(test_user_create_rejects_retired_allowed_tags_field);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
     RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);

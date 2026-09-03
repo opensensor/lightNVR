@@ -23,7 +23,10 @@
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
 #include "web/http_server.h"
+#include "web/httpd_utils.h"
 #include "web/request_response.h"
+#include "core/authorization.h"
+#include "database/db_fleet_query.h"
 #include "telemetry/stream_metrics.h"
 #include "storage/storage_manager.h"
 #define LOG_COMPONENT "HealthCheck"
@@ -168,6 +171,58 @@ static bool perform_health_check(void) {
     return success;
 }
 
+/*
+ * /api/health doubles as the unauthenticated process-liveness endpoint, so it
+ * cannot reject the self-probe when web authentication is enabled.  It must,
+ * however, apply the same live.view camera scope as every other camera list.
+ * An unauthenticated probe therefore receives liveness/storage data with an
+ * empty camera inventory; authenticated callers receive only authorized
+ * camera metrics.
+ */
+static int filter_authorized_stream_metrics(const http_request_t *req,
+                                            stream_metrics_t *snapshots,
+                                            int *count) {
+    if (!req || !count || *count <= 0 || !g_config.web_auth_enabled) return 0;
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    if (!httpd_check_action_access(req, &user)) {
+        *count = 0;
+        return 0;
+    }
+
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    if (db_fleet_camera_load(&cameras, &camera_count) != 0) return -1;
+    if (authorization_filter_visible_cameras(&user, cameras,
+                                             &camera_count) != 0) {
+        free(cameras);
+        return -1;
+    }
+
+    int visible_count = 0;
+    for (int snapshot_index = 0; snapshot_index < *count; snapshot_index++) {
+        bool visible = false;
+        for (int camera_index = 0; camera_index < camera_count;
+             camera_index++) {
+            if (strcmp(snapshots[snapshot_index].stream_name,
+                       cameras[camera_index].name) == 0) {
+                visible = true;
+                break;
+            }
+        }
+        if (!visible) continue;
+        if (visible_count != snapshot_index) {
+            snapshots[visible_count] = snapshots[snapshot_index];
+        }
+        visible_count++;
+    }
+
+    free(cameras);
+    *count = visible_count;
+    return 0;
+}
+
 
 /**
  * @brief Backend-agnostic handler for GET /api/health
@@ -223,6 +278,13 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
         if (snaps) {
             count = metrics_snapshot_all(snaps, max_streams);
         }
+    }
+    if (filter_authorized_stream_metrics(req, snaps, &count) != 0) {
+        free(snaps);
+        cJSON_Delete(health);
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return;
     }
 
     if (history_only) {
