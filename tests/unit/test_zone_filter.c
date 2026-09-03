@@ -12,6 +12,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -299,6 +300,90 @@ void test_stream_object_exclude_keeps_unmatched_label(void) {
 }
 
 /* ================================================================
+ * filter_detections_by_stream_objects — concurrent label parsing
+ * ================================================================ */
+
+typedef struct {
+    const char *stream_name;
+    const char *label;
+    pthread_barrier_t *start_barrier;
+    int failures;
+} concurrent_filter_ctx_t;
+
+static void ensure_filtered_stream(const char *name, const char *url,
+                                   const char *filter_list) {
+    stream_config_t stream;
+    memset(&stream, 0, sizeof(stream));
+    safe_strcpy(stream.name, name, sizeof(stream.name), 0);
+    safe_strcpy(stream.url, url, sizeof(stream.url), 0);
+    stream.enabled = true;
+    stream.width = 1920;
+    stream.height = 1080;
+    stream.fps = 30;
+    stream.protocol = STREAM_PROTOCOL_TCP;
+    safe_strcpy(stream.detection_object_filter, "include",
+                sizeof(stream.detection_object_filter), 0);
+    safe_strcpy(stream.detection_object_filter_list, filter_list,
+                sizeof(stream.detection_object_filter_list), 0);
+    add_stream_config(&stream);
+}
+
+static void *run_concurrent_filter(void *opaque) {
+    concurrent_filter_ctx_t *ctx = opaque;
+    pthread_barrier_wait(ctx->start_barrier);
+
+    for (int iteration = 0; iteration < 100; iteration++) {
+        detection_result_t result;
+        memset(&result, 0, sizeof(result));
+        result.count = MAX_DETECTIONS;
+        for (int index = 0; index < MAX_DETECTIONS; index++) {
+            safe_strcpy(result.detections[index].label, ctx->label,
+                        sizeof(result.detections[index].label), 0);
+        }
+
+        if (filter_detections_by_stream_objects(ctx->stream_name, &result) != 0 ||
+            result.count != MAX_DETECTIONS) {
+            ctx->failures++;
+        }
+    }
+    return NULL;
+}
+
+void test_stream_object_filters_are_reentrant(void) {
+    static const char list_a[] =
+        "a00,a01,a02,a03,a04,a05,a06,a07,a08,a09,a10,a11,a12,a13,a14,a15,keep_a";
+    static const char list_b[] =
+        "b00,b01,b02,b03,b04,b05,b06,b07,b08,b09,b10,b11,b12,b13,b14,b15,keep_b";
+    ensure_filtered_stream("cam_parallel_a", "rtsp://localhost/parallel-a", list_a);
+    ensure_filtered_stream("cam_parallel_b", "rtsp://localhost/parallel-b", list_b);
+
+    enum { THREAD_COUNT = 8 };
+    pthread_t threads[THREAD_COUNT];
+    concurrent_filter_ctx_t contexts[THREAD_COUNT];
+    pthread_barrier_t start_barrier;
+    TEST_ASSERT_EQUAL_INT(0, pthread_barrier_init(&start_barrier, NULL, THREAD_COUNT));
+
+    for (int index = 0; index < THREAD_COUNT; index++) {
+        bool use_a = (index % 2) == 0;
+        contexts[index] = (concurrent_filter_ctx_t){
+            .stream_name = use_a ? "cam_parallel_a" : "cam_parallel_b",
+            .label = use_a ? "keep_a" : "keep_b",
+            .start_barrier = &start_barrier,
+            .failures = 0,
+        };
+        TEST_ASSERT_EQUAL_INT(
+            0, pthread_create(&threads[index], NULL, run_concurrent_filter,
+                              &contexts[index]));
+    }
+
+    for (int index = 0; index < THREAD_COUNT; index++) {
+        TEST_ASSERT_EQUAL_INT(0, pthread_join(threads[index], NULL));
+        TEST_ASSERT_EQUAL_INT(0, contexts[index].failures);
+    }
+    TEST_ASSERT_EQUAL_INT(0, pthread_barrier_destroy(&start_barrier));
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -325,9 +410,9 @@ int main(void) {
     RUN_TEST(test_stream_object_include_drops_unmatched_label);
     RUN_TEST(test_stream_object_exclude_drops_matching_label);
     RUN_TEST(test_stream_object_exclude_keeps_unmatched_label);
+    RUN_TEST(test_stream_object_filters_are_reentrant);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
     return result;
 }
-

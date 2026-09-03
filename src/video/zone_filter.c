@@ -61,7 +61,8 @@ static bool detection_class_matches(const detection_t *detection, const detectio
     char filter_copy[256];
     safe_strcpy(filter_copy, zone->filter_classes, sizeof(filter_copy), 0);
 
-    char *token = strtok(filter_copy, ",");
+    char *saveptr = NULL;
+    char *token = strtok_r(filter_copy, ",", &saveptr);
     while (token) {
         // Trim whitespace
         while (*token == ' ') token++;
@@ -76,7 +77,7 @@ static bool detection_class_matches(const detection_t *detection, const detectio
             return true;
         }
 
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     return false;
@@ -224,7 +225,8 @@ static bool label_in_list(const char *label, const char *class_list) {
     char list_copy[256];
     safe_strcpy(list_copy, class_list, sizeof(list_copy), 0);
 
-    char *token = strtok(list_copy, ",");
+    char *saveptr = NULL;
+    char *token = strtok_r(list_copy, ",", &saveptr);
     while (token) {
         // Trim leading whitespace
         while (*token == ' ') token++;
@@ -239,7 +241,7 @@ static bool label_in_list(const char *label, const char *class_list) {
             return true;
         }
 
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     return false;

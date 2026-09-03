@@ -1050,7 +1050,8 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
                 char ice_servers_copy[512];
                 safe_strcpy(ice_servers_copy, global_config->go2rtc_ice_servers, sizeof(ice_servers_copy), 0);
 
-                char *token = strtok(ice_servers_copy, ",");
+                char *saveptr = NULL;
+                char *token = strtok_r(ice_servers_copy, ",", &saveptr);
                 while (token != NULL) {
                     // Trim whitespace
                     while (*token == ' ') token++;
@@ -1059,7 +1060,7 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
                     *(end + 1) = '\0';
 
                     fprintf(config_file, "    - urls: [\"%s\"]\n", token);
-                    token = strtok(NULL, ",");
+                    token = strtok_r(NULL, ",", &saveptr);
                 }
             } else if (global_config->go2rtc_stun_enabled) {
                 // Use default STUN servers - multiple servers for redundancy

@@ -1221,7 +1221,8 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
                     // Read interfaces
                     while (headers_read && fgets(line, sizeof(line), fp)) {
-                        char *name = strtok(line, ":");
+                        char *saveptr = NULL;
+                        char *name = strtok_r(line, ":", &saveptr);
                         if (name) {
                             // Trim whitespace
                             while (*name == ' ') name++;
