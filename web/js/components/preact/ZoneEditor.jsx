@@ -4,10 +4,17 @@
  */
 
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
 import { AlertDialog } from './common/ModalDialog.jsx';
+import {
+  buildZoneSnapshotUrl,
+  containedPreviewRect,
+  canvasPointToZonePoint,
+} from './zoneEditorModel.js';
+
+const SNAPSHOT_RETRY_DELAYS_MS = [500, 1500, 3000];
+const SNAPSHOT_LOAD_TIMEOUT_MS = 10000;
 
 /**
  * ZoneEditor Component
@@ -16,12 +23,19 @@ import { AlertDialog } from './common/ModalDialog.jsx';
 export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const { t } = useI18n();
   const canvasRef = useRef(null);
+  const canvasContainerRef = useRef(null);
   const imageRef = useRef(null);
+  const drawCanvasRef = useRef(null);
+  const snapshotRetryCountRef = useRef(0);
+  const snapshotRetryTimerRef = useRef(null);
+  const snapshotTimeoutRef = useRef(null);
+  const snapshotLoadedRef = useRef(false);
   const [currentZone, setCurrentZone] = useState(null);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [snapshotError, setSnapshotError] = useState(false);
+  const [snapshotReloadKey, setSnapshotReloadKey] = useState(0);
   const [editMode, setEditMode] = useState('draw'); // 'draw', 'edit', 'delete'
   const [zoneList, setZoneList] = useState(zones);
   const [hoveredPoint, setHoveredPoint] = useState(null);
@@ -55,38 +69,28 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
   // Load snapshot for the stream
   useEffect(() => {
-    if (streamName) {
-      // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
-      const loadSnapshot = async () => {
-        try {
-          const go2rtcBaseUrl = await getGo2rtcBaseUrl();
-          // Add cache-busting parameter to force fresh snapshot
-          const timestamp = nowMilliseconds();
-          const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
-          console.log('Loading snapshot from:', url);
-          setSnapshotUrl(url);
-        } catch (err) {
-          console.warn('Failed to get go2rtc URL, using origin proxy:', err);
-          const timestamp = nowMilliseconds();
-          const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
-          setSnapshotUrl(url);
-        }
-      };
+    if (!streamName) return undefined;
 
-      loadSnapshot();
+    snapshotRetryCountRef.current = 0;
+    snapshotLoadedRef.current = false;
+    imageRef.current = null;
+    setImageLoaded(false);
+    setSnapshotError(false);
+    setSnapshotUrl(buildZoneSnapshotUrl(streamName, nowMilliseconds()));
 
-      // Set a timeout to show canvas anyway after 10 seconds
-      const timeout = setTimeout(() => {
-        if (!imageLoaded) {
-          console.warn('Snapshot not loaded, showing canvas without background');
-          setImageLoaded(true);
-          setSnapshotError(true);
-        }
-      }, 10000);
+    snapshotTimeoutRef.current = setTimeout(() => {
+      if (snapshotLoadedRef.current) return;
+      console.warn('Snapshot not loaded, showing canvas without background');
+      setSnapshotUrl(null);
+      setImageLoaded(true);
+      setSnapshotError(true);
+    }, SNAPSHOT_LOAD_TIMEOUT_MS);
 
-      return () => clearTimeout(timeout);
-    }
-  }, [streamName]);
+    return () => {
+      clearTimeout(snapshotRetryTimerRef.current);
+      clearTimeout(snapshotTimeoutRef.current);
+    };
+  }, [streamName, snapshotReloadKey]);
 
   // Read a CSS custom property and return a usable hsl() colour string.
   // The project's theme variables are stored as bare "H S% L%" triplets so we
@@ -112,32 +116,20 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    const hasSnapshot = image && imageLoaded && !snapshotError
+      && image.naturalWidth > 0 && image.naturalHeight > 0;
+    const previewRect = hasSnapshot
+      ? containedPreviewRect(canvas.width, canvas.height, image.naturalWidth, image.naturalHeight)
+      : containedPreviewRect(canvas.width, canvas.height, 0, 0);
+
     // Draw the image if loaded
-    if (image && imageLoaded && !snapshotError) {
-      // Calculate the scaling and positioning to maintain aspect ratio
-      const imageAspect = image.naturalWidth / image.naturalHeight;
-      const canvasAspect = canvas.width / canvas.height;
-
-      let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-      if (imageAspect > canvasAspect) {
-        // Image is wider than canvas (letterboxing - black bars on top and bottom)
-        drawWidth = canvas.width;
-        drawHeight = canvas.width / imageAspect;
-        offsetY = (canvas.height - drawHeight) / 2;
-      } else {
-        // Image is taller than canvas (pillarboxing - black bars on sides)
-        drawHeight = canvas.height;
-        drawWidth = canvas.height * imageAspect;
-        offsetX = (canvas.width - drawWidth) / 2;
-      }
-
+    if (hasSnapshot) {
       // Draw black background for letterboxing/pillarboxing
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw the image with proper aspect ratio
-      ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+      ctx.drawImage(image, previewRect.x, previewRect.y, previewRect.width, previewRect.height);
     } else {
       // Draw a placeholder background using the current theme's card colour
       ctx.fillStyle = getThemeColor('--card', '#ffffff');
@@ -163,17 +155,17 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Draw existing zones
     zoneList.forEach((zone, index) => {
       const isSelected = index === selectedZoneIndex;
-      drawZone(ctx, zone, canvas.width, canvas.height, isSelected, false, index);
+      drawZone(ctx, zone, previewRect, isSelected, false, index);
     });
 
     // Draw current zone being drawn
     if (currentZone && currentZone.polygon.length > 0) {
-      drawZone(ctx, currentZone, canvas.width, canvas.height, true, true, null);
+      drawZone(ctx, currentZone, previewRect, true, true, null);
     }
   };
 
   // Draw a single zone
-  const drawZone = (ctx, zone, width, height, isSelected, isDrawing = false, zoneIndex = null) => {
+  const drawZone = (ctx, zone, previewRect, isSelected, isDrawing = false, zoneIndex = null) => {
     if (!zone.polygon || zone.polygon.length === 0) return;
 
     ctx.save();
@@ -181,8 +173,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Draw polygon
     ctx.beginPath();
     zone.polygon.forEach((point, i) => {
-      const x = point.x * width;
-      const y = point.y * height;
+      const x = previewRect.x + point.x * previewRect.width;
+      const y = previewRect.y + point.y * previewRect.height;
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -206,8 +198,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
     // Draw points
     zone.polygon.forEach((point, i) => {
-      const x = point.x * width;
-      const y = point.y * height;
+      const x = previewRect.x + point.x * previewRect.width;
+      const y = previewRect.y + point.y * previewRect.height;
 
       // Check if this point is being hovered or dragged
       const isHovered = hoveredPoint && hoveredPoint.zoneIndex === zoneIndex && hoveredPoint.pointIndex === i;
@@ -224,8 +216,10 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
     // Draw zone label
     if (zone.name && zone.polygon.length > 0) {
-      const centerX = zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length * width;
-      const centerY = zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length * height;
+      const centerX = previewRect.x
+        + zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length * previewRect.width;
+      const centerY = previewRect.y
+        + zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length * previewRect.height;
 
       ctx.fillStyle = color;
       ctx.font = 'bold 14px sans-serif';
@@ -244,19 +238,58 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     ctx.restore();
   };
 
+  drawCanvasRef.current = drawCanvas;
+
   // Redraw canvas when zones or image changes
   useEffect(() => {
     drawCanvas();
-  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, hoveredPoint, draggedPoint, draggedZone]);
+  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, snapshotError, hoveredPoint, draggedPoint, draggedZone]);
+
+  // Keep the canvas backing store synchronized with its responsive CSS size.
+  // Without this, opening/settling the modal can stretch an already-rendered
+  // bitmap and make an otherwise correctly sized snapshot look distorted.
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return undefined;
+
+    let animationFrame = null;
+    const observer = new ResizeObserver(() => {
+      if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => drawCanvasRef.current?.());
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
+  const getZonePointFromEvent = (e, clamp = false) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const bounds = canvas.getBoundingClientRect();
+    const image = imageRef.current;
+    const hasSnapshot = image && imageLoaded && !snapshotError
+      && image.naturalWidth > 0 && image.naturalHeight > 0;
+    const previewRect = hasSnapshot
+      ? containedPreviewRect(bounds.width, bounds.height, image.naturalWidth, image.naturalHeight)
+      : containedPreviewRect(bounds.width, bounds.height, 0, 0);
+
+    return canvasPointToZonePoint(
+      e.clientX - bounds.left,
+      e.clientY - bounds.top,
+      previewRect,
+      clamp,
+    );
+  };
 
   // Handle mouse down
   const handleMouseDown = (e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const pointInFrame = getZonePointFromEvent(e);
+    if (!pointInFrame) return;
+    const { x, y } = pointInFrame;
 
     if (editMode === 'edit') {
       // Check if clicking on a point to drag
@@ -285,9 +318,13 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const pointInFrame = getZonePointFromEvent(e, Boolean(draggedPoint || draggedZone));
+    if (!pointInFrame) {
+      canvas.style.cursor = 'default';
+      setHoveredPoint(null);
+      return;
+    }
+    const { x, y } = pointInFrame;
 
     // Update cursor style based on hover
     if (editMode === 'edit' && !draggedPoint && !draggedZone) {
@@ -343,12 +380,9 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
   // Handle canvas click (for draw and delete modes)
   const handleCanvasClick = (e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const pointInFrame = getZonePointFromEvent(e);
+    if (!pointInFrame) return;
+    const { x, y } = pointInFrame;
 
     if (editMode === 'draw') {
       // Add point to current zone
@@ -498,23 +532,34 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         <div className="flex-1 overflow-hidden flex">
           {/* Canvas Area */}
           <div className="flex-1 p-6 flex flex-col">
-            <div className="flex-1 relative bg-muted rounded-lg overflow-hidden">
+            <div ref={canvasContainerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden">
               {snapshotUrl && (
                 <img
                   ref={imageRef}
                   src={snapshotUrl}
                   alt={t('zoneEditor.streamPreviewAlt')}
                   className="hidden"
-                  crossOrigin="anonymous"
-                  onLoad={() => {
+                  onLoad={(event) => {
                     console.log('✅ Snapshot loaded successfully');
+                    clearTimeout(snapshotRetryTimerRef.current);
+                    clearTimeout(snapshotTimeoutRef.current);
+                    snapshotLoadedRef.current = true;
+                    imageRef.current = event.currentTarget;
                     setImageLoaded(true);
                     setSnapshotError(false);
-                    drawCanvas();
                   }}
                   onError={(e) => {
                     console.error('❌ Failed to load snapshot:', e);
                     console.error('Snapshot URL was:', snapshotUrl);
+                    if (snapshotRetryCountRef.current < SNAPSHOT_RETRY_DELAYS_MS.length) {
+                      const delay = SNAPSHOT_RETRY_DELAYS_MS[snapshotRetryCountRef.current];
+                      snapshotRetryCountRef.current += 1;
+                      snapshotRetryTimerRef.current = setTimeout(() => {
+                        setSnapshotUrl(buildZoneSnapshotUrl(streamName, nowMilliseconds()));
+                      }, delay);
+                      return;
+                    }
+                    clearTimeout(snapshotTimeoutRef.current);
                     setSnapshotError(true);
                     setImageLoaded(true); // Show canvas anyway
                   }}
@@ -538,8 +583,15 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                 </div>
               )}
               {imageLoaded && snapshotError && (
-                <div className="absolute top-4 left-4 bg-[hsl(var(--warning-muted))] border border-[hsl(var(--warning))] text-[hsl(var(--warning-muted-foreground))] px-3 py-2 rounded text-sm">
-                  ⚠️ {t('zoneEditor.snapshotUnavailable')}
+                <div className="absolute top-4 left-4 flex items-center gap-3 bg-[hsl(var(--warning-muted))] border border-[hsl(var(--warning))] text-[hsl(var(--warning-muted-foreground))] px-3 py-2 rounded text-sm">
+                  <span>⚠️ {t('zoneEditor.snapshotUnavailable')}</span>
+                  <button
+                    type="button"
+                    className="underline font-medium"
+                    onClick={() => setSnapshotReloadKey((key) => key + 1)}
+                  >
+                    {t('common.retry')}
+                  </button>
                 </div>
               )}
             </div>
