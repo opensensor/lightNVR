@@ -631,6 +631,7 @@ target_link_libraries(lightnvr_lib PUBLIC
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
+        ${CJSON_LIBRARIES}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
         pthread
