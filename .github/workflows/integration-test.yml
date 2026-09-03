@@ -234,7 +234,7 @@ jobs:
             -DENABLE_GO2RTC=OFF \
             -DENABLE_LITERT=OFF \
             -DENABLE_MQTT=ON \
-            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           cmake --build build/health-ci -- -j2
 
@@ -300,16 +300,16 @@ jobs:
           lcov --capture \
                --directory build/health-ci \
                --output-file build/health-ci/coverage.info \
-               --ignore-errors mismatch,inconsistent
+               --ignore-errors mismatch,inconsistent,negative
           lcov --remove build/health-ci/coverage.info \
                '/usr/*' \
                '*/third_party/*' \
                '*/external/*' \
                '*/tests/*' \
                --output-file build/health-ci/coverage_filtered.info \
-               --ignore-errors unused,inconsistent
+               --ignore-errors unused,inconsistent,negative
           lcov --list build/health-ci/coverage_filtered.info \
-               --ignore-errors inconsistent
+               --ignore-errors inconsistent,negative
 
       - name: Upload system health coverage to Codecov
         uses: codecov/codecov-action@v7
