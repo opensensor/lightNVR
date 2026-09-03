@@ -4,6 +4,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -126,8 +128,18 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
         return -1;
     }
 
+    /* pid alone isn't unique here: HTTP handlers are dispatched across
+     * libuv's worker threads within this one process, so two concurrent
+     * playback requests for the same recording would otherwise compute the
+     * identical tmp path and race on the same file. An atomic per-call
+     * sequence number makes every invocation's tmp path unique regardless
+     * of which thread runs it. */
+    static atomic_uint_fast64_t s_tmp_seq = 0;
+    uint64_t seq = atomic_fetch_add(&s_tmp_seq, 1);
+
     char tmp_path[512];
-    int written = snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d", cache_path, (int)getpid());
+    int written = snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d.%" PRIuFAST64,
+                            cache_path, (int)getpid(), seq);
     if (written < 0 || (size_t)written >= sizeof(tmp_path)) {
         log_error("recording_transcode: cache path too long: %s", cache_path);
         return -1;
@@ -151,7 +163,7 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
      * for video-only sources (e.g. any recording made while audio_disabled
      * is set). */
     char *argv_vaapi[] = {
-        (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error",
+        (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-hwaccel", "vaapi", "-hwaccel_device", VAAPI_RENDER_NODE,
         "-hwaccel_output_format", "vaapi",
         "-i", (char *)original_path,
@@ -159,7 +171,7 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
         "-f", "mp4", tmp_path, NULL
     };
     char *argv_software[] = {
-        (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error",
+        (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-i", (char *)original_path,
         "-c:v", "libx264", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL

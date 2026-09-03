@@ -29,6 +29,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,7 +65,10 @@ static int run_ffmpeg(const char *args_joined_by_space_command) {
     snprintf(cmd, sizeof(cmd), "ffmpeg -hide_banner -loglevel error -y %s",
              args_joined_by_space_command);
     int rc = system(cmd);
-    return (rc == -1) ? -1 : WEXITSTATUS(rc);
+    if (rc == -1) {
+        return -1;
+    }
+    return WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
 }
 
 static bool file_exists_nonempty(const char *path) {
@@ -253,6 +257,57 @@ void test_ensure_cache_fails_gracefully_for_missing_source(void) {
 }
 
 /* ================================================================
+ * concurrency
+ * ================================================================ */
+
+typedef struct {
+    const char *original_path;
+    const char *cache_path;
+    int result;
+} concurrent_call_args_t;
+
+static void *concurrent_call_thread(void *arg) {
+    concurrent_call_args_t *args = (concurrent_call_args_t *)arg;
+    args->result = ensure_recording_transcode_cache(args->original_path, args->cache_path);
+    return NULL;
+}
+
+/* Regression test for a real bug: HTTP handlers are dispatched across
+ * libuv's worker threads within one process, so two simultaneous playback
+ * requests for the *same* recording used to compute the identical
+ * getpid()-only tmp path and race on the same file. Drives two threads at
+ * the same cache_path concurrently and asserts both succeed, the result is
+ * a valid playable file, and no tmp file is left behind. */
+void test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    char cache_path[320];
+    snprintf(cache_path, sizeof(cache_path), "%s/concurrent_out.mp4", g_test_dir);
+
+    concurrent_call_args_t args_a = { g_hevc_fixture, cache_path, -1 };
+    concurrent_call_args_t args_b = { g_hevc_fixture, cache_path, -1 };
+
+    pthread_t thread_a, thread_b;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread_a, NULL, concurrent_call_thread, &args_a));
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread_b, NULL, concurrent_call_thread, &args_b));
+    pthread_join(thread_a, NULL);
+    pthread_join(thread_b, NULL);
+
+    TEST_ASSERT_EQUAL_INT(0, args_a.result);
+    TEST_ASSERT_EQUAL_INT(0, args_b.result);
+    TEST_ASSERT_TRUE(file_exists_nonempty(cache_path));
+    TEST_ASSERT_FALSE(recording_needs_hevc_transcode(cache_path));
+
+    char list_cmd[512];
+    snprintf(list_cmd, sizeof(list_cmd), "ls \"%s\" | grep -c tmp", g_test_dir);
+    FILE *p = popen(list_cmd, "r");
+    TEST_ASSERT_NOT_NULL(p);
+    char count_buf[16] = {0};
+    TEST_ASSERT_NOT_NULL(fgets(count_buf, sizeof(count_buf), p));
+    pclose(p);
+    TEST_ASSERT_EQUAL_INT(0, atoi(count_buf));
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -269,6 +324,7 @@ int main(void) {
     RUN_TEST(test_ensure_cache_creates_missing_parent_directory);
     RUN_TEST(test_ensure_cache_skips_retranscode_when_cache_already_exists);
     RUN_TEST(test_ensure_cache_fails_gracefully_for_missing_source);
+    RUN_TEST(test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache);
 
     return UNITY_END();
 }
