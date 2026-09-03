@@ -20,6 +20,7 @@
 #include "database/db_streams.h"
 #include "storage/storage_manager.h"
 #include "utils/strings.h"
+#include "video/recording_path.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_storage_manager_retention.db"
 
@@ -127,6 +128,12 @@ void setUp(void) {
     clear_tables();
     strcpy(g_storage_root, "/tmp/lightnvr_storage_manager_retentionXXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(g_storage_root));
+    /* Mirrors a real single-target deployment, where [storage] path in
+     * lightnvr.ini (g_config.storage_path) is the same root passed to
+     * init_storage_manager() below. delete_recording_file_and_metadata()
+     * locates the transcode cache via g_config.storage_path, so tests
+     * exercising that need the two to agree, same as production. */
+    safe_strcpy(g_config.storage_path, g_storage_root, sizeof(g_config.storage_path), 0);
     TEST_ASSERT_EQUAL_INT(0, init_storage_manager(g_storage_root, 0));
     TEST_ASSERT_EQUAL_INT(0, set_retention_days(0));
     TEST_ASSERT_EQUAL_INT(0, set_max_storage_size(0));
@@ -258,6 +265,46 @@ void test_apply_retention_policy_skips_orphans_when_mp4_storage_is_inaccessible(
     TEST_ASSERT_EQUAL_INT(10, count_recordings());
 }
 
+void test_apply_retention_policy_removes_transcode_cache_alongside_recording(void) {
+    /* On-demand HEVC->H.264 playback caches (transcoded/<id>.mp4) must
+     * never outlive the recording they were derived from, or they'd
+     * silently accumulate disk use retention no longer accounts for. */
+    time_t now = time(NULL);
+    char delete_path[PATH_MAX], keep_path[PATH_MAX];
+    char transcoded_dir[PATH_MAX];
+    char delete_cache_path[PATH_MAX], keep_cache_path[PATH_MAX];
+    recording_metadata_t delete_rec, keep_rec;
+
+    create_mp4_dir();
+    add_stream_with_quota("cached_cam", 1);
+    mp4_path(delete_path, sizeof(delete_path), "delete-oldest.mp4");
+    mp4_path(keep_path, sizeof(keep_path), "keep-newest.mp4");
+    create_file(delete_path, 1024 * 1024);
+    create_file(keep_path, 1024 * 1024);
+
+    delete_rec = make_recording("cached_cam", delete_path, now - 200, 1024 * 1024);
+    keep_rec = make_recording("cached_cam", keep_path, now - 100, 1024 * 1024);
+    uint64_t delete_id = add_recording_metadata(&delete_rec);
+    uint64_t keep_id = add_recording_metadata(&keep_rec);
+    TEST_ASSERT_NOT_EQUAL(0, delete_id);
+    TEST_ASSERT_NOT_EQUAL(0, keep_id);
+
+    snprintf(transcoded_dir, sizeof(transcoded_dir), "%s/transcoded", g_storage_root);
+    TEST_ASSERT_EQUAL_INT(0, ensure_dir(transcoded_dir));
+    TEST_ASSERT_EQUAL_INT(0, build_recording_transcode_cache_path(
+        g_storage_root, delete_id, delete_cache_path, sizeof(delete_cache_path)));
+    TEST_ASSERT_EQUAL_INT(0, build_recording_transcode_cache_path(
+        g_storage_root, keep_id, keep_cache_path, sizeof(keep_cache_path)));
+    create_file(delete_cache_path, 512 * 1024);
+    create_file(keep_cache_path, 512 * 1024);
+
+    TEST_ASSERT_EQUAL_INT(1, apply_retention_policy());
+    TEST_ASSERT_EQUAL_INT(-1, access(delete_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(-1, access(delete_cache_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(keep_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, access(keep_cache_path, F_OK));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) return 1;
@@ -268,6 +315,7 @@ int main(void) {
     RUN_TEST(test_apply_retention_policy_skips_orphan_cleanup_when_ratio_is_too_high);
     RUN_TEST(test_apply_retention_policy_cleans_low_ratio_orphans_when_storage_is_healthy);
     RUN_TEST(test_apply_retention_policy_skips_orphans_when_mp4_storage_is_inaccessible);
+    RUN_TEST(test_apply_retention_policy_removes_transcode_cache_alongside_recording);
     int result = UNITY_END();
 
     shutdown_database();
