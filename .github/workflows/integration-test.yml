@@ -204,6 +204,7 @@ jobs:
             mosquitto \
             mosquitto-clients \
             lcov \
+            gpg \
             jq \
             shellcheck \
             ca-certificates \
@@ -299,15 +300,16 @@ jobs:
           lcov --capture \
                --directory build/health-ci \
                --output-file build/health-ci/coverage.info \
-               --ignore-errors mismatch
+               --ignore-errors mismatch,inconsistent
           lcov --remove build/health-ci/coverage.info \
                '/usr/*' \
                '*/third_party/*' \
                '*/external/*' \
                '*/tests/*' \
                --output-file build/health-ci/coverage_filtered.info \
-               --ignore-errors unused
-          lcov --list build/health-ci/coverage_filtered.info
+               --ignore-errors unused,inconsistent
+          lcov --list build/health-ci/coverage_filtered.info \
+               --ignore-errors inconsistent
 
       - name: Upload system health coverage to Codecov
         uses: codecov/codecov-action@v7

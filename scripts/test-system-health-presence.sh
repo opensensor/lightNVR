@@ -84,7 +84,16 @@ trap 'exit 130' HUP INT TERM
 for tool in mosquitto mosquitto_sub mosquitto_pub jq python3 awk grep mkfifo; do
     command -v "$tool" >/dev/null 2>&1 || skip "optional tool '$tool' is not installed"
 done
-mosquitto_version="$(mosquitto -h 2>&1 | awk '/mosquitto version/ { print $3; exit }')"
+mosquitto_version="$(mosquitto -h 2>&1 | awk '
+    tolower($0) ~ /mosquitto.*version/ {
+        for (field = 1; field <= NF; field++) {
+            if ($field ~ /^[0-9]+([.][0-9]+)+/) {
+                print $field
+                exit
+            }
+        }
+    }
+')"
 mosquitto_major="${mosquitto_version%%.*}"
 if [[ ! "$mosquitto_major" =~ ^[0-9]+$ ]] || (( mosquitto_major < 2 )); then
     skip "Mosquitto 2.x local-only config-free mode is required (found ${mosquitto_version:-unknown})"
