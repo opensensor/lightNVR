@@ -198,6 +198,23 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
     pkg-config --modversion libllhttp; \
     fi
 
+# Custom ARMv7 dependencies are built in the native builder for speed. Mirror
+# their target headers and libraries into the sysroot before compiling LightNVR;
+# CMAKE_SYSROOT intentionally prevents target code from using builder headers.
+RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ] && \
+       [ "$DEB_BUILD" != "true" ]; then \
+      mkdir -p /opt/target-sysroot/usr/include \
+        /opt/target-sysroot/usr/lib/pkgconfig && \
+      cp -a /usr/include/sqlite3.h /usr/include/sqlite3ext.h \
+        /usr/include/uv.h /usr/include/uv /usr/include/llhttp.h \
+        /opt/target-sysroot/usr/include/ && \
+      cp -a /usr/lib/libsqlite3.so* /usr/lib/libuv.so* \
+        /usr/lib/libllhttp.so* /opt/target-sysroot/usr/lib/ && \
+      cp -a /usr/lib/pkgconfig/sqlite3.pc /usr/lib/pkgconfig/libuv.pc \
+        /usr/lib/pkgconfig/libllhttp.pc \
+        /opt/target-sysroot/usr/lib/pkgconfig/; \
+    fi
+
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
     # ezxml
