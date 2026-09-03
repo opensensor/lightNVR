@@ -175,6 +175,10 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     cJSON *uptime = cJSON_GetObjectItemCaseSensitive(root, "uptime");
     TEST_ASSERT_TRUE(cJSON_IsNumber(uptime));
     TEST_ASSERT_TRUE(uptime->valuedouble >= 0.0);
+    cJSON *uptime_capability = cJSON_GetObjectItemCaseSensitive(
+        root, "uptimeCapability");
+    TEST_ASSERT_TRUE(cJSON_IsString(uptime_capability));
+    TEST_ASSERT_EQUAL_STRING("available", uptime_capability->valuestring);
     cJSON *cpu = cJSON_GetObjectItemCaseSensitive(root, "cpu");
     cJSON *system_memory = cJSON_GetObjectItemCaseSensitive(root,
                                                             "systemMemory");

@@ -1036,18 +1036,14 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToObject(info, "systemMemory", system_memory);
     }
 
-    /* Use the same startup timestamp as /api/health. Linux time namespaces can
-     * expose /proc/uptime and /proc/self/stat with different offsets, which
-     * previously produced values such as -34s in containers (#475). */
-    const system_health_observation_t *uptime = find_health_observation(
-        &health_snapshot, "system.uptime_seconds", "host");
-    double uptime_value = 0.0;
-    if (health_observation_value(uptime, &uptime_value))
-        cJSON_AddNumberToObject(info, "uptime", uptime_value);
-    else
-        cJSON_AddNumberToObject(info, "uptime", get_process_uptime_seconds());
-    cJSON_AddStringToObject(info, "uptimeCapability",
-                            health_capability(uptime));
+    /* The System page describes this LightNVR instance, so its uptime follows
+     * the process/container lifecycle. Host uptime remains available through
+     * the system-health API and Prometheus metrics. Using the host observation
+     * here made freshly deployed pods appear as old as their Kubernetes node. */
+    cJSON_AddNumberToObject(info, "uptime", get_process_uptime_seconds());
+    cJSON_AddStringToObject(
+        info, "uptimeCapability",
+        system_health_capability_name(SYSTEM_HEALTH_CAPABILITY_AVAILABLE));
 
     // Filesystem capacity comes from the completed sampler generation. The
     // recording DB byte count retains the legacy meaning of disk.used.
