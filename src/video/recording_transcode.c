@@ -18,7 +18,12 @@
 #include "core/logger.h"
 
 #define VAAPI_RENDER_NODE "/dev/dri/renderD128"
-#define FFMPEG_BINARY "/usr/bin/ffmpeg"
+/* Not an absolute path deliberately -- execvp() below resolves it against
+ * PATH, so this works whether ffmpeg lives at /usr/bin (Debian/Ubuntu
+ * packages, this project's own Dockerfile/.deb) or elsewhere (e.g.
+ * /usr/local/bin on other distros/build setups). lightnvr.service's own
+ * PATH already covers both. */
+#define FFMPEG_BINARY "ffmpeg"
 
 static bool file_exists_nonempty(const char *path) {
     struct stat st;
@@ -73,7 +78,7 @@ static int run_and_wait(char *const argv[]) {
             dup2(devnull, STDERR_FILENO);
             close(devnull);
         }
-        execv(argv[0], argv);
+        execvp(argv[0], argv);
         _exit(127);
     }
 
@@ -134,14 +139,17 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
      * concurrent request never observes a half-written cache file), so
      * ffmpeg can't infer the muxer from the extension — force it.
      *
-     * -c:a aac re-encodes audio when the source has an audio stream — the
-     * recording's own writer (mp4_writer.c) already transcodes any PCM a
-     * camera sends to AAC before it ever reaches an MP4 container, so a
-     * source recording's audio, when present, is always AAC already; this
-     * just carries it through instead of silently dropping it. When the
-     * source has no audio stream, ffmpeg's default stream selection simply
-     * produces no audio output track, so this is a no-op for video-only
-     * sources (e.g. any recording made while audio_disabled is set). */
+     * -c:a aac deliberately re-encodes rather than -c:a copy: the
+     * recording's own writer (mp4_writer.c) transcodes PCM audio to AAC on
+     * the way in, but any *other* codec a camera might send is stream-
+     * copied through untouched, so a source recording's audio isn't
+     * guaranteed to already be browser-playable. Forcing AAC here is what
+     * actually guarantees this feature's output plays in a browser; the
+     * common case (source already AAC) just costs a cheap re-encode.
+     * When the source has no audio stream, ffmpeg's default stream
+     * selection simply produces no audio output track, so this is a no-op
+     * for video-only sources (e.g. any recording made while audio_disabled
+     * is set). */
     char *argv_vaapi[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error",
         "-hwaccel", "vaapi", "-hwaccel_device", VAAPI_RENDER_NODE,

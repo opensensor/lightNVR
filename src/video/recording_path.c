@@ -85,7 +85,7 @@ int build_recording_transcode_cache_path(const char *storage_path,
                                          uint64_t recording_id,
                                          char *output,
                                          size_t output_size) {
-    if (!storage_path || storage_path[0] == '\0' || recording_id == 0 ||
+    if (!storage_path || storage_path[0] != '/' || recording_id == 0 ||
         !output || output_size == 0) {
         return -1;
     }

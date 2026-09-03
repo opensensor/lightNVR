@@ -18,6 +18,12 @@
  * transcode when /dev/dri/renderD128 exists and falls back to software
  * libx264 otherwise, so these tests pass identically on hosts with and
  * without a GPU (e.g. CI).
+ *
+ * If `ffmpeg`/`ffprobe` aren't on PATH (e.g. an environment that only
+ * installs the FFmpeg *-dev libraries this project links against, not the
+ * CLI tools), every test here skips via TEST_IGNORE rather than hard-
+ * failing, matching test_go2rtc_two_config_merge.c's pattern for its own
+ * optional external binary.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -39,6 +45,17 @@ static char g_test_dir[256];
 static char g_hevc_fixture[320];
 static char g_h264_fixture[320];
 static char g_hevc_with_audio_fixture[320];
+static int s_skip = 0;
+
+/* Matches the skip pattern in test_go2rtc_two_config_merge.c: an
+ * environment that can build this test target but doesn't have the
+ * optional external binaries (e.g. sanitizer.yml, which installs only the
+ * FFmpeg *-dev libraries this project links against, not the ffmpeg/ffprobe
+ * CLI tools) should skip gracefully rather than hard-fail the whole suite. */
+static bool binaries_available(void) {
+    return system("command -v ffmpeg >/dev/null 2>&1 && "
+                   "command -v ffprobe >/dev/null 2>&1") == 0;
+}
 
 static int run_ffmpeg(const char *args_joined_by_space_command) {
     /* Test-only helper: build known-good fixture files with the real
@@ -56,6 +73,12 @@ static bool file_exists_nonempty(const char *path) {
 }
 
 void setUp(void) {
+    s_skip = !binaries_available();
+    if (s_skip) {
+        g_test_dir[0] = '\0';
+        return;
+    }
+
     strcpy(g_test_dir, TEST_DIR_TEMPLATE);
     TEST_ASSERT_NOT_NULL(mkdtemp(g_test_dir));
 
@@ -114,8 +137,10 @@ static void remove_tree(const char *path) {
 }
 
 void tearDown(void) {
-    remove_tree(g_test_dir);
-    g_test_dir[0] = '\0';
+    if (g_test_dir[0] != '\0') {
+        remove_tree(g_test_dir);
+        g_test_dir[0] = '\0';
+    }
 }
 
 /* ================================================================
@@ -123,20 +148,24 @@ void tearDown(void) {
  * ================================================================ */
 
 void test_needs_transcode_true_for_hevc_file(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     TEST_ASSERT_TRUE(recording_needs_hevc_transcode(g_hevc_fixture));
 }
 
 void test_needs_transcode_false_for_h264_file(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     TEST_ASSERT_FALSE(recording_needs_hevc_transcode(g_h264_fixture));
 }
 
 void test_needs_transcode_fails_open_for_missing_file(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     char missing[320];
     snprintf(missing, sizeof(missing), "%s/does_not_exist.mp4", g_test_dir);
     TEST_ASSERT_FALSE(recording_needs_hevc_transcode(missing));
 }
 
 void test_needs_transcode_fails_open_for_null_path(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     TEST_ASSERT_FALSE(recording_needs_hevc_transcode(NULL));
 }
 
@@ -145,6 +174,7 @@ void test_needs_transcode_fails_open_for_null_path(void) {
  * ================================================================ */
 
 void test_ensure_cache_transcodes_hevc_source_to_playable_h264(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     char cache_path[320];
     snprintf(cache_path, sizeof(cache_path), "%s/cache_out.mp4", g_test_dir);
 
@@ -155,6 +185,7 @@ void test_ensure_cache_transcodes_hevc_source_to_playable_h264(void) {
 }
 
 void test_ensure_cache_skips_retranscode_when_cache_already_exists(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     char cache_path[320];
     snprintf(cache_path, sizeof(cache_path), "%s/precached.mp4", g_test_dir);
 
@@ -177,6 +208,7 @@ void test_ensure_cache_skips_retranscode_when_cache_already_exists(void) {
 }
 
 void test_ensure_cache_transcodes_audio_to_aac_when_source_has_audio(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     char cache_path[320];
     snprintf(cache_path, sizeof(cache_path), "%s/cache_with_audio_out.mp4", g_test_dir);
 
@@ -189,6 +221,7 @@ void test_ensure_cache_transcodes_audio_to_aac_when_source_has_audio(void) {
 }
 
 void test_ensure_cache_creates_missing_parent_directory(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     /* Production cache paths live under <storage_path>/transcoded/, which
      * won't exist on a fresh install — the function must create it. */
     char cache_path[320];
@@ -199,6 +232,7 @@ void test_ensure_cache_creates_missing_parent_directory(void) {
 }
 
 void test_ensure_cache_fails_gracefully_for_missing_source(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
     char missing[320];
     char cache_path[320];
     snprintf(missing, sizeof(missing), "%s/does_not_exist.mp4", g_test_dir);

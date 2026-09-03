@@ -235,6 +235,16 @@ void test_transcode_cache_path_rejects_null_storage_path(void) {
         NULL, 42, path, sizeof(path)));
 }
 
+void test_transcode_cache_path_rejects_relative_storage_path(void) {
+    /* Matches build_mp4_recording_directory_at_root/effective_placement_root's
+     * requirement that a storage root be absolute -- a relative path here
+     * would land the cache somewhere relative to whatever the process's cwd
+     * happens to be, not under the intended storage root. */
+    char path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(-1, build_recording_transcode_cache_path(
+        "relative/path", 42, path, sizeof(path)));
+}
+
 void test_transcode_cache_path_rejects_zero_id(void) {
     char path[MAX_PATH_LENGTH];
     TEST_ASSERT_EQUAL_INT(-1, build_recording_transcode_cache_path(
@@ -288,6 +298,7 @@ int main(void) {
 
     RUN_TEST(test_transcode_cache_path_builds_expected_path);
     RUN_TEST(test_transcode_cache_path_rejects_null_storage_path);
+    RUN_TEST(test_transcode_cache_path_rejects_relative_storage_path);
     RUN_TEST(test_transcode_cache_path_rejects_zero_id);
     RUN_TEST(test_transcode_cache_path_rejects_too_small_buffer);
 
