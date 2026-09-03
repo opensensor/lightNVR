@@ -7,6 +7,36 @@ ARG LLHTTP_VERSION=9.3.1
 ARG NODE_MAJOR=24
 ARG DEB_BUILD=false
 
+FROM debian:${DEBIAN_SUITE}-slim AS target-sysroot
+
+ARG DEB_BUILD
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Keep ARMv7 development packages in a native target sysroot. Installing them
+# into the amd64 builder through Debian multiarch makes sid builds fail whenever
+# the two architectures publish a Multi-Arch: same package at different times.
+RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends \
+        systemd-standalone-sysusers ca-certificates && \
+      GCC_MAJOR="$(apt-cache depends g++ | \
+        sed -n 's/.*Depends: g++-\([0-9][0-9]*\)$/\1/p' | head -n 1)" && \
+      test -n "$GCC_MAJOR" && \
+      apt-get install -y --no-install-recommends \
+        "libstdc++-${GCC_MAJOR}-dev" \
+        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+        libcurl4-openssl-dev libmbedtls-dev libcjson-dev \
+        libmosquitto-dev libyaml-dev && \
+      if [ "$DEB_BUILD" = "true" ]; then \
+        apt-get install -y --no-install-recommends \
+          libuv1-dev libsqlite3-dev libllhttp-dev sqlite3; \
+      fi && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
 FROM --platform=$BUILDPLATFORM debian:${DEBIAN_SUITE}-slim AS builder
 
 ARG DEBIAN_SUITE
@@ -23,14 +53,16 @@ ARG TARGETVARIANT
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
+COPY --from=target-sysroot / /opt/target-sysroot/
+
 # Install build dependencies including Node.js and target FFmpeg dev libraries.
 # Node.js comes from NodeSource so every Debian suite uses the Node 24 LTS
 # baseline required by the Babel 8 web test toolchain.
 # sid ships Go 1.26+/FFmpeg 8.x; trixie ships Go 1.24+/FFmpeg 7.x.
 #
 # ARMv7 is cross-compiled on the x86_64 runner. Compiling LiteRT/XNNPACK under
-# QEMU accounted for nearly three hours of each release; Debian multiarch gives
-# the native compiler the same armhf headers and libraries without emulation.
+# QEMU accounted for nearly three hours of each release; the target sysroot
+# gives the native compiler the armhf headers and libraries without emulation.
 #
 # Pre-install systemd-standalone-sysusers to satisfy the sysusers virtual
 # dependency without pulling in the full systemd package.  The full systemd
@@ -40,7 +72,6 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       test "$BUILDARCH" = "amd64" || { \
         echo "linux/arm/v7 cross-compilation requires an amd64 builder"; exit 1; \
       }; \
-      dpkg --add-architecture armhf; \
     elif [ "$TARGETARCH" != "$BUILDARCH" ]; then \
       echo "Unsupported cross-build: $BUILDARCH -> $TARGETARCH/$TARGETVARIANT"; \
       exit 1; \
@@ -55,41 +86,16 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
     apt-get install -y --no-install-recommends \
       git cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
-      GCC_MAJOR="$(gcc -dumpfullversion -dumpversion | cut -d. -f1)" && \
-      # Multi-Arch: same packages must be installed at identical versions. \
-      # During sid transitions one architecture can publish a newer rebuild \
-      # first, so pin PCRE2 to the newest version shared by amd64 and armhf \
-      # before APT resolves the armhf development dependency graph. \
-      PCRE2_COMMON_VERSION="$( \
-        apt-cache madison libpcre2-8-0:amd64 | awk '{print $3}' | \
-        while read -r version; do \
-          apt-cache madison libpcre2-8-0:armhf | awk '{print $3}' | \
-            grep -Fqx "$version" && { echo "$version"; break; }; \
-        done \
-      )" && \
-      if [ -z "$PCRE2_COMMON_VERSION" ]; then \
-        echo "No libpcre2-8-0 version is shared by amd64 and armhf"; \
-        apt-cache policy libpcre2-8-0:amd64 libpcre2-8-0:armhf; \
-        exit 1; \
-      fi && \
-      echo "Using shared libpcre2-8-0 version $PCRE2_COMMON_VERSION" && \
       apt-get install -y --no-install-recommends \
-        "libpcre2-8-0:amd64=$PCRE2_COMMON_VERSION" \
-        "libpcre2-8-0:armhf=$PCRE2_COMMON_VERSION" && \
-      apt-get install -y --no-install-recommends \
-        clang:amd64 binutils-arm-linux-gnueabihf:amd64 \
-        "libstdc++-${GCC_MAJOR}-dev:armhf" \
-        libavcodec-dev:armhf libavformat-dev:armhf \
-        libavutil-dev:armhf libswscale-dev:armhf \
-        libcurl4-openssl-dev:armhf libmbedtls-dev:armhf \
-        libcjson-dev:armhf libmosquitto-dev:armhf libyaml-dev:armhf && \
-      # Debian sid may satisfy the GCC cross-compiler meta-package with an
-      # armhf compiler binary when the native and cross package versions are
-      # temporarily out of sync.  Native Clang infers its target from these
-      # GNU-compatible command names and uses Debian's armhf multiarch sysroot.
-      ln -sf /usr/bin/clang /usr/local/bin/arm-linux-gnueabihf-gcc && \
-      ln -sf /usr/bin/clang++ /usr/local/bin/arm-linux-gnueabihf-g++ && \
-      file -L /usr/local/bin/arm-linux-gnueabihf-gcc | grep -q 'x86-64' && \
+        clang:amd64 binutils-arm-linux-gnueabihf:amd64 && \
+      printf '%s\n' '#!/bin/sh' \
+        'exec /usr/bin/clang --target=arm-linux-gnueabihf --sysroot=/opt/target-sysroot "$@"' \
+        > /usr/local/bin/arm-linux-gnueabihf-gcc && \
+      printf '%s\n' '#!/bin/sh' \
+        'exec /usr/bin/clang++ --target=arm-linux-gnueabihf --sysroot=/opt/target-sysroot "$@"' \
+        > /usr/local/bin/arm-linux-gnueabihf-g++ && \
+      chmod +x /usr/local/bin/arm-linux-gnueabihf-gcc \
+        /usr/local/bin/arm-linux-gnueabihf-g++ && \
       test "$(arm-linux-gnueabihf-gcc -print-target-triple)" = \
         arm-unknown-linux-gnueabihf && \
       printf '#include <iostream>\nint main() { std::cout << 42; }\n' | \
@@ -113,21 +119,17 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
 # and libllhttp can be proper package dependencies instead of bundled libraries.
 RUN if [ "$DEB_BUILD" = "true" ]; then \
       if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
-        TARGET_DEB_ARCH=armhf; \
-        LIBDIR=/usr/lib/arm-linux-gnueabihf; \
+        LIBDIR=/opt/target-sysroot/usr/lib/arm-linux-gnueabihf; \
+        cp /opt/target-sysroot/usr/bin/sqlite3 /usr/bin/sqlite3; \
       else \
-        TARGET_DEB_ARCH=""; \
         case "$TARGETARCH" in \
           amd64) LIBDIR=/usr/lib/x86_64-linux-gnu ;; \
           arm64) LIBDIR=/usr/lib/aarch64-linux-gnu ;; \
           *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
-        esac; \
+        esac && \
+        apt-get update && apt-get install -y --no-install-recommends \
+          libuv1-dev libsqlite3-dev libllhttp-dev sqlite3; \
       fi && \
-      apt-get update && apt-get install -y --no-install-recommends \
-        "libuv1-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
-        "libsqlite3-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
-        "libllhttp-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
-        "sqlite3${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" && \
       rm -rf /var/lib/apt/lists/* && \
       cp -a ${LIBDIR}/libuv.so* /usr/lib/ && \
       cp -a ${LIBDIR}/libsqlite3.so* /usr/lib/ && \
@@ -229,10 +231,11 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     case "$TARGETARCH/$TARGETVARIANT" in \
         amd64/) LIB_DIR="/usr/lib/x86_64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
         arm64/) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
-        arm/v7) LIB_DIR="/usr/lib/arm-linux-gnueabihf"; MBEDTLS_PACKAGE=libmbedtls-dev:armhf ;; \
+        arm/v7) LIB_DIR="/usr/lib/arm-linux-gnueabihf"; MBEDTLS_PACKAGE=libmbedtls-dev; \
+                DPKG_ADMINDIR="--admindir=/opt/target-sysroot/var/lib/dpkg" ;; \
         *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
     esac && \
-    MBEDTLS_VERSION=$(dpkg-query -W -f='${Version}' "$MBEDTLS_PACKAGE" | cut -d- -f1) && \
+    MBEDTLS_VERSION=$(dpkg-query ${DPKG_ADMINDIR:-} -W -f='${Version}' "$MBEDTLS_PACKAGE" | cut -d- -f1) && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
@@ -299,25 +302,27 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     rm -rf build/ && \
     # Determine architecture-specific pkgconfig path
     case "$TARGETARCH/$TARGETVARIANT" in \
-        amd64/) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig"; TOOLCHAIN_FILE="" ;; \
-        arm64/) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"; TOOLCHAIN_FILE="" ;; \
-        arm/v7) PKG_CONFIG_ARCH_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig"; \
+        amd64/) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig"; PKG_CONFIG_SYSROOT=""; TOOLCHAIN_FILE="" ;; \
+        arm64/) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"; PKG_CONFIG_SYSROOT=""; TOOLCHAIN_FILE="" ;; \
+        arm/v7) PKG_CONFIG_ARCH_PATH="/opt/target-sysroot/usr/lib/arm-linux-gnueabihf/pkgconfig"; \
+                PKG_CONFIG_SYSROOT="/opt/target-sysroot"; \
                 TOOLCHAIN_FILE="/opt/cmake/toolchains/armv7-linux-gnueabihf.cmake" ;; \
         *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
     esac && \
     # Cross-installing armhf packages does not run the target ldconfig, so
     # recreate the SONAME link that libmosquitto needs for the final link.
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
-      PICOHTTP_LIB=$(find /usr/lib/arm-linux-gnueabihf -maxdepth 1 \
+      PICOHTTP_LIB=$(find /opt/target-sysroot/usr/lib/arm-linux-gnueabihf -maxdepth 1 \
         -name 'libpicohttpparser.so.1.*' -print -quit) && \
       if [ -n "$PICOHTTP_LIB" ]; then \
         ln -sf "$(basename "$PICOHTTP_LIB")" \
-          /usr/lib/arm-linux-gnueabihf/libpicohttpparser.so.1; \
+          /opt/target-sysroot/usr/lib/arm-linux-gnueabihf/libpicohttpparser.so.1; \
       fi; \
     fi && \
     # Build the application with go2rtc and SOD dynamic linking
     LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" \
     CMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+    PKG_CONFIG_SYSROOT_DIR="$PKG_CONFIG_SYSROOT" \
     PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
     PKG_CONFIG_LIBDIR=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:/usr/share/pkgconfig \
     ./scripts/build.sh --release --without-tests --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \

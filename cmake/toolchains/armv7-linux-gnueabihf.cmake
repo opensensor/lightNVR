@@ -5,6 +5,11 @@ set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
 set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
 set(CMAKE_ASM_COMPILER arm-linux-gnueabihf-gcc)
 
+set(LIGHTNVR_ARMV7_SYSROOT "/opt/target-sysroot" CACHE PATH
+    "ARMv7 target sysroot")
+set(CMAKE_SYSROOT "${LIGHTNVR_ARMV7_SYSROOT}")
+set(CMAKE_FIND_ROOT_PATH "${LIGHTNVR_ARMV7_SYSROOT}")
+
 # Match the linux/arm/v7 image contract. LiteRT and XNNPACK both require NEON
 # and IEEE fp16 semantics when cross-compiling their ARMv7 kernels. GCC needs
 # an explicit format flag; Clang uses the IEEE format and rejects that option.
@@ -25,7 +30,7 @@ set(CMAKE_CXX_FLAGS_INIT "${_LIGHTNVR_ARMV7_FLAGS}")
 # libpicohttpparser; make those target directories available at link time
 # without embedding builder paths in the resulting executable.
 set(_LIGHTNVR_ARMV7_RPATH_LINK
-    "-Wl,-rpath-link,/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/lib/arm-linux-gnueabihf")
+    "-Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/lib/arm-linux-gnueabihf")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${_LIGHTNVR_ARMV7_RPATH_LINK}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_LIGHTNVR_ARMV7_RPATH_LINK}")
 
@@ -34,7 +39,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_LIGHTNVR_ARMV7_RPATH_LINK}")
 set(TFLITE_HOST_TOOLS_DIR "/opt/host-tools" CACHE PATH "LiteRT host tools")
 
 # Programs such as flatc must execute on the x86_64 build host. Libraries and
-# headers are resolved through Debian's arm-linux-gnueabihf multiarch paths.
+# headers are resolved through the Debian ARMv7 target sysroot.
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
