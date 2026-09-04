@@ -520,7 +520,13 @@ int main(int argc, const char *argv[]) {
     init_logger();
     
     // Load configuration
+    // Zero-init before use: load_default_config() (called by load_config())
+    // reads config->streams to free() any pre-existing array before
+    // allocating a new one, which is only safe if the struct starts zeroed
+    // (every other real caller uses a zero-initialized global; this tool's
+    // config is a local, so it needs an explicit memset).
     config_t config;
+    memset(&config, 0, sizeof(config));
     if (load_config(&config) != 0) {
         log_error("Failed to load configuration");
         return 1;
