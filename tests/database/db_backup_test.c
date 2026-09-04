@@ -10,17 +10,22 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <limits.h>
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 
 // Test database path
 #define TEST_DB_PATH "/tmp/test_db.sqlite"
 #define TEST_BACKUP_PATH "/tmp/test_db.sqlite.bak"
 #define TEST_LARGE_DB_PATH "/tmp/test_db_large.sqlite"
 #define TEST_LARGE_BACKUP_PATH "/tmp/test_db_large.sqlite.bak"
+#define TEST_ABORT_DB_PATH "/tmp/test_db_abort.sqlite"
+#define TEST_ABORT_BACKUP_PATH "/tmp/test_db_abort.sqlite.bak"
 
 // Signal handler for simulating a crash
 static void simulate_crash(int sig) {
@@ -165,7 +170,7 @@ static int corrupt_database(void) {
 // Test backup functionality
 static int test_backup(void) {
     // Create a backup of the database
-    int rc = backup_database(TEST_DB_PATH, TEST_BACKUP_PATH);
+    int rc = backup_database(TEST_DB_PATH, TEST_BACKUP_PATH, true);
     if (rc != 0) {
         printf("Failed to create backup\n");
         return -1;
@@ -221,7 +226,7 @@ static int test_large_incremental_backup(void) {
     sqlite3_close(source);
     source = NULL;
 
-    if (backup_database(TEST_LARGE_DB_PATH, TEST_LARGE_BACKUP_PATH) != 0) {
+    if (backup_database(TEST_LARGE_DB_PATH, TEST_LARGE_BACKUP_PATH, true) != 0) {
         printf("Failed to create multi-batch database backup\n");
         goto cleanup;
     }
@@ -248,6 +253,264 @@ cleanup:
     if (backup) sqlite3_close(backup);
     unlink(TEST_LARGE_DB_PATH);
     unlink(TEST_LARGE_BACKUP_PATH);
+    return result;
+}
+
+// Regression test: a stuck main loop couldn't notice a pending restart while
+// backup_database() was mid-copy on a large database, because the batch loop
+// never checked for one. This silently swallowed every "Restart LightNVR"
+// click for as long as the backup took (tens of minutes on a multi-GB
+// production database). Verifies a backup requested to abort mid-flight
+// bails out promptly and leaves no partial temp file behind, rather than
+// running to completion.
+static int test_backup_aborts_when_shutdown_requested(void) {
+    sqlite3 *source = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+    char temp_path[PATH_MAX];
+    struct stat st;
+
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+
+    rc = sqlite3_open(TEST_ABORT_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create abort-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set abort-test fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create abort-test table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_prepare_v2(source,
+        "INSERT INTO payload(data) VALUES(zeroblob(?));", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to prepare abort-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    // Larger than one BACKUP_STEP_PAGES batch (16MB) so the abort check
+    // between batches actually gets exercised before the copy would finish.
+    sqlite3_bind_int(stmt, 1, 20 * 1024 * 1024);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        printf("Failed to populate abort-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    sqlite3_close(source);
+    source = NULL;
+
+    // Simulate a restart/shutdown request arriving before the backup starts.
+    request_background_abort();
+
+    rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, true);
+    if (rc == 0) {
+        printf("Backup should have aborted early but reported success\n");
+        goto cleanup;
+    }
+
+    if (stat(temp_path, &st) == 0) {
+        printf("Aborted backup left behind a temp file: %s\n", temp_path);
+        goto cleanup;
+    }
+    if (stat(TEST_ABORT_BACKUP_PATH, &st) == 0) {
+        printf("Aborted backup should not have produced a final backup file\n");
+        goto cleanup;
+    }
+
+    printf("Backup aborted early on restart/shutdown request, as expected\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+    return result;
+}
+
+// Regression test for a bug introduced by the abort check above: the
+// deliberate one-time backup taken while the process is already shutting
+// down (shutdown_database()'s "final backup") shares this same code path,
+// but the abort flag is *always* already set by the time that one runs --
+// checking it there made every graceful shutdown's final backup bail out
+// instantly and never actually produce a backup. Relies on the previous
+// test having already left the process-wide abort flag set (it's never
+// reset -- see request_background_abort()'s header comment) to prove a
+// non-abortable backup completes anyway.
+static int test_backup_completes_when_not_abortable_even_if_abort_requested(void) {
+    sqlite3 *source = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+
+    rc = sqlite3_open(TEST_ABORT_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create not-abortable-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set not-abortable-test fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create not-abortable-test table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_prepare_v2(source,
+        "INSERT INTO payload(data) VALUES(zeroblob(?));", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to prepare not-abortable-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    // Larger than one BACKUP_STEP_PAGES batch (16MB), so if abortable were
+    // mistakenly honored here, it would bail out before finishing.
+    sqlite3_bind_int(stmt, 1, 20 * 1024 * 1024);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        printf("Failed to populate not-abortable-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    sqlite3_close(source);
+    source = NULL;
+
+    if (!is_background_abort_requested()) {
+        printf("Test precondition failed: expected the abort flag to already be set\n");
+        goto cleanup;
+    }
+
+    rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, false);
+    if (rc != 0) {
+        printf("Non-abortable backup should have completed despite the pending abort request\n");
+        goto cleanup;
+    }
+    {
+        struct stat st;
+        if (stat(TEST_ABORT_BACKUP_PATH, &st) != 0 || st.st_size == 0) {
+            printf("Non-abortable backup reported success but produced no output file\n");
+            goto cleanup;
+        }
+    }
+
+    printf("Non-abortable backup completed despite a pending restart/shutdown request, as expected\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    return result;
+}
+
+// Regression test for a bug found live in production: once the copy loop's
+// abort check lets a batch that reaches SQLITE_DONE finish (by design -- see
+// the comment in backup_database()), the *next* step is a full
+// PRAGMA integrity_check verification pass over the whole backup file. For a
+// multi-gigabyte database that scan alone can take as long as the copy it
+// verifies, and had no abort check at all -- a live gdb backtrace during a
+// stuck restart showed the main thread parked in sqlite3BtreeIntegrityCheck
+// long after the copy loop's own fix should have made it responsive.
+// Uses a single-batch fixture (under one BACKUP_STEP_PAGES) so the copy loop
+// itself reaches SQLITE_DONE without ever consulting the abort flag, forcing
+// this test to exercise the verification-phase check specifically. Relies on
+// the process-wide abort flag already being set by the earlier abort test.
+static int test_backup_aborts_during_verification_when_shutdown_requested(void) {
+    sqlite3 *source = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+    char temp_path[PATH_MAX];
+    struct stat st;
+
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+
+    rc = sqlite3_open(TEST_ABORT_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create verification-abort-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set verification-abort-test fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create verification-abort-test table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    // Many small rows rather than one big blob: integrity_check's VM cost is
+    // dominated by per-cell/per-page bookkeeping (ordering, checksums), not
+    // raw bytes, so a cell-dense B-tree crosses BACKUP_VERIFY_PROGRESS_OPS
+    // reliably while still fitting in well under one BACKUP_STEP_PAGES batch
+    // (16MB) -- a single large blob (tried first) didn't generate enough VM
+    // ops to ever invoke the progress callback.
+    rc = sqlite3_exec(source,
+        "WITH RECURSIVE seq(x) AS ("
+        "  SELECT 1 UNION ALL SELECT x+1 FROM seq WHERE x < 300000"
+        ") INSERT INTO payload(data) SELECT randomblob(16) FROM seq;",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to populate verification-abort-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_close(source);
+    source = NULL;
+
+    if (!is_background_abort_requested()) {
+        printf("Test precondition failed: expected the abort flag to already be set\n");
+        goto cleanup;
+    }
+
+    rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, true);
+    if (rc == 0) {
+        printf("Backup should have aborted during verification but reported success\n");
+        goto cleanup;
+    }
+    if (stat(temp_path, &st) == 0) {
+        printf("Backup aborted during verification left behind a temp file: %s\n", temp_path);
+        goto cleanup;
+    }
+    if (stat(TEST_ABORT_BACKUP_PATH, &st) == 0) {
+        printf("Backup aborted during verification should not have produced a final backup file\n");
+        goto cleanup;
+    }
+
+    printf("Backup aborted during post-copy verification on restart/shutdown request, as expected\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
     return result;
 }
 
@@ -294,7 +557,22 @@ int main(void) {
         printf("Test failed: Large incremental backup failed\n");
         return 1;
     }
-    
+
+    if (test_backup_aborts_when_shutdown_requested() != 0) {
+        printf("Test failed: Backup did not abort early on restart/shutdown request\n");
+        return 1;
+    }
+
+    if (test_backup_aborts_during_verification_when_shutdown_requested() != 0) {
+        printf("Test failed: Backup did not abort during post-copy verification on restart/shutdown request\n");
+        return 1;
+    }
+
+    if (test_backup_completes_when_not_abortable_even_if_abort_requested() != 0) {
+        printf("Test failed: Non-abortable backup did not complete despite a pending abort request\n");
+        return 1;
+    }
+
     // Corrupt the database
     if (corrupt_database() != 0) {
         printf("Test failed: Could not corrupt database\n");
