@@ -648,6 +648,7 @@ set(REBUILD_RECORDINGS_SOURCES
     src/core/config.c
     src/core/logger.c
     src/core/path_utils.c
+    src/core/shutdown_coordinator.c
     src/utils/strings.c
     src/utils/uuid.c
     src/telemetry/system_health_policy.c
