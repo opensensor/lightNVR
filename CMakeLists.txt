@@ -177,9 +177,12 @@ macro(DETECT_MBEDTLS_ONCE)
         pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
         if (NOT MBEDTLS_FOUND)
             find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
-            find_library(MBEDTLS_LIBRARY NAMES mbedtls REQUIRED)
-            find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
-            find_library(MBEDX509_LIBRARY NAMES mbedx509 REQUIRED)
+            find_library(MBEDTLS_LIBRARY NAMES mbedtls)
+            find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
+            find_library(MBEDX509_LIBRARY NAMES mbedx509)
+            if(NOT MBEDTLS_INCLUDE_DIRS OR NOT MBEDTLS_LIBRARY OR NOT MBEDCRYPTO_LIBRARY OR NOT MBEDX509_LIBRARY)
+                message(FATAL_ERROR "mbedTLS is required (for ONVIF/authentication and/or SSL with USE_MBEDTLS=ON) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
+            endif()
             set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
         endif()
         set(MBEDTLS_DETECTION_DONE TRUE CACHE INTERNAL "mbedTLS detection has been performed")
@@ -218,39 +221,14 @@ list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
 # Explicitly add mbedcrypto to the link libraries
-set(COMMON_MBEDTLS_LIB_PATHS
-    /usr/lib
-    /usr/lib/x86_64-linux-gnu
-    /usr/lib/aarch64-linux-gnu
-    /usr/lib/arm-linux-gnueabihf
-    /lib
-    /lib/x86_64-linux-gnu
-    /lib/aarch64-linux-gnu
-    /lib/arm-linux-gnueabihf
-)
-
-find_library(MBEDCRYPTO_LIBRARY mbedcrypto
-    HINTS
-    ${COMMON_MBEDTLS_LIB_PATHS}
-)
+# Use CMake's standard library search paths for portability across distros/platforms.
+find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
 
 if(MBEDCRYPTO_LIBRARY)
     message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
     list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
 else()
-    # Try to find by manually checking common locations
-    foreach(LIB_PATH ${COMMON_MBEDTLS_LIB_PATHS})
-        if(EXISTS "${LIB_PATH}/libmbedcrypto.so")
-            set(MBEDCRYPTO_LIBRARY "${LIB_PATH}/libmbedcrypto.so")
-            message(STATUS "Found mbedcrypto library through manual search: ${MBEDCRYPTO_LIBRARY}")
-            list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
-            break()
-        endif()
-    endforeach()
-
-    if(NOT MBEDCRYPTO_LIBRARY)
-        message(FATAL_ERROR "mbedcrypto library not found. Please install libmbedtls-dev package.")
-    endif()
+    message(FATAL_ERROR "mbedcrypto library not found. Please install the mbedTLS development package.")
 endif()
 
 # Find cJSON (required dependency)
