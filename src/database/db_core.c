@@ -98,51 +98,6 @@ static int sync_parent_directory(const char *path) {
     return 0;
 }
 
-static int flush_database_to_disk(void) {
-    int sync_failed = 0;
-
-    if (!db || db_file_path[0] == '\0') {
-        log_error("Database not initialized, cannot flush to disk");
-        return -1;
-    }
-
-    pthread_mutex_lock(&db_mutex);
-
-#if SQLITE_VERSION_NUMBER >= 3007017
-    int cacheflush_rc = sqlite3_db_cacheflush(db);
-    if (cacheflush_rc != SQLITE_OK) {
-        log_warn("sqlite3_db_cacheflush failed: %s", sqlite3_errmsg(db));
-    }
-#endif
-
-    if (wal_mode_enabled) {
-        int checkpoint_rc = sqlite3_exec(db, "PRAGMA wal_checkpoint(FULL);", NULL, NULL, NULL);
-        if (checkpoint_rc != SQLITE_OK) {
-            log_error("Failed to checkpoint WAL before backup: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(&db_mutex);
-            return -1;
-        }
-    }
-
-    pthread_mutex_unlock(&db_mutex);
-
-    sync_failed |= sync_path_if_exists(db_file_path);
-
-    char wal_path[PATH_MAX];
-    if (snprintf(wal_path, sizeof(wal_path), "%s-wal", db_file_path) < (int)sizeof(wal_path)) {
-        sync_failed |= sync_path_if_exists(wal_path);
-    }
-
-    char shm_path[PATH_MAX];
-    if (snprintf(shm_path, sizeof(shm_path), "%s-shm", db_file_path) < (int)sizeof(shm_path)) {
-        sync_failed |= sync_path_if_exists(shm_path);
-    }
-
-    sync_failed |= sync_parent_directory(db_file_path);
-
-    return sync_failed ? -1 : 0;
-}
-
 static int get_backup_directory(char *backup_dir, size_t backup_dir_size) {
     if (snprintf(backup_dir, backup_dir_size, "%s.backups", db_file_path) >= (int)backup_dir_size) {
         log_error("Backup directory path is too long for database %s", db_file_path);
@@ -410,11 +365,6 @@ static int perform_database_backup_cycle(const char *reason, bool run_post_backu
 
     log_info("Starting %s database backup cycle", reason);
 
-    if (flush_database_to_disk() != 0) {
-        log_error("Failed to flush database to disk before %s backup", reason);
-        return -1;
-    }
-
     if (get_backup_directory(backup_dir, sizeof(backup_dir)) != 0) {
         return -1;
     }
@@ -509,6 +459,13 @@ int init_database_ex(const char *db_path, unsigned flags) {
     bool is_new_database = false;
     sqlite3 *test_db = NULL;
     sqlite3_stmt *stmt = NULL;
+
+    if (db != NULL) {
+        log_error("Refusing to initialize a second database while one is open");
+        return -1;
+    }
+
+    wal_mode_enabled = false;
 
     db_init_flags = flags;
 
@@ -615,6 +572,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
             if (check_mode == DB_STARTUP_CHECK_OFF) {
                 log_info("Skipping database startup consistency check");
             } else if (rc == SQLITE_OK) {
+                log_info("Starting database %s check", check_label);
                 time_t check_started = time(NULL);
                 if (sqlite3_step(stmt) == SQLITE_ROW) {
                     const char *result = (const char *)sqlite3_column_text(stmt, 0);
@@ -669,12 +627,6 @@ int init_database_ex(const char *db_path, unsigned flags) {
         is_new_database = true;
     }
 
-    // Initialize mutex
-    if (pthread_mutex_init(&db_mutex, NULL) != 0) {
-        log_error("Failed to initialize database mutex");
-        return -1;
-    }
-
     // Create directory for database if needed
     char *dir_path = strdup(db_path);
     if (!dir_path) {
@@ -708,7 +660,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
     log_info("Opening database at: %s", db_path);
     rc = sqlite3_open_v2(db_path, &db,
                         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
-                        SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_SHAREDCACHE,
+                        SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_PRIVATECACHE,
                         NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to open database: %s", db ? sqlite3_errmsg(db) : "unknown error");
@@ -745,6 +697,26 @@ int init_database_ex(const char *db_path, unsigned flags) {
             if (mode && strcmp(mode, "wal") == 0) {
                 log_info("WAL mode successfully enabled");
                 wal_mode_enabled = true;
+#ifdef SQLITE_FCNTL_PERSIST_WAL
+                /* LightNVR deliberately opens short-lived read-only
+                 * connections for analytics and online backup. Keep the WAL
+                 * sidecars attached to the long-lived writer instead of
+                 * allowing connection-close cleanup to unlink the mmap-backed
+                 * wal-index while the process is running. */
+                int persist_wal = 1;
+                int persist_rc = sqlite3_file_control(
+                    db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal);
+                if (persist_rc != SQLITE_OK &&
+                    persist_rc != SQLITE_NOTFOUND) {
+                    log_warn("Failed to enable persistent WAL sidecars: %s",
+                             sqlite3_errstr(persist_rc));
+                }
+#endif
+                /* Do not truncate a persistent WAL as a connection closes.
+                 * Normal checkpoints may recycle it without invalidating the
+                 * shared-memory mapping. */
+                sqlite3_exec(db, "PRAGMA journal_size_limit=-1;", NULL, NULL,
+                             NULL);
             } else {
                 log_warn("WAL mode not enabled, current mode: %s", mode ? mode : "unknown");
             }
@@ -929,38 +901,11 @@ void shutdown_database(void) {
         }
     }
 
-    // First, ensure all threads have stopped using the database
-    // by waiting a bit longer before acquiring the mutex
-    usleep(500000);  // 500ms to allow in-flight operations to complete
-
-    // Use a try-lock first to avoid deadlocks if the mutex is already locked
-    int lock_result = pthread_mutex_trylock(&db_mutex);
-
-    if (lock_result == 0) {
-        // Successfully acquired the lock
-        log_info("Successfully acquired database mutex for shutdown");
-    } else if (lock_result == EBUSY) {
-        // Mutex is already locked, wait with timeout
-        log_warn("Database mutex is busy, waiting with timeout...");
-
-        struct timespec timeout;
-        clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_sec += 10; // Increased to 10 second timeout
-
-        lock_result = pthread_mutex_timedlock(&db_mutex, &timeout);
-        if (lock_result != 0) {
-            log_error("Failed to acquire database mutex for shutdown: %s", strerror(lock_result));
-            log_warn("Proceeding with database shutdown without lock - this may cause issues");
-            // Continue without the lock - better than leaving the database open
-        } else {
-            log_info("Acquired database mutex after waiting");
-        }
-    } else {
-        // Other error
-        log_error("Error trying to lock database mutex: %s", strerror(lock_result));
-        log_warn("Proceeding with database shutdown without lock - this may cause issues");
-        // Continue without the lock - better than leaving the database open
-    }
+    /* Shutdown callers must first stop worker threads. Once requested, wait
+     * for any in-flight database operation instead of closing the connection
+     * without its lock after an arbitrary timeout. */
+    log_info("Waiting for in-flight database operations before shutdown");
+    pthread_mutex_lock(&db_mutex);
 
     if (db != NULL) {
         // Store the database handle locally but DO NOT set the global to NULL yet
@@ -993,10 +938,6 @@ void shutdown_database(void) {
         }
         log_info("Finalized %d prepared statements", stmt_count);
 
-        // Add a longer delay to ensure all statements are properly finalized
-        // and any pending operations have completed
-        usleep(500000);  // 500ms
-
         // Second pass: check for any remaining statements
         stmt_count = 0;
         while ((stmt = sqlite3_next_stmt(db_to_close, NULL)) != NULL) {
@@ -1006,8 +947,6 @@ void shutdown_database(void) {
 
         if (stmt_count > 0) {
             log_info("Finalized %d additional statements in second pass", stmt_count);
-            // Add another delay if we found more statements
-            usleep(200000);  // 200ms
         }
 
         // Release any cached schema before closing
@@ -1028,9 +967,6 @@ void shutdown_database(void) {
                 log_info("Finalizing remaining statement %d in error recovery", ++stmt_count);
                 sqlite3_finalize(stmt);
             }
-
-            // Add another delay
-            usleep(300000);  // 300ms
 
             // Try closing again
             log_info("Retrying database close");
@@ -1054,18 +990,11 @@ void shutdown_database(void) {
         log_warn("Database handle is already NULL during shutdown");
     }
 
-    // Only unlock if we successfully locked
-    if (lock_result == 0 || (lock_result == EBUSY && pthread_mutex_trylock(&db_mutex) == 0)) {
-        pthread_mutex_unlock(&db_mutex);
-    }
+    pthread_mutex_unlock(&db_mutex);
 
-    // Add a longer delay before destroying the mutex to ensure no threads are still using it
-    log_info("Waiting before destroying database mutex");
-    usleep(500000);  // 500ms
-
-    // Destroy the mutex
-    log_info("Destroying database mutex");
-    pthread_mutex_destroy(&db_mutex);
+    /* db_mutex has static process lifetime. Destroying and later reinitializing
+     * it races callers that retained get_db_mutex(), and reinitializing a live
+     * static mutex is undefined behavior during settings-driven DB restarts. */
 
     // Final SQLite cleanup
     sqlite3_shutdown();
@@ -1093,7 +1022,8 @@ int db_open_readonly_connection(sqlite3 **connection) {
     }
 
     int rc = sqlite3_open_v2(db_file_path, connection,
-                             SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX,
+                             SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX |
+                             SQLITE_OPEN_PRIVATECACHE,
                              NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to open read-only database connection: %s",
@@ -1102,6 +1032,15 @@ int db_open_readonly_connection(sqlite3 **connection) {
         *connection = NULL;
         return -1;
     }
+#ifdef SQLITE_FCNTL_PERSIST_WAL
+    int persist_wal = 1;
+    int persist_rc = sqlite3_file_control(
+        *connection, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal);
+    if (persist_rc != SQLITE_OK && persist_rc != SQLITE_NOTFOUND) {
+        log_warn("Failed to preserve WAL sidecars for read-only connection: %s",
+                 sqlite3_errstr(persist_rc));
+    }
+#endif
     sqlite3_busy_timeout(*connection, 10000);
     rc = sqlite3_exec(*connection, "PRAGMA query_only=ON;", NULL, NULL, NULL);
     if (rc != SQLITE_OK) {

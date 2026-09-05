@@ -9,6 +9,8 @@
 #include <sqlite3.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include "database/db_core.h"
@@ -22,8 +24,46 @@
 #define TEST_LARGE_DB_PATH "/tmp/test_db_large.sqlite"
 #define TEST_LARGE_BACKUP_PATH "/tmp/test_db_large.sqlite.bak"
 
+static void remove_database_files(const char *path) {
+    char sidecar[256];
+
+    unlink(path);
+    snprintf(sidecar, sizeof(sidecar), "%s-wal", path);
+    unlink(sidecar);
+    snprintf(sidecar, sizeof(sidecar), "%s-shm", path);
+    unlink(sidecar);
+    snprintf(sidecar, sizeof(sidecar), "%s-journal", path);
+    unlink(sidecar);
+}
+
+/* POSIX record locks are process-associated, so query them from a child.
+ * This detects accidental close(open(database)) patterns that silently drop
+ * SQLite's locks while its real descriptors and mappings remain live. */
+static int path_has_parent_process_lock(const char *path) {
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        int fd = open(path, O_RDWR | O_CLOEXEC);
+        if (fd < 0) _exit(2);
+        struct flock lock;
+        memset(&lock, 0, sizeof(lock));
+        lock.l_type = F_WRLCK;
+        lock.l_whence = SEEK_SET;
+        lock.l_start = 0;
+        lock.l_len = 0;
+        int query_rc = fcntl(fd, F_GETLK, &lock);
+        close(fd);
+        _exit(query_rc == 0 && lock.l_type != F_UNLCK ? 0 : 1);
+    }
+
+    int status = 0;
+    return waitpid(pid, &status, 0) == pid && WIFEXITED(status) &&
+           WEXITSTATUS(status) == 0;
+}
+
 // Signal handler for simulating a crash
 static void simulate_crash(int sig) {
+    (void)sig;
     printf("Simulating application crash...\n");
     _exit(1); // Force exit without cleanup
 }
@@ -35,8 +75,9 @@ static int create_test_database(void) {
     char *err_msg = NULL;
     
     // Remove any existing test database
-    unlink(TEST_DB_PATH);
-    unlink(TEST_BACKUP_PATH);
+    remove_database_files(TEST_DB_PATH);
+    remove_database_files(TEST_BACKUP_PATH);
+    remove_database_files(TEST_BACKUP_PATH ".tmp");
     
     // Initialize the database
     rc = init_database(TEST_DB_PATH);
@@ -142,6 +183,15 @@ static int corrupt_database(void) {
 
     // Close the live database handle first so corruption hits the on-disk file deterministically.
     shutdown_database();
+
+    /* A cleanly shut down standalone file has no live WAL index. Persistent
+     * sidecars are deliberately enabled in production, so remove them before
+     * corrupting the main-file header rather than letting WAL page 1 mask it. */
+    char sidecar[256];
+    snprintf(sidecar, sizeof(sidecar), "%s-wal", TEST_DB_PATH);
+    unlink(sidecar);
+    snprintf(sidecar, sizeof(sidecar), "%s-shm", TEST_DB_PATH);
+    unlink(sidecar);
     
     // Open the database file
     file = fopen(TEST_DB_PATH, "r+b");
@@ -164,10 +214,99 @@ static int corrupt_database(void) {
 
 // Test backup functionality
 static int test_backup(void) {
+    char backup_wal[256];
+    char backup_shm[256];
+    char primary_shm[256];
+    char temporary_wal[256];
+    char temporary_shm[256];
+    struct stat shm_before;
+    struct stat shm_after;
+
+    snprintf(primary_shm, sizeof(primary_shm), "%s-shm", TEST_DB_PATH);
+    snprintf(temporary_wal, sizeof(temporary_wal), "%s.tmp-wal",
+             TEST_BACKUP_PATH);
+    snprintf(temporary_shm, sizeof(temporary_shm), "%s.tmp-shm",
+             TEST_BACKUP_PATH);
+    snprintf(backup_wal, sizeof(backup_wal), "%s-wal", TEST_BACKUP_PATH);
+    snprintf(backup_shm, sizeof(backup_shm), "%s-shm", TEST_BACKUP_PATH);
+    if (stat(primary_shm, &shm_before) != 0 || shm_before.st_size < 32768) {
+        printf("Primary WAL shared-memory file is not initialized\n");
+        return -1;
+    }
+    if (!path_has_parent_process_lock(TEST_DB_PATH) ||
+        !path_has_parent_process_lock(primary_shm)) {
+        printf("SQLite database/WAL-index locks are missing before backup\n");
+        return -1;
+    }
+
+    /* Seed sidecars from a hypothetical older WAL-mode backup. Publishing a
+     * replacement main file must remove them. */
+    int stale_fd = open(backup_wal, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stale_fd < 0 || write(stale_fd, "old-wal", 7) != 7) {
+        if (stale_fd >= 0) close(stale_fd);
+        printf("Failed to create stale published-backup WAL fixture\n");
+        return -1;
+    }
+    close(stale_fd);
+    stale_fd = open(backup_shm, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (stale_fd < 0 || write(stale_fd, "old-shm", 7) != 7) {
+        if (stale_fd >= 0) close(stale_fd);
+        printf("Failed to create stale published-backup SHM fixture\n");
+        return -1;
+    }
+    close(stale_fd);
+
     // Create a backup of the database
     int rc = backup_database(TEST_DB_PATH, TEST_BACKUP_PATH);
     if (rc != 0) {
         printf("Failed to create backup\n");
+        return -1;
+    }
+
+    /* Opening and closing the backup source must not replace, truncate, or
+     * unlink the live database's mmap-backed WAL index. */
+    if (stat(primary_shm, &shm_after) != 0 ||
+        shm_after.st_ino != shm_before.st_ino ||
+        shm_after.st_size < 32768 || shm_after.st_size % 32768 != 0) {
+        printf("Live database WAL shared-memory mapping changed during backup\n");
+        return -1;
+    }
+    if (!path_has_parent_process_lock(TEST_DB_PATH) ||
+        !path_has_parent_process_lock(primary_shm)) {
+        printf("Backup dropped live SQLite database/WAL-index locks\n");
+        return -1;
+    }
+
+    /* A completed backup is a single recovery file. Temporary WAL sidecars
+     * must not survive publication or be required to read the backup. */
+    if (access(temporary_wal, F_OK) == 0 ||
+        access(temporary_shm, F_OK) == 0 ||
+        access(backup_wal, F_OK) == 0 || access(backup_shm, F_OK) == 0) {
+        printf("Backup WAL/SHM sidecars were left behind\n");
+        return -1;
+    }
+
+    sqlite3 *backup_db = NULL;
+    sqlite3_stmt *journal_mode = NULL;
+    rc = sqlite3_open_v2(TEST_BACKUP_PATH, &backup_db, SQLITE_OPEN_READONLY,
+                         NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_prepare_v2(backup_db, "PRAGMA journal_mode;", -1,
+                           &journal_mode, NULL) != SQLITE_OK ||
+        sqlite3_step(journal_mode) != SQLITE_ROW ||
+        strcmp((const char *)sqlite3_column_text(journal_mode, 0), "delete") != 0) {
+        printf("Published backup is not self-contained rollback-journal mode\n");
+        if (journal_mode) sqlite3_finalize(journal_mode);
+        if (backup_db) sqlite3_close(backup_db);
+        return -1;
+    }
+    sqlite3_finalize(journal_mode);
+    sqlite3_close(backup_db);
+
+    /* Restore owns no database handle and must never close db_core's borrowed
+     * global pointer behind the rest of the process. */
+    if (restore_database_from_backup(TEST_BACKUP_PATH, TEST_DB_PATH) == 0) {
+        printf("Restore unexpectedly accepted a live database handle\n");
         return -1;
     }
     
@@ -185,8 +324,9 @@ static int test_large_incremental_backup(void) {
     int result = -1;
     int rc;
 
-    unlink(TEST_LARGE_DB_PATH);
-    unlink(TEST_LARGE_BACKUP_PATH);
+    remove_database_files(TEST_LARGE_DB_PATH);
+    remove_database_files(TEST_LARGE_BACKUP_PATH);
+    remove_database_files(TEST_LARGE_BACKUP_PATH ".tmp");
 
     rc = sqlite3_open(TEST_LARGE_DB_PATH, &source);
     if (rc != SQLITE_OK) {
@@ -246,17 +386,44 @@ cleanup:
     if (stmt) sqlite3_finalize(stmt);
     if (source) sqlite3_close(source);
     if (backup) sqlite3_close(backup);
-    unlink(TEST_LARGE_DB_PATH);
-    unlink(TEST_LARGE_BACKUP_PATH);
+    remove_database_files(TEST_LARGE_DB_PATH);
+    remove_database_files(TEST_LARGE_BACKUP_PATH);
+    remove_database_files(TEST_LARGE_BACKUP_PATH ".tmp");
     return result;
 }
 
 // Test restore functionality
 static int test_restore(void) {
+    char stale_wal[256];
+    char stale_shm[256];
+    snprintf(stale_wal, sizeof(stale_wal), "%s-wal", TEST_DB_PATH);
+    snprintf(stale_shm, sizeof(stale_shm), "%s-shm", TEST_DB_PATH);
+
+    /* Simulate sidecars left by an uncleanly terminated prior database. They
+     * must not be paired with the newly restored main-file inode. */
+    int fd = open(stale_wal, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0 || write(fd, "stale-wal", 9) != 9) {
+        if (fd >= 0) close(fd);
+        printf("Failed to create stale WAL restore fixture\n");
+        return -1;
+    }
+    close(fd);
+    fd = open(stale_shm, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0 || write(fd, "stale-shm", 9) != 9) {
+        if (fd >= 0) close(fd);
+        printf("Failed to create stale SHM restore fixture\n");
+        return -1;
+    }
+    close(fd);
+
     // Restore the database from backup
     int rc = restore_database_from_backup(TEST_BACKUP_PATH, TEST_DB_PATH);
     if (rc != 0) {
         printf("Failed to restore database from backup\n");
+        return -1;
+    }
+    if (access(stale_wal, F_OK) == 0 || access(stale_shm, F_OK) == 0) {
+        printf("Restore left stale WAL/SHM sidecars behind\n");
         return -1;
     }
     
