@@ -910,10 +910,18 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     litert_used = (unsigned long long)litert_engine_registry_memory_bytes();
 #endif
 
+    // No resource filter: linux_process.c's collector stamps these
+    // observations with resource_id "lightnvr" (see prepare_observation()),
+    // not "process" -- passing "process" here made this lookup never match
+    // anything, unconditionally reporting process memory/thread count as
+    // unavailable. api_handlers_metrics.c looks up the same two metrics
+    // correctly with no resource filter at all (find_observation(..., NULL))
+    // -- matched that established, correct pattern instead of trying to
+    // guess the right resource string.
     const system_health_observation_t *process_rss = find_health_observation(
-        &health_snapshot, "process.rss_bytes", "process");
+        &health_snapshot, "process.rss_bytes", NULL);
     const system_health_observation_t *process_thread_observation =
-        find_health_observation(&health_snapshot, "process.threads", "process");
+        find_health_observation(&health_snapshot, "process.threads", NULL);
     double process_rss_value = 0.0;
     double process_threads_value = 0.0;
     bool process_rss_valid =
