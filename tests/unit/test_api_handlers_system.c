@@ -33,6 +33,7 @@
 #include "web/api_handlers_system.h"
 #include "web/api_handlers_setup.h"
 #include "web/request_response.h"
+#include "telemetry/system_health.h"
 #include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
@@ -251,6 +252,93 @@ void test_handle_get_system_info_includes_empty_stream_storage_array(void) {
 
     cJSON_Delete(root);
     http_response_free(&res);
+}
+
+// Regression test: linux_process.c's real collector stamps process.rss_bytes
+// and process.threads observations with resource_id "lightnvr" (see its
+// prepare_observation()), but handle_get_system_info() looked them up with a
+// resource filter of "process" -- a string that never matches anything the
+// collector actually emits, so process memory/thread count silently and
+// permanently reported as unavailable on every real deployment, regardless
+// of the actual process's real RSS/thread count. This fixture mimics the
+// real collector's exact resource_id/scope/metric shape rather than using
+// register_builtin_collectors (which would pull in this test binary's own
+// real /proc data and make the assertion non-deterministic).
+static int collect_process_fixture(void *state,
+                                   const system_health_collect_context_t *context,
+                                   system_health_observation_sink_t *sink) {
+    (void)state;
+    system_health_observation_t observation;
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "process.rss_bytes",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "lightnvr",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_PROCESS;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_available(&observation, 234881024.0,
+                                            SYSTEM_HEALTH_UNIT_BYTES);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "process.threads",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "lightnvr",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_PROCESS;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_available(&observation, 17.0,
+                                            SYSTEM_HEALTH_UNIT_COUNT);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+    return 0;
+}
+
+void test_handle_get_system_info_reports_process_memory_and_threads(void) {
+    system_health_options_t options;
+    system_health_options_defaults(&options);
+    options.register_builtin_collectors = false;
+    TEST_ASSERT_EQUAL_INT(0, system_health_init(&options));
+    system_health_collector_t collector = {
+        .name = "process_fixture",
+        .scope = SYSTEM_HEALTH_SCOPE_PROCESS,
+        .tier = SYSTEM_HEALTH_TIER_FAST,
+        .interval_seconds = 10,
+        .stale_after_seconds = 30,
+        .collect = collect_process_fixture,
+    };
+    TEST_ASSERT_TRUE(system_health_register_collector(&collector));
+    TEST_ASSERT_EQUAL_INT(0,
+        system_health_collect_tier(SYSTEM_HEALTH_TIER_FAST));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    handle_get_system_info(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = parse_response_json(&res);
+    cJSON *memory = cJSON_GetObjectItemCaseSensitive(root, "memory");
+    TEST_ASSERT_TRUE(cJSON_IsObject(memory));
+    cJSON *used = cJSON_GetObjectItemCaseSensitive(memory, "used");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(used));
+    TEST_ASSERT_EQUAL_INT(234881024, (int)used->valuedouble);
+    cJSON *capability = cJSON_GetObjectItemCaseSensitive(memory, "capability");
+    TEST_ASSERT_TRUE(cJSON_IsString(capability));
+    TEST_ASSERT_EQUAL_STRING("available", capability->valuestring);
+
+    cJSON *threads = cJSON_GetObjectItemCaseSensitive(root, "threads");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(threads));
+    TEST_ASSERT_EQUAL_INT(17, (int)threads->valuedouble);
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    system_health_shutdown();
 }
 
 void test_get_json_logs_tail_owns_level_reference_nodes(void) {
@@ -1242,6 +1330,7 @@ int main(void) {
     RUN_TEST(test_handle_get_system_info_includes_versions_summary);
     RUN_TEST(test_handle_get_system_info_does_not_wait_for_go2rtc_lifecycle);
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
+    RUN_TEST(test_handle_get_system_info_reports_process_memory_and_threads);
     RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
     RUN_TEST(test_handle_get_stream_summaries_are_paginated_and_credential_free);
