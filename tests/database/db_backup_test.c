@@ -346,10 +346,10 @@ cleanup:
 // down (shutdown_database()'s "final backup") shares this same code path,
 // but the abort flag is *always* already set by the time that one runs --
 // checking it there made every graceful shutdown's final backup bail out
-// instantly and never actually produce a backup. Relies on the previous
-// test having already left the process-wide abort flag set (it's never
-// reset -- see request_background_abort()'s header comment) to prove a
-// non-abortable backup completes anyway.
+// instantly and never actually produce a backup. Sets the (idempotent,
+// never-reset -- see request_background_abort()'s header comment)
+// process-wide abort flag explicitly rather than relying on a previous
+// test having left it set, so this test doesn't depend on execution order.
 static int test_backup_completes_when_not_abortable_even_if_abort_requested(void) {
     sqlite3 *source = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -394,10 +394,7 @@ static int test_backup_completes_when_not_abortable_even_if_abort_requested(void
     sqlite3_close(source);
     source = NULL;
 
-    if (!is_background_abort_requested()) {
-        printf("Test precondition failed: expected the abort flag to already be set\n");
-        goto cleanup;
-    }
+    request_background_abort();
 
     rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, false);
     if (rc != 0) {
@@ -433,8 +430,9 @@ cleanup:
 // long after the copy loop's own fix should have made it responsive.
 // Uses a single-batch fixture (under one BACKUP_STEP_PAGES) so the copy loop
 // itself reaches SQLITE_DONE without ever consulting the abort flag, forcing
-// this test to exercise the verification-phase check specifically. Relies on
-// the process-wide abort flag already being set by the earlier abort test.
+// this test to exercise the verification-phase check specifically. Sets the
+// abort flag explicitly (it's idempotent) rather than relying on an earlier
+// test having already set it, so this test doesn't depend on execution order.
 static int test_backup_aborts_during_verification_when_shutdown_requested(void) {
     sqlite3 *source = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -483,10 +481,7 @@ static int test_backup_aborts_during_verification_when_shutdown_requested(void) 
     sqlite3_close(source);
     source = NULL;
 
-    if (!is_background_abort_requested()) {
-        printf("Test precondition failed: expected the abort flag to already be set\n");
-        goto cleanup;
-    }
+    request_background_abort();
 
     rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, true);
     if (rc == 0) {
