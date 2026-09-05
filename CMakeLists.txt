@@ -218,39 +218,14 @@ list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
 # Explicitly add mbedcrypto to the link libraries
-set(COMMON_MBEDTLS_LIB_PATHS
-    /usr/lib
-    /usr/lib/x86_64-linux-gnu
-    /usr/lib/aarch64-linux-gnu
-    /usr/lib/arm-linux-gnueabihf
-    /lib
-    /lib/x86_64-linux-gnu
-    /lib/aarch64-linux-gnu
-    /lib/arm-linux-gnueabihf
-)
-
-find_library(MBEDCRYPTO_LIBRARY mbedcrypto
-    HINTS
-    ${COMMON_MBEDTLS_LIB_PATHS}
-)
+# Use CMake's standard library search paths for portability across distros/platforms.
+find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
 
 if(MBEDCRYPTO_LIBRARY)
     message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
     list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
 else()
-    # Try to find by manually checking common locations
-    foreach(LIB_PATH ${COMMON_MBEDTLS_LIB_PATHS})
-        if(EXISTS "${LIB_PATH}/libmbedcrypto.so")
-            set(MBEDCRYPTO_LIBRARY "${LIB_PATH}/libmbedcrypto.so")
-            message(STATUS "Found mbedcrypto library through manual search: ${MBEDCRYPTO_LIBRARY}")
-            list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
-            break()
-        endif()
-    endforeach()
-
-    if(NOT MBEDCRYPTO_LIBRARY)
-        message(FATAL_ERROR "mbedcrypto library not found. Please install libmbedtls-dev package.")
-    endif()
+    message(FATAL_ERROR "mbedcrypto library not found. Please install the mbedTLS development package.")
 endif()
 
 # Find cJSON (required dependency)
