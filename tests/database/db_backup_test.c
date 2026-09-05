@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <dirent.h>
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
@@ -28,6 +29,7 @@
 #define TEST_LARGE_BACKUP_PATH "/tmp/test_db_large.sqlite.bak"
 #define TEST_ABORT_DB_PATH "/tmp/test_db_abort.sqlite"
 #define TEST_ABORT_BACKUP_PATH "/tmp/test_db_abort.sqlite.bak"
+#define TEST_SHUTDOWN_DB_PATH "/tmp/test_db_shutdown.sqlite"
 
 static void remove_database_files(const char *path) {
     char sidecar[256];
@@ -650,6 +652,122 @@ cleanup:
     return result;
 }
 
+static int count_timestamped_backups(const char *db_path) {
+    char backup_dir[PATH_MAX];
+    snprintf(backup_dir, sizeof(backup_dir), "%s.backups", db_path);
+    DIR *dir = opendir(backup_dir);
+    if (!dir) return 0;
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        size_t name_len = strlen(entry->d_name);
+        // Count only completed backups (name.sqlite3), not .tmp/-wal/-shm/
+        // -journal debris from an interrupted or in-progress copy.
+        if (name_len > 8 && strcmp(entry->d_name + name_len - 8, ".sqlite3") == 0) {
+            count++;
+        }
+    }
+    closedir(dir);
+    return count;
+}
+
+static void remove_test_db_and_backups(const char *db_path) {
+    char backup_dir[PATH_MAX];
+    char command[PATH_MAX + 16];
+    unlink(db_path);
+    snprintf(backup_dir, sizeof(backup_dir), "%s.backups", db_path);
+    snprintf(command, sizeof(command), "rm -rf '%s'", backup_dir);
+    (void)system(command);
+}
+
+// Regression test: shutdown_database() used to unconditionally take a full
+// backup-and-verify snapshot on every clean shutdown, no matter how recently
+// the hourly scheduled backup had already run -- on a multi-gigabyte
+// production database this made every restart take minutes just to
+// re-capture a few minutes of additional changes. Verifies that a shutdown
+// happening shortly after a scheduled backup skips the redundant one.
+static int test_shutdown_skips_backup_when_recent_backup_exists(void) {
+    int result = -1;
+
+    // db_core.c holds a single global connection shared across this whole
+    // file's main(); create_test_database() (run earlier in main()) opened
+    // TEST_DB_PATH and never closed it, since later steps (corrupt_database())
+    // rely on it still being open. Close it first, same as that function does.
+    shutdown_database();
+
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) {
+        printf("Failed to init database for shutdown-skip test\n");
+        return -1;
+    }
+
+    g_config.db_backup_interval_minutes = 60;
+
+    if (maybe_run_scheduled_database_backup() != 0) {
+        printf("Scheduled backup failed in shutdown-skip test setup\n");
+        goto cleanup;
+    }
+    int count_after_scheduled = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    if (count_after_scheduled != 1) {
+        printf("Expected exactly 1 backup after the scheduled cycle, found %d\n",
+               count_after_scheduled);
+        goto cleanup;
+    }
+
+    shutdown_database();
+
+    int count_after_shutdown = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    if (count_after_shutdown != count_after_scheduled) {
+        printf("Shutdown took a redundant backup: had %d, now %d\n",
+               count_after_scheduled, count_after_shutdown);
+        return -1;
+    }
+
+    printf("Shutdown correctly skipped a redundant backup\n");
+    result = 0;
+
+cleanup:
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    return result;
+}
+
+// Regression test for the same fix: when scheduled backups are disabled
+// (db_backup_interval_minutes <= 0), there is no defined freshness window,
+// so shutdown must still take its final backup rather than skipping
+// unconditionally.
+static int test_shutdown_backs_up_when_scheduled_backups_disabled(void) {
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) {
+        printf("Failed to init database for shutdown-disabled-interval test\n");
+        return -1;
+    }
+
+    g_config.db_backup_interval_minutes = 0;
+
+    // init_database() takes its own "initial backup" of a brand-new database
+    // regardless of the scheduled interval, so the baseline here is 1, not
+    // 0 -- what this test actually verifies is that shutdown adds another
+    // one on top, rather than caring about that unrelated initial-backup
+    // implementation detail.
+    int count_before_shutdown = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+
+    shutdown_database();
+
+    int count = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (count <= count_before_shutdown) {
+        printf("Expected shutdown to take a backup with scheduled backups "
+               "disabled: had %d before, %d after\n", count_before_shutdown,
+               count);
+        return -1;
+    }
+
+    printf("Shutdown correctly backed up despite scheduled backups being disabled\n");
+    return 0;
+}
+
 // Test restore functionality
 static int test_restore(void) {
     char stale_wal[256];
@@ -734,6 +852,20 @@ int main(void) {
         printf("Test failed: Non-abortable backup did not complete despite a pending abort request\n");
         return 1;
     }
+
+    if (test_shutdown_skips_backup_when_recent_backup_exists() != 0) {
+        printf("Test failed: shutdown did not skip a redundant backup\n");
+        return 1;
+    }
+
+    if (test_shutdown_backs_up_when_scheduled_backups_disabled() != 0) {
+        printf("Test failed: shutdown did not back up with scheduled backups disabled\n");
+        return 1;
+    }
+
+    // Restore the interval this file's own load_default_config() set, in
+    // case any later step in this binary implicitly depends on it.
+    load_default_config(&g_config);
 
     // Corrupt the database
     if (corrupt_database() != 0) {
