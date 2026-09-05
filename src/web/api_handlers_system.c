@@ -104,9 +104,27 @@ static const system_health_observation_t *find_health_observation(
 static const system_health_observation_t *find_effective_health_observation(
     const system_health_snapshot_t *snapshot, const char *container_metric,
     const char *host_metric) {
-    const system_health_observation_t *item = find_health_observation(
+    // Prefer the container-scoped observation only when it actually has a
+    // value -- not merely when one exists. linux_cgroup.c's collector picks
+    // CONTAINER vs. HOST scope for a whole batch of metrics (cpu, memory,
+    // pids) based on whether *any* of them has a real, finite limit; systemd
+    // gives every unit a default (non-"max") TasksMax=, so a completely
+    // unconstrained host (no CPUQuota=/MemoryMax=) still gets bumped to
+    // CONTAINER scope purely because of that unrelated pids limit. Its
+    // cpu.usage_ratio/memory.limit_bytes/etc. observations still get
+    // emitted under "container.*" in that case, just marked unavailable
+    // (unsupported/unlimited) -- and since find_health_observation() matches
+    // on existence, not availability, this lookup used to latch onto that
+    // permanently-unavailable container observation and never fall back to
+    // the perfectly good host.cpu.busy_ratio/host.memory.* figures at all.
+    const system_health_observation_t *container_item = find_health_observation(
         snapshot, container_metric, NULL);
-    return item ? item : find_health_observation(snapshot, host_metric, NULL);
+    if (container_item &&
+        container_item->capability == SYSTEM_HEALTH_CAPABILITY_AVAILABLE)
+        return container_item;
+    const system_health_observation_t *host_item = find_health_observation(
+        snapshot, host_metric, NULL);
+    return host_item ? host_item : container_item;
 }
 
 static bool health_observation_value(
