@@ -328,8 +328,9 @@ void test_handle_get_system_info_reports_process_memory_and_threads(void) {
     cJSON *used = cJSON_GetObjectItemCaseSensitive(memory, "used");
     TEST_ASSERT_TRUE(cJSON_IsNumber(used));
     TEST_ASSERT_EQUAL_INT(234881024, (int)used->valuedouble);
-    TEST_ASSERT_EQUAL_STRING("available",
-        cJSON_GetObjectItemCaseSensitive(memory, "capability")->valuestring);
+    cJSON *capability = cJSON_GetObjectItemCaseSensitive(memory, "capability");
+    TEST_ASSERT_TRUE(cJSON_IsString(capability));
+    TEST_ASSERT_EQUAL_STRING("available", capability->valuestring);
 
     cJSON *threads = cJSON_GetObjectItemCaseSensitive(root, "threads");
     TEST_ASSERT_TRUE(cJSON_IsNumber(threads));
