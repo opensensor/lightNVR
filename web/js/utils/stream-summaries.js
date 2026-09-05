@@ -10,7 +10,7 @@ const STREAM_SUMMARY_PAGE_SIZE = 100;
 export async function fetchAllStreamSummaries({ surface = 'admin', availability = 'all', signal } = {}) {
   const streams = [];
   let page = 1;
-  let totalPages = 1;
+  let totalPages;
   do {
     const params = new URLSearchParams({
       summary: 'true',

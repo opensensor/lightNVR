@@ -25,7 +25,6 @@ const getRecordingStartTime = (recording) =>
 
 // Default timeout/retry configuration for recordings API calls
 const DEFAULT_TIMEOUT = 15000;       // 15 second timeout
-const DEFAULT_RETRIES = 2;           // Retry twice
 const DEFAULT_RETRY_DELAY = 1000;    // 1 second between retries
 
 // Batch delete specific configuration
