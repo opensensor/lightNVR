@@ -976,8 +976,8 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
                     }}
                     defaultTransport="webrtc"
                     forcedTransport={forcedTransport}
-                    useSubStream={fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
-                    fullscreenUpgraded={fullscreenCellStream === stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
+                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
+                    fullscreenUpgraded={!isSingleStream && fullscreenCellStream === stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     showLabels={showLabels}

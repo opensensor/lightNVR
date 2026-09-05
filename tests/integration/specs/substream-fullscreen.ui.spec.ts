@@ -2,10 +2,10 @@
  * Sub-stream ↔ main-stream swap on per-cell fullscreen (#366, #578)
  *
  * When a stream is configured with sub_stream_url and rendered on the
- * dashboard, the video cell uses the `{name}_sub` go2rtc source regardless
- * of the selected grid size. Entering native fullscreen on that specific
- * cell must swap it to the main stream so the user sees full-resolution
- * video, not the low-res dashboard feed.
+ * dashboard grids with multiple cells use the `{name}_sub` go2rtc source.
+ * A 1×1 dashboard uses the main stream directly, avoiding a second producer
+ * for cameras that cannot serve main and sub-stream sessions concurrently.
+ * Entering native fullscreen swaps a multi-cell tile to the main stream.
  *
  * We assert this via the `data-sub-stream` attribute on each `.video-cell`,
  * which mirrors the `useSubStream` prop resolved by LiveView / WebRTCView.
@@ -120,15 +120,15 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
     await expect(cellB).toHaveAttribute('data-sub-stream', 'true');
   });
 
-  test('single-stream layout uses sub-stream until fullscreen', async ({ page }) => {
+  test('single-stream layout reuses the main stream producer', async ({ page }) => {
     await page.goto('/index.html?cols=1&rows=1&stream=cam_a', { waitUntil: 'domcontentloaded' });
 
     const cellA = page.locator('.video-cell[data-stream-name="cam_a"]').first();
     await expect(cellA).toBeVisible({ timeout: 15000 });
 
-    // Grid dimensions do not select stream quality: a 1×1 dashboard tile
-    // still uses the configured low-resolution source.
-    await expect(cellA).toHaveAttribute('data-sub-stream', 'true');
+    // The main producer is already used by recording. Reusing it here avoids
+    // opening the camera's main and sub-stream sessions concurrently (#579).
+    await expect(cellA).toHaveAttribute('data-sub-stream', 'false');
 
     await page.evaluate(() => {
       const target = document.querySelector('.video-cell[data-stream-name="cam_a"]');
@@ -139,7 +139,7 @@ test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
       document.dispatchEvent(new Event('fullscreenchange'));
     });
 
-    // Only actual fullscreen upgrades the tile to the main stream.
+    // Fullscreen keeps the already-selected main producer.
     await expect(cellA).toHaveAttribute('data-sub-stream', 'false');
   });
 });
