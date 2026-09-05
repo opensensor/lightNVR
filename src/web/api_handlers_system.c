@@ -22,6 +22,7 @@
 #include <dirent.h>
 #include <limits.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sqlite3.h>
 #include <curl/curl.h>
 #include <uv.h>
@@ -1523,14 +1524,28 @@ void handle_post_system_shutdown(const http_request_t *req, http_response_t *res
     log_info("Initiating shutdown through coordinator");
     initiate_shutdown();
 
-    // Schedule shutdown with a more robust approach for MIPS systems
-    extern volatile bool running;
+    extern _Atomic bool running;
     running = false;
+    // Let a long-running background operation (e.g. a scheduled DB backup)
+    // abort promptly instead of silently blocking this shutdown until it
+    // finishes -- mirrors request_restart()'s identical call for the
+    // restart path (main.c); see shutdown_coordinator.c's header comment
+    // for why this is a separate, lighter-weight flag from
+    // initiate_shutdown() above.
+    request_background_abort();
 
-    // Set an alarm to force exit if normal shutdown doesn't work
-    // This is especially important for Linux 4.4 embedded MIPS systems
-    log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
-    alarm(15); // Force exit after 15 seconds if normal shutdown fails
+    // Deliberately no local alarm()-based force-exit timer here (this used
+    // to set one, framed as "more robust for Linux 4.4 embedded MIPS
+    // systems"): alarm() is a single process-wide timer, and it would race
+    // with the many short-lived, save/restore-disposition alarm() calls
+    // hls_unified_thread.c/hls_writer.c make elsewhere in the process --
+    // whichever fires first silently cancels whatever time was left on the
+    // other, since alarm() has no pause/resume. main()'s
+    // shutdown_watchdog_thread (a plain thread polling `running`, immune to
+    // that collision) already force-kills the process group process-wide if
+    // shutdown doesn't complete in time, covering this endpoint too -- see
+    // its comment in main.c for the full story, including the live gdb
+    // trace that first caught this exact collision on the restart path.
 
     // NOTE: We previously sent SIGTERM to self here, but this was causing system-wide shutdown
     // instead of just application shutdown. This has been removed to fix that issue.
