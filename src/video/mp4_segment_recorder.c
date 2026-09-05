@@ -123,6 +123,10 @@ void mp4_segment_rescale_packet_ts(AVPacket *pkt,
     av_packet_rescale_ts(pkt, input_stream->time_base, output_stream->time_base);
 }
 
+bool mp4_segment_audio_error_requires_input_refresh(int error) {
+    return error == AVERROR(EINVAL);
+}
+
 /**
  * Clamp DTS/PTS values for MP4 output to avoid exceeding container limits.
  *
@@ -287,6 +291,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int video_stream_idx = -1;
     int audio_stream_idx = -1;
     bool needs_audio_transcoding = false;
+    bool reuse_input_context = true;
     AVStream *out_video_stream = NULL;
     AVStream *out_audio_stream = NULL;
     int64_t first_video_dts = AV_NOPTS_VALUE;
@@ -1620,37 +1625,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     goto cleanup;
                 }
 
-                // CRITICAL FIX: Handle timestamp-related errors
-                if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
-                    // This is likely a timestamp error, try to fix it for the next packet
-                    log_warn("Detected audio timestamp error, will try to fix for next packet");
-
-                    // Increment the consecutive error counter
-                    consecutive_timestamp_errors++;
-
-                    if (consecutive_timestamp_errors >= max_timestamp_errors) {
-                        // Too many consecutive errors, reset all timestamps
-                        log_warn("Too many consecutive audio timestamp errors (%d), resetting all timestamps",
-                                consecutive_timestamp_errors);
-
-                        // Reset timestamps to an undefined state; they will be reinitialized
-                        // based on the next valid packet's timestamps.
-                        first_video_dts = AV_NOPTS_VALUE;
-                        first_video_pts = AV_NOPTS_VALUE;
-                        last_video_dts = AV_NOPTS_VALUE;
-                        last_video_pts = AV_NOPTS_VALUE;
-                        first_audio_dts = AV_NOPTS_VALUE;
-                        first_audio_pts = AV_NOPTS_VALUE;
-                        last_audio_dts = AV_NOPTS_VALUE;
-                        last_audio_pts = AV_NOPTS_VALUE;
-
-                        // Reset the error counter
-                        consecutive_timestamp_errors = 0;
-                    } else {
-                        // Force a larger increment for the next packet to avoid timestamp issues
-                        last_audio_dts += (int64_t)100 * consecutive_timestamp_errors;
-                        last_audio_pts += (int64_t)100 * consecutive_timestamp_errors;
-                    }
+                if (mp4_segment_audio_error_requires_input_refresh(ret)) {
+                    /* av_strerror(EINVAL) is always "Invalid argument", so the
+                     * old strstr(error_buf, "monoton") guard could never run.
+                     * A muxer EINVAL leaves the current audio track unusable;
+                     * retrying every packet only drops audio and floods logs.
+                     * Keep the valid video portion of this segment, stop feeding
+                     * its audio track, and reopen the long-lived RTSP demuxer for
+                     * the next segment so codec/timestamp state is reprobed. */
+                    log_warn("Audio mux state is invalid; disabling audio for the "
+                             "remainder of this segment and refreshing the RTSP "
+                             "input before the next segment");
+                    has_audio = 0;
+                    reuse_input_context = false;
+                    ret = 0;
                 }
             } else {
                 // Reset consecutive error counter on success
@@ -1785,7 +1773,7 @@ cleanup:
     log_debug("Handling input context cleanup");
 
     // BUGFIX: Store the input context in the per-stream variable for reuse if recording was successful
-    if (ret >= 0) {
+    if (ret >= 0 && reuse_input_context) {
         // Store the input context for reuse in the next segment
         // We can't directly access internal FFmpeg structures
         // Just store the context as is and rely on FFmpeg's internal reference counting
@@ -1794,8 +1782,8 @@ cleanup:
         input_ctx = NULL;
         log_debug("Stored input context for reuse in next segment");
     } else {
-        // If there was an error, close the input context
-        log_debug("Closing input context due to error");
+        // On errors or stale mux state, force a fresh RTSP probe next segment.
+        log_debug("Closing input context due to error or refresh request");
 
         // CRITICAL FIX: Check if input_ctx is NULL before trying to access it
         // This prevents segmentation fault when RTSP connection fails

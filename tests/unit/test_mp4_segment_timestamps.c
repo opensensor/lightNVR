@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdint.h>
 
 #include <libavcodec/packet.h>
@@ -56,6 +57,40 @@ void test_rescale_preserves_unset_timestamps(void) {
     av_packet_free(&packet);
 }
 
+void test_rescale_preserves_aac_packet_cadence(void) {
+    AVPacket *packet = av_packet_alloc();
+    AVStream input_stream = {0};
+    AVStream output_stream = {0};
+
+    TEST_ASSERT_NOT_NULL(packet);
+
+    /* A 16 kHz AAC-LC stream advances by 1024 samples (64 ms) per packet.
+     * Preserve that cadence when the MP4 muxer keeps the input time base. */
+    input_stream.time_base = (AVRational){1, 16000};
+    output_stream.time_base = (AVRational){1, 16000};
+
+    for (int i = 0; i < 500; ++i) {
+        packet->dts = 1 + (int64_t)i * 1024;
+        packet->pts = packet->dts;
+        packet->duration = 1024;
+
+        mp4_segment_rescale_packet_ts(packet, &input_stream, &output_stream);
+
+        TEST_ASSERT_EQUAL_INT64(1 + (int64_t)i * 1024, packet->dts);
+        TEST_ASSERT_EQUAL_INT64(packet->dts, packet->pts);
+        TEST_ASSERT_EQUAL_INT64(1024, packet->duration);
+    }
+
+    av_packet_free(&packet);
+}
+
+void test_audio_einval_requires_fresh_rtsp_input(void) {
+    TEST_ASSERT_TRUE(mp4_segment_audio_error_requires_input_refresh(AVERROR(EINVAL)));
+    TEST_ASSERT_FALSE(mp4_segment_audio_error_requires_input_refresh(AVERROR(EIO)));
+    TEST_ASSERT_FALSE(mp4_segment_audio_error_requires_input_refresh(AVERROR(ENOSPC)));
+    TEST_ASSERT_FALSE(mp4_segment_audio_error_requires_input_refresh(AVERROR_EOF));
+}
+
 void test_mp4_muxer_time_base_preserves_three_hundred_seconds(void) {
     AVFormatContext *output = NULL;
     AVPacket *packet = NULL;
@@ -108,6 +143,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_rescales_transcoded_stream_timestamps_to_muxer_time_base);
     RUN_TEST(test_rescale_preserves_unset_timestamps);
+    RUN_TEST(test_rescale_preserves_aac_packet_cadence);
+    RUN_TEST(test_audio_einval_requires_fresh_rtsp_input);
     RUN_TEST(test_mp4_muxer_time_base_preserves_three_hundred_seconds);
     return UNITY_END();
 }
