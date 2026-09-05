@@ -370,7 +370,8 @@ static void add_versions_to_json(cJSON *info) {
  * @brief Get memory usage of light-object-detect process
  *
  * @param memory_usage Pointer to store memory usage in bytes
- * @return true if successful, false otherwise (process not running)
+ * @return true when memory usage is known, including zero when the optional
+ *         detector is not running; false when usage could not be inspected
  */
 static bool get_detector_memory_usage(unsigned long long *memory_usage) {
     if (!memory_usage) {
@@ -419,8 +420,11 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
     closedir(proc_dir);
 
     if (pid <= 0) {
-        log_debug("No light-object-detect process found");
-        return false;
+        /* Object detection is optional.  An absent detector has a known RSS
+         * contribution of zero; reporting it as unavailable makes the System
+         * page imply that a healthy LightNVR installation is incomplete. */
+        log_debug("No light-object-detect process found; memory usage is zero");
+        return true;
     }
 
     // Get memory usage from /proc/{pid}/status
@@ -993,7 +997,8 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     if (detector_memory) {
         unsigned long long detector_used = 0;
 
-        // Try to get light-object-detect memory usage (returns false if not running)
+        // An optional detector that is not running contributes a known zero.
+        // False is reserved for failures that prevent memory inspection.
         bool detector_memory_valid = get_detector_memory_usage(&detector_used);
         if (detector_memory_valid) {
             log_debug("light-object-detect memory usage: %llu bytes", detector_used);

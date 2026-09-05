@@ -26,7 +26,8 @@
  * @brief Get memory usage of go2rtc process
  *
  * @param memory_usage Pointer to store memory usage in bytes
- * @return true if successful, false otherwise
+ * @return true when memory usage is known, including zero when the optional
+ *         go2rtc process is not running; false when usage could not be inspected
  */
 bool get_go2rtc_memory_usage(unsigned long long *memory_usage) {
     if (!memory_usage) {
@@ -45,8 +46,10 @@ bool get_go2rtc_memory_usage(unsigned long long *memory_usage) {
         return false;
     }
     if (pid <= 0) {
-        log_warn("No go2rtc process found (PID: %d)", pid);
-        return false;
+        /* go2rtc is an optional build/runtime component.  When it is absent,
+         * its RSS contribution is known to be zero rather than unavailable. */
+        log_debug("No go2rtc process found (PID: %d); memory usage is zero", pid);
+        return true;
     }
 
     // Get memory usage from /proc/{pid}/status

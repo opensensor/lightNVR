@@ -191,6 +191,18 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     TEST_ASSERT_TRUE(cJSON_IsObject(system_memory));
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(system_memory,
                                                           "capability"));
+    cJSON *detector_memory = cJSON_GetObjectItemCaseSensitive(root,
+                                                              "detectorMemory");
+    TEST_ASSERT_TRUE(cJSON_IsObject(detector_memory));
+    cJSON *go2rtc_memory = cJSON_GetObjectItemCaseSensitive(root,
+                                                            "go2rtcMemory");
+    TEST_ASSERT_TRUE(cJSON_IsObject(go2rtc_memory));
+    /* Optional processes contribute a known zero when inactive rather than
+     * making the process-memory aggregate unknown. */
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(
+        detector_memory, "used")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(
+        go2rtc_memory, "used")));
     TEST_ASSERT_TRUE(cJSON_IsObject(disk));
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(disk,
                                                           "capability"));
