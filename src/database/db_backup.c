@@ -141,8 +141,20 @@ static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
-        log_error("Failed to execute integrity check for %s: %s",
-                  path_label, sqlite3_errmsg(db_handle));
+        if (rc == SQLITE_INTERRUPT) {
+            // A non-zero return from the sqlite3_progress_handler callback
+            // (progress_during_verification(), registered by the caller for
+            // an abortable backup) surfaces here as SQLITE_INTERRUPT, not a
+            // real failure -- the caller already logs its own, more specific
+            // "aborting during verification: restart/shutdown requested"
+            // warning right after this returns. Logging this as an error too
+            // would make every ordinary abort during a routine restart look
+            // like a corruption/failure event in the logs.
+            log_warn("Integrity check for %s interrupted (restart/shutdown requested)", path_label);
+        } else {
+            log_error("Failed to execute integrity check for %s: %s",
+                      path_label, sqlite3_errmsg(db_handle));
+        }
         sqlite3_finalize(stmt);
         return -1;
     }
