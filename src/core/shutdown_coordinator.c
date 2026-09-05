@@ -16,6 +16,21 @@
 // Global shutdown coordinator instance
 static shutdown_coordinator_t g_coordinator;
 
+// Independent of g_coordinator on purpose -- see header comment. Never reset
+// once set: the only callers (request_restart() and the shutdown signal
+// handler) set it right before the process is going to stop or re-exec
+// anyway, so there is no scenario where it needs to go back to false within
+// a process's lifetime.
+static atomic_bool g_background_abort_requested = false;
+
+void request_background_abort(void) {
+    atomic_store(&g_background_abort_requested, true);
+}
+
+bool is_background_abort_requested(void) {
+    return atomic_load(&g_background_abort_requested);
+}
+
 // Initialize the shutdown coordinator
 int init_shutdown_coordinator(void) {
     memset(&g_coordinator, 0, sizeof(shutdown_coordinator_t));

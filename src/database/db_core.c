@@ -354,7 +354,7 @@ static int run_post_backup_script(const char *backup_path, const char *backup_di
     return -1;
 }
 
-static int perform_database_backup_cycle(const char *reason, bool run_post_backup_hook) {
+static int perform_database_backup_cycle(const char *reason, bool run_post_backup_hook, bool abortable) {
     char backup_dir[PATH_MAX];
     char timestamped_backup_path[PATH_MAX];
 
@@ -373,7 +373,7 @@ static int perform_database_backup_cycle(const char *reason, bool run_post_backu
         return -1;
     }
 
-    if (backup_database(db_file_path, timestamped_backup_path) != 0) {
+    if (backup_database(db_file_path, timestamped_backup_path, abortable) != 0) {
         log_error("Failed to create %s database backup", reason);
         return -1;
     }
@@ -440,7 +440,7 @@ int maybe_run_scheduled_database_backup(void) {
         return 0;
     }
 
-    if (perform_database_backup_cycle("scheduled", true) != 0) {
+    if (perform_database_backup_cycle("scheduled", true, true) != 0) {
         return -1;
     }
 
@@ -852,7 +852,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
     // Create an initial backup if this is a new database
     if (is_new_database) {
         log_info("Creating initial backup of new database");
-        if (perform_database_backup_cycle("initial", true) == 0) {
+        if (perform_database_backup_cycle("initial", true, true) == 0) {
             log_info("Initial backup created successfully");
             last_backup_time = time(NULL);
         } else {
@@ -894,7 +894,12 @@ void shutdown_database(void) {
         log_info("Skipping shutdown backup (read-only initialization)");
     } else if (db != NULL && db_file_path[0] != '\0') {
         log_info("Creating final backup before shutdown");
-        if (perform_database_backup_cycle("shutdown", true) == 0) {
+        // Not abortable: this is the deliberate one-time backup taken while
+        // already shutting down, so the abort flag is already guaranteed
+        // set -- an abortable copy would bail out immediately every time
+        // and never actually produce a backup. TimeoutStopSec is sized to
+        // give this the room it needs to finish instead.
+        if (perform_database_backup_cycle("shutdown", true, false) == 0) {
             log_info("Final backup created successfully");
         } else {
             log_warn("Failed to create final backup");

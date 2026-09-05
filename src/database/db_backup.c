@@ -21,6 +21,7 @@
 #include "database/db_backup.h"
 #include "database/db_schema_utils.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 
 // Flag to indicate if a backup is in progress
 static bool backup_in_progress = false;
@@ -64,10 +65,20 @@ static void release_path_cache(const char *path) {
 typedef struct {
     int fd;
     const char *path;
+    bool abortable;
 } cache_release_progress_t;
 
-static int release_cache_during_verification(void *opaque) {
+static int progress_during_verification(void *opaque) {
     cache_release_progress_t *progress = (cache_release_progress_t *)opaque;
+    /* Post-copy integrity_check scans the whole backup file page by page --
+     * on a multi-gigabyte database this alone can take as long as the copy
+     * it's verifying, with no other abort point once sqlite3_backup_finish()
+     * has run. A non-zero return here interrupts the running statement
+     * (like sqlite3_interrupt()), so this is the only way to make that scan
+     * itself responsive to a pending restart/shutdown. */
+    if (progress && progress->abortable && is_background_abort_requested()) {
+        return 1;
+    }
     if (progress && progress->fd >= 0) {
         release_file_cache(progress->fd, progress->path);
     }
@@ -189,8 +200,20 @@ static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) {
-        log_error("Failed to execute integrity check for %s: %s",
-                  path_label, sqlite3_errmsg(db_handle));
+        if (rc == SQLITE_INTERRUPT) {
+            // A non-zero return from the sqlite3_progress_handler callback
+            // (progress_during_verification(), registered by the caller for
+            // an abortable backup) surfaces here as SQLITE_INTERRUPT, not a
+            // real failure -- the caller already logs its own, more specific
+            // "aborting during verification: restart/shutdown requested"
+            // warning right after this returns. Logging this as an error too
+            // would make every ordinary abort during a routine restart look
+            // like a corruption/failure event in the logs.
+            log_warn("Integrity check for %s interrupted (restart/shutdown requested)", path_label);
+        } else {
+            log_error("Failed to execute integrity check for %s: %s",
+                      path_label, sqlite3_errmsg(db_handle));
+        }
         sqlite3_finalize(stmt);
         return -1;
     }
@@ -207,7 +230,7 @@ static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
 }
 
 // Backup the database to a specified path
-int backup_database(const char *source_path, const char *dest_path) {
+int backup_database(const char *source_path, const char *dest_path, bool abortable) {
     int rc = -1;
     sqlite3 *source_db = NULL;
     sqlite3 *dest_db = NULL;
@@ -330,8 +353,25 @@ int backup_database(const char *source_path, const char *dest_path) {
         if (rc == SQLITE_DONE) {
             break;
         }
+
+        /* Poll for a pending restart/shutdown between batches so a large
+         * scheduled backup can never block one indefinitely -- worst case,
+         * one more batch (already in flight) finishes before this fires.
+         * Checked after the SQLITE_DONE break so a backup that already
+         * finished copying on this very batch still completes (cheap
+         * remaining work: verification + rename) instead of being thrown
+         * away. Skipped entirely when !abortable (the deliberate backup
+         * taken while already shutting down): the abort flag is already
+         * guaranteed set by the time that one runs, so checking it here
+         * would make it bail out immediately on every single shutdown and
+         * never actually produce a backup. */
+        if (abortable && is_background_abort_requested()) {
+            log_warn("Database backup aborting early: restart/shutdown requested");
+            rc = SQLITE_ABORT;
+            goto cleanup;
+        }
     }
-    
+
     // Finish the backup
     rc = sqlite3_backup_finish(backup);
     backup = NULL;
@@ -366,20 +406,28 @@ int backup_database(const char *source_path, const char *dest_path) {
 
     /* Retain the full integrity guarantee, but release clean pages as SQLite
      * scans the backup.  Without the progress callback this second full-file
-     * pass recreates the multi-gigabyte cache footprint bounded above. */
+     * pass recreates the multi-gigabyte cache footprint bounded above.
+     * Registered whenever abortable even without a cache fd, since the
+     * abort-check matters independently of the cache-release optimization. */
     cache_release_progress_t verification_progress = {
         .fd = dest_cache_fd,
         .path = temp_path,
+        .abortable = abortable,
     };
-    if (dest_cache_fd >= 0) {
+    if (dest_cache_fd >= 0 || abortable) {
         sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
-                                 release_cache_during_verification,
+                                 progress_during_verification,
                                  &verification_progress);
     }
     int verification_rc = run_integrity_check(dest_db, temp_path);
     sqlite3_progress_handler(dest_db, 0, NULL, NULL);
     if (verification_rc != 0) {
-        rc = SQLITE_CORRUPT;
+        if (abortable && is_background_abort_requested()) {
+            log_warn("Database backup aborting during verification: restart/shutdown requested");
+            rc = SQLITE_ABORT;
+        } else {
+            rc = SQLITE_CORRUPT;
+        }
         goto cleanup;
     }
     

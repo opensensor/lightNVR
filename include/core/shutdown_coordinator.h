@@ -76,4 +76,20 @@ bool wait_for_all_components_stopped(int timeout_seconds);
 // Get the global shutdown coordinator instance
 shutdown_coordinator_t *get_shutdown_coordinator(void);
 
+// Request that long-running background operations (e.g. the scheduled DB
+// backup) abort at their next opportunity. Distinct from initiate_shutdown():
+// this is a lightweight, independent flag with no component-teardown side
+// effects, so it is safe to raise the instant a restart or shutdown is first
+// requested -- from an async-signal-safe context (a signal handler) as well
+// as from an ordinary API handler thread -- well before the main loop
+// actually exits and initiate_shutdown() runs the real teardown sequence.
+void request_background_abort(void);
+
+// Check whether a background-abort has been requested. Long-running
+// operations that run outside the main loop (e.g. backup_database()'s
+// batched copy loop) should poll this between batches and bail out early
+// when it becomes true, rather than blocking a pending restart/shutdown
+// until the entire operation finishes.
+bool is_background_abort_requested(void);
+
 #endif /* SHUTDOWN_COORDINATOR_H */
