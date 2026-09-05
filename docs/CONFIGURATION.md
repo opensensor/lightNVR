@@ -240,19 +240,20 @@ mp4_retention_days = 30
 ```ini
 [database]
 path = /var/lib/lightnvr/data/database/lightnvr.db
-startup_check = quick
+startup_check = off
 backup_retention_count = 6
 ```
 
 - `path`: Path to the SQLite database file
-- `startup_check`: Consistency check run against an existing database at boot
-  (default: `quick`). `quick` runs `PRAGMA quick_check`, which validates page
+- `startup_check`: Optional consistency check run against an existing database
+  at boot (default: `off`). `quick` runs `PRAGMA quick_check`, which validates page
   structure. `full` runs `PRAGMA integrity_check`, which additionally
   cross-checks every index against its table — its cost scales with total index
   size, so on a large database it can take minutes, and it runs before the HTTP
   listener is bound, so that time appears to clients as a gateway error. `off`
   skips the check. Corruption seen in practice (truncated writes, torn pages)
-  is caught by `quick`; use `full` from maintenance rather than at boot.
+  is caught by `quick`. Both checks scan the database before the HTTP listener
+  binds, so run them during a maintenance window rather than on every boot.
 - `backup_retention_count`: Number of timestamped backups to retain (default: 6).
   Each backup is a full copy of the database, so this multiplies disk usage by
   the database size.

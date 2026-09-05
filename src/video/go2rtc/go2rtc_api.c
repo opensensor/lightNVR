@@ -9,6 +9,7 @@
 #include <curl/curl.h>
 #include <ctype.h>
 #include <cjson/cJSON.h>
+#include <pthread.h>
 
 #include "video/go2rtc/go2rtc_api.h"
 #include "core/config.h"
@@ -20,6 +21,21 @@
 static char *g_api_host = NULL;
 static int g_api_port = 0;
 static bool g_initialized = false;
+
+/*
+ * go2rtc's publish endpoint does not answer until it has connected to the
+ * external ingest. Keep those network waits out of startup while retaining a
+ * bounded cleanup path for the background jobs.
+ */
+typedef struct {
+    char *stream_id;
+    char *destination;
+} publish_job_t;
+
+static pthread_mutex_t g_publish_jobs_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_publish_jobs_done = PTHREAD_COND_INITIALIZER;
+static size_t g_active_publish_jobs = 0;
+static bool g_accept_publish_jobs = false;
 
 // Buffer sizes
 // HTTP_RESPONSE_SIZE must be large enough to hold the full JSON from
@@ -56,8 +72,16 @@ bool go2rtc_api_init(const char *api_host, int api_port) {
     }
     
     g_api_host = strdup(api_host);
+    if (!g_api_host) {
+        log_error("Failed to allocate go2rtc API host");
+        return false;
+    }
     g_api_port = api_port;
     g_initialized = true;
+
+    pthread_mutex_lock(&g_publish_jobs_mutex);
+    g_accept_publish_jobs = true;
+    pthread_mutex_unlock(&g_publish_jobs_mutex);
     
     log_info("go2rtc API client initialized with host: %s, port: %d", g_api_host, g_api_port);
     return true;
@@ -478,6 +502,86 @@ bool go2rtc_api_publish_stream(const char *stream_id, const char *destination) {
     curl_easy_cleanup(curl);
 
     return success;
+}
+
+static void *publish_stream_worker(void *arg) {
+    publish_job_t *job = (publish_job_t *)arg;
+
+    if (!go2rtc_api_publish_stream(job->stream_id, job->destination)) {
+        log_warn("Failed to start background RTMP restream for %s; will retry on next registration",
+                 job->stream_id);
+    }
+
+    free(job->stream_id);
+    free(job->destination);
+    free(job);
+
+    pthread_mutex_lock(&g_publish_jobs_mutex);
+    g_active_publish_jobs--;
+    if (g_active_publish_jobs == 0) {
+        pthread_cond_broadcast(&g_publish_jobs_done);
+    }
+    pthread_mutex_unlock(&g_publish_jobs_mutex);
+    return NULL;
+}
+
+bool go2rtc_api_publish_stream_async(const char *stream_id,
+                                     const char *destination) {
+    if (!stream_id || !destination || destination[0] == '\0') {
+        log_error("Invalid parameters for go2rtc_api_publish_stream_async");
+        return false;
+    }
+
+    publish_job_t *job = calloc(1, sizeof(*job));
+    if (!job) {
+        log_error("Failed to allocate background RTMP publish job");
+        return false;
+    }
+
+    job->stream_id = strdup(stream_id);
+    job->destination = strdup(destination);
+    if (!job->stream_id || !job->destination) {
+        log_error("Failed to copy background RTMP publish job parameters");
+        free(job->stream_id);
+        free(job->destination);
+        free(job);
+        return false;
+    }
+
+    pthread_mutex_lock(&g_publish_jobs_mutex);
+    if (!g_initialized || !g_accept_publish_jobs) {
+        pthread_mutex_unlock(&g_publish_jobs_mutex);
+        log_error("go2rtc API client is not accepting RTMP publish jobs");
+        free(job->stream_id);
+        free(job->destination);
+        free(job);
+        return false;
+    }
+
+    pthread_t thread;
+    g_active_publish_jobs++;
+    int create_result = pthread_create(&thread, NULL, publish_stream_worker, job);
+    if (create_result != 0) {
+        g_active_publish_jobs--;
+        pthread_mutex_unlock(&g_publish_jobs_mutex);
+        log_error("Failed to create background RTMP publish thread: %s",
+                  strerror(create_result));
+        free(job->stream_id);
+        free(job->destination);
+        free(job);
+        return false;
+    }
+
+    int detach_result = pthread_detach(thread);
+    if (detach_result != 0) {
+        /* The job is still tracked and safe; only its pthread resources may
+         * remain allocated until process exit on this exceptional path. */
+        log_warn("Failed to detach background RTMP publish thread: %s",
+                 strerror(detach_result));
+    }
+    pthread_mutex_unlock(&g_publish_jobs_mutex);
+    log_info("Scheduled background RTMP restream for go2rtc stream %s", stream_id);
+    return true;
 }
 
 bool go2rtc_api_stream_exists(const char *stream_id) {
@@ -997,6 +1101,17 @@ void go2rtc_api_cleanup(void) {
     if (!g_initialized) {
         return;
     }
+
+    pthread_mutex_lock(&g_publish_jobs_mutex);
+    g_accept_publish_jobs = false;
+    if (g_active_publish_jobs > 0) {
+        log_info("Waiting for %zu background RTMP publish job(s) to finish",
+                 g_active_publish_jobs);
+    }
+    while (g_active_publish_jobs > 0) {
+        pthread_cond_wait(&g_publish_jobs_done, &g_publish_jobs_mutex);
+    }
+    pthread_mutex_unlock(&g_publish_jobs_mutex);
 
     free(g_api_host);
     g_api_host = NULL;

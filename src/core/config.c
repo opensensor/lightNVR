@@ -158,7 +158,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 0, false},
     {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 6, false},
     {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
-    {"DB_STARTUP_CHECK",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_startup_check),           0, NULL, DB_STARTUP_CHECK_QUICK, false},
+    {"DB_STARTUP_CHECK",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_startup_check),           0, NULL, DB_STARTUP_CHECK_OFF, false},
 
     // Sentinel to mark end of array
     {NULL, CONFIG_TYPE_BOOL, 0, 0, NULL, 0, false}
@@ -403,7 +403,7 @@ void load_default_config(config_t *config) {
     config->db_backup_interval_minutes = 0;
     config->db_backup_retention_count = 6;
     config->db_post_backup_script[0] = '\0';
-    config->db_startup_check = DB_STARTUP_CHECK_QUICK;
+    config->db_startup_check = DB_STARTUP_CHECK_OFF;
     
     // Web server settings
     config->web_port = 8080;
@@ -641,9 +641,9 @@ int validate_config(config_t *config) {
 
     if (config->db_startup_check < DB_STARTUP_CHECK_OFF ||
         config->db_startup_check > DB_STARTUP_CHECK_FULL) {
-        log_warn("db startup_check (%d) out of range [%d,%d]; using quick",
+        log_warn("db startup_check (%d) out of range [%d,%d]; using off",
                  config->db_startup_check, DB_STARTUP_CHECK_OFF, DB_STARTUP_CHECK_FULL);
-        config->db_startup_check = DB_STARTUP_CHECK_QUICK;
+        config->db_startup_check = DB_STARTUP_CHECK_OFF;
     }
 
     // Clamp capacity/pressure settings to sane ranges. min_free_pct must leave
@@ -903,7 +903,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             } else if (strcasecmp(value, "quick") == 0) {
                 config->db_startup_check = DB_STARTUP_CHECK_QUICK;
             } else {
-                config->db_startup_check = safe_atoi(value, DB_STARTUP_CHECK_QUICK);
+                config->db_startup_check = safe_atoi(value, DB_STARTUP_CHECK_OFF);
             }
         }
     }
@@ -1830,7 +1830,7 @@ int save_config(const config_t *config, const char *path) {
             config->db_backup_interval_minutes);
     fprintf(file, "backup_retention_count = %d  ; Number of timestamped backups to keep\n",
             config->db_backup_retention_count);
-    fprintf(file, "startup_check = %s  ; Boot consistency check: off, quick (default), or full\n",
+    fprintf(file, "startup_check = %s  ; Boot consistency check: off (default), quick, or full\n",
             config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
             config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
     fprintf(file, "post_backup_script = %s  ; Optional absolute path to executable hook\n\n",

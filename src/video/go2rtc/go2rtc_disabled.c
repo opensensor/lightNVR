@@ -51,6 +51,12 @@ bool go2rtc_api_get_application_info(int *rtsp_port, char *version, size_t versi
     UNUSED(revision); UNUSED(revision_size); return false;
 }
 bool go2rtc_api_preload_stream(const char *stream_id) { UNUSED(stream_id); return false; }
+bool go2rtc_api_publish_stream(const char *stream_id, const char *destination) {
+    UNUSED(stream_id); UNUSED(destination); return false;
+}
+bool go2rtc_api_publish_stream_async(const char *stream_id, const char *destination) {
+    UNUSED(stream_id); UNUSED(destination); return false;
+}
 void go2rtc_api_cleanup(void) {}
 
 bool go2rtc_process_init(const char *binary_path, const char *config_dir, int api_port) {

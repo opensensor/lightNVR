@@ -122,6 +122,7 @@ add_layer1_test(test_detection_result_structures)
 # Layer 2: lightnvr_lib tests — compiled functions + optional SQLite
 # ====================================================================
 add_layer2_test(test_config)
+add_layer2_test(test_db_core_initialization)
 add_layer2_test(test_logger)
 add_layer2_test(test_strings)
 add_layer2_test(test_interruptible_sleep)
@@ -216,6 +217,7 @@ endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_stream_activity)
+    add_layer2_test_with_curl(test_go2rtc_publish_async)
     add_executable(fake_go2rtc_server fake_go2rtc_server.c)
     set_target_properties(fake_go2rtc_server PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

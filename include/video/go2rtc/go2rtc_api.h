@@ -155,6 +155,20 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
 bool go2rtc_api_publish_stream(const char *stream_id, const char *destination);
 
 /**
+ * @brief Schedule an RTMP/RTMPS publish without blocking the caller
+ *
+ * go2rtc establishes the outbound connection before answering its publish API.
+ * An unreachable ingest endpoint can therefore hold the request for the full
+ * mutation timeout. Startup registration must use this asynchronous variant so
+ * external network health cannot delay the LightNVR web server becoming ready.
+ * Pending jobs are drained by go2rtc_api_cleanup().
+ *
+ * @return true if the publish job was scheduled, false otherwise
+ */
+bool go2rtc_api_publish_stream_async(const char *stream_id,
+                                     const char *destination);
+
+/**
  * @brief Preload a stream in go2rtc to keep it active
  *
  * This keeps a persistent video-only consumer connected to the stream,

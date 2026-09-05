@@ -27,12 +27,10 @@
 // Consistency check run against an existing database at startup.
 //
 // FULL is `PRAGMA integrity_check`, which cross-verifies every index against
-// its table. That cost scales with total index size, not row count, so on a
-// database carrying many secondary indexes it can take minutes -- minutes with
-// no HTTP listener bound, which reads to a proxy as a gateway error. QUICK is
-// `PRAGMA quick_check`: same page-level structural validation, without the
-// index cross-check, and the corruption modes actually seen in the field
-// (truncated writes, torn pages) show up in both.
+// its table. QUICK is `PRAGMA quick_check`, which performs page-level
+// structural validation without the index cross-check. Both scan the database
+// before the HTTP listener binds, so they are opt-in boot diagnostics rather
+// than the default; run integrity checks during a maintenance window instead.
 #define DB_STARTUP_CHECK_OFF   0
 #define DB_STARTUP_CHECK_QUICK 1
 #define DB_STARTUP_CHECK_FULL  2

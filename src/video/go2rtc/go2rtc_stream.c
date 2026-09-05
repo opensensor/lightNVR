@@ -456,8 +456,8 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
     // publish_url lives on the main stream config only; the "<name>_sub" lookup
     // for sub-streams simply won't match a row, so sub-streams never publish.
     if (result && publish_enabled) {
-        if (!go2rtc_api_publish_stream(stream_id, pub_cfg.publish_url)) {
-            log_warn("Failed to start RTMP restream for %s; will retry on next registration",
+        if (!go2rtc_api_publish_stream_async(stream_id, pub_cfg.publish_url)) {
+            log_warn("Failed to schedule RTMP restream for %s; will retry on next registration",
                      stream_id);
         }
     }

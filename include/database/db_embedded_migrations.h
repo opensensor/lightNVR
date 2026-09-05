@@ -1886,6 +1886,14 @@ static const char migration_0082_up[] =
 static const char migration_0082_down[] =
     "ALTER TABLE event_destinations DROP COLUMN status_topic_template;";
 
+static const char migration_0083_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_detections_open_external_motion\n"
+    "ON detections(id)\n"
+    "WHERE source = 'external_motion' AND event_end_time IS NULL;";
+
+static const char migration_0083_down[] =
+    "DROP INDEX IF EXISTS idx_detections_open_external_motion;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2461,8 +2469,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0082_down,
         .is_embedded = true
     },
+    {
+        .version = "0083",
+        .description = "index_open_external_motion",
+        .sql_up = migration_0083_up,
+        .sql_down = migration_0083_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 82
+#define EMBEDDED_MIGRATIONS_COUNT 83
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

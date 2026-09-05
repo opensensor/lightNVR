@@ -144,6 +144,75 @@ static int build_timestamped_backup_path(const char *backup_dir, char *backup_pa
     return -1;
 }
 
+static bool has_suffix(const char *value, const char *suffix) {
+    size_t value_len = strlen(value);
+    size_t suffix_len = strlen(suffix);
+    return value_len >= suffix_len &&
+           strcmp(value + value_len - suffix_len, suffix) == 0;
+}
+
+static bool is_temporary_backup_artifact(const char *name) {
+    return has_suffix(name, ".sqlite3.tmp") ||
+           has_suffix(name, ".sqlite3.tmp-wal") ||
+           has_suffix(name, ".sqlite3.tmp-shm") ||
+           has_suffix(name, ".sqlite3.tmp-journal");
+}
+
+/*
+ * A container can be killed while sqlite3_backup() is writing or verifying a
+ * timestamped backup.  The normal error path removes that temporary database,
+ * but SIGKILL gives it no chance to run and multi-gigabyte .tmp files then
+ * accumulate forever.  No live backup exists while the database is being
+ * initialized, so startup is the safe point to remove artifacts left by a
+ * previous process.
+ */
+static int cleanup_stale_backup_artifacts(const char *backup_dir) {
+    DIR *dir = opendir(backup_dir);
+    if (!dir) {
+        return errno == ENOENT ? 0 : -1;
+    }
+
+    int result = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (!is_temporary_backup_artifact(entry->d_name)) {
+            continue;
+        }
+
+        char full_path[PATH_MAX];
+        if (snprintf(full_path, sizeof(full_path), "%s/%s", backup_dir,
+                     entry->d_name) >= (int)sizeof(full_path)) {
+            log_warn("Skipping overlong temporary backup path in %s", backup_dir);
+            result = -1;
+            continue;
+        }
+
+        struct stat st;
+        if (lstat(full_path, &st) != 0) {
+            if (errno != ENOENT) {
+                log_warn("Failed to inspect temporary backup %s: %s",
+                         full_path, strerror(errno));
+                result = -1;
+            }
+            continue;
+        }
+        if (!S_ISREG(st.st_mode)) {
+            continue;
+        }
+
+        if (unlink(full_path) != 0) {
+            log_warn("Failed to remove stale temporary backup %s: %s",
+                     full_path, strerror(errno));
+            result = -1;
+        } else {
+            log_info("Removed stale temporary database backup: %s", full_path);
+        }
+    }
+
+    closedir(dir);
+    return result;
+}
+
 static int copy_file_contents(const char *source_path, const char *dest_path) {
     int src_fd = -1;
     int dst_fd = -1;
@@ -245,6 +314,13 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        /* Retention counts only published backups.  Partial databases and
+         * their sidecars are cleaned separately and must never displace a
+         * valid recovery point. */
+        if (!has_suffix(entry->d_name, ".sqlite3")) {
             continue;
         }
 
@@ -511,6 +587,64 @@ int init_database_ex(const char *db_path, unsigned flags) {
         last_backup_time = 0;
     }
 
+    bool read_only = (flags & DB_INIT_READ_ONLY) == DB_INIT_READ_ONLY;
+    if (!read_only) {
+        char backup_dir[PATH_MAX];
+        if (snprintf(backup_dir, sizeof(backup_dir), "%s.backups", db_file_path) >=
+            (int)sizeof(backup_dir)) {
+            log_warn("Backup directory path is too long for stale-file cleanup");
+        } else if (cleanup_stale_backup_artifacts(backup_dir) != 0) {
+            log_warn("Failed to remove every stale temporary database backup");
+        }
+    }
+
+    /*
+     * One-shot consumers such as --generate-go2rtc-config only need SELECTs.
+     * Returning a genuinely read-only global handle here avoids the normal
+     * initialization path's WAL setup, write probe, migrations, tag backfill,
+     * and external-motion cleanup.  In particular, that cleanup is an
+     * unindexed scan of detections and made the preflight take tens of seconds
+     * on production databases.
+     */
+    if (read_only) {
+        rc = sqlite3_open_v2(db_path, &db,
+                             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX |
+                             SQLITE_OPEN_PRIVATECACHE,
+                             NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to open database read-only: %s",
+                      db ? sqlite3_errmsg(db) : sqlite3_errstr(rc));
+            if (db) {
+                sqlite3_close_v2(db);
+                db = NULL;
+            }
+            return -1;
+        }
+
+#ifdef SQLITE_FCNTL_PERSIST_WAL
+        int persist_wal = 1;
+        int persist_rc = sqlite3_file_control(
+            db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal);
+        if (persist_rc != SQLITE_OK && persist_rc != SQLITE_NOTFOUND) {
+            log_warn("Failed to preserve WAL sidecars for read-only initialization: %s",
+                     sqlite3_errstr(persist_rc));
+        }
+#endif
+
+        sqlite3_busy_timeout(db, 10000);
+        rc = sqlite3_exec(db, "PRAGMA query_only=ON;", NULL, NULL, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to configure read-only database initialization: %s",
+                      sqlite3_errmsg(db));
+            sqlite3_close_v2(db);
+            db = NULL;
+            return -1;
+        }
+
+        log_info("Database initialized successfully (read-only)");
+        return 0;
+    }
+
     // Check if database already exists
     FILE *test_file = fopen(db_path, "r");
     if (test_file) {
@@ -549,12 +683,12 @@ int init_database_ex(const char *db_path, unsigned flags) {
             //
             // This runs before the HTTP listener is bound, so its cost is dead
             // time during which a proxy in front of us can only return a
-            // gateway error. Default to quick_check and let an operator opt
-            // into the full index cross-check; skip it entirely for read-only
-            // one-shot callers that are about to exit anyway.
+            // gateway error. Keep boot checks opt-in; operators can run quick
+            // or full checks as explicit maintenance. Read-only one-shot
+            // callers skip this path entirely.
             int check_mode = g_config.db_startup_check;
             if (check_mode < DB_STARTUP_CHECK_OFF || check_mode > DB_STARTUP_CHECK_FULL) {
-                check_mode = DB_STARTUP_CHECK_QUICK;
+                check_mode = DB_STARTUP_CHECK_OFF;
             }
             if (db_init_flags & DB_INIT_NO_CHECK) {
                 check_mode = DB_STARTUP_CHECK_OFF;

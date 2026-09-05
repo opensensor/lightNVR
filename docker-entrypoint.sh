@@ -99,14 +99,14 @@ mp4_retention_days = 30
 [database]
 path = /var/lib/lightnvr/data/database/lightnvr.db
 ; startup_check: consistency check run against an existing database at boot.
-;   quick (default) - PRAGMA quick_check: page-level structural validation
+;   quick           - PRAGMA quick_check: page-level structural validation
 ;   full            - PRAGMA integrity_check: also cross-checks every index
 ;                     against its table. Cost scales with total index size and
 ;                     can take minutes on a large database -- minutes with no
 ;                     HTTP listener bound, which a proxy reports as a gateway
 ;                     error. Prefer running it from maintenance, not at boot.
-;   off             - skip the check
-; startup_check = quick
+;   off (default)   - skip the boot check; run it during maintenance instead
+; startup_check = off
 ; backup_retention_count = 6  ; timestamped backups to keep (each is a full copy)
 
 [web]
