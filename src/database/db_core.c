@@ -890,8 +890,33 @@ void shutdown_database(void) {
     // database and verifies the copy, so a process that only read a few rows
     // would otherwise spend minutes on exit writing a duplicate of a database
     // it never modified.
+    time_t backup_interval_seconds = g_config.db_backup_interval_minutes > 0
+        ? (time_t)g_config.db_backup_interval_minutes * 60 : 0;
+    time_t now = time(NULL);
+    bool recent_backup_exists = backup_interval_seconds > 0 &&
+        last_backup_time != 0 && now - last_backup_time < backup_interval_seconds;
+
     if (db_init_flags & DB_INIT_NO_BACKUP) {
         log_info("Skipping shutdown backup (read-only initialization)");
+    } else if (recent_backup_exists) {
+        // A backup already exists from within the configured scheduled
+        // interval -- most commonly, the hourly scheduled backup just ran a
+        // few minutes before a restart/shutdown was requested. Taking
+        // another one here would fully re-copy and re-verify a multi-
+        // gigabyte database (observed up to ~9-10 minutes) purely to
+        // capture a few minutes of additional changes, on every single
+        // restart. The on-disk database file itself is still fully
+        // checkpointed and closed cleanly below regardless -- this only
+        // skips the *extra* standalone backup-file snapshot, whose purpose
+        // is disaster recovery, not the shutdown's own data integrity. Worst
+        // case if corruption strikes shortly after, recovery falls back to
+        // a backup up to one scheduled interval old -- the same staleness
+        // bound already accepted during normal steady-state operation
+        // between scheduled backups.
+        log_info("Skipping final backup: last backup was %ld seconds ago, "
+                 "within the %d-minute scheduled interval",
+                 (long)(now - last_backup_time),
+                 g_config.db_backup_interval_minutes);
     } else if (db != NULL && db_file_path[0] != '\0') {
         log_info("Creating final backup before shutdown");
         // Not abortable: this is the deliberate one-time backup taken while
