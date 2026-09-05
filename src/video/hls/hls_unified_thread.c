@@ -1235,7 +1235,7 @@ void *hls_unified_thread_func(void *arg) {
                 // Find video stream
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
-                    log_error("No video stream found in %s", ctx->rtsp_url);
+                    log_error("No video stream found for stream %s", stream_name);
 
                     // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
                     comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
@@ -1639,7 +1639,8 @@ void *hls_unified_thread_func(void *arg) {
                 // Find video stream
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
-                    log_error("No video stream found in %s during reconnection", ctx->rtsp_url);
+                    log_error("No video stream found for stream %s during reconnection",
+                              stream_name);
 
                     // Close input context
                     avformat_close_input(&input_ctx);

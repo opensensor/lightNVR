@@ -33,6 +33,8 @@
 #include "../../include/video/ffmpeg_utils.h"  // For comprehensive_ffmpeg_cleanup
 #include "../../include/core/logger.h"
 #include "../../include/core/config.h"  // For MAX_PATH_LENGTH
+#include "../../include/core/url_utils.h"
+#include "../../include/utils/strings.h"
 
 // Global variables for timeout handling in video detection
 static jmp_buf video_timeout_jmp_buf;
@@ -183,7 +185,11 @@ int clear_video_timeout(void) {
  * @return AVERROR(ETIMEDOUT) to indicate timeout
  */
 int handle_hls_timeout(const char *url, AVFormatContext **input_ctx) {
-    log_warn("HLS timeout occurred for stream: %s", url ? url : "unknown");
+    char safe_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(url, safe_url, sizeof(safe_url)) != 0) {
+        safe_strcpy(safe_url, "[invalid-url]", sizeof(safe_url), 0);
+    }
+    log_warn("HLS timeout occurred for stream: %s", safe_url);
 
     // MEMORY LEAK FIX: Use our comprehensive cleanup function instead of manual cleanup
     // This ensures all resources are properly freed, including internal buffers

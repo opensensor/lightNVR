@@ -1,8 +1,13 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "utils/memory.h"
 #include "core/logger.h"
@@ -100,4 +105,34 @@ size_t get_total_memory_allocated(void) {
 // Get peak memory allocated
 size_t get_peak_memory_allocated(void) {
     return peak_memory_allocated;
+}
+
+bool file_cache_release_due(off_t released_through, off_t current_position,
+                            off_t interval_bytes) {
+    if (released_through < 0 || current_position < released_through ||
+        interval_bytes <= 0) {
+        return false;
+    }
+
+    return current_position - released_through >= interval_bytes;
+}
+
+int file_cache_flush_and_release(int fd, off_t offset, off_t length) {
+    if (fd < 0 || offset < 0 || length < 0) {
+        return EINVAL;
+    }
+
+    /* POSIX_FADV_DONTNEED is only reliable for clean pages. Persist the file
+     * first so a memory-limited recorder can actually reclaim the range. */
+    if (fdatasync(fd) != 0) {
+        return errno;
+    }
+
+#ifdef POSIX_FADV_DONTNEED
+    return posix_fadvise(fd, offset, length, POSIX_FADV_DONTNEED);
+#else
+    (void)offset;
+    (void)length;
+    return ENOTSUP;
+#endif
 }

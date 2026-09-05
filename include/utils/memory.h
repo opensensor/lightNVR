@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 /**
  * Safe memory allocation that checks for allocation failures
@@ -69,5 +70,20 @@ size_t get_total_memory_allocated(void);
  * @return Peak memory allocated in bytes
  */
 size_t get_peak_memory_allocated(void);
+
+/**
+ * Return whether a sequential writer has advanced far enough to flush and
+ * release another range from the filesystem page cache.
+ */
+bool file_cache_release_due(off_t released_through, off_t current_position,
+                            off_t interval_bytes);
+
+/**
+ * Persist an fd's dirty data and ask the kernel to evict the specified range
+ * from the filesystem page cache. A length of zero means through end-of-file.
+ *
+ * @return 0 on success, otherwise a positive errno-style error code.
+ */
+int file_cache_flush_and_release(int fd, off_t offset, off_t length);
 
 #endif /* MEMORY_UTILS_H */

@@ -58,7 +58,7 @@ bool is_multicast_url(const char *url) {
 
     // Validate input
     if (!url || strlen(url) < 7) {  // Minimum length for "udp://1"
-        log_warn("Invalid URL for multicast detection: %s", url ? url : "NULL");
+        log_warn("Invalid URL for multicast detection");
         return false;
     }
 

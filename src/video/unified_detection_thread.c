@@ -649,8 +649,14 @@ static int find_empty_slot(void) {
 static void *onvif_detection_thread_func(void *arg) {
     unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)arg;
 
+    char safe_onvif_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(ctx->onvif_url_cached, safe_onvif_url,
+                               sizeof(safe_onvif_url)) != 0) {
+        safe_strcpy(safe_onvif_url, "[invalid-url]",
+                    sizeof(safe_onvif_url), 0);
+    }
     log_info("[%s] ONVIF detection thread started (url=%s)",
-             ctx->stream_name, ctx->onvif_url_cached);
+             ctx->stream_name, safe_onvif_url);
     log_debug("[%s] ONVIF detection thread auth=%s",
               ctx->stream_name, (ctx->onvif_username_cached[0] != '\0') ? "enabled" : "disabled");
 
@@ -854,8 +860,14 @@ static int detection_stream_interrupt_cb(void *opaque) {
 static void *detection_stream_thread_func(void *arg) {
     unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)arg;
 
+    char safe_detection_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(ctx->detection_stream_url, safe_detection_url,
+                               sizeof(safe_detection_url)) != 0) {
+        safe_strcpy(safe_detection_url, "[invalid-url]",
+                    sizeof(safe_detection_url), 0);
+    }
     log_info("[%s] Detection stream thread started (url=%s)",
-             ctx->stream_name, ctx->detection_stream_url);
+             ctx->stream_name, safe_detection_url);
 
     int reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
 
@@ -900,7 +912,7 @@ static void *detection_stream_thread_func(void *arg) {
             char errbuf[128];
             av_strerror(ret, errbuf, sizeof(errbuf));
             log_warn("[%s] Detection stream thread: cannot open %s: %s — retry in %d ms",
-                     ctx->stream_name, ctx->detection_stream_url, errbuf, reconnect_delay_ms);
+                     ctx->stream_name, safe_detection_url, errbuf, reconnect_delay_ms);
             detection_stream_backoff(ctx, &reconnect_delay_ms);
             continue;
         }
@@ -921,7 +933,7 @@ static void *detection_stream_thread_func(void *arg) {
         }
         if (video_idx < 0) {
             log_warn("[%s] Detection stream thread: no video stream in %s",
-                     ctx->stream_name, ctx->detection_stream_url);
+                     ctx->stream_name, safe_detection_url);
             avformat_close_input(&fmt_ctx);
             detection_stream_backoff(ctx, &reconnect_delay_ms);
             continue;
@@ -1275,8 +1287,8 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
 
         if (ctx->onvif_url_cached[0] == '\0') {
             log_error("[%s] Cannot start ONVIF detection thread: "
-                      "could not derive ONVIF URL from stream URL '%s'",
-                      stream_name, config.url);
+                      "could not derive an ONVIF URL from the configured stream",
+                      stream_name);
             /* Non-fatal: run_detection_on_frame() will see onvif_motion_detected==0
              * and return false every cycle, which is safe (no spurious recordings). */
         } else {
@@ -1298,8 +1310,15 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
                      stream_name);
             /* Non-fatal: the UDT will run detection on the main stream instead. */
         } else {
+            char safe_detection_url[MAX_URL_LENGTH];
+            if (url_redact_for_logging(ctx->detection_stream_url,
+                                       safe_detection_url,
+                                       sizeof(safe_detection_url)) != 0) {
+                safe_strcpy(safe_detection_url, "[invalid-url]",
+                            sizeof(safe_detection_url), 0);
+            }
             log_info("[%s] Detection stream thread started for url=%s",
-                     stream_name, ctx->detection_stream_url);
+                     stream_name, safe_detection_url);
         }
     }
 
@@ -1552,7 +1571,12 @@ void unified_detection_notify_motion(const char *stream_name, bool motion_active
 static int connect_to_stream(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
 
-    log_info("[%s] Connecting to stream: %s", ctx->stream_name, ctx->rtsp_url);
+    char safe_rtsp_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(ctx->rtsp_url, safe_rtsp_url,
+                               sizeof(safe_rtsp_url)) != 0) {
+        safe_strcpy(safe_rtsp_url, "[invalid-url]", sizeof(safe_rtsp_url), 0);
+    }
+    log_info("[%s] Connecting to stream: %s", ctx->stream_name, safe_rtsp_url);
 
     // Allocate format context
     ctx->input_ctx = avformat_alloc_context();

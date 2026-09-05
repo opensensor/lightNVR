@@ -290,8 +290,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 if (has_audio && ends_with_video) {
                     // Audio enabled: strip ?video so go2rtc delivers audio+video
                     thread_ctx->rtsp_url[url_len - suffix_len] = '\0';
-                    log_info("Removed ?video suffix from RTSP URL for stream %s (audio now enabled): %s",
-                             stream_name, thread_ctx->rtsp_url);
+                    log_info("Removed ?video suffix from RTSP URL for stream %s (audio now enabled)",
+                             stream_name);
                 } else if (!has_audio && !ends_with_video &&
                            (strstr(thread_ctx->rtsp_url, "localhost") != NULL ||
                             strstr(thread_ctx->rtsp_url, "127.0.0.1") != NULL)) {
@@ -300,8 +300,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                     if (url_len + suffix_len < sizeof(thread_ctx->rtsp_url)) {
                         safe_strcat(thread_ctx->rtsp_url, video_suffix,
                                 sizeof(thread_ctx->rtsp_url));
-                        log_info("Appended ?video suffix to RTSP URL for stream %s (audio now disabled): %s",
-                                 stream_name, thread_ctx->rtsp_url);
+                        log_info("Appended ?video suffix to RTSP URL for stream %s (audio now disabled)",
+                                 stream_name);
                     }
                 }
 

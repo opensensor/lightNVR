@@ -10,6 +10,9 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "unity.h"
 #include "utils/memory.h"
 #include "core/logger.h"
@@ -185,6 +188,45 @@ void test_track_memory_underflow_handled(void) {
 }
 
 /* ================================================================
+ * Filesystem page-cache control
+ * ================================================================ */
+
+void test_file_cache_release_due_uses_bounded_intervals(void) {
+    const off_t interval = 32 * 1024 * 1024;
+
+    TEST_ASSERT_FALSE(file_cache_release_due(0, interval - 1, interval));
+    TEST_ASSERT_TRUE(file_cache_release_due(0, interval, interval));
+    TEST_ASSERT_FALSE(file_cache_release_due(interval, interval * 2 - 1, interval));
+    TEST_ASSERT_TRUE(file_cache_release_due(interval, interval * 2, interval));
+    TEST_ASSERT_FALSE(file_cache_release_due(100, 99, interval));
+    TEST_ASSERT_FALSE(file_cache_release_due(0, interval, 0));
+}
+
+void test_file_cache_flush_and_release_preserves_file_contents(void) {
+    char path[] = "/tmp/lightnvr-file-cache-XXXXXX";
+    const char payload[] = "recording-data-must-survive-cache-release";
+    char readback[sizeof(payload)] = {0};
+    int fd = mkstemp(path);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, fd);
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT((int)sizeof(payload),
+                          (int)write(fd, payload, sizeof(payload)));
+    TEST_ASSERT_EQUAL_INT(0, file_cache_flush_and_release(fd, 0, 0));
+    TEST_ASSERT_EQUAL_INT(0, (int)lseek(fd, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT((int)sizeof(readback),
+                          (int)read(fd, readback, sizeof(readback)));
+    TEST_ASSERT_EQUAL_MEMORY(payload, readback, sizeof(payload));
+    TEST_ASSERT_EQUAL_INT(0, close(fd));
+}
+
+void test_file_cache_flush_and_release_rejects_invalid_ranges(void) {
+    TEST_ASSERT_EQUAL_INT(EINVAL, file_cache_flush_and_release(-1, 0, 0));
+    TEST_ASSERT_EQUAL_INT(EINVAL, file_cache_flush_and_release(0, -1, 0));
+    TEST_ASSERT_EQUAL_INT(EINVAL, file_cache_flush_and_release(0, 0, -1));
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -216,8 +258,11 @@ int main(void) {
     RUN_TEST(test_peak_memory_never_decreases);
     RUN_TEST(test_track_memory_underflow_handled);
 
+    RUN_TEST(test_file_cache_release_due_uses_bounded_intervals);
+    RUN_TEST(test_file_cache_flush_and_release_preserves_file_contents);
+    RUN_TEST(test_file_cache_flush_and_release_rejects_invalid_ranges);
+
     int result = UNITY_END();
     shutdown_logger();
     return result;
 }
-

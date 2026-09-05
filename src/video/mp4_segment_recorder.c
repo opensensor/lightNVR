@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 /**
  * MP4 Segment Recorder
  *
@@ -19,6 +21,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <libgen.h>
 
 #include <libavformat/avformat.h>
@@ -29,7 +32,10 @@
 
 #include "core/config.h"
 #include "core/logger.h"
+#include "core/url_utils.h"
 #include "core/shutdown_coordinator.h"
+#include "utils/memory.h"
+#include "utils/strings.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_segment_recorder.h"
@@ -67,6 +73,12 @@
 // normal operation.
 #define SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S 1
 #define KEYFRAME_WAIT_TIMEOUT_S          5
+
+/* Continuous recordings default to 15-minute segments. With several cameras,
+ * waiting for segment close before releasing clean output pages can charge
+ * gigabytes of page cache to a memory-limited container. Flush and evict in
+ * bounded increments instead. */
+#define RECORDING_CACHE_RELEASE_INTERVAL_BYTES (32LL * 1024LL * 1024LL)
 
 // Small fixed offset used to maintain timestamp continuity between segments.
 // Expressed in stream time_base units; currently set to 1 (minimum positive
@@ -111,6 +123,56 @@ static int64_t calculate_frame_duration_from_stream(const AVStream *stream) {
     }
 
     return 1;
+}
+
+static void maybe_release_recording_file_cache(AVFormatContext *output_ctx,
+                                                int *cache_fd,
+                                                off_t *released_through) {
+    if (!output_ctx || !output_ctx->pb || !cache_fd || *cache_fd < 0 ||
+        !released_through) {
+        return;
+    }
+
+    int64_t position = avio_tell(output_ctx->pb);
+    off_t current_position = (off_t)position;
+    if (position < 0 || (int64_t)current_position != position ||
+        !file_cache_release_due(*released_through, current_position,
+                                (off_t)RECORDING_CACHE_RELEASE_INTERVAL_BYTES)) {
+        return;
+    }
+
+    /* Move FFmpeg's userspace AVIO buffer into the kernel before syncing and
+     * evicting the completed range through the second descriptor. */
+    avio_flush(output_ctx->pb);
+    int release_rc = file_cache_flush_and_release(
+        *cache_fd, *released_through, current_position - *released_through);
+    if (release_rc == 0) {
+        *released_through = current_position;
+        return;
+    }
+
+    log_warn("Disabling recording page-cache release after flush failed: %s",
+             strerror(release_rc));
+    close(*cache_fd);
+    *cache_fd = -1;
+}
+
+static void release_all_recording_file_cache(int *cache_fd,
+                                             const char *output_file) {
+    if (!cache_fd || *cache_fd < 0) {
+        return;
+    }
+
+    /* The MP4 faststart trailer can revisit earlier pages, so release the
+     * entire file after avio_closep(), not only the last incremental range. */
+    int release_rc = file_cache_flush_and_release(*cache_fd, 0, 0);
+    if (release_rc != 0) {
+        log_warn("Failed to release recording page cache for %s: %s",
+                 output_file ? output_file : "[unknown-file]",
+                 strerror(release_rc));
+    }
+    close(*cache_fd);
+    *cache_fd = -1;
 }
 
 void mp4_segment_rescale_packet_ts(AVPacket *pkt,
@@ -292,6 +354,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int audio_stream_idx = -1;
     bool needs_audio_transcoding = false;
     bool reuse_input_context = true;
+    int recording_cache_fd = -1;
+    off_t recording_cache_released_through = 0;
     AVStream *out_video_stream = NULL;
     AVStream *out_audio_stream = NULL;
     int64_t first_video_dts = AV_NOPTS_VALUE;
@@ -344,7 +408,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     log_info("Starting new segment with index %d", segment_index);
 
-    log_info("Recording from %s", rtsp_url);
+    char safe_rtsp_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(rtsp_url, safe_rtsp_url,
+                               sizeof(safe_rtsp_url)) != 0) {
+        safe_strcpy(safe_rtsp_url, "[invalid-url]", sizeof(safe_rtsp_url), 0);
+    }
+
+    log_info("Recording from %s", safe_rtsp_url);
     log_info("Output file: %s", output_file);
     log_info("Duration: %d seconds", duration);
 
@@ -399,16 +469,16 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         av_dict_set(&opts, "probesize", "5242880", 0);        // 5 MB (5 * 1024 * 1024 bytes, FFmpeg default)
 
         // Open input
-        log_info("Opening RTSP connection to %s (analyzeduration=5s, probesize=5MB)", rtsp_url);
+        log_info("Opening RTSP connection to %s (analyzeduration=5s, probesize=5MB)", safe_rtsp_url);
         ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
         if (ret < 0) {
             char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
             av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
             if (ret == AVERROR_EXIT) {
                 log_warn("RTSP open interrupted (AVERROR_EXIT) for %s — "
-                         "thread shutdown was requested during connection", rtsp_url);
+                         "thread shutdown was requested during connection", safe_rtsp_url);
             } else {
-                log_error("Failed to open RTSP input %s: %d (%s)", rtsp_url, ret, error_buf);
+                log_error("Failed to open RTSP input %s: %d (%s)", safe_rtsp_url, ret, error_buf);
             }
 
             // Ensure input_ctx is NULL after a failed open
@@ -422,15 +492,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
 
         // Find stream info
-        log_info("Probing stream info for %s ...", rtsp_url);
+        log_info("Probing stream info for %s ...", safe_rtsp_url);
         ret = avformat_find_stream_info(input_ctx, NULL);
         if (ret < 0) {
             char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
             av_strerror(ret, err_buf, sizeof(err_buf));
-            log_error("Failed to find stream info for %s: %d (%s)", rtsp_url, ret, err_buf);
+            log_error("Failed to find stream info for %s: %d (%s)", safe_rtsp_url, ret, err_buf);
             goto cleanup;
         }
-        log_info("Stream info detected for %s: %d streams", rtsp_url, input_ctx->nb_streams);
+        log_info("Stream info detected for %s: %d streams", safe_rtsp_url, input_ctx->nb_streams);
     }
 
     // Log input stream info
@@ -840,6 +910,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     }
 
     log_debug("Successfully opened output file: %s", output_file);
+
+    recording_cache_fd = open(output_file, O_RDWR | O_CLOEXEC);
+    if (recording_cache_fd < 0) {
+        log_debug("Recording page-cache control unavailable for %s: %s",
+                  output_file, strerror(errno));
+    }
 
     // Defensive: if we somehow reach here with 0x0 dimensions (should be caught
     // above), fail rather than writing a broken MP4 header.
@@ -1425,6 +1501,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 if (video_packet_count % 300 == 0) {
                     log_debug("Processed %d video packets", video_packet_count);
                 }
+                maybe_release_recording_file_cache(
+                    output_ctx, &recording_cache_fd,
+                    &recording_cache_released_through);
             }
         }
         // Process audio packets - only if audio is enabled and we have an audio output stream
@@ -1648,6 +1727,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 if (audio_packet_count % 300 == 0) {
                     log_debug("Processed %d audio packets", audio_packet_count);
                 }
+                maybe_release_recording_file_cache(
+                    output_ctx, &recording_cache_fd,
+                    &recording_cache_released_through);
             }
         }
 
@@ -1762,12 +1844,17 @@ cleanup:
             }
         }
 
+        release_all_recording_file_cache(&recording_cache_fd, output_file);
+
         // Free output context — avformat_free_context() owns all streams and their
         // codecpar; do NOT call avcodec_parameters_free() on them beforehand.
         log_debug("Freeing output context");
         avformat_free_context(output_ctx);
         output_ctx = NULL;
     }
+
+    /* Covers failures before an output context reached the normal close path. */
+    release_all_recording_file_cache(&recording_cache_fd, output_file);
 
     // CRITICAL FIX: Properly handle the input context to prevent memory leaks
     log_debug("Handling input context cleanup");

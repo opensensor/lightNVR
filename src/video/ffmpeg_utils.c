@@ -1,6 +1,8 @@
 #include "video/ffmpeg_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
+#include "utils/strings.h"
 #include "video/ffmpeg_leak_detector.h"
 #include "video/stream_protocol.h"
 
@@ -270,7 +272,11 @@ int periodic_ffmpeg_reset(AVFormatContext **input_ctx_ptr, const char *url, int 
         return -1;
     }
 
-    log_info("Performing periodic FFmpeg resource reset for URL: %s", url);
+    char safe_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(url, safe_url, sizeof(safe_url)) != 0) {
+        safe_strcpy(safe_url, "[invalid-url]", sizeof(safe_url), 0);
+    }
+    log_info("Performing periodic FFmpeg resource reset for URL: %s", safe_url);
 
     // Dump current FFmpeg allocations for debugging
     ffmpeg_dump_allocations();

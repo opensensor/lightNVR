@@ -1910,8 +1910,13 @@ static bool go2rtc_integration_reload_stream_config_locked(
         return false;
     }
 
+    char safe_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(url, safe_url, sizeof(safe_url)) != 0) {
+        safe_strcpy(safe_url, "[invalid-url]", sizeof(safe_url), 0);
+    }
     log_info("Successfully reloaded stream %s in go2rtc with URL: %s (protocol=%s)",
-             stream_name, url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
+             stream_name, safe_url,
+             protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
     return true;
 }
 

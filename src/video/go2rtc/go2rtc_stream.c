@@ -323,7 +323,14 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
         log_info("Non-RTSP source URL for stream %s, skipping RTSP fragment parameters", stream_id);
     }
 
-    log_info("Prepared go2rtc source URL for stream registration of %s: %s", stream_id, modified_url);
+    char safe_source_url[URL_BUFFER_SIZE];
+    if (url_redact_for_logging(modified_url, safe_source_url,
+                               sizeof(safe_source_url)) != 0) {
+        safe_strcpy(safe_source_url, "[invalid-url]",
+                    sizeof(safe_source_url), 0);
+    }
+    log_info("Prepared go2rtc source URL for stream registration of %s: %s",
+             stream_id, safe_source_url);
 
     /*
      * Compose the multi-source list for go2rtc.

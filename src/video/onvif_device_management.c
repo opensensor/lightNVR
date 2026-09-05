@@ -64,7 +64,13 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
     
     // Log only operation-level state; SOAP bodies and identities may contain
     // credentials or sensitive device metadata.
-    log_info("Sending SOAP request to: %s", device_url);
+    char safe_device_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(device_url, safe_device_url,
+                               sizeof(safe_device_url)) != 0) {
+        safe_strcpy(safe_device_url, "[invalid-url]",
+                    sizeof(safe_device_url), 0);
+    }
+    log_info("Sending SOAP request to: %s", safe_device_url);
     
     // Create security header if authentication is required
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
