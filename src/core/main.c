@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #include "core/version.h"
 #include "core/config.h"
@@ -86,7 +87,16 @@ void init_recordings_system(void);
 #include <fcntl.h>
 
 // Global flag for graceful shutdown
-volatile bool running = true;
+// _Atomic (not just volatile) because it's read from multiple real threads
+// now: the main loop, signal handlers, and shutdown_watchdog_thread_func()
+// below. `volatile` alone gives no atomicity or cross-thread ordering
+// guarantee in C11 -- it only prevents the compiler from caching a value in
+// a register, which is enough for the old signal-handler-only usage but not
+// for a second thread genuinely polling it concurrently. Plain `= true` /
+// `while (running)` / `running = false` usage elsewhere is unchanged and
+// still correct: C11 makes direct assignment/read of an _Atomic-qualified
+// object an implicit sequentially-consistent atomic store/load.
+_Atomic bool running = true;
 
 // Global flag for restart request (set by API handler)
 volatile bool restart_requested = false;
@@ -208,15 +218,15 @@ static void alarm_handler(int sig) {
 
 // How long a graceful shutdown gets before the watchdog force-kills the
 // process group. Must outlast the deliberate, non-abortable final backup
-// shutdown_database() takes before exiting (observed up to ~9 minutes on
-// this box's 2.6GB+ database) -- and must stay under the lightnvr.service
-// systemd override's TimeoutStopSec (600s as of 2026-09-03) so systemd never
-// has to SIGKILL first.
-// Was 570s, but a live test on 2026-09-04 showed the actual final backup
-// occasionally exceeding that (both watchdogs fired correctly, right at
-// 570s -- the collision/timing bugs were fixed, this was genuinely just not
-// enough margin above the observed ~9-9.5 minute backup duration on this
-// box's 2.6GB+ database). Bumped to give real headroom.
+// shutdown_database() takes before exiting -- on a multi-gigabyte database
+// this has been observed to take up to ~9-10 minutes in production. A
+// systemd unit wrapping this service in production MUST set TimeoutStopSec
+// comfortably above this value, or systemd will SIGKILL the process before
+// this watchdog ever gets a chance to run -- defeating the point of having
+// it. (An earlier value of 570s here was too tight: a live test showed both
+// watchdogs firing correctly right at 570s, but that was genuinely not
+// enough margin above the observed backup duration -- the collision/timing
+// bugs this file fixes were confirmed fixed, it just needed more headroom.)
 #define SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS 900
 
 // Runs for the lifetime of the process, polling `running` once a second.
@@ -238,15 +248,26 @@ static void alarm_handler(int sig) {
 // safe to call directly.
 static void *shutdown_watchdog_thread_func(void *arg) {
     (void)arg;
-    time_t shutdown_started_at = 0;
+    bool shutdown_started = false;
+    struct timespec shutdown_started_at = {0};
 
     while (1) {
         sleep(1);
 
         if (!running) {
-            if (shutdown_started_at == 0) {
-                shutdown_started_at = time(NULL);
-            } else if (time(NULL) - shutdown_started_at >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS) {
+            struct timespec now;
+            // CLOCK_MONOTONIC, not time(NULL)/CLOCK_REALTIME: this watchdog's
+            // whole job is to fire after a fixed amount of elapsed time, and
+            // the wall clock can jump (NTP sync, manual change) mid-shutdown.
+            // A backward jump against a CLOCK_REALTIME timestamp could make
+            // the elapsed-time computation go negative and never reach the
+            // timeout, silently disabling the one thing this thread exists
+            // to guarantee.
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (!shutdown_started) {
+                shutdown_started_at = now;
+                shutdown_started = true;
+            } else if (now.tv_sec - shutdown_started_at.tv_sec >= SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS) {
                 log_error("Shutdown watchdog: graceful shutdown did not complete within %d seconds, "
                           "force-killing process group", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
                 kill(0, SIGKILL);

@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/utsname.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #include "web/web_server.h"
 #include "core/logger.h"
@@ -21,7 +22,7 @@
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 
-extern volatile bool running; // Reference to the global variable defined in main.c
+extern _Atomic bool running; // Reference to the global variable defined in main.c
 
 // Global variable to store PID file path
 static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
