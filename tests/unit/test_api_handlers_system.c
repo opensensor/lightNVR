@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -347,6 +348,181 @@ void test_handle_get_system_info_reports_process_memory_and_threads(void) {
     cJSON *threads = cJSON_GetObjectItemCaseSensitive(root, "threads");
     TEST_ASSERT_TRUE(cJSON_IsNumber(threads));
     TEST_ASSERT_EQUAL_INT(17, (int)threads->valuedouble);
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    system_health_shutdown();
+}
+
+// Regression test: linux_cgroup.c's collector picks CONTAINER vs. HOST scope
+// for a whole batch of metrics (cpu, memory, pids) based on whether *any* of
+// them has a real, finite limit -- and systemd gives every unit a default,
+// finite TasksMax=, so a completely unconstrained host (no CPUQuota=/
+// MemoryMax= set on the service) still gets bumped to CONTAINER scope
+// purely because of that unrelated pids limit. Its cpu.usage_ratio/
+// memory.limit_bytes/memory.available_bytes observations are then emitted
+// under "container.*" anyway, just marked unavailable (unsupported/
+// unlimited) rather than not emitted at all. find_effective_health_
+// observation() used to prefer "container.*" whenever it existed at all,
+// regardless of availability, so it latched onto these permanently-
+// unavailable observations and never fell back to the perfectly good
+// host.cpu.busy_ratio/host.memory.* figures -- reproduced live: CPU Usage
+// and System Memory both showed "unsupported" on an ordinary bare-metal
+// install with no cgroup limits configured beyond systemd's own defaults.
+static int collect_scope_fallback_fixture(void *state,
+                                          const system_health_collect_context_t *context,
+                                          system_health_observation_sink_t *sink) {
+    (void)state;
+    system_health_observation_t observation;
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "container.cpu.usage_ratio",
+                sizeof(observation.metric), 0);
+    // linux_cgroup.c's init_observation() always stamps container-scoped
+    // observations with resource_id "self", never "host" -- matching that
+    // exactly here so this fixture can't mask a future regression of the
+    // same resource-filter class of bug PR #590 fixed.
+    safe_strcpy(observation.resource_id, "self",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_CONTAINER;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_unavailable(&observation,
+        SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "host.cpu.busy_ratio",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "host",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_HOST;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_available(&observation, 0.42,
+                                            SYSTEM_HEALTH_UNIT_RATIO);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "container.memory.limit_bytes",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "self",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_CONTAINER;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_unavailable(&observation,
+        SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "host.memory.total_bytes",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "host",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_HOST;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_available(&observation, 16000000000.0,
+                                            SYSTEM_HEALTH_UNIT_BYTES);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "container.memory.available_bytes",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "self",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_CONTAINER;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_unavailable(&observation,
+        SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    memset(&observation, 0, sizeof(observation));
+    safe_strcpy(observation.metric, "host.memory.available_bytes",
+                sizeof(observation.metric), 0);
+    safe_strcpy(observation.resource_id, "host",
+                sizeof(observation.resource_id), 0);
+    observation.scope = SYSTEM_HEALTH_SCOPE_HOST;
+    observation.sampled_monotonic_ms = context->monotonic_ms;
+    observation.observed_wall_time_ms = context->wall_time_ms;
+    system_health_observation_set_available(&observation, 4000000000.0,
+                                            SYSTEM_HEALTH_UNIT_BYTES);
+    TEST_ASSERT_TRUE(system_health_observation_sink_append(sink, &observation));
+
+    return 0;
+}
+
+void test_handle_get_system_info_falls_back_to_host_metrics_when_container_metrics_unsupported(void) {
+    system_health_options_t options;
+    system_health_options_defaults(&options);
+    options.register_builtin_collectors = false;
+    TEST_ASSERT_EQUAL_INT(0, system_health_init(&options));
+    system_health_collector_t collector = {
+        .name = "scope_fallback_fixture",
+        .scope = SYSTEM_HEALTH_SCOPE_CONTAINER,
+        .tier = SYSTEM_HEALTH_TIER_FAST,
+        .interval_seconds = 10,
+        .stale_after_seconds = 30,
+        .collect = collect_scope_fallback_fixture,
+    };
+    TEST_ASSERT_TRUE(system_health_register_collector(&collector));
+    // Run the tier twice: handle_get_system_info() caches its response for
+    // SYSTEM_INFO_RESPONSE_TTL_SECONDS, keyed on the snapshot's sequence
+    // number -- which restarts at 1 every time system_health_init() runs
+    // fresh, as every test in this file does. A first-generation snapshot
+    // here would collide with another test's already-cached sequence-1
+    // response and serve its stale JSON instead of actually exercising this
+    // test's fixture. Never an issue in production, where system_health_init()
+    // runs exactly once per process lifetime.
+    TEST_ASSERT_EQUAL_INT(0,
+        system_health_collect_tier(SYSTEM_HEALTH_TIER_FAST));
+    TEST_ASSERT_EQUAL_INT(0,
+        system_health_collect_tier(SYSTEM_HEALTH_TIER_FAST));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    handle_get_system_info(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = parse_response_json(&res);
+
+    cJSON *cpu = cJSON_GetObjectItemCaseSensitive(root, "cpu");
+    TEST_ASSERT_TRUE(cJSON_IsObject(cpu));
+    cJSON *cpu_usage = cJSON_GetObjectItemCaseSensitive(cpu, "usage");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cpu_usage));
+    // Compare with a tolerance rather than truncating to int: the fixture's
+    // 0.42 * 100.0 scale happens to land on exactly 42.0 today, but an exact
+    // int-cast comparison would be silently flaky if that literal or the
+    // scale factor ever changed to a value that doesn't round as cleanly.
+    TEST_ASSERT_TRUE(fabs(cpu_usage->valuedouble - 42.0) < 0.01);
+    cJSON *cpu_capability = cJSON_GetObjectItemCaseSensitive(cpu, "usageCapability");
+    TEST_ASSERT_TRUE(cJSON_IsString(cpu_capability));
+    TEST_ASSERT_EQUAL_STRING("available", cpu_capability->valuestring);
+
+    cJSON *system_memory = cJSON_GetObjectItemCaseSensitive(root, "systemMemory");
+    TEST_ASSERT_TRUE(cJSON_IsObject(system_memory));
+    cJSON *memory_capability = cJSON_GetObjectItemCaseSensitive(system_memory,
+                                                                "capability");
+    TEST_ASSERT_TRUE(cJSON_IsString(memory_capability));
+    TEST_ASSERT_EQUAL_STRING("available", memory_capability->valuestring);
+    // Assert the actual host figures came through, not just the capability
+    // string -- a regression that returned null/wrong memory numbers while
+    // still reporting "available" would otherwise pass this test.
+    cJSON *memory_total = cJSON_GetObjectItemCaseSensitive(system_memory, "total");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(memory_total));
+    TEST_ASSERT_TRUE(fabs(memory_total->valuedouble - 16000000000.0) < 1.0);
+    cJSON *memory_free = cJSON_GetObjectItemCaseSensitive(system_memory, "free");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(memory_free));
+    TEST_ASSERT_TRUE(fabs(memory_free->valuedouble - 4000000000.0) < 1.0);
+    cJSON *memory_used = cJSON_GetObjectItemCaseSensitive(system_memory, "used");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(memory_used));
+    TEST_ASSERT_TRUE(fabs(memory_used->valuedouble - 12000000000.0) < 1.0);
 
     cJSON_Delete(root);
     http_response_free(&res);
@@ -1343,6 +1519,7 @@ int main(void) {
     RUN_TEST(test_handle_get_system_info_does_not_wait_for_go2rtc_lifecycle);
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_handle_get_system_info_reports_process_memory_and_threads);
+    RUN_TEST(test_handle_get_system_info_falls_back_to_host_metrics_when_container_metrics_unsupported);
     RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
     RUN_TEST(test_handle_get_stream_summaries_are_paginated_and_credential_free);
