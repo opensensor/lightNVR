@@ -21,6 +21,19 @@
  */
 int backup_database(const char *source_path, const char *dest_path, bool abortable);
 
+/** Default maximum duration (seconds) an abortable backup may run before
+ *  self-aborting as a stuck-backup safety valve. */
+#define DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT (30 * 60)
+
+/**
+ * Override the maximum duration (in seconds) an abortable backup is allowed
+ * to run before self-aborting as a stuck-backup safety valve. Test-only --
+ * production leaves this at DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT. Pass a
+ * small or negative value to force an already-expired deadline
+ * deterministically in a test; restore the default when done.
+ */
+void db_backup_set_max_duration_seconds_for_testing(int seconds);
+
 /**
  * Restore database from backup
  * 

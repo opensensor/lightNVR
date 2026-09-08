@@ -35,6 +35,25 @@ static pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define BACKUP_BUSY_RETRY_US 100000
 #define BACKUP_VERIFY_PROGRESS_OPS 100000
 
+/* Safety valve for a scheduled backup that never finishes. maybe_run_scheduled_
+ * database_backup() runs synchronously on the main loop thread, so a hung copy
+ * or verification step blocks all other periodic maintenance (service
+ * self-healing, further backup scheduling) indefinitely -- the only existing
+ * abort point is an explicit restart/shutdown request, which may never come.
+ * 30 minutes gives wide margin above the largest normal backup+verify cycle
+ * observed in production (~12 minutes for a 3GB database) while still
+ * bounding a truly stuck run instead of it silently blocking every
+ * subsequent scheduled backup for hours. */
+static int g_backup_max_duration_seconds = DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT;
+
+void db_backup_set_max_duration_seconds_for_testing(int seconds) {
+    g_backup_max_duration_seconds = seconds;
+}
+
+static bool backup_deadline_exceeded(time_t deadline) {
+    return deadline != 0 && time(NULL) >= deadline;
+}
+
 static void release_file_cache(int fd, const char *path) {
 #ifdef POSIX_FADV_DONTNEED
     int advise_rc = posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
@@ -66,6 +85,8 @@ typedef struct {
     int fd;
     const char *path;
     bool abortable;
+    time_t deadline;
+    bool deadline_hit;
 } cache_release_progress_t;
 
 static int progress_during_verification(void *opaque) {
@@ -75,9 +96,16 @@ static int progress_during_verification(void *opaque) {
      * it's verifying, with no other abort point once sqlite3_backup_finish()
      * has run. A non-zero return here interrupts the running statement
      * (like sqlite3_interrupt()), so this is the only way to make that scan
-     * itself responsive to a pending restart/shutdown. */
-    if (progress && progress->abortable && is_background_abort_requested()) {
-        return 1;
+     * itself responsive to a pending restart/shutdown or a stuck-backup
+     * timeout. */
+    if (progress && progress->abortable) {
+        if (is_background_abort_requested()) {
+            return 1;
+        }
+        if (backup_deadline_exceeded(progress->deadline)) {
+            progress->deadline_hit = true;
+            return 1;
+        }
     }
     if (progress && progress->fd >= 0) {
         release_file_cache(progress->fd, progress->path);
@@ -254,6 +282,8 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
     backup_in_progress = true;
     pthread_mutex_unlock(&backup_mutex);
 
+    time_t deadline = abortable ? time(NULL) + g_backup_max_duration_seconds : 0;
+
     if (snprintf(temp_path, sizeof(temp_path), "%s.tmp", dest_path) >= (int)sizeof(temp_path)) {
         log_error("Destination path is too long for temporary backup file: %s", dest_path);
         temp_path[0] = '\0';
@@ -370,6 +400,12 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
             rc = SQLITE_ABORT;
             goto cleanup;
         }
+        if (abortable && backup_deadline_exceeded(deadline)) {
+            log_error("Database backup aborting early: exceeded maximum duration of %d seconds (stuck-backup safety valve)",
+                       g_backup_max_duration_seconds);
+            rc = SQLITE_ABORT;
+            goto cleanup;
+        }
     }
 
     // Finish the backup
@@ -413,6 +449,7 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         .fd = dest_cache_fd,
         .path = temp_path,
         .abortable = abortable,
+        .deadline = deadline,
     };
     if (dest_cache_fd >= 0 || abortable) {
         sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
@@ -422,7 +459,11 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
     int verification_rc = run_integrity_check(dest_db, temp_path);
     sqlite3_progress_handler(dest_db, 0, NULL, NULL);
     if (verification_rc != 0) {
-        if (abortable && is_background_abort_requested()) {
+        if (abortable && verification_progress.deadline_hit) {
+            log_error("Database backup aborting during verification: exceeded maximum duration of %d seconds (stuck-backup safety valve)",
+                       g_backup_max_duration_seconds);
+            rc = SQLITE_ABORT;
+        } else if (abortable && is_background_abort_requested()) {
             log_warn("Database backup aborting during verification: restart/shutdown requested");
             rc = SQLITE_ABORT;
         } else {
