@@ -18,6 +18,11 @@
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
+
+// Test-only hook into db_backup.c's internal duration safety valve. Not
+// declared in the public header (production code has no business mutating
+// a global backup timeout at runtime), so it's declared here instead.
+extern void db_backup_set_max_duration_seconds_for_testing(int seconds);
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
@@ -652,6 +657,172 @@ cleanup:
     return result;
 }
 
+// Regression test for a bug found live in production: a scheduled backup
+// that hung during its copy phase blocked the main loop (which runs
+// maybe_run_scheduled_database_backup() synchronously) for almost 12 hours
+// straight, silently skipping every other scheduled backup in that window,
+// with no way to recover short of an operator happening to trigger a
+// restart. Verifies the new stuck-backup safety valve: an abortable backup
+// whose duration budget is already exhausted aborts on the very next
+// between-batches check instead of running unbounded.
+static int test_backup_aborts_early_when_duration_exceeded(void) {
+    sqlite3 *source = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+    char temp_path[PATH_MAX];
+    struct stat st;
+
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+
+    rc = sqlite3_open(TEST_ABORT_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create duration-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set duration-test fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create duration-test table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_prepare_v2(source,
+        "INSERT INTO payload(data) VALUES(zeroblob(?));", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to prepare duration-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    // Larger than one BACKUP_STEP_PAGES batch (16MB) so the between-batches
+    // deadline check actually gets exercised before the copy would finish.
+    sqlite3_bind_int(stmt, 1, 20 * 1024 * 1024);
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        printf("Failed to populate duration-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    sqlite3_close(source);
+    source = NULL;
+
+    // Force an already-expired deadline deterministically, rather than
+    // waiting out a real timeout.
+    db_backup_set_max_duration_seconds_for_testing(-60);
+
+    rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, true);
+    db_backup_set_max_duration_seconds_for_testing(DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT);
+    if (rc == 0) {
+        printf("Backup should have aborted early on an exhausted duration budget but reported success\n");
+        goto cleanup;
+    }
+
+    if (stat(temp_path, &st) == 0) {
+        printf("Duration-aborted backup left behind a temp file: %s\n", temp_path);
+        goto cleanup;
+    }
+    if (stat(TEST_ABORT_BACKUP_PATH, &st) == 0) {
+        printf("Duration-aborted backup should not have produced a final backup file\n");
+        goto cleanup;
+    }
+
+    printf("Backup aborted early on an exhausted duration budget, as expected\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+    return result;
+}
+
+// Same production bug as above, but for the verification phase: once the
+// copy loop reaches SQLITE_DONE it isn't re-checked, so a stuck
+// PRAGMA integrity_check needs its own deadline check (progress_during_
+// verification) to ever be interrupted. Uses the same cell-dense,
+// single-batch fixture as the shutdown-request verification-abort test so
+// the copy loop finishes without consulting the deadline, forcing this test
+// to exercise the verification-phase check specifically.
+static int test_backup_aborts_during_verification_when_duration_exceeded(void) {
+    sqlite3 *source = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    int rc;
+    char temp_path[PATH_MAX];
+    struct stat st;
+
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+
+    rc = sqlite3_open(TEST_ABORT_DB_PATH, &source);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create verification-duration-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source, "PRAGMA page_size=4096;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to set verification-duration-test fixture page size: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to create verification-duration-test table: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    rc = sqlite3_exec(source,
+        "WITH RECURSIVE seq(x) AS ("
+        "  SELECT 1 UNION ALL SELECT x+1 FROM seq WHERE x < 300000"
+        ") INSERT INTO payload(data) SELECT randomblob(16) FROM seq;",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        printf("Failed to populate verification-duration-test fixture: %s\n", sqlite3_errmsg(source));
+        goto cleanup;
+    }
+    sqlite3_close(source);
+    source = NULL;
+
+    db_backup_set_max_duration_seconds_for_testing(-60);
+
+    rc = backup_database(TEST_ABORT_DB_PATH, TEST_ABORT_BACKUP_PATH, true);
+    db_backup_set_max_duration_seconds_for_testing(DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT);
+    if (rc == 0) {
+        printf("Backup should have aborted during verification on an exhausted duration budget but reported success\n");
+        goto cleanup;
+    }
+    if (stat(temp_path, &st) == 0) {
+        printf("Backup aborted during verification (duration) left behind a temp file: %s\n", temp_path);
+        goto cleanup;
+    }
+    if (stat(TEST_ABORT_BACKUP_PATH, &st) == 0) {
+        printf("Backup aborted during verification (duration) should not have produced a final backup file\n");
+        goto cleanup;
+    }
+
+    printf("Backup aborted during post-copy verification on an exhausted duration budget, as expected\n");
+    result = 0;
+
+cleanup:
+    if (stmt) sqlite3_finalize(stmt);
+    if (source) sqlite3_close(source);
+    unlink(TEST_ABORT_DB_PATH);
+    unlink(TEST_ABORT_BACKUP_PATH);
+    unlink(temp_path);
+    return result;
+}
+
 static int count_timestamped_backups(const char *db_path) {
     char backup_dir[PATH_MAX];
     snprintf(backup_dir, sizeof(backup_dir), "%s.backups", db_path);
@@ -873,6 +1044,16 @@ int main(void) {
 
     if (test_backup_completes_when_not_abortable_even_if_abort_requested() != 0) {
         printf("Test failed: Non-abortable backup did not complete despite a pending abort request\n");
+        return 1;
+    }
+
+    if (test_backup_aborts_early_when_duration_exceeded() != 0) {
+        printf("Test failed: Backup did not abort early on an exhausted duration budget\n");
+        return 1;
+    }
+
+    if (test_backup_aborts_during_verification_when_duration_exceeded() != 0) {
+        printf("Test failed: Backup did not abort during post-copy verification on an exhausted duration budget\n");
         return 1;
     }
 
