@@ -18,6 +18,11 @@
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
+
+// Test-only hook into db_backup.c's internal duration safety valve. Not
+// declared in the public header (production code has no business mutating
+// a global backup timeout at runtime), so it's declared here instead.
+extern void db_backup_set_max_duration_seconds_for_testing(int seconds);
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"

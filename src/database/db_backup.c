@@ -35,23 +35,50 @@ static pthread_mutex_t backup_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define BACKUP_BUSY_RETRY_US 100000
 #define BACKUP_VERIFY_PROGRESS_OPS 100000
 
-/* Safety valve for a scheduled backup that never finishes. maybe_run_scheduled_
- * database_backup() runs synchronously on the main loop thread, so a hung copy
- * or verification step blocks all other periodic maintenance (service
- * self-healing, further backup scheduling) indefinitely -- the only existing
- * abort point is an explicit restart/shutdown request, which may never come.
- * 30 minutes gives wide margin above the largest normal backup+verify cycle
- * observed in production (~12 minutes for a 3GB database) while still
- * bounding a truly stuck run instead of it silently blocking every
- * subsequent scheduled backup for hours. */
+/* Safety valve for a scheduled backup that never finishes.
+ * maybe_run_scheduled_database_backup() runs synchronously on the main loop
+ * thread, so a hung copy or verification step blocks all other periodic
+ * maintenance (service self-healing, further backup scheduling) indefinitely
+ * -- the only existing abort point is an explicit restart/shutdown request,
+ * which may never come. 30 minutes gives wide margin above the largest
+ * normal backup+verify cycle observed in production (~12 minutes for a 3GB
+ * database) while still bounding a truly stuck run instead of it silently
+ * blocking every subsequent scheduled backup for hours. */
 static int g_backup_max_duration_seconds = DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT;
 
+/* Test-only: not declared in the public header (would otherwise let
+ * production code mutate a global timeout at runtime), reached via an
+ * `extern` declaration in the test file instead. */
 void db_backup_set_max_duration_seconds_for_testing(int seconds) {
     g_backup_max_duration_seconds = seconds;
 }
 
-static bool backup_deadline_exceeded(time_t deadline) {
-    return deadline != 0 && time(NULL) >= deadline;
+typedef struct {
+    struct timespec start;
+    int max_duration_seconds;
+} backup_deadline_t;
+
+static void backup_deadline_start(backup_deadline_t *deadline, bool abortable) {
+    deadline->max_duration_seconds = abortable ? g_backup_max_duration_seconds : 0;
+    /* CLOCK_MONOTONIC rather than time(NULL): a wall-clock jump backward
+     * (NTP sync, manual clock change) during a long-running backup would
+     * otherwise delay or defeat this safety valve entirely. */
+    clock_gettime(CLOCK_MONOTONIC, &deadline->start);
+}
+
+static bool backup_deadline_exceeded(const backup_deadline_t *deadline) {
+    /* A non-positive duration (production default is always positive; only
+     * reachable via db_backup_set_max_duration_seconds_for_testing()) means
+     * "already expired" -- lets tests force an expired deadline without any
+     * clock arithmetic that could underflow. */
+    if (!deadline || deadline->max_duration_seconds <= 0) {
+        return true;
+    }
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    double elapsed_seconds = (double)(now.tv_sec - deadline->start.tv_sec) +
+                              (double)(now.tv_nsec - deadline->start.tv_nsec) / 1e9;
+    return elapsed_seconds >= (double)deadline->max_duration_seconds;
 }
 
 static void release_file_cache(int fd, const char *path) {
@@ -85,7 +112,7 @@ typedef struct {
     int fd;
     const char *path;
     bool abortable;
-    time_t deadline;
+    const backup_deadline_t *deadline;
     bool deadline_hit;
 } cache_release_progress_t;
 
@@ -233,11 +260,13 @@ static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
             // (progress_during_verification(), registered by the caller for
             // an abortable backup) surfaces here as SQLITE_INTERRUPT, not a
             // real failure -- the caller already logs its own, more specific
-            // "aborting during verification: restart/shutdown requested"
-            // warning right after this returns. Logging this as an error too
-            // would make every ordinary abort during a routine restart look
-            // like a corruption/failure event in the logs.
-            log_warn("Integrity check for %s interrupted (restart/shutdown requested)", path_label);
+            // "restart/shutdown requested" or "exceeded maximum duration"
+            // warning right after this returns, so this message is
+            // deliberately reason-neutral rather than claiming a specific
+            // cause. Logging this as an error too would make every ordinary
+            // abort during a routine restart look like a corruption/failure
+            // event in the logs.
+            log_warn("Integrity check for %s interrupted (abort requested)", path_label);
         } else {
             log_error("Failed to execute integrity check for %s: %s",
                       path_label, sqlite3_errmsg(db_handle));
@@ -282,7 +311,8 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
     backup_in_progress = true;
     pthread_mutex_unlock(&backup_mutex);
 
-    time_t deadline = abortable ? time(NULL) + g_backup_max_duration_seconds : 0;
+    backup_deadline_t deadline;
+    backup_deadline_start(&deadline, abortable);
 
     if (snprintf(temp_path, sizeof(temp_path), "%s.tmp", dest_path) >= (int)sizeof(temp_path)) {
         log_error("Destination path is too long for temporary backup file: %s", dest_path);
@@ -400,7 +430,7 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
             rc = SQLITE_ABORT;
             goto cleanup;
         }
-        if (abortable && backup_deadline_exceeded(deadline)) {
+        if (abortable && backup_deadline_exceeded(&deadline)) {
             log_error("Database backup aborting early: exceeded maximum duration of %d seconds (stuck-backup safety valve)",
                        g_backup_max_duration_seconds);
             rc = SQLITE_ABORT;
@@ -449,7 +479,7 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         .fd = dest_cache_fd,
         .path = temp_path,
         .abortable = abortable,
-        .deadline = deadline,
+        .deadline = &deadline,
     };
     if (dest_cache_fd >= 0 || abortable) {
         sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
