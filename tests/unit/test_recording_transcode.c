@@ -46,6 +46,7 @@ static char g_test_dir[256];
 static char g_hevc_fixture[320];
 static char g_h264_fixture[320];
 static char g_hevc_with_audio_fixture[320];
+static char *g_original_path;
 static int s_skip = 0;
 
 /* Matches the skip pattern in test_go2rtc_two_config_merge.c: an
@@ -141,6 +142,13 @@ static void remove_tree(const char *path) {
 }
 
 void tearDown(void) {
+    if (g_original_path) {
+        setenv("PATH", g_original_path, 1);
+        free(g_original_path);
+        g_original_path = NULL;
+        unsetenv("LIGHTNVR_TEST_REAL_FFMPEG");
+        unsetenv("LIGHTNVR_TEST_TRANSCODE_DIR");
+    }
     if (g_test_dir[0] != '\0') {
         remove_tree(g_test_dir);
         g_test_dir[0] = '\0';
@@ -261,13 +269,27 @@ void test_ensure_cache_fails_gracefully_for_missing_source(void) {
  * ================================================================ */
 
 typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    bool open;
+} start_gate_t;
+
+typedef struct {
     const char *original_path;
     const char *cache_path;
     int result;
+    start_gate_t *gate;
 } concurrent_call_args_t;
 
 static void *concurrent_call_thread(void *arg) {
     concurrent_call_args_t *args = (concurrent_call_args_t *)arg;
+    if (args->gate) {
+        pthread_mutex_lock(&args->gate->mutex);
+        while (!args->gate->open) {
+            pthread_cond_wait(&args->gate->cond, &args->gate->mutex);
+        }
+        pthread_mutex_unlock(&args->gate->mutex);
+    }
     args->result = ensure_recording_transcode_cache(args->original_path, args->cache_path);
     return NULL;
 }
@@ -283,8 +305,8 @@ void test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache(vo
     char cache_path[320];
     snprintf(cache_path, sizeof(cache_path), "%s/concurrent_out.mp4", g_test_dir);
 
-    concurrent_call_args_t args_a = { g_hevc_fixture, cache_path, -1 };
-    concurrent_call_args_t args_b = { g_hevc_fixture, cache_path, -1 };
+    concurrent_call_args_t args_a = { g_hevc_fixture, cache_path, -1, NULL };
+    concurrent_call_args_t args_b = { g_hevc_fixture, cache_path, -1, NULL };
 
     pthread_t thread_a, thread_b;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread_a, NULL, concurrent_call_thread, &args_a));
@@ -307,6 +329,132 @@ void test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache(vo
     TEST_ASSERT_EQUAL_INT(0, atoi(count_buf));
 }
 
+/* Wrap the real encoder to observe subprocess concurrency, rather than only
+ * checking the final cache (which passed even when duplicate jobs caused OOM).
+ * Holding each invocation briefly makes overlapping requests exercise a cache
+ * miss. Force software encoding so these checks also work on VAAPI hosts. */
+static void track_ffmpeg_processes(void) {
+    char real_ffmpeg[1024];
+    FILE *pipe = popen("command -v ffmpeg", "r");
+    TEST_ASSERT_NOT_NULL(pipe);
+    char *found = fgets(real_ffmpeg, sizeof(real_ffmpeg), pipe);
+    int status = pclose(pipe);
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_EQUAL_INT(0, status);
+    real_ffmpeg[strcspn(real_ffmpeg, "\n")] = '\0';
+
+    char wrapper[320];
+    snprintf(wrapper, sizeof(wrapper), "%s/ffmpeg", g_test_dir);
+    FILE *file = fopen(wrapper, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("#!/bin/sh\n"
+          "for arg do\n"
+          "  [ \"$arg\" != h264_vaapi ] || exit 1\n"
+          "done\n"
+          "printf 'start\\n' >> \"$LIGHTNVR_TEST_TRANSCODE_DIR/starts\"\n"
+          "owned=0\n"
+          "if mkdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; then\n"
+          "  owned=1\n"
+          "else\n"
+          "  touch \"$LIGHTNVR_TEST_TRANSCODE_DIR/overlap\"\n"
+          "fi\n"
+          "sleep 1\n"
+          "\"$LIGHTNVR_TEST_REAL_FFMPEG\" \"$@\"\n"
+          "rc=$?\n"
+          "if [ \"$owned\" = 1 ]; then rmdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; fi\n"
+          "exit \"$rc\"\n", file);
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+    TEST_ASSERT_EQUAL_INT(0, chmod(wrapper, 0700));
+
+    g_original_path = strdup(getenv("PATH"));
+    TEST_ASSERT_NOT_NULL(g_original_path);
+    char *wrapped_path = NULL;
+    TEST_ASSERT_TRUE(asprintf(&wrapped_path, "%s:%s", g_test_dir, g_original_path) > 0);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_TEST_REAL_FFMPEG", real_ffmpeg, 1));
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_TEST_TRANSCODE_DIR", g_test_dir, 1));
+    int rc = setenv("PATH", wrapped_path, 1);
+    free(wrapped_path);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+}
+
+static void assert_ffmpeg_process_counts(int expected_starts) {
+    char path[320];
+    snprintf(path, sizeof(path), "%s/starts", g_test_dir);
+    FILE *file = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(file);
+    int count = 0;
+    for (int c; (c = fgetc(file)) != EOF;) {
+        if (c == '\n') count++;
+    }
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(expected_starts, count);
+    snprintf(path, sizeof(path), "%s/overlap", g_test_dir);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, access(path, F_OK), "FFmpeg processes overlapped");
+    snprintf(path, sizeof(path), "%s/active", g_test_dir);
+    TEST_ASSERT_EQUAL_INT(-1, access(path, F_OK));
+}
+
+static void run_concurrent_transcodes(bool same_recording) {
+    track_ffmpeg_processes();
+    start_gate_t gate = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false };
+    char caches[3][320];
+    concurrent_call_args_t args[3];
+    pthread_t threads[3];
+    int created = 0;
+    int create_rc = 0;
+    for (int i = 0; i < 3; i++) {
+        snprintf(caches[i], sizeof(caches[i]), "%s/cache_%d.mp4", g_test_dir,
+                 same_recording ? 0 : i);
+        args[i] = (concurrent_call_args_t){ g_hevc_fixture, caches[i], -1, &gate };
+        create_rc = pthread_create(&threads[i], NULL, concurrent_call_thread, &args[i]);
+        if (create_rc != 0) break;
+        created++;
+    }
+    pthread_mutex_lock(&gate.mutex);
+    gate.open = true;
+    pthread_cond_broadcast(&gate.cond);
+    pthread_mutex_unlock(&gate.mutex);
+    for (int i = 0; i < created; i++) pthread_join(threads[i], NULL);
+    pthread_cond_destroy(&gate.cond);
+    pthread_mutex_destroy(&gate.mutex);
+
+    TEST_ASSERT_EQUAL_INT(0, create_rc);
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL_INT(0, args[i].result);
+        TEST_ASSERT_TRUE(file_exists_nonempty(caches[i]));
+        TEST_ASSERT_FALSE(recording_needs_hevc_transcode(caches[i]));
+    }
+    assert_ffmpeg_process_counts(same_recording ? 1 : 3);
+}
+
+void test_concurrent_playback_requests_share_one_transcode(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    run_concurrent_transcodes(true);
+}
+
+void test_different_recordings_transcode_one_at_a_time(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    run_concurrent_transcodes(false);
+}
+
+void test_failed_transcode_releases_slot_for_retry(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    char bad_source[320], cache[320];
+    snprintf(bad_source, sizeof(bad_source), "%s/invalid.mp4", g_test_dir);
+    snprintf(cache, sizeof(cache), "%s/retry.mp4", g_test_dir);
+    FILE *file = fopen(bad_source, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("not a video", file);
+    fclose(file);
+
+    track_ffmpeg_processes();
+    TEST_ASSERT_EQUAL_INT(-1, ensure_recording_transcode_cache(bad_source, cache));
+    TEST_ASSERT_EQUAL_INT(-1, access(cache, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, ensure_recording_transcode_cache(g_hevc_fixture, cache));
+    TEST_ASSERT_FALSE(recording_needs_hevc_transcode(cache));
+    assert_ffmpeg_process_counts(2);
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -325,6 +473,9 @@ int main(void) {
     RUN_TEST(test_ensure_cache_skips_retranscode_when_cache_already_exists);
     RUN_TEST(test_ensure_cache_fails_gracefully_for_missing_source);
     RUN_TEST(test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache);
+    RUN_TEST(test_concurrent_playback_requests_share_one_transcode);
+    RUN_TEST(test_different_recordings_transcode_one_at_a_time);
+    RUN_TEST(test_failed_transcode_releases_slot_for_retry);
 
     return UNITY_END();
 }

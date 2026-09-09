@@ -31,6 +31,11 @@ bool recording_needs_hevc_transcode(const char *file_path);
  * /dev/dri/renderD128 is available, software libx264 otherwise) and
  * atomically renames the result into place so a concurrent reader never
  * observes a partially-written cache file.
+ * Only one recording transcode runs at a time in this process. Cache misses
+ * wait for that slot and recheck the cache, so concurrent requests for the
+ * same recording reuse the completed result. Existing cache hits do not wait.
+ * Software transcoding limits threads and lookahead buffering to reduce its
+ * memory footprint alongside recording and live streaming.
  *
  * @param original_path Path to the source HEVC recording
  * @param cache_path Destination path for the transcoded H.264 copy

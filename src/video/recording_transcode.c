@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +27,11 @@
  * /usr/local/bin on other distros/build setups). lightnvr.service's own
  * PATH already covers both. */
 #define FFMPEG_BINARY "ffmpeg"
+
+/* Playback handlers run concurrently in the HTTP worker pool. Keep only one
+ * recording transcode active across all recordings: even different clips can
+ * exhaust the memory shared with recording and go2rtc on a small NVR. */
+static pthread_mutex_t s_transcode_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static bool file_exists_nonempty(const char *path) {
     struct stat st;
@@ -95,12 +101,10 @@ static int run_and_wait(char *const argv[]) {
     return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
 }
 
-int ensure_recording_transcode_cache(const char *original_path, const char *cache_path) {
-    if (!original_path || original_path[0] == '\0' ||
-        !cache_path || cache_path[0] == '\0') {
-        return -1;
-    }
-
+/* Called with s_transcode_mutex held, including through publication of the
+ * completed cache file. Recheck the cache because another request may have
+ * produced it while this caller was waiting. */
+static int transcode_cache_locked(const char *original_path, const char *cache_path) {
     if (file_exists_nonempty(cache_path)) {
         return 0;
     }
@@ -128,12 +132,8 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
         return -1;
     }
 
-    /* pid alone isn't unique here: HTTP handlers are dispatched across
-     * libuv's worker threads within this one process, so two concurrent
-     * playback requests for the same recording would otherwise compute the
-     * identical tmp path and race on the same file. An atomic per-call
-     * sequence number makes every invocation's tmp path unique regardless
-     * of which thread runs it. */
+    /* Keep temporary names unique across attempts, including retries after a
+     * failed transcode. Readers only observe the final, atomically renamed file. */
     static atomic_uint_fast64_t s_tmp_seq = 0;
     uint64_t seq = atomic_fetch_add(&s_tmp_seq, 1);
 
@@ -164,16 +164,23 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
      * is set). */
     char *argv_vaapi[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-filter_threads", "1", "-threads", "1",
         "-hwaccel", "vaapi", "-hwaccel_device", VAAPI_RENDER_NODE,
         "-hwaccel_output_format", "vaapi",
         "-i", (char *)original_path,
-        "-c:v", "h264_vaapi", "-c:a", "aac",
+        "-c:v", "h264_vaapi", "-threads", "1", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL
     };
+    /* Bound decoder/encoder threads explicitly: FFmpeg otherwise sizes them
+     * from the host CPU count, which need not match a container's CPU quota.
+     * Disable x264 lookahead buffering and use a fast preset to keep full-size
+     * HEVC playback from consuming hundreds of MB of queued decoded frames. */
     char *argv_software[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-filter_threads", "1", "-threads", "1",
         "-i", (char *)original_path,
-        "-c:v", "libx264", "-c:a", "aac",
+        "-c:v", "libx264", "-threads", "1",
+        "-preset", "veryfast", "-tune", "zerolatency", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL
     };
 
@@ -205,4 +212,25 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
 
     log_info("recording_transcode: cached playable copy at %s", cache_path);
     return 0;
+}
+
+int ensure_recording_transcode_cache(const char *original_path, const char *cache_path) {
+    if (!original_path || original_path[0] == '\0' ||
+        !cache_path || cache_path[0] == '\0') {
+        return -1;
+    }
+
+    /* Completed clips must remain playable while an unrelated clip encodes. */
+    if (file_exists_nonempty(cache_path)) {
+        return 0;
+    }
+
+    int err = pthread_mutex_lock(&s_transcode_mutex);
+    if (err != 0) {
+        log_error("recording_transcode: failed to lock transcode queue: %s", strerror(err));
+        return -1;
+    }
+    int rc = transcode_cache_locked(original_path, cache_path);
+    pthread_mutex_unlock(&s_transcode_mutex);
+    return rc;
 }
