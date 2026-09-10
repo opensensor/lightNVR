@@ -43,6 +43,7 @@
 #include "video/streams.h"
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
+#include "video/recording_transcode.h"
 #include "video/stream_transcoding.h"
 #include "video/hls_writer.h"
 #include "video/detection_stream.h"
@@ -1408,6 +1409,7 @@ int main(int argc, char *argv[]) {
     // Cleanup
 cleanup:
     log_info("Starting cleanup process...");
+    shutdown_recording_transcode();
 
     // Stop request producers before any state they can inspect is dismantled.
     // Keeping this at the shared cleanup label also covers partial startup.

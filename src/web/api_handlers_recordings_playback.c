@@ -81,25 +81,44 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
 
     log_info("Serving file for playback: %s (%ld bytes)", recording.file_path, st.st_size);
 
-    // Most browsers have no royalty-free HEVC decoder for an HTML5 <video>
-    // element, so an HEVC recording (e.g. FrontDoor, whose native stream is
-    // HEVC and whose recordings are a raw stream-copy of it) fails in-browser
-    // with "no video with supported format and MIME type found" even though
-    // it plays fine in a local player. Transparently swap in a cached H.264
-    // copy when that's the case; the original file on disk is untouched.
+    // The modal polls ?prepare=1 before attaching the media URL. Never wait
+    // for an encode in a libuv worker: enough duplicate/range requests would
+    // starve both other APIs and the filesystem reads used to serve videos.
+    char prepare[8];
+    bool prepare_only = http_request_get_query_param(req, "prepare", prepare,
+                                                     sizeof(prepare)) > 0 &&
+                        strcmp(prepare, "1") == 0;
+
     const char *serve_path = recording.file_path;
     char transcode_cache_path[MAX_PATH_LENGTH];
-    if (recording_needs_hevc_transcode(recording.file_path) &&
-        build_recording_transcode_cache_path(g_config.storage_path, id,
-                                             transcode_cache_path,
-                                             sizeof(transcode_cache_path)) == 0) {
-        if (ensure_recording_transcode_cache(recording.file_path, transcode_cache_path) == 0) {
-            serve_path = transcode_cache_path;
-        } else {
-            log_warn("Failed to prepare HEVC playback cache for recording %llu, "
-                     "serving original file (browser playback may fail)",
-                     (unsigned long long)id);
+    bool have_cache_path = build_recording_transcode_cache_path(
+        g_config.storage_path, id, transcode_cache_path,
+        sizeof(transcode_cache_path)) == 0;
+    struct stat cache_st;
+    if (have_cache_path && stat(transcode_cache_path, &cache_st) == 0 &&
+        S_ISREG(cache_st.st_mode) && cache_st.st_size > 0) {
+        serve_path = transcode_cache_path;
+    } else if (recording_needs_hevc_transcode(recording.file_path)) {
+        recording_transcode_status_t status = have_cache_path
+            ? request_recording_transcode_cache(recording.file_path, transcode_cache_path)
+            : RECORDING_TRANSCODE_FAILED;
+        if (status == RECORDING_TRANSCODE_PENDING) {
+            http_response_add_header(res, "Retry-After", "2");
+            http_response_set_json(res, prepare_only ? 202 : 503,
+                                   "{\"status\":\"preparing\"}");
+            return;
         }
+        if (status == RECORDING_TRANSCODE_FAILED) {
+            http_response_set_json_error(res, 500,
+                "Unable to prepare recording for playback. Download the original or try again later.");
+            return;
+        }
+        serve_path = transcode_cache_path;
+    }
+
+    if (prepare_only) {
+        http_response_set_json(res, 200, "{\"status\":\"ready\"}");
+        return;
     }
 
     // Determine content type based on file extension

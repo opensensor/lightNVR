@@ -836,7 +836,21 @@ Deletes a recording.
 GET /api/recordings/play/{id}
 ```
 
-Streams a recording for playback.
+Streams a recording for playback with byte-range support. HEVC recordings use
+a cached H.264 copy prepared by a single background transcode worker.
+
+Before loading the media URL, poll `GET /api/recordings/play/{id}?prepare=1`:
+
+- `200` with `{"status":"ready"}`: load the media URL without `prepare=1`.
+- `202` with `{"status":"preparing"}`: wait for the `Retry-After` interval and poll again.
+- `500`: preparation failed; the JSON `error` explains the failure. The original
+  recording remains available from the download endpoint.
+
+Preparation uses the same replay authorization as playback. A media request
+made while conversion is pending returns `503` with `Retry-After`; it does not
+hold an HTTP worker open for the conversion. H.264 recordings and completed
+cache entries are ready immediately. Clients should stop polling when playback
+is closed or another recording is selected.
 
 #### Download Recording
 

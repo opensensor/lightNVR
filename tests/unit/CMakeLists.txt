@@ -165,6 +165,14 @@ add_layer2_test(test_db_camera_collections)
 add_layer2_test(test_api_handlers_camera_collections)
 add_layer2_test(test_db_recordings_extended)
 add_layer2_test(test_recording_transcode)
+add_layer2_test(test_api_handlers_recordings_playback)
+target_link_options(test_api_handlers_recordings_playback PRIVATE
+    "-Wl,--wrap=get_recording_metadata_by_id"
+    "-Wl,--wrap=httpd_authorize_camera_identity_action_with_context"
+    "-Wl,--wrap=recording_needs_hevc_transcode"
+    "-Wl,--wrap=request_recording_transcode_cache"
+    "-Wl,--wrap=http_serve_file"
+)
 add_layer2_test(test_storage_manager_retention)
 add_layer2_test(test_storage_target_pressure_cleanup)
 add_layer2_test(test_storage_migration)

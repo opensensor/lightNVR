@@ -1007,12 +1007,6 @@ export function TimelinePage() {
         }
       }, 100);
 
-      // Preload the initial segment's video for this day
-      const videoPlayer = videoElementRef.current;
-      if (videoPlayer instanceof HTMLVideoElement) {
-        videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${nowMilliseconds()}`;
-        videoPlayer.load();
-      }
     }
 
     if (successMessage) {
@@ -1334,17 +1328,6 @@ export function TimelinePage() {
             forceReload: true
           });
 
-          // Load the next segment's video
-          setTimeout(() => {
-            const videoEl = videoElementRef.current;
-            if (videoEl instanceof HTMLVideoElement) {
-              videoEl.pause();
-              videoEl.removeAttribute('src');
-              videoEl.load();
-              videoEl.src = `/api/recordings/play/${nextSeg.id}?t=${nowMilliseconds()}`;
-              videoEl.load();
-            }
-          }, 100);
         } else {
           timelineState.setState({
             timelineSegments: [],

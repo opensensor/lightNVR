@@ -44,4 +44,23 @@ bool recording_needs_hevc_transcode(const char *file_path);
  */
 int ensure_recording_transcode_cache(const char *original_path, const char *cache_path);
 
+typedef enum {
+    RECORDING_TRANSCODE_FAILED = -1,
+    RECORDING_TRANSCODE_READY = 0,
+    RECORDING_TRANSCODE_PENDING = 1
+} recording_transcode_status_t;
+
+/**
+ * Start or poll preparation on a dedicated thread, without waiting for FFmpeg
+ * in an HTTP worker. Only one background job is admitted; other recordings
+ * return PENDING and can retry later. Duplicate requests share the same job.
+ * Failed jobs return FAILED for 30 seconds to avoid a subprocess retry storm.
+ * Paths are copied before returning. Completed cache hits return READY.
+ */
+recording_transcode_status_t request_recording_transcode_cache(
+    const char *original_path, const char *cache_path);
+
+/** Stop admitting playback jobs, abort FFmpeg and join the background worker. */
+void shutdown_recording_transcode(void);
+
 #endif /* LIGHTNVR_RECORDING_TRANSCODE_H */

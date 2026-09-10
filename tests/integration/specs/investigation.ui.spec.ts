@@ -68,7 +68,10 @@ test.describe('Investigation player regressions @ui @investigation', () => {
         },
       },
     }));
-    await page.route('**/api/recordings/play/568*', route => route.fulfill({
+    await page.route('**/api/recordings/play/568*', route => route.fulfill(
+      new URL(route.request().url()).searchParams.has('prepare')
+        ? { json: { status: 'ready' } }
+        : {
       status: 200,
       contentType: 'video/webm',
       headers: { 'Accept-Ranges': 'bytes' },

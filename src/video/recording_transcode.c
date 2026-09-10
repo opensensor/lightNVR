@@ -6,11 +6,13 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libavformat/avformat.h>
@@ -28,10 +30,24 @@
  * PATH already covers both. */
 #define FFMPEG_BINARY "ffmpeg"
 
-/* Playback handlers run concurrently in the HTTP worker pool. Keep only one
- * recording transcode active across all recordings: even different clips can
- * exhaust the memory shared with recording and go2rtc on a small NVR. */
+/* Keep only one recording transcode active, including synchronous callers:
+ * different clips can exhaust memory shared with recording on a small NVR. */
 static pthread_mutex_t s_transcode_mutex = PTHREAD_MUTEX_INITIALIZER;
+static atomic_bool s_stopping = false;
+
+/* This mutex only protects job bookkeeping, never an encode or a slot wait.
+ * A separate thread keeps both FFmpeg and s_transcode_mutex waits out of
+ * libuv's shared pool (which also serves APIs and reads video file chunks). */
+static pthread_mutex_t s_job_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct {
+    pthread_t thread;
+    bool started;
+    bool active;
+    char original_path[512];
+    char cache_path[512];
+    int result;
+    struct timespec finished;
+} s_job;
 
 static bool file_exists_nonempty(const char *path) {
     struct stat st;
@@ -91,11 +107,20 @@ static int run_and_wait(char *const argv[]) {
     }
 
     int status = 0;
-    while (waitpid(pid, &status, 0) < 0) {
-        if (errno != EINTR) {
+    for (;;) {
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) break;
+        if (result < 0 && errno != EINTR) {
             log_error("recording_transcode: waitpid failed: %s", strerror(errno));
             return -1;
         }
+        if (atomic_load(&s_stopping)) {
+            kill(pid, SIGKILL);
+            while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+            return -1;
+        }
+        const struct timespec delay = { .tv_nsec = 100000000 };
+        nanosleep(&delay, NULL);
     }
 
     return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
@@ -105,6 +130,7 @@ static int run_and_wait(char *const argv[]) {
  * completed cache file. Recheck the cache because another request may have
  * produced it while this caller was waiting. */
 static int transcode_cache_locked(const char *original_path, const char *cache_path) {
+    if (atomic_load(&s_stopping)) return -1;
     if (file_exists_nonempty(cache_path)) {
         return 0;
     }
@@ -193,7 +219,7 @@ static int transcode_cache_locked(const char *original_path, const char *cache_p
             unlink(tmp_path);
         }
     }
-    if (rc != 0) {
+    if (rc != 0 && !atomic_load(&s_stopping)) {
         log_info("recording_transcode: transcoding %s -> %s via software libx264", original_path, cache_path);
         rc = run_and_wait(argv_software);
     }
@@ -233,4 +259,72 @@ int ensure_recording_transcode_cache(const char *original_path, const char *cach
     int rc = transcode_cache_locked(original_path, cache_path);
     pthread_mutex_unlock(&s_transcode_mutex);
     return rc;
+}
+
+static void *transcode_worker(void *unused) {
+    (void)unused;
+    int result = ensure_recording_transcode_cache(s_job.original_path, s_job.cache_path);
+    pthread_mutex_lock(&s_job_mutex);
+    s_job.result = result;
+    clock_gettime(CLOCK_MONOTONIC, &s_job.finished);
+    s_job.active = false;
+    pthread_mutex_unlock(&s_job_mutex);
+    return NULL;
+}
+
+recording_transcode_status_t request_recording_transcode_cache(
+    const char *original_path, const char *cache_path) {
+    if (!original_path || !original_path[0] || !cache_path || !cache_path[0] ||
+        strlen(original_path) >= sizeof(s_job.original_path) ||
+        strlen(cache_path) >= sizeof(s_job.cache_path)) {
+        return RECORDING_TRANSCODE_FAILED;
+    }
+    if (file_exists_nonempty(cache_path)) return RECORDING_TRANSCODE_READY;
+
+    pthread_mutex_lock(&s_job_mutex);
+    recording_transcode_status_t status = RECORDING_TRANSCODE_PENDING;
+    if (atomic_load(&s_stopping)) {
+        status = RECORDING_TRANSCODE_FAILED;
+    } else if (file_exists_nonempty(cache_path)) {
+        status = RECORDING_TRANSCODE_READY;
+    } else if (!s_job.active) {
+        if (s_job.started) {
+            pthread_join(s_job.thread, NULL);
+            s_job.started = false;
+        }
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (s_job.result != 0 &&
+            strcmp(original_path, s_job.original_path) == 0 &&
+            strcmp(cache_path, s_job.cache_path) == 0 &&
+            now.tv_sec - s_job.finished.tv_sec < 30) {
+            status = RECORDING_TRANSCODE_FAILED;
+        } else {
+            strcpy(s_job.original_path, original_path);
+            strcpy(s_job.cache_path, cache_path);
+            s_job.active = true;
+            int err = pthread_create(&s_job.thread, NULL, transcode_worker, NULL);
+            if (err != 0) {
+                log_error("recording_transcode: failed to start worker: %s", strerror(err));
+                s_job.active = false;
+                s_job.result = -1;
+                s_job.finished = now;
+                status = RECORDING_TRANSCODE_FAILED;
+            } else {
+                s_job.started = true;
+            }
+        }
+    }
+    pthread_mutex_unlock(&s_job_mutex);
+    return status;
+}
+
+void shutdown_recording_transcode(void) {
+    pthread_mutex_lock(&s_job_mutex);
+    atomic_store(&s_stopping, true);
+    bool join = s_job.started;
+    pthread_t thread = s_job.thread;
+    s_job.started = false;
+    pthread_mutex_unlock(&s_job_mutex);
+    if (join) pthread_join(thread, NULL);
 }

@@ -18,9 +18,8 @@ import { useI18n } from '../../../i18n.js';
 import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
 import { isEptzEnabled } from '../../../utils/eptz-config.js';
 import { resolveRecordedStreamSummary } from '../../../utils/stream-summaries.js';
+import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
 
-// Timeout for cleaning up preloaded temporary video elements (in milliseconds).
-const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
 const DETECTION_TIME_WINDOW_SECONDS = 2; // Time window (seconds) for filtering visible detections around current playback time
 const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detection overlay scaling
 
@@ -44,6 +43,7 @@ export function TimelinePlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [segmentRecordingData, setSegmentRecordingData] = useState(null);
+  const [playbackMessage, setPlaybackMessage] = useState('');
   // When arriving from a Live View fullscreen session, show a one-time overlay
   // that lets the user re-enter fullscreen with a single click.  Browser security
   // (transient activation requirement) prevents auto-calling requestFullscreen()
@@ -93,7 +93,7 @@ export function TimelinePlayer({
   const lastTimeUpdateRef = useRef(null);
   const lastSegmentIdRef = useRef(null);
   const lastDetectionSegmentIdRef = useRef(null);
-  const preloadedVideoCleanupRef = useRef(null);
+  const playbackCleanupRef = useRef(null);
   const initialPausedSyncEventLoggedRef = useRef(false);
   const lastInitialPausedSegmentIdRef = useRef(null);
   const suppressNativePlaybackSyncRef = useRef(false);
@@ -123,13 +123,9 @@ export function TimelinePlayer({
     timelineState.setState({});
   }, []);
 
-  const cleanupPreloadedVideo = useCallback(() => {
-    if (typeof preloadedVideoCleanupRef.current !== 'function') {
-      return;
-    }
-
-    preloadedVideoCleanupRef.current();
-    preloadedVideoCleanupRef.current = null;
+  const cleanupPlayback = useCallback(() => {
+    playbackCleanupRef.current?.();
+    playbackCleanupRef.current = null;
   }, []);
 
   const suppressNativePlaybackSync = useCallback((ms = 150) => {
@@ -153,6 +149,9 @@ export function TimelinePlayer({
         state.timelineSegments.length === 0 ||
         state.currentSegmentIndex < 0 ||
         state.currentSegmentIndex >= state.timelineSegments.length) {
+      cleanupPlayback();
+      lastSegmentIdRef.current = null;
+      setPlaybackMessage('');
       return;
     }
 
@@ -207,6 +206,8 @@ export function TimelinePlayer({
       // Load new segment
       console.log(`Loading new segment ${segment.id} (segmentChanged: ${segmentChanged})`);
       loadSegment(segment, relativeTime, state.isPlaying);
+    } else if (video.readyState < 1) {
+      return;
     } else if (timeChanged) {
       // User is dragging the cursor, just update the current time
       console.log(`Seeking to ${relativeTime}s within current segment`);
@@ -232,7 +233,7 @@ export function TimelinePlayer({
       video.playbackRate = state.playbackSpeed;
     }
   }, [
-    cleanupPreloadedVideo,
+    cleanupPlayback,
     releaseDirectVideoControl,
     suppressNativePlaybackSync,
   ]);
@@ -258,7 +259,7 @@ export function TimelinePlayer({
     return () => unsubscribe();
   }, [handleVideoPlayback]);
 
-  useEffect(() => cleanupPreloadedVideo, [cleanupPreloadedVideo]);
+  useEffect(() => cleanupPlayback, [cleanupPlayback]);
 
   // Load a segment
   const loadSegment = useCallback((segment, seekTime = 0, autoplay = false) => {
@@ -266,6 +267,9 @@ export function TimelinePlayer({
     if (!video) return;
 
     console.log(`Loading segment ${segment.id} at time ${seekTime}s, autoplay: ${autoplay}`);
+    cleanupPlayback();
+    const controller = new AbortController();
+    setPlaybackMessage('Loading recording…');
 
     // Pause current playback
     suppressNativePlaybackSync();
@@ -333,10 +337,10 @@ export function TimelinePlayer({
       video.currentTime = validSeekTime;
 
       // Set playback speed
-      video.playbackRate = playbackSpeed;
+      video.playbackRate = timelineState.playbackSpeed;
 
       // Play if needed
-      if (autoplay) {
+      if (timelineState.isPlaying) {
         suppressNativePlaybackSync();
         video.play().catch(error => {
           if (error.name === 'AbortError') {
@@ -355,10 +359,25 @@ export function TimelinePlayer({
     // Add event listener for metadata loaded
     video.addEventListener('loadedmetadata', onLoadedMetadata);
 
-    // Set new source
-    video.src = recordingUrl;
-    video.load();
-  }, [playbackSpeed, suppressNativePlaybackSync, t]);
+    playbackCleanupRef.current = () => {
+      controller.abort();
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    };
+    prepareRecordingPlayback(recordingUrl, {
+      signal: controller.signal,
+      onWaiting: () => setPlaybackMessage('Preparing recording for playback…'),
+    }).then(url => {
+      if (controller.signal.aborted) return;
+      setPlaybackMessage('');
+      video.src = url;
+      video.load();
+    }).catch(error => {
+      if (!controller.signal.aborted) setPlaybackMessage(error.message);
+    });
+  }, [cleanupPlayback, suppressNativePlaybackSync, t]);
 
   // Handle video ended event
   const handleEnded = () => {
@@ -372,36 +391,6 @@ export function TimelinePlayer({
     if (currentIdx < allSegments.length - 1) {
       const nextIndex = currentIdx + 1;
       const nextSegment = allSegments[nextIndex];
-
-      // Warm the browser cache for the next segment in the background using a
-      // temporary video element.  The actual loading and seeking is handled by
-      // handleVideoPlayback → loadSegment once we update the state below.
-      cleanupPreloadedVideo();
-      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}`;
-      const tempVideo = document.createElement('video');
-      tempVideo.preload = 'auto';
-      tempVideo.src = nextVideoUrl;
-
-      let tempCleanupTimeoutId = null;
-      const cleanupTempVideo = () => {
-        tempVideo.removeEventListener('loadeddata', cleanupTempVideo);
-        tempVideo.removeEventListener('error', cleanupTempVideo);
-        try { tempVideo.pause(); } catch (e) { /* ignore */ }
-        tempVideo.removeAttribute('src');
-        try { tempVideo.load(); } catch (e) { /* ignore */ }
-        if (tempCleanupTimeoutId !== null) {
-          clearTimeout(tempCleanupTimeoutId);
-          tempCleanupTimeoutId = null;
-        }
-        if (preloadedVideoCleanupRef.current === cleanupTempVideo) {
-          preloadedVideoCleanupRef.current = null;
-        }
-      };
-      preloadedVideoCleanupRef.current = cleanupTempVideo;
-      tempVideo.addEventListener('loadeddata', cleanupTempVideo);
-      tempVideo.addEventListener('error', cleanupTempVideo);
-      tempCleanupTimeoutId = setTimeout(cleanupTempVideo, PRELOAD_CLEANUP_TIMEOUT_MS);
-      tempVideo.load();
 
       // Update state — handleVideoPlayback detects the new segment ID and calls
       // loadSegment(nextSegment, 0, true), which handles the actual video work.
@@ -942,6 +931,11 @@ export function TimelinePlayer({
               onEnded={handleEnded}
               onTimeUpdate={handleTimeUpdate}
           ></video>
+          {playbackMessage && (
+            <div role="status" className="absolute inset-0 z-20 flex items-center justify-center p-4 text-center text-white bg-black/75">
+              {playbackMessage}
+            </div>
+          )}
 
           <FisheyeEptzCanvas
             videoRef={videoRef}

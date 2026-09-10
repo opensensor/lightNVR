@@ -316,7 +316,19 @@ test.describe('Recordings Page @ui @recordings', () => {
         }],
         pagination: { total: 1, pages: 1, limit: 20 }
       } }));
-      await page.route('**/api/recordings/play/601*', route => route.fulfill({ status: 204, body: '' }));
+      let prepared = false;
+      let preparationRequests = 0;
+      await page.route('**/api/recordings/play/601*', route => {
+        if (new URL(route.request().url()).searchParams.has('prepare')) {
+          preparationRequests++;
+          return route.fulfill({
+            status: prepared ? 200 : 202,
+            headers: { 'Retry-After': '1' },
+            json: { status: prepared ? 'ready' : 'preparing' },
+          });
+        }
+        return route.fulfill({ status: 204, body: '' });
+      });
       await page.route('**/api/recordings/601', route => route.fulfill({ json: {
         id: 601,
         stream: 'cam1',
@@ -342,6 +354,17 @@ test.describe('Recordings Page @ui @recordings', () => {
 
       await expect(page.locator('#recordings-table')).toBeVisible();
       await page.locator('button[title="Play"]').first().click();
+
+      const modal = page.locator('#video-preview-modal');
+      await expect(modal.getByRole('status')).toHaveText('Preparing recording for playback…');
+      await expect(modal.locator('video')).not.toHaveAttribute('src');
+      await modal.locator('button.close').click();
+      const requestsAtClose = preparationRequests;
+      await page.waitForTimeout(1200);
+      expect(preparationRequests).toBe(requestsAtClose);
+      prepared = true;
+      await page.locator('button[title="Play"]').first().click();
+      await expect(modal.locator('video')).toHaveAttribute('src', '/api/recordings/play/601');
 
       await expect(page.locator('#video-preview-modal')).toBeVisible();
       await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:00');
@@ -417,7 +440,11 @@ test.describe('Recordings Page @ui @recordings', () => {
         contentType: 'image/svg+xml',
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111827"/></svg>'
       }));
-      await page.route('**/api/recordings/play/602*', route => route.fulfill({ status: 204, body: '' }));
+      await page.route('**/api/recordings/play/602*', route => route.fulfill(
+        new URL(route.request().url()).searchParams.has('prepare')
+          ? { json: { status: 'ready' } }
+          : { status: 204, body: '' }
+      ));
       await page.route('**/api/recordings/602', route => route.fulfill({ json: {
         id: 602,
         stream: 'front-door-camera-with-a-long-name',

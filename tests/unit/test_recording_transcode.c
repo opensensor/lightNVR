@@ -35,6 +35,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "unity.h"
@@ -455,6 +456,91 @@ void test_failed_transcode_releases_slot_for_retry(void) {
     assert_ffmpeg_process_counts(2);
 }
 
+static double monotonic_seconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return now.tv_sec + now.tv_nsec / 1e9;
+}
+
+static recording_transcode_status_t wait_for_cache(const char *source, const char *cache) {
+    double deadline = monotonic_seconds() + 10;
+    recording_transcode_status_t status;
+    do {
+        status = request_recording_transcode_cache(source, cache);
+        if (status != RECORDING_TRANSCODE_PENDING) return status;
+        usleep(10000);
+    } while (monotonic_seconds() < deadline);
+    return status;
+}
+
+void test_background_requests_return_while_encoder_is_running(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    track_ffmpeg_processes();
+    char cache[320], other[320];
+    snprintf(cache, sizeof(cache), "%s/background.mp4", g_test_dir);
+    snprintf(other, sizeof(other), "%s/other.mp4", g_test_dir);
+    double start = monotonic_seconds();
+    for (int i = 0; i < 20; i++) {
+        TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_PENDING,
+            request_recording_transcode_cache(g_hevc_fixture, cache));
+        TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_PENDING,
+            request_recording_transcode_cache(g_hevc_fixture, other));
+        TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_READY,
+            request_recording_transcode_cache(g_hevc_fixture, g_h264_fixture));
+    }
+    TEST_ASSERT_TRUE_MESSAGE(monotonic_seconds() - start < 0.5,
+                             "Playback requests waited for FFmpeg");
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_READY, wait_for_cache(g_hevc_fixture, cache));
+    TEST_ASSERT_FALSE(recording_needs_hevc_transcode(cache));
+    assert_ffmpeg_process_counts(1);
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_READY, wait_for_cache(g_hevc_fixture, other));
+    assert_ffmpeg_process_counts(2);
+}
+
+void test_background_failure_is_reported_without_restarting_encoder(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    track_ffmpeg_processes();
+    char bad[320], cache[320];
+    snprintf(bad, sizeof(bad), "%s/invalid.mp4", g_test_dir);
+    snprintf(cache, sizeof(cache), "%s/failed_background.mp4", g_test_dir);
+    FILE *file = fopen(bad, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("not a video", file);
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_FAILED, wait_for_cache(bad, cache));
+    for (int i = 0; i < 10; i++) {
+        TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_FAILED,
+            request_recording_transcode_cache(bad, cache));
+    }
+    TEST_ASSERT_FALSE(file_exists_nonempty(cache));
+    assert_ffmpeg_process_counts(1);
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_READY, wait_for_cache(g_hevc_fixture, cache));
+    assert_ffmpeg_process_counts(2);
+}
+
+void test_shutdown_aborts_background_encoder(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    track_ffmpeg_processes();
+    char wrapper[320], cache[320];
+    snprintf(wrapper, sizeof(wrapper), "%s/ffmpeg", g_test_dir);
+    snprintf(cache, sizeof(cache), "%s/shutdown.mp4", g_test_dir);
+    FILE *file = fopen(wrapper, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    /* exec keeps the simulated slow encoder in the tracked child PID. */
+    fputs("#!/bin/sh\nexec sleep 30\n", file);
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_PENDING,
+        request_recording_transcode_cache(g_hevc_fixture, cache));
+    usleep(200000);
+    double start = monotonic_seconds();
+    shutdown_recording_transcode();
+    TEST_ASSERT_TRUE_MESSAGE(monotonic_seconds() - start < 1,
+                             "Shutdown waited for the full encode");
+    TEST_ASSERT_FALSE(file_exists_nonempty(cache));
+    TEST_ASSERT_EQUAL_INT(RECORDING_TRANSCODE_FAILED,
+        request_recording_transcode_cache(g_hevc_fixture, cache));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -476,6 +562,9 @@ int main(void) {
     RUN_TEST(test_concurrent_playback_requests_share_one_transcode);
     RUN_TEST(test_different_recordings_transcode_one_at_a_time);
     RUN_TEST(test_failed_transcode_releases_slot_for_retry);
+    RUN_TEST(test_background_requests_return_while_encoder_is_running);
+    RUN_TEST(test_background_failure_is_reported_without_restarting_encoder);
+    RUN_TEST(test_shutdown_aborts_background_encoder);
 
     return UNITY_END();
 }
