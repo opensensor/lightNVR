@@ -1,7 +1,8 @@
-import { prepareRecordingPlayback } from '../js/utils/recording-playback.js';
+import { loadRecordingPlayback, prepareRecordingPlayback } from '../js/utils/recording-playback.js';
 
 describe('recording playback preparation', () => {
   const videoUrl = '/api/recordings/play/42?token=example';
+  const compatibleUrl = 'http://localhost/api/recordings/play/42?token=example&transcode=1';
   const response = (status, body = {}, retryAfter = '2') => ({
     status,
     headers: { get: () => retryAfter },
@@ -19,7 +20,7 @@ describe('recording playback preparation', () => {
 
   test('loads a ready recording after one preparation request, preserving query parameters', async () => {
     fetch.mockResolvedValue(response(200));
-    await expect(prepareRecordingPlayback(videoUrl)).resolves.toBe(videoUrl);
+    await expect(prepareRecordingPlayback(videoUrl)).resolves.toBe(compatibleUrl);
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, options] = fetch.mock.calls[0];
     expect(new URL(url).searchParams.get('prepare')).toBe('1');
@@ -41,7 +42,7 @@ describe('recording playback preparation', () => {
     await jest.advanceTimersByTimeAsync(2000);
     await promise;
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(ready).toHaveBeenCalledWith(videoUrl);
+    expect(ready).toHaveBeenCalledWith(compatibleUrl);
   });
 
   test('closing while waiting cancels the timer and prevents another request', async () => {
@@ -77,5 +78,66 @@ describe('recording playback preparation', () => {
   test('keeps ordinary video URLs playable', async () => {
     await expect(prepareRecordingPlayback('/example.mp4')).resolves.toBe('/example.mp4');
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  function mediaElement() {
+    const video = new EventTarget();
+    video.load = jest.fn(() => { video.error = null; });
+    video.pause = jest.fn();
+    video.removeAttribute = jest.fn(() => { video.src = ''; });
+    video.fail = code => {
+      video.error = { code };
+      video.dispatchEvent(new Event('error'));
+    };
+    return video;
+  }
+
+  test('loads native recordings immediately without a preparation request', () => {
+    const video = mediaElement();
+    const cleanup = loadRecordingPlayback(video, videoUrl);
+    expect(video.src).toBe(videoUrl);
+    expect(video.load).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  test.each([3, 4])('prepares one compatibility copy after media error %s', async code => {
+    fetch.mockResolvedValueOnce(response(202)).mockResolvedValueOnce(response(200));
+    const video = mediaElement();
+    const onPreparing = jest.fn();
+    const onError = jest.fn();
+    const cleanup = loadRecordingPlayback(video, videoUrl, { onPreparing, onError });
+    video.fail(code);
+    expect(onPreparing).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(video.src).toBe(compatibleUrl);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    video.fail(code);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
+
+  test.each([1, 2])('does not convert after an aborted load or network error (%s)', code => {
+    const video = mediaElement();
+    const cleanup = loadRecordingPlayback(video, videoUrl);
+    video.fail(code);
+    expect(fetch).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  test('closing a player cancels fallback polling and prevents stale media loading', async () => {
+    fetch.mockResolvedValue(response(202));
+    const video = mediaElement();
+    const onError = jest.fn();
+    const cleanup = loadRecordingPlayback(video, videoUrl, { onError });
+    video.fail(4);
+    await jest.advanceTimersByTimeAsync(0);
+    cleanup();
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(video.src).toBe('');
+    expect(onError).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

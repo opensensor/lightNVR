@@ -13,7 +13,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { ConfirmDialog } from './common/ModalDialog.jsx';
-import { prepareRecordingPlayback } from '../../utils/recording-playback.js';
+import { loadRecordingPlayback } from '../../utils/recording-playback.js';
 
 export { ConfirmDialog } from './common/ModalDialog.jsx';
 
@@ -602,27 +602,12 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   useEffect(() => {
     if (!isOpen || !videoUrl || !videoRef.current) return;
     const video = videoRef.current;
-    const controller = new AbortController();
-    setPlaybackMessage('Loading recording…');
-    prepareRecordingPlayback(videoUrl, {
-      signal: controller.signal,
-      onWaiting: () => setPlaybackMessage('Preparing recording for playback…'),
-    }).then(url => {
-      if (controller.signal.aborted) return;
-      setPlaybackMessage('');
-      video.src = url;
-      video.load();
-    }).catch(error => {
-      if (controller.signal.aborted) return;
-      console.error('Recording preparation failed:', error);
-      setPlaybackMessage(error.message);
+    setPlaybackMessage('');
+    return loadRecordingPlayback(video, videoUrl, {
+      onPreparing: () => setPlaybackMessage('Preparing a compatible version for this browser…'),
+      onReady: () => setPlaybackMessage(''),
+      onError: error => setPlaybackMessage(error.message),
     });
-    return () => {
-      controller.abort();
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-    };
   }, [isOpen, videoUrl]);
 
   // Update detection overlay when enabled/disabled
@@ -814,11 +799,6 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 controls
                 controlsList="nofullscreen"
                 key={videoUrl} /* Add key to force re-render when URL changes */
-                onError={(e) => {
-                  if (!e.currentTarget.hasAttribute('src')) return;
-                  console.error('Video error:', e);
-                  showStatusMessage('Error loading video. Please try again.', 'error');
-                }}
                 onLoadStart={() => console.log('Video load started')}
                 onLoadedData={() => console.log('Video data loaded')}
               />

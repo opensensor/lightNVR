@@ -18,7 +18,7 @@ import { useI18n } from '../../../i18n.js';
 import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
 import { isEptzEnabled } from '../../../utils/eptz-config.js';
 import { resolveRecordedStreamSummary } from '../../../utils/stream-summaries.js';
-import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
+import { loadRecordingPlayback } from '../../../utils/recording-playback.js';
 
 const DETECTION_TIME_WINDOW_SECONDS = 2; // Time window (seconds) for filtering visible detections around current playback time
 const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detection overlay scaling
@@ -268,8 +268,7 @@ export function TimelinePlayer({
 
     console.log(`Loading segment ${segment.id} at time ${seekTime}s, autoplay: ${autoplay}`);
     cleanupPlayback();
-    const controller = new AbortController();
-    setPlaybackMessage('Loading recording…');
+    setPlaybackMessage('');
 
     // Pause current playback
     suppressNativePlaybackSync();
@@ -351,32 +350,23 @@ export function TimelinePlayer({
           showStatusMessage(t('timeline.errorPlayingVideo', { message: error.message }), 'error');
         });
       }
-
-      // Remove event listener
-      video.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
 
     // Add event listener for metadata loaded
     video.addEventListener('loadedmetadata', onLoadedMetadata);
 
-    playbackCleanupRef.current = () => {
-      controller.abort();
-      video.removeEventListener('loadedmetadata', onLoadedMetadata);
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-    };
-    prepareRecordingPlayback(recordingUrl, {
-      signal: controller.signal,
-      onWaiting: () => setPlaybackMessage('Preparing recording for playback…'),
-    }).then(url => {
-      if (controller.signal.aborted) return;
-      setPlaybackMessage('');
-      video.src = url;
-      video.load();
-    }).catch(error => {
-      if (!controller.signal.aborted) setPlaybackMessage(error.message);
+    const cleanup = loadRecordingPlayback(video, recordingUrl, {
+      onPreparing: () => {
+        suppressNativePlaybackSync();
+        setPlaybackMessage('Preparing a compatible version for this browser…');
+      },
+      onReady: () => setPlaybackMessage(''),
+      onError: error => setPlaybackMessage(error.message),
     });
+    playbackCleanupRef.current = () => {
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      cleanup();
+    };
   }, [cleanupPlayback, suppressNativePlaybackSync, t]);
 
   // Handle video ended event

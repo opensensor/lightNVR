@@ -96,11 +96,21 @@ void test_hevc_preparation_returns_retryable_json_without_serving_media(void) {
 }
 
 void test_uncached_media_request_returns_prompt_retry_instead_of_waiting(void) {
-    request.query_string[0] = '\0';
+    strcpy(request.query_string, "transcode=1");
     handle_recordings_playback(&request, &response);
     TEST_ASSERT_EQUAL_INT(503, response.status_code);
     TEST_ASSERT_EQUAL_STRING("2", response_header("Retry-After"));
     TEST_ASSERT_EQUAL_INT(0, serve_calls);
+}
+
+void test_hevc_media_plays_original_without_probe_or_preparation(void) {
+    request.query_string[0] = '\0';
+    handle_recordings_playback(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_INT(1, serve_calls);
+    TEST_ASSERT_EQUAL_STRING(recording.file_path, served_path);
+    TEST_ASSERT_EQUAL_INT(0, probe_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
 }
 
 void test_h264_preparation_is_ready_without_a_transcode(void) {
@@ -146,7 +156,7 @@ void test_cached_hevc_media_skips_probe_and_conversion(void) {
     TEST_ASSERT_NOT_NULL(file);
     fputs("cached video", file);
     fclose(file);
-    request.query_string[0] = '\0';
+    strcpy(request.query_string, "transcode=1");
     handle_recordings_playback(&request, &response);
     unlink(cache);
     rmdir(cache_dir);
@@ -167,6 +177,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_hevc_preparation_returns_retryable_json_without_serving_media);
     RUN_TEST(test_uncached_media_request_returns_prompt_retry_instead_of_waiting);
+    RUN_TEST(test_hevc_media_plays_original_without_probe_or_preparation);
     RUN_TEST(test_h264_preparation_is_ready_without_a_transcode);
     RUN_TEST(test_h264_media_uses_original_with_range_support);
     RUN_TEST(test_failed_transcode_reports_error_instead_of_unplayable_original);

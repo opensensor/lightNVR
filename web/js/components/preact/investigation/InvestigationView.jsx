@@ -8,7 +8,7 @@ import {
   resolveRecordedStreamSummary,
 } from '../../../utils/stream-summaries.js';
 import { isEptzEnabled } from '../../../utils/eptz-config.js';
-import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
+import { loadRecordingPlayback } from '../../../utils/recording-playback.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
@@ -232,25 +232,16 @@ function InvestigationPlayer({
       }
     };
     video.addEventListener('loadedmetadata', loaded);
-    const controller = new AbortController();
-    prepareRecordingPlayback(`/api/recordings/play/${segment.id}`, {
-      signal: controller.signal,
-    }).then(url => {
-      if (controller.signal.aborted) return;
-      video.src = url;
-      video.load();
-    }).catch(error => {
-      if (!controller.signal.aborted) {
-        console.warn('Could not prepare investigation recording', error);
+    const cleanup = loadRecordingPlayback(video, `/api/recordings/play/${segment.id}`, {
+      onPreparing: () => setStatus('loading'),
+      onError: error => {
+        console.warn('Could not play investigation recording', error);
         setStatus('error');
-      }
+      },
     });
     return () => {
-      controller.abort();
       video.removeEventListener('loadedmetadata', loaded);
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
+      cleanup();
     };
   }, [segment?.id]);
 
@@ -350,7 +341,6 @@ function InvestigationPlayer({
               onWaiting={() => setStatus('late')}
               onPlaying={() => setStatus('ready')}
               onCanPlay={() => setStatus('ready')}
-              onError={() => setStatus('error')}
             />
           ) : status === 'loading' ? (
             <div className="investigation-gap-state">

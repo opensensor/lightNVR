@@ -836,21 +836,24 @@ Deletes a recording.
 GET /api/recordings/play/{id}
 ```
 
-Streams a recording for playback with byte-range support. HEVC recordings use
-a cached H.264 copy prepared by a single background transcode worker.
+Streams the original recording immediately with byte-range support. Normal
+playback does not probe or convert the video, including HEVC recordings.
 
-Before loading the media URL, poll `GET /api/recordings/play/{id}?prepare=1`:
+If a browser rejects the original with a decode or unsupported-format error,
+it can request a compatible H.264 copy by polling
+`GET /api/recordings/play/{id}?prepare=1`:
 
-- `200` with `{"status":"ready"}`: load the media URL without `prepare=1`.
+- `200` with `{"status":"ready"}`: load `/api/recordings/play/{id}?transcode=1`.
 - `202` with `{"status":"preparing"}`: wait for the `Retry-After` interval and poll again.
 - `500`: preparation failed; the JSON `error` explains the failure. The original
   recording remains available from the download endpoint.
 
-Preparation uses the same replay authorization as playback. A media request
-made while conversion is pending returns `503` with `Retry-After`; it does not
-hold an HTTP worker open for the conversion. H.264 recordings and completed
-cache entries are ready immediately. Clients should stop polling when playback
-is closed or another recording is selected.
+Preparation uses the same replay authorization as playback and retains a single
+background conversion worker. A `transcode=1` request made while conversion is
+pending returns `503` with `Retry-After`; original playback remains available.
+H.264 recordings and completed cache entries are ready immediately. Clients
+should stop polling when playback is closed or another recording is selected,
+and should not request conversion for a network error or aborted media load.
 
 #### Download Recording
 

@@ -6,10 +6,10 @@
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/play/:id
  *
- * Serves a recording file for playback with range request support for seeking.
- * With ?prepare=1, returns JSON: 200 when ready or 202 with Retry-After while
- * a bounded background transcode is pending. Media requests made before the
- * cache is ready return 503 with Retry-After instead of blocking an HTTP worker.
+ * Serves the original recording with range support, without probing or encoding.
+ * For browsers that reject it, ?prepare=1 requests a compatibility copy and
+ * returns JSON: 200 when ready or 202 with Retry-After while pending. Load the
+ * prepared media using ?transcode=1 (503 with Retry-After if not yet ready).
  *
  * @param req HTTP request
  * @param res HTTP response
