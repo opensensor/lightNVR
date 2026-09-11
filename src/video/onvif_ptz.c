@@ -62,8 +62,25 @@ static char* send_ptz_soap_request(const char *ptz_url, const char *soap_action,
     } else {
         security_header = strdup("");
     }
-    
+
+    /* onvif_create_security_header() returns NULL when it cannot obtain random
+     * bytes (e.g. /dev/urandom unavailable under fd exhaustion), and strdup()
+     * returns NULL under memory pressure. Both used to reach strlen() below. */
+    if (!security_header) {
+        log_error("Failed to create WS-Security header for PTZ request");
+        curl_easy_cleanup(curl);
+        free(chunk.memory);
+        return NULL;
+    }
+
     soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 2048);
+    if (!soap_envelope) {
+        log_error("Failed to allocate SOAP envelope for PTZ request");
+        free(security_header);
+        curl_easy_cleanup(curl);
+        free(chunk.memory);
+        return NULL;
+    }
     sprintf(soap_envelope,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
         "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
