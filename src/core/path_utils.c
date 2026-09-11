@@ -243,8 +243,11 @@ int chmod_recursive(const char *path, mode_t mode) {
     if (offset >= PATH_MAX) {
         // If the path is already max length, we won't be able to append anything to
         // it. In this case emit an error and return.
+        // closedir() releases the DIR and the fd it took ownership of above;
+        // close(fd) here would both leak the DIR and close the descriptor out
+        // from under it.
         log_error("Path too long to recur for chmod");
-        close(fd);
+        closedir(dir);
         return -1;
     }
     char *path_ptr = full_path + offset;

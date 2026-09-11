@@ -351,6 +351,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         if (ret < 0) {
             log_error("Select failed: %s", strerror(errno));
             close(sock);
+            free(buffer);
             return -1;
         } else if (ret == 0) {
             // Timeout, no data available
@@ -608,6 +609,7 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
         if (ret < 0) {
             log_error("Select failed: %s", strerror(errno));
             close(sock);
+            free(buffer);
             return count;  // Return any devices found so far
         } else if (ret == 0) {
             // Timeout, no data available

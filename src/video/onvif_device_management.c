@@ -80,11 +80,23 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         security_header = strdup("");
         log_info("No authentication credentials provided");
     }
-    
+
+    /* onvif_create_security_header() returns NULL when it cannot obtain random
+     * bytes (e.g. /dev/urandom unavailable under fd exhaustion), and strdup()
+     * returns NULL under memory pressure. Both used to reach strlen() below. */
+    if (!security_header) {
+        log_error("Failed to create WS-Security header for device management request");
+        goto cleanup;
+    }
+
     // Try simpler SOAP envelope format for better compatibility with onvif_simple_server
     // Based on the curl example that worked
     soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 1024);
-    
+    if (!soap_envelope) {
+        log_error("Failed to allocate SOAP envelope for device management request");
+        goto cleanup;
+    }
+
     // First try with simplified envelope format
     sprintf(soap_envelope,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -130,6 +142,10 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
 
         free(soap_envelope);
         soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 1024);
+        if (!soap_envelope) {
+            log_error("Failed to allocate retry SOAP envelope for device management request");
+            goto cleanup;
+        }
         sprintf(soap_envelope,
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
             "<SOAP-ENV:Envelope "
@@ -179,13 +195,14 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
                   strlen(response));
     }
     
+cleanup:
     // Clean up
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
     free(soap_envelope);
     free(security_header);
     free(chunk.memory);
-    
+
     return response;
 }
 
