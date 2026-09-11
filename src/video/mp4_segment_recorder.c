@@ -1058,7 +1058,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				log_debug("Using carried-over keyframe packet to start segment immediately (overlap mode)");
 				av_packet_unref(pkt);
 				av_packet_move_ref(pkt, segment_info_ptr->pending_video_keyframe);
-				segment_info_ptr->pending_video_keyframe = NULL;
+				av_packet_free(&segment_info_ptr->pending_video_keyframe);
 				ret = 0;
 			} else {
 				// Defensive: don't get stuck if we somehow stored an empty packet
@@ -1135,6 +1135,44 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     av_packet_unref(pkt);
                     continue;
                 }
+            }
+
+            // Initialize first DTS if not set, and compute the DTS-based segment
+            // end threshold.  The threshold uses original (un-rebased) camera DTS
+            // values so that segment length is measured in media time, not wall
+            // clock time.  This is the primary mechanism for "fixed" segment
+            // accuracy; the wall-clock fallback above is a backstop only.
+            if (first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                first_video_dts = pkt->dts;
+                first_video_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+                log_debug("First video DTS: %lld, PTS: %lld",
+                        (long long)first_video_dts, (long long)first_video_pts);
+
+                if (duration > 0 && video_stream_idx >= 0) {
+                    AVStream *vs = input_ctx->streams[video_stream_idx];
+                    // av_rescale_q(duration [seconds], {1,1} [s/s], time_base)
+                    // gives duration expressed in time_base units.
+                    segment_end_dts = first_video_dts +
+                        av_rescale_q((int64_t)duration, (AVRational){1, 1}, vs->time_base);
+                    log_debug("Segment end DTS threshold: %lld (%ds in timebase {%d/%d})",
+                              (long long)segment_end_dts, duration,
+                              vs->time_base.num, vs->time_base.den);
+                }
+            }
+
+            // Check the boundary before testing this packet as the final
+            // keyframe. Otherwise a keyframe exactly at the duration is missed;
+            // long-GOP cameras then hit the wait timeout and lose video while
+            // the next segment waits for another keyframe. Use original camera
+            // DTS here, before either write path rebases the packet timestamps.
+            if (!waiting_for_final_keyframe && !shutdown_detected &&
+                segment_end_dts != AV_NOPTS_VALUE &&
+                pkt->dts != AV_NOPTS_VALUE &&
+                pkt->dts >= segment_end_dts) {
+                log_info("DTS segment boundary reached (pkt->dts %lld >= threshold %lld), "
+                         "checking current frame for segment close",
+                         (long long)pkt->dts, (long long)segment_end_dts);
+                waiting_for_final_keyframe = true;
             }
 
 			// If we're waiting for the final key frame to end recording
@@ -1323,43 +1361,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     av_packet_unref(pkt);
                     break;
                 }
-            }
-
-            // Initialize first DTS if not set, and compute the DTS-based segment
-            // end threshold.  The threshold uses original (un-rebased) camera DTS
-            // values so that segment length is measured in media time, not wall
-            // clock time.  This is the primary mechanism for "fixed" segment
-            // accuracy; the wall-clock fallback above is a backstop only.
-            if (first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
-                first_video_dts = pkt->dts;
-                first_video_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
-                log_debug("First video DTS: %lld, PTS: %lld",
-                        (long long)first_video_dts, (long long)first_video_pts);
-
-                if (duration > 0 && video_stream_idx >= 0) {
-                    AVStream *vs = input_ctx->streams[video_stream_idx];
-                    // av_rescale_q(duration [seconds], {1,1} [s/s], time_base)
-                    // gives duration expressed in time_base units.
-                    segment_end_dts = first_video_dts +
-                        av_rescale_q((int64_t)duration, (AVRational){1, 1}, vs->time_base);
-                    log_debug("Segment end DTS threshold: %lld (%ds in timebase {%d/%d})",
-                              (long long)segment_end_dts, duration,
-                              vs->time_base.num, vs->time_base.den);
-                }
-            }
-
-            // DTS-based segment boundary check: fire keyframe-wait when stream
-            // media time reaches the target.  Uses un-rebased pkt->dts, which
-            // is still in the original camera DTS space at this point in the loop
-            // (timestamp rebasing happens below after this check).
-            if (!waiting_for_final_keyframe && !shutdown_detected &&
-                segment_end_dts != AV_NOPTS_VALUE &&
-                pkt->dts != AV_NOPTS_VALUE &&
-                pkt->dts >= segment_end_dts) {
-                log_info("DTS segment boundary reached (pkt->dts %lld >= threshold %lld), "
-                         "waiting for next keyframe to close segment",
-                         (long long)pkt->dts, (long long)segment_end_dts);
-                waiting_for_final_keyframe = true;
             }
 
             // Handle timestamps based on segment index
