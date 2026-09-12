@@ -151,6 +151,8 @@ static char *create_onvif_request(const char *username, const char *password,
         }
     }
 
+    if (!security_header) return NULL;
+
     /* Build a WS-Addressing fragment if an action was provided. Using
      * `urn:uuid:<v4>` for MessageID and leaving mustUnderstand off on To/Action
      * — cameras that ignore WS-Addressing shouldn't then fault because they
@@ -159,17 +161,29 @@ static char *create_onvif_request(const char *username, const char *password,
     generate_uuid(uuid, sizeof(uuid));
 
     const char *safe_action = action ? action : "";
-    const char *safe_to     = to     ? to     : "";
+    ezxml_t destination = ezxml_new("wsa:To");
+    if (!destination) {
+        free(security_header);
+        return NULL;
+    }
+    ezxml_set_txt(destination, to ? to : "");
+    char *destination_xml = ezxml_toxml(destination);
+    ezxml_free(destination);
+    if (!destination_xml) {
+        free(security_header);
+        return NULL;
+    }
 
     /* The WS-Addressing block inflates the envelope; reserve enough for
      * MessageID (urn:uuid:… = ~45 chars), the action URI, the destination URL,
      * the security header, and the body. 2 KB of slack above those sizes is
      * plenty. */
     size_t envelope_size = strlen(request_body) + strlen(security_header)
-                           + strlen(safe_action) + strlen(safe_to) + 2048;
+                           + strlen(safe_action) + strlen(destination_xml) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
+        free(destination_xml);
         return NULL;
     }
 
@@ -179,16 +193,17 @@ static char *create_onvif_request(const char *username, const char *password,
                    "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">"
         "<s:Header>"
             "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
-            "<wsa:To>%s</wsa:To>"
+            "%s"
             "<wsa:Action>%s</wsa:Action>"
             "%s"
         "</s:Header>"
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        uuid, safe_to, safe_action, security_header, request_body);
+        uuid, destination_xml, safe_action, security_header, request_body);
 
     free(security_header);
+    free(destination_xml);
     return soap_request;
 }
 
@@ -241,16 +256,19 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
     // Set up response buffer
-    memory_struct_t chunk;
-    chunk.memory = malloc(1);
-    chunk.size = 0;
+    memory_struct_t chunk = {0};
 
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
 
     // Perform request
     CURLcode res = curl_easy_perform(curl_handle);
+    long http_code = 0;
+    double elapsed = 0;
+    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(curl_handle, CURLINFO_TOTAL_TIME, &elapsed);
 
     // Clean up request
     free(soap_request);
@@ -258,18 +276,17 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
 
     // Check for errors
     if (res != CURLE_OK) {
-        log_error("ONVIF Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        log_error("ONVIF request %s failed (curl=%d, HTTP=%ld, elapsed=%.3fs): %s",
+                  action ? action : "unknown", (int)res, http_code, elapsed,
+                  curl_easy_strerror(res));
         free(chunk.memory);
         pthread_mutex_unlock(&curl_mutex);
         return NULL;
     }
 
-    // Get HTTP response code
-    long http_code = 0;
-    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
-
-    if (http_code != 200) {
-        log_error("ONVIF request to %s failed with HTTP code %ld", full_url, http_code);
+    if (http_code != 200 || chunk.size == 0) {
+        log_error("ONVIF request %s failed (HTTP=%ld, response=%zu bytes, elapsed=%.3fs)",
+                  action ? action : "unknown", http_code, chunk.size, elapsed);
         if (chunk.size > 0) {
             onvif_log_soap_fault(chunk.memory, chunk.size, "ONVIF Detection");
         }
@@ -302,37 +319,6 @@ static char *send_onvif_request(const char *url, const char *username, const cha
     return send_onvif_request_to_url(full_url, username, password, request_body, action);
 }
 
-// Extract subscription address from response
-static char *extract_subscription_address(const char *response) {
-    if (!response) return NULL;
-
-    // Try different namespace prefixes
-    const char *patterns[] = {
-        "<wsa:Address>", "</wsa:Address>",
-        "<wsa5:Address>", "</wsa5:Address>",
-        "<Address>", "</Address>"
-    };
-
-    for (int i = 0; i < 3; i++) {
-        const char *open_tag = patterns[(ptrdiff_t)i * 2];
-        const char *close_tag = patterns[(ptrdiff_t)i * 2 + 1];
-        const char *start = strstr(response, open_tag);
-
-        if (start) {
-            size_t open_tag_len = strlen(open_tag);
-            const char *content_start = start + open_tag_len;
-            const char *end = strstr(content_start, close_tag);
-
-            if (end) {
-                size_t length = (size_t)(end - content_start);
-                return strndup(content_start, length);
-            }
-        }
-    }
-
-    return NULL;
-}
-
 /* Return the local name of an ezxml element (strips any "prefix:" prefix). */
 static const char *local_name(ezxml_t el) {
     if (!el || !el->name) return "";
@@ -347,6 +333,28 @@ static ezxml_t child_by_local_name(ezxml_t parent, const char *local) {
         if (strcmp(local_name(c), local) == 0) return c;
     }
     return NULL;
+}
+
+/* The destination belongs to SubscriptionReference, not an unrelated
+ * WS-Addressing header. XML parsing also handles vendor prefixes, attributes,
+ * and escaped query-string separators in the returned URL. */
+static char *extract_subscription_address(const char *response) {
+    if (!response) return NULL;
+    char *copy = strdup(response);
+    if (!copy) return NULL;
+    ezxml_t root = ezxml_parse_str(copy, strlen(copy));
+    char *address = NULL;
+    if (root && !ezxml_error(root)[0]) {
+        ezxml_t body = child_by_local_name(root, "Body");
+        ezxml_t reply = child_by_local_name(body, "CreatePullPointSubscriptionResponse");
+        ezxml_t reference = child_by_local_name(reply, "SubscriptionReference");
+        ezxml_t destination = child_by_local_name(reference, "Address");
+        if (destination && destination->txt && destination->txt[0])
+            address = strdup(destination->txt);
+    }
+    if (root) ezxml_free(root);
+    free(copy);
+    return address;
 }
 
 /* Find the first descendant with the given local name. */
