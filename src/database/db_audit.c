@@ -70,6 +70,22 @@ static int retention_days_locked(sqlite3 *db) {
     return days;
 }
 
+/*
+ * Test-only seams, deliberately not declared in the public header (see the
+ * review on PR #595): tests reach them with an extern declaration. The budget
+ * override makes budget exhaustion deterministic instead of racing a real
+ * 250ms clock; the interval getter exposes the cadence transition.
+ */
+static int prune_budget_ms_override = -1;  /* <0 = use AUDIT_PRUNE_BUDGET_MS */
+
+void db_audit_set_prune_budget_ms_for_testing(int budget_ms) {
+    prune_budget_ms_override = budget_ms;
+}
+
+int db_audit_get_prune_interval_seconds_for_testing(void) {
+    return (int)automatic_prune_interval;
+}
+
 static int64_t prune_monotonic_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -89,29 +105,25 @@ static int64_t prune_monotonic_ms(void) {
  * stopped (so nothing was competing for the lock), a single DELETE of 5.33M
  * rows took 2m31s.
  *
- * Batching caps how long the mutex is held regardless of backlog size. When
- * the time budget runs out with work still pending, more_remaining is set so
- * the caller can come back sooner instead of waiting out the full interval.
+ * Batching keeps the work per pass proportional to the batch size rather than
+ * to the backlog. The budget is checked between statements, so it bounds how
+ * many batches a pass runs, not the pass itself -- one batch already in
+ * flight can overrun it, and no maximum hold time is promised. When the
+ * budget runs out with work still pending, more_remaining is set so the
+ * caller can come back sooner instead of waiting out the full interval.
  */
 static int prune_locked(sqlite3 *db, int *deleted_count, bool *more_remaining) {
     int retention_days = retention_days_locked(db);
     int64_t cutoff = (int64_t)time(NULL) -
         (int64_t)retention_days * 24 * 60 * 60;
-    int64_t deadline = prune_monotonic_ms() + AUDIT_PRUNE_BUDGET_MS;
+    int budget_ms = prune_budget_ms_override >= 0
+        ? prune_budget_ms_override : AUDIT_PRUNE_BUDGET_MS;
+    int64_t deadline = prune_monotonic_ms() + budget_ms;
     int total_deleted = 0;
     bool more = false;
     int rc = SQLITE_DONE;
 
-    /*
-     * Subquery form rather than "DELETE ... LIMIT": the latter requires
-     * SQLITE_ENABLE_UPDATE_DELETE_LIMIT, which is not enabled in every SQLite
-     * build this project is linked against. idx_audit_events_occurred covers
-     * the inner scan.
-     */
-    static const char *sql =
-        "DELETE FROM audit_events WHERE id IN ("
-        "SELECT id FROM audit_events WHERE occurred_at < ? "
-        "ORDER BY id LIMIT ?);";
+    static const char *sql = AUDIT_PRUNE_BATCH_SQL;
 
     for (;;) {
         sqlite3_stmt *stmt = NULL;
@@ -446,9 +458,20 @@ int db_audit_prune(int *deleted_count) {
     int result = prune_locked(db, deleted_count, &more_remaining);
     if (result == 0) {
         last_automatic_prune_at = (int64_t)time(NULL);
-        /* An explicit prune is bounded by the same budget, so a large backlog
+        /*
+         * An explicit prune is bounded by the same budget, so a large backlog
          * (typically an administrator lowering the retention window) drains
-         * across the following ticks rather than stalling this request. */
+         * across the following passes rather than stalling this request --
+         * *deleted_count is therefore a partial count in that case, not the
+         * whole backlog.
+         *
+         * Those following passes are driven from db_audit_append(), so this
+         * shortened interval only makes the next prune *eligible* sooner; it
+         * does not schedule one. An installation quiet enough to stop writing
+         * audit events will hold the remaining backlog until audit traffic
+         * resumes. Draining without traffic would need an independent
+         * maintenance tick, which this does not add.
+         */
         automatic_prune_interval = more_remaining
             ? AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS
             : AUDIT_PRUNE_INTERVAL_SECONDS;

@@ -26,6 +26,10 @@
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_audit_log_test.db"
 
+/* Test-only seams in db_audit.c, kept out of the public header. */
+extern void db_audit_set_prune_budget_ms_for_testing(int budget_ms);
+extern int db_audit_get_prune_interval_seconds_for_testing(void);
+
 static int64_t admin_user_id = 0;
 
 static audit_event_input_t event_input(const char *request_id,
@@ -205,6 +209,103 @@ void test_retention_drains_large_backlog_without_touching_live_events(void) {
     TEST_ASSERT_EQUAL_INT(0, db_audit_query(&fresh_query, &fresh_page));
     TEST_ASSERT_EQUAL_INT64(fresh_count, fresh_page.total);
     db_audit_page_free(&fresh_page);
+}
+
+/*
+ * Guards the batching itself, not just deletion correctness. With the budget
+ * forced to zero the deadline has already passed by the time the first batch
+ * returns, so exactly one batch is deleted -- an unbounded DELETE would take
+ * the whole backlog in the first pass and fail the first assertion. Also
+ * covers the cadence transition: shortened while a backlog remains, restored
+ * once drained.
+ */
+void test_prune_stops_on_budget_and_resumes_until_drained(void) {
+    const int backlog = AUDIT_PRUNE_BATCH_ROWS * 2;
+    const int64_t expired_at = (int64_t)time(NULL) - 45LL * 24 * 60 * 60;
+
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(3650));
+    for (int i = 0; i < backlog; i++) {
+        audit_event_input_t event =
+            event_input("request-budget", "camera.configure", "success");
+        event.target_uuid = "camera-budget";
+        event.occurred_at = expired_at;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_append(&event, NULL));
+    }
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(30));
+
+    db_audit_set_prune_budget_ms_for_testing(0);
+
+    int deleted = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_prune(&deleted));
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_BATCH_ROWS, deleted);
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS,
+                          db_audit_get_prune_interval_seconds_for_testing());
+
+    int guard = 0;
+    for (;;) {
+        int pass_deleted = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_prune(&pass_deleted));
+        deleted += pass_deleted;
+        if (pass_deleted == 0) break;
+        TEST_ASSERT_TRUE_MESSAGE(++guard < 100, "prune did not converge");
+    }
+    TEST_ASSERT_EQUAL_INT(backlog, deleted);
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_INTERVAL_SECONDS,
+                          db_audit_get_prune_interval_seconds_for_testing());
+
+    db_audit_set_prune_budget_ms_for_testing(-1);
+}
+
+/*
+ * The common case is a populated table with nothing expired. Ordering the
+ * inner query by id instead of occurred_at makes SQLite scan every surviving
+ * row while the global database mutex is held, so assert on the query plan
+ * directly -- a timing assertion would be flaky, and deletion counts alone
+ * cannot tell a scan from an index seek.
+ */
+void test_prune_batch_query_uses_the_retention_index(void) {
+    const int fresh_rows = 500;
+    const int64_t now = (int64_t)time(NULL);
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(30));
+    for (int i = 0; i < fresh_rows; i++) {
+        audit_event_input_t event =
+            event_input("request-noexpiry", "camera.configure", "success");
+        event.target_uuid = "camera-noexpiry";
+        event.occurred_at = now;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_append(&event, NULL));
+    }
+
+    int deleted = -1;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_prune(&deleted));
+    TEST_ASSERT_EQUAL_INT(0, deleted);
+
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_NOT_NULL(db);
+    char explain[512];
+    snprintf(explain, sizeof(explain), "EXPLAIN QUERY PLAN %s",
+             AUDIT_PRUNE_BATCH_SQL);
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_prepare_v2(db, explain, -1, &stmt, NULL));
+    sqlite3_bind_int64(stmt, 1, now);
+    sqlite3_bind_int(stmt, 2, AUDIT_PRUNE_BATCH_ROWS);
+
+    bool uses_retention_index = false;
+    bool scans_table = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *detail = (const char *)sqlite3_column_text(stmt, 3);
+        if (!detail) continue;
+        if (strstr(detail, "idx_audit_events_occurred")) {
+            uses_retention_index = true;
+        }
+        if (strstr(detail, "SCAN audit_events")) scans_table = true;
+    }
+    sqlite3_finalize(stmt);
+
+    TEST_ASSERT_TRUE_MESSAGE(uses_retention_index,
+                             "prune batch must use idx_audit_events_occurred");
+    TEST_ASSERT_FALSE_MESSAGE(scans_table,
+                              "prune batch must not scan audit_events");
 }
 
 void test_web_helper_redacts_sensitive_detail_fields(void) {
@@ -586,6 +687,8 @@ int main(void) {
     RUN_TEST(test_query_paginates_newest_first);
     RUN_TEST(test_retention_prunes_expired_events);
     RUN_TEST(test_retention_drains_large_backlog_without_touching_live_events);
+    RUN_TEST(test_prune_stops_on_budget_and_resumes_until_drained);
+    RUN_TEST(test_prune_batch_query_uses_the_retention_index);
     RUN_TEST(test_web_helper_redacts_sensitive_detail_fields);
     RUN_TEST(test_operation_helper_adds_standard_envelope_and_redacts_context);
     RUN_TEST(test_camera_configuration_route_outcomes_cover_success_failure_and_error);
