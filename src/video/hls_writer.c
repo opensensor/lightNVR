@@ -12,7 +12,6 @@
 #include <time.h>
 #include <fcntl.h>  // For O_NONBLOCK
 #include <errno.h>  // For error codes
-#include <signal.h> // For alarm
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -961,23 +960,8 @@ void hls_writer_close(hls_writer_t *writer) {
 
         // Only proceed with trailer write if context is fully validated
         if (context_valid) {
-            // Set up a timeout for the trailer write operation
-            // Use sigaction for more reliable signal handling
-            struct sigaction sa_old, sa_new;
-            sigaction(SIGALRM, NULL, &sa_old);
-            sa_new = sa_old;
-            sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-            sigaction(SIGALRM, &sa_new, NULL);
-
-            // Set alarm
-            alarm(5); // 5 second timeout for trailer write
-
             // Use a safer approach to write the trailer
             int ret = av_write_trailer(local_output_ctx);
-
-            // Cancel the alarm and restore signal handler
-            alarm(0);
-            sigaction(SIGALRM, &sa_old, NULL);
 
             if (ret < 0) {
                 recording_io_report_failure(RECORDING_IO_RESOURCE_HLS,
@@ -1001,16 +985,6 @@ void hls_writer_close(hls_writer_t *writer) {
             AVIOContext *pb_to_close = local_output_ctx->pb;
             local_output_ctx->pb = NULL;
 
-            // Set up a timeout for the AVIO close operation with proper signal handling
-            struct sigaction sa_old, sa_new;
-            sigaction(SIGALRM, NULL, &sa_old);
-            sa_new = sa_old;
-            sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-            sigaction(SIGALRM, &sa_new, NULL);
-
-            // Set alarm
-            alarm(5); // 5 second timeout for AVIO close
-
             // Close the AVIO context
             int close_ret = avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
             if (close_ret < 0) {
@@ -1018,10 +992,6 @@ void hls_writer_close(hls_writer_t *writer) {
                                             RECORDING_IO_OPERATION_CLOSE,
                                             close_ret);
             }
-
-            // Cancel the alarm and restore signal handler
-            alarm(0);
-            sigaction(SIGALRM, &sa_old, NULL);
 
             log_info("Successfully closed AVIO context for HLS writer for stream %s", stream_name);
         }
