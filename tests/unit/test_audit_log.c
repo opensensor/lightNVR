@@ -145,6 +145,68 @@ void test_retention_prunes_expired_events(void) {
     TEST_ASSERT_EQUAL_INT(30, retention_days);
 }
 
+/*
+ * Pruning runs from the audit insert path with the global database mutex
+ * held. It used to issue one open-ended DELETE, so the first prune after a
+ * backlog accumulated -- or an administrator lowering the retention window on
+ * an existing table -- blocked every other database user for as long as the
+ * delete took (measured at 2m31s for 5.33M rows). It now deletes in bounded
+ * batches, which must still drain the whole backlog and must leave events
+ * inside the retention window alone.
+ *
+ * Tagged with its own target_uuid so it neither depends on nor disturbs the
+ * rows other tests in this binary leave behind.
+ */
+void test_retention_drains_large_backlog_without_touching_live_events(void) {
+    const int expired_count = AUDIT_PRUNE_BATCH_ROWS + 100;  /* > one batch */
+    const int fresh_count = 5;
+    const int64_t now = (int64_t)time(NULL);
+
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(3650));
+
+    for (int i = 0; i < expired_count; i++) {
+        audit_event_input_t expired =
+            event_input("request-backlog", "camera.configure", "success");
+        expired.target_uuid = "camera-backlog-expired";
+        expired.occurred_at = now - 45LL * 24 * 60 * 60;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_append(&expired, NULL));
+    }
+    for (int i = 0; i < fresh_count; i++) {
+        audit_event_input_t fresh =
+            event_input("request-backlog", "camera.configure", "success");
+        fresh.target_uuid = "camera-backlog-fresh";
+        fresh.occurred_at = now;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_append(&fresh, NULL));
+    }
+
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(30));
+
+    /* Drains across however many bounded passes it takes, and terminates. */
+    int guard = 0;
+    for (;;) {
+        int deleted = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_prune(&deleted));
+        if (deleted == 0) break;
+        TEST_ASSERT_TRUE_MESSAGE(++guard < 1000, "prune did not converge");
+    }
+
+    audit_query_t expired_query = {.page = 1, .page_size = 1};
+    safe_strcpy(expired_query.target_uuid, "camera-backlog-expired",
+                sizeof(expired_query.target_uuid), 0);
+    audit_page_t expired_page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&expired_query, &expired_page));
+    TEST_ASSERT_EQUAL_INT64(0, expired_page.total);
+    db_audit_page_free(&expired_page);
+
+    audit_query_t fresh_query = {.page = 1, .page_size = 1};
+    safe_strcpy(fresh_query.target_uuid, "camera-backlog-fresh",
+                sizeof(fresh_query.target_uuid), 0);
+    audit_page_t fresh_page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&fresh_query, &fresh_page));
+    TEST_ASSERT_EQUAL_INT64(fresh_count, fresh_page.total);
+    db_audit_page_free(&fresh_page);
+}
+
 void test_web_helper_redacts_sensitive_detail_fields(void) {
     http_request_t req;
     http_request_init(&req);
@@ -523,6 +585,7 @@ int main(void) {
     RUN_TEST(test_append_rejects_invalid_or_non_object_payloads);
     RUN_TEST(test_query_paginates_newest_first);
     RUN_TEST(test_retention_prunes_expired_events);
+    RUN_TEST(test_retention_drains_large_backlog_without_touching_live_events);
     RUN_TEST(test_web_helper_redacts_sensitive_detail_fields);
     RUN_TEST(test_operation_helper_adds_standard_envelope_and_redacts_context);
     RUN_TEST(test_camera_configuration_route_outcomes_cover_success_failure_and_error);

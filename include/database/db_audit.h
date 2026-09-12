@@ -18,6 +18,17 @@
 #define AUDIT_RETENTION_DEFAULT_DAYS 365
 #define AUDIT_RETENTION_MAX_DAYS 3650
 
+/* Pruning runs from the audit insert path with the global database mutex
+ * held, so it deletes in bounded batches instead of one open-ended DELETE.
+ * The row cap keeps a single statement cheap; the time budget caps the whole
+ * pass no matter how large the backlog or how slow the storage. */
+#define AUDIT_PRUNE_BATCH_ROWS 2000
+#define AUDIT_PRUNE_BUDGET_MS 250
+/* Steady-state interval between automatic prunes, and the shortened interval
+ * used while a backlog is still draining. */
+#define AUDIT_PRUNE_INTERVAL_SECONDS 3600
+#define AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS 60
+
 typedef struct {
     const char *request_id;
     int64_t principal_user_id;
