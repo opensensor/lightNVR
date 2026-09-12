@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 import { USERS, login } from '../fixtures/test-fixtures';
+import { serveRecordingMedia } from '../fixtures/recording-media';
 
 /* One solid-blue 320x240 VP8 frame. Keeping the fixture inline makes the
  * metadata transition deterministic without depending on a camera or ffmpeg. */
@@ -16,9 +17,6 @@ const END_TIME = START_TIME + 60;
 test.describe('Investigation player regressions @ui @investigation', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, USERS.admin);
-  });
-
-  test('keeps controls visible and preserves a 4:3 recording after metadata loads', async ({ page }) => {
     await page.route('**/api/streams?**', route => route.fulfill({
       json: {
         streams: [{
@@ -78,6 +76,9 @@ test.describe('Investigation player regressions @ui @investigation', () => {
       body: FOUR_BY_THREE_WEBM,
     }));
 
+  });
+
+  test('keeps controls visible and preserves a 4:3 recording after metadata loads', async ({ page }) => {
     await page.goto(
       `/investigation.html?cameras=${CAMERA_UUID}&start=${START_TIME}` +
       `&end=${END_TIME}&cursor=${START_TIME + 1}`,
@@ -114,4 +115,39 @@ test.describe('Investigation player regressions @ui @investigation', () => {
     await expect(controls.getByRole('button', { name: 'Fullscreen' })).toBeVisible();
     await expect(page.getByTestId('fisheye-eptz-canvas')).toHaveCount(0);
   });
+
+  test('native play and pause synchronize shared controls without stopping on media reload', async ({ page }) => {
+    await page.route('**/api/recordings/play/568*', serveRecordingMedia);
+    await page.goto(
+      `/investigation.html?cameras=${CAMERA_UUID}&start=${START_TIME}` +
+      `&end=${END_TIME}&cursor=${START_TIME + 1}`,
+      { waitUntil: 'domcontentloaded' },
+    );
+    const player = page.locator('.investigation-player').first();
+    const video = player.locator('video');
+    const sharedPlay = page.locator('.investigation-play-button');
+    const localControls = player.locator('.investigation-player-controls');
+    await expect.poll(() => video.evaluate(el => el.readyState)).toBeGreaterThanOrEqual(2);
+
+    // These are real media events, as emitted by the browser's native controls.
+    await video.evaluate(el => el.play());
+    await expect(sharedPlay).toContainText('Pause');
+    await expect(localControls.getByRole('button', { name: 'Pause' })).toBeVisible();
+    await video.evaluate(el => el.pause());
+    await expect(sharedPlay).toContainText('Play');
+    await expect(localControls.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+
+    await sharedPlay.click();
+    await expect.poll(() => video.evaluate(el => el.paused)).toBe(false);
+    // load() emits pause while resetting the media element. It must not pause
+    // the shared investigation clock or other cameras.
+    await video.evaluate(el => el.load());
+    await expect.poll(() => video.evaluate(el => el.readyState)).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => video.evaluate(el => el.paused)).toBe(false);
+    await expect(sharedPlay).toContainText('Pause');
+
+    await video.evaluate(el => el.pause());
+    await expect(sharedPlay).toContainText('Play');
+  });
+
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
@@ -83,6 +83,7 @@ function InvestigationPlayer({
   const cursorRef = useRef(cursor);
   const playbackRef = useRef({ playing, speed });
   playbackRef.current = { playing, speed };
+  const mediaLoadingRef = useRef(true);
   const regionAnchorRef = useRef(null);
   const coverageSegment = findSegmentAt(track.segments, cursor);
   const [resolvedSegment, setResolvedSegment] = useState(null);
@@ -212,6 +213,7 @@ function InvestigationPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return undefined;
+    mediaLoadingRef.current = true;
     if (!segment) {
       video.pause();
       video.removeAttribute('src');
@@ -222,6 +224,7 @@ function InvestigationPlayer({
 
     setStatus('loading');
     const loaded = () => {
+      mediaLoadingRef.current = false;
       if (video.videoWidth > 0 && video.videoHeight > 0) {
         setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
       }
@@ -240,6 +243,7 @@ function InvestigationPlayer({
       },
     });
     return () => {
+      mediaLoadingRef.current = true;
       video.removeEventListener('loadedmetadata', loaded);
       cleanup();
     };
@@ -249,16 +253,33 @@ function InvestigationPlayer({
     seekToCursor();
   }, [cursor, seekToCursor]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const video = videoRef.current;
     if (!video || !segment || video.readyState < 1) return;
     video.playbackRate = speed;
-    if (playing) {
+    if (playing && video.paused) {
       video.play().catch(() => setStatus('paused-by-browser'));
-    } else {
+    } else if (!playing && !video.paused) {
       video.pause();
     }
   }, [playing, speed, segment?.id]);
+
+  const handleNativePlay = () => {
+    const video = videoRef.current;
+    if (video && !video.paused && !mediaLoadingRef.current) {
+      onPlayingChange(true);
+    }
+  };
+
+  const handleNativePause = () => {
+    const video = videoRef.current;
+    // Loading another segment and reaching its end also emit pause events.
+    // The shared clock must keep advancing through those transitions/gaps.
+    if (video?.paused && !video.ended && !video.error &&
+        video.readyState >= 1 && !mediaLoadingRef.current) {
+      onPlayingChange(false);
+    }
+  };
 
   const toggleFullscreen = useCallback(async () => {
     const shell = videoShellRef.current;
@@ -338,6 +359,8 @@ function InvestigationPlayer({
               playsInline
               preload="metadata"
               controls={!eptzActive}
+              onPlay={handleNativePlay}
+              onPause={handleNativePause}
               onWaiting={() => setStatus('late')}
               onPlaying={() => setStatus('ready')}
               onCanPlay={() => setStatus('ready')}
