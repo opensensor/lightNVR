@@ -33,15 +33,21 @@ def unused_port():
 
 def wait_for(check, timeout=20):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
         try:
             value = check()
             if value:
                 return value
-        except (OSError, ValueError, sqlite3.Error):
-            pass
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            # Services, progress files and database rows may not be ready yet.
+            # Retry transient failures, retaining the last one for diagnosis.
+            last_error = exc
         time.sleep(0.2)
-    raise RuntimeError(f"Timed out after {timeout}s: {check}")
+    message = f"Timed out after {timeout}s: {check}"
+    if last_error is not None:
+        message += f"; last transient error: {last_error}"
+    raise RuntimeError(message) from last_error
 
 
 class Camera(BaseHTTPRequestHandler):
@@ -107,13 +113,14 @@ def main():
     api, rtsp, web = unused_port(), unused_port(), unused_port()
     camera = ThreadingHTTPServer(("127.0.0.1", 0), Camera)
     threading.Thread(target=camera.serve_forever, daemon=True).start()
-    processes, logs = [], []
+    processes = []
 
     def start(command, label):
-        log = open(run / f"{label}.log", "wb")
-        logs.append(log)
-        process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
-                                   start_new_session=True, cwd=ROOT)
+        # Popen gives the child its own descriptor; close the parent's copy
+        # immediately, including when spawning the child fails.
+        with open(run / f"{label}.log", "wb") as log:
+            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                       start_new_session=True, cwd=ROOT)
         processes.append(process)
 
     def request(path, data=None):
@@ -227,8 +234,6 @@ def main():
                     process.wait()
         camera.shutdown()
         camera.server_close()
-        for log in logs:
-            log.close()
 
 
 if __name__ == "__main__":
