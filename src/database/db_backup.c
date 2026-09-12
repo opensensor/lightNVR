@@ -109,15 +109,13 @@ static void release_path_cache(const char *path) {
 }
 
 typedef struct {
-    int fd;
-    const char *path;
     bool abortable;
     const backup_deadline_t *deadline;
     bool deadline_hit;
-} cache_release_progress_t;
+} verification_progress_t;
 
 static int progress_during_verification(void *opaque) {
-    cache_release_progress_t *progress = (cache_release_progress_t *)opaque;
+    verification_progress_t *progress = (verification_progress_t *)opaque;
     /* Post-copy integrity_check scans the whole backup file page by page --
      * on a multi-gigabyte database this alone can take as long as the copy
      * it's verifying, with no other abort point once sqlite3_backup_finish()
@@ -133,9 +131,6 @@ static int progress_during_verification(void *opaque) {
             progress->deadline_hit = true;
             return 1;
         }
-    }
-    if (progress && progress->fd >= 0) {
-        release_file_cache(progress->fd, progress->path);
     }
     return 0;
 }
@@ -470,18 +465,16 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         goto cleanup;
     }
 
-    /* Retain the full integrity guarantee, but release clean pages as SQLite
-     * scans the backup.  Without the progress callback this second full-file
-     * pass recreates the multi-gigabyte cache footprint bounded above.
-     * Registered whenever abortable even without a cache fd, since the
-     * abort-check matters independently of the cache-release optimization. */
-    cache_release_progress_t verification_progress = {
-        .fd = dest_cache_fd,
-        .path = temp_path,
+    /* integrity_check revisits table/index pages; evicting the whole file
+     * every 100k VM instructions forces those pages to be read repeatedly.
+     * Keep the OS's reclaimable cache during verification and discard it at
+     * completion below. Copying still flushes/releases each bounded batch.
+     * The progress callback remains responsible for aborts and deadlines. */
+    verification_progress_t verification_progress = {
         .abortable = abortable,
         .deadline = &deadline,
     };
-    if (dest_cache_fd >= 0 || abortable) {
+    if (abortable) {
         sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
                                  progress_during_verification,
                                  &verification_progress);

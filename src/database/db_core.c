@@ -44,6 +44,7 @@ static char db_backup_path[PATH_MAX] = {0};
 
 // Last backup time
 static time_t last_backup_time = 0;
+static time_t last_scheduled_backup_finished = 0;
 
 // Flag to indicate if WAL mode is enabled
 static bool wal_mode_enabled = false;
@@ -512,15 +513,21 @@ int maybe_run_scheduled_database_backup(void) {
 
     time_t now = time(NULL);
     time_t interval_seconds = (time_t)g_config.db_backup_interval_minutes * 60;
-    if (last_backup_time != 0 && now - last_backup_time < interval_seconds) {
+    time_t last_cycle = last_scheduled_backup_finished > last_backup_time
+        ? last_scheduled_backup_finished : last_backup_time;
+    if (last_cycle != 0 && now - last_cycle < interval_seconds) {
         return 0;
     }
 
-    if (perform_database_backup_cycle("scheduled", true, true) != 0) {
+    int result = perform_database_backup_cycle("scheduled", true, true);
+    // Allow storage to recover after a slow or failed cycle. Failed attempts
+    // must not run again on every main-loop tick or count as usable backups.
+    last_scheduled_backup_finished = time(NULL);
+    if (result != 0) {
         return -1;
     }
 
-    last_backup_time = now;
+    last_backup_time = last_scheduled_backup_finished;
     return 0;
 }
 
@@ -581,6 +588,7 @@ int init_database_ex(const char *db_path, unsigned flags) {
     log_info("Backup path set to: %s", db_backup_path);
 
     struct stat backup_stat;
+    last_scheduled_backup_finished = 0;
     if (stat(db_backup_path, &backup_stat) == 0) {
         last_backup_time = backup_stat.st_mtime;
     } else {
