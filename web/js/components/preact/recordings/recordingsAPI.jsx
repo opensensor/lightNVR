@@ -3,6 +3,7 @@
  */
 
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
 import { fetchJSON, enhancedFetch } from '../../../fetch-utils.js';
@@ -265,7 +266,7 @@ export const recordingsAPI = {
             if (successCount > 0 && errorCount === 0) {
               showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
             } else if (successCount > 0 && errorCount > 0) {
-              showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+              showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
             } else {
               showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
             }
@@ -487,6 +488,7 @@ export const recordingsAPI = {
             current: progress.current || 0,
             total: progress.total || 0,
             succeeded: progress.succeeded || 0,
+            pending_deletions: progress.pending_deletions || 0,
             failed: progress.failed || 0,
             status: progress.status_message || 'Processing...',
             complete: progress.complete || false
@@ -497,6 +499,7 @@ export const recordingsAPI = {
         if (progress.complete) {
           return {
             succeeded: progress.succeeded || 0,
+            pending_deletions: progress.pending_deletions || 0,
             failed: progress.failed || 0
           };
         }
@@ -588,10 +591,12 @@ export const recordingsAPI = {
       const successCount = finalResult.succeeded || 0;
       const errorCount = finalResult.failed || 0;
 
-      if (successCount > 0 && errorCount === 0) {
+      if (finalResult.pending_deletions > 0) {
+        showStatusMessage(`Accepted ${successCount} deletions; ${finalResult.pending_deletions} await storage cleanup`);
+      } else if (successCount > 0 && errorCount === 0) {
         showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
       } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
       } else if (errorCount > 0) {
         showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
       }
@@ -606,7 +611,7 @@ export const recordingsAPI = {
       if (successCount > 0 && errorCount === 0) {
         showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
       } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
       } else if (errorCount > 0) {
         showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
       }
@@ -722,7 +727,7 @@ export const recordingsAPI = {
     }
 
     // Build video URL
-    const videoUrl = `/api/recordings/play/${recording.id}`;
+    const videoUrl = `/api/recordings/play/${recording.id}${recording.external_source ? "?archive=1" : ""}`;
     const title = `${recording.stream} - ${formatUtils.formatDateTime(getRecordingStartTime(recording))}`;
     const downloadUrl = `/api/recordings/download/${recording.id}`;
 
@@ -851,9 +856,18 @@ export const recordingsAPI = {
    * Download recording
    * @param {Object} recording Recording to download
    */
-  downloadRecording: (recording) => {
-    // Create download link
+  downloadRecording: async (recording) => {
     const downloadUrl = `/api/recordings/download/${recording.id}`;
+    try {
+      await prepareRecordingPlayback(downloadUrl, {
+        compatibility: false,
+        signal: AbortSignal.timeout(60 * 60 * 1000),
+        onWaiting: () => showStatusMessage('Preparing archived recording…'),
+      });
+    } catch (error) {
+      showStatusMessage(error.message || 'Unable to retrieve recording', 'error');
+      return;
+    }
     const link = document.createElement('a');
     link.href = downloadUrl;
     // Use dayjs to build a filename timestamp from Unix epoch or ISO string

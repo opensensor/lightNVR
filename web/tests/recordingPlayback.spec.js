@@ -118,12 +118,46 @@ describe('recording playback preparation', () => {
     cleanup();
   });
 
-  test.each([1, 2])('does not convert after an aborted load or network error (%s)', code => {
+  test.each([1])('does not convert after an aborted load (%s)', code => {
     const video = mediaElement();
     const cleanup = loadRecordingPlayback(video, videoUrl);
     video.fail(code);
     expect(fetch).not.toHaveBeenCalled();
     cleanup();
+  });
+
+  test('network errors check archive availability once without starting conversion', async () => {
+    fetch.mockResolvedValue(response(200));
+    const video = mediaElement();
+    const onError = jest.fn();
+    const cleanup = loadRecordingPlayback(video, videoUrl, { onError });
+    video.fail(2);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(new URL(fetch.mock.calls[0][0]).searchParams.get('transcode')).toBe('0');
+    video.fail(2);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  test('archived playback prepares its source without conversion and can be cancelled', async () => {
+    fetch.mockResolvedValue(response(202));
+    const video = mediaElement();
+    const cleanup = loadRecordingPlayback(video, '/api/recordings/play/42?archive=1');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(new URL(fetch.mock.calls[0][0]).searchParams.get('transcode')).toBe('0');
+    expect(video.src).toBeUndefined();
+    cleanup();
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('download preparation polls without fetching a media body', async () => {
+    fetch.mockResolvedValueOnce(response(202)).mockResolvedValueOnce(response(200));
+    const promise = prepareRecordingPlayback('/api/recordings/download/42', { compatibility: false });
+    await jest.advanceTimersByTimeAsync(2000);
+    await expect(promise).resolves.toBe('http://localhost/api/recordings/download/42?transcode=0');
+    expect(fetch.mock.calls.every(([url]) => new URL(url).searchParams.get('prepare') === '1')).toBe(true);
   });
 
   test('closing a player cancels fallback polling and prevents stale media loading', async () => {

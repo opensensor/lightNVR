@@ -69,6 +69,8 @@ db_storage_migration_result_t db_storage_migration_update_progress(
     uint64_t bytes_total);
 db_storage_migration_result_t db_storage_migration_record_failure(
     const storage_migration_job_t *job, const char *error, bool retryable);
+/* Return a claimed job to waiting without spending an attempt on source staging. */
+db_storage_migration_result_t db_storage_migration_defer_source(const char *uuid);
 
 /*
  * Atomically point the recording at the verified destination and advance the

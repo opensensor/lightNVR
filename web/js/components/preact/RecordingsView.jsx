@@ -947,7 +947,7 @@ export function RecordingsView() {
     // Use the modal context if available, otherwise fall back to the imported function
     if (modalContext && modalContext.showVideoModal) {
       console.log('Using modal context showVideoModal');
-      const videoUrl = `/api/recordings/play/${recording.id}`;
+      const videoUrl = `/api/recordings/play/${recording.id}${recording.external_source ? "?archive=1" : ""}`;
       const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time)}`;
       const downloadUrl = `/api/recordings/download/${recording.id}`;
 

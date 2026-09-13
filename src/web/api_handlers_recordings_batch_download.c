@@ -10,6 +10,7 @@
 
 #define _GNU_SOURCE
 #include <stdio.h>
+#include "storage/storage_source.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -378,8 +379,27 @@ static void *zip_worker(void *arg) {
             log_warn("zip_worker: recording %llu not found, skipping", (unsigned long long)job.ids[i]);
             goto next;
         }
+        char source_error[256] = {0};
+        int source = STORAGE_SOURCE_PREPARING;
+        time_t deadline = time(NULL) + 3600;
+        while (source == STORAGE_SOURCE_PREPARING && time(NULL) < deadline) {
+            source = storage_source_resolve(rec.id, rec.file_path, source_error);
+            if (source == STORAGE_SOURCE_PREPARING) {
+                pthread_mutex_lock(&s_dl_mutex);
+                slot = find_dl_job(job_id);
+                if (slot >= 0) s_dl_jobs[slot].updated_at = time(NULL);
+                pthread_mutex_unlock(&s_dl_mutex);
+                if (slot < 0) break;
+                struct timespec delay = {.tv_sec = 1};
+                nanosleep(&delay, NULL);
+            }
+        }
+        if (source != STORAGE_SOURCE_READY) goto next;
         struct stat st;
         if (stat(rec.file_path, &st) != 0) { log_warn("zip_worker: file missing: %s", rec.file_path); goto next; }
+
+        // This writer uses ZIP32; reject overflow instead of emitting a corrupt export.
+        if (st.st_size < 0 || (uint64_t)st.st_size + data_offset + 65536 > UINT32_MAX) goto next;
 
         /* Build entry name: stream_YYYY-MM-DDTHH-mm-ss.ext */
         const char *base = strrchr(rec.file_path, '/');
@@ -431,7 +451,12 @@ static void *zip_worker(void *arg) {
     slot = find_dl_job(job_id);
     if (slot>=0) {
         safe_strcpy(s_dl_jobs[slot].tmp_path, tmp_template, sizeof(s_dl_jobs[slot].tmp_path), 0);
-        s_dl_jobs[slot].status     = DL_COMPLETE;
+        s_dl_jobs[slot].status = entry_count == job.id_count ? DL_COMPLETE : DL_ERROR;
+        if (entry_count != job.id_count) {
+            safe_strcpy(s_dl_jobs[slot].error, "Export incomplete: a recording was unavailable or ZIP size exceeded 4 GiB", 256, 0);
+            unlink(tmp_template);
+            s_dl_jobs[slot].tmp_path[0] = 0;
+        }
         s_dl_jobs[slot].current    = job.id_count;
         s_dl_jobs[slot].updated_at = time(NULL);
     }
@@ -665,7 +690,9 @@ void handle_batch_download_result(const http_request_t *req, http_response_t *re
     if (s_dl_jobs[slot].status != DL_COMPLETE) {
         const char *st = (s_dl_jobs[slot].status == DL_ERROR) ? "error" : "not_ready";
         char err[64]; snprintf(err, sizeof(err), "Job is %s", st);
+        int job_total = s_dl_jobs[slot].total;
         pthread_mutex_unlock(&s_dl_mutex);
+        audit_batch_archive_transfer(req, &user, token, job_total, "error", "archive_not_ready");
         http_response_set_json_error(res, 409, err);
         return;
     }

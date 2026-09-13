@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include "core/authorization.h"
+#include "database/db_core.h"
+#include "storage/storage_migration.h"
 #include "database/db_storage_migrations.h"
 #include "storage/storage_migration.h"
 #include "utils/strings.h"
@@ -304,4 +306,84 @@ void handle_post_storage_migration_cancel(const http_request_t *req,
 void handle_post_storage_migration_retry(const http_request_t *req,
                                          http_response_t *res) {
     handle_job_action(req, res, true);
+}
+
+void handle_get_storage_archive(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!authorize_storage(req, res, &user)) return;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) { http_response_set_json_error(res, 503, "Catalog unavailable"); return; }
+    cJSON *root = cJSON_CreateObject();
+    cJSON *items = root ? cJSON_AddArrayToObject(root, "pending_deletions") : NULL;
+    if (!items) { cJSON_Delete(root); http_response_set_json_error(res, 500, "Out of memory"); return; }
+    cJSON_AddBoolToObject(root, "s3_enabled", LIGHTNVR_ENABLE_S3 != 0);
+    const char *read_only = getenv("LIGHTNVR_STORAGE_READ_ONLY");
+    cJSON_AddBoolToObject(root, "recovery_read_only", read_only && !strcmp(read_only, "1"));
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, "SELECT d.uuid,d.recording_id,d.created_at,"
+        "count(*),MAX(o.attempt_count),MIN(o.next_attempt_at),MAX(o.last_error) "
+        "FROM storage_deletions d JOIN storage_deletion_objects o ON o.deletion_uuid=d.uuid "
+        "WHERE o.state<>'completed' GROUP BY d.uuid ORDER BY d.created_at LIMIT 100;", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        cJSON *item = cJSON_CreateObject();
+        if (!item) { rc = SQLITE_NOMEM; break; }
+        cJSON_AddStringToObject(item, "uuid", (const char *)sqlite3_column_text(stmt, 0));
+        cJSON_AddNumberToObject(item, "recording_id", (double)sqlite3_column_int64(stmt, 1));
+        cJSON_AddNumberToObject(item, "created_at", (double)sqlite3_column_int64(stmt, 2));
+        cJSON_AddNumberToObject(item, "remaining_objects", sqlite3_column_int(stmt, 3));
+        cJSON_AddNumberToObject(item, "attempts", sqlite3_column_int(stmt, 4));
+        cJSON_AddNumberToObject(item, "next_attempt_at", (double)sqlite3_column_int64(stmt, 5));
+        cJSON_AddStringToObject(item, "last_error", (const char *)sqlite3_column_text(stmt, 6));
+        cJSON_AddItemToArray(items, item);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    bool ok = rc == SQLITE_DONE;
+    stmt = NULL;
+    rc = sqlite3_prepare_v2(db, "SELECT "
+        "COALESCE((SELECT sum(recording_bytes+replica_bytes) FROM storage_targets WHERE target_type='s3'),0),"
+        "COALESCE((SELECT sum(bytes_total) FROM storage_migration_jobs WHERE state IN('queued','copying','verifying','committing','retry_wait')),0),"
+        "COALESCE((SELECT sum(size_bytes) FROM storage_retrieval_jobs WHERE state='ready'),0),"
+        "(SELECT count(*) FROM storage_retrieval_jobs WHERE state IN('queued','fetching')),"
+        "(SELECT count(*) FROM storage_deletions WHERE completed_at IS NULL);", -1, &stmt, NULL);
+    if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *fields[] = {"archive_bytes", "transfer_backlog_bytes", "retrieval_cache_bytes", "retrieval_jobs", "pending_deletion_count"};
+        for (int i = 0; i < 5; i++) cJSON_AddNumberToObject(root, fields[i], (double)sqlite3_column_int64(stmt, i));
+    } else ok = false;
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    if (!ok) { cJSON_Delete(root); http_response_set_json_error(res, 500, "Unable to read archive operations"); return; }
+    send_json(res, 200, root);
+}
+
+void handle_post_storage_archive_retry(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!authorize_storage(req, res, &user)) return;
+    cJSON *body = req->body ? cJSON_ParseWithLength(req->body, req->body_len) : NULL;
+    const cJSON *id = cJSON_GetObjectItemCaseSensitive(body, "deletion_uuid");
+    if (!cJSON_IsString(id) || !lightnvr_uuid_is_valid(id->valuestring)) {
+        cJSON_Delete(body); http_response_set_json_error(res, 400, "deletion_uuid is required"); return;
+    }
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    int rc = SQLITE_ERROR, changed = 0;
+    if (db && mutex) {
+        pthread_mutex_lock(mutex);
+        sqlite3_stmt *stmt = NULL;
+        rc = sqlite3_prepare_v2(db, "UPDATE storage_deletion_objects SET next_attempt_at=0 "
+            "WHERE deletion_uuid=? AND state<>'completed';", -1, &stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, id->valuestring, -1, SQLITE_TRANSIENT);
+            rc = sqlite3_step(stmt); changed = sqlite3_changes(db);
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        pthread_mutex_unlock(mutex);
+    }
+    audit_log_operation(req, &user, "storage.configure", "storage_deletion", id->valuestring,
+                        "retry", rc == SQLITE_DONE && changed ? "success" : "failure", NULL);
+    cJSON_Delete(body);
+    if (rc != SQLITE_DONE || !changed) { http_response_set_json_error(res, rc == SQLITE_DONE ? 404 : 500, "Pending deletion not found or unavailable"); return; }
+    storage_migration_worker_wake();
+    http_response_set_json(res, 202, "{\"status\":\"retry_queued\"}");
 }

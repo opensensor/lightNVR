@@ -11,6 +11,7 @@
 #include "video/recording_transcode.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/httpd_utils.h"
+#include "storage/storage_source.h"
 
 static char directory[] = "/tmp/lightnvr_playback_apiXXXXXX";
 static recording_metadata_t recording;
@@ -20,6 +21,15 @@ static bool hevc, allowed;
 static int probe_calls, prepare_calls, serve_calls;
 static recording_transcode_status_t transcode_status;
 static char served_path[MAX_PATH_LENGTH];
+static int source_status;
+
+int __wrap_storage_source_resolve(uint64_t id, char path[MAX_PATH_LENGTH], char error[256]) {
+    TEST_ASSERT_TRUE(allowed);
+    TEST_ASSERT_EQUAL_UINT64(42, id);
+    snprintf(path, MAX_PATH_LENGTH, "%s", recording.file_path);
+    error[0] = 0;
+    return source_status;
+}
 
 int __wrap_get_recording_metadata_by_id(uint64_t id, recording_metadata_t *out) {
     *out = recording;
@@ -74,6 +84,7 @@ void setUp(void) {
     hevc = allowed = true;
     probe_calls = prepare_calls = serve_calls = 0;
     transcode_status = RECORDING_TRANSCODE_PENDING;
+    source_status = STORAGE_SOURCE_READY;
 }
 
 void tearDown(void) { http_response_free(&response); }

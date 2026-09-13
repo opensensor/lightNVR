@@ -24,6 +24,7 @@
 #include "database/db_core.h"
 #include "core/logger.h"
 #include "utils/strings.h"
+#include "storage/storage_s3.h"
 
 #define STORAGE_TARGET_SELECT_FIELDS \
     "t.uuid,t.name,t.target_type,t.root_path,t.enabled,t.is_default," \
@@ -33,7 +34,8 @@
     "t.last_success_at,t.last_error,t.revision,t.created_at,t.updated_at," \
     "t.recording_count,t.recording_bytes,t.mount_required,t.mount_guard_path," \
     "t.migration_bandwidth_bps,t.archival_window_start_minute," \
-    "t.archival_window_end_minute,t.replica_count,t.replica_bytes"
+    "t.archival_window_end_minute,t.replica_count,t.replica_bytes," \
+    "t.endpoint,t.region,t.bucket,t.credential_ref,t.archive_budget_bytes"
 
 static void set_error(char *error, size_t error_size,
                       const char *format, ...) {
@@ -88,6 +90,11 @@ static void populate(sqlite3_stmt *statement, storage_target_t *target) {
     target->archival_window_end_minute = sqlite3_column_int(statement, 26);
     target->replica_count = (uint64_t)sqlite3_column_int64(statement, 27);
     target->replica_bytes = (uint64_t)sqlite3_column_int64(statement, 28);
+    copy_column(target->endpoint, sizeof(target->endpoint), statement, 29);
+    copy_column(target->region, sizeof(target->region), statement, 30);
+    copy_column(target->bucket, sizeof(target->bucket), statement, 31);
+    copy_column(target->credential_ref, sizeof(target->credential_ref), statement, 32);
+    target->archive_budget_bytes = (uint64_t)sqlite3_column_int64(statement, 33);
 }
 
 static bool valid_text(const char *value, size_t maximum, bool required) {
@@ -272,14 +279,17 @@ db_storage_target_result_t db_storage_target_validate(
         return DB_STORAGE_TARGET_INVALID;
     }
     safe_strcpy(target->name, normalized_name, sizeof(target->name), 0);
-    if (!normalize_root_path(target->root_path)) {
+    bool object_target = strcmp(target->target_type, "s3") == 0;
+    if (object_target && !storage_s3_validate(target, error, error_size))
+        return DB_STORAGE_TARGET_INVALID;
+    if (!object_target && !normalize_root_path(target->root_path)) {
         set_error(error, error_size,
                   "root_path must be an absolute non-root path without traversal segments");
         return DB_STORAGE_TARGET_INVALID;
     }
-    if (strcmp(target->target_type, "filesystem") != 0) {
+    if (!object_target && strcmp(target->target_type, "filesystem") != 0) {
         set_error(error, error_size,
-                  "target_type must be filesystem in this release");
+                  "target_type must be filesystem or s3");
         return DB_STORAGE_TARGET_INVALID;
     }
     if (strcmp(target->storage_class, "hot") != 0 &&
@@ -297,7 +307,8 @@ db_storage_target_result_t db_storage_target_validate(
                   "watermarks must satisfy 0 <= low < high < 100");
         return DB_STORAGE_TARGET_INVALID;
     }
-    if (target->reserve_bytes > (uint64_t)INT64_MAX) {
+    if (target->reserve_bytes > (uint64_t)INT64_MAX ||
+        target->archive_budget_bytes > (uint64_t)INT64_MAX) {
         set_error(error, error_size,
                   "reserve_bytes exceeds the supported SQLite integer range");
         return DB_STORAGE_TARGET_INVALID;
@@ -431,6 +442,9 @@ db_storage_target_result_t db_storage_target_get_default(
 
 static db_storage_target_result_t probe_path(storage_target_t *target,
                                              bool write_test) {
+    if (target->enabled && strcmp(target->target_type, "s3") == 0)
+        return storage_s3_probe(target, write_test) == 0
+            ? DB_STORAGE_TARGET_OK : DB_STORAGE_TARGET_UNAVAILABLE;
     target->last_probe_at = (int64_t)time(NULL);
     target->capacity_bytes = 0;
     target->available_bytes = 0;
@@ -766,8 +780,9 @@ db_storage_target_result_t db_storage_target_create(storage_target_t *target) {
         "low_watermark_pct,health_status,capacity_bytes,available_bytes,"
         "filesystem_device,last_probe_at,last_success_at,last_error,"
         "mount_required,mount_guard_path,migration_bandwidth_bps,"
-        "archival_window_start_minute,archival_window_end_minute)"
-        " VALUES(?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+        "archival_window_start_minute,archival_window_end_minute,"
+        "endpoint,region,bucket,credential_ref,archive_budget_bytes)"
+        " VALUES(?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
     pthread_mutex_lock(mutex);
     int count = -1;
     sqlite3_stmt *count_statement = NULL;
@@ -822,6 +837,11 @@ db_storage_target_result_t db_storage_target_create(storage_target_t *target) {
                          target->archival_window_start_minute);
         sqlite3_bind_int(statement, 21,
                          target->archival_window_end_minute);
+        sqlite3_bind_text(statement, 22, target->endpoint, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 23, target->region, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 24, target->bucket, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 25, target->credential_ref, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 26, (sqlite3_int64)target->archive_budget_bytes);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -840,6 +860,14 @@ db_storage_target_result_t db_storage_target_update(
         db_storage_target_get(target->uuid, &existing);
     if (get_result != DB_STORAGE_TARGET_OK) return get_result;
     if (existing.revision != expected_revision) return DB_STORAGE_TARGET_STALE;
+    /* Target identity is immutable. Repointing could erase the only retrievable
+     * location of a pending transfer/deletion even when counters are zero. */
+    if (strcmp(existing.target_type, target->target_type) ||
+        strcmp(existing.endpoint, target->endpoint) ||
+        strcmp(existing.bucket, target->bucket) ||
+        strcmp(existing.region, target->region) ||
+        (strcmp(existing.target_type, "s3") == 0 &&
+         strcmp(existing.root_path, target->root_path))) return DB_STORAGE_TARGET_IN_USE;
     if (target->is_default != existing.is_default ||
         (existing.is_default && !target->enabled)) {
         return DB_STORAGE_TARGET_INVALID;
@@ -879,10 +907,12 @@ db_storage_target_result_t db_storage_target_update(
         "last_success_at=CASE WHEN ?>0 THEN ? ELSE last_success_at END,"
         "last_error=?,mount_required=?,mount_guard_path=?,"
         "migration_bandwidth_bps=?,archival_window_start_minute=?,"
-        "archival_window_end_minute=?,"
+        "archival_window_end_minute=?,credential_ref=?25,archive_budget_bytes=?26,"
         "revision=revision+1,updated_at=strftime('%s','now')"
-        " WHERE uuid=? AND revision=?"
-        " AND (root_path=? OR (is_default=0 AND recording_count=0 AND replica_count=0));";
+        " WHERE uuid=?22 AND revision=?23"
+        " AND (root_path=?24 OR (is_default=0 AND recording_count=0 AND replica_count=0 "
+        "AND NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE (j.source_target_uuid=?22 OR j.destination_target_uuid=?22) "
+        "AND j.state<>'completed') AND NOT EXISTS(SELECT 1 FROM storage_deletion_objects o WHERE o.target_uuid=?22 AND o.state<>'completed')));";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
@@ -927,6 +957,8 @@ db_storage_target_result_t db_storage_target_update(
         sqlite3_bind_int64(statement, 23, expected_revision);
         sqlite3_bind_text(statement, 24, target->root_path, -1,
                           SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 25, target->credential_ref, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 26, (sqlite3_int64)target->archive_budget_bytes);
         result = sqlite3_step(statement);
     }
     int changed = sqlite3_changes(db);
@@ -942,9 +974,7 @@ db_storage_target_result_t db_storage_target_update(
         if (current.revision != expected_revision) {
             return DB_STORAGE_TARGET_STALE;
         }
-        if (strcmp(current.root_path, target->root_path) != 0 &&
-            (current.is_default || current.recording_count > 0 ||
-             current.replica_count > 0)) {
+        if (strcmp(current.root_path, target->root_path) != 0) {
             return DB_STORAGE_TARGET_IN_USE;
         }
         return DB_STORAGE_TARGET_ERROR;
@@ -975,7 +1005,8 @@ db_storage_target_result_t db_storage_target_delete(
         "EXISTS(SELECT 1 FROM storage_policies WHERE primary_target_uuid=? OR "
         "fallback_target_uuid=? OR migration_target_uuid=?) OR "
         "EXISTS(SELECT 1 FROM storage_migration_jobs WHERE source_target_uuid=? OR "
-        "destination_target_uuid=?);", -1, &statement, NULL);
+        "destination_target_uuid=?) OR EXISTS(SELECT 1 FROM storage_recording_policies "
+        "WHERE primary_target_uuid=?1 OR migration_target_uuid=?1 OR fallback_target_uuid=?1);", -1, &statement, NULL);
     if (sqlite_result == SQLITE_OK) {
         for (int parameter = 1; parameter <= 6; parameter++) {
             sqlite3_bind_text(statement, parameter, uuid, -1,
@@ -1241,7 +1272,7 @@ int db_storage_target_classify_path(
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return -1;
     const char *sql = "SELECT uuid,root_path FROM storage_targets"
-        " ORDER BY length(root_path) DESC,uuid;";
+        " WHERE target_type='filesystem' ORDER BY length(root_path) DESC,uuid;";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
@@ -1276,7 +1307,7 @@ int db_storage_target_resolve_path(
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(
-        db, "SELECT root_path FROM storage_targets WHERE uuid=? LIMIT 1;", -1,
+        db, "SELECT root_path FROM storage_targets WHERE uuid=? AND target_type='filesystem' LIMIT 1;", -1,
         &statement, NULL);
     int outcome = -1;
     if (result == SQLITE_OK) {

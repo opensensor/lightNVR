@@ -198,8 +198,8 @@ export function BatchDeleteModal() {
                 const succeeded = progressData.succeeded || 0;
                 const failed = progressData.failed || 0;
                 const message = failed === 0
-                  ? `Successfully deleted ${succeeded} recordings`
-                  : `Deleted ${succeeded} recordings with ${failed} failures`;
+                  ? (progressData.pending_deletions ? `Accepted ${succeeded} deletions; ${progressData.pending_deletions} await storage cleanup` : `Successfully deleted ${succeeded} recordings`)
+                  : `Accepted ${succeeded} deletions with ${failed} failures`;
 
                 showStatusMessage(message, failed === 0 ? 'success' : 'warning', 5000);
 

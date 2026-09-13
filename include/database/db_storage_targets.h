@@ -46,6 +46,11 @@ typedef struct {
     int archival_window_end_minute;
     uint64_t replica_count;
     uint64_t replica_bytes;
+    char endpoint[MAX_PATH_LENGTH];
+    char region[64];
+    char bucket[128];
+    char credential_ref[128];
+    uint64_t archive_budget_bytes;
 } storage_target_t;
 
 typedef enum {

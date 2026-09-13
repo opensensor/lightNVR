@@ -16,4 +16,6 @@ void handle_put_storage_policy(const http_request_t *req,
 void handle_delete_storage_policy(const http_request_t *req,
                                   http_response_t *res);
 
+void handle_post_storage_policy_apply(const http_request_t *, http_response_t *);
+
 #endif /* LIGHTNVR_API_HANDLERS_STORAGE_POLICIES_H */

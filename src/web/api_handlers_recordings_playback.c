@@ -18,6 +18,8 @@
 #include "database/db_recordings.h"
 #include "video/recording_path.h"
 #include "video/recording_transcode.h"
+#include "web/recording_source.h"
+#include "web/recording_archive.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/play/:id
@@ -64,12 +66,9 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
         return;
     }
 
-    // Validate file path
-    if (recording.file_path[0] == '\0') {
-        log_error("Recording has empty file path: %llu", (unsigned long long)id);
-        http_response_set_json_error(res, 500, "Recording has invalid file path");
-        return;
-    }
+    if (recording_archive_serve(req, res, id, false)) return;
+
+    if (!recording_source_for_request(req, res, id, recording.file_path)) return;
 
     // Check if file exists
     struct stat st;
@@ -89,9 +88,8 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
                                                      sizeof(prepare)) > 0 &&
                         strcmp(prepare, "1") == 0;
     char transcode[8];
-    bool compatibility_requested = prepare_only ||
-        (http_request_get_query_param(req, "transcode", transcode, sizeof(transcode)) > 0 &&
-         strcmp(transcode, "1") == 0);
+    int has_transcode = http_request_get_query_param(req, "transcode", transcode, sizeof(transcode));
+    bool compatibility_requested = has_transcode > 0 ? strcmp(transcode, "1") == 0 : prepare_only;
 
     const char *serve_path = recording.file_path;
     char transcode_cache_path[MAX_PATH_LENGTH];

@@ -30,6 +30,7 @@ typedef struct {
     int total;                      // Total number of recordings to delete
     int current;                    // Number of recordings processed so far
     int succeeded;                  // Number of successfully deleted recordings
+    int pending_deletions;          // Accepted requests whose physical cleanup remains pending
     int failed;                     // Number of failed deletions
     char status_message[256];       // Current status message
     char error_message[256];        // Error message if status is ERROR
@@ -96,6 +97,7 @@ int batch_delete_progress_update(const char *job_id, int current, int succeeded,
  * @param failed Number of failed deletions
  * @return int 0 on success, non-zero on error
  */
+int batch_delete_progress_complete_with_pending(const char *job_id, int succeeded, int failed, int pending);
 int batch_delete_progress_complete(const char *job_id, int succeeded, int failed);
 
 /**

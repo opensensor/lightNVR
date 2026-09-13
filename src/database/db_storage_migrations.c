@@ -113,7 +113,7 @@ db_storage_migration_result_t db_storage_migration_create_operation(
     const char *recording_sql =
         "SELECT is_complete,COALESCE(storage_target_uuid,''),"
         "COALESCE(object_key,''),MAX(COALESCE(size_bytes,0),0) "
-        "FROM recordings WHERE id=? LIMIT 1;";
+        "FROM recordings WHERE id=? AND deletion_pending=0 LIMIT 1;";
     int result = sqlite3_prepare_v2(db, recording_sql, -1, &statement, NULL);
     if (result == SQLITE_OK) {
         sqlite3_bind_int64(statement, 1, (sqlite3_int64)recording_id);
@@ -148,23 +148,27 @@ db_storage_migration_result_t db_storage_migration_create_operation(
         pthread_mutex_unlock(mutex);
         return DB_STORAGE_MIGRATION_CONFLICT;
     }
-    if (strcmp(operation, "copy") == 0) {
+    char existing_destination_key[STORAGE_TARGET_OBJECT_KEY_MAX] = {0};
+    {
         result = sqlite3_prepare_v2(db,
-            "SELECT 1 FROM storage_recording_copies WHERE recording_id=? "
+            "SELECT object_key FROM storage_recording_copies WHERE recording_id=? "
             "AND target_uuid=? LIMIT 1;", -1, &statement, NULL);
         if (result == SQLITE_OK) {
             sqlite3_bind_int64(statement, 1, (sqlite3_int64)recording_id);
             sqlite3_bind_text(statement, 2, destination_target_uuid, -1,
                               SQLITE_TRANSIENT);
             result = sqlite3_step(statement);
+            if (result == SQLITE_ROW)
+                safe_strcpy(existing_destination_key, (const char *)sqlite3_column_text(statement, 0),
+                            sizeof(existing_destination_key), 0);
         }
         if (statement) sqlite3_finalize(statement);
         statement = NULL;
-        if (result == SQLITE_ROW) {
+        if (result == SQLITE_ROW && strcmp(operation, "copy") == 0) {
             pthread_mutex_unlock(mutex);
             return DB_STORAGE_MIGRATION_CONFLICT;
         }
-        if (result != SQLITE_DONE) {
+        if (result != SQLITE_DONE && result != SQLITE_ROW) {
             pthread_mutex_unlock(mutex);
             return DB_STORAGE_MIGRATION_ERROR;
         }
@@ -172,7 +176,11 @@ db_storage_migration_result_t db_storage_migration_create_operation(
 
     const char *target_sql =
         "SELECT enabled,health_status,root_path,migration_bandwidth_bps,"
-        "archival_window_start_minute,archival_window_end_minute FROM storage_targets "
+        "archival_window_start_minute,archival_window_end_minute,target_type,"
+        "archive_budget_bytes,recording_bytes+replica_bytes+COALESCE((SELECT sum(j.bytes_total) "
+        "FROM storage_migration_jobs j WHERE j.destination_target_uuid=storage_targets.uuid "
+        "AND j.state NOT IN('completed','cleanup_pending') AND j.artifacts_cleaned=0 AND NOT EXISTS(SELECT 1 FROM storage_recording_copies c "
+        "WHERE c.recording_id=j.recording_id AND c.target_uuid=j.destination_target_uuid)),0) FROM storage_targets "
         "WHERE uuid=? LIMIT 1;";
     result = sqlite3_prepare_v2(db, target_sql, -1, &statement, NULL);
     if (result == SQLITE_OK) {
@@ -195,11 +203,18 @@ db_storage_migration_result_t db_storage_migration_create_operation(
         (uint64_t)sqlite3_column_int64(statement, 3);
     int window_start_minute = sqlite3_column_int(statement, 4);
     int window_end_minute = sqlite3_column_int(statement, 5);
+    bool object_destination = strcmp((const char *)sqlite3_column_text(statement, 6), "s3") == 0;
+    uint64_t budget = (uint64_t)sqlite3_column_int64(statement, 7);
+    uint64_t occupied = (uint64_t)sqlite3_column_int64(statement, 8);
     safe_strcpy(health_status, health ? health : "", sizeof(health_status), 0);
     safe_strcpy(destination_root, root_value ? root_value : "",
                 sizeof(destination_root), 0);
     sqlite3_finalize(statement);
     statement = NULL;
+    if (object_destination && !existing_destination_key[0] && budget && (occupied > budget || bytes_total > budget - occupied)) {
+        pthread_mutex_unlock(mutex);
+        return DB_STORAGE_MIGRATION_TARGET_UNAVAILABLE;
+    }
     if (!enabled || health_status[0] == '\0' ||
         strcmp(health_status, "unavailable") == 0 ||
         strcmp(health_status, "disabled") == 0) {
@@ -207,6 +222,13 @@ db_storage_migration_result_t db_storage_migration_create_operation(
         return DB_STORAGE_MIGRATION_TARGET_UNAVAILABLE;
     }
     char destination_path[MAX_PATH_LENGTH];
+    char destination_key[STORAGE_TARGET_OBJECT_KEY_MAX];
+    safe_strcpy(destination_key, source_key, sizeof(destination_key), 0);
+    if (existing_destination_key[0])
+        safe_strcpy(destination_key, existing_destination_key, sizeof(destination_key), 0);
+    else if (object_destination)
+        snprintf(destination_key, sizeof(destination_key), "recordings/%llu/%s.mp4",
+                 (unsigned long long)recording_id, uuid);
     int written = snprintf(destination_path, sizeof(destination_path),
                            "%s/%s", destination_root, source_key);
     if (written < 0 || (size_t)written >= sizeof(destination_path) ||
@@ -236,7 +258,7 @@ db_storage_migration_result_t db_storage_migration_create_operation(
         sqlite3_bind_text(statement, 6, source_key, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 7, destination_target_uuid, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 8, source_key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 8, destination_key, -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(statement, 9, (sqlite3_int64)bytes_total);
         sqlite3_bind_int64(statement, 10,
                            (sqlite3_int64)bandwidth_limit_bps);
@@ -396,6 +418,28 @@ db_storage_migration_result_t db_storage_migration_update_progress(
         ? DB_STORAGE_MIGRATION_OK : DB_STORAGE_MIGRATION_ERROR;
 }
 
+db_storage_migration_result_t db_storage_migration_defer_source(const char *uuid) {
+    if (!lightnvr_uuid_is_valid(uuid)) return DB_STORAGE_MIGRATION_INVALID;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return DB_STORAGE_MIGRATION_ERROR;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db,
+        "UPDATE storage_migration_jobs SET state='retry_wait',attempt_count=MAX(attempt_count-1,0),"
+        "last_error='Waiting for verified archive retrieval',next_attempt_at=strftime('%s','now')+30,"
+        "updated_at=strftime('%s','now'),revision=revision+1 WHERE uuid=? AND state='copying';",
+        -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1, uuid, -1, SQLITE_TRANSIENT);
+        result = sqlite3_step(statement);
+    }
+    int changed = result == SQLITE_DONE ? sqlite3_changes(db) : 0;
+    if (statement) sqlite3_finalize(statement);
+    pthread_mutex_unlock(mutex);
+    return changed == 1 ? DB_STORAGE_MIGRATION_OK : DB_STORAGE_MIGRATION_ERROR;
+}
+
 db_storage_migration_result_t db_storage_migration_record_failure(
     const storage_migration_job_t *job, const char *error, bool retryable) {
     if (!job || !lightnvr_uuid_is_valid(job->uuid) || !error) {
@@ -438,7 +482,7 @@ db_storage_migration_result_t db_storage_migration_commit_location(
     const storage_migration_job_t *job, const char *destination_path,
     const char *checksum) {
     if (!job || !lightnvr_uuid_is_valid(job->uuid) || !destination_path ||
-        destination_path[0] != '/' || !checksum || strlen(checksum) != 64) {
+        (destination_path[0] && destination_path[0] != '/') || !checksum || strlen(checksum) != 64) {
         return DB_STORAGE_MIGRATION_INVALID;
     }
     sqlite3 *db = get_db_handle();
@@ -452,8 +496,11 @@ db_storage_migration_result_t db_storage_migration_commit_location(
     if (result == SQLITE_OK) {
         const char *recording_sql =
             "UPDATE recordings SET storage_target_uuid=?,object_key=?,"
-            "file_path=?,placement_reason='migration:'||? WHERE id=? AND "
-            "is_complete=1 AND storage_target_uuid=? AND object_key=?;";
+            "file_path=?,archive_checksum=? WHERE id=? AND "
+            "is_complete=1 AND deletion_pending=0 AND storage_target_uuid=? AND object_key=? "
+            "AND COALESCE((SELECT required_copy_count FROM storage_recording_policies p "
+            "WHERE p.recording_id=recordings.id),1)<=1+(SELECT count(*) "
+            "FROM storage_recording_copies c WHERE c.recording_id=recordings.id AND c.target_uuid<>?1);";
         result = sqlite3_prepare_v2(db, recording_sql, -1, &statement, NULL);
         if (result == SQLITE_OK) {
             sqlite3_bind_text(statement, 1, job->destination_target_uuid, -1,
@@ -462,7 +509,7 @@ db_storage_migration_result_t db_storage_migration_commit_location(
                               SQLITE_TRANSIENT);
             sqlite3_bind_text(statement, 3, destination_path, -1,
                               SQLITE_TRANSIENT);
-            sqlite3_bind_text(statement, 4, job->uuid, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(statement, 4, checksum, -1, SQLITE_TRANSIENT);
             sqlite3_bind_int64(statement, 5,
                                (sqlite3_int64)job->recording_id);
             sqlite3_bind_text(statement, 6, job->source_target_uuid, -1,
@@ -475,6 +522,19 @@ db_storage_migration_result_t db_storage_migration_commit_location(
     int changed = result == SQLITE_DONE ? sqlite3_changes(db) : 0;
     if (statement) sqlite3_finalize(statement);
     statement = NULL;
+    if (result == SQLITE_DONE && changed == 1) {
+        result = sqlite3_prepare_v2(db,
+            "DELETE FROM storage_recording_copies WHERE recording_id=? AND target_uuid=? AND object_key=?;",
+            -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            sqlite3_bind_int64(statement, 1, (sqlite3_int64)job->recording_id);
+            sqlite3_bind_text(statement, 2, job->destination_target_uuid, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(statement, 3, job->destination_object_key, -1, SQLITE_TRANSIENT);
+            result = sqlite3_step(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+        statement = NULL;
+    }
     if (result == SQLITE_DONE && changed == 1) {
         const char *job_sql =
             "UPDATE storage_migration_jobs SET state='cleanup_pending',"
@@ -590,7 +650,7 @@ db_storage_migration_result_t db_storage_migration_commit_copy(
     if (result == SQLITE_OK) {
         const char *source_sql =
             "SELECT count(*) FROM recordings WHERE id=? AND is_complete=1 "
-            "AND storage_target_uuid=? AND object_key=?;";
+            "AND deletion_pending=0 AND storage_target_uuid=? AND object_key=?;";
         result = sqlite3_prepare_v2(db, source_sql, -1, &statement, NULL);
         if (result == SQLITE_OK) {
             sqlite3_bind_int64(statement, 1,
@@ -765,10 +825,11 @@ db_storage_migration_result_t db_storage_migration_retry(
     if (!db || !mutex) return DB_STORAGE_MIGRATION_ERROR;
     const char *sql =
         "UPDATE storage_migration_jobs SET state='queued',cancel_requested=0,"
-        "checksum='',bytes_copied=0,attempt_count=0,next_attempt_at=0,"
+        "checksum='',bytes_copied=0,attempt_count=0,next_attempt_at=0,artifacts_cleaned=0,"
         "last_error='',started_at=NULL,completed_at=NULL,"
         "updated_at=strftime('%s','now'),revision=revision+1 WHERE uuid=? "
-        "AND state IN('failed','cancelled');";
+        "AND state IN('failed','cancelled') AND EXISTS(SELECT 1 FROM recordings r "
+        "WHERE r.id=storage_migration_jobs.recording_id AND r.deletion_pending=0);";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);

@@ -47,7 +47,13 @@ macro(add_layer2_test TEST_NAME)
         target_link_libraries(${TEST_NAME} sod)
     endif()
     set_target_properties(${TEST_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    if("${TEST_NAME}" STREQUAL "test_storage_archive")
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME test_storage_archive_s3 COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/s3_fixture.py $<TARGET_FILE:test_storage_archive>)
+    else()
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endif()
 endmacro()
 
 # Variant for Layer 2 tests that require CURL
@@ -167,6 +173,7 @@ add_layer2_test(test_db_recordings_extended)
 add_layer2_test(test_recording_transcode)
 add_layer2_test(test_api_handlers_recordings_playback)
 target_link_options(test_api_handlers_recordings_playback PRIVATE
+    "-Wl,--wrap=storage_source_resolve"
     "-Wl,--wrap=get_recording_metadata_by_id"
     "-Wl,--wrap=httpd_authorize_camera_identity_action_with_context"
     "-Wl,--wrap=recording_needs_hevc_transcode"
@@ -176,6 +183,9 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
 add_layer2_test(test_storage_manager_retention)
 add_layer2_test(test_storage_target_pressure_cleanup)
 add_layer2_test(test_storage_migration)
+if(ENABLE_S3_ARCHIVE)
+    add_layer2_test(test_storage_archive)
+endif()
 add_layer2_test(test_db_detections)
 add_layer2_test(test_db_zones)
 add_layer2_test(test_db_events)

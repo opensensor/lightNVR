@@ -23,6 +23,7 @@
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 #include "database/db_recordings.h"
+#include "web/recording_source.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
 #include "database/db_streams.h"
@@ -580,6 +581,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddBoolToObject(recording, "has_detection", has_detection_flag);
         cJSON_AddBoolToObject(recording, "protected", recordings[i].protected);
+        recording_source_add_status(recording, recordings[i].id);
 
         // Add detection labels array if there are any detections
         if (label_count > 0) {

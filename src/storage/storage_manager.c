@@ -12,6 +12,8 @@
 #include <pthread.h>
 
 #include "storage/storage_manager.h"
+#include "storage/storage_deletion.h"
+#include "storage/storage_source.h"
 #include "storage/storage_migration.h"
 #include "storage/storage_manager_streams_cache.h"
 #include "storage/storage_target_health.h"
@@ -81,28 +83,11 @@ static struct {
 static bool delete_recording_file_and_metadata(const recording_metadata_t *recording,
                                                const char *context,
                                                uint64_t *freed_bytes) {
-    bool file_deleted = false;
-
-    if (freed_bytes) {
-        *freed_bytes = 0;
-    }
-
-    if (!recording) {
+    uint64_t removed = 0;
+    if (freed_bytes) *freed_bytes = 0;
+    if (!recording || storage_recording_delete(recording->id, context, &removed) != 0)
         return false;
-    }
-
-    if (recording->file_path[0] != '\0') {
-        if (unlink(recording->file_path) == 0) {
-            file_deleted = true;
-        } else if (errno == ENOENT) {
-            log_warn("%s: file already missing, pruning stale metadata for %s",
-                     context, recording->file_path);
-        } else {
-            log_error("%s: failed to delete recording file: %s (error: %s)",
-                      context, recording->file_path, strerror(errno));
-            return false;
-        }
-    }
+    bool file_deleted = removed > 0;
 
     delete_recording_thumbnails(recording->id);
 
@@ -115,18 +100,6 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
                      context, transcode_cache_path, strerror(errno));
         }
     }
-
-    if (delete_recording_metadata(recording->id) != 0) {
-        log_warn("%s: failed to delete recording metadata for ID %llu",
-                 context, (unsigned long long)recording->id);
-        return false;
-    }
-
-    /* Keep the stream storage cache consistent so the System page stats
-     * reflect the deletion immediately without waiting for the next full
-     * cache refresh. */
-    update_stream_storage_cache_remove_recording(recording->stream_name,
-                                                 recording->size_bytes);
 
     if (file_deleted && freed_bytes) {
         *freed_bytes = recording->size_bytes;
@@ -242,12 +215,15 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
     if (storage_migration_worker_start() != 0) {
         log_warn("Failed to start durable storage migration worker");
     }
+    if (storage_source_worker_start() != 0)
+        log_error("Could not start archive retrieval worker");
     return 0;
 }
 
 // Shutdown the storage manager
 void shutdown_storage_manager(void) {
     storage_migration_worker_shutdown();
+    storage_source_worker_shutdown();
 
     // Stop the storage manager thread
     // cppcheck-suppress knownConditionTrueFalse
@@ -882,19 +858,6 @@ static struct {
     .force_aggressive = false
 };
 
-// Maximum candidate files tracked per pass of the filesystem reclaimer.
-// Bounds memory: each candidate holds a full path, so keep this modest and
-// re-scan across passes to reach deeper backlogs.
-#define FS_RECLAIM_CANDIDATES 256
-// Hard cap on files deleted by a single filesystem reclaim invocation.
-#define FS_RECLAIM_MAX_DELETE 4000
-
-typedef struct {
-    time_t mtime;
-    uint64_t size;
-    char path[MAX_RECORDING_PATH_LENGTH];
-} reclaim_candidate_t;
-
 /**
  * Classify a free-space percentage into a pressure level using the
  * operator-configured thresholds (falling back to the compiled defaults).
@@ -953,202 +916,6 @@ static double current_free_pct(uint64_t *free_bytes_out,
 }
 
 /**
- * Consider one recording file for inclusion in the "oldest N" candidate set.
- * Keeps the candidate array holding the N oldest files seen so far, tracking
- * the newest (worst) entry so it can be evicted when a genuinely older file
- * appears. O(N) per file, O(N) memory — safe for very large recording trees.
- */
-static void reclaim_consider(reclaim_candidate_t *cand, int *count, int *worst_idx,
-                             const char *path, time_t mtime, uint64_t size) {
-    if (*count < FS_RECLAIM_CANDIDATES) {
-        int i = (*count)++;
-        cand[i].mtime = mtime;
-        cand[i].size = size;
-        safe_strcpy(cand[i].path, path, sizeof(cand[i].path), 0);
-        if (*worst_idx < 0 || mtime > cand[*worst_idx].mtime) {
-            *worst_idx = i;
-        }
-        return;
-    }
-    // Full: replace the newest candidate only if this file is older than it.
-    if (*worst_idx >= 0 && mtime < cand[*worst_idx].mtime) {
-        cand[*worst_idx].mtime = mtime;
-        cand[*worst_idx].size = size;
-        safe_strcpy(cand[*worst_idx].path, path, sizeof(cand[*worst_idx].path), 0);
-        // Recompute the worst (newest) entry.
-        int w = 0;
-        for (int i = 1; i < *count; i++) {
-            if (cand[i].mtime > cand[w].mtime) w = i;
-        }
-        *worst_idx = w;
-    }
-}
-
-static void reclaim_scan_tree(const char *directory, int depth,
-                              reclaim_candidate_t *cand, int *count,
-                              int *worst_idx) {
-    if (!directory || depth > 16) return;
-
-    DIR *dir = opendir(directory);
-    if (!dir) return;
-
-    const struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
-
-        char path[MAX_RECORDING_PATH_LENGTH];
-        int written = snprintf(path, sizeof(path), "%s/%s", directory,
-                               entry->d_name);
-        if (written < 0 || written >= (int)sizeof(path)) continue;
-
-        struct stat st;
-        if (lstat(path, &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) {
-            reclaim_scan_tree(path, depth + 1, cand, count, worst_idx);
-            continue;
-        }
-        if (!S_ISREG(st.st_mode)) continue;
-
-        size_t name_len = strlen(entry->d_name);
-        if (name_len < 4 || strcmp(entry->d_name + name_len - 4, ".mp4") != 0) {
-            continue;
-        }
-        reclaim_consider(cand, count, worst_idx, path, st.st_mtime,
-                         (uint64_t)st.st_size);
-    }
-    closedir(dir);
-}
-
-/**
- * Scan the mp4 recordings tree and collect the oldest recording files.
- * Purely filesystem-driven — no database dependency — so it works even when
- * the DB is corrupt, unopenable, or the disk is 100% full.
- *
- * @return number of candidates collected (already sorted oldest-first)
- */
-static int reclaim_scan_oldest(reclaim_candidate_t *cand) {
-    int count = 0;
-    int worst_idx = -1;
-
-    char mp4_root[MAX_PATH_LENGTH];
-    snprintf(mp4_root, sizeof(mp4_root), "%s/%s", storage_manager.storage_path, MP4_SUBDIR);
-
-    DIR *root = opendir(mp4_root);
-    if (!root) {
-        // Fall back to scanning the storage root directly.
-        safe_strcpy(mp4_root, storage_manager.storage_path, sizeof(mp4_root), 0);
-    } else {
-        closedir(root);
-    }
-    reclaim_scan_tree(mp4_root, 0, cand, &count, &worst_idx);
-
-    // Insertion-sort the (small) candidate set oldest-first.
-    for (int i = 1; i < count; i++) {
-        reclaim_candidate_t key = cand[i];
-        int j = i - 1;
-        while (j >= 0 && cand[j].mtime > key.mtime) {
-            cand[j + 1] = cand[j];
-            j--;
-        }
-        cand[j + 1] = key;
-    }
-    return count;
-}
-
-/**
- * Last-resort, filesystem-driven space reclaimer.
- *
- * Deletes the oldest recording files on disk (and their DB rows/thumbnails when
- * the database is available) until free space reaches target_free_bytes or the
- * delete cap is hit. Unlike every other cleanup path this does NOT depend on the
- * database being healthy, so it is the safety net that prevents a full disk from
- * wedging the whole system.
- *
- * @return bytes freed
- */
-static uint64_t filesystem_reclaim_to_target(uint64_t target_free_bytes, int max_delete) {
-    if (max_delete <= 0 || max_delete > FS_RECLAIM_MAX_DELETE) {
-        max_delete = FS_RECLAIM_MAX_DELETE;
-    }
-
-    reclaim_candidate_t *cand = calloc(FS_RECLAIM_CANDIDATES, sizeof(reclaim_candidate_t));
-    if (!cand) {
-        log_error("Filesystem reclaim: failed to allocate candidate buffer");
-        return 0;
-    }
-
-    uint64_t total_freed = 0;
-    int deleted = 0;
-    bool db_up = (get_db_handle() != NULL);
-
-    for (int pass = 0; pass < (FS_RECLAIM_MAX_DELETE / FS_RECLAIM_CANDIDATES) + 1; pass++) {
-        uint64_t free_bytes = 0;
-        double free_pct = current_free_pct(&free_bytes, NULL);
-        if (free_pct >= 0.0 && free_bytes >= target_free_bytes) {
-            break;  // Target reached.
-        }
-
-        int n = reclaim_scan_oldest(cand);
-        if (n == 0) break;  // Nothing left to delete.
-
-        for (int i = 0; i < n && deleted < max_delete; i++) {
-            // Prefer to delete through the DB so metadata/thumbnails stay
-            // consistent; fall back to a raw unlink when the DB is unavailable.
-            uint64_t freed_bytes = 0;
-            bool handled = false;
-
-            if (db_up) {
-                recording_metadata_t meta;
-                if (get_recording_metadata_by_path(cand[i].path, &meta) == 0) {
-                    if (meta.protected) {
-                        continue;  // Never delete protected recordings.
-                    }
-                    if (delete_recording_file_and_metadata(&meta, "Filesystem reclaim", &freed_bytes)) {
-                        if (freed_bytes == 0) freed_bytes = cand[i].size;
-                        handled = true;
-                    }
-                }
-            }
-
-            if (!handled) {
-                if (unlink(cand[i].path) == 0) {
-                    freed_bytes = cand[i].size;
-                    handled = true;
-                } else if (errno == ENOENT) {
-                    handled = true;  // Already gone.
-                } else {
-                    log_warn("Filesystem reclaim: failed to unlink %s: %s",
-                             cand[i].path, strerror(errno));
-                }
-            }
-
-            if (handled) {
-                total_freed += freed_bytes;
-                deleted++;
-
-                // Re-check free space every few deletions so we stop promptly.
-                if ((deleted % 16) == 0) {
-                    uint64_t fb = 0;
-                    if (current_free_pct(&fb, NULL) >= 0.0 && fb >= target_free_bytes) {
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (deleted >= max_delete) break;
-        // If this pass didn't fill the candidate buffer, we've seen every file.
-        if (n < FS_RECLAIM_CANDIDATES) break;
-    }
-
-    free(cand);
-    log_warn("Filesystem reclaim: deleted %d files, freed %llu MB (db_available=%s)",
-             deleted, (unsigned long long)(total_freed / (1024ULL * 1024ULL)),
-             db_up ? "yes" : "no");
-    return total_freed;
-}
-
-/**
  * Free-space target (in bytes) the emergency paths aim to restore: enough to
  * climb back above the critical band with a little headroom, but at least the
  * configured capacity reserve. Returns 0 if the target is already met.
@@ -1185,7 +952,11 @@ static uint64_t emergency_filesystem_fallback(const char *reason) {
              reason ? reason : "",
              (unsigned long long)(free_bytes / (1024ULL * 1024ULL)),
              (unsigned long long)(target / (1024ULL * 1024ULL)));
-    return filesystem_reclaim_to_target(target, FS_RECLAIM_MAX_DELETE);
+    // Deleting media without a healthy catalog cannot honor protection or
+    // archive intent. Reclaim only disposable cache and let capture pressure
+    // handling pause writes if durable retention leaves no safe candidate.
+    storage_migration_worker_wake();
+    return storage_source_trim(target > free_bytes ? target - free_bytes : 0);
 }
 
 
@@ -1441,6 +1212,10 @@ int storage_cleanup_target_pressure(
 }
 
 static void cleanup_pressured_targets(void) {
+    if (get_disk_pressure_level() >= DISK_PRESSURE_WARNING) {
+        storage_source_trim(256ULL * 1024 * 1024);
+        storage_migration_worker_wake();
+    }
     int total = db_storage_target_count();
     if (total <= 0 || total > STORAGE_TARGET_MAX_COUNT) return;
     // ~1.6 KB per target: keep the inventory off this thread's stack for the
@@ -1618,7 +1393,7 @@ static void capacity_enforce_cycle(void) {
     // reclaim directly from the filesystem.
     uint64_t fb = 0;
     if (current_free_pct(&fb, NULL) >= 0.0 && fb < target_free) {
-        total_freed += filesystem_reclaim_to_target(target_free, FS_RECLAIM_MAX_DELETE);
+        total_freed += storage_source_trim(target_free - fb);
     }
 
     heartbeat_check_disk_pressure();
@@ -2071,7 +1846,11 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
              "before database init to avoid a full-disk crash loop",
              free_pct, (unsigned long long)(free_bytes / (1024ULL * 1024ULL)), target_pct);
 
-    return filesystem_reclaim_to_target(target, FS_RECLAIM_MAX_DELETE);
+    // Deleting media without a healthy catalog cannot honor protection or
+    // archive intent. Reclaim only disposable cache and let capture pressure
+    // handling pause writes if durable retention leaves no safe candidate.
+    storage_migration_worker_wake();
+    return storage_source_trim(target > free_bytes ? target - free_bytes : 0);
 }
 
 // Reconcile recordings interrupted by an unclean shutdown (is_complete = 0).
