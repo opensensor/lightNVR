@@ -16,6 +16,7 @@
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "database/db_recordings.h"
+#include "storage/storage_deletion.h"
 
 static void audit_recording_file_delete(
     const http_request_t *req, const user_t *user,
@@ -155,26 +156,15 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
 
     log_info("Deleting file: %s", path);
 
-    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#36).
-    // Derive 'existed' from the result so the response JSON remains accurate.
-    bool existed;
-    if (unlink(path) == 0) {
-        existed = true;
-        log_info("Successfully deleted file: %s", path);
-    } else if (errno == ENOENT) {
-        existed = false;
-        log_info("File doesn't exist, no need to delete: %s", path);
-    } else {
-        audit_recording_file_delete(req, &user, &camera, recording.id,
-                                    "error", "filesystem_delete_failed",
-                                    "unchanged");
-        log_error("Failed to delete file: %s (error: %s)", path, strerror(errno));
-        http_response_set_json_error(res, 500, "Failed to delete file");
+    int deletion = storage_recording_delete(recording.id, "legacy file deletion", NULL);
+    if (deletion < 0) {
+        http_response_set_json_error(res, deletion == -2 ? 409 : 500, "Recording is protected, transferring, or cannot be deleted");
         return;
     }
+    bool existed = deletion == 0;
 
     audit_recording_file_delete(
-        req, &user, &camera, recording.id, "success", "completed",
+        req, &user, &camera, recording.id, "success", deletion == 0 ? "completed" : "deletion_pending",
         existed ? "deleted" : "already_missing");
 
     // Create response JSON
@@ -187,6 +177,7 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
 
     cJSON_AddBoolToObject(response, "success", true);
     cJSON_AddBoolToObject(response, "existed", existed);
+    cJSON_AddStringToObject(response, "status", deletion == 0 ? "deleted" : "deletion_pending");
 
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(response);
@@ -199,6 +190,6 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
     }
 
     // Send response
-    http_response_set_json(res, 200, json_str);
+    http_response_set_json(res, deletion == 0 ? 200 : 202, json_str);
     free(json_str);
 }

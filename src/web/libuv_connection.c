@@ -17,6 +17,7 @@
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
+#include "web/recording_archive.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_health.h"
 #include "web/httpd_utils.h"
@@ -200,6 +201,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     safe_strcpy(client_ip, conn->request.client_ip, sizeof(client_ip), 0);
 
     // Free any allocated response body
+    recording_archive_disconnected(conn);
     http_response_free(&conn->response);
 
     // Reset request/response
@@ -256,6 +258,7 @@ void libuv_connection_close(libuv_connection_t *conn) {
 void libuv_connection_destroy(libuv_connection_t *conn) {
     if (!conn) return;
     
+    recording_archive_disconnected(conn);
     http_response_free(&conn->response);
     
     if (conn->recv_buffer) {
@@ -638,6 +641,12 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     if (status == UV_ECANCELED) {
         log_debug("handler_after_work_cb: Work cancelled, closing connection");
         libuv_connection_close(conn);
+        return;
+    }
+
+    if (conn->archive_stream) {
+        if (recording_archive_start(conn) == 0) return;
+        libuv_send_response_ex(conn, &conn->response, action);
         return;
     }
 

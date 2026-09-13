@@ -14,6 +14,7 @@
 #include "database/db_storage_migrations.h"
 #include "database/db_storage_pools.h"
 #include "database/db_storage_targets.h"
+#include "storage/storage_deletion.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
 
@@ -26,6 +27,8 @@ typedef struct {
     int current_copy_count;
     char replication_pool_uuid[LIGHTNVR_UUID_STRING_SIZE];
     int migration_after_days;
+    bool keep_hot;
+    bool archive_due;
     char migration_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
 } lifecycle_candidate_t;
 
@@ -102,24 +105,38 @@ int db_storage_lifecycle_schedule(int max_jobs) {
     memset(candidates, 0, sizeof(candidates));
     pthread_mutex_lock(mutex);
     const char *sql =
-        "SELECT r.id,COALESCE(r.storage_target_uuid,''),p.required_copy_count,"
-        "(SELECT count(*) FROM storage_recording_copies c WHERE c.recording_id=r.id),"
-        "COALESCE(p.replication_pool_uuid,''),p.migration_after_days,"
-        "COALESCE(p.migration_target_uuid,'') "
-        "FROM recordings r JOIN storage_policies p ON p.enabled=1 AND "
-        "p.uuid=substr(r.placement_reason,instr(r.placement_reason,':')+1) "
-        "WHERE r.is_complete=1 AND r.protected=0 AND "
-        "(p.maximum_retention_days=0 OR r.start_time > "
-        "strftime('%s','now')-p.maximum_retention_days*86400) AND "
+        "WITH eligible AS (SELECT r.id,COALESCE(r.storage_target_uuid,'') source,p.required_copy_count,"
+        "(SELECT count(*) FROM storage_recording_copies c WHERE c.recording_id=r.id) copies,"
+        "COALESCE(p.replication_pool_uuid,'') pool,p.migration_after_days,"
+        "COALESCE(p.migration_target_uuid,'') destination,"
+        "(p.hot_residency_seconds>=0 AND r.start_time>strftime('%s','now')-p.hot_residency_seconds) keep_hot,"
+        "(p.migration_target_uuid IS NOT NULL AND r.storage_target_uuid<>p.migration_target_uuid AND ("
+        "(r.protected=1 AND p.archive_protected=1) OR "
+        "(p.migration_after_days>0 AND r.start_time<=strftime('%s','now')-p.migration_after_days*86400) OR "
+        "(p.migration_after_days=0 AND p.archive_after_seconds>=0 AND "
+        "r.start_time<=strftime('%s','now')-p.archive_after_seconds))) age_due,"
+        "(p.archive_on_pressure=1 AND hot.target_type='filesystem' AND hot.capacity_bytes>0 AND "
+        "(hot.available_bytes<=hot.reserve_bytes OR "
+        "100.0*(hot.capacity_bytes-hot.available_bytes)/hot.capacity_bytes>=hot.high_watermark_pct)) pressure_due,"
+        "EXISTS(SELECT 1 FROM storage_recording_copies c WHERE c.recording_id=r.id "
+        "AND c.target_uuid=p.migration_target_uuid) archived,r.start_time,"
+        "(r.protected AND p.archive_protected) protected_priority "
+        "FROM recordings r JOIN storage_recording_policies p ON p.recording_id=r.id AND p.enabled=1 AND "
+        "p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1)) "
+        "JOIN storage_targets hot ON hot.uuid=r.storage_target_uuid "
+        "WHERE r.is_complete=1 AND r.deletion_pending=0 AND "
+        "(r.protected=1 OR r.retention_override_days=0 OR "
+        "(r.retention_override_days>0 AND r.start_time>strftime('%s','now')-r.retention_override_days*86400) OR "
+        "(COALESCE(r.retention_override_days,-1)<0 AND (p.maximum_retention_days=0 OR r.start_time> "
+        "strftime('%s','now')-p.maximum_retention_days*86400))) AND "
         "NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=r.id "
-        "AND j.state NOT IN('completed','failed','cancelled')) AND "
-        "NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=r.id "
-        "AND j.state IN('failed','cancelled')) AND ("
-        "p.required_copy_count > 1+(SELECT count(*) FROM storage_recording_copies c "
-        "WHERE c.recording_id=r.id) OR (p.migration_after_days>0 AND "
-        "r.start_time <= strftime('%s','now')-p.migration_after_days*86400 AND "
-        "r.storage_target_uuid<>p.migration_target_uuid)) "
-        "ORDER BY r.start_time LIMIT ?;";
+        "AND j.state<>'completed')) "
+        "SELECT id,source,required_copy_count,copies,pool,migration_after_days,destination,"
+        "(keep_hot AND NOT pressure_due),(age_due OR pressure_due) FROM eligible WHERE "
+        "required_copy_count>1+copies OR (destination<>'' AND destination<>source AND "
+        "(age_due OR pressure_due) AND (NOT archived OR "
+        "((NOT keep_hot OR pressure_due) AND required_copy_count<=copies))) "
+        "ORDER BY pressure_due DESC,protected_priority DESC,start_time LIMIT ?;";
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
     if (result == SQLITE_OK) sqlite3_bind_int(statement, 1, max_jobs);
@@ -138,6 +155,8 @@ int db_storage_lifecycle_schedule(int max_jobs) {
         copy_column(candidate->replication_pool_uuid,
                     sizeof(candidate->replication_pool_uuid), statement, 4);
         candidate->migration_after_days = sqlite3_column_int(statement, 5);
+        candidate->keep_hot = sqlite3_column_int(statement, 7) != 0;
+        candidate->archive_due = sqlite3_column_int(statement, 8) != 0;
         copy_column(candidate->migration_target_uuid,
                     sizeof(candidate->migration_target_uuid), statement, 6);
     }
@@ -154,10 +173,10 @@ int db_storage_lifecycle_schedule(int max_jobs) {
                 candidate->current_copy_count) {
             operation = "copy";
             if (!select_replica_target(candidate, destination)) continue;
-        } else {
-            safe_strcpy(destination, candidate->migration_target_uuid,
-                        sizeof(destination), 0);
-        }
+        } else if (candidate->archive_due) {
+            safe_strcpy(destination, candidate->migration_target_uuid, sizeof(destination), 0);
+            if (candidate->keep_hot) operation = "copy";
+        } else continue;
         storage_migration_job_t job;
         db_storage_migration_result_t created =
             db_storage_migration_create_operation(candidate->recording_id,
@@ -165,6 +184,36 @@ int db_storage_lifecycle_schedule(int max_jobs) {
         if (created == DB_STORAGE_MIGRATION_OK) scheduled++;
     }
     return scheduled;
+}
+
+int db_storage_lifecycle_expire(int maximum) {
+    if (maximum < 1) return 0;
+    if (maximum > LIFECYCLE_CANDIDATE_MAX) maximum = LIFECYCLE_CANDIDATE_MAX;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    uint64_t ids[LIFECYCLE_CANDIDATE_MAX];
+    int count = 0;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT r.id FROM recordings r JOIN storage_recording_policies p ON p.recording_id=r.id "
+        "WHERE r.is_complete=1 AND r.protected=0 AND r.deletion_pending=0 AND "
+        "COALESCE(r.retention_override_days,-1)<>0 AND "
+        "(p.minimum_retention_days=0 OR r.start_time<strftime('%s','now')-p.minimum_retention_days*86400) AND "
+        "((r.retention_override_days>0 AND r.start_time<strftime('%s','now')-r.retention_override_days*86400) OR "
+        "(COALESCE(r.retention_override_days,-1)<0 AND p.maximum_retention_days>0 AND "
+        "r.start_time<strftime('%s','now')-p.maximum_retention_days*86400)) AND "
+        "NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=r.id "
+        "AND j.state IN('copying','verifying','committing')) ORDER BY r.start_time LIMIT ?;";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, maximum);
+        while (count < maximum && sqlite3_step(stmt) == SQLITE_ROW) ids[count++] = (uint64_t)sqlite3_column_int64(stmt, 0);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    int accepted = 0;
+    for (int i = 0; i < count; i++) if (storage_recording_expire_policy(ids[i]) >= 0) accepted++;
+    return accepted;
 }
 
 static int upsert_violation(sqlite3 *db, const char *policy_uuid,
@@ -197,8 +246,11 @@ int db_storage_lifecycle_reconcile(void) {
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return -1;
     pthread_mutex_lock(mutex);
-    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK ||
-        sqlite3_exec(db, "UPDATE storage_policy_violations SET "
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+        pthread_mutex_unlock(mutex);
+        return -1; // No transaction was acquired; do not roll back another owner.
+    }
+    if (sqlite3_exec(db, "UPDATE storage_policy_violations SET "
             "resolved_at=strftime('%s','now') WHERE resolved_at IS NULL;",
             NULL, NULL, NULL) != SQLITE_OK) {
         sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
@@ -209,8 +261,8 @@ int db_storage_lifecycle_reconcile(void) {
     sqlite3_stmt *statement = NULL;
     const char *copy_sql =
         "SELECT p.uuid,r.id,p.required_copy_count,1+count(c.uuid) "
-        "FROM recordings r JOIN storage_policies p ON p.enabled=1 AND "
-        "p.uuid=substr(r.placement_reason,instr(r.placement_reason,':')+1) "
+        "FROM recordings r JOIN storage_recording_policies p ON p.recording_id=r.id AND p.enabled=1 AND "
+        "p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1)) "
         "LEFT JOIN storage_recording_copies c ON c.recording_id=r.id "
         "WHERE r.is_complete=1 AND p.required_copy_count>1 GROUP BY p.uuid,r.id "
         "HAVING 1+count(c.uuid)<p.required_copy_count;";
@@ -233,7 +285,7 @@ int db_storage_lifecycle_reconcile(void) {
     const char *failed_sql =
         "SELECT p.uuid,r.id,j.uuid,COALESCE(j.last_error,'') FROM "
         "storage_migration_jobs j JOIN recordings r ON r.id=j.recording_id "
-        "JOIN storage_policies p ON p.uuid=substr(r.placement_reason,"
+        "JOIN storage_recording_policies p ON p.recording_id=r.id AND p.uuid=substr(r.placement_reason,"
         "instr(r.placement_reason,':')+1) WHERE j.state='failed' AND NOT EXISTS("
         "SELECT 1 FROM storage_migration_jobs newer WHERE "
         "newer.recording_id=j.recording_id AND newer.state='completed' AND "
@@ -316,7 +368,7 @@ int db_storage_lifecycle_reconcile(void) {
         "pt.reserve_bytes,0) END "
         "FROM storage_policies p LEFT JOIN storage_targets pt ON "
         "pt.uuid=p.primary_target_uuid LEFT JOIN recordings r ON "
-        "p.uuid=substr(r.placement_reason,instr(r.placement_reason,':')+1) "
+        "p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1)) "
         "WHERE p.enabled=1 AND p.minimum_retention_days>0 GROUP BY p.uuid;";
     statement = NULL;
     result = sqlite3_prepare_v2(db, minimum_sql, -1, &statement, NULL);

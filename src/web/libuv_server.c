@@ -17,6 +17,7 @@
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
+#include "web/recording_archive.h"
 #include "web/thumbnail_thread.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_health.h"
@@ -414,6 +415,7 @@ static void server_thread_func(void *arg) {
 static void close_walk_cb(uv_handle_t *handle, void *arg) {
     (void)arg;
     if (!uv_is_closing(handle)) {
+        if (recording_archive_close_timer(handle)) return;
         log_debug("close_walk_cb: Closing handle type %d", handle->type);
         // Use proper close callback for connection handles
         if (handle->type == UV_TCP && handle->data) {

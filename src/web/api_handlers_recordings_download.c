@@ -16,6 +16,8 @@
 #include "core/logger.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "web/recording_source.h"
+#include "web/recording_archive.h"
 #include "utils/strings.h"
 
 static void audit_recording_export(
@@ -94,6 +96,18 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
         return;
     }
 
+    if (recording_archive_serve(req, res, id, true)) {
+        audit_recording_export(req, &user, &camera, id, res->status_code >= 400 ? "failure" : "success",
+                               "archive_export_requested", 0, NULL);
+        return;
+    }
+
+    if (!recording_source_for_request(req, res, id, recording.file_path)) {
+        audit_recording_export(req, &user, &camera, id, res->status_code == 202 ? "success" : "failure",
+                               res->status_code == 202 ? "archive_preparing" : "recording_source_unavailable", 0, NULL);
+        return;
+    }
+
     // Check if file exists
     struct stat st;
     if (stat(recording.file_path, &st) != 0) {
@@ -101,6 +115,12 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
                                "recording_file_missing", 0, NULL);
         log_error("Recording file not found: %s", recording.file_path);
         http_response_set_json_error(res, 404, "Recording file not found");
+        return;
+    }
+
+    char prepare[8];
+    if (http_request_get_query_param(req, "prepare", prepare, sizeof(prepare)) > 0 && !strcmp(prepare, "1")) {
+        http_response_set_json(res, 200, "{\"status\":\"ready\"}");
         return;
     }
 

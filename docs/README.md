@@ -47,6 +47,7 @@ covers a blank or broken web UI specifically.
 | Document | What it covers |
 |---|---|
 | [CONFIGURATION.md](CONFIGURATION.md) | `lightnvr.ini` — every section and key |
+| [STORAGE_ARCHIVE.md](STORAGE_ARCHIVE.md) | Hot PVC storage, S3/NFS/SAN archival, retention, playback, and recovery |
 | [configuration/system-health.md](configuration/system-health.md) | Host-health cadence, policy profiles, providers, overrides, upgrade and rollback |
 | [ZONE_CONFIGURATION.md](ZONE_CONFIGURATION.md) | Polygon detection zones, class filters, thresholds |
 | [REVERSE_PROXY.md](REVERSE_PROXY.md) | Running behind nginx / Caddy / Traefik, HTTPS, `trusted_proxy_cidrs` |

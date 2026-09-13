@@ -351,6 +351,7 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
                       <span>{recording.stream || t('common.unknown')}</span>
+                      {recording.storage_state && <span className="text-xs text-muted-foreground">{t(`settings.archive.${recording.storage_state}`)}</span>}
                     </div>
                   </td>
                 )}

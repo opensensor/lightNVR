@@ -29,6 +29,7 @@
 #include "core/path_utils.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "web/recording_source.h"
 #include "utils/strings.h"
 
 // Investigation drill-down caches one file per requested offset, and the
@@ -174,7 +175,7 @@ static void thumbnail_complete_callback(deferred_action_handle_t handle,
         // Success - serve the generated thumbnail
         log_debug("Serving generated thumbnail: %s", output_path);
         if (libuv_serve_file(conn, output_path, "image/jpeg",
-                            "Cache-Control: public, max-age=86400\r\n") != 0) {
+                            "Cache-Control: private, max-age=86400\r\n") != 0) {
             http_response_set_json_error(&conn->response, 500, "Failed to serve thumbnail");
             libuv_send_response_ex(conn, &conn->response, conn->deferred_action);
         }
@@ -190,11 +191,20 @@ static void serve_or_generate_thumbnail(
     const http_request_t *req, http_response_t *res,
     const recording_metadata_t *recording,
     const thumbnail_request_t *request) {
+    (void)recording;
+    cJSON *state = cJSON_CreateObject();
+    recording_source_add_status(state, request->recording_id);
+    bool deleting = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(state, "deletion_pending"));
+    cJSON_Delete(state);
+    if (deleting) {
+        http_response_set_json_error(res, 409, "Recording deletion is pending");
+        return;
+    }
     struct stat st;
     if (stat(request->thumb_path, &st) == 0 && st.st_size > 0) {
         log_debug("Serving cached thumbnail: %s", request->thumb_path);
         if (http_serve_file(req, res, request->thumb_path, "image/jpeg",
-                            "Cache-Control: public, max-age=86400\r\n") != 0) {
+                            "Cache-Control: private, max-age=86400\r\n") != 0) {
             http_response_set_json_error(res, 500, "Failed to serve thumbnail");
         }
         return;
@@ -205,7 +215,9 @@ static void serve_or_generate_thumbnail(
             res, 403, "Thumbnail generation is not permitted for this session");
         return;
     }
-    if (stat(recording->file_path, &st) != 0) {
+    char source_path[MAX_PATH_LENGTH];
+    if (!recording_source_for_request(req, res, request->recording_id, source_path)) return;
+    if (stat(source_path, &st) != 0) {
         http_response_set_json_error(res, 404, "Recording file not found");
         return;
     }
@@ -229,7 +241,7 @@ static void serve_or_generate_thumbnail(
         return;
     }
     if (thumbnail_thread_submit(
-            request->recording_id, request->sample_key, recording->file_path,
+            request->recording_id, request->sample_key, source_path,
             request->thumb_path, request->seek_seconds,
             (deferred_action_handle_t)conn,
             thumbnail_complete_callback) != 0) {

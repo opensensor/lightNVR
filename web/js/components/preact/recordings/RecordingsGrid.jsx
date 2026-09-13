@@ -322,6 +322,7 @@ function RecordingCard({
                 </span>
               </div>
               <div class="mt-1">
+                {recording.storage_state && <span class="mr-2 text-xs text-muted-foreground">{t(`settings.archive.${recording.storage_state}`)}</span>}
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
                   {formatUtils.formatCaptureMethod(recording.capture_method)}
                 </span>

@@ -186,6 +186,7 @@ int batch_delete_progress_create_job_for_principal(
     g_jobs[slot].total = total;
     g_jobs[slot].current = 0;
     g_jobs[slot].succeeded = 0;
+    g_jobs[slot].pending_deletions = 0;
     g_jobs[slot].failed = 0;
     snprintf(g_jobs[slot].status_message, sizeof(g_jobs[slot].status_message), 
              "Preparing to delete %d recordings...", total);
@@ -288,6 +289,10 @@ int batch_delete_progress_update(const char *job_id, int current, int succeeded,
  * @brief Mark a batch delete job as complete
  */
 int batch_delete_progress_complete(const char *job_id, int succeeded, int failed) {
+    return batch_delete_progress_complete_with_pending(job_id, succeeded, failed, 0);
+}
+
+int batch_delete_progress_complete_with_pending(const char *job_id, int succeeded, int failed, int pending) {
     if (!g_initialized) {
         log_error("Batch delete progress tracking not initialized");
         return -1;
@@ -307,13 +312,14 @@ int batch_delete_progress_complete(const char *job_id, int succeeded, int failed
         return -1;
     }
     
-    // Mark as complete
+    // Mark the submission job complete; physical cleanup may continue.
+    g_jobs[slot].pending_deletions = pending;
     g_jobs[slot].status = BATCH_DELETE_STATUS_COMPLETE;
     g_jobs[slot].current = g_jobs[slot].total;
     g_jobs[slot].succeeded = succeeded;
     g_jobs[slot].failed = failed;
     snprintf(g_jobs[slot].status_message, sizeof(g_jobs[slot].status_message),
-             "Batch delete operation complete");
+             pending ? "Deletion requests accepted; storage cleanup continues in background" : "Batch delete operation complete");
     g_jobs[slot].updated_at = time(NULL);
     
     pthread_mutex_unlock(&g_jobs_mutex);

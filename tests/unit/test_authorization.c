@@ -1474,7 +1474,7 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     snprintf(status_path, sizeof(status_path),
              "/api/recordings/batch-download/result/%s", download_token);
     json = call_handler_path(handle_batch_download_result, HTTP_METHOD_GET,
-                             status_path, NULL, api_key, 500);
+                             status_path, NULL, api_key, 409);
     cJSON_Delete(json);
 
     snprintf(path, sizeof(path), "/api/recordings/%llu",

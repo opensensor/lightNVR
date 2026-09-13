@@ -32,6 +32,10 @@ typedef struct {
     int migration_after_days;
     char migration_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
     int pressure_priority;
+    int archive_after_seconds;
+    int hot_residency_seconds;
+    bool archive_protected;
+    bool archive_on_pressure;
     int64_t revision;
     int64_t created_at;
     int64_t updated_at;

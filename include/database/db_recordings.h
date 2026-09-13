@@ -183,6 +183,7 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
  * @param id Recording ID
  * @return 0 on success, non-zero on failure
  */
+/* Returns 0 when cleanup completed, 1 while durable cleanup is pending, <0 on rejection. */
 int delete_recording_metadata(uint64_t id);
 
 /**

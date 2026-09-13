@@ -23,7 +23,8 @@
     "created_at,updated_at,COALESCE(primary_pool_uuid,'')," \
     "minimum_retention_days,desired_retention_days,maximum_retention_days," \
     "required_copy_count,COALESCE(replication_pool_uuid,'')," \
-    "migration_after_days,COALESCE(migration_target_uuid,''),pressure_priority"
+    "migration_after_days,COALESCE(migration_target_uuid,''),pressure_priority," \
+    "archive_after_seconds,hot_residency_seconds,archive_protected,archive_on_pressure"
 
 static atomic_uint_fast64_t policy_generation = 1;
 
@@ -71,6 +72,10 @@ static void populate(sqlite3_stmt *statement, storage_policy_t *policy) {
     copy_column(policy->migration_target_uuid,
                 sizeof(policy->migration_target_uuid), statement, 18);
     policy->pressure_priority = sqlite3_column_int(statement, 19);
+    policy->archive_after_seconds = sqlite3_column_int(statement, 20);
+    policy->hot_residency_seconds = sqlite3_column_int(statement, 21);
+    policy->archive_protected = sqlite3_column_int(statement, 22) != 0;
+    policy->archive_on_pressure = sqlite3_column_int(statement, 23) != 0;
 }
 
 static bool valid_name(const char *input, char *normalized, size_t size) {
@@ -142,7 +147,7 @@ db_storage_policy_result_t db_storage_policy_validate(
     storage_target_t target;
     if (!lightnvr_uuid_is_valid(policy->primary_target_uuid) ||
         db_storage_target_get(policy->primary_target_uuid, &target) !=
-            DB_STORAGE_TARGET_OK) {
+            DB_STORAGE_TARGET_OK || strcmp(target.target_type, "filesystem") != 0) {
         set_error(error, error_size, "primary target does not exist");
         return DB_STORAGE_POLICY_INVALID;
     }
@@ -170,7 +175,7 @@ db_storage_policy_result_t db_storage_policy_validate(
             strcmp(policy->fallback_target_uuid,
                    policy->primary_target_uuid) == 0 ||
             db_storage_target_get(policy->fallback_target_uuid, &target) !=
-                DB_STORAGE_TARGET_OK) {
+                DB_STORAGE_TARGET_OK || strcmp(target.target_type, "filesystem") != 0) {
             set_error(error, error_size,
                       "fallback target must exist and differ from primary");
             return DB_STORAGE_POLICY_INVALID;
@@ -254,7 +259,11 @@ db_storage_policy_result_t db_storage_policy_validate(
         set_error(error, error_size, "migration_after_days must be 0-36500");
         return DB_STORAGE_POLICY_INVALID;
     }
-    if (policy->migration_after_days > 0) {
+    if (policy->archive_after_seconds < -1 || policy->hot_residency_seconds < -1) {
+        set_error(error, error_size, "Archive ages must be -1 (disabled/inherited) or nonnegative seconds");
+        return DB_STORAGE_POLICY_INVALID;
+    }
+    if (policy->migration_after_days > 0 || policy->migration_target_uuid[0]) {
         if (!lightnvr_uuid_is_valid(policy->migration_target_uuid) ||
             db_storage_target_get(policy->migration_target_uuid, &target) !=
                 DB_STORAGE_TARGET_OK) {
@@ -284,9 +293,9 @@ db_storage_policy_result_t db_storage_policy_validate(
                 }
             }
         }
-    } else if (policy->migration_target_uuid[0]) {
+    } else if (policy->archive_protected || policy->archive_on_pressure || policy->archive_after_seconds >= 0) {
         set_error(error, error_size,
-                  "migration_target_uuid requires migration_after_days");
+                  "archive rules require a migration_target_uuid");
         return DB_STORAGE_POLICY_INVALID;
     }
     if (policy->pressure_priority < -1000000 ||
@@ -418,9 +427,10 @@ db_storage_policy_result_t db_storage_policy_create(storage_policy_t *policy) {
         "primary_target_uuid,fallback_mode,fallback_target_uuid,primary_pool_uuid,"
         "minimum_retention_days,desired_retention_days,maximum_retention_days,"
         "required_copy_count,replication_pool_uuid,migration_after_days,"
-        "migration_target_uuid,pressure_priority)"
+        "migration_target_uuid,pressure_priority,archive_after_seconds,"
+        "hot_residency_seconds,archive_protected,archive_on_pressure)"
         " VALUES(?,?,?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),?,?,?,?,NULLIF(?,''),?,"
-        "NULLIF(?,''),?);";
+        "NULLIF(?,''),?,?,?,?,?);";
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
     if (result == SQLITE_OK) {
@@ -448,6 +458,10 @@ db_storage_policy_result_t db_storage_policy_create(storage_policy_t *policy) {
         sqlite3_bind_text(statement, 16, policy->migration_target_uuid, -1,
                           SQLITE_TRANSIENT);
         sqlite3_bind_int(statement, 17, policy->pressure_priority);
+        sqlite3_bind_int(statement, 18, policy->archive_after_seconds);
+        sqlite3_bind_int(statement, 19, policy->hot_residency_seconds);
+        sqlite3_bind_int(statement, 20, policy->archive_protected);
+        sqlite3_bind_int(statement, 21, policy->archive_on_pressure);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -484,7 +498,9 @@ db_storage_policy_result_t db_storage_policy_update(
         "required_copy_count=?,replication_pool_uuid=NULLIF(?,''),"
         "migration_after_days=?,migration_target_uuid=NULLIF(?,''),"
         "pressure_priority=?,revision=revision+1,"
-        "updated_at=strftime('%s','now') WHERE uuid=? AND revision=?;";
+        "archive_after_seconds=?19,hot_residency_seconds=?20,"
+        "archive_protected=?21,archive_on_pressure=?22,"
+        "updated_at=strftime('%s','now') WHERE uuid=?17 AND revision=?18;";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
@@ -514,6 +530,10 @@ db_storage_policy_result_t db_storage_policy_update(
         sqlite3_bind_int(statement, 16, policy->pressure_priority);
         sqlite3_bind_text(statement, 17, policy->uuid, -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(statement, 18, expected_revision);
+        sqlite3_bind_int(statement, 19, policy->archive_after_seconds);
+        sqlite3_bind_int(statement, 20, policy->hot_residency_seconds);
+        sqlite3_bind_int(statement, 21, policy->archive_protected);
+        sqlite3_bind_int(statement, 22, policy->archive_on_pressure);
         result = sqlite3_step(statement);
     }
     db_storage_policy_result_t outcome;

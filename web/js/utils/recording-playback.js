@@ -1,8 +1,8 @@
 /** Prepare a compatibility copy only after the browser rejects the original. */
-export async function prepareRecordingPlayback(videoUrl, { signal, onWaiting = () => {} } = {}) {
+export async function prepareRecordingPlayback(videoUrl, { signal, onWaiting = () => {}, compatibility = true } = {}) {
   const url = new URL(videoUrl, globalThis.location?.href || 'http://localhost');
-  if (!/^\/api\/recordings\/play\/\d+$/.test(url.pathname)) return videoUrl;
-  url.searchParams.set('transcode', '1');
+  if (!/^\/api\/recordings\/(play|download)\/\d+$/.test(url.pathname)) return videoUrl;
+  url.searchParams.set('transcode', compatibility ? '1' : '0');
   const playbackUrl = url.href;
   url.searchParams.set('prepare', '1');
 
@@ -42,21 +42,24 @@ export function loadRecordingPlayback(video, videoUrl, {
 } = {}) {
   const controller = new AbortController();
   let fallbackStarted = false;
+  let sourcePreparationStarted = false;
   const handleError = async () => {
     const code = video.error?.code;
     if (controller.signal.aborted || !code || code === 1) return;
-    if (fallbackStarted || (code !== 3 && code !== 4)) {
+    const sourceOnly = code === 2 && !sourcePreparationStarted;
+    if (!sourceOnly && (fallbackStarted || (code !== 3 && code !== 4))) {
       onError(new Error('Unable to play this recording. Download the original or try again later.'));
       return;
     }
-    fallbackStarted = true;
+    if (sourceOnly) sourcePreparationStarted = true;
+    else fallbackStarted = true;
     onPreparing();
     // Clear the failed source while polling; no further media requests are
     // needed until the compatible copy is ready.
     video.removeAttribute('src');
     video.load();
     try {
-      const url = await prepareRecordingPlayback(videoUrl, { signal: controller.signal });
+      const url = await prepareRecordingPlayback(videoUrl, { signal: controller.signal, compatibility: !sourceOnly });
       if (controller.signal.aborted) return;
       video.src = url;
       video.load();
@@ -66,8 +69,16 @@ export function loadRecordingPlayback(video, videoUrl, {
   };
   video.addEventListener('error', handleError);
   video.addEventListener('loadedmetadata', onReady);
-  video.src = videoUrl;
-  video.load();
+  if (new URL(videoUrl, globalThis.location?.href || 'http://localhost').searchParams.get('archive') === '1') {
+    sourcePreparationStarted = true;
+    onPreparing();
+    prepareRecordingPlayback(videoUrl, { signal: controller.signal, compatibility: false })
+      .then((url) => { if (!controller.signal.aborted) { video.src = url; video.load(); } })
+      .catch((error) => { if (!controller.signal.aborted) onError(error); });
+  } else {
+    video.src = videoUrl;
+    video.load();
+  }
   return () => {
     controller.abort();
     video.removeEventListener('error', handleError);

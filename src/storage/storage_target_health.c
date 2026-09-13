@@ -503,7 +503,7 @@ static int refresh_slots(storage_target_health_collector_state_t *state) {
         return -1;
     }
     for (int index = 0; index < count; ++index) {
-        if (!targets[index].enabled) continue;
+        if (!targets[index].enabled || strcmp(targets[index].target_type, "filesystem") != 0) continue;
         char logical_id[SYSTEM_HEALTH_ID_LENGTH];
         snprintf(logical_id, sizeof(logical_id), "target:%s",
                  targets[index].uuid);

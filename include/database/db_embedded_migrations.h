@@ -1894,6 +1894,124 @@ static const char migration_0083_up[] =
 static const char migration_0083_down[] =
     "DROP INDEX IF EXISTS idx_detections_open_external_motion;";
 
+static const char migration_0084_up[] =
+    "ALTER TABLE storage_targets RENAME COLUMN target_type TO legacy_target_type;\n"
+    "ALTER TABLE storage_targets ADD COLUMN target_type TEXT NOT NULL DEFAULT 'filesystem'\n"
+    "    CHECK (target_type IN ('filesystem','s3'));\n"
+    "ALTER TABLE storage_targets ADD COLUMN endpoint TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_targets ADD COLUMN region TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_targets ADD COLUMN bucket TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_targets ADD COLUMN credential_ref TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_targets ADD COLUMN archive_budget_bytes INTEGER NOT NULL DEFAULT 0\n"
+    "    CHECK (archive_budget_bytes >= 0);\n"
+    "\n"
+    "ALTER TABLE storage_policies ADD COLUMN archive_after_seconds INTEGER NOT NULL DEFAULT -1\n"
+    "    CHECK (archive_after_seconds BETWEEN -1 AND 2147483647);\n"
+    "ALTER TABLE storage_policies ADD COLUMN hot_residency_seconds INTEGER NOT NULL DEFAULT -1\n"
+    "    CHECK (hot_residency_seconds BETWEEN -1 AND 2147483647);\n"
+    "ALTER TABLE storage_policies ADD COLUMN archive_protected INTEGER NOT NULL DEFAULT 0\n"
+    "    CHECK (archive_protected IN (0,1));\n"
+    "ALTER TABLE storage_policies ADD COLUMN archive_on_pressure INTEGER NOT NULL DEFAULT 0\n"
+    "    CHECK (archive_on_pressure IN (0,1));\n"
+    "\n"
+    "ALTER TABLE recordings ADD COLUMN storage_policy_uuid TEXT;\n"
+    "UPDATE recordings SET storage_policy_uuid=substr(placement_reason,instr(placement_reason,':')+1)\n"
+    "    WHERE placement_reason LIKE 'policy-%';\n"
+    "CREATE TRIGGER trg_recording_policy_identity AFTER INSERT ON recordings\n"
+    "WHEN NEW.storage_policy_uuid IS NULL AND NEW.placement_reason LIKE 'policy-%'\n"
+    "BEGIN\n"
+    "    UPDATE recordings SET storage_policy_uuid=substr(NEW.placement_reason,instr(NEW.placement_reason,':')+1)\n"
+    "        WHERE id=NEW.id;\n"
+    "END;\n"
+    "ALTER TABLE recordings ADD COLUMN archive_checksum TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE recordings ADD COLUMN deletion_pending INTEGER NOT NULL DEFAULT 0\n"
+    "    CHECK (deletion_pending IN (0,1));\n"
+    "\n"
+    "CREATE TABLE storage_deletions (\n"
+    "    uuid TEXT PRIMARY KEY,\n"
+    "    recording_id INTEGER NOT NULL,\n"
+    "    camera_uuid TEXT NOT NULL DEFAULT '',\n"
+    "    stream_name TEXT NOT NULL DEFAULT '',\n"
+    "    reason TEXT NOT NULL,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),\n"
+    "    completed_at INTEGER\n"
+    ");\n"
+    "CREATE TABLE storage_deletion_objects (\n"
+    "    id INTEGER PRIMARY KEY,\n"
+    "    deletion_uuid TEXT NOT NULL REFERENCES storage_deletions(uuid) ON DELETE CASCADE,\n"
+    "    target_uuid TEXT REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n"
+    "    original_target_uuid TEXT NOT NULL DEFAULT '',\n"
+    "    upload_id TEXT NOT NULL DEFAULT '',\n"
+    "    object_key TEXT NOT NULL DEFAULT '',\n"
+    "    file_path TEXT NOT NULL DEFAULT '',\n"
+    "    size_bytes INTEGER NOT NULL DEFAULT 0,\n"
+    "    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','retry_wait','completed')),\n"
+    "    attempt_count INTEGER NOT NULL DEFAULT 0,\n"
+    "    next_attempt_at INTEGER NOT NULL DEFAULT 0,\n"
+    "    last_error TEXT NOT NULL DEFAULT '',\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))\n"
+    ");\n"
+    "CREATE TRIGGER trg_deletion_target_identity AFTER INSERT ON storage_deletion_objects\n"
+    "BEGIN\n"
+    "    UPDATE storage_deletion_objects SET original_target_uuid=COALESCE(NEW.target_uuid,'') WHERE id=NEW.id;\n"
+    "END;\n"
+    "CREATE INDEX idx_storage_deletion_due ON storage_deletion_objects(state,next_attempt_at,id);\n"
+    "CREATE INDEX idx_storage_deletion_recording ON storage_deletions(recording_id);\n"
+    "\n"
+    "ALTER TABLE storage_migration_jobs ADD COLUMN upload_id TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_migration_jobs ADD COLUMN upload_parts TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE storage_migration_jobs ADD COLUMN artifacts_cleaned INTEGER NOT NULL DEFAULT 0 CHECK(artifacts_cleaned IN(0,1));\n"
+    "\n"
+    "CREATE TABLE storage_retrieval_jobs (\n"
+    "    recording_id INTEGER PRIMARY KEY REFERENCES recordings(id) ON DELETE CASCADE,\n"
+    "    target_uuid TEXT NOT NULL REFERENCES storage_targets(uuid) ON DELETE RESTRICT,\n"
+    "    object_key TEXT NOT NULL,\n"
+    "    checksum TEXT NOT NULL,\n"
+    "    size_bytes INTEGER NOT NULL,\n"
+    "    file_path TEXT NOT NULL,\n"
+    "    state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','fetching','ready','failed')),\n"
+    "    last_access_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),\n"
+    "    next_attempt_at INTEGER NOT NULL DEFAULT 0,\n"
+    "    last_error TEXT NOT NULL DEFAULT ''\n"
+    ");\n"
+    "CREATE TABLE storage_read_leases (\n"
+    "    recording_id INTEGER PRIMARY KEY REFERENCES recordings(id) ON DELETE CASCADE,\n"
+    "    expires_at INTEGER NOT NULL\n"
+    ");\n"
+    "\n"
+    "-- Retain the policy revision selected at capture. Legacy unattributed rows\n"
+    "-- continue using the existing stream/system rules.\n"
+    "CREATE TABLE storage_policy_versions AS SELECT * FROM storage_policies;\n"
+    "CREATE UNIQUE INDEX idx_storage_policy_version ON storage_policy_versions(uuid,revision);\n"
+    "CREATE TRIGGER trg_storage_policy_snapshot_insert AFTER INSERT ON storage_policies\n"
+    "BEGIN\n"
+    "    INSERT INTO storage_policy_versions SELECT * FROM storage_policies WHERE uuid=NEW.uuid;\n"
+    "END;\n"
+    "CREATE TRIGGER trg_storage_policy_snapshot_update AFTER UPDATE ON storage_policies\n"
+    "WHEN NEW.revision<>OLD.revision\n"
+    "BEGIN\n"
+    "    INSERT INTO storage_policy_versions SELECT * FROM storage_policies WHERE uuid=NEW.uuid;\n"
+    "END;\n"
+    "CREATE TRIGGER trg_storage_policy_snapshot_delete AFTER DELETE ON storage_policies\n"
+    "BEGIN\n"
+    "    DELETE FROM storage_policy_versions WHERE uuid=OLD.uuid AND NOT EXISTS(SELECT 1 FROM recordings r\n"
+    "        WHERE r.storage_policy_uuid=storage_policy_versions.uuid AND r.storage_policy_version=storage_policy_versions.revision);\n"
+    "END;\n"
+    "UPDATE recordings SET storage_policy_version=(SELECT revision FROM storage_policies p\n"
+    "    WHERE p.uuid=recordings.storage_policy_uuid) WHERE storage_policy_uuid IN(SELECT uuid FROM storage_policies);\n"
+    "CREATE VIEW storage_recording_policies AS\n"
+    "SELECT r.id AS recording_id,v.* FROM recordings r JOIN storage_policy_versions v\n"
+    "    ON v.uuid=r.storage_policy_uuid AND v.revision=r.storage_policy_version\n"
+    "UNION ALL\n"
+    "SELECT r.id AS recording_id,p.* FROM recordings r JOIN storage_policies p\n"
+    "    ON p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1))\n"
+    "    WHERE NOT EXISTS(SELECT 1 FROM storage_policy_versions v WHERE v.uuid=r.storage_policy_uuid\n"
+    "        AND v.revision=r.storage_policy_version);\n";
+
+static const char migration_0084_down[] =
+    "-- Retain additive metadata and deletion inventory: removing it would orphan media.\n"
+    "SELECT 1;\n";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2476,8 +2594,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0083_down,
         .is_embedded = true
     },
+    {
+        .version = "0084",
+        .description = "add_external_recording_archive",
+        .sql_up = migration_0084_up,
+        .sql_down = migration_0084_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 83
+#define EMBEDDED_MIGRATIONS_COUNT 84
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

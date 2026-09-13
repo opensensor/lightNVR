@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 #include "database/db_recordings.h"
+#include "storage/storage_deletion.h"
 #include "database/db_core.h"
 #include "database/db_storage_targets.h"
 #include "core/logger.h"
@@ -1392,160 +1393,31 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 // Delete recording metadata from the database
 int delete_recording_metadata(uint64_t id) {
-    int rc;
-    sqlite3_stmt *stmt;
-    char replica_paths[8][MAX_PATH_LENGTH];
-    int replica_count = 0;
-
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
-    pthread_mutex_lock(db_mutex);
-
-    /* Capture retained-copy paths before the recording cascade removes their
-     * metadata. Deletion of a logical recording owns all verified copies. */
-    const char *copy_sql =
-        "SELECT t.root_path || '/' || c.object_key FROM storage_recording_copies c "
-        "JOIN storage_targets t ON t.uuid=c.target_uuid WHERE c.recording_id=? "
-        "LIMIT 8;";
-    if (sqlite3_prepare_v2(db, copy_sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
-        while (replica_count < 8 && sqlite3_step(stmt) == SQLITE_ROW) {
-            const char *path = (const char *)sqlite3_column_text(stmt, 0);
-            safe_strcpy(replica_paths[replica_count++], path ? path : "",
-                        MAX_PATH_LENGTH, 0);
-        }
-        sqlite3_finalize(stmt);
-    }
-
-    // First, clear any foreign key references in the detections table
-    // The detections table has FOREIGN KEY (recording_id) REFERENCES recordings(id)
-    // without ON DELETE CASCADE, so we must nullify references before deleting
-    const char *clear_fk_sql = "UPDATE detections SET recording_id = NULL WHERE recording_id = ?;";
-    rc = sqlite3_prepare_v2(db, clear_fk_sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare detections FK cleanup: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to clear detections FK for recording %llu: %s",
-                  (unsigned long long)id, sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    sqlite3_finalize(stmt);
-
-    // Now delete the recording
-    const char *sql = "DELETE FROM recordings WHERE id = ?;";
-
-    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-
-    // Bind parameters
-    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
-
-    // Execute statement
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to delete recording metadata: %s", sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-
-    // Finalize the prepared statement
-    sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
-
-    for (int index = 0; index < replica_count; index++) {
-        if (replica_paths[index][0] && unlink(replica_paths[index]) != 0) {
-            log_warn("Could not remove retained recording copy: %s",
-                     replica_paths[index]);
-        }
-    }
-
-    return 0;
+    return storage_recording_delete(id, "recording deletion", NULL);
 }
 
 // Delete old recording metadata from the database
 int delete_old_recording_metadata(uint64_t max_age) {
-    int rc;
-    sqlite3_stmt *stmt;
-    int deleted_count = 0;
-
     sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    uint64_t ids[256];
+    int count = 0, deleted = 0;
+    int64_t cutoff = (int64_t)time(NULL) - (int64_t)max_age;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *statement = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT r.id FROM recordings r LEFT JOIN storage_recording_policies p ON p.recording_id=r.id "
+        "WHERE " STORAGE_LEGACY_EXPIRY_PREDICATE " AND r.protected=0 "
+        "AND r.deletion_pending=0 ORDER BY r.end_time LIMIT 256;", -1, &statement, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(statement, 1, cutoff);
+        while (count < 256 && sqlite3_step(statement) == SQLITE_ROW)
+            ids[count++] = (uint64_t)sqlite3_column_int64(statement, 0);
     }
-
-    // Calculate cutoff time
-    time_t cutoff_time = time(NULL) - (time_t)max_age;
-
-    pthread_mutex_lock(db_mutex);
-
-    // First, clear foreign key references in detections for recordings about to be deleted
-    const char *clear_fk_sql = "UPDATE detections SET recording_id = NULL "
-                               "WHERE recording_id IN (SELECT id FROM recordings WHERE end_time < ?);";
-    rc = sqlite3_prepare_v2(db, clear_fk_sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare detections FK cleanup for old recordings: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to clear detections FK for old recordings: %s", sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    sqlite3_finalize(stmt);
-
-    // Now delete the old recordings
-    const char *sql = "DELETE FROM recordings WHERE end_time < ?;";
-
-    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-
-    // Bind parameters
-    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
-
-    // Execute statement
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to delete old recording metadata: %s", sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-
-    deleted_count = sqlite3_changes(db);
-
-    sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
-
-    return deleted_count;
+    if (statement) sqlite3_finalize(statement);
+    pthread_mutex_unlock(mutex);
+    for (int i = 0; i < count; i++)
+        if (storage_recording_expire_age(ids[i], cutoff) == 0) deleted++;
+    return deleted;
 }
 
 /**
@@ -1569,7 +1441,7 @@ int set_recording_protected(uint64_t id, bool protected) {
 
     pthread_mutex_lock(db_mutex);
 
-    const char *sql = "UPDATE recordings SET protected = ? WHERE id = ?;";
+    const char *sql = "UPDATE recordings SET protected = ? WHERE id = ? AND deletion_pending=0;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1582,10 +1454,11 @@ int set_recording_protected(uint64_t id, bool protected) {
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)id);
 
     rc = sqlite3_step(stmt);
+    int changed = sqlite3_changes(db);
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
 
-    if (rc != SQLITE_DONE) {
+    if (rc != SQLITE_DONE || changed != 1) {
         log_error("Failed to update recording protection: %s", sqlite3_errmsg(db));
         return -1;
     }
@@ -1796,16 +1669,18 @@ int get_recordings_for_retention(const char *stream_name,
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, protected, retention_override_days "
         "FROM recordings "
         "WHERE stream_name = ? "
-        "AND protected = 0 "
+        "AND protected = 0 AND deletion_pending=0 "
         "AND is_complete = 1 "
+        "AND NOT EXISTS(SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id "
+        "AND p.minimum_retention_days>0 AND start_time>=strftime('%s','now')-p.minimum_retention_days*86400) "
         "AND ("
         "  (trigger_type != 'detection' AND ? > 0 AND start_time < ?) "
         "  OR "
         "  (trigger_type = 'detection' AND ? > 0 AND start_time < ?)"
         ") "
         "AND ("
-        "  retention_override_days IS NULL "
-        "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)"
+        "  retention_override_days IS NULL OR retention_override_days<0 "
+        "  OR (retention_override_days>0 AND start_time < (strftime('%s', 'now') - retention_override_days * 86400))"
         ") "
         "ORDER BY "
         "  CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
@@ -1929,8 +1804,10 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, protected, retention_override_days "
         "FROM recordings "
         "WHERE stream_name = ? "
-        "AND protected = 0 "
+        "AND protected = 0 AND deletion_pending=0 "
         "AND is_complete = 1 "
+        "AND NOT EXISTS(SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id "
+        "AND p.minimum_retention_days>0 AND start_time>=strftime('%s','now')-p.minimum_retention_days*86400) "
         "ORDER BY retention_tier DESC, "
         "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
         "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
@@ -2051,7 +1928,12 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count,
 
     const char *count_sql =
         "SELECT COUNT(*) FROM recordings "
-        "WHERE is_complete = 1 AND protected = 0;";
+        "WHERE is_complete = 1 AND protected = 0 "
+        "AND deletion_pending=0 AND NOT EXISTS(SELECT 1 FROM storage_targets t WHERE "
+        "t.uuid=recordings.storage_target_uuid AND t.target_type='s3') "
+        "AND NOT EXISTS(SELECT 1 FROM storage_recording_copies c WHERE c.recording_id=recordings.id) "
+        "AND NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=recordings.id "
+        "AND j.state<>'completed') "";";
 
     rc = sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -2081,6 +1963,11 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count,
         "FROM recordings "
         "WHERE is_complete = 1 "
         "AND protected = 0 "
+        "AND deletion_pending=0 AND NOT EXISTS(SELECT 1 FROM storage_targets t WHERE "
+        "t.uuid=recordings.storage_target_uuid AND t.target_type='s3') "
+        "AND NOT EXISTS(SELECT 1 FROM storage_recording_copies c WHERE c.recording_id=recordings.id) "
+        "AND NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=recordings.id "
+        "AND j.state<>'completed') "
         "ORDER BY start_time ASC "
         "LIMIT ?;";
 
@@ -2212,7 +2099,7 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "schedule_restricted "
               "FROM recordings "
               "WHERE stream_name = ? "
-              "AND protected = 0 "
+              "AND protected = 0 AND deletion_pending=0 "
               "AND is_complete = 1 "
               "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE "
               "j.recording_id=recordings.id AND j.state NOT IN ('completed','failed','cancelled')) "
@@ -2221,13 +2108,13 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "  (retention_tier = 1 AND start_time < ?) OR "
               "  (retention_tier = 2 AND start_time < ?) OR "
               "  (retention_tier = 3 AND start_time < ?)"
-              ") OR EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              ") OR EXISTS (SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND p.enabled=1 "
               "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
               "AND p.maximum_retention_days>0 AND start_time < "
               "strftime('%s','now')-p.maximum_retention_days*86400)) "
-              "AND (retention_override_days IS NULL "
-              "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
-              "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND (retention_override_days IS NULL OR retention_override_days<0 "
+              "  OR (retention_override_days>0 AND start_time < (strftime('%s', 'now') - retention_override_days * 86400))) "
+              "AND NOT EXISTS (SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND p.enabled=1 "
               "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
               "AND p.minimum_retention_days>0 AND start_time >= "
               "strftime('%s','now')-p.minimum_retention_days*86400) "
@@ -2239,7 +2126,7 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
               "schedule_restricted "
               "FROM recordings "
-              "WHERE protected = 0 "
+              "WHERE protected = 0 AND deletion_pending=0 "
               "AND is_complete = 1 "
               "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE "
               "j.recording_id=recordings.id AND j.state NOT IN ('completed','failed','cancelled')) "
@@ -2248,13 +2135,13 @@ int get_recordings_for_tiered_retention(const char *stream_name,
               "  (retention_tier = 1 AND start_time < ?) OR "
               "  (retention_tier = 2 AND start_time < ?) OR "
               "  (retention_tier = 3 AND start_time < ?)"
-              ") OR EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              ") OR EXISTS (SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND p.enabled=1 "
               "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
               "AND p.maximum_retention_days>0 AND start_time < "
               "strftime('%s','now')-p.maximum_retention_days*86400)) "
-              "AND (retention_override_days IS NULL "
-              "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
-              "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 "
+              "AND (retention_override_days IS NULL OR retention_override_days<0 "
+              "  OR (retention_override_days>0 AND start_time < (strftime('%s', 'now') - retention_override_days * 86400))) "
+              "AND NOT EXISTS (SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND p.enabled=1 "
               "AND p.uuid=substr(COALESCE(placement_reason,''),instr(COALESCE(placement_reason,''),':')+1) "
               "AND p.minimum_retention_days>0 AND start_time >= "
               "strftime('%s','now')-p.minimum_retention_days*86400) "
@@ -2365,16 +2252,19 @@ static int get_pressure_cleanup_recordings(
     pthread_mutex_lock(db_mutex);
 
 #define POLICY_PRESSURE_GUARD \
+        "AND deletion_pending=0 " \
         "AND NOT EXISTS (SELECT 1 FROM storage_migration_jobs j WHERE " \
         "j.recording_id=recordings.id AND " \
         "j.state NOT IN ('completed','failed','cancelled')) " \
-        "AND NOT EXISTS (SELECT 1 FROM storage_policies p WHERE p.enabled=1 " \
+        "AND NOT EXISTS (SELECT 1 FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND p.enabled=1 " \
         "AND p.uuid=substr(COALESCE(placement_reason,'')," \
         "instr(COALESCE(placement_reason,''),':')+1) AND (" \
+        "(p.migration_target_uuid IS NOT NULL AND (p.archive_after_seconds>=0 OR " \
+        "p.archive_protected=1 OR p.archive_on_pressure=1 OR p.migration_after_days>0)) OR " \
         "p.required_copy_count>1 OR (p.minimum_retention_days>0 AND " \
         "start_time>=strftime('%s','now')-p.minimum_retention_days*86400))) "
 #define POLICY_PRESSURE_ORDER \
-        "COALESCE((SELECT p.pressure_priority FROM storage_policies p WHERE " \
+        "COALESCE((SELECT p.pressure_priority FROM storage_recording_policies p WHERE p.recording_id=recordings.id AND " \
         "p.uuid=substr(COALESCE(placement_reason,'')," \
         "instr(COALESCE(placement_reason,''),':')+1)),100) ASC, "
 
@@ -2386,7 +2276,7 @@ static int get_pressure_cleanup_recordings(
         "COALESCE(object_key,''), COALESCE(placement_reason,''), "
         "COALESCE(storage_policy_version,0) "
         "FROM recordings "
-        "WHERE protected = 0 "
+        "WHERE protected = 0 AND deletion_pending=0 "
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
         POLICY_PRESSURE_GUARD
@@ -2404,7 +2294,7 @@ static int get_pressure_cleanup_recordings(
         "COALESCE(object_key,''), COALESCE(placement_reason,''), "
         "COALESCE(storage_policy_version,0) "
         "FROM recordings "
-        "WHERE protected = 0 "
+        "WHERE protected = 0 AND deletion_pending=0 "
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
         "AND storage_target_uuid = ? "
@@ -2429,7 +2319,7 @@ static int get_pressure_cleanup_recordings(
         "COALESCE(object_key,''), COALESCE(placement_reason,''), "
         "COALESCE(storage_policy_version,0) "
         "FROM recordings "
-        "WHERE protected = 0 "
+        "WHERE protected = 0 AND deletion_pending=0 "
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
         "AND (storage_target_uuid = ? OR storage_target_uuid IS NULL) "

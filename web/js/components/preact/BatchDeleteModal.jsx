@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { batchDeleteStatus } from '../../utils/batch-delete-status.js';
 import { useQueryClient } from '../../query-client.js';
 
 /**
@@ -180,6 +181,7 @@ export function BatchDeleteModal() {
                 total: progressData.total || totalCount,
                 succeeded: progressData.succeeded || 0,
                 failed: progressData.failed || 0,
+                pending_deletions: progressData.pending_deletions || 0,
                 status: progressData.status_message || 'Processing...',
                 complete: progressData.complete || false
               }));
@@ -195,11 +197,8 @@ export function BatchDeleteModal() {
                 isRunningRef.current = false;
 
                 // Show status message
-                const succeeded = progressData.succeeded || 0;
                 const failed = progressData.failed || 0;
-                const message = failed === 0
-                  ? `Successfully deleted ${succeeded} recordings`
-                  : `Deleted ${succeeded} recordings with ${failed} failures`;
+                const message = batchDeleteStatus(progressData);
 
                 showStatusMessage(message, failed === 0 ? 'success' : 'warning', 5000);
 

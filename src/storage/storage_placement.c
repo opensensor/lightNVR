@@ -196,7 +196,7 @@ static bool target_is_eligible(const char *uuid, storage_target_t *target) {
     if (db_storage_target_get(uuid, target) != DB_STORAGE_TARGET_OK) {
         return false;
     }
-    if (!target->enabled) return false;
+    if (!target->enabled || strcmp(target->target_type, "filesystem") != 0) return false;
     if (target->mount_required) {
         static const char missing_mount_error[] =
             "Required mount is absent:";

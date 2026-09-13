@@ -21,9 +21,14 @@
 #include "core/logger.h"
 #include "core/path_utils.h"
 #include "database/db_storage_lifecycle.h"
+#include "database/db_core.h"
+#include <sqlite3.h>
 #include "database/db_storage_migrations.h"
 #include "database/db_storage_targets.h"
 #include "storage/storage_target_health.h"
+#include "storage/storage_s3.h"
+#include "storage/storage_deletion.h"
+#include "storage/storage_source.h"
 #include "utils/strings.h"
 
 #define MIGRATION_COPY_BUFFER (256U * 1024U)
@@ -47,6 +52,10 @@ static atomic_bool stop_requested = false;
 
 static bool migration_cancel_requested(const storage_migration_job_t *job) {
     return job && db_storage_migration_cancel_requested(job->uuid);
+}
+
+static bool transfer_cancelled(void *context) {
+    return atomic_load(&stop_requested) || migration_cancel_requested(context);
 }
 
 static int throttle_copy(const storage_migration_job_t *job,
@@ -426,45 +435,204 @@ static int copy_and_verify(
     return 0;
 }
 
-static int finish_cleanup(storage_migration_job_t *job,
-                          const char *source_path) {
-    if (unlink(source_path) != 0 && errno != ENOENT) {
-        char error[STORAGE_MIGRATION_ERROR_MAX];
-        set_error(error, "Verified destination committed; source cleanup failed",
-                  source_path);
-        db_storage_migration_defer_cleanup(job, error);
-        log_warn("Storage migration %s deferred source cleanup: %s",
-                 job->uuid, error);
+static int destination_retained(const storage_migration_job_t *job) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    int retained = -1; // Database uncertainty cannot authorize removal.
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM recordings WHERE storage_target_uuid=?1 AND object_key=?2 "
+        "UNION ALL SELECT 1 FROM storage_recording_copies WHERE target_uuid=?1 AND object_key=?2 LIMIT 1;",
+        -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, job->destination_target_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, job->destination_object_key, -1, SQLITE_TRANSIENT);
+        int rc = sqlite3_step(stmt);
+        retained = rc == SQLITE_ROW ? 1 : (rc == SQLITE_DONE ? 0 : -1);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    return retained;
+}
+
+static int finish_cleanup(storage_migration_job_t *job, const char *source_path) {
+    if (storage_source_has_lease(job->recording_id)) {
+        db_storage_migration_defer_cleanup(job, "Source cleanup waits for active recording readers");
         return -1;
     }
-    if (fsync_parent(source_path) != 0 && errno != ENOENT) {
-        log_warn("Storage migration %s could not sync source directory",
-                 job->uuid);
+    storage_target_t destination, source;
+    char error[STORAGE_MIGRATION_ERROR_MAX] = {0}, path[MAX_PATH_LENGTH], hash[65];
+    uint64_t bytes = 0;
+    int verified = -1;
+    if (destination_retained(job) == 1 &&
+        storage_target_probe_and_publish(job->destination_target_uuid, false, &destination) == DB_STORAGE_TARGET_OK) {
+        if (!strcmp(destination.target_type, "s3")) {
+            storage_transfer_control_t control = {.cancelled = transfer_cancelled, .context = job,
+                                                  .bandwidth_bps = job->bandwidth_limit_bps};
+            verified = storage_s3_verify(&destination, job->destination_object_key, job->bytes_total,
+                                          job->checksum, &control, error);
+        } else if (db_storage_target_mount_guard_active(&destination) &&
+            db_storage_target_resolve_path(destination.uuid, job->destination_object_key, path) == 0 &&
+            sha256_file(path, &bytes, hash, error) == 0 && bytes == job->bytes_total && !strcmp(hash, job->checksum))
+            verified = 0;
     }
-    if (db_storage_migration_complete_cleanup(job->uuid) !=
-        DB_STORAGE_MIGRATION_OK) {
-        log_error("Storage migration %s could not persist completion",
-                  job->uuid);
+    if (verified != 0 || db_storage_target_get(job->source_target_uuid, &source) != DB_STORAGE_TARGET_OK) {
+        db_storage_migration_defer_cleanup(job, "Source retained: committed destination cannot be verified");
         return -1;
     }
-    log_info("Storage migration %s completed for recording %llu",
-             job->uuid, (unsigned long long)job->recording_id);
-    return 0;
+    int removed;
+    if (!strcmp(source.target_type, "s3")) {
+        removed = storage_s3_probe(&source, false) == 0 ?
+            storage_s3_delete(&source, job->source_object_key, error) : -1;
+    } else {
+        removed = db_storage_target_mount_guard_active(&source) ? unlink(source_path) : -1;
+        if (removed != 0 && db_storage_target_mount_guard_active(&source) && errno == ENOENT) removed = 0;
+        if (removed == 0) fsync_parent(source_path);
+    }
+    if (removed != 0) {
+        db_storage_migration_defer_cleanup(job, "Verified destination committed; source cleanup failed");
+        return -1;
+    }
+    return db_storage_migration_complete_cleanup(job->uuid) == DB_STORAGE_MIGRATION_OK ? 0 : -1;
+}
+
+/* One worker owns transfers and cleanup. Keep failed/cancelled destinations in
+ * the journal until every unpublished artifact has been removed. */
+static void cleanup_abandoned(void) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return;
+    char uuid[37] = {0}, upload[1024] = {0};
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT uuid,upload_id FROM storage_migration_jobs WHERE "
+        "next_attempt_at<=strftime('%s','now') AND ((artifacts_cleaned=0 AND "
+        "(state IN('failed','cancelled') OR (cancel_requested=1 AND state IN('copying','verifying','committing')))) "
+        "OR (state='completed' AND upload_id<>'')) ORDER BY updated_at LIMIT 1;";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        safe_strcpy(uuid, (const char *)sqlite3_column_text(stmt, 0), sizeof(uuid), 0);
+        safe_strcpy(upload, (const char *)sqlite3_column_text(stmt, 1), sizeof(upload), 0);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    if (!*uuid) return;
+    storage_migration_job_t job;
+    storage_target_t target;
+    int result = -1;
+    char error[256] = {0}, path[MAX_PATH_LENGTH], temporary[MAX_PATH_LENGTH];
+    if (db_storage_migration_get(uuid, &job) == DB_STORAGE_MIGRATION_OK &&
+        db_storage_target_get(job.destination_target_uuid, &target) == DB_STORAGE_TARGET_OK) {
+        bool retained = destination_retained(&job);
+        if (!strcmp(target.target_type, "s3")) {
+            result = storage_s3_probe(&target, false);
+            if (!result) result = storage_s3_abort_upload(&target, job.destination_object_key, upload, error);
+            if (!result && !retained) result = storage_s3_delete(&target, job.destination_object_key, error);
+        } else if (db_storage_target_mount_guard_active(&target) &&
+                   !db_storage_target_resolve_path(target.uuid, job.destination_object_key, path)) {
+            result = retained || unlink(path) == 0 || errno == ENOENT ? 0 : -1;
+            int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s.part", path, uuid);
+            if (n > 0 && n < (int)sizeof(temporary) && unlink(temporary) && errno != ENOENT) result = -1;
+        }
+    }
+    pthread_mutex_lock(mutex);
+    stmt = NULL;
+    sql = result == 0 ?
+        "UPDATE storage_migration_jobs SET artifacts_cleaned=1,upload_id='',upload_parts='',"
+        "state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE state END WHERE uuid=?;" :
+        "UPDATE storage_migration_jobs SET next_attempt_at=strftime('%s','now')+60,"
+        "last_error='Unpublished transfer artifacts await cleanup' WHERE uuid=?;";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+}
+
+static int restore_to_filesystem(storage_migration_job_t *job, const storage_target_t *source,
+                                 const storage_target_t *destination, const char *path,
+                                 char checksum[65], char error[256]) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    checksum[0] = 0;
+    if (sqlite3_prepare_v2(db, "SELECT archive_checksum FROM recordings WHERE id=?1 "
+        "AND storage_target_uuid=?2 AND object_key=?3 AND deletion_pending=0;", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)job->recording_id);
+        sqlite3_bind_text(stmt, 2, job->source_target_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, job->source_object_key, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            safe_strcpy(checksum, (const char *)sqlite3_column_text(stmt, 0), 65, 0);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    if (strlen(checksum) != 64) { safe_strcpy(error, "Archive source identity changed or has no checksum", 256, 0); return -2; }
+    struct stat info;
+    if (lstat(path, &info) == 0) {
+        uint64_t bytes;
+        char hash[65];
+        if (sha256_file(path, &bytes, hash, error) || bytes != job->bytes_total || strcmp(hash, checksum)) {
+            safe_strcpy(error, "Restore destination contains different data", 256, 0); return -2;
+        }
+        return 0;
+    }
+    if (errno != ENOENT) return -1;
+    if (destination->available_bytes <= destination->reserve_bytes ||
+        job->bytes_total > destination->available_bytes - destination->reserve_bytes) {
+        safe_strcpy(error, "Restore would exceed destination free-space reserve", 256, 0); return -1;
+    }
+    char temporary[MAX_PATH_LENGTH];
+    int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s.part", path, job->uuid);
+    if (n < 0 || n >= (int)sizeof(temporary) || ensure_path(temporary)) return -1;
+    if (unlink(temporary) && errno != ENOENT) return -1;
+    storage_transfer_control_t control = {.cancelled = transfer_cancelled, .context = job,
+                                          .bandwidth_bps = job->bandwidth_limit_bps};
+    int result = storage_s3_download(source, job->source_object_key, temporary, job->bytes_total, checksum, &control, error);
+    if (!result && transfer_cancelled(job)) result = -3;
+    if (!result) {
+        // Publishing a restore must never replace a file that appeared meanwhile.
+        if (link(temporary, path)) result = errno == EEXIST ? -2 : -1;
+        else if (fsync_parent(path)) result = -1;
+    }
+    unlink(temporary);
+    return result;
 }
 
 int storage_migration_process_one(void) {
+    const char *read_only = getenv("LIGHTNVR_STORAGE_READ_ONLY");
+    if (read_only && !strcmp(read_only, "1")) return 0;
+    cleanup_abandoned();
     storage_migration_job_t job;
     int claimed = db_storage_migration_claim_due(&job);
     if (claimed <= 0) return claimed;
 
-    char source_path[MAX_PATH_LENGTH];
-    char destination_path[MAX_PATH_LENGTH];
-    if (db_storage_target_resolve_path(job.source_target_uuid,
+    storage_target_t destination_target;
+    if (db_storage_target_get(job.destination_target_uuid, &destination_target) != DB_STORAGE_TARGET_OK) {
+        db_storage_migration_record_failure(&job, "Destination target no longer exists", false);
+        return 1;
+    }
+    storage_target_t source_target;
+    if (db_storage_target_get(job.source_target_uuid, &source_target) != DB_STORAGE_TARGET_OK) {
+        db_storage_migration_record_failure(&job, "Source target no longer exists", false);
+        return 1;
+    }
+    bool object_source = !strcmp(source_target.target_type, "s3");
+    bool object_destination = strcmp(destination_target.target_type, "s3") == 0;
+    char source_path[MAX_PATH_LENGTH] = {0};
+    char destination_path[MAX_PATH_LENGTH] = {0};
+    if (!object_source && !db_storage_target_mount_guard_active(&source_target)) {
+        if (!strcmp(job.state, "cleanup_pending"))
+            db_storage_migration_defer_cleanup(&job, "Source mount is unavailable");
+        else db_storage_migration_record_failure(&job, "Source mount is unavailable", true);
+        return 1;
+    }
+    if ((!object_source && db_storage_target_resolve_path(job.source_target_uuid,
                                        job.source_object_key,
-                                       source_path) != 0 ||
-        db_storage_target_resolve_path(job.destination_target_uuid,
+                                       source_path) != 0) ||
+        (!object_destination && db_storage_target_resolve_path(job.destination_target_uuid,
                                        job.destination_object_key,
-                                       destination_path) != 0) {
+                                       destination_path) != 0)) {
         db_storage_migration_record_failure(
             &job, "Storage target identity no longer resolves", false);
         return 1;
@@ -474,7 +642,6 @@ int storage_migration_process_one(void) {
         return 1;
     }
 
-    storage_target_t destination_target;
     if (storage_target_probe_and_publish(job.destination_target_uuid, false,
                                          &destination_target) !=
             DB_STORAGE_TARGET_OK ||
@@ -487,8 +654,51 @@ int storage_migration_process_one(void) {
 
     char checksum[STORAGE_MIGRATION_CHECKSUM_MAX];
     char error[STORAGE_MIGRATION_ERROR_MAX] = {0};
-    int copied = copy_and_verify(&job, source_path, destination_path,
-                                 checksum, error);
+    int copied;
+    if (object_source && object_destination) {
+        int resolved = storage_source_resolve(job.recording_id, source_path, error);
+        if (resolved != STORAGE_SOURCE_READY) {
+            // The bounded retrieval worker also supplies verified restore/drain sources.
+            if (resolved == STORAGE_SOURCE_PREPARING) db_storage_migration_defer_source(job.uuid);
+            else db_storage_migration_record_failure(&job, error, true);
+            return 1;
+        }
+    }
+    bool retained_destination = destination_retained(&job);
+    if (object_destination) {
+        storage_transfer_control_t control = {
+            .cancelled = transfer_cancelled, .context = &job,
+            .bandwidth_bps = job.bandwidth_limit_bps, .job_uuid = job.uuid,
+        };
+        copied = sha256_file(source_path, &job.bytes_total, checksum, error);
+        uint64_t remote_size = 0;
+        if (copied == 0) {
+            int found = storage_s3_stat(&destination_target, job.destination_object_key, &remote_size, error);
+            if (found == STORAGE_S3_OK) {
+                copied = remote_size == job.bytes_total ?
+                    storage_s3_verify(&destination_target, job.destination_object_key,
+                                      job.bytes_total, checksum, &control, error) : STORAGE_S3_CONFLICT;
+                // Only reconcile an unpublished object owned by this job. Never
+                // remove a retained replica or act on uncertain catalog state.
+                if (copied == STORAGE_S3_CONFLICT && !transfer_cancelled(&job) && destination_retained(&job) == 0) {
+                    copied = storage_s3_delete(&destination_target, job.destination_object_key, error);
+                    if (!copied) found = STORAGE_S3_MISSING;
+                }
+            } else if (found != STORAGE_S3_MISSING) copied = -1;
+            if (!copied && found == STORAGE_S3_MISSING)
+                copied = storage_s3_upload(&destination_target, job.destination_object_key,
+                                           source_path, checksum, &control, error);
+        }
+        if (copied == 0) {
+            db_storage_migration_update_progress(job.uuid, "verifying", job.bytes_total, job.bytes_total);
+            copied = storage_s3_verify(&destination_target, job.destination_object_key,
+                                       job.bytes_total, checksum, &control, error);
+        }
+    } else if (object_source) {
+        copied = restore_to_filesystem(&job, &source_target, &destination_target, destination_path, checksum, error);
+    } else {
+        copied = copy_and_verify(&job, source_path, destination_path, checksum, error);
+    }
     if (copied != 0) {
         if (copied == -3) {
             db_storage_migration_mark_cancelled(job.uuid, &job);
@@ -500,7 +710,16 @@ int storage_migration_process_one(void) {
         return 1;
     }
     if (migration_cancel_requested(&job)) {
-        unlink(destination_path);
+        if (retained_destination) {
+            db_storage_migration_mark_cancelled(job.uuid, &job);
+            return 1;
+        }
+        if (object_destination) {
+            if (storage_s3_delete(&destination_target, job.destination_object_key, error) != 0) {
+                db_storage_migration_record_failure(&job, "Cancelled upload awaits destination cleanup", true);
+                return 1;
+            }
+        } else unlink(destination_path);
         db_storage_migration_mark_cancelled(job.uuid, &job);
         return 1;
     }
@@ -520,11 +739,20 @@ int storage_migration_process_one(void) {
             &job, "Destination target became unavailable before commit", true);
         return 1;
     }
+    if (!object_source && !db_storage_target_mount_guard_active(&source_target)) {
+        db_storage_migration_record_failure(&job, "Source mount became unavailable before commit", true);
+        return 1;
+    }
     db_storage_migration_result_t committed = strcmp(job.operation, "copy") == 0
         ? db_storage_migration_commit_copy(&job, checksum)
         : db_storage_migration_commit_location(&job, destination_path, checksum);
     if (committed != DB_STORAGE_MIGRATION_OK) {
-        unlink(destination_path);
+        if (!retained_destination && object_destination) {
+            if (storage_s3_delete(&destination_target, job.destination_object_key, error) != 0) {
+                db_storage_migration_record_failure(&job, "Uncommitted archive copy awaits cleanup", true);
+                return 1;
+            }
+        } else if (!retained_destination) unlink(destination_path);
         if (migration_cancel_requested(&job)) {
             db_storage_migration_mark_cancelled(job.uuid, &job);
         } else if (committed == DB_STORAGE_MIGRATION_SOURCE_CHANGED) {
@@ -538,6 +766,7 @@ int storage_migration_process_one(void) {
         return 1;
     }
     if (strcmp(job.operation, "move") == 0) {
+        safe_strcpy(job.checksum, checksum, sizeof(job.checksum), 0);
         finish_cleanup(&job, source_path);
     } else {
         log_info("Storage replication %s completed for recording %llu",
@@ -556,10 +785,22 @@ static void *migration_worker_main(void *unused) {
         pthread_mutex_unlock(&worker.mutex);
         if (!running) break;
         int result = storage_migration_process_one();
-        if (result > 0) continue;
+        storage_deletion_process_one();
         time_t now = time(NULL);
-        if (result == 0 && now - last_lifecycle_check >= 60) {
+        if (now - last_lifecycle_check >= 60) {
             last_lifecycle_check = now;
+            // Object stores have no statvfs heartbeat. Probe periodically even
+            // when their last outage prevented any new job from being queued.
+            int total = db_storage_target_count();
+            storage_target_t *targets = total > 0 && total <= STORAGE_TARGET_MAX_COUNT ? calloc((size_t)total, sizeof(*targets)) : NULL;
+            if (targets) {
+                int count = db_storage_target_list(targets, total);
+                for (int i = 0; i < count && !atomic_load(&stop_requested); i++)
+                    if (targets[i].enabled && !strcmp(targets[i].target_type, "s3"))
+                        storage_target_probe_and_publish(targets[i].uuid, false, &targets[i]);
+                free(targets);
+            }
+            db_storage_lifecycle_expire(32);
             int scheduled = db_storage_lifecycle_schedule(16);
             int violations = db_storage_lifecycle_reconcile();
             if (scheduled > 0) {
@@ -571,6 +812,7 @@ static void *migration_worker_main(void *unused) {
                 log_warn("Could not refresh storage lifecycle policy state");
             }
         }
+        if (result > 0) continue;
         pthread_mutex_lock(&worker.mutex);
         if (worker.running) {
             struct timespec deadline;

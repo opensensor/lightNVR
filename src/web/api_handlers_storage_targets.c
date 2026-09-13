@@ -54,6 +54,12 @@ static cJSON *target_to_json(const storage_target_t *target,
     cJSON_AddStringToObject(object, "name", target->name);
     cJSON_AddStringToObject(object, "target_type", target->target_type);
     cJSON_AddStringToObject(object, "root_path", target->root_path);
+    cJSON_AddStringToObject(object, "endpoint", target->endpoint);
+    cJSON_AddStringToObject(object, "region", target->region);
+    cJSON_AddStringToObject(object, "bucket", target->bucket);
+    cJSON_AddStringToObject(object, "credential_ref", target->credential_ref);
+    cJSON_AddNumberToObject(object, "archive_budget_bytes", (double)target->archive_budget_bytes);
+    cJSON_AddBoolToObject(object, "archive_only", strcmp(target->target_type, "s3") == 0);
     cJSON_AddBoolToObject(object, "enabled", target->enabled);
     cJSON_AddBoolToObject(object, "is_default", target->is_default);
     cJSON_AddBoolToObject(object, "mount_required", target->mount_required);
@@ -101,6 +107,7 @@ static cJSON *target_to_json(const storage_target_t *target,
               target->capacity_bytes, target->available_bytes,
               target->reserve_bytes, target->high_watermark_pct);
     cJSON_AddStringToObject(health, "status", target->health_status);
+    cJSON_AddBoolToObject(health, "capacity_known", strcmp(target->target_type, "s3") != 0);
     cJSON_AddNumberToObject(health, "capacity_bytes",
                             (double)target->capacity_bytes);
     cJSON_AddNumberToObject(health, "available_bytes",
@@ -268,6 +275,11 @@ static bool apply_body(const cJSON *body, storage_target_t *target,
     }
     if (!json_string(body, "name", target->name, sizeof(target->name),
                      create, res) ||
+        !json_string(body, "target_type", target->target_type, sizeof(target->target_type), false, res) ||
+        !json_string(body, "endpoint", target->endpoint, sizeof(target->endpoint), false, res) ||
+        !json_string(body, "region", target->region, sizeof(target->region), false, res) ||
+        !json_string(body, "bucket", target->bucket, sizeof(target->bucket), false, res) ||
+        !json_string(body, "credential_ref", target->credential_ref, sizeof(target->credential_ref), false, res) ||
         !json_string(body, "root_path", target->root_path,
                      sizeof(target->root_path), create, res) ||
         !json_string(body, "storage_class", target->storage_class,
@@ -278,6 +290,14 @@ static bool apply_body(const cJSON *body, storage_target_t *target,
         return false;
     }
     double number = 0.0;
+    if (cJSON_HasObjectItem(body, "archive_budget_bytes")) {
+        if (!json_number(body, "archive_budget_bytes", &number, true, res) ||
+            number < 0 || number > 9007199254740991.0 || floor(number) != number) {
+            http_response_set_json_error(res, 400, "archive_budget_bytes must be a nonnegative safe integer");
+            return false;
+        }
+        target->archive_budget_bytes = (uint64_t)number;
+    }
     if (cJSON_HasObjectItem(body, "reserve_bytes")) {
         if (!json_number(body, "reserve_bytes", &number, true, res) ||
             number < 0.0 || number > (double)INT64_MAX) {

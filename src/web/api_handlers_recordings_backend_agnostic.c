@@ -26,6 +26,8 @@
 #include "core/shutdown_coordinator.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "storage/storage_deletion.h"
+#include "web/recording_source.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
 #include "utils/strings.h"
@@ -189,6 +191,7 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     }
     cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
     cJSON_AddBoolToObject(recording_obj, "protected", recording.protected);
+    recording_source_add_status(recording_obj, recording.id);
 
     // Add detection labels array if there are any detections
     if (label_count > 0) {
@@ -266,54 +269,30 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Save file path before deleting from database
-    char file_path_copy[MAX_PATH_LENGTH];
-    safe_strcpy(file_path_copy, recording.file_path, sizeof(file_path_copy), 0);
-
-    // Delete from database FIRST
-    if (delete_recording_metadata(id) != 0) {
-        audit_recording_delete_operation(
-            req, &user, &camera, id, "error", "database_delete_failed",
-            "not_attempted");
-        log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
-        http_response_set_json_error(res, 500, "Failed to delete recording from database");
+    int deletion = storage_recording_delete(id, "manual deletion", NULL);
+    if (deletion < 0) {
+        audit_recording_delete_operation(req, &user, &camera, id, "error", "deletion_blocked", "unchanged");
+        http_response_set_json_error(res, deletion == -2 ? 409 : 500,
+            deletion == -2 ? "Release protection or wait for the active transfer before deleting" : "Failed to queue recording deletion");
         return;
     }
-
-    log_info("Deleted recording from database: %llu", (unsigned long long)id);
-
-    // Then delete the file from disk.
-    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
-    const char *file_cleanup = "deleted";
-    if (unlink(file_path_copy) != 0) {
-        if (errno == ENOENT) {
-            file_cleanup = "already_missing";
-            log_warn("Recording file does not exist: %s (already deleted or never created)", file_path_copy);
-            // This is acceptable - DB entry is removed
-        } else {
-            file_cleanup = "failed";
-            log_warn("Failed to delete recording file: %s (error: %s)",
-                    file_path_copy, strerror(errno));
-            // File deletion failed but DB entry is already removed
-            // This is acceptable - orphaned files can be cleaned up later
-        }
-    } else {
-        log_info("Deleted recording file: %s", file_path_copy);
-    }
+    const char *file_cleanup = deletion == 0 ? "deleted" : "pending";
 
     // Delete associated thumbnails
     delete_recording_thumbnails(id);
 
     // Update stream storage cache so System page stats reflect the deletion immediately.
-    update_stream_storage_cache_remove_recording(recording.stream_name, recording.size_bytes);
+    if (deletion == 0) update_stream_storage_cache_remove_recording(recording.stream_name, recording.size_bytes);
 
     audit_recording_delete_operation(req, &user, &camera, id, "success",
-                                     "completed", file_cleanup);
+                                     deletion == 0 ? "completed" : "deletion_pending", file_cleanup);
 
     // Send success response
-    http_response_set_json(res, 200, "{\"success\":true,\"message\":\"Recording deleted successfully\"}");
+    http_response_set_json(res, deletion == 0 ? 200 : 202, deletion == 0
+        ? "{\"success\":true,\"message\":\"Recording deleted successfully\"}"
+        : "{\"success\":true,\"status\":\"deletion_pending\",\"message\":\"Recording deletion queued\"}");
 
-    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+    log_info("Accepted recording deletion: %llu", (unsigned long long)id);
 }
 
 /**
@@ -387,6 +366,7 @@ static void *batch_delete_worker_thread(void *arg) {
     // Check if we're deleting by IDs or by filter
     cJSON *ids_array = cJSON_GetObjectItem(json, "ids");
     cJSON *filter = cJSON_GetObjectItem(json, "filter");
+    int pending_count = 0;
 
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
@@ -415,38 +395,23 @@ static void *batch_delete_worker_thread(void *arg) {
                 log_warn("Recording not found: %llu", (unsigned long long)id);
                 error_count++;
             } else {
-                // Save file path before deleting from database
-                char file_path_copy[MAX_PATH_LENGTH];
-                safe_strcpy(file_path_copy, recording.file_path, sizeof(file_path_copy), 0);
 
                 // Delete from database FIRST
-                if (delete_recording_metadata(id) != 0) {
+                int deletion = storage_recording_delete(id, "batch deletion", NULL);
+            if (deletion < 0) {
                     log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                     error_count++;
                 } else {
-                    // Then delete the file from disk.
-                    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
-                    if (unlink(file_path_copy) != 0) {
-                        if (errno == ENOENT) {
-                            log_warn("Recording file does not exist: %s (already deleted or never created)",
-                                    file_path_copy);
-                        } else {
-                            log_warn("Failed to delete recording file: %s (error: %s)",
-                                    file_path_copy, strerror(errno));
-                        }
-                    } else {
-                        log_info("Deleted recording file: %s", file_path_copy);
-                    }
-
                     // Delete associated thumbnails
                     delete_recording_thumbnails(id);
 
                     // Update stream storage cache so System page stats stay current.
-                    update_stream_storage_cache_remove_recording(recording.stream_name,
+                    if (deletion == 0) update_stream_storage_cache_remove_recording(recording.stream_name,
                                                                  recording.size_bytes);
 
                     success_count++;
-                    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+                if (deletion == 1) pending_count++;
+                    log_info("Accepted recording deletion: %llu", (unsigned long long)id);
                 }
             }
 
@@ -459,10 +424,10 @@ static void *batch_delete_worker_thread(void *arg) {
         }
 
         // Mark as complete
-        batch_delete_progress_complete(job_id, success_count, error_count);
+        batch_delete_progress_complete_with_pending(job_id, success_count, error_count, pending_count);
         audit_batch_delete_job(
             data, error_count == 0 ? "success" : "failure",
-            error_count == 0 ? "completed" : "partial_failure", array_size,
+            error_count == 0 ? "deletions_accepted" : "partial_failure", array_size,
             success_count, error_count);
         log_info("Batch delete job completed: %s (succeeded: %d, failed: %d)", job_id, success_count, error_count);
 
@@ -665,38 +630,23 @@ static void *batch_delete_worker_thread(void *arg) {
         for (int i = 0; i < count; i++) {
             uint64_t id = recordings[i].id;
 
-            // Save file path before deleting from database
-            char file_path_copy[MAX_PATH_LENGTH];
-            safe_strcpy(file_path_copy, recordings[i].file_path, sizeof(file_path_copy), 0);
 
             // Delete from database FIRST
-            if (delete_recording_metadata(id) != 0) {
+            int deletion = storage_recording_delete(id, "batch deletion", NULL);
+            if (deletion < 0) {
                 log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                 error_count++;
             } else {
-                // Then delete the file from disk.
-                // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
-                if (unlink(file_path_copy) != 0) {
-                    if (errno == ENOENT) {
-                        log_warn("Recording file does not exist: %s (already deleted or never created)",
-                                file_path_copy);
-                    } else {
-                        log_warn("Failed to delete recording file: %s (error: %s)",
-                                file_path_copy, strerror(errno));
-                    }
-                } else {
-                    log_info("Deleted recording file: %s", file_path_copy);
-                }
-
                 // Delete associated thumbnails
                 delete_recording_thumbnails(id);
 
                 // Update stream storage cache so System page stats stay current.
-                update_stream_storage_cache_remove_recording(recordings[i].stream_name,
+                if (deletion == 0) update_stream_storage_cache_remove_recording(recordings[i].stream_name,
                                                              recordings[i].size_bytes);
 
                 success_count++;
-                log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+                if (deletion == 1) pending_count++;
+                log_info("Accepted recording deletion: %llu", (unsigned long long)id);
             }
 
             // Update progress every 10 recordings or on last recording
@@ -708,10 +658,10 @@ static void *batch_delete_worker_thread(void *arg) {
         }
 
         free(recordings);
-        batch_delete_progress_complete(job_id, success_count, error_count);
+        batch_delete_progress_complete_with_pending(job_id, success_count, error_count, pending_count);
         audit_batch_delete_job(
             data, error_count == 0 ? "success" : "failure",
-            error_count == 0 ? "completed" : "partial_failure", count,
+            error_count == 0 ? "deletions_accepted" : "partial_failure", count,
             success_count, error_count);
         log_info("Batch delete job completed: %s (succeeded: %d, failed: %d)", job_id, success_count, error_count);
     } else {
@@ -1038,6 +988,7 @@ void handle_batch_delete_progress(const http_request_t *req, http_response_t *re
     cJSON_AddNumberToObject(response, "total", progress.total);
     cJSON_AddNumberToObject(response, "current", progress.current);
     cJSON_AddNumberToObject(response, "succeeded", progress.succeeded);
+    cJSON_AddNumberToObject(response, "pending_deletions", progress.pending_deletions);
     cJSON_AddNumberToObject(response, "failed", progress.failed);
     cJSON_AddStringToObject(response, "status_message", progress.status_message);
 

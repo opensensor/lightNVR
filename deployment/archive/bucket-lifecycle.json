@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "lightnvr-abort-abandoned-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}

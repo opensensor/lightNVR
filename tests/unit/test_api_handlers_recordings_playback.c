@@ -11,6 +11,7 @@
 #include "video/recording_transcode.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/httpd_utils.h"
+#include "storage/storage_source.h"
 
 static char directory[] = "/tmp/lightnvr_playback_apiXXXXXX";
 static recording_metadata_t recording;
@@ -20,6 +21,22 @@ static bool hevc, allowed;
 static int probe_calls, prepare_calls, serve_calls;
 static recording_transcode_status_t transcode_status;
 static char served_path[MAX_PATH_LENGTH];
+static int source_status;
+
+int __wrap_storage_source_remote(uint64_t id, storage_remote_source_t *source) {
+    (void)source;
+    TEST_ASSERT_TRUE(allowed);
+    TEST_ASSERT_EQUAL_UINT64(42, id);
+    return STORAGE_SOURCE_MISSING;
+}
+
+int __wrap_storage_source_resolve(uint64_t id, char path[MAX_PATH_LENGTH], char error[256]) {
+    TEST_ASSERT_TRUE(allowed);
+    TEST_ASSERT_EQUAL_UINT64(42, id);
+    snprintf(path, MAX_PATH_LENGTH, "%s", recording.file_path);
+    error[0] = 0;
+    return source_status;
+}
 
 int __wrap_get_recording_metadata_by_id(uint64_t id, recording_metadata_t *out) {
     *out = recording;
@@ -74,6 +91,7 @@ void setUp(void) {
     hevc = allowed = true;
     probe_calls = prepare_calls = serve_calls = 0;
     transcode_status = RECORDING_TRANSCODE_PENDING;
+    source_status = STORAGE_SOURCE_READY;
 }
 
 void tearDown(void) { http_response_free(&response); }
@@ -166,6 +184,43 @@ void test_cached_hevc_media_skips_probe_and_conversion(void) {
     TEST_ASSERT_EQUAL_INT(0, prepare_calls);
 }
 
+void test_archive_preparation_returns_retry_without_starting_transcode(void) {
+    source_status = STORAGE_SOURCE_PREPARING;
+    strcpy(request.query_string, "prepare=1&transcode=0");
+    handle_recordings_playback(&request, &response);
+    TEST_ASSERT_EQUAL_INT(202, response.status_code);
+    TEST_ASSERT_EQUAL_STRING("2", response_header("Retry-After"));
+    TEST_ASSERT_NOT_NULL(strstr(response.body, "\"source\":\"archive\""));
+    TEST_ASSERT_EQUAL_INT(0, probe_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+    TEST_ASSERT_EQUAL_INT(0, serve_calls);
+}
+
+void test_archive_media_preparation_failure_and_deletion_are_not_served(void) {
+    const int sources[] = {STORAGE_SOURCE_PREPARING, STORAGE_SOURCE_ERROR, STORAGE_SOURCE_MISSING, STORAGE_SOURCE_DELETING};
+    const int statuses[] = {503, 503, 404, 409};
+    for (size_t i = 0; i < sizeof(sources) / sizeof(sources[0]); i++) {
+        source_status = sources[i];
+        request.query_string[0] = '\0';
+        handle_recordings_playback(&request, &response);
+        TEST_ASSERT_EQUAL_INT(statuses[i], response.status_code);
+        TEST_ASSERT_EQUAL_INT(0, probe_calls);
+        TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+        TEST_ASSERT_EQUAL_INT(0, serve_calls);
+        http_response_free(&response);
+        http_response_init(&response);
+    }
+}
+
+void test_source_only_preparation_never_probes_or_transcodes_hevc(void) {
+    strcpy(request.query_string, "prepare=1&transcode=0");
+    handle_recordings_playback(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_INT(0, probe_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+    TEST_ASSERT_EQUAL_INT(0, serve_calls);
+}
+
 int main(void) {
     if (!mkdtemp(directory)) return 1;
     strcpy(g_config.storage_path, directory);
@@ -183,6 +238,9 @@ int main(void) {
     RUN_TEST(test_failed_transcode_reports_error_instead_of_unplayable_original);
     RUN_TEST(test_preparation_requires_recording_replay_authorization);
     RUN_TEST(test_cached_hevc_media_skips_probe_and_conversion);
+    RUN_TEST(test_archive_preparation_returns_retry_without_starting_transcode);
+    RUN_TEST(test_archive_media_preparation_failure_and_deletion_are_not_served);
+    RUN_TEST(test_source_only_preparation_never_probes_or_transcodes_hevc);
     int result = UNITY_END();
     unlink(recording.file_path);
     rmdir(directory);

@@ -144,6 +144,11 @@ pkg_check_modules(FFMPEG REQUIRED
     libswresample>=5)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
+option(ENABLE_S3_ARCHIVE "Enable S3 archive targets (requires libcurl 7.75+)" ON)
+if(ENABLE_S3_ARCHIVE AND CURL_VERSION VERSION_LESS "7.75.0")
+    message(FATAL_ERROR "S3 archival requires libcurl >= 7.75. Use -DENABLE_S3_ARCHIVE=OFF for filesystem-only builds.")
+endif()
+add_compile_definitions(LIGHTNVR_ENABLE_S3=$<BOOL:${ENABLE_S3_ARCHIVE}>)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -636,6 +641,10 @@ set(REBUILD_RECORDINGS_SOURCES
     src/database/db_streams.c
     src/database/db_recordings.c
     src/database/db_storage_targets.c
+    src/storage/storage_s3.c
+    src/storage/storage_deletion.c
+    src/ezxml/ezxml.c
+    src/video/recording_path.c
     src/database/db_schema.c
     src/database/db_schema_cache.c
     src/database/db_backup.c
@@ -671,6 +680,8 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
+        ${CURL_LIBRARIES}
+        ${SSL_LIBRARIES}
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}

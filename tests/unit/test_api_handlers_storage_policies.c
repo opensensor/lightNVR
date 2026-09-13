@@ -241,6 +241,8 @@ void test_policy_preview_reports_conflicts_and_effective_precedence(void) {
 void test_compliance_forecasts_thirty_day_observed_rate(void) {
     storage_policy_t policy;
     memset(&policy, 0, sizeof(policy));
+    policy.archive_after_seconds = -1;
+    policy.hot_residency_seconds = -1;
     safe_strcpy(policy.name, "Forecast fixture", sizeof(policy.name), 0);
     policy.enabled = true;
     policy.priority = 100;
@@ -298,6 +300,48 @@ void test_compliance_forecasts_thirty_day_observed_rate(void) {
     cJSON_Delete(json);
 }
 
+void test_policy_revision_is_frozen_until_explicit_apply(void) {
+    char body[1400], uuid[37], path[160];
+    snprintf(body, sizeof(body), "{\"name\":\"Snapshot\",\"selector\":{\"version\":1,\"expression\":{\"op\":\"all\"}},"
+        "\"primary_target_uuid\":\"%s\",\"minimum_retention_days\":5,\"maximum_retention_days\":20,\"fallback_mode\":\"pause\"}", primary_target.uuid);
+    cJSON *json = call(handle_post_storage_policy, HTTP_METHOD_POST, "/api/storage-policies", NULL, body, 201);
+    safe_strcpy(uuid, cJSON_GetObjectItemCaseSensitive(json, "uuid")->valuestring, sizeof(uuid), 0);
+    cJSON_Delete(json);
+    recording_metadata_t recording = {0};
+    snprintf(recording.file_path, sizeof(recording.file_path), "%s/snapshot.mp4", primary_root);
+    safe_strcpy(recording.stream_name, "snapshot-camera", sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.storage_target_uuid, primary_target.uuid, sizeof(recording.storage_target_uuid), 0);
+    safe_strcpy(recording.object_key, "snapshot.mp4", sizeof(recording.object_key), 0);
+    snprintf(recording.placement_reason, sizeof(recording.placement_reason), "policy-primary:%s", uuid);
+    recording.storage_policy_version = 1;
+    recording.start_time = time(NULL) - 2*86400;
+    recording.end_time = recording.start_time+60;
+    recording.size_bytes = 100;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, add_recording_metadata(&recording));
+    snprintf(path, sizeof(path), "/api/storage-policies/%s", uuid);
+    json = call(handle_put_storage_policy, HTTP_METHOD_PUT, path, NULL,
+        "{\"revision\":1,\"minimum_retention_days\":0,\"maximum_retention_days\":1}", 200);
+    cJSON_Delete(json);
+    recording_metadata_t expired[2];
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_retention("snapshot-camera", 1, 1, expired, 2));
+    snprintf(path, sizeof(path), "/api/storage-policies/%s/apply", uuid);
+    json = call(handle_post_storage_policy_apply, HTTP_METHOD_POST, path, NULL,
+                "{\"revision\":1,\"preview\":false}", 409);
+    cJSON_Delete(json);
+    json = call(handle_post_storage_policy_apply, HTTP_METHOD_POST, path, NULL,
+                "{\"revision\":2,\"preview\":true}", 200);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(json, "recordings")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(json, "past_new_retention_limit")->valueint);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_retention("snapshot-camera", 1, 1, expired, 2));
+    json = call(handle_post_storage_policy_apply, HTTP_METHOD_POST, path, NULL,
+                "{\"revision\":2,\"preview\":false}", 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(1, get_recordings_for_retention("snapshot-camera", 1, 1, expired, 2));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(primary_root));
@@ -308,6 +352,7 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_policy_api_crud_and_revision_guard);
+    RUN_TEST(test_policy_revision_is_frozen_until_explicit_apply);
     RUN_TEST(test_policy_api_rejects_primary_as_named_fallback);
     RUN_TEST(test_policy_preview_reports_conflicts_and_effective_precedence);
     RUN_TEST(test_compliance_forecasts_thirty_day_observed_rate);

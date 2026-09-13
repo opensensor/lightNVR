@@ -13,6 +13,8 @@
 #include <strings.h>
 
 #include "core/authorization.h"
+#include "database/db_core.h"
+#include "storage/storage_migration.h"
 #include "core/camera_selector.h"
 #include "database/db_fleet_query.h"
 #include "database/db_storage_policies.h"
@@ -94,6 +96,10 @@ static cJSON *policy_to_json(const storage_policy_t *policy) {
     }
     cJSON_AddNumberToObject(object, "pressure_priority",
                             policy->pressure_priority);
+    cJSON_AddNumberToObject(object, "archive_after_seconds", policy->archive_after_seconds);
+    cJSON_AddNumberToObject(object, "hot_residency_seconds", policy->hot_residency_seconds);
+    cJSON_AddBoolToObject(object, "archive_protected", policy->archive_protected);
+    cJSON_AddBoolToObject(object, "archive_on_pressure", policy->archive_on_pressure);
     cJSON_AddNumberToObject(object, "revision", (double)policy->revision);
     cJSON_AddNumberToObject(object, "created_at", (double)policy->created_at);
     cJSON_AddNumberToObject(object, "updated_at", (double)policy->updated_at);
@@ -246,6 +252,10 @@ static bool apply_body(const cJSON *body, storage_policy_t *policy,
                        &policy->required_copy_count, res) ||
         !integer_value(body, "migration_after_days", 0, 36500,
                        &policy->migration_after_days, res) ||
+        !integer_value(body, "archive_after_seconds", -1, 2147483647,
+                       &policy->archive_after_seconds, res) ||
+        !integer_value(body, "hot_residency_seconds", -1, 2147483647,
+                       &policy->hot_residency_seconds, res) ||
         !integer_value(body, "pressure_priority", -1000000, 1000000,
                        &policy->pressure_priority, res)) return false;
     if (create && policy->primary_target_uuid[0] == '\0' &&
@@ -282,6 +292,17 @@ static bool apply_body(const cJSON *body, storage_policy_t *policy,
         }
     }
     const cJSON *enabled = cJSON_GetObjectItemCaseSensitive(body, "enabled");
+    const char *archive_flags[] = {"archive_protected", "archive_on_pressure"};
+    bool *archive_values[] = {&policy->archive_protected, &policy->archive_on_pressure};
+    for (size_t i = 0; i < 2; i++) {
+        const cJSON *flag = cJSON_GetObjectItemCaseSensitive(body, archive_flags[i]);
+        if (!flag) continue;
+        if (!cJSON_IsBool(flag)) {
+            http_response_set_json_error(res, 400, "Archive flags must be boolean");
+            return false;
+        }
+        *archive_values[i] = cJSON_IsTrue(flag);
+    }
     if (enabled) {
         if (!cJSON_IsBool(enabled)) {
             http_response_set_json_error(res, 400, "enabled must be boolean");
@@ -409,6 +430,8 @@ void handle_post_storage_policy_preview(const http_request_t *req,
     draft.priority = 100;
     draft.required_copy_count = 1;
     draft.pressure_priority = 100;
+    draft.archive_after_seconds = -1;
+    draft.hot_residency_seconds = -1;
     safe_strcpy(draft.fallback_mode, "default",
                 sizeof(draft.fallback_mode), 0);
     bool editing = false;
@@ -678,6 +701,8 @@ void handle_post_storage_policy(const http_request_t *req,
     policy.priority = 100;
     policy.required_copy_count = 1;
     policy.pressure_priority = 100;
+    policy.archive_after_seconds = -1;
+    policy.hot_residency_seconds = -1;
     safe_strcpy(policy.fallback_mode, "default",
                 sizeof(policy.fallback_mode), 0);
     cJSON *body = httpd_parse_json_body(req);
@@ -783,4 +808,77 @@ void handle_delete_storage_policy(const http_request_t *req,
     }
     audit_policy(req, &user, uuid, "policy_delete", "success");
     http_response_set_json(res, 200, "{\"success\":true}");
+}
+
+void handle_post_storage_policy_apply(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!authorize_storage(req, res, &user)) return;
+    char uuid[37];
+    if (!extract_uuid(req, uuid, res)) return;
+    cJSON *body = req->body ? cJSON_ParseWithLength(req->body, req->body_len) : NULL;
+    const cJSON *revision = cJSON_GetObjectItemCaseSensitive(body, "revision");
+    const cJSON *preview = cJSON_GetObjectItemCaseSensitive(body, "preview");
+    if (!cJSON_IsNumber(revision) || !isfinite(revision->valuedouble) || revision->valuedouble < 1 ||
+        revision->valuedouble > 9007199254740991.0 || floor(revision->valuedouble) != revision->valuedouble || !cJSON_IsBool(preview)) {
+        cJSON_Delete(body); http_response_set_json_error(res, 400, "revision and preview boolean are required"); return;
+    }
+    bool dry_run = cJSON_IsTrue(preview);
+    int64_t expected = (int64_t)revision->valuedouble;
+    cJSON_Delete(body);
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) { http_response_set_json_error(res, 503, "Catalog unavailable"); return; }
+    cJSON *root = cJSON_CreateObject();
+    if (!root) { http_response_set_json_error(res, 500, "Out of memory"); return; }
+    pthread_mutex_lock(mutex);
+    int rc = sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL);
+    sqlite3_stmt *stmt = NULL;
+    if (rc == SQLITE_OK) rc = sqlite3_prepare_v2(db, "SELECT p.revision,count(r.id),COALESCE(sum(r.size_bytes),0),"
+        "COALESCE(sum(r.protected=0 AND COALESCE(r.retention_override_days,-1)<>0 AND "
+        "CASE WHEN r.retention_override_days>0 THEN r.start_time+r.retention_override_days*86400<strftime('%s','now') "
+        "ELSE p.maximum_retention_days>0 AND r.start_time+p.maximum_retention_days*86400<strftime('%s','now') END),0),"
+        "COALESCE(sum(EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=r.id AND j.state<>'completed')),0) "
+        "FROM storage_policies p LEFT JOIN recordings r ON r.storage_policy_uuid=p.uuid AND r.deletion_pending=0 "
+        "AND r.storage_policy_version<>p.revision WHERE p.uuid=? GROUP BY p.uuid;", -1, &stmt, NULL);
+    int64_t current = 0, active = 0;
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            current = sqlite3_column_int64(stmt, 0);
+            cJSON_AddNumberToObject(root, "revision", (double)current);
+            cJSON_AddNumberToObject(root, "recordings", (double)sqlite3_column_int64(stmt, 1));
+            cJSON_AddNumberToObject(root, "bytes", (double)sqlite3_column_int64(stmt, 2));
+            cJSON_AddNumberToObject(root, "past_new_retention_limit", (double)sqlite3_column_int64(stmt, 3));
+            active = sqlite3_column_int64(stmt, 4);
+            cJSON_AddNumberToObject(root, "unfinished_transfers", (double)active);
+        }
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    bool ok = rc == SQLITE_ROW && current == expected && (dry_run || !active);
+    if (ok && !dry_run) {
+        stmt = NULL;
+        rc = sqlite3_prepare_v2(db, "UPDATE recordings SET storage_policy_version=?2 WHERE storage_policy_uuid=?1 "
+            "AND deletion_pending=0 AND storage_policy_version<>?2;", -1, &stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(stmt, 2, current); rc = sqlite3_step(stmt);
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        ok = rc == SQLITE_DONE;
+    }
+    if (ok) ok = sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK;
+    if (!ok) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    pthread_mutex_unlock(mutex);
+    if (!ok) {
+        cJSON_Delete(root);
+        http_response_set_json_error(res, 409, "Policy revision changed, policy is missing, or associated transfers must finish first");
+        return;
+    }
+    if (!dry_run) {
+        audit_policy(req, &user, uuid, "policy_apply_existing", "success");
+        storage_migration_worker_wake();
+    }
+    cJSON_AddBoolToObject(root, "preview", dry_run);
+    send_json(res, 200, root);
 }

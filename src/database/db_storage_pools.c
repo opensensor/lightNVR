@@ -391,6 +391,7 @@ db_storage_pool_result_t db_storage_pool_allocate(
             continue;
         if (db_storage_target_get(pool.members[index].target_uuid, &candidate) !=
                 DB_STORAGE_TARGET_OK || !candidate.enabled ||
+            strcmp(candidate.target_type, "filesystem") != 0 ||
             strcmp(candidate.health_status, "healthy") != 0 ||
             (candidate.mount_required &&
              !db_storage_target_mount_guard_active(&candidate)) ||

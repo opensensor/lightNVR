@@ -26,6 +26,7 @@
 #include "database/database_manager.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
+#include "database/db_core.h"
 #include "database/db_schema.h"
 #include "database/db_schema_cache.h"
 #include "utils/strings.h"
@@ -55,29 +56,26 @@ typedef struct {
  * @return true if the recording exists in the database, false otherwise
  */
 static bool recording_exists_in_db(const char *file_path) {
-    recording_metadata_t *metadata;
-    int count, i;
-    bool exists = false;
-    
-    // Allocate memory for metadata (assuming a reasonable maximum)
-    metadata = (recording_metadata_t *)malloc(1000 * sizeof(recording_metadata_t));
-    if (!metadata) {
-        log_error("Failed to allocate memory for recording metadata");
-        return false;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return true; // Uncertainty must not resurrect deleted media.
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT 1 FROM recordings WHERE file_path=?1 UNION ALL "
+        "SELECT 1 FROM storage_recording_copies c JOIN storage_targets t ON t.uuid=c.target_uuid "
+        "WHERE t.target_type='filesystem' AND rtrim(t.root_path,'/')||'/'||c.object_key=?1 UNION ALL "
+        "SELECT 1 FROM storage_migration_jobs j JOIN storage_targets t ON t.uuid=j.source_target_uuid "
+        "WHERE t.target_type='filesystem' AND rtrim(t.root_path,'/')||'/'||j.source_object_key=?1 UNION ALL "
+        "SELECT 1 FROM storage_migration_jobs j JOIN storage_targets t ON t.uuid=j.destination_target_uuid "
+        "WHERE t.target_type='filesystem' AND rtrim(t.root_path,'/')||'/'||j.destination_object_key=?1 UNION ALL "
+        "SELECT 1 FROM storage_deletion_objects WHERE file_path=?1 LIMIT 1;";
+    bool exists = true;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, file_path, -1, SQLITE_TRANSIENT);
+        exists = sqlite3_step(stmt) != SQLITE_DONE;
     }
-    
-    // Get all recordings from the database
-    count = get_recording_metadata(0, 0, NULL, metadata, 1000);
-    
-    // Check if the file path exists in the database
-    for (i = 0; i < count; i++) {
-        if (strcmp(metadata[i].file_path, file_path) == 0) {
-            exists = true;
-            break;
-        }
-    }
-    
-    free(metadata);
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
     return exists;
 }
 

@@ -360,6 +360,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/event-destinations/#", "DELETE",
                                  handle_delete_event_destination);
 
+    http_server_register_handler(server, "/api/storage-archive", "GET", handle_get_storage_archive);
+    http_server_register_handler(server, "/api/storage-archive/retry", "POST", handle_post_storage_archive_retry);
+    http_server_register_handler(server, "/api/storage-policies/#/apply", "POST", handle_post_storage_policy_apply);
+
     // Multi-target storage configuration and safe filesystem probes.
     http_server_register_handler(server, "/api/storage-targets", "GET",
                                  handle_get_storage_targets);

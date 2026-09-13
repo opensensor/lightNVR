@@ -505,7 +505,7 @@ static int hex_to_bin(const char *hex, unsigned char *data, size_t data_length) 
 /**
  * Initialize the authentication system
  */
-int db_auth_init(void) {
+static int bootstrap_admin_locked(void) {
     log_info("Initializing authentication system");
 
     // Check if the default admin user exists
@@ -514,7 +514,7 @@ int db_auth_init(void) {
 
     if (rc == 0) {
         log_info("Default admin user already exists");
-        return db_authorization_migrate_legacy_users(NULL);
+        return 0;
     }
 
     // Create the default admin user
@@ -590,7 +590,18 @@ int db_auth_init(void) {
         log_info("***    Password change required on first login      ***");
     }
     log_info("********************************************************");
-    return db_authorization_migrate_legacy_users(NULL);
+    return 0;
+}
+
+int db_auth_init(void) {
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!get_db_handle() || !mutex) return -1;
+    // Background storage workers share this connection. Hold the writer mutex
+    // throughout bootstrap, including password hashing and the final COMMIT.
+    pthread_mutex_lock(mutex);
+    int result = bootstrap_admin_locked();
+    pthread_mutex_unlock(mutex);
+    return result == 0 ? db_authorization_migrate_legacy_users(NULL) : result;
 }
 
 /**
