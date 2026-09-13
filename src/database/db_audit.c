@@ -16,6 +16,9 @@
 #include "utils/strings.h"
 
 static int64_t last_automatic_prune_at = 0;
+/* Seconds until the next automatic prune. Shortened while a backlog is still
+ * draining so it is not stuck at one batch per hour, restored once caught up. */
+static int64_t automatic_prune_interval = AUDIT_PRUNE_INTERVAL_SECONDS;
 
 static bool valid_outcome(const char *outcome) {
     return outcome &&
@@ -67,22 +70,95 @@ static int retention_days_locked(sqlite3 *db) {
     return days;
 }
 
-static int prune_locked(sqlite3 *db, int *deleted_count) {
+/*
+ * Test-only seams, deliberately not declared in the public header (see the
+ * review on PR #595): tests reach them with an extern declaration. The budget
+ * override makes budget exhaustion deterministic instead of racing a real
+ * 250ms clock; the interval getter exposes the cadence transition.
+ */
+static int prune_budget_ms_override = -1;  /* <0 = use AUDIT_PRUNE_BUDGET_MS */
+
+void db_audit_set_prune_budget_ms_for_testing(int budget_ms) {
+    prune_budget_ms_override = budget_ms;
+}
+
+int db_audit_get_prune_interval_seconds_for_testing(void) {
+    return (int)automatic_prune_interval;
+}
+
+/* Lets tests place the insert-path eligibility window deterministically
+ * instead of waiting out the real hour/60s intervals. */
+void db_audit_set_automatic_prune_state_for_testing(int64_t last_prune_at,
+                                                    int interval_seconds) {
+    last_automatic_prune_at = last_prune_at;
+    automatic_prune_interval = interval_seconds;
+}
+
+static int64_t prune_monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/*
+ * Delete expired events in bounded batches.
+ *
+ * This runs from the audit insert path while the global database mutex is
+ * held, so a single unbounded DELETE blocks every other database user for as
+ * long as it takes. That is harmless while the statement matches nothing --
+ * which is the steady state under the 365-day default -- but the first prune
+ * after a real backlog accumulates, or an administrator lowering
+ * audit_retention_days on an existing table, turns one ordinary audit write
+ * into a multi-minute stall. Measured on a 5.9M-row table with the service
+ * stopped (so nothing was competing for the lock), a single DELETE of 5.33M
+ * rows took 2m31s.
+ *
+ * Batching keeps the work per pass proportional to the batch size rather than
+ * to the backlog. The budget is checked between statements, so it bounds how
+ * many batches a pass runs, not the pass itself -- one batch already in
+ * flight can overrun it, and no maximum hold time is promised. When the
+ * budget runs out with work still pending, more_remaining is set so the
+ * caller can come back sooner instead of waiting out the full interval.
+ */
+static int prune_locked(sqlite3 *db, int *deleted_count, bool *more_remaining) {
     int retention_days = retention_days_locked(db);
     int64_t cutoff = (int64_t)time(NULL) -
         (int64_t)retention_days * 24 * 60 * 60;
-    sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(
-        db, "DELETE FROM audit_events WHERE occurred_at < ?;", -1,
-        &stmt, NULL);
-    if (rc == SQLITE_OK) {
+    int budget_ms = prune_budget_ms_override >= 0
+        ? prune_budget_ms_override : AUDIT_PRUNE_BUDGET_MS;
+    int64_t deadline = prune_monotonic_ms() + budget_ms;
+    int total_deleted = 0;
+    bool more = false;
+    int rc = SQLITE_DONE;
+
+    static const char *sql = AUDIT_PRUNE_BATCH_SQL;
+
+    for (;;) {
+        sqlite3_stmt *stmt = NULL;
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            if (stmt) sqlite3_finalize(stmt);
+            break;
+        }
         sqlite3_bind_int64(stmt, 1, cutoff);
+        sqlite3_bind_int(stmt, 2, AUDIT_PRUNE_BATCH_ROWS);
         rc = sqlite3_step(stmt);
+        int batch_deleted = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) break;
+
+        total_deleted += batch_deleted;
+        if (batch_deleted < AUDIT_PRUNE_BATCH_ROWS) break;  /* caught up */
+        if (prune_monotonic_ms() >= deadline) {
+            more = true;
+            break;
+        }
     }
+
     if (deleted_count) {
-        *deleted_count = rc == SQLITE_DONE ? sqlite3_changes(db) : 0;
+        *deleted_count = (rc == SQLITE_DONE) ? total_deleted : 0;
     }
-    if (stmt) sqlite3_finalize(stmt);
+    if (more_remaining) *more_remaining = more;
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
@@ -179,11 +255,18 @@ int db_audit_append(const audit_event_input_t *input,
     }
 
     int64_t now = (int64_t)time(NULL);
-    if (rc == SQLITE_DONE && now - last_automatic_prune_at >= 3600) {
+    if (rc == SQLITE_DONE && now - last_automatic_prune_at >= automatic_prune_interval) {
         int deleted = 0;
-        if (prune_locked(db, &deleted) == 0) {
+        bool more_remaining = false;
+        if (prune_locked(db, &deleted, &more_remaining) == 0) {
             last_automatic_prune_at = now;
-            if (deleted > 0) log_info("Pruned %d expired audit events", deleted);
+            automatic_prune_interval = more_remaining
+                ? AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS
+                : AUDIT_PRUNE_INTERVAL_SECONDS;
+            if (deleted > 0) {
+                log_info("Pruned %d expired audit events%s", deleted,
+                         more_remaining ? " (backlog remains)" : "");
+            }
         }
     }
     pthread_mutex_unlock(mutex);
@@ -379,8 +462,28 @@ int db_audit_prune(int *deleted_count) {
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return -1;
     pthread_mutex_lock(mutex);
-    int result = prune_locked(db, deleted_count);
-    if (result == 0) last_automatic_prune_at = (int64_t)time(NULL);
+    bool more_remaining = false;
+    int result = prune_locked(db, deleted_count, &more_remaining);
+    if (result == 0) {
+        last_automatic_prune_at = (int64_t)time(NULL);
+        /*
+         * An explicit prune is bounded by the same budget, so a large backlog
+         * (typically an administrator lowering the retention window) drains
+         * across the following passes rather than stalling this request --
+         * *deleted_count is therefore a partial count in that case, not the
+         * whole backlog.
+         *
+         * Those following passes are driven from db_audit_append(), so this
+         * shortened interval only makes the next prune *eligible* sooner; it
+         * does not schedule one. An installation quiet enough to stop writing
+         * audit events will hold the remaining backlog until audit traffic
+         * resumes. Draining without traffic would need an independent
+         * maintenance tick, which this does not add.
+         */
+        automatic_prune_interval = more_remaining
+            ? AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS
+            : AUDIT_PRUNE_INTERVAL_SECONDS;
+    }
     pthread_mutex_unlock(mutex);
     return result;
 }

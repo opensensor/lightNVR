@@ -18,6 +18,39 @@
 #define AUDIT_RETENTION_DEFAULT_DAYS 365
 #define AUDIT_RETENTION_MAX_DAYS 3650
 
+/* Pruning runs from the audit insert path with the global database mutex
+ * held, so it deletes in bounded batches instead of one open-ended DELETE.
+ * The row cap keeps a single statement cheap; the time budget limits how many
+ * batches one pass runs. The budget is checked between statements, so it is a
+ * soft bound -- a single batch already in flight can overrun it. */
+#define AUDIT_PRUNE_BATCH_ROWS 2000
+#define AUDIT_PRUNE_BUDGET_MS 250
+/* Eligibility interval for the next automatic prune, and the shortened
+ * interval used while a backlog is still draining. Neither is a scheduled
+ * job: the prune is driven from the audit insert path, so a quiet install
+ * with no audit traffic will not drain a backlog until writes resume. */
+#define AUDIT_PRUNE_INTERVAL_SECONDS 3600
+#define AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS 60
+
+/*
+ * Batch delete used by the automatic prune.
+ *
+ * "ORDER BY occurred_at, id" rather than "ORDER BY id" is load-bearing: the
+ * latter makes SQLite pick SCAN audit_events for the inner query, so the
+ * common case -- nothing expired -- walks every surviving row while the
+ * global database mutex is held. Ordering by the index's leading column lets
+ * it use idx_audit_events_occurred as a covering index instead. Measured on
+ * 1M unexpired rows: SCAN 48ms vs covering index 1ms.
+ *
+ * The subquery form rather than "DELETE ... LIMIT" avoids depending on
+ * SQLITE_ENABLE_UPDATE_DELETE_LIMIT, which is not enabled in every SQLite
+ * build this project links against.
+ */
+#define AUDIT_PRUNE_BATCH_SQL \
+    "DELETE FROM audit_events WHERE id IN (" \
+    "SELECT id FROM audit_events WHERE occurred_at < ? " \
+    "ORDER BY occurred_at, id LIMIT ?);"
+
 typedef struct {
     const char *request_id;
     int64_t principal_user_id;
