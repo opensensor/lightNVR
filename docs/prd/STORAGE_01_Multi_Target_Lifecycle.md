@@ -266,3 +266,11 @@ expected and achieved retention, copy deficits, and persistent minimum-capacity,
 target-unavailable, copy-count, and failed-migration conditions. External
 adapters remain out of scope until a concrete provider or integration supplies
 real capability and credential requirements.
+
+## 12. Proposed external-storage follow-up
+
+[Storage 02 — Hot Storage & External Recording Archive](STORAGE_02_Hot_Cold_Archive.md)
+proposes the concrete P4 integration: cloud PVCs as hot storage with a dedicated
+S3-compatible bucket, the same policies for mounted NFS/SAN archives, protected
+recording migration, and unified retention and retrieval. It is a draft extension;
+the implementation status above remains unchanged.

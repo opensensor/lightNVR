@@ -57,13 +57,14 @@ jobs:
         run: |
           mkdir -p build
           cd build
+          # Concurrent tests need atomic gcov counters to avoid corrupt coverage.
           cmake .. \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=OFF \
             -DENABLE_MQTT=OFF \
-            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           make -j$(nproc) \
             test_storage_pressure \
@@ -386,6 +387,7 @@ jobs:
           # tests contribute to Codecov (previously the tests ran but
           # their coverage was never uploaded, pinning patch coverage at
           # ~0% for files only exercised here).
+          # Use atomic gcov counters for code exercised by multiple threads.
           cmake .. \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTS=ON \
@@ -393,7 +395,7 @@ jobs:
             -DENABLE_GO2RTC=ON \
             -DENABLE_LITERT=OFF \
             -DENABLE_MQTT=OFF \
-            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
 
       - name: Build go2rtc-related tests
