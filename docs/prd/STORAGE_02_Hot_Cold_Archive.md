@@ -31,8 +31,8 @@ well as stored bytes. This draft makes no provider price or savings guarantee.
 
 This is the concrete external integration anticipated by
 [Storage 01](STORAGE_01_Multi_Target_Lifecycle.md), whose filesystem work is
-already implemented. It extends that design and the
-[cloud provisioning PRD](../../lightnvr-provisioning-prd.docx.md).
+already implemented. This document defines the archive requirements and the
+deployment integration contract independently of any separate cloud service.
 
 Repository review at `9915688a` identified these boundaries:
 
@@ -63,11 +63,11 @@ Primary implementation references are
 - Keep capture responsive during slow transfers, retrieval, and target outages.
 - Make location, availability, backlog, retention, and costs understandable.
 
-The proposed first cloud target is S3-compatible object storage, with
-DigitalOcean Spaces as the first managed-cloud qualification target because the
-provisioning PRD names DigitalOcean. Existing mounted filesystem targets provide
-NFS/SAN support. A SAN volume must be mounted and managed by the operator; this
-feature does not provision block devices or implement a network filesystem.
+The first object-storage adapter targets S3-compatible APIs. Qualify each provider
+against the required capabilities before enabling hot-copy eviction. Existing
+mounted filesystem targets provide NFS/SAN support. A SAN volume must be mounted
+and managed by the operator; this feature does not provision block devices or
+implement a network filesystem.
 
 Initial delivery includes one hot pool and one archive destination per effective
 policy. It supports ordinary online object storage: “cold” describes LightNVR's
@@ -226,10 +226,10 @@ behavior. Probe using a dedicated test object, then clean it up and report a
 failed cleanup. Validate configured endpoints and redirects against deployment
 network policy; object keys must not permit path traversal or namespace escape.
 
-Capabilities are explicit and tested per adapter/provider. DigitalOcean documents
-partial S3 compatibility, including multipart uploads and presigned URLs, and
-does not support tag-based lifecycle rules. Consequently the design cannot rely
-on provider tags to enforce protection. [Spaces compatibility reference](https://docs.digitalocean.com/products/spaces/reference/s3-compatibility/)
+Capabilities are explicit and tested per adapter/provider. Qualification must
+verify the required operations rather than infer support from an S3-compatible
+label. Protection and retention remain catalog decisions; they must not depend
+on provider-specific tag or lifecycle features.
 
 ### 6.2 Durable migration
 
@@ -393,8 +393,8 @@ conditions and Fleet 03 events for persistent failures and recovery.
 Meter provisioned PVC capacity, archive byte-time, requests where billed,
 upload/verification/retrieval traffic, and playback egress separately. Record
 temporary duplicate storage and incomplete-upload costs. Show estimates with
-sample windows and configurable current rates; do not carry historical pricing
-from the provisioning PRD into this feature as a fixed rate.
+sample windows and configurable current rates; do not embed historical provider
+pricing as a fixed rate.
 
 For planning, estimate:
 
@@ -405,7 +405,6 @@ has roughly 2 TB of steady hot media and 28 TB of archive media, before reserve,
 outages, protected accumulation, replication, and caches. Actual PVC cost reduction
 requires provisioning smaller capacity or migrating to a smaller volume; file
 eviction alone does not change already-provisioned capacity charges.
-[DigitalOcean volume billing](https://docs.digitalocean.com/products/volumes/details/pricing/)
 
 ## 10. Delivery phases
 
