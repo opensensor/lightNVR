@@ -1106,8 +1106,6 @@ static void test_catalog_failure_only_reclaims_idle_owned_cache(void) {
 }
 
 static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) {
-    char active_mount[MAX_PATH_LENGTH];
-    TEST_ASSERT_EQUAL_INT(0, db_storage_target_detect_mount(root, "/proc/self/mountinfo", active_mount));
     for (int filesystem = 0; filesystem < 2; filesystem++) {
         uint64_t id = recording(false);
         storage_target_t target = archive_target(filesystem ? "mount-fs" : "mount-s3", true);
@@ -1138,7 +1136,9 @@ static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) 
         recording_metadata_t metadata;
         TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &metadata));
         TEST_ASSERT_EQUAL_STRING(source_uuid, metadata.storage_target_uuid);
-        snprintf(query, sizeof(query), "UPDATE storage_targets SET mount_guard_path='%s' WHERE uuid='%s';UPDATE storage_migration_jobs SET next_attempt_at=0;", active_mount, source_uuid);
+        // Restore the fixture's original local target. CI containers need not
+        // have a separate mount beneath /, and mount detection excludes /.
+        snprintf(query, sizeof(query), "UPDATE storage_targets SET mount_required=0,mount_guard_path='' WHERE uuid='%s';UPDATE storage_migration_jobs SET next_attempt_at=0;", source_uuid);
         sql(query);
         TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
         TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
