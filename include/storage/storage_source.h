@@ -15,7 +15,9 @@ typedef struct {
     char key[MAX_PATH_LENGTH];
     uint64_t size;
 } storage_remote_source_t;
-/* Describe a verified remote primary without staging its bytes. */
+/* Inspect usable replicas without staging bytes or creating read leases. */
+bool storage_source_available(uint64_t id);
+/* Describe the selected verified remote replica without staging its bytes. */
 int storage_source_remote(uint64_t id, storage_remote_source_t *source);
 bool storage_source_touch(uint64_t id);
 int storage_source_resolve(uint64_t recording_id, char path[MAX_PATH_LENGTH],

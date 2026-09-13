@@ -1,10 +1,12 @@
 #include "web/recording_source.h"
 #include "database/db_core.h"
+#include "storage/storage_source.h"
 
 void recording_source_add_status(cJSON *object, uint64_t id) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
     if (!object || !db || !mutex) return;
+    bool available = storage_source_available(id);
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     const char *sql = "SELECT r.deletion_pending,COALESCE(t.target_type,'filesystem'),"
@@ -22,13 +24,12 @@ void recording_source_add_status(cJSON *object, uint64_t id) {
         if (sqlite3_step(statement) == SQLITE_ROW) {
             bool pending = sqlite3_column_int(statement, 0) != 0;
             const char *type = (const char *)sqlite3_column_text(statement, 1);
-            const char *health = (const char *)sqlite3_column_text(statement, 2);
             const char *retrieval = (const char *)sqlite3_column_text(statement, 7);
             const char *state = pending ? "deletion_pending" :
                 (!strcmp(retrieval, "queued") || !strcmp(retrieval, "fetching")) ? "preparing" :
-                !strcmp(retrieval, "failed") ? "unavailable" :
+                !available ? "unavailable" :
                 sqlite3_column_int(statement, 6) ? "archiving" :
-                !strcmp(type, "s3") ? (!strcmp(health, "unavailable") ? "unavailable" : "archived") :
+                !strcmp(type, "s3") ? "archived" :
                 sqlite3_column_int(statement, 5) ? "hot_and_archive" : "hot";
             cJSON_AddStringToObject(object, "storage_state", state);
             cJSON_AddBoolToObject(object, "deletion_pending", pending);

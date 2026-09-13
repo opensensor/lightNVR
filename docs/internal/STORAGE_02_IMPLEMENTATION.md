@@ -46,10 +46,10 @@ The final Release build and existing regressions passed:
 | Check | Result |
 | --- | --- |
 | CTest suite | 132/132 passed |
-| Frontend Jest suite | 242/242 passed across 36 suites |
+| Frontend Jest suite | 245/245 passed across 36 suites |
 | Frontend production build | Passed |
-| S3 archive protocol integration | 15 cases passed |
-| Archive integration in Debug with AddressSanitizer and UBSan | Passed |
+| S3 archive protocol integration | 31 cases passed |
+| CI selection in Debug with AddressSanitizer, UBSan, and coverage | 43/43 passed |
 | S3 disabled: `lightnvr` and `rebuild_recordings` builds | Passed |
 | Embedded SQL migration consistency | Passed |
 | Deployment JSON/YAML syntax and diff whitespace | Passed |
@@ -62,6 +62,17 @@ lifecycle, checkpoint resume after database reopen, hot-copy promotion under
 pressure, missing destination during cleanup, archive expiry/indefinite overrides,
 direct restore with cache disabled, policy expiry revalidation, long retrieval
 waits, shared-filesystem reserve protection, and ambiguous multipart completion.
+Review regressions also cover expired multipart completion (HTTP 404 and embedded
+HTTP 200 errors), unpublished corrupt-object repair, preservation of referenced
+copies, S3 replica failover, local/cache availability during provider outages,
+active queue limits, catalog-independent cache reclamation, protected and legacy
+retention overrides, admin authorization/retry, ZIP exports, and pending deletion
+reporting. The mutation hook waits for the final batch job result before refreshing.
+
+Using the same CI selection in an isolated Debug coverage build, executable added
+C lines increased from 1,443/1,825 (79.07%) before these changes to 1,814/1,948
+(93.12%). Uncovered added lines fell from 382 to 134. This local gcov comparison
+covers C changes; Codecov uses its own aggregation and patch denominator.
 
 Useful commands:
 

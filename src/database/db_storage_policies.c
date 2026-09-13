@@ -293,7 +293,7 @@ db_storage_policy_result_t db_storage_policy_validate(
                 }
             }
         }
-    } else if (policy->archive_protected || policy->archive_on_pressure || policy->archive_after_seconds > 0) {
+    } else if (policy->archive_protected || policy->archive_on_pressure || policy->archive_after_seconds >= 0) {
         set_error(error, error_size,
                   "archive rules require a migration_target_uuid");
         return DB_STORAGE_POLICY_INVALID;

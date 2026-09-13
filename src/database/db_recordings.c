@@ -1393,8 +1393,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 // Delete recording metadata from the database
 int delete_recording_metadata(uint64_t id) {
-    int result = storage_recording_delete(id, "recording deletion", NULL);
-    return result < 0 ? result : 0;
+    return storage_recording_delete(id, "recording deletion", NULL);
 }
 
 // Delete old recording metadata from the database
@@ -1404,18 +1403,20 @@ int delete_old_recording_metadata(uint64_t max_age) {
     if (!db || !mutex) return -1;
     uint64_t ids[256];
     int count = 0, deleted = 0;
+    int64_t cutoff = (int64_t)time(NULL) - (int64_t)max_age;
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
-    if (sqlite3_prepare_v2(db, "SELECT id FROM recordings WHERE end_time<? AND protected=0 "
-        "AND deletion_pending=0 ORDER BY end_time LIMIT 256;", -1, &statement, NULL) == SQLITE_OK) {
-        sqlite3_bind_int64(statement, 1, (sqlite3_int64)time(NULL) - (sqlite3_int64)max_age);
+    if (sqlite3_prepare_v2(db, "SELECT r.id FROM recordings r LEFT JOIN storage_recording_policies p ON p.recording_id=r.id "
+        "WHERE " STORAGE_LEGACY_EXPIRY_PREDICATE " AND r.protected=0 "
+        "AND r.deletion_pending=0 ORDER BY r.end_time LIMIT 256;", -1, &statement, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(statement, 1, cutoff);
         while (count < 256 && sqlite3_step(statement) == SQLITE_ROW)
             ids[count++] = (uint64_t)sqlite3_column_int64(statement, 0);
     }
     if (statement) sqlite3_finalize(statement);
     pthread_mutex_unlock(mutex);
     for (int i = 0; i < count; i++)
-        if (storage_recording_delete(ids[i], "legacy age retention", NULL) == 0) deleted++;
+        if (storage_recording_expire_age(ids[i], cutoff) == 0) deleted++;
     return deleted;
 }
 

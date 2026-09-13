@@ -194,7 +194,7 @@ static int inventory_derivatives(sqlite3 *db, const char *uuid, uint64_t id) {
 }
 
 static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
-                            bool require_policy_expiry) {
+                            bool require_policy_expiry, int64_t age_cutoff) {
     if (recovery_read_only()) return -1;
     if (removed) *removed = 0;
     sqlite3 *db = get_db_handle();
@@ -222,6 +222,23 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
         sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         pthread_mutex_unlock(mutex);
         return blocked ? -2 : (pending ? 1 : (result == SQLITE_DONE ? 0 : -1));
+    }
+    if (age_cutoff) {
+        statement = NULL;
+        result = sqlite3_prepare_v2(db,
+            "SELECT 1 FROM recordings r LEFT JOIN storage_recording_policies p ON p.recording_id=r.id "
+            "WHERE " STORAGE_LEGACY_EXPIRY_PREDICATE " AND r.id=?2;", -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            sqlite3_bind_int64(statement, 1, age_cutoff);
+            sqlite3_bind_int64(statement, 2, (sqlite3_int64)id);
+            result = sqlite3_step(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+        if (result != SQLITE_ROW) {
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            pthread_mutex_unlock(mutex);
+            return result == SQLITE_DONE ? -2 : -1;
+        }
     }
     if (require_policy_expiry) {
         /* Keep this predicate consistent with db_storage_lifecycle_expire. A
@@ -298,9 +315,14 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
 }
 
 int storage_recording_delete(uint64_t id, const char *reason, uint64_t *removed) {
-    return recording_delete(id, reason, removed, false);
+    return recording_delete(id, reason, removed, false, 0);
 }
 
 int storage_recording_expire_policy(uint64_t id) {
-    return recording_delete(id, "policy expiry", NULL, true);
+    return recording_delete(id, "policy expiry", NULL, true, 0);
+}
+
+int storage_recording_expire_age(uint64_t id, int64_t cutoff) {
+    if (!cutoff) return -2;
+    return recording_delete(id, "legacy age retention", NULL, false, cutoff);
 }

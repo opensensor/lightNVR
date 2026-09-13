@@ -525,9 +525,24 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             if (!result && query && length > 0 && !file_section_hash(manifest, 0, (uint64_t)length, hash_hex))
                 result = request(target, key, query, "POST", manifest, (uint64_t)length, hash_hex, &io, NULL, error);
             else result = -1;
-            // S3 can report an Error document inside HTTP 200 after sending whitespace.
+            // Completion may lose the upload, including an Error inside HTTP 200.
+            bool missing_upload = result == STORAGE_S3_MISSING;
+            char *failure_body = strdup(body);
+            ezxml_t failure = failure_body ? response_xml(failure_body, "Error") : NULL;
+            if (failure) {
+                if (!strcmp(ezxml_txt(ezxml_child(failure, "Code")), "NoSuchUpload")) missing_upload = true;
+                ezxml_free(failure);
+            }
+            free(failure_body);
             ezxml_t root = result == 0 ? response_xml(body, "CompleteMultipartUploadResult") : NULL;
             if (!root) result = -1;
+            if (missing_upload) {
+                id[0] = 0;
+                cJSON_DeleteItemFromObjectCaseSensitive(checkpoint, "parts");
+                cJSON_AddArrayToObject(checkpoint, "parts");
+                upload_checkpoint(control->job_uuid, id, &checkpoint, true);
+                result = -1; // Retry starts a new upload from the retained source.
+            }
             if (root) ezxml_free(root);
             free(query);
             fclose(manifest);

@@ -241,6 +241,8 @@ void test_policy_preview_reports_conflicts_and_effective_precedence(void) {
 void test_compliance_forecasts_thirty_day_observed_rate(void) {
     storage_policy_t policy;
     memset(&policy, 0, sizeof(policy));
+    policy.archive_after_seconds = -1;
+    policy.hot_residency_seconds = -1;
     safe_strcpy(policy.name, "Forecast fixture", sizeof(policy.name), 0);
     policy.enabled = true;
     policy.priority = 100;

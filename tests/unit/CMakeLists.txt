@@ -174,6 +174,7 @@ add_layer2_test(test_recording_transcode)
 add_layer2_test(test_api_handlers_recordings_playback)
 target_link_options(test_api_handlers_recordings_playback PRIVATE
     "-Wl,--wrap=storage_source_resolve"
+    "-Wl,--wrap=storage_source_remote"
     "-Wl,--wrap=get_recording_metadata_by_id"
     "-Wl,--wrap=httpd_authorize_camera_identity_action_with_context"
     "-Wl,--wrap=recording_needs_hevc_transcode"

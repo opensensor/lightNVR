@@ -64,6 +64,8 @@ static storage_policy_t policy_value(const char *name,
                                      const char *primary_uuid) {
     storage_policy_t policy;
     memset(&policy, 0, sizeof(policy));
+    policy.archive_after_seconds = -1;
+    policy.hot_residency_seconds = -1;
     safe_strcpy(policy.name, name, sizeof(policy.name), 0);
     policy.enabled = true;
     policy.priority = 100;
@@ -269,6 +271,9 @@ void test_camera_selectors_route_two_cameras_to_different_targets(void) {
 void test_policy_revision_validation_and_target_reference_safety(void) {
     storage_policy_t policy = policy_value("Safe policy",
                                            primary_target.uuid);
+    policy.archive_after_seconds = 0;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_INVALID, db_storage_policy_create(&policy));
+    policy.archive_after_seconds = -1;
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
                           db_storage_policy_create(&policy));
     safe_strcpy(policy.fallback_mode, "target",

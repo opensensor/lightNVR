@@ -20,6 +20,7 @@ class S3Handler(BaseHTTPRequestHandler):
     uploads = {}
     part_attempts = {}
     failed_deletions = set()
+    expired_completions = set()
     lock = threading.Lock()
 
     def log_message(self, *_):
@@ -65,11 +66,12 @@ class S3Handler(BaseHTTPRequestHandler):
         if length > 16 * 1024 * 1024:
             return self.respond(413)
         body = self.rfile.read(length) if length else b''
-        if not self.authorized(body):
-            return self.respond(403)
         url = urlsplit(self.path)
         path = unquote(url.path).strip('/')
         bucket, _, key = path.partition('/')
+        anonymous_public = bucket == 'public' and self.command == 'GET' and not self.headers.get('Authorization')
+        if not self.authorized(body) and not anonymous_public:
+            return self.respond(403)
         if not key:
             if url.query == 'versioning':
                 value = b'<Status>Enabled</Status>' if bucket == 'versioned' else b''
@@ -108,6 +110,11 @@ class S3Handler(BaseHTTPRequestHandler):
                     upload['parts'][part] = (etag, body)
                     return self.respond(200, headers={'ETag': etag})
                 if self.command == 'POST':
+                    if bucket in ('multipart-expired', 'multipart-expired-200') and identity not in self.expired_completions:
+                        self.expired_completions.add(identity)
+                        del self.uploads[upload_id]
+                        return self.respond(404 if bucket == 'multipart-expired' else 200,
+                                            b'<Error><Code>NoSuchUpload</Code></Error>')
                     manifest = ET.fromstring(body)
                     values = []
                     for part in manifest.findall('Part'):
@@ -155,7 +162,7 @@ class S3Handler(BaseHTTPRequestHandler):
 def main():
     with tempfile.TemporaryDirectory(prefix='lightnvr-s3-fixture-') as directory:
         credential = Path(directory) / 'fixture'
-        credential.write_text('{"access_key_id":"fixture-access","secret_access_key":"fixture-secret"}')
+        credential.write_text('{"access_key_id":"fixture-access","secret_access_key":"fixture-secret","session_token":"fixture-session-token"}')
         credential.chmod(0o600)
         server = ThreadingHTTPServer(('127.0.0.1', 0), S3Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()

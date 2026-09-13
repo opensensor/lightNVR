@@ -262,3 +262,48 @@ describe('recordingsAPI', () => {
     );
   });
 });
+
+describe('archive batch deletion outcomes', () => {
+  const { useMutation, useQueryClient } = require('../js/query-client.js');
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchJSON.mockReset();
+    global.window = {};
+  });
+  afterEach(() => { jest.restoreAllMocks(); delete global.window; });
+
+  test('mutation waits for the durable job outcome before resolving and refreshing', async () => {
+    const invalidateQueries = jest.fn();
+    useQueryClient.mockReturnValue({ invalidateQueries });
+    useMutation.mockImplementation(options => options);
+    fetchJSON.mockResolvedValueOnce({ job_id: 'archive-job', status: 'processing' });
+    let finish;
+    const poll = jest.spyOn(recordingsAPI, 'pollBatchDeleteProgress').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const mutation = recordingsAPI.hooks.useBatchDeleteRecordings();
+    const outcome = { succeeded: 2, pending_deletions: 1, failed: 1 };
+    let settled = false;
+    const pending = mutation.mutationFn({ ids: [1, 2, 3] }).then(result => { settled = true; return result; });
+    await Promise.resolve();
+    expect(poll).toHaveBeenCalledWith('archive-job');
+    expect(settled).toBe(false);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(showStatusMessage).not.toHaveBeenCalled();
+    finish(outcome);
+    await expect(pending).resolves.toEqual(outcome);
+    mutation.onSuccess(outcome);
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['recordings'] });
+    expect(showStatusMessage).toHaveBeenCalledWith('Accepted 2 deletions; 1 await storage cleanup; failed to delete 1');
+  });
+
+  test('HTTP fallback retains failures alongside pending cleanup', async () => {
+    const outcome = { succeeded: 4, failed: 2, pending_deletions: 3 };
+    jest.spyOn(recordingsAPI, 'pollBatchDeleteProgress').mockResolvedValue(outcome);
+    await expect(recordingsAPI.handleBatchDeleteResponse({ json: async () => ({ job_id: 'mixed' }) })).resolves.toEqual(outcome);
+    expect(showStatusMessage).toHaveBeenCalledWith('Accepted 4 deletions; 3 await storage cleanup; failed to delete 2');
+  });
+
+  test('job polling preserves pending cleanup and failure counts', async () => {
+    fetchJSON.mockResolvedValueOnce({ complete: true, succeeded: 3, pending_deletions: 2, failed: 1 });
+    await expect(recordingsAPI.pollBatchDeleteProgress('finished')).resolves.toEqual({ succeeded: 3, pending_deletions: 2, failed: 1 });
+  });
+});

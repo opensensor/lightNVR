@@ -2,6 +2,7 @@
  * API functions for RecordingsView
  */
 
+import { batchDeleteStatus } from '../../../utils/batch-delete-status.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
 import { formatUtils } from './formatUtils.js';
@@ -247,36 +248,27 @@ export const recordingsAPI = {
     useBatchDeleteRecordings: () => {
       const queryClient = useQueryClient();
 
-      return usePostMutation(
-        '/api/recordings/batch-delete',
-        {
-          timeout: BATCH_DELETE_TIMEOUT,
-          retries: BATCH_DELETE_RETRIES,
-          retryDelay: BATCH_DELETE_RETRY_DELAY
+      return useMutation({
+        mutationFn: async (data) => {
+          const started = await fetchJSON('/api/recordings/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+            timeout: BATCH_DELETE_TIMEOUT,
+            retries: BATCH_DELETE_RETRIES,
+            retryDelay: BATCH_DELETE_RETRY_DELAY
+          });
+          return started.job_id ? await recordingsAPI.pollBatchDeleteProgress(started.job_id) : started;
         },
-        {
-          onSuccess: (result) => {
-            // Invalidate recordings queries to refresh the list
-            queryClient.invalidateQueries({ queryKey: ['recordings'] });
-
-            const successCount = result.succeeded;
-            const errorCount = result.failed;
-
-            // Show status message
-            if (successCount > 0 && errorCount === 0) {
-              showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-            } else if (successCount > 0 && errorCount > 0) {
-              showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-            } else {
-              showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-            }
-          },
-          onError: (error) => {
-            console.error('Error in batch delete operation:', error);
-            showStatusMessage('Error in batch delete operation: ' + error.message);
-          }
+        onSuccess: (result) => {
+          queryClient.invalidateQueries({ queryKey: ['recordings'] });
+          showStatusMessage(batchDeleteStatus(result));
+        },
+        onError: (error) => {
+          console.error('Error in batch delete operation:', error);
+          showStatusMessage('Error in batch delete operation: ' + error.message);
         }
-      );
+      });
     }
   },
   /**
@@ -580,44 +572,9 @@ export const recordingsAPI = {
   handleBatchDeleteResponse: async (deleteResponse) => {
     const result = await deleteResponse.json();
 
-    // Check if we got a job_id (async operation) or direct result (sync operation)
-    if (result.job_id) {
-      console.log('Batch delete started with job_id:', result.job_id);
-
-      // Poll for progress
-      const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
-
-      // Show status message
-      const successCount = finalResult.succeeded || 0;
-      const errorCount = finalResult.failed || 0;
-
-      if (finalResult.pending_deletions > 0) {
-        showStatusMessage(`Accepted ${successCount} deletions; ${finalResult.pending_deletions} await storage cleanup`);
-      } else if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-      } else if (errorCount > 0) {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
-
-      return finalResult;
-    } else {
-      // Direct result (old sync behavior)
-      const successCount = result.succeeded || 0;
-      const errorCount = result.failed || 0;
-
-      // Show status message
-      if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-      } else if (errorCount > 0) {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
-
-      return result;
-    }
+    const finalResult = result.job_id ? await recordingsAPI.pollBatchDeleteProgress(result.job_id) : result;
+    showStatusMessage(batchDeleteStatus(finalResult));
+    return finalResult;
   },
 
   /**

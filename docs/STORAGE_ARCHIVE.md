@@ -121,11 +121,20 @@ reserve HTTP worker capacity for other operations. Further streams get a retryab
 Thumbnails, compatibility conversion, and ZIP exports use a verified staging
 cache beneath `storage_path/archive-cache`. The default budget is 2048 MiB,
 configurable with `LIGHTNVR_ARCHIVE_CACHE_MB`; `0` disables staging. The queue is
-bounded to 16 records, downloads are deduplicated, and space checks preserve the
-capture reserve. Idle cache can be evicted without losing recordings. A source
+bounded to 16 queued or fetching jobs; completed cache entries and failed attempts
+do not consume queue slots. Downloads are deduplicated, and space checks preserve the
+capture reserve. Idle cache can be evicted without losing recordings. If the
+catalog is unavailable, emergency reclamation scans only old, completed files
+in the app-owned archive cache, preserving recent files, partial fetches, and
+symlinks. A source
 larger than the configured cache budget cannot be staged; original playback and
 individual downloads still stream directly. ZIP export currently uses ZIP32 and
 rejects incomplete or over-4-GiB exports rather than returning a misleading ZIP.
+
+Playback, retrieval, and availability status share replica selection. Usable
+filesystem copies and verified cached files remain available during provider
+outages. Failed retrievals can retry another verified S3 replica; each fetch
+persists the chosen target and object identity.
 
 The recordings library labels hot, archived, both, transferring, preparing,
 unavailable, and pending-deletion states. Existing permissions apply to listing,

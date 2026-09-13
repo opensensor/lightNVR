@@ -668,10 +668,20 @@ int storage_migration_process_one(void) {
         uint64_t remote_size = 0;
         if (copied == 0) {
             int found = storage_s3_stat(&destination_target, job.destination_object_key, &remote_size, error);
-            if (found == STORAGE_S3_MISSING)
+            if (found == STORAGE_S3_OK) {
+                copied = remote_size == job.bytes_total ?
+                    storage_s3_verify(&destination_target, job.destination_object_key,
+                                      job.bytes_total, checksum, &control, error) : STORAGE_S3_CONFLICT;
+                // Only reconcile an unpublished object owned by this job. Never
+                // remove a retained replica or act on uncertain catalog state.
+                if (copied == STORAGE_S3_CONFLICT && !transfer_cancelled(&job) && destination_retained(&job) == 0) {
+                    copied = storage_s3_delete(&destination_target, job.destination_object_key, error);
+                    if (!copied) found = STORAGE_S3_MISSING;
+                }
+            } else if (found != STORAGE_S3_MISSING) copied = -1;
+            if (!copied && found == STORAGE_S3_MISSING)
                 copied = storage_s3_upload(&destination_target, job.destination_object_key,
                                            source_path, checksum, &control, error);
-            else if (found != STORAGE_S3_OK || remote_size != job.bytes_total) copied = -1;
         }
         if (copied == 0) {
             db_storage_migration_update_progress(job.uuid, "verifying", job.bytes_total, job.bytes_total);
