@@ -178,20 +178,8 @@ static void daemon_signal_handler(int sig) {
             web_server_socket = -1; // Update the global reference
         }
 
-        // Deliberately NOT using alarm() here as a "force exit if shutdown
-        // hangs" watchdog: alarm() is a single process-wide timer, and this
-        // codebase's HLS writer/context-close code (hls_unified_thread.c,
-        // hls_writer.c) uses alarm() extensively as a short per-operation
-        // timeout (save disposition, alarm(N), do the call, alarm(0),
-        // restore disposition). Any one of those firing during shutdown
-        // would silently discard whatever time was left on an alarm set
-        // here, since alarm() has no pause/resume -- confirmed live via
-        // gdb: a shutdown that should have had ~570s left was killed at 45s
-        // by one of those unrelated short-lived alarms, in this exact
-        // handler, right after this comment block previously called
-        // alarm(570) here. main.c's start_shutdown_watchdog_thread()
-        // (a dedicated thread polling `running`, spawned once at startup)
-        // now owns this responsibility instead, immune to that collision.
+        // main.c's dedicated shutdown watchdog owns the deadline. Do not
+        // introduce a process-global alarm shared with unrelated threads.
         break;
 
     case SIGHUP:
@@ -201,17 +189,8 @@ static void daemon_signal_handler(int sig) {
         break;
 
     case SIGALRM:
-        // No longer the shutdown watchdog (see main.c's
-        // start_shutdown_watchdog_thread()). Kept registered, and
-        // deliberately harmless, purely so SIGALRM has a caught
-        // (non-terminating) disposition as a safety net: the many
-        // hls_unified_thread.c/hls_writer.c call sites that use alarm() for
-        // their own short per-operation timeouts save whatever handler is
-        // installed here before temporarily switching it to SIG_IGN, and
-        // restore it afterward. If this weren't registered, SIGALRM's
-        // default disposition (process termination) would apply during any
-        // brief window where none of those local overrides happen to be
-        // active.
+        // Compatibility for externally delivered SIGALRM; HLS cleanup no
+        // longer arms alarms or changes the process signal dispositions.
         daemon_signal_safe_write("[DAEMON] Stray SIGALRM caught at top level (harmless, ignored)\n");
         break;
 

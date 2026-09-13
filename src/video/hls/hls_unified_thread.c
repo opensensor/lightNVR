@@ -21,8 +21,6 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <time.h>
-#include <signal.h>
-#include <sys/signal.h>
 #include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -73,16 +71,6 @@ static void global_ffmpeg_cleanup(void) {
 
     log_info("Global FFmpeg cleanup called during program exit");
 
-    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
-    struct sigaction sa_old, sa_new;
-    sigaction(SIGSEGV, NULL, &sa_old);
-    sa_new = sa_old;
-    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-    sigaction(SIGSEGV, &sa_new, NULL);
-
-    // Set alarm to prevent hanging if memory is inaccessible
-    alarm(1); // 1 second timeout
-
     // Call FFmpeg's internal memory cleanup functions - safely
     log_debug("Calling avformat_network_deinit() during global cleanup");
     avformat_network_deinit();
@@ -101,10 +89,6 @@ static void global_ffmpeg_cleanup(void) {
     if (dummy) {
         av_free(dummy);
     }
-
-    // Cancel the alarm and restore signal handler
-    alarm(0);
-    sigaction(SIGSEGV, &sa_old, NULL);
 
     log_info("Global FFmpeg cleanup completed");
     in_global_cleanup = 0;
@@ -242,50 +226,7 @@ static bool is_context_already_freed(void *ctx) {
 
     pthread_mutex_unlock(&freed_contexts_mutex);
 
-    // If not found in the freed contexts list, perform additional checks
-    if (!result) {
-        // Check if the memory appears to be invalid
-        // This is a heuristic to detect freed memory
-        bool appears_invalid = false;
-
-        // Try to access the first few bytes to see if they're zeroed out
-        // This might indicate that the memory has been freed
-        const unsigned char *ptr = (const unsigned char *)ctx;
-        bool all_zeros = true;
-
-        // Use a try/catch-like approach with signal handling to prevent crashes
-        struct sigaction sa_old, sa_new;
-        sigaction(SIGSEGV, NULL, &sa_old);
-        sa_new = sa_old;
-        sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-        sigaction(SIGSEGV, &sa_new, NULL);
-
-        // Set alarm to prevent hanging if memory is inaccessible
-        alarm(1); // 1 second timeout
-
-        // Check the first few bytes
-        for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
-            if (ptr[i] != 0) {
-                all_zeros = false;
-                break;
-            }
-        }
-
-        // Cancel the alarm and restore signal handler
-        alarm(0);
-        sigaction(SIGSEGV, &sa_old, NULL);
-
-        if (all_zeros) {
-            // Memory appears to be zeroed out, which might indicate it's been freed
-            appears_invalid = true;
-        }
-
-        if (appears_invalid) {
-            log_warn("Context %p appears to be invalid or already freed", ctx);
-            result = true;
-        }
-    }
-
+    // Never probe memory through a pointer that may already have been freed.
     return result;
 }
 
@@ -632,79 +573,11 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         }
     }
 
-    // Clean up HLS writer with safety checks
     if (writer) {
-        // CRITICAL FIX: Check if the pointer to pointer is valid before dereferencing
-        hls_writer_t *writer_to_free = NULL;
-
-        // CRITICAL FIX: Add additional validation of the writer pointer
-        if (!*writer) {
-            log_debug("Writer is already NULL, nothing to clean up");
-        } else {
-            // CRITICAL FIX: Use atomic pointer exchange to safely get and clear the writer pointer
-            // This ensures that no other thread can access the writer after we've taken ownership of it
-            writer_to_free = __atomic_exchange_n(writer, NULL, __ATOMIC_SEQ_CST);
-
-            // CRITICAL FIX: Validate the writer pointer before using it
-            if (!writer_to_free) {
-                log_warn("Writer became NULL between checks");
-            } else {
-                // CRITICAL FIX: Validate the writer structure before freeing
-                // This helps catch cases where the memory has been corrupted
-                bool writer_valid = true;
-
-                // Basic validation of writer structure
-                if (writer_to_free->stream_name == NULL) {
-                    log_warn("Writer has NULL stream_name, may be corrupted");
-                    writer_valid = false;
-                }
-
-                if (writer_valid) {
-                    // Get a copy of the stream name for logging
-                    char writer_stream_name[MAX_STREAM_NAME];
-                    if (writer_to_free->stream_name) {
-                        safe_strcpy(writer_stream_name, writer_to_free->stream_name, MAX_STREAM_NAME, 0);
-                    } else {
-                        safe_strcpy(writer_stream_name, "unknown", MAX_STREAM_NAME, 0);
-                    }
-
-                    log_debug("Preparing to close HLS writer for stream %s", writer_stream_name);
-
-                    // Clear the pointer first to prevent double-free
-                    *writer = NULL;
-
-                    // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
-                    __sync_synchronize();
-
-                    // Safely free the HLS writer
-                    log_debug("Safely closing HLS writer during cleanup for stream %s", writer_stream_name);
-
-                    // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
-                    __sync_synchronize();
-
-                    // Use a try/catch-like approach with signal handling to prevent crashes
-                    struct sigaction sa_old, sa_new;
-                    sigaction(SIGALRM, NULL, &sa_old);
-                    sa_new = sa_old;
-                    sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-                    sigaction(SIGALRM, &sa_new, NULL);
-
-                    // Set alarm
-                    alarm(15); // 15 second timeout for writer close
-
-                    // Close the writer with additional protection
-                    hls_writer_close(writer_to_free);
-
-                    // Cancel the alarm and restore signal handler
-                    alarm(0);
-                    sigaction(SIGALRM, &sa_old, NULL);
-
-                    log_debug("Successfully closed HLS writer for stream %s", writer_stream_name);
-                } else {
-                    log_warn("Skipping cleanup of invalid writer");
-                    *writer = NULL; // Still clear the pointer to prevent future access
-                }
-            }
+        hls_writer_t *writer_to_free =
+            __atomic_exchange_n(writer, NULL, __ATOMIC_SEQ_CST);
+        if (writer_to_free) {
+            hls_writer_close(writer_to_free);
         }
     }
 
@@ -1807,25 +1680,12 @@ void *hls_unified_thread_func(void *arg) {
         // CRITICAL FIX: Only access writer if context is still valid
         hls_writer_t *writer_to_cleanup = NULL;
         if (context_valid_for_exit) {
-            // Use a try/catch-like approach with signal handling to prevent crashes
-            struct sigaction sa_old, sa_new;
-            sigaction(SIGSEGV, NULL, &sa_old);
-            sa_new = sa_old;
-            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-            sigaction(SIGSEGV, &sa_new, NULL);
-
-            // Set alarm to prevent hanging if memory is inaccessible
-            alarm(1); // 1 second timeout
-
             // Safely check if writer exists and clean it up
             if (ctx_for_exit->writer) {
                 log_warn("Writer for stream %s still exists after loop exit, cleaning up now", stream_name);
                 writer_to_cleanup = __atomic_exchange_n(&ctx_for_exit->writer, NULL, __ATOMIC_SEQ_CST);
             }
 
-            // Cancel the alarm and restore signal handler
-            alarm(0);
-            sigaction(SIGSEGV, &sa_old, NULL);
         } else {
             log_warn("Context for stream %s is no longer valid, skipping writer cleanup", stream_name);
         }
@@ -1842,16 +1702,6 @@ void *hls_unified_thread_func(void *arg) {
 
         // Only access ctx members if the context is not already freed
         if (context_valid_for_exit) {
-            // Use a try/catch-like approach with signal handling to prevent crashes
-            struct sigaction sa_old, sa_new;
-            sigaction(SIGSEGV, NULL, &sa_old);
-            sa_new = sa_old;
-            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-            sigaction(SIGSEGV, &sa_new, NULL);
-
-            // Set alarm to prevent hanging if memory is inaccessible
-            alarm(1); // 1 second timeout
-
             // CRITICAL FIX: Check if context is still valid before accessing its members
             // This prevents use-after-free errors when the context has been freed
             if (!is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit)) {
@@ -1868,9 +1718,6 @@ void *hls_unified_thread_func(void *arg) {
 
             log_info("Updated component state to STOPPED for stream %s after loop exit", stream_name);
 
-            // Cancel the alarm and restore signal handler
-            alarm(0);
-            sigaction(SIGSEGV, &sa_old, NULL);
         }
     }
 
@@ -1967,26 +1814,11 @@ void *hls_unified_thread_func(void *arg) {
     if (writer_to_cleanup) {
         log_debug("Writer is valid for stream %s, cleaning up", stream_name);
 
-        // Clean up the writer with additional try/catch-like protection
         log_info("Closing HLS writer for stream %s", stream_name);
 
-        // Use a try/catch-like approach with signal handling to prevent crashes
-        struct sigaction sa_old, sa_new;
-        sigaction(SIGALRM, NULL, &sa_old);
-        sa_new = sa_old;
-        sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-        sigaction(SIGALRM, &sa_new, NULL);
-
-        // Set alarm
-        alarm(15); // 15 second timeout for writer close
-
-        // Close the writer with additional protection
+        // Close the writer
         hls_writer_close(writer_to_cleanup);
         writer_to_cleanup = NULL;
-
-        // Cancel the alarm and restore signal handler
-        alarm(0);
-        sigaction(SIGALRM, &sa_old, NULL);
 
         log_info("Successfully closed HLS writer for stream %s", stream_name);
     } else {
@@ -2059,16 +1891,6 @@ void *hls_unified_thread_func(void *arg) {
                 // Free the context
                 log_info("Freeing context for stream %s", stream_name);
 
-                // Use a try/catch-like approach with signal handling to prevent crashes
-                struct sigaction sa_old, sa_new;
-                sigaction(SIGALRM, NULL, &sa_old);
-                sa_new = sa_old;
-                sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-                sigaction(SIGALRM, &sa_new, NULL);
-
-                // Set alarm
-                alarm(15); // 15 second timeout for context free
-
                 // Mark the context as pending deletion to signal the thread
                 mark_context_pending_deletion(ctx_to_free);
 
@@ -2083,10 +1905,6 @@ void *hls_unified_thread_func(void *arg) {
 
                 // Free the context with additional protection
                 hls_guarded_free(ctx_to_free);
-
-                // Cancel the alarm and restore signal handler
-                alarm(0);
-                sigaction(SIGALRM, &sa_old, NULL);
 
                 log_info("Successfully freed context for stream %s", stream_name);
             }
@@ -2103,16 +1921,6 @@ void *hls_unified_thread_func(void *arg) {
     // MEMORY LEAK FIX: Enhanced final FFmpeg resource cleanup
     // This is a comprehensive cleanup to ensure no FFmpeg resources are leaked
     // CRITICAL FIX: Added safety checks to prevent segfaults during shutdown
-
-    // Use try/catch-like approach with signal handling to prevent crashes
-    struct sigaction sa_old, sa_new;
-    sigaction(SIGSEGV, NULL, &sa_old);
-    sa_new = sa_old;
-    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-    sigaction(SIGSEGV, &sa_new, NULL);
-
-    // Set alarm to prevent hanging if memory is inaccessible
-    alarm(1); // 1 second timeout
 
     if (input_ctx) {
         log_warn("Input context still exists at thread exit for stream %s, forcing cleanup", stream_name);
@@ -2139,10 +1947,6 @@ void *hls_unified_thread_func(void *arg) {
             av_packet_free(&pkt_to_cleanup);
         }
     }
-
-    // Cancel the alarm and restore signal handler
-    alarm(0);
-    sigaction(SIGSEGV, &sa_old, NULL);
 
     // MEMORY LEAK FIX: Force FFmpeg to release any cached memory
     // This is a more aggressive approach to ensure all memory is freed
@@ -2648,16 +2452,6 @@ int stop_hls_unified_stream(const char *stream_name) {
 
         // CRITICAL FIX: Clear the writer reference in the context before freeing to prevent double free
         if (ctx && !is_context_already_freed(ctx)) {
-            // Use a try/catch-like approach with signal handling to prevent crashes
-            struct sigaction sa_old, sa_new;
-            sigaction(SIGSEGV, NULL, &sa_old);
-            sa_new = sa_old;
-            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-            sigaction(SIGSEGV, &sa_new, NULL);
-
-            // Set alarm to prevent hanging if memory is inaccessible
-            alarm(1); // 1 second timeout
-
             // Store a local copy of the stream name for logging
             char writer_stream_name[MAX_STREAM_NAME];
             safe_strcpy(writer_stream_name, stream_name, sizeof(writer_stream_name), 0); // Use the stream_name we already have
@@ -2668,10 +2462,6 @@ int stop_hls_unified_stream(const char *stream_name) {
                 writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
                 log_info("Clearing writer reference in context for stream %s", writer_stream_name);
             }
-
-            // Cancel the alarm and restore signal handler
-            alarm(0);
-            sigaction(SIGSEGV, &sa_old, NULL);
 
             // CRITICAL FIX: Safely close the writer if needed
             if (writer_to_cleanup) {
@@ -2739,16 +2529,6 @@ int stop_hls_unified_stream(const char *stream_name) {
                     // Free the context
                     log_info("Freeing context for stream %s", stream_name);
 
-                    // Use a try/catch-like approach with signal handling to prevent crashes
-                    struct sigaction sa_old, sa_new;
-                    sigaction(SIGALRM, NULL, &sa_old);
-                    sa_new = sa_old;
-                    sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-                    sigaction(SIGALRM, &sa_new, NULL);
-
-                    // Set alarm
-                    alarm(15); // 15 second timeout for context free
-
                     // CRITICAL FIX: Mark the context as pending deletion to signal the thread
                     mark_context_pending_deletion(ctx_to_free);
 
@@ -2770,10 +2550,6 @@ int stop_hls_unified_stream(const char *stream_name) {
 
                     // Free the context with additional protection
                     hls_guarded_free(ctx_to_free);
-
-                    // Cancel the alarm and restore signal handler
-                    alarm(0);
-                    sigaction(SIGALRM, &sa_old, NULL);
 
                     log_info("Successfully freed context for stream %s", stream_name);
                 }
@@ -2881,19 +2657,8 @@ static void ffmpeg_buffer_cleanup(void) {
 
     log_info("Forcing FFmpeg to release cached memory");
 
-    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
-    struct sigaction sa_old, sa_new;
-    sigaction(SIGSEGV, NULL, &sa_old);
-    sa_new = sa_old;
-    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-    sigaction(SIGSEGV, &sa_new, NULL);
-
-    // Set alarm to prevent hanging if memory is inaccessible
-    alarm(1); // 1 second timeout
-
     // Force garbage collection in FFmpeg - safely
     // This will help release any memory that might be cached
-    // CRITICAL FIX: Wrap in try/catch to prevent segfaults
     log_debug("Calling av_freep(NULL) to release cached memory");
 
     // CRITICAL FIX: Skip direct av_freep(NULL) call during shutdown or hard deletion
@@ -2979,10 +2744,6 @@ static void ffmpeg_buffer_cleanup(void) {
         log_info("Skipping complex FFmpeg allocations during shutdown to prevent crashes");
     }
 
-    // Cancel the alarm and restore signal handler
-    alarm(0);
-    sigaction(SIGSEGV, &sa_old, NULL);
-
     log_info("FFmpeg memory cleanup completed");
     in_cleanup = 0;
 }
@@ -3066,16 +2827,6 @@ void cleanup_hls_unified_thread_system(void) {
     // Stop the watchdog thread
     stop_hls_watchdog();
 
-    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
-    struct sigaction sa_old, sa_new;
-    sigaction(SIGSEGV, NULL, &sa_old);
-    sa_new = sa_old;
-    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
-    sigaction(SIGSEGV, &sa_new, NULL);
-
-    // Set alarm to prevent hanging if memory is inaccessible
-    alarm(2); // 2 second timeout
-
     // MEMORY LEAK FIX: Force cleanup of any remaining FFmpeg resources
     log_info("Performing final FFmpeg resource cleanup during system shutdown");
 
@@ -3106,10 +2857,6 @@ void cleanup_hls_unified_thread_system(void) {
 
     // Clean up the freed contexts tracking system
     cleanup_freed_contexts_tracking();
-
-    // Cancel the alarm and restore signal handler
-    alarm(0);
-    sigaction(SIGSEGV, &sa_old, NULL);
 
     log_info("HLS unified thread system cleaned up");
     in_system_cleanup = 0;

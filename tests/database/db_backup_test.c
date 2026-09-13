@@ -871,12 +871,53 @@ static void remove_test_db_and_backups(const char *db_path) {
     }
 }
 
-// Regression test: shutdown_database() used to unconditionally take a full
-// backup-and-verify snapshot on every clean shutdown, no matter how recently
-// the hourly scheduled backup had already run -- on a multi-gigabyte
-// production database this made every restart take minutes just to
-// re-capture a few minutes of additional changes. Verifies that a shutdown
-// happening shortly after a scheduled backup skips the redundant one.
+// A failed scheduled attempt must wait for the next interval, but must not
+// count as a successful snapshot when deciding whether to back up at shutdown.
+static int test_failed_scheduled_backup_waits_without_suppressing_shutdown_backup(void) {
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    // Simulate an existing database with no successful backup yet.
+    sqlite3 *existing = NULL;
+    if (sqlite3_open(TEST_SHUTDOWN_DB_PATH, &existing) != SQLITE_OK) return -1;
+    sqlite3_exec(existing, "CREATE TABLE existing_fixture(id INTEGER);", NULL, NULL, NULL);
+    sqlite3_close(existing);
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    g_config.db_backup_interval_minutes = 60;
+
+    // An indexed fixture large enough to invoke the verification callback
+    // deterministically reaches the expired deadline without sleeping.
+    int rc = sqlite3_exec(get_db_handle(),
+        "CREATE TABLE retry_fixture(id INTEGER PRIMARY KEY, value TEXT);"
+        "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<20000) "
+        "INSERT INTO retry_fixture SELECT i,printf('value-%d',i) FROM n;"
+        "CREATE INDEX retry_value ON retry_fixture(value);",
+        NULL, NULL, NULL);
+    if (rc != SQLITE_OK) return -1;
+
+    db_backup_set_max_duration_seconds_for_testing(-60);
+    int first = maybe_run_scheduled_database_backup();
+    int second = maybe_run_scheduled_database_backup();
+    db_backup_set_max_duration_seconds_for_testing(DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT);
+    if (first != -1 || second != 0 ||
+        count_timestamped_backups(TEST_SHUTDOWN_DB_PATH) != 0) {
+        printf("Failed backup was retried immediately or published as successful\n");
+        shutdown_database();
+        remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+        return -1;
+    }
+
+    shutdown_database();
+    int count = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (count != 1) {
+        printf("Failed scheduled attempt incorrectly suppressed shutdown backup\n");
+        return -1;
+    }
+    return 0;
+}
+
+// A shutdown shortly after a successful scheduled backup should not repeat
+// the full copy and verification of a potentially multi-gigabyte database.
 static int test_shutdown_skips_backup_when_recent_backup_exists(void) {
     int result = -1;
 
@@ -1054,6 +1095,11 @@ int main(void) {
 
     if (test_backup_aborts_during_verification_when_duration_exceeded() != 0) {
         printf("Test failed: Backup did not abort during post-copy verification on an exhausted duration budget\n");
+        return 1;
+    }
+
+    if (test_failed_scheduled_backup_waits_without_suppressing_shutdown_backup() != 0) {
+        printf("Test failed: failed scheduled backup cooldown\n");
         return 1;
     }
 

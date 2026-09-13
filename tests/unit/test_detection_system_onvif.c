@@ -46,6 +46,10 @@ typedef struct {
     bool reject_create;
     int granted_lease_seconds;
     int pull_failures_remaining;
+    int empty_pull_responses_remaining;
+    int dropped_pulls_remaining;
+    bool scoped_subscription_address;
+    bool saw_subscription_target;
     int renew_failures_remaining;
     int create_count;
     int pull_count;
@@ -170,6 +174,17 @@ static void *fake_onvif_server_main(void *arg) {
                      "<TerminationTime>%s</TerminationTime>"
                      "</CreatePullPointSubscriptionResponse></Body></Envelope>",
                      server->port, termination);
+            if (server->scoped_subscription_address) {
+                snprintf(body, sizeof(body),
+                    "<Envelope><Header><wsa:Address>http://127.0.0.1:%d/wrong</wsa:Address>"
+                    "</Header><Body><CreatePullPointSubscriptionResponse>"
+                    "<SubscriptionReference><addr:Address xmlns:addr=\"http://www.w3.org/2005/08/addressing\">"
+                    "http://127.0.0.1:%d/pull_service?one=1&amp;two=2</addr:Address>"
+                    "</SubscriptionReference><CurrentTime>2026-08-28T12:00:00Z</CurrentTime>"
+                    "<TerminationTime>%s</TerminationTime>"
+                    "</CreatePullPointSubscriptionResponse></Body></Envelope>",
+                    server->port, server->port, termination);
+            }
             send_xml_response(client_fd, body);
         } else if (strstr(request, "<Renew")) {
             server->renew_count++;
@@ -194,6 +209,27 @@ static void *fake_onvif_server_main(void *arg) {
                 "<Envelope><Body><UnsubscribeResponse/></Body></Envelope>");
         } else if (strstr(request, "PullMessages")) {
             server->pull_count++;
+            if (server->scoped_subscription_address) {
+                server->saw_subscription_target =
+                    strstr(request, "POST /pull_service?one=1&two=2 HTTP/") != NULL &&
+                    strstr(request, "/pull_service?one=1&amp;two=2</wsa:To>") != NULL;
+                if (!server->saw_subscription_target) {
+                    send_xml_response_with_status(client_fd, 400, "Bad Request", "<Fault/>");
+                    close(client_fd);
+                    continue;
+                }
+            }
+            if (server->dropped_pulls_remaining > 0) {
+                server->dropped_pulls_remaining--;
+                close(client_fd);
+                continue;
+            }
+            if (server->empty_pull_responses_remaining > 0) {
+                server->empty_pull_responses_remaining--;
+                send_xml_response(client_fd, "");
+                close(client_fd);
+                continue;
+            }
             if (server->pull_failures_remaining > 0) {
                 server->pull_failures_remaining--;
                 send_xml_response_with_status(client_fd, 503, "Unavailable",
@@ -325,6 +361,50 @@ void test_onvif_transient_pull_failure_reuses_subscription(void) {
     TEST_ASSERT_EQUAL_INT(1, server.create_count);
     TEST_ASSERT_EQUAL_INT(2, server.pull_count);
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+// A dropped HTTP connection and an empty HTTP 200 are both request failures;
+// neither should destroy a still-valid camera subscription after one poll.
+static void check_empty_pull_recovery(bool drop_connection) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.dropped_pulls_remaining = drop_connection ? 1 : 0;
+    server.empty_pull_responses_remaining = drop_connection ? 0 : 1;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+    detection_result_t result = {0};
+    int first = detect_motion_onvif(url, "", "", &result, "");
+    int second = detect_motion_onvif(url, "", "", &result, "");
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(-1, first);
+    TEST_ASSERT_EQUAL_INT(0, second);
+    TEST_ASSERT_EQUAL_INT(1, server.create_count);
+    TEST_ASSERT_EQUAL_INT(2, server.pull_count);
+    TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+void test_onvif_dropped_pull_reuses_subscription(void) {
+    check_empty_pull_recovery(true);
+}
+
+void test_onvif_empty_http_success_is_a_failed_poll(void) {
+    check_empty_pull_recovery(false);
+}
+
+void test_onvif_uses_scoped_subscription_address_with_escaped_query(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.scoped_subscription_address = true;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+    detection_result_t result = {0};
+    int rc = detect_motion_onvif(url, "", "", &result, "");
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_TRUE(server.saw_subscription_target);
+    TEST_ASSERT_EQUAL_INT(1, server.create_count);
 }
 
 void test_onvif_discovered_endpoint_is_not_retried_as_fallback(void) {
@@ -579,6 +659,9 @@ int main(void) {
     RUN_TEST(test_init_detection_system_initializes_onvif_detection);
     RUN_TEST(test_onvif_subscription_requests_tapo_lease);
     RUN_TEST(test_onvif_transient_pull_failure_reuses_subscription);
+    RUN_TEST(test_onvif_dropped_pull_reuses_subscription);
+    RUN_TEST(test_onvif_empty_http_success_is_a_failed_poll);
+    RUN_TEST(test_onvif_uses_scoped_subscription_address_with_escaped_query);
     RUN_TEST(test_onvif_discovered_endpoint_is_not_retried_as_fallback);
     RUN_TEST(test_onvif_subscription_renews_camera_granted_lease);
     RUN_TEST(test_onvif_failed_renew_unsubscribes_before_recreate);

@@ -248,6 +248,14 @@ endif()
 add_layer3_test(test_stream_manager)
 add_layer3_test(test_stream_state)
 add_layer3_test(test_packet_buffer)
+add_layer3_test(test_hls_cleanup)
+target_compile_definitions(test_hls_cleanup PRIVATE
+    TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
+)
+target_link_options(test_hls_cleanup PRIVATE
+    "-Wl,--wrap=alarm" "-Wl,--wrap=sigaction" "-Wl,--wrap=av_read_frame"
+)
+set_tests_properties(test_hls_cleanup PROPERTIES TIMEOUT 30)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries)

@@ -182,19 +182,9 @@ static void signal_handler(int sig) {
     // request_background_abort() is async-signal-safe (atomic store only).
     request_background_abort();
 
-    // Deliberately NOT using alarm() here as a "force exit if shutdown
-    // hangs" watchdog anymore -- see start_shutdown_watchdog_thread()'s
-    // comment for why: alarm() is a single process-wide timer, and this
-    // codebase's HLS writer/context-close code (hls_unified_thread.c,
-    // hls_writer.c) uses alarm() extensively as a short per-operation
-    // timeout (save disposition, alarm(N), do the call, alarm(0), restore
-    // disposition). Any one of those firing during shutdown would silently
-    // discard whatever time was left on an alarm set here, since alarm()
-    // has no pause/resume -- confirmed live via gdb: a shutdown that should
-    // have had ~570s left was killed at 45s by one of those unrelated
-    // short-lived alarms. A dedicated watchdog thread can't be clobbered
-    // this way. This handler now only sets flags and closes the listening
-    // socket, both async-signal-safe.
+    // The dedicated shutdown watchdog owns the deadline. Process-global
+    // alarm timers cannot safely implement independent thread timeouts.
+    // This handler only sets flags and closes the listening socket.
     if (web_server_socket >= 0) {
         close(web_server_socket);
         web_server_socket = -1;
@@ -203,15 +193,9 @@ static void signal_handler(int sig) {
 
 // Alarm signal handler -- MUST ONLY use async-signal-safe functions.
 //
-// No longer the shutdown watchdog (see start_shutdown_watchdog_thread()).
-// Kept registered, and deliberately harmless, purely so SIGALRM has a
-// caught (non-terminating) disposition as a safety net: the many
-// hls_unified_thread.c/hls_writer.c call sites that use alarm() for their
-// own short per-operation timeouts save whatever handler is installed here
-// before temporarily switching it to SIG_IGN, and restore it afterward. If
-// this weren't registered, SIGALRM's default disposition (process
-// termination) would apply during any brief window where none of those
-// local overrides happen to be active.
+// Retain harmless handling of externally delivered SIGALRM for compatibility.
+// HLS cleanup does not arm alarms or change process signal dispositions.
+// Shutdown deadlines belong to start_shutdown_watchdog_thread().
 static void alarm_handler(int sig) {
     (void)sig;
     signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n");
@@ -236,17 +220,8 @@ static void alarm_handler(int sig) {
 // by the time that elapses (this thread simply vanishes along with every
 // other thread on a normal exit, so it never fires in the common case).
 //
-// Deliberately NOT alarm()-based: alarm() is a single process-wide timer,
-// and hls_unified_thread.c/hls_writer.c use it extensively as a short
-// per-operation timeout (save disposition, alarm(N), do the call, alarm(0),
-// restore disposition) around individual writer/context close calls. Any
-// one of those firing during shutdown discards whatever time was left on an
-// outer alarm, since alarm() has no pause/resume -- confirmed live via gdb:
-// a shutdown that should have had ~570s left was killed at 45s by one of
-// those unrelated short-lived alarms. This thread runs independently of
-// SIGALRM entirely, so none of that matters here. Unlike a signal handler,
-// this runs in normal thread context, so log_error() and kill() are both
-// safe to call directly.
+// This dedicated thread keeps the deadline independent of process signals.
+// It runs in normal thread context, so log_error() and kill() are safe here.
 static void *shutdown_watchdog_thread_func(void *arg) {
     (void)arg;
     bool shutdown_started = false;
@@ -324,7 +299,7 @@ static void init_signals() {
         sigaction(SIGTERM, &sa, NULL);
         sigaction(SIGHUP, &sa, NULL);
 
-        // Set up alarm handler for phased forced exit
+        // Preserve harmless handling of externally delivered SIGALRM.
         struct sigaction sa_alarm;
         memset(&sa_alarm, 0, sizeof(sa_alarm));
         sa_alarm.sa_handler = alarm_handler;
@@ -1422,10 +1397,6 @@ cleanup:
     log_info("Stopping health check system...");
     cleanup_health_check_system();
 
-    // Cancel any pending alarm from signal_handler to prevent interference with cleanup
-    // alarm(0) cancels any previously set alarm - this is async-signal-safe
-    alarm(0);
-
     // Block most signals during cleanup to prevent interruptions
     // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
     sigset_t block_mask, old_mask;
@@ -1466,18 +1437,8 @@ cleanup:
         // Save the parent PID before it gets killed
         pid_t parent_pid = getppid();
 
-        // Phase 1 must outlast the deliberate, non-abortable final backup
-        // shutdown_database() takes before exiting (observed up to ~9
-        // minutes on this box's 2.6GB+ database) -- same reasoning as
-        // SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS and the alarm() values in
-        // daemon.c/signal_handler(). This watchdog is fork+sleep()-based
-        // rather than alarm()-based, so unlike those it was never actually
-        // affected by the alarm()/SIGALRM collision with
-        // hls_unified_thread.c/hls_writer.c's per-operation timeouts --
-        // it was simply always too short (30s) on its own, and was in fact
-        // the one actually killing every real shutdown after those other
-        // fixes landed, confirmed via its distinct "phase 1/2 timed out"
-        // log lines.
+        // Allow the same final-backup deadline as the thread watchdog.
+        // Large databases can take several minutes to copy and verify.
         sleep(SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
         log_error("Cleanup process phase 1 timed out after %d seconds", SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS);
         kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup

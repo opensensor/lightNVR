@@ -184,74 +184,12 @@ void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **
         log_debug("Cleaned up AVCodecContext");
     }
 
-    // Clean up input context with special handling for parsers and internal buffers
+    // The demuxer owns stream codec parameters, including extradata and
+    // channel layouts. Clearing those pointers before closing loses the
+    // allocations; let FFmpeg release them along with the input context.
     if (input_ctx && *input_ctx) {
-        AVFormatContext *ctx = *input_ctx;
-
-        // MEMORY LEAK FIX: Manually clean up parsers and internal buffers
-        // This addresses the memory leaks in avformat_find_stream_info
-        if (ctx->nb_streams > 0) {
-            for (unsigned int i = 0; i < ctx->nb_streams; i++) {
-                if (ctx->streams[i]) {
-                    // Clean up any codec parameters
-                    if (ctx->streams[i]->codecpar) {
-                        // We don't free codecpar directly as it's managed by the stream
-                        // But we can clear any internal buffers
-                        if (ctx->streams[i]->codecpar->extradata) {
-                            // The extradata is freed by avformat_close_input, but we'll
-                            // clear the pointer to prevent potential use-after-free
-                            ctx->streams[i]->codecpar->extradata = NULL;
-                            ctx->streams[i]->codecpar->extradata_size = 0;
-                        }
-
-                        // CRITICAL FIX: Explicitly clean up any internal allocations made by avcodec_parameters_from_context
-                        // This addresses the memory leak shown in Valgrind
-                        AVCodecParameters *codecpar = ctx->streams[i]->codecpar;
-                        if (codecpar) {
-                            // Reset fields that might contain allocated memory
-                            if (codecpar->extradata) {
-                                codecpar->extradata = NULL;
-                                codecpar->extradata_size = 0;
-                            }
-
-                            // Clear any other fields that might have allocated memory
-                            codecpar->ch_layout.u.mask = 0;
-                            if (codecpar->ch_layout.nb_channels > 0) {
-                                codecpar->ch_layout.nb_channels = 0;
-                            }
-
-                            // ENHANCED FIX: Create a temporary codec context to force cleanup of internal allocations
-                            // This is a workaround for FFmpeg's internal memory management issues
-                            const AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
-                            if (codec) {
-                                AVCodecContext *temp_ctx = avcodec_alloc_context3(codec);
-                                if (temp_ctx) {
-                                    // Copy parameters to the context
-                                    int ret = avcodec_parameters_to_context(temp_ctx, codecpar);
-                                    if (ret >= 0) {
-                                        // Now copy back to parameters - this will reallocate and clean up any leaks
-                                        avcodec_parameters_from_context(codecpar, temp_ctx);
-                                    }
-                                    // Free the temporary context
-                                    avcodec_free_context(&temp_ctx);
-                                }
-                            }
-
-                            // Zero out the entire structure to ensure no pointers remain
-                            memset(codecpar, 0, sizeof(AVCodecParameters));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Now use our safe cleanup function
         safe_avformat_cleanup(input_ctx);
     }
-
-    // Note: We're not using aggressive memory cleanup techniques here
-    // to avoid potential segmentation faults
-    // Instead, we rely on FFmpeg's own memory management
 
     log_info("Comprehensive FFmpeg resource cleanup completed");
 }
