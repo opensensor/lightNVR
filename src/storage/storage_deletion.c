@@ -93,8 +93,8 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
 }
 
 static void finalize_deletions_locked(sqlite3 *db) {
-    const char *sql = "BEGIN IMMEDIATE;"
-        "UPDATE storage_deletions SET completed_at=strftime('%s','now') "
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) return;
+    const char *sql = "UPDATE storage_deletions SET completed_at=strftime('%s','now') "
         "WHERE completed_at IS NULL AND NOT EXISTS(SELECT 1 FROM storage_deletion_objects o "
         "WHERE o.deletion_uuid=storage_deletions.uuid AND o.state<>'completed');"
         "UPDATE detections SET recording_id=NULL WHERE recording_id IN "

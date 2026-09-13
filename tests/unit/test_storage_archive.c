@@ -43,6 +43,20 @@ static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
 
+// Capture only the archive renewal timer to exercise elapsed leases deterministically.
+static bool capture_lease_timers;
+static int captured_timer_count;
+static uv_timer_t *captured_timers[2];
+static uv_timer_cb captured_callbacks[2];
+int __real_uv_timer_start(uv_timer_t *, uv_timer_cb, uint64_t, uint64_t);
+int __wrap_uv_timer_start(uv_timer_t *timer, uv_timer_cb callback, uint64_t timeout, uint64_t repeat) {
+    if (capture_lease_timers && timeout == 30000 && repeat == 30000 && captured_timer_count < 2) {
+        captured_timers[captured_timer_count] = timer;
+        captured_callbacks[captured_timer_count++] = callback;
+    }
+    return __real_uv_timer_start(timer, callback, timeout, repeat);
+}
+
 static cJSON *api(void (*handler)(const http_request_t *, http_response_t *),
                   http_method_t method, const char *path, const char *query,
                   const char *body, const char *api_key, int expected) {
@@ -155,6 +169,8 @@ static uint64_t recording(bool protect) {
 }
 
 void setUp(void) {
+    capture_lease_timers = false;
+    captured_timer_count = 0;
     g_config.web_auth_enabled = false;
     g_config.generate_thumbnails = true;
     g_config.demo_mode = false;
@@ -909,9 +925,9 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
 }
 
-static void test_expired_multipart_completion_restarts_from_source(void) {
-    const char *buckets[] = {"multipart-expired", "multipart-expired-200"};
-    for (int mode = 0; mode < 2; mode++) {
+static void test_expired_multipart_upload_restarts_from_source(void) {
+    const char *buckets[] = {"multipart-expired", "multipart-expired-200", "multipart-part-expired"};
+    for (int mode = 0; mode < 3; mode++) {
         uint64_t id = recording(false);
         FILE *file = fopen(source_path, "wb");
         TEST_ASSERT_NOT_NULL(file);
@@ -1089,6 +1105,167 @@ static void test_catalog_failure_only_reclaims_idle_owned_cache(void) {
     TEST_ASSERT_EQUAL_INT(0, delete_recording_metadata(id));
 }
 
+static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) {
+    char active_mount[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(0, db_storage_target_detect_mount(root, "/proc/self/mountinfo", active_mount));
+    for (int filesystem = 0; filesystem < 2; filesystem++) {
+        uint64_t id = recording(false);
+        storage_target_t target = archive_target(filesystem ? "mount-fs" : "mount-s3", true);
+        if (filesystem) {
+            safe_strcpy(target.target_type, "filesystem", sizeof(target.target_type), 0);
+            snprintf(target.root_path, sizeof(target.root_path), "%s/mounted-destination", root);
+            TEST_ASSERT_EQUAL_INT(0, mkdir(target.root_path, 0700));
+        }
+        TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK, db_storage_target_create(&target));
+        storage_migration_job_t job;
+        TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_create(id, target.uuid, 0, &job));
+        char query[1600], path[MAX_PATH_LENGTH], error[256];
+        // Simulate an unmounted target whose underlying directory/file remain.
+        snprintf(query, sizeof(query), "UPDATE storage_targets SET mount_required=1,mount_guard_path='%s' WHERE uuid='%s';", root, source_uuid);
+        sql(query);
+        TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+        TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+        TEST_ASSERT_EQUAL_STRING("retry_wait", job.state);
+        TEST_ASSERT_EQUAL_UINT64(0, job.bytes_copied);
+        TEST_ASSERT_EQUAL_INT(0, access(source_path, R_OK));
+        if (filesystem) {
+            TEST_ASSERT_EQUAL_INT(0, db_storage_target_resolve_path(target.uuid, job.destination_object_key, path));
+            TEST_ASSERT_NOT_EQUAL_INT(0, access(path, F_OK));
+        } else {
+            uint64_t bytes;
+            TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
+        }
+        recording_metadata_t metadata;
+        TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &metadata));
+        TEST_ASSERT_EQUAL_STRING(source_uuid, metadata.storage_target_uuid);
+        snprintf(query, sizeof(query), "UPDATE storage_targets SET mount_guard_path='%s' WHERE uuid='%s';UPDATE storage_migration_jobs SET next_attempt_at=0;", active_mount, source_uuid);
+        sql(query);
+        TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+        TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+        TEST_ASSERT_EQUAL_STRING("completed", job.state);
+    }
+}
+
+static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
+    sql("BEGIN IMMEDIATE;INSERT INTO storage_read_leases(recording_id,expires_at) SELECT id,0 FROM recordings;");
+    int reconciled = db_storage_lifecycle_reconcile();
+    bool reconcile_preserved = !sqlite3_get_autocommit(get_db_handle());
+    storage_deletion_process_one();
+    bool deletion_preserved = !sqlite3_get_autocommit(get_db_handle());
+    sql("ROLLBACK;");
+    TEST_ASSERT_EQUAL_INT(-1, reconciled);
+    TEST_ASSERT_TRUE(reconcile_preserved);
+    TEST_ASSERT_TRUE(deletion_preserved);
+}
+
+static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, int *client, uint64_t id) {
+    int listener = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, listener);
+    struct sockaddr_in address = {.sin_family=AF_INET, .sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
+    TEST_ASSERT_EQUAL_INT(0, bind(listener, (struct sockaddr *)&address, sizeof(address)));
+    TEST_ASSERT_EQUAL_INT(0, listen(listener, 1));
+    socklen_t length = sizeof(address);
+    TEST_ASSERT_EQUAL_INT(0, getsockname(listener, (struct sockaddr *)&address, &length));
+    *client = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, *client);
+    TEST_ASSERT_EQUAL_INT(0, connect(*client, (struct sockaddr *)&address, length));
+    int peer = accept(listener, NULL, NULL);
+    close(listener);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, peer);
+    int small = 4096;
+    TEST_ASSERT_EQUAL_INT(0, setsockopt(peer, SOL_SOCKET, SO_SNDBUF, &small, sizeof(small)));
+    libuv_connection_t *conn = libuv_connection_create(server);
+    TEST_ASSERT_NOT_NULL(conn);
+    TEST_ASSERT_EQUAL_INT(0, uv_tcp_open(&conn->handle, peer));
+    conn->keep_alive = false;
+    conn->request.user_data = conn;
+    conn->request.method = HTTP_METHOD_GET;
+    TEST_ASSERT_TRUE(recording_archive_serve(&conn->request, &conn->response, id, false));
+    return conn;
+}
+
+static void test_stalled_archive_writes_renew_lease_until_completion(void) {
+    uint64_t id = recording(false);
+    FILE *file = fopen(source_path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    unsigned char block[65536] = {0};
+    for (int i = 0; i < 48; i++) TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+    fclose(file);
+    sql("UPDATE recordings SET size_bytes=3145728;");
+    storage_target_t target = archive_target("stalled-reader", true);
+    storage_migration_job_t job = move_recording(id, &target);
+    TEST_ASSERT_EQUAL_STRING("completed", job.state);
+    uv_loop_t loop;
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
+    libuv_server_t server = {.loop = &loop};
+    int clients[2];
+    capture_lease_timers = true;
+    libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
+    libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
+    capture_lease_timers = false;
+    TEST_ASSERT_EQUAL_INT(2, captured_timer_count);
+    bool stalled = false;
+    for (int i = 0; i < 5000; i++) {
+        uv_run(&loop, UV_RUN_NOWAIT);
+        stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
+                  uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
+        if (stalled) break;
+        struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
+    }
+    TEST_ASSERT_TRUE(stalled);
+    // Advance the database's lease clock without a two-minute wall-clock sleep.
+    sql("UPDATE storage_read_leases SET expires_at=0;");
+    captured_callbacks[0](captured_timers[0]);
+    TEST_ASSERT_TRUE(storage_source_has_lease(id));
+    TEST_ASSERT_EQUAL_INT(1, storage_recording_delete(id, "delete during stalled playback", NULL));
+    TEST_ASSERT_EQUAL_INT(0, storage_deletion_process_one());
+    // Exercise server shutdown's timer close callback while a write is pending.
+    TEST_ASSERT_FALSE(recording_archive_close_timer((uv_handle_t *)&first->handle));
+    TEST_ASSERT_TRUE(recording_archive_close_timer((uv_handle_t *)captured_timers[0]));
+    close(clients[0]);
+    libuv_connection_close(first);
+    for (int i = 0; i < 10; i++) uv_run(&loop, UV_RUN_NOWAIT);
+    sql("UPDATE storage_read_leases SET expires_at=0;");
+    captured_callbacks[1](captured_timers[1]);
+    TEST_ASSERT_TRUE(storage_source_has_lease(id));
+    TEST_ASSERT_EQUAL_INT(0, storage_deletion_process_one());
+    storage_remote_source_t rejected;
+    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_DELETING, storage_source_remote(id, &rejected));
+
+    // The remaining reader may finish even though new readers are excluded.
+    TEST_ASSERT_EQUAL_INT(0, fcntl(clients[1], F_SETFL, O_NONBLOCK));
+    const size_t capacity = 3145728 + 2048;
+    char *response = calloc(1, capacity);
+    TEST_ASSERT_NOT_NULL(response);
+    size_t total = 0;
+    bool ended = false;
+    for (int i = 0; i < 15000; i++) {
+        uv_run(&loop, UV_RUN_NOWAIT);
+        ssize_t count = recv(clients[1], response + total, capacity - total - 1, 0);
+        if (count > 0) total += (size_t)count;
+        else if (count == 0) { ended = true; break; }
+        else TEST_ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
+        struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
+    }
+    close(clients[1]);
+    uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    TEST_ASSERT_TRUE(ended);
+    char *body = strstr(response, "\r\n\r\n");
+    TEST_ASSERT_NOT_NULL(body);
+    body += 4;
+    TEST_ASSERT_EQUAL_UINT(3145728, total - (size_t)(body - response));
+    unsigned char digest[32]; char hash[65];
+    TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256((unsigned char *)body, 3145728, digest, 0));
+    for (int i = 0; i < 32; i++) snprintf(hash + i * 2, 3, "%02x", digest[i]);
+    free(response);
+    TEST_ASSERT_EQUAL_STRING(job.checksum, hash);
+    // Once both responses finish, renewal stops and normal expiry permits cleanup.
+    sql("UPDATE storage_read_leases SET expires_at=0;");
+    for (int i = 0; i < 16 && scalar("SELECT count(*) FROM recordings;"); i++) storage_deletion_process_one();
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM recordings;"));
+}
+
 int main(void) {
     if (!getenv("LIGHTNVR_TEST_S3_ENDPOINT") || !mkdtemp(root)) return 2;
     snprintf(db_path, sizeof(db_path), "%s/catalog.sqlite", root);
@@ -1126,11 +1303,14 @@ int main(void) {
     RUN_TEST(test_archive_credentials_require_private_regular_files);
     RUN_TEST(test_batch_export_waits_for_verified_archive_source);
     RUN_TEST(test_legacy_age_cleanup_honors_archive_retention_override);
-    RUN_TEST(test_expired_multipart_completion_restarts_from_source);
+    RUN_TEST(test_expired_multipart_upload_restarts_from_source);
     RUN_TEST(test_unpublished_corrupt_destination_is_repaired);
     RUN_TEST(test_archive_replica_failover_and_local_status);
     RUN_TEST(test_retrieval_queue_counts_only_active_work);
     RUN_TEST(test_catalog_failure_only_reclaims_idle_owned_cache);
+    RUN_TEST(test_missing_source_mount_defers_archive_and_filesystem_moves);
+    RUN_TEST(test_storage_workers_do_not_rollback_an_unowned_transaction);
+    RUN_TEST(test_stalled_archive_writes_renew_lease_until_completion);
     int result = UNITY_END();
     shutdown_database();
     return result;

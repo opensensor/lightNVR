@@ -494,6 +494,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             cJSON_DeleteItemFromObjectCaseSensitive(checkpoint, "parts");
             cJSON_AddArrayToObject(checkpoint, "parts");
             upload_checkpoint(control->job_uuid, id, &checkpoint, true);
+            result = STORAGE_S3_ERROR; // Expiry is retryable after clearing the stale upload.
             break;
         }
         if (result) break;

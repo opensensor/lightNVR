@@ -16,6 +16,9 @@
 typedef struct {
     uv_work_t work;
     uv_write_t write;
+    uv_timer_t lease_timer;
+    unsigned references; // loop-owned: one for I/O and one until the timer closes
+    bool timer_initialized;
     libuv_connection_t *conn; // accessed only on the loop after start
     storage_remote_source_t source;
     atomic_bool cancelled;
@@ -28,13 +31,48 @@ typedef struct {
     unsigned char buffer[ARCHIVE_CHUNK];
 } archive_stream_t;
 
+static archive_stream_t *streams[ARCHIVE_STREAMS];
 static unsigned active_streams; // loop-owned; reserve pool threads for other handlers
 static void archive_next(archive_stream_t *stream);
 extern int libuv_send_response_ex(libuv_connection_t *, const http_response_t *, write_complete_action_t);
 
+static void archive_release(archive_stream_t *stream) {
+    if (--stream->references == 0) free(stream);
+}
+
+static void archive_timer_closed(uv_handle_t *handle) {
+    archive_release(handle->data);
+}
+
+static void archive_stop_timer(archive_stream_t *stream) {
+    if (stream->timer_initialized && !uv_is_closing((uv_handle_t *)&stream->lease_timer)) {
+        uv_timer_stop(&stream->lease_timer);
+        uv_close((uv_handle_t *)&stream->lease_timer, archive_timer_closed);
+    }
+}
+
+/* Server shutdown walks every handle; our timer must retain its own close
+ * callback because outstanding work/write callbacks still reference the stream. */
+bool recording_archive_close_timer(uv_handle_t *handle) {
+    for (unsigned i = 0; i < ARCHIVE_STREAMS; i++) {
+        if (streams[i] && handle == (uv_handle_t *)&streams[i]->lease_timer) {
+            archive_stop_timer(streams[i]);
+            return true;
+        }
+    }
+    return false;
+}
+
 static void archive_free(archive_stream_t *stream) {
-    if (stream->counted) active_streams--;
-    free(stream);
+    if (stream->counted) {
+        active_streams--;
+        for (unsigned i = 0; i < ARCHIVE_STREAMS; i++)
+            if (streams[i] == stream) streams[i] = NULL;
+    }
+    // Stop renewal only after the final write or cancelled I/O completes. The
+    // shared lease retains its expiry grace for other readers of this recording.
+    archive_stop_timer(stream);
+    archive_release(stream);
 }
 
 static void archive_finish(archive_stream_t *stream, bool failed) {
@@ -58,10 +96,20 @@ static bool archive_cancelled(void *context) {
     return atomic_load(&stream->cancelled);
 }
 
+static void archive_renew(uv_timer_t *timer) {
+    archive_stream_t *stream = timer->data;
+    if (!stream->conn || archive_cancelled(stream)) { archive_stop_timer(stream); return; }
+    if (!storage_source_renew_lease(stream->source.recording_id)) {
+        atomic_store(&stream->cancelled, true);
+        archive_stop_timer(stream);
+        libuv_connection_close(stream->conn);
+    }
+}
+
 static void archive_read(uv_work_t *work) {
     archive_stream_t *stream = work->data;
     stream->result = -1;
-    if (!archive_cancelled(stream) && storage_source_touch(stream->source.recording_id)) {
+    if (!archive_cancelled(stream) && storage_source_renew_lease(stream->source.recording_id)) {
         storage_transfer_control_t control = {.cancelled = archive_cancelled, .context = stream,
             .bandwidth_bps = stream->source.target.migration_bandwidth_bps};
         stream->result = storage_s3_read_range(&stream->source.target, stream->source.key,
@@ -124,6 +172,7 @@ bool recording_archive_serve(const http_request_t *req, http_response_t *res, ui
     if (!conn) return false;
     archive_stream_t *stream = calloc(1, sizeof(*stream));
     if (!stream) { http_response_set_json_error(res, 503, "Archive streaming is busy"); return true; }
+    stream->references = 1;
     stream->source = source;
     stream->download = download;
     atomic_init(&stream->cancelled, false);
@@ -173,7 +222,21 @@ int recording_archive_start(libuv_connection_t *conn) {
     stream->header_length = (size_t)n;
     stream->counted = true;
     active_streams++;
+    for (unsigned i = 0; i < ARCHIVE_STREAMS; i++) {
+        if (!streams[i]) { streams[i] = stream; break; }
+    }
     conn->async_response_pending = true;
+    if (uv_timer_init(conn->server->loop, &stream->lease_timer)) {
+        archive_finish(stream, true);
+        return 0;
+    }
+    stream->timer_initialized = true;
+    stream->references++;
+    stream->lease_timer.data = stream;
+    if (uv_timer_start(&stream->lease_timer, archive_renew, 30000, 30000)) {
+        archive_finish(stream, true);
+        return 0;
+    }
     archive_next(stream);
     return 0;
 }

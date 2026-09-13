@@ -246,8 +246,11 @@ int db_storage_lifecycle_reconcile(void) {
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return -1;
     pthread_mutex_lock(mutex);
-    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK ||
-        sqlite3_exec(db, "UPDATE storage_policy_violations SET "
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+        pthread_mutex_unlock(mutex);
+        return -1; // No transaction was acquired; do not roll back another owner.
+    }
+    if (sqlite3_exec(db, "UPDATE storage_policy_violations SET "
             "resolved_at=strftime('%s','now') WHERE resolved_at IS NULL;",
             NULL, NULL, NULL) != SQLITE_OK) {
         sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);

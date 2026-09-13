@@ -94,6 +94,26 @@ static bool source_lease(sqlite3 *db, uint64_t id) {
     return saved;
 }
 
+/* Renew an existing response's lease even after logical deletion was accepted.
+ * New readers still go through storage_source_touch and cannot enter then. */
+bool storage_source_renew_lease(uint64_t id) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return false;
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    bool renewed = false;
+    if (sqlite3_prepare_v2(db, "UPDATE storage_read_leases SET expires_at=strftime('%s','now')+120 "
+        "WHERE recording_id=? AND EXISTS(SELECT 1 FROM recordings WHERE id=recording_id);",
+        -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+        renewed = sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1;
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+    return renewed;
+}
+
 bool storage_source_touch(uint64_t id) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();

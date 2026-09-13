@@ -21,6 +21,7 @@ class S3Handler(BaseHTTPRequestHandler):
     part_attempts = {}
     failed_deletions = set()
     expired_completions = set()
+    expired_parts = set()
     lock = threading.Lock()
 
     def log_message(self, *_):
@@ -100,6 +101,10 @@ class S3Handler(BaseHTTPRequestHandler):
                     return self.respond(204)
                 if self.command == 'PUT':
                     part = int(query['partNumber'])
+                    if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:
+                        self.expired_parts.add(identity)
+                        del self.uploads[upload_id]
+                        return self.respond(404, b'<Error><Code>NoSuchUpload</Code></Error>')
                     attempt = self.part_attempts.get((identity, part), 0) + 1
                     self.part_attempts[identity, part] = attempt
                     # Fail once after a durable first part. Retrying part 1 is

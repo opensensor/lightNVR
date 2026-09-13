@@ -15,6 +15,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <sqlite3.h>
+#include <stdatomic.h>
+#include "database/db_storage_lifecycle.h"
+#include "storage/storage_deletion.h"
 
 #include "unity.h"
 #include "utils/strings.h"
@@ -478,6 +481,49 @@ void test_ip_allowed_for_user_accepts_single_host_ip_entries(void) {
     TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "2001:db8::2"));
 }
 
+static atomic_bool bootstrap_worker_stop;
+static atomic_uint bootstrap_worker_runs;
+static int bootstrap_worker_errors;
+
+static void *bootstrap_storage_worker(void *unused) {
+    (void)unused;
+    while (!atomic_load(&bootstrap_worker_stop)) {
+        if (db_storage_lifecycle_reconcile() < 0) bootstrap_worker_errors++;
+        if (storage_deletion_process_one() < 0) bootstrap_worker_errors++;
+        atomic_fetch_add(&bootstrap_worker_runs, 1);
+        struct timespec pause = {.tv_nsec = 1000000};
+        nanosleep(&pause, NULL);
+    }
+    return NULL;
+}
+
+static void test_admin_bootstrap_serializes_with_storage_transactions(void) {
+    atomic_store(&bootstrap_worker_stop, false);
+    atomic_store(&bootstrap_worker_runs, 0);
+    bootstrap_worker_errors = 0;
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, bootstrap_storage_worker, NULL));
+    while (!atomic_load(&bootstrap_worker_runs)) {
+        struct timespec pause = {.tv_nsec = 1000000};
+        nanosleep(&pause, NULL);
+    }
+    bool succeeded = true;
+    for (int attempt = 0; attempt < 12; attempt++) {
+        pthread_mutex_lock(get_db_mutex());
+        int deleted = sqlite3_exec(get_db_handle(), "DELETE FROM users WHERE username='admin';", NULL, NULL, NULL);
+        pthread_mutex_unlock(get_db_mutex());
+        if (deleted != SQLITE_OK || db_auth_init() != 0 || db_auth_authenticate("admin", "admin", NULL) != 0) {
+            succeeded = false;
+            break;
+        }
+    }
+    atomic_store(&bootstrap_worker_stop, true);
+    pthread_join(worker, NULL);
+    TEST_ASSERT_TRUE(succeeded);
+    TEST_ASSERT_EQUAL_INT(0, bootstrap_worker_errors);
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -487,6 +533,7 @@ int main(void) {
     db_auth_init();
 
     UNITY_BEGIN();
+    RUN_TEST(test_admin_bootstrap_serializes_with_storage_transactions);
     RUN_TEST(test_auth_init_creates_admin);
     RUN_TEST(test_auth_init_flags_only_fresh_fallback_admin);
     RUN_TEST(test_auth_init_configured_password_skips_requirement);

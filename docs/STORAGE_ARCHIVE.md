@@ -117,6 +117,10 @@ reads, including seeks. Clients receive no bucket credentials or public object
 URLs. Two concurrent archive streams, each with at most a 1 MiB transfer buffer,
 reserve HTTP worker capacity for other operations. Further streams get a retryable
 503. Socket backpressure controls subsequent reads; disconnects stop the transfer.
+Active responses renew their read lease while socket writes are pending, so a
+slow client cannot lose its archive to concurrent cleanup. Renewal ends when the
+response completes or its cancelled I/O finishes. The shared lease then has up to
+120 seconds of expiry grace for other readers.
 
 Thumbnails, compatibility conversion, and ZIP exports use a verified staging
 cache beneath `storage_path/archive-cache`. The default budget is 2048 MiB,
@@ -126,8 +130,7 @@ do not consume queue slots. Downloads are deduplicated, and space checks preserv
 capture reserve. Idle cache can be evicted without losing recordings. If the
 catalog is unavailable, emergency reclamation scans only old, completed files
 in the app-owned archive cache, preserving recent files, partial fetches, and
-symlinks. A source
-larger than the configured cache budget cannot be staged; original playback and
+symlinks. A source larger than the configured cache budget cannot be staged; original playback and
 individual downloads still stream directly. ZIP export currently uses ZIP32 and
 rejects incomplete or over-4-GiB exports rather than returning a misleading ZIP.
 

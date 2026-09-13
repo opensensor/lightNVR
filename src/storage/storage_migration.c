@@ -621,6 +621,12 @@ int storage_migration_process_one(void) {
     bool object_destination = strcmp(destination_target.target_type, "s3") == 0;
     char source_path[MAX_PATH_LENGTH] = {0};
     char destination_path[MAX_PATH_LENGTH] = {0};
+    if (!object_source && !db_storage_target_mount_guard_active(&source_target)) {
+        if (!strcmp(job.state, "cleanup_pending"))
+            db_storage_migration_defer_cleanup(&job, "Source mount is unavailable");
+        else db_storage_migration_record_failure(&job, "Source mount is unavailable", true);
+        return 1;
+    }
     if ((!object_source && db_storage_target_resolve_path(job.source_target_uuid,
                                        job.source_object_key,
                                        source_path) != 0) ||
@@ -731,6 +737,10 @@ int storage_migration_process_one(void) {
         !db_storage_target_mount_guard_active(&destination_target)) {
         db_storage_migration_record_failure(
             &job, "Destination target became unavailable before commit", true);
+        return 1;
+    }
+    if (!object_source && !db_storage_target_mount_guard_active(&source_target)) {
+        db_storage_migration_record_failure(&job, "Source mount became unavailable before commit", true);
         return 1;
     }
     db_storage_migration_result_t committed = strcmp(job.operation, "copy") == 0
