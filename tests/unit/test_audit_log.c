@@ -29,6 +29,8 @@
 /* Test-only seams in db_audit.c, kept out of the public header. */
 extern void db_audit_set_prune_budget_ms_for_testing(int budget_ms);
 extern int db_audit_get_prune_interval_seconds_for_testing(void);
+extern void db_audit_set_automatic_prune_state_for_testing(int64_t last_prune_at,
+                                                           int interval_seconds);
 
 static int64_t admin_user_id = 0;
 
@@ -60,7 +62,15 @@ void setUp(void) {
     g_config.web_auth_enabled = false;
 }
 
-void tearDown(void) {}
+void tearDown(void) {
+    /* Unconditional: a failed assertion returns before a test's own cleanup,
+     * and these seams are process-global, so reset them here rather than
+     * letting a failure leak a zero budget or altered cadence into later
+     * tests. */
+    db_audit_set_prune_budget_ms_for_testing(-1);
+    db_audit_set_automatic_prune_state_for_testing(
+        (int64_t)time(NULL), AUDIT_PRUNE_INTERVAL_SECONDS);
+}
 
 void test_append_and_query_round_trip(void) {
     audit_event_input_t input =
@@ -252,8 +262,82 @@ void test_prune_stops_on_budget_and_resumes_until_drained(void) {
     TEST_ASSERT_EQUAL_INT(backlog, deleted);
     TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_INTERVAL_SECONDS,
                           db_audit_get_prune_interval_seconds_for_testing());
+    /* Budget override is reset unconditionally in tearDown(). */
+}
 
-    db_audit_set_prune_budget_ms_for_testing(-1);
+static int64_t audit_rows_for_target(const char *target_uuid) {
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.target_uuid, target_uuid, sizeof(query.target_uuid), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    int64_t total = page.total;
+    db_audit_page_free(&page);
+    return total;
+}
+
+static void append_prune_trigger(void) {
+    audit_event_input_t trigger =
+        event_input("request-auto-trigger", "camera.configure", "success");
+    trigger.target_uuid = "camera-auto-trigger";
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&trigger, NULL));
+}
+
+/*
+ * Production pruning is driven from db_audit_append(), not db_audit_prune(),
+ * so exercise that caller directly: a budget-limited pass must shorten the
+ * insert-path eligibility window, an append inside that window must not
+ * prune, an append past it must run the next batch, and the hourly cadence
+ * must return once the backlog is gone.
+ */
+void test_automatic_prune_on_append_follows_backlog_cadence(void) {
+    const int backlog = AUDIT_PRUNE_BATCH_ROWS * 2;
+    const int64_t expired_at = (int64_t)time(NULL) - 45LL * 24 * 60 * 60;
+
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(3650));
+    for (int i = 0; i < backlog; i++) {
+        audit_event_input_t event =
+            event_input("request-auto", "camera.configure", "success");
+        event.target_uuid = "camera-auto-expired";
+        event.occurred_at = expired_at;
+        TEST_ASSERT_EQUAL_INT(0, db_audit_append(&event, NULL));
+    }
+    TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(30));
+    db_audit_set_prune_budget_ms_for_testing(0);
+
+    /* Eligible under the hourly cadence: one batch, then the backlog window. */
+    db_audit_set_automatic_prune_state_for_testing(
+        (int64_t)time(NULL) - AUDIT_PRUNE_INTERVAL_SECONDS,
+        AUDIT_PRUNE_INTERVAL_SECONDS);
+    append_prune_trigger();
+    TEST_ASSERT_EQUAL_INT64(backlog - AUDIT_PRUNE_BATCH_ROWS,
+                            audit_rows_for_target("camera-auto-expired"));
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS,
+                          db_audit_get_prune_interval_seconds_for_testing());
+
+    /* Inside the backlog window: the append must not prune. */
+    db_audit_set_automatic_prune_state_for_testing(
+        (int64_t)time(NULL), AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS);
+    append_prune_trigger();
+    TEST_ASSERT_EQUAL_INT64(backlog - AUDIT_PRUNE_BATCH_ROWS,
+                            audit_rows_for_target("camera-auto-expired"));
+
+    /* Past the backlog window: the next batch runs. It deletes a full batch,
+     * so the budget-limited pass still reports a backlog. */
+    db_audit_set_automatic_prune_state_for_testing(
+        (int64_t)time(NULL) - AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS,
+        AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS);
+    append_prune_trigger();
+    TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_target("camera-auto-expired"));
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS,
+                          db_audit_get_prune_interval_seconds_for_testing());
+
+    /* A pass that finds nothing restores the hourly cadence. */
+    db_audit_set_automatic_prune_state_for_testing(
+        (int64_t)time(NULL) - AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS,
+        AUDIT_PRUNE_BACKLOG_INTERVAL_SECONDS);
+    append_prune_trigger();
+    TEST_ASSERT_EQUAL_INT(AUDIT_PRUNE_INTERVAL_SECONDS,
+                          db_audit_get_prune_interval_seconds_for_testing());
 }
 
 /*
@@ -688,6 +772,7 @@ int main(void) {
     RUN_TEST(test_retention_prunes_expired_events);
     RUN_TEST(test_retention_drains_large_backlog_without_touching_live_events);
     RUN_TEST(test_prune_stops_on_budget_and_resumes_until_drained);
+    RUN_TEST(test_automatic_prune_on_append_follows_backlog_cadence);
     RUN_TEST(test_prune_batch_query_uses_the_retention_index);
     RUN_TEST(test_web_helper_redacts_sensitive_detail_fields);
     RUN_TEST(test_operation_helper_adds_standard_envelope_and_redacts_context);

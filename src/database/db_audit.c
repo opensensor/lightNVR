@@ -86,6 +86,14 @@ int db_audit_get_prune_interval_seconds_for_testing(void) {
     return (int)automatic_prune_interval;
 }
 
+/* Lets tests place the insert-path eligibility window deterministically
+ * instead of waiting out the real hour/60s intervals. */
+void db_audit_set_automatic_prune_state_for_testing(int64_t last_prune_at,
+                                                    int interval_seconds) {
+    last_automatic_prune_at = last_prune_at;
+    automatic_prune_interval = interval_seconds;
+}
+
 static int64_t prune_monotonic_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
