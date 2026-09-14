@@ -422,11 +422,10 @@ static void put_stream_worker(put_stream_task_t *task) {
             // Re-register if new sub-stream URL is set
             if (task->config.sub_stream_url[0] != '\0') {
                 log_info("Registering updated sub-stream %s with go2rtc", sub_name);
-                go2rtc_stream_register(sub_name, task->config.sub_stream_url,
+                go2rtc_stream_register_substream(sub_name, task->config.sub_stream_url,
                                        task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
                                        task->config.onvif_password[0] != '\0' ? task->config.onvif_password : NULL,
-                                       false, task->config.protocol, false,
-                                       task->config.codec);
+                                       task->config.protocol);
             } else {
                 log_info("Sub-stream %s removed from go2rtc", sub_name);
             }

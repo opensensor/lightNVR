@@ -484,6 +484,15 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     return result;
 }
 
+bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_url,
+                                     const char *username, const char *password,
+                                     stream_protocol_t protocol) {
+    /* No independent sub-stream codec is stored yet. Never borrow the main
+     * codec: doing so suppressed JPEG -> H.264 fallback in issue #579. */
+    return go2rtc_stream_register(stream_id, stream_url, username, password,
+                                  false, protocol, false, NULL);
+}
+
 static bool go2rtc_stream_unregister_locked(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");

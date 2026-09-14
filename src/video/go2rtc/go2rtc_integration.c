@@ -1525,18 +1525,16 @@ bool go2rtc_integration_register_all_streams(void) {
 
             // Register sub-stream if configured (low-res for grid view) —
             // always via API, even when main stream uses config override.
-            // Sub-streams are a video-only viewing optimization; do not attach
-            // audio producers here or each camera can add another persistent
-            // ffmpeg AAC/OPUS worker during preload (#437).
+            // Do not attach audio transcoders here or each camera can add
+            // another persistent ffmpeg AAC/OPUS worker during preload (#437).
             if (streams[i].sub_stream_url[0] != '\0') {
                 char sub_name[MAX_STREAM_NAME + 8];
                 snprintf(sub_name, sizeof(sub_name), "%s_sub", streams[i].name);
                 log_info("Registering sub-stream %s with go2rtc", sub_name);
-                if (!go2rtc_stream_register(sub_name, streams[i].sub_stream_url,
+                if (!go2rtc_stream_register_substream(sub_name, streams[i].sub_stream_url,
                                            streams[i].onvif_username[0] != '\0' ? streams[i].onvif_username : NULL,
                                            streams[i].onvif_password[0] != '\0' ? streams[i].onvif_password : NULL,
-                                           false, streams[i].protocol, false,
-                                           streams[i].codec)) {
+                                           streams[i].protocol)) {
                     log_warn("Failed to register sub-stream %s with go2rtc", sub_name);
                 }
             }
@@ -1642,18 +1640,16 @@ bool go2rtc_sync_streams_from_database(void) {
         }
 
         // Register sub-stream if configured — always via API,
-        // even when main stream uses config override. Keep it video-only; the
-        // main stream handles audio when recording/WebRTC needs it (#437).
+        // even when main stream uses config override. Avoid extra audio
+        // transcoders for grid previews (#437).
         if (db_streams[i].sub_stream_url[0] != '\0') {
             char sub_name[MAX_STREAM_NAME + 8];
             snprintf(sub_name, sizeof(sub_name), "%s_sub", db_streams[i].name);
             if (!go2rtc_api_stream_exists(sub_name)) {
                 log_info("Registering missing sub-stream %s with go2rtc", sub_name);
-                if (!go2rtc_stream_register(sub_name, db_streams[i].sub_stream_url,
+                if (!go2rtc_stream_register_substream(sub_name, db_streams[i].sub_stream_url,
                                             username, password,
-                                            false, db_streams[i].protocol,
-                                            false,
-                                            db_streams[i].codec)) {
+                                            db_streams[i].protocol)) {
                     log_error("Failed to register sub-stream %s with go2rtc", sub_name);
                     all_success = false;
                     failed++;
@@ -2081,17 +2077,16 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
     }
 
     // Register sub-stream if configured — always via API,
-    // even when main stream uses config override. Keep sub-stream registration
-    // video-only to avoid duplicate always-on audio transcoders (#437).
+    // even when main stream uses config override. Avoid duplicate always-on
+    // audio transcoders for grid previews (#437).
     if (config.sub_stream_url[0] != '\0') {
         char sub_name[MAX_STREAM_NAME + 8];
         snprintf(sub_name, sizeof(sub_name), "%s_sub", stream_name);
         log_info("Registering sub-stream %s with go2rtc", sub_name);
-        go2rtc_stream_register(sub_name, config.sub_stream_url,
+        go2rtc_stream_register_substream(sub_name, config.sub_stream_url,
                                username[0] != '\0' ? username : NULL,
                                password[0] != '\0' ? password : NULL,
-                               false, config.protocol, false,
-                               config.codec);
+                               config.protocol);
     }
 
     return main_ok || skip_main;

@@ -111,6 +111,12 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     UNUSED(backchannel_enabled); UNUSED(protocol); UNUSED(record_audio);
     UNUSED(codec); return true;
 }
+bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_url,
+                                     const char *username, const char *password,
+                                     stream_protocol_t protocol) {
+    UNUSED(stream_id); UNUSED(stream_url); UNUSED(username); UNUSED(password);
+    UNUSED(protocol); return true;
+}
 bool go2rtc_stream_unregister(const char *stream_id) { UNUSED(stream_id); return true; }
 bool go2rtc_stream_get_webrtc_url(const char *stream_id, char *buffer, size_t buffer_size) {
     UNUSED(stream_id); UNUSED(buffer); UNUSED(buffer_size); return false;

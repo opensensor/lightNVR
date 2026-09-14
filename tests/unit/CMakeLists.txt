@@ -249,6 +249,17 @@ if(ENABLE_GO2RTC)
         FAKE_GO2RTC_PATH="$<TARGET_FILE:fake_go2rtc_server>"
     )
     add_dependencies(test_go2rtc_process_lifecycle fake_go2rtc_server)
+    add_layer3_test(test_go2rtc_substream_registration)
+    target_compile_definitions(test_go2rtc_substream_registration PRIVATE
+        FAKE_GO2RTC_PATH="$<TARGET_FILE:fake_go2rtc_server>"
+    )
+    target_link_options(test_go2rtc_substream_registration PRIVATE
+        "-Wl,--wrap=go2rtc_api_add_stream"
+        "-Wl,--wrap=go2rtc_api_add_stream_multi"
+        "-Wl,--wrap=get_stream_config_by_name"
+    )
+    add_dependencies(test_go2rtc_substream_registration fake_go2rtc_server)
+    set_tests_properties(test_go2rtc_substream_registration PROPERTIES TIMEOUT 60)
 endif()
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_process_config_generation)

@@ -49,6 +49,18 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            bool record_audio, const char *codec);
 
 /**
+ * @brief Register a grid sub-stream whose video codec has not been probed.
+ *
+ * The main stream's codec does not describe this source: an H.264 main may
+ * have a JPEG or H.265 sub-stream. Keep an on-demand H.264 fallback, using
+ * this sub-stream's relay as input. Native compatible video remains preferred.
+ * No extra audio transcoder or backchannel is enabled for grid previews.
+ */
+bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_url,
+                                     const char *username, const char *password,
+                                     stream_protocol_t protocol);
+
+/**
  * @brief Unregister a stream from go2rtc
  * 
  * @param stream_id Identifier of the stream to unregister
