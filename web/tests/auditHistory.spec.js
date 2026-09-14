@@ -6,6 +6,7 @@ import {
   auditPageBounds,
   buildAuditQuery,
   changedDecisionModes,
+  defaultSinceForEventType,
   formatSummaryCount,
   groupDecisionModes,
   modesByAction,
@@ -107,5 +108,16 @@ describe('audit decision mode helpers', () => {
     const query = new URLSearchParams(buildAuditQuery({ ...EMPTY_AUDIT_FILTERS, eventType: ' authorization.summary ' }));
     expect(query.get('event_type')).toBe('authorization.summary');
     expect(new URLSearchParams(buildAuditQuery({ ...EMPTY_AUDIT_FILTERS })).has('event_type')).toBe(false);
+  });
+
+  test('prefills since with the last 24 hours only when an event type is chosen with no since bound', () => {
+    const now = new Date('2026-09-14T12:00:00');
+    expect(defaultSinceForEventType({ eventType: '', since: '' }, now)).toBe('');
+    expect(defaultSinceForEventType({ eventType: '', since: '2026-09-01T00:00' }, now))
+      .toBe('2026-09-01T00:00');
+    expect(defaultSinceForEventType({ eventType: 'authorization.summary', since: '2026-09-01T00:00' }, now))
+      .toBe('2026-09-01T00:00');
+    expect(defaultSinceForEventType({ eventType: 'authorization.summary', since: '' }, now))
+      .toBe('2026-09-13T12:00');
   });
 });

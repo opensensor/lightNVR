@@ -802,10 +802,12 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     // Load per-action audit decision modes before any request is served.
-    // Not fatal: without them every authorization decision is recorded.
-    if (audit_log_decision_modes_init() != 0) {
-        log_warn("Audit decision modes unavailable; recording every authorization decision");
-    }
+    // Not fatal either way: audit_log_decision_modes_init() already logs an
+    // accurate, specific message for each of its two independent failure
+    // modes (a DB read failure that defaults every action to "record", vs a
+    // summary-table allocation failure where loaded "off"/"summarize" modes
+    // still apply and only "summarize" degrades to recording individually).
+    audit_log_decision_modes_init();
     // Initialize schema cache
     log_info("Initializing schema cache...");
     init_schema_cache();

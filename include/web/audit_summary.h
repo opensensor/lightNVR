@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "core/authorization.h"
+#include "core/config.h"
 #include "database/db_audit.h"
 
 /*
@@ -17,22 +18,40 @@
 #define AUDIT_SUMMARY_WINDOW_SECONDS 900
 #define AUDIT_SUMMARY_DEFAULT_CAPACITY 1024
 #define AUDIT_SUMMARY_METHOD_MAX 16
-#define AUDIT_SUMMARY_PATH_MAX 256
+/* Must match http_request_t.path (MAX_PATH_LENGTH): the sample path is
+ * copied straight from the request that first hits a key, and per-request
+ * rows already store the full path at that width. */
+#define AUDIT_SUMMARY_PATH_MAX MAX_PATH_LENGTH
 #define AUDIT_SUMMARY_SOURCE_MAX 32
 
-/* Hashing and equality are byte-wise: always build keys with
- * audit_summary_key_init() so unused bytes are zero. */
+/* Hashing and equality are byte-wise (see key_hash()/find_slot_locked() in
+ * audit_summary.c): always build keys with audit_summary_key_init() so
+ * unused bytes -- including the reserved padding fillers below -- are zero.
+ * Struct assignment (`entry.key = *key`) is not guaranteed by C to preserve
+ * padding bytes, so any padding the compiler would otherwise insert between
+ * members is made explicit here instead, sized for both this platform
+ * (x86_64: int64_t/int alignment 8/4) and 32-bit ARM (armhf EABI: int64_t
+ * alignment is also 8, so the layout matches). If a future field changes
+ * this layout, the _Static_assert below will fail the build. */
 typedef struct {
     int64_t principal_user_id;
     char principal_username[AUDIT_USERNAME_MAX];
     char auth_method[AUDIT_AUTH_METHOD_MAX];
     char api_token_uuid[AUDIT_EVENT_UUID_MAX];
+    char reserved_before_action[3]; /* pads to action's 4-byte alignment */
     int action;
     char target_type[AUDIT_TARGET_TYPE_MAX];
     char target_uuid[AUDIT_QUERY_VALUE_MAX];
     char remote_address[AUDIT_REMOTE_ADDRESS_MAX];
+    char reserved_before_window_start[4]; /* pads to window_start's 8-byte alignment */
     int64_t window_start;
 } audit_summary_key_t;
+
+_Static_assert(sizeof(audit_summary_key_t) ==
+                   offsetof(audit_summary_key_t, window_start) +
+                       sizeof(((audit_summary_key_t *)0)->window_start),
+               "audit_summary_key_t must have no padding after window_start; "
+               "add a reserved_ field for any new implicit gap");
 
 typedef struct {
     audit_summary_key_t key;

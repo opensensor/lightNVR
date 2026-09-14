@@ -922,6 +922,69 @@ void test_summarize_buffers_until_flush_then_writes_one_counted_row(void) {
     db_audit_page_free(&page);
 }
 
+void test_head_decision_is_summarized_like_get(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("HEAD", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(details, "count")->valueint);
+    TEST_ASSERT_EQUAL_STRING("HEAD",
+        cJSON_GetObjectItemCaseSensitive(details, "method")->valuestring);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+/*
+ * Guards item 1: AUDIT_SUMMARY_PATH_MAX must match http_request_t.path
+ * (MAX_PATH_LENGTH, 512), not the smaller value audit rows also allow.
+ * The path here is longer than the old 256-byte limit and shorter than 512,
+ * so it fails only if the summary path buffer truncates it.
+ */
+void test_summary_row_records_full_detail_fields_and_long_path(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    char long_path[300];
+    const char *prefix = "/api/detection/results/";
+    memset(long_path, 'x', sizeof(long_path) - 1);
+    long_path[sizeof(long_path) - 1] = '\0';
+    memcpy(long_path, prefix, strlen(prefix));
+    TEST_ASSERT_TRUE(strlen(long_path) > 256);
+    TEST_ASSERT_TRUE(strlen(long_path) < MAX_PATH_LENGTH);
+
+    allow_decision("GET", long_path, "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_STRING("GET",
+        cJSON_GetObjectItemCaseSensitive(details, "method")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(long_path,
+        cJSON_GetObjectItemCaseSensitive(details, "path")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("policy_grant",
+        cJSON_GetObjectItemCaseSensitive(details, "decision_source")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("Allowed by Administrator role grant",
+        cJSON_GetObjectItemCaseSensitive(details, "explanation")->valuestring);
+    TEST_ASSERT_EQUAL_INT(AUDIT_SUMMARY_WINDOW_SECONDS,
+        cJSON_GetObjectItemCaseSensitive(details, "window_seconds")->valueint);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(details, "first_at")->valuedouble > 0);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(details, "last_at")->valuedouble > 0);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
 void test_summaries_split_by_client_and_camera_but_not_path(void) {
     set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
     allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
@@ -1075,6 +1138,28 @@ void test_audit_settings_put_modes_only_updates_modes(void) {
     TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(stored));
     TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, stored[AUTHZ_LIVE_VIEW]);
     TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.settings.update"));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "audit.settings.update", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_STRING("audit.decision_modes.update",
+        cJSON_GetObjectItemCaseSensitive(details, "event_type")->valuestring);
+    cJSON *changes = cJSON_GetObjectItemCaseSensitive(details, "changes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(changes));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(changes));
+    cJSON *change = cJSON_GetArrayItem(changes, 0);
+    TEST_ASSERT_EQUAL_STRING("live.view",
+        cJSON_GetObjectItemCaseSensitive(change, "action")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("record",
+        cJSON_GetObjectItemCaseSensitive(change, "previous")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("summarize",
+        cJSON_GetObjectItemCaseSensitive(change, "mode")->valuestring);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
 }
 
 void test_audit_settings_put_rejects_invalid_body_atomically(void) {
@@ -1112,6 +1197,45 @@ void test_audit_settings_put_unchanged_modes_writes_no_event(void) {
     TEST_ASSERT_EQUAL_INT(200, res.status_code);
     http_response_free(&res);
     TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_audit_settings_put_combined_retention_and_modes(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"retention_days\":120,\"allowed_decision_modes\":{\"live.view\":\"off\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(root));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(root, "pruned_events"));
+    TEST_ASSERT_EQUAL_INT(120,
+        cJSON_GetObjectItemCaseSensitive(root, "retention_days")->valueint);
+    cJSON *modes = cJSON_GetObjectItemCaseSensitive(root, "allowed_decision_modes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(modes));
+    bool found_off = false;
+    for (int i = 0; i < cJSON_GetArraySize(modes); i++) {
+        cJSON *item = cJSON_GetArrayItem(modes, i);
+        if (strcmp(cJSON_GetObjectItemCaseSensitive(item, "action")->valuestring,
+                   "live.view") == 0) {
+            TEST_ASSERT_EQUAL_STRING("off",
+                cJSON_GetObjectItemCaseSensitive(item, "mode")->valuestring);
+            found_off = true;
+        }
+    }
+    TEST_ASSERT_TRUE(found_off);
+    cJSON_Delete(root);
+    http_response_free(&res);
+
+    int retention_days = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_get_retention_days(&retention_days));
+    TEST_ASSERT_EQUAL_INT(120, retention_days);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_OFF,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.retention.update"));
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.settings.update"));
 }
 
 void test_query_filters_by_details_event_type(void) {
@@ -1205,6 +1329,8 @@ int main(void) {
     RUN_TEST(test_record_mode_writes_one_row_per_allowed_read);
     RUN_TEST(test_off_mode_skips_allowed_reads_but_records_denials);
     RUN_TEST(test_summarize_buffers_until_flush_then_writes_one_counted_row);
+    RUN_TEST(test_head_decision_is_summarized_like_get);
+    RUN_TEST(test_summary_row_records_full_detail_fields_and_long_path);
     RUN_TEST(test_summaries_split_by_client_and_camera_but_not_path);
     RUN_TEST(test_mutating_requests_are_recorded_even_when_summarized_or_off);
     RUN_TEST(test_denied_and_error_are_never_summarized);
@@ -1217,6 +1343,7 @@ int main(void) {
     RUN_TEST(test_audit_settings_put_modes_only_updates_modes);
     RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
     RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
+    RUN_TEST(test_audit_settings_put_combined_retention_and_modes);
     RUN_TEST(test_query_filters_by_details_event_type);
     RUN_TEST(test_decision_modes_init_loads_stored_modes_into_memory);
     int result = UNITY_END();

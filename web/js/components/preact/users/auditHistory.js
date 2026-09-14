@@ -116,3 +116,22 @@ export function summaryDetails(event) {
 export function formatSummaryCount(count, locale = 'en-US') {
   return `×${new Intl.NumberFormat(locale).format(Number(count) || 0)}`;
 }
+
+function formatDateTimeLocal(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * `event_type` filtering scans each row's stored details rather than using an
+ * index (~1.5s per page on 790k rows vs 7ms with a 24h range, under the
+ * global DB lock), so once the user picks a non-empty event type with no
+ * `since` bound yet, suggest one: now minus 24 hours, in the same
+ * datetime-local format the since input already uses. Leaves an existing
+ * since value alone, and does nothing while no event type is selected.
+ */
+export function defaultSinceForEventType(draftFilters = {}, now = new Date()) {
+  if (!draftFilters.eventType || draftFilters.since) return draftFilters.since || '';
+  return formatDateTimeLocal(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+}

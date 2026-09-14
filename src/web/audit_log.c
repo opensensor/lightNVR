@@ -167,12 +167,26 @@ int audit_log_decision_modes_init(void) {
     for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
         atomic_store(&decision_modes[i], (int)modes[i]);
     }
-    if (rc != 0) log_warn("Could not read audit decision modes; recording every decision");
-    if (audit_summary_init(AUDIT_SUMMARY_DEFAULT_CAPACITY) != 0) {
-        log_error("Failed to allocate audit summary table; summarized actions will be recorded individually");
-        return -1;
+    /* These two failures are independent and each gets its own accurate
+     * message, since the two low bits of the return value let the caller
+     * (main.c) tell them apart rather than print one message that may not
+     * match what actually happened. */
+    int result = 0;
+    if (rc != 0) {
+        /* db_audit_load_decision_modes() leaves every entry at the default
+         * (record) when it cannot read stored modes, so every decision really
+         * is recorded until settings are saved again. */
+        log_warn("Could not read audit decision modes; recording every authorization decision");
+        result |= AUDIT_DECISION_MODES_INIT_DB_FAILED;
     }
-    return rc;
+    if (audit_summary_init(AUDIT_SUMMARY_DEFAULT_CAPACITY) != 0) {
+        /* The loaded modes (including "off") still apply from decision_modes[]
+         * above; only "summarize" degrades, since it has nowhere to buffer. */
+        log_error("Failed to allocate audit summary table; summarize falls back "
+                  "to recording individually, off modes still apply");
+        result |= AUDIT_DECISION_MODES_INIT_TABLE_FAILED;
+    }
+    return result;
 }
 
 audit_decision_mode_t audit_log_get_decision_mode(authorization_action_t action) {
@@ -183,7 +197,12 @@ audit_decision_mode_t audit_log_get_decision_mode(authorization_action_t action)
 static void write_summary_row(const audit_summary_entry_t *entry) {
     const authorization_action_metadata_t *metadata =
         authorization_action_metadata((authorization_action_t)entry->key.action);
-    if (!metadata) return;
+    if (!metadata) {
+        log_error("Failed to persist audit summary for unknown action id %d; "
+                  "%llu decisions not recorded",
+                  entry->key.action, (unsigned long long)entry->count);
+        return;
+    }
 
     cJSON *details = cJSON_CreateObject();
     if (details) {

@@ -356,17 +356,21 @@ expiry check, so retention does not depend on a separate scheduler.
 | Mode | Effect |
 |---|---|
 | `record` (default) | One audit event per decision, as before. |
-| `summarize` | One event per user, action, target, and client address per 15-minute window, with `details.event_type` `authorization.summary` and `count`, `first_at`, `last_at`, `window_seconds`, and the first request's `method`, `path`, `decision_source`, and `explanation`. |
+| `summarize` | Normally one event per user, action, target, and client address per 15-minute window, with `details.event_type` `authorization.summary` and `count`, `first_at`, `last_at`, `window_seconds`, and the first request's `method`, `path`, `decision_source`, and `explanation`. |
 | `off` | No event. |
 
 Always recorded regardless of mode: denied and error decisions, any request
 that changes state (`POST`, `PUT`, `PATCH`, `DELETE`), sign-ins, and operation
 outcomes. Changing modes records an `audit.settings.update` event. Summaries
-are written when their window closes, when modes change, and at shutdown; a
-crash can lose up to one window of summary counts.
+are written when their window closes, when modes change, when the summary
+table fills, and at shutdown; a crash can lose up to one window of summary
+counts.
 
 `GET /api/audit/events` and its CSV export also accept `event_type`, matching
-`details.event_type` exactly (for example `authorization.summary`).
+`details.event_type` exactly (for example `authorization.summary`). This
+filter scans each row's stored details rather than using an index, so combine
+it with `since`/`until` on large histories to avoid a slow, lock-holding
+query.
 
 Administrators can browse this history from **Users → Audit History**. The
 responsive workspace keeps filters server-side, shows structured details on

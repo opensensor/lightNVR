@@ -77,6 +77,19 @@ void audit_log_sensitive_operation_outcome(const http_request_t *req,
  * (GET/HEAD) requests. Denials, errors, mutating requests, sign-ins and
  * operation outcomes are always recorded regardless of mode.
  */
+
+/* Bits set in audit_log_decision_modes_init()'s return value. Each failure is
+ * independent and already logged accurately inside that call; a caller only
+ * needs these to decide whether to escalate further, not to build its own
+ * message. */
+#define AUDIT_DECISION_MODES_INIT_DB_FAILED 0x1    /* modes defaulted to record */
+#define AUDIT_DECISION_MODES_INIT_TABLE_FAILED 0x2 /* summarize falls back to record */
+
+/* Must be called exactly once at startup, before any request is served.
+ * Calling it again re-initializes the summary table and discards any
+ * summaries still pending from the previous call. Returns 0 on full success,
+ * otherwise a bitwise-OR of AUDIT_DECISION_MODES_INIT_* flags; both failure
+ * modes are non-fatal and already logged with an accurate cause. */
 int audit_log_decision_modes_init(void);
 audit_decision_mode_t audit_log_get_decision_mode(authorization_action_t action);
 int audit_log_set_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]);

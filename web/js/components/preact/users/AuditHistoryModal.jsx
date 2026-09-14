@@ -10,6 +10,7 @@ import {
   auditOutcomeTone,
   auditPageBounds,
   buildAuditQuery,
+  defaultSinceForEventType,
   formatSummaryCount,
   summaryDetails,
 } from './auditHistory.js';
@@ -149,7 +150,13 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
     setPageNumber(1);
     setExpandedUuid('');
   };
-  const updateDraft = (name, value) => setDraftFilters((current) => ({ ...current, [name]: value }));
+  const updateDraft = (name, value) => setDraftFilters((current) => {
+    const next = { ...current, [name]: value };
+    if (name === 'eventType') {
+      next.since = defaultSinceForEventType({ eventType: value, since: current.since });
+    }
+    return next;
+  });
   const filterToAction = (action) => {
     const next = { ...filters, action };
     setDraftFilters(next);

@@ -141,6 +141,11 @@ size_t audit_summary_drain(bool all, int64_t current_window_start,
         pthread_mutex_unlock(&summary_mutex);
         return 0;
     }
+    if (used_count == 0) {
+        /* Nothing to take: skip the memset + rebuild below. */
+        pthread_mutex_unlock(&summary_mutex);
+        return 0;
+    }
     size_t drained = 0;
     size_t kept = 0;
     for (size_t i = 0; i < slot_capacity; i++) {
