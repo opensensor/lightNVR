@@ -31,8 +31,9 @@
  * padding bytes, so any padding the compiler would otherwise insert between
  * members is made explicit here instead, sized for both this platform
  * (x86_64: int64_t/int alignment 8/4) and 32-bit ARM (armhf EABI: int64_t
- * alignment is also 8, so the layout matches). If a future field changes
- * this layout, the _Static_assert below will fail the build. */
+ * alignment is also 8, so the layout matches). The _Static_assert below
+ * requires the struct size to equal the sum of its members, so a new field
+ * that introduces an implicit gap fails the build. */
 typedef struct {
     int64_t principal_user_id;
     char principal_username[AUDIT_USERNAME_MAX];
@@ -47,11 +48,22 @@ typedef struct {
     int64_t window_start;
 } audit_summary_key_t;
 
+#define AUDIT_SUMMARY_KEY_MEMBER_SIZE(m) sizeof(((audit_summary_key_t *)0)->m)
 _Static_assert(sizeof(audit_summary_key_t) ==
-                   offsetof(audit_summary_key_t, window_start) +
-                       sizeof(((audit_summary_key_t *)0)->window_start),
-               "audit_summary_key_t must have no padding after window_start; "
-               "add a reserved_ field for any new implicit gap");
+                   AUDIT_SUMMARY_KEY_MEMBER_SIZE(principal_user_id) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(principal_username) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(auth_method) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(api_token_uuid) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(reserved_before_action) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(action) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(target_type) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(target_uuid) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(remote_address) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(reserved_before_window_start) +
+                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(window_start),
+               "audit_summary_key_t has implicit padding; "
+               "add a reserved_ field for the gap");
+#undef AUDIT_SUMMARY_KEY_MEMBER_SIZE
 
 typedef struct {
     audit_summary_key_t key;
