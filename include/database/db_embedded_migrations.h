@@ -2012,6 +2012,13 @@ static const char migration_0084_down[] =
     "-- Retain additive metadata and deletion inventory: removing it would orphan media.\n"
     "SELECT 1;\n";
 
+static const char migration_0085_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_storage_migration_recording_state\n"
+    "    ON storage_migration_jobs(recording_id, state);";
+
+static const char migration_0085_down[] =
+    "DROP INDEX IF EXISTS idx_storage_migration_recording_state;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2601,8 +2608,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0084_down,
         .is_embedded = true
     },
+    {
+        .version = "0085",
+        .description = "index_recording_migration_lookups",
+        .sql_up = migration_0085_up,
+        .sql_down = migration_0085_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 84
+#define EMBEDDED_MIGRATIONS_COUNT 85
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
