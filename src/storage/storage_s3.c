@@ -121,15 +121,18 @@ bool storage_s3_validate(const storage_target_t *target, char *error, size_t len
     return message == NULL;
 }
 
-static int credentials_read(const storage_target_t *target, s3_credentials_t *credentials) {
+/* Credentials and operator attestations share the same protected file boundary. */
+static cJSON *private_json_read(const storage_target_t *target, const char *suffix) {
     const char *directory = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
     if (!directory) directory = "/etc/lightnvr/archive-credentials";
-    if (!safe_identifier(target->credential_ref, sizeof(target->credential_ref), false)) return -1;
+    if (!safe_identifier(target->credential_ref, sizeof(target->credential_ref), false)) return NULL;
+    char filename[sizeof(target->credential_ref) + 32];
+    snprintf(filename, sizeof(filename), "%s%s", target->credential_ref, suffix);
     int dir = open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    if (dir < 0) return -1;
-    int descriptor = openat(dir, target->credential_ref, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (dir < 0) return NULL;
+    int descriptor = openat(dir, filename, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     close(dir);
-    if (descriptor < 0) return -1;
+    if (descriptor < 0) return NULL;
     struct stat status;
     char buffer[S3_SECRET_LIMIT + 1];
     bool valid = fstat(descriptor, &status) == 0 && S_ISREG(status.st_mode) &&
@@ -137,14 +140,19 @@ static int credentials_read(const storage_target_t *target, s3_credentials_t *cr
         status.st_size > 0 && status.st_size <= S3_SECRET_LIMIT;
     ssize_t count = valid ? read(descriptor, buffer, sizeof(buffer) - 1) : -1;
     close(descriptor);
-    if (count <= 0 || count != status.st_size) return -1;
+    if (count <= 0 || count != status.st_size) return NULL;
     buffer[count] = 0;
     cJSON *json = cJSON_Parse(buffer);
     wipe(buffer, sizeof(buffer));
+    return json;
+}
+
+static int credentials_read(const storage_target_t *target, s3_credentials_t *credentials) {
+    cJSON *json = private_json_read(target, "");
     const cJSON *access = cJSON_GetObjectItemCaseSensitive(json, "access_key_id");
     const cJSON *secret = cJSON_GetObjectItemCaseSensitive(json, "secret_access_key");
     const cJSON *token = cJSON_GetObjectItemCaseSensitive(json, "session_token");
-    valid = cJSON_IsString(access) && cJSON_IsString(secret) &&
+    bool valid = cJSON_IsString(access) && cJSON_IsString(secret) &&
         access->valuestring[0] && secret->valuestring[0] &&
         strlen(access->valuestring) < sizeof(credentials->access) &&
         strlen(secret->valuestring) < sizeof(credentials->secret) &&
@@ -235,6 +243,19 @@ static int request(const storage_target_t *target, const char *key, const char *
     snprintf(raw_key, sizeof(raw_key), "%s%s%s", key ? prefix : "",
              key && *prefix && prefix[strlen(prefix) - 1] != '/' ? "/" : "", key ? key : "");
     char *encoded = curl ? curl_easy_escape(curl, raw_key, 0) : NULL;
+    /* S3 SigV4 preserves object-key path separators. Escaping a slash as %2F
+     * signs a different canonical URI on providers such as Spaces. Literal
+     * percent signs stay escaped, so a key containing "%2F" is not a slash. */
+    if (encoded) {
+        char *read = encoded, *write = encoded;
+        while (*read) {
+            if (!strncmp(read, "%2F", 3)) {
+                *write++ = '/';
+                read += 3;
+            } else *write++ = *read++;
+        }
+        *write = 0;
+    }
     char url[4 * MAX_PATH_LENGTH + 512];
     char endpoint[MAX_PATH_LENGTH];
     safe_strcpy(endpoint, target->endpoint, sizeof(endpoint), 0);
@@ -681,6 +702,28 @@ static bool safe_lifecycle(char *body) {
     return safe;
 }
 
+/* Some providers deny lifecycle GET to bucket-scoped object credentials.
+ * A trusted operator may supply a fresh, bucket-bound inspection beside the
+ * credentials. Never infer safety from a 403 or bypass a readable unsafe rule.
+ * Refresh at least every 30 minutes; stale/malformed files fail closed. */
+static bool lifecycle_attested(const storage_target_t *target) {
+    cJSON *json = private_json_read(target, ".lifecycle.json");
+    const cJSON *endpoint = cJSON_GetObjectItemCaseSensitive(json, "endpoint");
+    const cJSON *region = cJSON_GetObjectItemCaseSensitive(json, "region");
+    const cJSON *bucket = cJSON_GetObjectItemCaseSensitive(json, "bucket");
+    const cJSON *checked = cJSON_GetObjectItemCaseSensitive(json, "checked_at");
+    const cJSON *xml = cJSON_GetObjectItemCaseSensitive(json, "lifecycle_configuration_xml");
+    double now = (double)time(NULL);
+    bool valid = cJSON_IsString(endpoint) && !strcmp(endpoint->valuestring, target->endpoint) &&
+        cJSON_IsString(region) && !strcmp(region->valuestring, target->region) &&
+        cJSON_IsString(bucket) && !strcmp(bucket->valuestring, target->bucket) &&
+        cJSON_IsNumber(checked) && checked->valuedouble > 0 &&
+        checked->valuedouble <= now && now - checked->valuedouble < 3600 &&
+        cJSON_IsString(xml) && safe_lifecycle(xml->valuestring);
+    cJSON_Delete(json);
+    return valid;
+}
+
 int storage_s3_probe(storage_target_t *target, bool write_test) {
     char error[STORAGE_TARGET_ERROR_MAX] = {0};
     char *body = calloc(1, S3_REPLY_LIMIT);
@@ -696,7 +739,10 @@ int storage_s3_probe(storage_target_t *target, bool write_test) {
         io.length = 0; io.bytes = 0;
         result = request(target, NULL, "lifecycle", "GET", NULL, 0, NULL, &io, NULL, error);
         if (result == STORAGE_S3_MISSING) result = 0;
-        else if (result == 0 && !safe_lifecycle(body)) {
+        else if (result != 0 && io.status == 403) {
+            if (lifecycle_attested(target)) result = 0;
+            else error_set(error, "Lifecycle inspection denied; a fresh operator-verified .lifecycle.json file is required with bucket-scoped credentials");
+        } else if (result == 0 && !safe_lifecycle(body)) {
             error_set(error, "Bucket lifecycle may only abort incomplete uploads after 1-7 days; expiry and transitions are unsupported");
             result = STORAGE_S3_CONFLICT;
         }
