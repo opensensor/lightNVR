@@ -1007,6 +1007,113 @@ void test_failed_summary_write_is_dropped_without_crashing(void) {
     TEST_ASSERT_EQUAL_UINT(0, audit_log_flush_summaries(false));
 }
 
+static void settings_request(http_request_t *req, const char *method,
+                             const char *body) {
+    http_request_init(req);
+    safe_strcpy(req->path, "/api/audit/settings", sizeof(req->path), 0);
+    safe_strcpy(req->method_str, method, sizeof(req->method_str), 0);
+    if (body) {
+        /* http_request_t.body is void *; the handler only reads it. */
+        req->body = (void *)body;
+        req->body_len = strlen(body);
+    }
+}
+
+static int64_t audit_rows_for_action(const char *action) {
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, action, sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    int64_t total = page.total;
+    db_audit_page_free(&page);
+    return total;
+}
+
+void test_audit_settings_get_lists_catalog_modes(void) {
+    http_request_t req;
+    settings_request(&req, "GET", NULL);
+    http_response_t res;
+    http_response_init(&res);
+    handle_get_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(root));
+    TEST_ASSERT_EQUAL_INT(AUDIT_SUMMARY_WINDOW_SECONDS,
+        cJSON_GetObjectItemCaseSensitive(root, "summary_window_seconds")->valueint);
+    cJSON *modes = cJSON_GetObjectItemCaseSensitive(root, "allowed_decision_modes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(modes));
+    int catalog_count = 0;
+    TEST_ASSERT_NOT_NULL(authorization_action_catalog(&catalog_count));
+    TEST_ASSERT_EQUAL_INT(catalog_count, cJSON_GetArraySize(modes));
+    cJSON *first = cJSON_GetArrayItem(modes, 0);
+    TEST_ASSERT_EQUAL_STRING("live.view",
+        cJSON_GetObjectItemCaseSensitive(first, "action")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("Live video",
+        cJSON_GetObjectItemCaseSensitive(first, "category")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("record",
+        cJSON_GetObjectItemCaseSensitive(first, "mode")->valuestring);
+    cJSON_Delete(root);
+    http_response_free(&res);
+}
+
+void test_audit_settings_put_modes_only_updates_modes(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"allowed_decision_modes\":{\"live.view\":\"summarize\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    TEST_ASSERT_NULL(strstr(res.body, "pruned_events"));
+    TEST_ASSERT_NOT_NULL(strstr(res.body, "\"retention_days\":365"));
+    http_response_free(&res);
+
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    audit_decision_mode_t stored[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(stored));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, stored[AUTHZ_LIVE_VIEW]);
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_audit_settings_put_rejects_invalid_body_atomically(void) {
+    const char *bodies[] = {
+        "{\"retention_days\":30,\"allowed_decision_modes\":{\"live.view\":\"summarize\",\"no.such.action\":\"off\"}}",
+        "{\"retention_days\":30,\"allowed_decision_modes\":{\"live.view\":\"loud\"}}",
+        "{\"retention_days\":0,\"allowed_decision_modes\":{\"live.view\":\"summarize\"}}",
+        "{\"allowed_decision_modes\":[\"live.view\"]}",
+        "{}",
+    };
+    for (size_t i = 0; i < sizeof(bodies) / sizeof(bodies[0]); i++) {
+        http_request_t req;
+        settings_request(&req, "PUT", bodies[i]);
+        http_response_t res;
+        http_response_init(&res);
+        handle_put_audit_settings(&req, &res);
+        TEST_ASSERT_EQUAL_INT(400, res.status_code);
+        http_response_free(&res);
+    }
+    int retention_days = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_get_retention_days(&retention_days));
+    TEST_ASSERT_EQUAL_INT(365, retention_days);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_audit_settings_put_unchanged_modes_writes_no_event(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"allowed_decision_modes\":{\"live.view\":\"record\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    http_response_free(&res);
+    TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -1052,6 +1159,10 @@ int main(void) {
     RUN_TEST(test_full_table_flushes_early_without_losing_counts);
     RUN_TEST(test_mode_change_flushes_pending_summaries);
     RUN_TEST(test_failed_summary_write_is_dropped_without_crashing);
+    RUN_TEST(test_audit_settings_get_lists_catalog_modes);
+    RUN_TEST(test_audit_settings_put_modes_only_updates_modes);
+    RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
+    RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
     int result = UNITY_END();
 
     shutdown_database();
