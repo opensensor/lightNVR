@@ -69,6 +69,9 @@ def inspect_bucket(client, endpoint, region, bucket):
                 or error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") != 404):
             raise
         configuration = {}
+    else:
+        if "Rules" not in configuration:
+            raise ValueError("Successful lifecycle inspection did not contain Rules")
     return {"endpoint": endpoint, "region": region, "bucket": bucket,
             "checked_at": checked_at, "lifecycle_configuration_xml": lifecycle_xml(configuration)}
 

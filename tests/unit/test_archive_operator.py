@@ -49,6 +49,13 @@ class LifecycleInspectionTests(unittest.TestCase):
                 self.inspect(client)
             client.get_bucket_lifecycle_configuration.assert_not_called()
 
+    def test_success_without_lifecycle_rules_is_not_treated_as_missing(self):
+        client = Mock()
+        client.get_bucket_versioning.return_value = {}
+        client.get_bucket_lifecycle_configuration.return_value = {"ResponseMetadata": {}}
+        with self.assertRaises(ValueError):
+            self.inspect(client)
+
     def test_abort_rule_and_absent_configuration(self):
         self.assertEqual("LifecycleConfiguration", ET.fromstring(operator.lifecycle_xml({})).tag)
         rule = {"ID": "cleanup", "Status": "Enabled", "Filter": {"Prefix": "recordings/"},
