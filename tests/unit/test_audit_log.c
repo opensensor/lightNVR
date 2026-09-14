@@ -1114,6 +1114,40 @@ void test_audit_settings_put_unchanged_modes_writes_no_event(void) {
     TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
 }
 
+void test_query_filters_by_details_event_type(void) {
+    audit_event_input_t summary = event_input("request-summary", "live.view", "allowed");
+    summary.details_json = "{\"event_type\":\"authorization.summary\",\"count\":4}";
+    audit_event_input_t decision = event_input("request-decision", "live.view", "allowed");
+    decision.details_json = "{\"event_type\":\"authorization.decision\"}";
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&summary, NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&decision, NULL));
+
+    audit_query_t query = {.page = 1, .page_size = 20};
+    safe_strcpy(query.event_type, "authorization.summary", sizeof(query.event_type), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT64(1, page.total);
+    TEST_ASSERT_EQUAL_STRING("request-summary", page.events[0].request_id);
+    db_audit_page_free(&page);
+
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.path, "/api/audit/events", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    safe_strcpy(req.query_string,
+                "page=1&page_size=10&action=live.view&event_type=authorization.summary",
+                sizeof(req.query_string), 0);
+    http_response_t res;
+    http_response_init(&res);
+    handle_get_audit_events(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *list = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(list));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(list, "count")->valueint);
+    cJSON_Delete(list);
+    http_response_free(&res);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -1163,6 +1197,7 @@ int main(void) {
     RUN_TEST(test_audit_settings_put_modes_only_updates_modes);
     RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
     RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
+    RUN_TEST(test_query_filters_by_details_event_type);
     int result = UNITY_END();
 
     shutdown_database();

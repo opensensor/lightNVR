@@ -285,6 +285,9 @@ static void add_query_filters(char *sql, size_t sql_size,
     if (query->outcome[0]) safe_strcat(sql, " AND outcome=?", sql_size);
     if (query->target_uuid[0]) safe_strcat(sql, " AND target_uuid=?", sql_size);
     if (query->request_id[0]) safe_strcat(sql, " AND request_id=?", sql_size);
+    if (query->event_type[0]) {
+        safe_strcat(sql, " AND json_extract(details_json,'$.event_type')=?", sql_size);
+    }
 }
 
 static int bind_query_filters(sqlite3_stmt *stmt,
@@ -308,6 +311,9 @@ static int bind_query_filters(sqlite3_stmt *stmt,
     if (query->request_id[0]) {
         sqlite3_bind_text(stmt, index++, query->request_id, -1,
                           SQLITE_TRANSIENT);
+    }
+    if (query->event_type[0]) {
+        sqlite3_bind_text(stmt, index++, query->event_type, -1, SQLITE_TRANSIENT);
     }
     return index;
 }

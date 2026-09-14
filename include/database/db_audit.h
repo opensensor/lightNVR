@@ -94,6 +94,7 @@ typedef struct {
     char outcome[AUDIT_OUTCOME_MAX];
     char target_uuid[AUDIT_QUERY_VALUE_MAX];
     char request_id[AUDIT_REQUEST_ID_MAX];
+    char event_type[AUDIT_QUERY_VALUE_MAX];
 } audit_query_t;
 
 typedef struct {

@@ -80,6 +80,8 @@ static bool parse_audit_query(const http_request_t *req, audit_query_t *query,
                     sizeof(query->target_uuid));
     read_text_query(req, "request_id", query->request_id,
                     sizeof(query->request_id));
+    read_text_query(req, "event_type", query->event_type,
+                    sizeof(query->event_type));
     return true;
 }
 
