@@ -61,6 +61,51 @@ certification: run the connection test and outage/restart pilot on your actual
 provider before moving production footage. Bucket policy changes outside LightNVR
 remain the operator's responsibility; do not modify managed object keys manually.
 
+### DigitalOcean Spaces and scoped credentials
+
+Spaces bucket-scoped Read/Write/Delete keys can inspect versioning and manage
+objects, but lifecycle inspection requires an account-wide key. See the provider's
+[permissions table](https://docs.digitalocean.com/reference/api/spaces/).
+Keep the account-wide key in the trusted provisioning/control plane. Do not mount
+it into a tenant NVR.
+
+The control plane can use
+[verify_bucket_lifecycle.py](../deployment/archive/verify_bucket_lifecycle.py)
+with Python 3, `boto3`, and its operator AWS credentials to inspect the dedicated
+bucket. It rejects versioned buckets and unsafe lifecycle actions, and atomically
+writes a mode-0600 verification file:
+
+```sh
+python3 deployment/archive/verify_bucket_lifecycle.py \
+  --endpoint https://nyc3.digitaloceanspaces.com --region nyc3 \
+  --bucket YOUR_BUCKET --output /out/instance.lifecycle.json
+```
+
+Deliver that file beside the tenant's ordinary credential file, using the same
+reference plus `.lifecycle.json`. For credential reference `instance`, the files
+are `instance` and `instance.lifecycle.json`. Both must be ordinary files owned by
+root or the NVR UID without group/other access. A Kubernetes projected Secret must
+be copied into ordinary files, as with credentials. An init container alone is
+insufficient for continuous refresh: a trusted sidecar must atomically copy updates
+into the mounted directory. The tenant must not have permission to update the
+source Secret or access operator credentials.
+
+Refresh and deliver the inspection every 15–30 minutes. It is valid for less than
+one hour from inspection, binds the exact endpoint, region and bucket, and carries
+the inspected lifecycle rules. Only a denied lifecycle GET (HTTP 403) may use it.
+Readable unsafe rules, failed versioning checks, public object access, provider
+outages, stale timestamps, and malformed files still fail the connection test.
+No verification file is needed when the tenant's key can inspect lifecycle rules.
+
+Treat this file as a short-lived operator assertion, not a provider-signed
+certificate. The control plane must own bucket configuration and deliver new
+inspections securely; changes to lifecycle rules can take up to the remaining
+one-hour validity plus the target probe interval to be noticed. If refresh fails,
+new archival stops after verification expires and the target is reprobed; existing
+objects remain readable with the scoped object credentials. Monitor refresh age
+and the archive backlog. Do not synthesize a successful verification after a failed
+inspection. This helper does not provision a bucket or schedule refresh for you.
+
 For NFS/SAN, mount the filesystem outside LightNVR and add a filesystem target
 with its mount guard enabled. The same archive policy and verified migration
 worker apply. S3 targets cannot be capture defaults, capture pool members selected

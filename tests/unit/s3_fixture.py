@@ -68,6 +68,10 @@ class S3Handler(BaseHTTPRequestHandler):
             return self.respond(413)
         body = self.rfile.read(length) if length else b''
         url = urlsplit(self.path)
+        # S3 canonical paths preserve key separators. Spaces rejects signatures
+        # using encoded separators even though the decoded object key matches.
+        if '%2F' in url.path.upper():
+            return self.respond(403, b'<Error><Code>SignatureDoesNotMatch</Code></Error>')
         path = unquote(url.path).strip('/')
         bucket, _, key = path.partition('/')
         anonymous_public = bucket == 'public' and self.command == 'GET' and not self.headers.get('Authorization')
@@ -78,6 +82,10 @@ class S3Handler(BaseHTTPRequestHandler):
                 value = b'<Status>Enabled</Status>' if bucket == 'versioned' else b''
                 return self.respond(200, b'<VersioningConfiguration>' + value + b'</VersioningConfiguration>')
             if url.query == 'lifecycle':
+                if bucket == 'scoped-lifecycle':
+                    return self.respond(403)
+                if bucket == 'lifecycle-unavailable':
+                    return self.respond(503)
                 if bucket == 'expiry':
                     return self.respond(200, b'<LifecycleConfiguration><Rule><Status>Enabled</Status><Expiration><Days>1</Days></Expiration></Rule></LifecycleConfiguration>')
                 if bucket == 'abort-only':

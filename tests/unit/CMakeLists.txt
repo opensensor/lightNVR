@@ -51,6 +51,8 @@ macro(add_layer2_test TEST_NAME)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(NAME test_storage_archive_s3 COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/s3_fixture.py $<TARGET_FILE:test_storage_archive>)
+        add_test(NAME test_storage_archive_operator COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_archive_operator.py)
     else()
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endif()
