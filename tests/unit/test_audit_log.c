@@ -1148,6 +1148,26 @@ void test_query_filters_by_details_event_type(void) {
     http_response_free(&res);
 }
 
+void test_decision_modes_init_loads_stored_modes_into_memory(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY,
+        "{\"live.view\":\"summarize\",\"system.admin\":\"off\"}"));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT(0, audit_log_decision_modes_init());
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_OFF,
+                          audit_log_get_decision_mode(AUTHZ_SYSTEM_ADMIN));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_RECORDINGS_REPLAY));
+
+    /* The summary table is live after init. */
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -1198,6 +1218,7 @@ int main(void) {
     RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
     RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
     RUN_TEST(test_query_filters_by_details_event_type);
+    RUN_TEST(test_decision_modes_init_loads_stored_modes_into_memory);
     int result = UNITY_END();
 
     shutdown_database();
