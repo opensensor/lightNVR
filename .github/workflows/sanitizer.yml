@@ -24,7 +24,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y \
-            git build-essential cmake pkg-config \
+            git build-essential cmake pkg-config python3 \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
             libsqlite3-dev libuv1-dev libllhttp-dev libcurl4-openssl-dev \
             libcjson-dev libmbedtls-dev
