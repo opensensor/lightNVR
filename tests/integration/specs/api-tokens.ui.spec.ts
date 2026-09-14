@@ -28,7 +28,9 @@ test.describe('API token permission catalog @ui @users', () => {
           '/api/auth/verify': { ...admin, role: 'admin', role_id: 0, authenticated: true },
           '/api/auth/users': { users: [admin] },
           '/api/authorization/actions': { actions, count: actions.length },
-          '/api/camera-collections': { collections: [] },
+          '/api/camera-collections': { collections: [
+            { uuid: 'north', name: 'North cameras', shared: true, effective_count: 2 },
+          ] },
           '/api/locations': { locations: [] },
           '/api/camera-tags': { tags: [] },
         };
@@ -61,12 +63,38 @@ test.describe('API token permission catalog @ui @users', () => {
       }
       await expect(dialog).not.toContainText('Current endpoint coverage:');
 
-      await dialog.getByLabel('Integration name').fill('Read-only integration');
+      await dialog.getByLabel('Integration name').fill('Fleet integration');
       await dialog.getByRole('checkbox', { name: /^live\.view/ }).check();
       await dialog.getByRole('checkbox', { name: /^lpr\.read/ }).check();
-      await dialog.getByRole('button', { name: 'Create token', exact: true }).click();
+      const createButton = dialog.getByRole('button', { name: 'Create token', exact: true });
+      const scope = dialog.getByRole('combobox', { name: /^Camera scope/ });
+      const scopeError = dialog.getByText('Non-camera permissions require Entire camera fleet scope. Choose that scope or remove those permissions.');
+      for (const scopeType of ['collection', 'selector']) {
+        await scope.selectOption(scopeType);
+        if (scopeType === 'collection') {
+          await dialog.getByRole('combobox', { name: /^Shared camera collection/ }).selectOption('north');
+        }
+        await expect(createButton).toBeEnabled();
+        for (const key of ['storage.configure', 'events.configure', 'users.manage', 'system.admin']) {
+          const checkbox = dialog.getByRole('checkbox', { name: new RegExp(`^${key.replace('.', '\\.')}`) });
+          await checkbox.check();
+          await expect(scopeError).toBeVisible();
+          await expect(createButton).toBeDisabled();
+          await expect(scope).toHaveValue(scopeType);
+          expect(submitted).toBeUndefined();
+          await checkbox.uncheck();
+          await expect(scopeError).toHaveCount(0);
+          await expect(createButton).toBeEnabled();
+        }
+      }
+      await dialog.getByRole('checkbox', { name: /^system\.admin/ }).check();
+      await expect(createButton).toBeDisabled();
+      await scope.selectOption('all');
+      await expect(scopeError).toHaveCount(0);
+      await expect(createButton).toBeEnabled();
+      await createButton.click();
       await expect(dialog.locator('input[readonly]')).toHaveValue('fixture-token-secret');
-      expect(submitted.actions).toEqual(['live.view', 'lpr.read']);
+      expect(submitted.actions).toEqual(['live.view', 'lpr.read', 'system.admin']);
       expect(submitted.scope).toEqual({ type: 'all' });
     });
   }

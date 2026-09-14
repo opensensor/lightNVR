@@ -27,7 +27,7 @@ export function selectableTokenActions(actions = []) {
 
 export function validateTokenDraft(
   draft,
-  actionKeys = null,
+  actions = null,
   collectionUuids = null
 ) {
   if (!draft?.description?.trim()) return 'missing_description';
@@ -38,11 +38,19 @@ export function validateTokenDraft(
   if (!Array.isArray(draft.actionKeys) || draft.actionKeys.length === 0) {
     return 'missing_actions';
   }
-  if (actionKeys && draft.actionKeys.some((key) => !actionKeys.has(key))) {
+  const actionsByKey = actions && new Map(actions.map((action) => [action.key, action]));
+  if (actionsByKey && draft.actionKeys.some((key) => !actionsByKey.has(key))) {
     return 'invalid_action';
   }
   if (!['all', 'collection', 'selector'].includes(draft.scopeType)) {
     return 'invalid_scope';
+  }
+  // Global requests have no camera to match against a collection or selector.
+  // Require explicit camera scope metadata for every selected action, including
+  // mixed selections, without silently widening the user's chosen scope.
+  if (draft.scopeType !== 'all' && actionsByKey &&
+      draft.actionKeys.some((key) => actionsByKey.get(key).camera_scoped !== true)) {
+    return 'requires_all_scope';
   }
   if (draft.scopeType === 'collection' &&
       (!draft.collectionUuid ||

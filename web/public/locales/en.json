@@ -774,6 +774,7 @@
   "tokens.validation.missing_actions": "Choose at least one allowed action.",
   "tokens.validation.invalid_action": "One or more selected actions are not token-enabled on this server.",
   "tokens.validation.invalid_scope": "Choose a valid camera scope.",
+  "tokens.validation.requires_all_scope": "Non-camera permissions require Entire camera fleet scope. Choose that scope or remove those permissions.",
   "tokens.validation.missing_collection": "Choose an available shared collection.",
   "tokens.validation.invalid_selector": "Complete or correct the custom camera selector.",
   "tokens.secret.oneTime": "Shown once",

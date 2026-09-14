@@ -170,11 +170,10 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [creating, legacyGenerating, onClose, revealed]);
 
-  const actionKeys = useMemo(() => new Set(actions.map((action) => action.key)), [actions]);
   const collectionUuids = useMemo(() => new Set(collections.map((collection) => collection.uuid)), [collections]);
   const validationCode = useMemo(
-    () => validateTokenDraft(draft, actionKeys, collectionUuids),
-    [actionKeys, collectionUuids, draft]
+    () => validateTokenDraft(draft, actions, collectionUuids),
+    [actions, collectionUuids, draft]
   );
   const visibleTokens = useMemo(
     () => showInactive ? tokens : tokens.filter((token) => getTokenStatus(token) === 'active'),
