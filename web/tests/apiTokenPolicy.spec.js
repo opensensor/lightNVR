@@ -9,30 +9,80 @@ import {
 
 describe('scoped API token UI helpers', () => {
   const actions = [
-    { key: 'live.view' },
-    { key: 'recordings.export' },
-    { key: 'ptz.control' },
-    { key: 'recording.delete' },
+    { key: 'live.view', enforced: true },
+    { key: 'audio.listen', enforced: false },
+    { key: 'audio.talk', enforced: false },
+    { key: 'recordings.replay', enforced: true },
+    { key: 'recordings.export', enforced: true },
+    { key: 'snapshot.create', enforced: true },
+    { key: 'ptz.control', enforced: true },
+    { key: 'evidence.protect', enforced: true },
+    { key: 'recording.delete', enforced: true },
+    { key: 'camera.configure', enforced: true },
+    { key: 'fleet.execute_job', enforced: false },
+    { key: 'storage.configure', enforced: true },
+    { key: 'events.configure', enforced: true },
+    { key: 'users.manage', enforced: true },
+    { key: 'system.admin', enforced: true },
+    { key: 'lpr.read', enforced: true },
+    { key: 'lpr.search', enforced: true },
+    { key: 'lpr.export', enforced: true },
+    { key: 'lpr.delete', enforced: true },
   ];
 
-  test('offers only actions whose endpoints centrally enforce token scope', () => {
+  test('offers the full enforced server catalog, including read and administration actions', () => {
     expect(selectableTokenActions(actions).map((action) => action.key)).toEqual([
+      'live.view',
+      'recordings.replay',
       'recordings.export',
+      'snapshot.create',
       'ptz.control',
+      'evidence.protect',
       'recording.delete',
+      'camera.configure',
+      'storage.configure',
+      'events.configure',
+      'users.manage',
+      'system.admin',
+      'lpr.read',
+      'lpr.search',
+      'lpr.export',
+      'lpr.delete',
     ]);
   });
 
-  test('drops actions the server reports as unenforced', () => {
+  test('requires explicit server enforcement instead of assuming old permissions are safe', () => {
     const reported = [
       { key: 'recordings.export', enforced: true },
       { key: 'ptz.control', enforced: false },
       { key: 'recording.delete' },
+      { key: 'evidence.protect', enforced: null },
+      { key: 'live.view', enforced: 'true' },
     ];
     expect(selectableTokenActions(reported).map((action) => action.key)).toEqual([
       'recordings.export',
-      'recording.delete',
     ]);
+  });
+
+  test('exposes newly enforced actions without a client release and preserves metadata', () => {
+    const futureAction = {
+      key: 'future.action',
+      category: 'New feature',
+      description: 'A newly enforced server action',
+      camera_scoped: true,
+      destructive: false,
+      enforced: true,
+    };
+    expect(selectableTokenActions([futureAction])).toEqual([futureAction]);
+    const draft = { ...createTokenDraft(), description: 'Integration',
+      actionKeys: [futureAction.key] };
+    expect(validateTokenDraft(draft, new Set([futureAction.key]))).toBe('');
+    expect(buildTokenPayload(draft, 1000).actions).toEqual([futureAction.key]);
+  });
+
+  test('handles an empty catalog', () => {
+    expect(selectableTokenActions()).toEqual([]);
+    expect(selectableTokenActions([])).toEqual([]);
   });
 
   test('validates required fields and scoped resources', () => {
