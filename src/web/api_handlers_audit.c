@@ -404,6 +404,18 @@ void handle_put_audit_settings(const http_request_t *req,
     cJSON *changes = cJSON_CreateArray();
     int count = 0;
     const authorization_action_metadata_t *catalog = authorization_action_catalog(&count);
+    if (!changes) {
+        /* Allocation failure must not silently drop a validated mode change:
+         * without the array we cannot build the audit event, so fail hard
+         * rather than fall through to a 200 that never persisted it. */
+        for (int i = 0; catalog && i < count; i++) {
+            if (previous[catalog[i].action] != next[catalog[i].action]) {
+                cJSON_Delete(body);
+                http_response_set_json_error(res, 500, "Failed to create response");
+                return;
+            }
+        }
+    }
     for (int i = 0; changes && catalog && i < count; i++) {
         authorization_action_t action = catalog[i].action;
         if (previous[action] == next[action]) continue;
