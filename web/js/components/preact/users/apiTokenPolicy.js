@@ -1,16 +1,6 @@
 export const TOKEN_MAX_LIFETIME_DAYS = 365;
 export const TOKEN_EXPIRY_OPTIONS = [7, 30, 90, 365];
 
-// Scoped tokens are deliberately offered only for endpoints that immediately
-// evaluate their action and camera scope. Expand this list as endpoint coverage
-// moves from legacy checks to the centralized evaluator.
-export const ENFORCED_SCOPED_TOKEN_ACTIONS = new Set([
-  'recordings.export',
-  'ptz.control',
-  'evidence.protect',
-  'recording.delete',
-]);
-
 export const DEFAULT_TOKEN_SELECTOR = {
   version: 1,
   expression: { op: 'all' },
@@ -28,18 +18,16 @@ export function createTokenDraft() {
   };
 }
 
-// Offer an action only when this client believes a scoped token can use it AND
-// the server agrees the action is enforced. Intersecting the two means the list
-// can only shrink toward reality: a client that is ahead of the daemon never
-// offers a token permission that would be silently ignored.
+// The server catalog owns endpoint enforcement coverage. A client allowlist
+// goes stale as handlers gain token support. Require an explicit true flag so
+// older servers with missing metadata do not offer unverified permissions.
 export function selectableTokenActions(actions = []) {
-  return actions.filter((action) =>
-    ENFORCED_SCOPED_TOKEN_ACTIONS.has(action.key) && action?.enforced !== false);
+  return actions.filter((action) => action?.enforced === true);
 }
 
 export function validateTokenDraft(
   draft,
-  actionKeys = null,
+  actions = null,
   collectionUuids = null
 ) {
   if (!draft?.description?.trim()) return 'missing_description';
@@ -50,11 +38,19 @@ export function validateTokenDraft(
   if (!Array.isArray(draft.actionKeys) || draft.actionKeys.length === 0) {
     return 'missing_actions';
   }
-  if (actionKeys && draft.actionKeys.some((key) => !actionKeys.has(key))) {
+  const actionsByKey = actions && new Map(actions.map((action) => [action.key, action]));
+  if (actionsByKey && draft.actionKeys.some((key) => !actionsByKey.has(key))) {
     return 'invalid_action';
   }
   if (!['all', 'collection', 'selector'].includes(draft.scopeType)) {
     return 'invalid_scope';
+  }
+  // Global requests have no camera to match against a collection or selector.
+  // Require explicit camera scope metadata for every selected action, including
+  // mixed selections, without silently widening the user's chosen scope.
+  if (draft.scopeType !== 'all' && actionsByKey &&
+      draft.actionKeys.some((key) => actionsByKey.get(key).camera_scoped !== true)) {
+    return 'requires_all_scope';
   }
   if (draft.scopeType === 'collection' &&
       (!draft.collectionUuid ||
