@@ -17,6 +17,7 @@
 #include "database/db_auth.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
+#include "database/db_system_settings.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_audit.h"
@@ -59,6 +60,7 @@ void setUp(void) {
                           sqlite3_exec(db, "DELETE FROM audit_events;", NULL,
                                       NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(365));
+    db_set_system_setting(AUDIT_DECISION_MODES_SETTING_KEY, "{}");
     g_config.web_auth_enabled = false;
 }
 
@@ -750,6 +752,57 @@ void test_audit_api_denies_and_records_unauthenticated_access(void) {
     db_audit_page_free(&page);
 }
 
+void test_decision_modes_default_to_record_when_unset(void) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT];
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) modes[i] = AUDIT_DECISION_MODE_OFF;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(modes));
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, modes[i]);
+    }
+}
+
+void test_decision_modes_round_trip_and_store_only_non_defaults(void) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT] = {0};
+    modes[AUTHZ_LIVE_VIEW] = AUDIT_DECISION_MODE_SUMMARIZE;
+    modes[AUTHZ_SYSTEM_ADMIN] = AUDIT_DECISION_MODE_OFF;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_save_decision_modes(modes));
+
+    char stored[512];
+    TEST_ASSERT_EQUAL_INT(0, db_get_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY, stored, sizeof(stored)));
+    cJSON *object = cJSON_Parse(stored);
+    TEST_ASSERT_TRUE(cJSON_IsObject(object));
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(object));
+    TEST_ASSERT_EQUAL_STRING("summarize",
+        cJSON_GetObjectItemCaseSensitive(object, "live.view")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("off",
+        cJSON_GetObjectItemCaseSensitive(object, "system.admin")->valuestring);
+    cJSON_Delete(object);
+
+    audit_decision_mode_t loaded[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(modes[i], loaded[i]);
+    }
+}
+
+void test_decision_modes_ignore_invalid_stored_entries(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY,
+        "{\"live.view\":\"summarize\",\"no.such.action\":\"off\","
+        "\"system.admin\":\"shout\",\"recordings.replay\":7}"));
+    audit_decision_mode_t loaded[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, loaded[AUTHZ_LIVE_VIEW]);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_SYSTEM_ADMIN]);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_RECORDINGS_REPLAY]);
+
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY, "not json"));
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_LIVE_VIEW]);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -781,6 +834,9 @@ int main(void) {
     RUN_TEST(test_audit_http_settings_list_and_csv_export);
     RUN_TEST(test_login_success_and_denial_are_audited_without_credentials);
     RUN_TEST(test_audit_api_denies_and_records_unauthenticated_access);
+    RUN_TEST(test_decision_modes_default_to_record_when_unset);
+    RUN_TEST(test_decision_modes_round_trip_and_store_only_non_defaults);
+    RUN_TEST(test_decision_modes_ignore_invalid_stored_entries);
     int result = UNITY_END();
 
     shutdown_database();
