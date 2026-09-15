@@ -194,7 +194,7 @@ static void csv_cell(FILE *stream, const char *value) {
                ((unsigned char)*cursor <= 0x20 || (unsigned char)*cursor == 0x7f)) {
             cursor++;
         }
-        if (strchr("=+-@", *cursor)) {
+        if (*cursor && strchr("=+-@", *cursor)) {
             /* Keep spreadsheet applications from interpreting exported cells. */
             fputc('\'', stream);
         }
