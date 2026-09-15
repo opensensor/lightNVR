@@ -391,7 +391,11 @@ void handle_put_audit_settings(const http_request_t *req,
 
     if (retention) {
         int previous_days = AUDIT_RETENTION_DEFAULT_DAYS;
-        db_audit_get_retention_days(&previous_days);
+        if (db_audit_get_retention_days(&previous_days) != 0) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 500, "Failed to load audit settings");
+            goto unlock_and_return;
+        }
         if (db_audit_set_retention_days(retention_days) != 0) {
             cJSON_Delete(body);
             http_response_set_json_error(res, 500, "Failed to save audit settings");
