@@ -451,18 +451,26 @@ void handle_put_audit_settings(const http_request_t *req,
         }
     }
     if (changes && cJSON_GetArraySize(changes) > 0) {
-        if (audit_log_set_decision_modes(next) != 0) {
+        /* Build the audit event before publishing the modes: an allocation
+         * failure here must not leave the new modes live with an event that
+         * omits the changes that produced them. */
+        cJSON *details = cJSON_CreateObject();
+        if (!details ||
+            !cJSON_AddStringToObject(details, "event_type", "audit.decision_modes.update") ||
+            !cJSON_AddItemToObject(details, "changes", changes)) {
+            cJSON_Delete(details);
             cJSON_Delete(changes);
             changes = NULL;
             cJSON_Delete(body);
-            http_response_set_json_error(res, 500, "Failed to save audit decision modes");
+            http_response_set_json_error(res, 500, "Failed to create response");
             goto unlock_and_return;
         }
-        cJSON *details = cJSON_CreateObject();
-        if (details) {
-            cJSON_AddStringToObject(details, "event_type", "audit.decision_modes.update");
-            cJSON_AddItemToObject(details, "changes", changes);
-            changes = NULL;
+        changes = NULL; /* details owns the array now */
+        if (audit_log_set_decision_modes(next) != 0) {
+            cJSON_Delete(details);
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 500, "Failed to save audit decision modes");
+            goto unlock_and_return;
         }
         audit_log_append(req, &user, "audit.settings.update", "audit_log", NULL,
                          "success", details);
