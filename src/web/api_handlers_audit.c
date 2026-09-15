@@ -188,9 +188,16 @@ void handle_get_audit_events(const http_request_t *req, http_response_t *res) {
 
 static void csv_cell(FILE *stream, const char *value) {
     fputc('"', stream);
-    if (value && strchr("=+-@", value[0])) {
-        /* Keep spreadsheet applications from interpreting exported cells. */
-        fputc('\'', stream);
+    if (value) {
+        const char *cursor = value;
+        while (*cursor &&
+               ((unsigned char)*cursor <= 0x20 || (unsigned char)*cursor == 0x7f)) {
+            cursor++;
+        }
+        if (strchr("=+-@", *cursor)) {
+            /* Keep spreadsheet applications from interpreting exported cells. */
+            fputc('\'', stream);
+        }
     }
     for (const char *cursor = value ? value : ""; *cursor; cursor++) {
         if (*cursor == '"') fputc('"', stream);
