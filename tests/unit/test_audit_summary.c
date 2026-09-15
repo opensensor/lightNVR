@@ -18,7 +18,6 @@ static audit_summary_key_t make_key(const char *remote_address, int64_t window_s
     audit_summary_key_init(&key);
     key.principal_user_id = 1;
     safe_strcpy(key.principal_username, "admin", sizeof(key.principal_username), 0);
-    safe_strcpy(key.auth_method, "session", sizeof(key.auth_method), 0);
     key.action = AUTHZ_LIVE_VIEW;
     safe_strcpy(key.target_type, "camera", sizeof(key.target_type), 0);
     safe_strcpy(key.target_uuid, "camera-1", sizeof(key.target_uuid), 0);

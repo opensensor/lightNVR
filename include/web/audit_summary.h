@@ -37,9 +37,6 @@
 typedef struct {
     int64_t principal_user_id;
     char principal_username[AUDIT_USERNAME_MAX];
-    char auth_method[AUDIT_AUTH_METHOD_MAX];
-    char api_token_uuid[AUDIT_EVENT_UUID_MAX];
-    char reserved_before_action[3]; /* pads to action's 4-byte alignment */
     int action;
     char target_type[AUDIT_TARGET_TYPE_MAX];
     char target_uuid[AUDIT_QUERY_VALUE_MAX];
@@ -52,9 +49,6 @@ typedef struct {
 _Static_assert(sizeof(audit_summary_key_t) ==
                    AUDIT_SUMMARY_KEY_MEMBER_SIZE(principal_user_id) +
                        AUDIT_SUMMARY_KEY_MEMBER_SIZE(principal_username) +
-                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(auth_method) +
-                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(api_token_uuid) +
-                       AUDIT_SUMMARY_KEY_MEMBER_SIZE(reserved_before_action) +
                        AUDIT_SUMMARY_KEY_MEMBER_SIZE(action) +
                        AUDIT_SUMMARY_KEY_MEMBER_SIZE(target_type) +
                        AUDIT_SUMMARY_KEY_MEMBER_SIZE(target_uuid) +
@@ -70,6 +64,9 @@ typedef struct {
     uint64_t count;
     int64_t first_at;
     int64_t last_at;
+    /* Credential metadata belongs to the first sample, not the grouping key. */
+    char auth_method[AUDIT_AUTH_METHOD_MAX];
+    char api_token_uuid[AUDIT_EVENT_UUID_MAX];
     char request_id[AUDIT_REQUEST_ID_MAX];
     char method[AUDIT_SUMMARY_METHOD_MAX];
     char path[AUDIT_SUMMARY_PATH_MAX];
@@ -78,6 +75,8 @@ typedef struct {
 } audit_summary_entry_t;
 
 typedef struct {
+    const char *auth_method;
+    const char *api_token_uuid;
     const char *request_id;
     const char *method;
     const char *path;

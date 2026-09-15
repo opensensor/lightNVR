@@ -437,11 +437,18 @@ void handle_put_audit_settings(const http_request_t *req,
         authorization_action_t action = catalog[i].action;
         if (previous[action] == next[action]) continue;
         cJSON *change = cJSON_CreateObject();
-        if (!change) continue;
-        cJSON_AddStringToObject(change, "action", catalog[i].key);
-        cJSON_AddStringToObject(change, "previous", audit_decision_mode_name(previous[action]));
-        cJSON_AddStringToObject(change, "mode", audit_decision_mode_name(next[action]));
-        cJSON_AddItemToArray(changes, change);
+        if (!change ||
+            !cJSON_AddStringToObject(change, "action", catalog[i].key) ||
+            !cJSON_AddStringToObject(change, "previous", audit_decision_mode_name(previous[action])) ||
+            !cJSON_AddStringToObject(change, "mode", audit_decision_mode_name(next[action])) ||
+            !cJSON_AddItemToArray(changes, change)) {
+            cJSON_Delete(change);
+            cJSON_Delete(changes);
+            changes = NULL;
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 500, "Failed to create response");
+            goto unlock_and_return;
+        }
     }
     if (changes && cJSON_GetArraySize(changes) > 0) {
         if (audit_log_set_decision_modes(next) != 0) {

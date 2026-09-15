@@ -291,6 +291,7 @@ optional query parameters:
 | `since`, `until` | Inclusive Unix timestamp bounds |
 | `principal_user_id` | Exact local user ID |
 | `action`, `outcome` | Exact action and outcome (`allowed`, `denied`, `success`, `failure`, or `error`) |
+| `event_type` | Exact `details.event_type` value (for example `authorization.summary`) |
 | `target_uuid`, `request_id` | Exact target or correlation ID |
 
 The response contains `page`, `page_size`, page `count`, complete filtered
@@ -365,6 +366,9 @@ outcomes. Changing modes records an `audit.settings.update` event. Summaries
 are written when their window closes, when modes change, when the summary
 table fills, and at shutdown; a crash can lose up to one window of summary
 counts.
+
+Summary authentication method and scoped-token UUID are taken from the first
+request; changing credentials does not create a separate summary group.
 
 `GET /api/audit/events` and its CSV export also accept `event_type`, matching
 `details.event_type` exactly (for example `authorization.summary`). This

@@ -123,6 +123,8 @@ audit_summary_add_result_t audit_summary_add(const audit_summary_key_t *key,
     slot->entry.first_at = now;
     slot->entry.last_at = now;
     if (sample) {
+        copy_sample_field(slot->entry.auth_method, sizeof(slot->entry.auth_method), sample->auth_method);
+        copy_sample_field(slot->entry.api_token_uuid, sizeof(slot->entry.api_token_uuid), sample->api_token_uuid);
         copy_sample_field(slot->entry.request_id, sizeof(slot->entry.request_id), sample->request_id);
         copy_sample_field(slot->entry.method, sizeof(slot->entry.method), sample->method);
         copy_sample_field(slot->entry.path, sizeof(slot->entry.path), sample->path);

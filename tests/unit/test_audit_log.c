@@ -6,7 +6,9 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <cjson/cJSON.h>
+#include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -995,6 +997,113 @@ void test_summaries_split_by_client_and_camera_but_not_path(void) {
     TEST_ASSERT_EQUAL_INT64(3, live_view_rows("allowed"));
 }
 
+void test_summary_groups_credentials_and_preserves_first_sample(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    http_request_t req;
+    decision_request(&req, "GET", "/api/streams", "192.0.2.10");
+    user_t user = decision_user();
+    user.authenticated_via_scoped_token = true;
+    safe_strcpy(user.authentication_method, "scoped_token", sizeof(user.authentication_method), 0);
+    safe_strcpy(user.api_token_uuid, "token-first", sizeof(user.api_token_uuid), 0);
+    audit_log_authorization(&req, &user, AUTHZ_LIVE_VIEW, NULL, NULL, "allowed");
+    safe_strcpy(user.api_token_uuid, "token-second", sizeof(user.api_token_uuid), 0);
+    audit_log_authorization(&req, &user, AUTHZ_LIVE_VIEW, NULL, NULL, "allowed");
+    user.authenticated_via_scoped_token = false;
+    safe_strcpy(user.authentication_method, "session", sizeof(user.authentication_method), 0);
+    audit_log_authorization(&req, &user, AUTHZ_LIVE_VIEW, NULL, NULL, "allowed");
+
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    audit_query_t query = {.page = 1, .page_size = 10};
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    TEST_ASSERT_EQUAL_STRING("scoped_token", page.events[0].auth_method);
+    TEST_ASSERT_EQUAL_STRING("token-first", page.events[0].api_token_uuid);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_NOT_NULL(details);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetObjectItemCaseSensitive(details, "count")->valueint);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+/* Pause a request after it selects summarize but before it adds its entry. */
+static pthread_mutex_t transition_test_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t transition_test_cond = PTHREAD_COND_INITIALIZER;
+static bool clock_entered, release_clock, transition_started, transition_done;
+static int transition_result;
+
+static int64_t paused_summary_clock(void) {
+    pthread_mutex_lock(&transition_test_mutex);
+    if (!clock_entered) {
+        clock_entered = true;
+        pthread_cond_broadcast(&transition_test_cond);
+        while (!release_clock) pthread_cond_wait(&transition_test_cond, &transition_test_mutex);
+    }
+    pthread_mutex_unlock(&transition_test_mutex);
+    return fake_now;
+}
+
+static void *paused_decision_worker(void *unused) {
+    (void)unused;
+    allow_decision("GET", "/api/streams", "192.0.2.10", "cam-1", "allowed");
+    return NULL;
+}
+
+static void *off_transition_worker(void *unused) {
+    (void)unused;
+    pthread_mutex_lock(&transition_test_mutex);
+    transition_started = true;
+    pthread_cond_broadcast(&transition_test_cond);
+    pthread_mutex_unlock(&transition_test_mutex);
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT] = {0};
+    modes[AUTHZ_LIVE_VIEW] = AUDIT_DECISION_MODE_OFF;
+    transition_result = audit_log_set_decision_modes(modes);
+    pthread_mutex_lock(&transition_test_mutex);
+    transition_done = true;
+    pthread_cond_broadcast(&transition_test_cond);
+    pthread_mutex_unlock(&transition_test_mutex);
+    return NULL;
+}
+
+void test_mode_transition_waits_for_inflight_summary(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    clock_entered = release_clock = transition_started = transition_done = false;
+    audit_log_set_clock_for_testing(paused_summary_clock);
+    pthread_t request_thread, transition_thread;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&request_thread, NULL, paused_decision_worker, NULL));
+    pthread_mutex_lock(&transition_test_mutex);
+    while (!clock_entered) pthread_cond_wait(&transition_test_cond, &transition_test_mutex);
+    pthread_mutex_unlock(&transition_test_mutex);
+    int create_result = pthread_create(&transition_thread, NULL, off_transition_worker, NULL);
+    pthread_mutex_lock(&transition_test_mutex);
+    if (create_result == 0) {
+        while (!transition_started) pthread_cond_wait(&transition_test_cond, &transition_test_mutex);
+        struct timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec++;
+        int wait_result = 0;
+        while (!transition_done && wait_result == 0) {
+            wait_result = pthread_cond_timedwait(&transition_test_cond, &transition_test_mutex, &deadline);
+        }
+    }
+    bool completed_while_paused = transition_done;
+    release_clock = true;
+    pthread_cond_broadcast(&transition_test_cond);
+    pthread_mutex_unlock(&transition_test_mutex);
+    pthread_join(request_thread, NULL);
+    if (create_result == 0) pthread_join(transition_thread, NULL);
+    audit_log_set_clock_for_testing(fake_clock);
+
+    TEST_ASSERT_EQUAL_INT(0, create_result);
+    TEST_ASSERT_FALSE(completed_while_paused);
+    TEST_ASSERT_EQUAL_INT(0, transition_result);
+    TEST_ASSERT_EQUAL_UINT(0, audit_summary_pending());
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+    allow_decision("GET", "/api/streams", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_UINT(0, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+}
+
 void test_mutating_requests_are_recorded_even_when_summarized_or_off(void) {
     set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
     allow_decision("POST", "/api/streams/cam/snapshot", "192.0.2.10", "cam-1", "allowed");
@@ -1160,6 +1269,81 @@ void test_audit_settings_put_modes_only_updates_modes(void) {
         cJSON_GetObjectItemCaseSensitive(change, "mode")->valuestring);
     cJSON_Delete(details);
     db_audit_page_free(&page);
+}
+
+static int allocation_fail_at, allocation_index;
+static bool allocation_failed, failure_after_mode_publish;
+
+static void *fail_one_json_allocation(size_t size) {
+    if (allocation_index++ == allocation_fail_at) {
+        allocation_failed = true;
+        failure_after_mode_publish =
+            audit_log_get_decision_mode(AUTHZ_LIVE_VIEW) != AUDIT_DECISION_MODE_RECORD;
+        return NULL;
+    }
+    return malloc(size);
+}
+
+void test_audit_settings_allocation_failures_do_not_drop_mode_changes(void) {
+    /* Sweep parsing, change objects and their fields, and persistence. Fail
+     * only once so the handler can allocate its error response and clean up. */
+    int pre_publish_failures = 0;
+    for (int fail_at = 0; fail_at < 256; fail_at++) {
+        TEST_ASSERT_EQUAL_INT(0, audit_log_reset_summaries_for_testing(0));
+        TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(AUDIT_DECISION_MODES_SETTING_KEY, "{}"));
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+            "DELETE FROM audit_events;", NULL, NULL, NULL));
+        http_request_t req;
+        settings_request(&req, "PUT",
+            "{\"allowed_decision_modes\":{\"live.view\":\"summarize\",\"system.admin\":\"off\"}}");
+        http_response_t res;
+        http_response_init(&res);
+        allocation_fail_at = fail_at;
+        allocation_index = 0;
+        allocation_failed = failure_after_mode_publish = false;
+        cJSON_Hooks hooks = {.malloc_fn = fail_one_json_allocation, .free_fn = free};
+        cJSON_InitHooks(&hooks);
+        handle_put_audit_settings(&req, &res);
+        cJSON_InitHooks(NULL);
+        if (!allocation_failed || failure_after_mode_publish) {
+            http_response_free(&res);
+            continue;
+        }
+        pre_publish_failures++;
+        audit_decision_mode_t live = audit_log_get_decision_mode(AUTHZ_LIVE_VIEW);
+        audit_decision_mode_t admin = audit_log_get_decision_mode(AUTHZ_SYSTEM_ADMIN);
+        audit_decision_mode_t stored[AUTHZ_ACTION_COUNT];
+        TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(stored));
+        TEST_ASSERT_EQUAL_INT(live, stored[AUTHZ_LIVE_VIEW]);
+        TEST_ASSERT_EQUAL_INT(admin, stored[AUTHZ_SYSTEM_ADMIN]);
+        if (res.status_code == 200) {
+            TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, live);
+            TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_OFF, admin);
+            audit_query_t query = {.page = 1, .page_size = 1};
+            safe_strcpy(query.action, "audit.settings.update", sizeof(query.action), 0);
+            audit_page_t page;
+            TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+            TEST_ASSERT_EQUAL_INT(1, page.count);
+            cJSON *details = cJSON_Parse(page.events[0].details_json);
+            cJSON *changes = cJSON_GetObjectItemCaseSensitive(details, "changes");
+            TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(changes));
+            for (int i = 0; i < 2; i++) {
+                cJSON *change = cJSON_GetArrayItem(changes, i);
+                TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItemCaseSensitive(change, "action")));
+                TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItemCaseSensitive(change, "previous")));
+                TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItemCaseSensitive(change, "mode")));
+            }
+            cJSON_Delete(details);
+            db_audit_page_free(&page);
+        } else {
+            TEST_ASSERT_TRUE(res.status_code == 400 || res.status_code == 500);
+            TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, live);
+            TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, admin);
+            TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+        }
+        http_response_free(&res);
+    }
+    TEST_ASSERT_TRUE(pre_publish_failures > 20);
 }
 
 void test_audit_settings_put_rejects_invalid_body_atomically(void) {
@@ -1332,6 +1516,8 @@ int main(void) {
     RUN_TEST(test_head_decision_is_summarized_like_get);
     RUN_TEST(test_summary_row_records_full_detail_fields_and_long_path);
     RUN_TEST(test_summaries_split_by_client_and_camera_but_not_path);
+    RUN_TEST(test_summary_groups_credentials_and_preserves_first_sample);
+    RUN_TEST(test_mode_transition_waits_for_inflight_summary);
     RUN_TEST(test_mutating_requests_are_recorded_even_when_summarized_or_off);
     RUN_TEST(test_denied_and_error_are_never_summarized);
     RUN_TEST(test_closed_window_flush_keeps_current_window);
@@ -1342,6 +1528,7 @@ int main(void) {
     RUN_TEST(test_audit_settings_get_lists_catalog_modes);
     RUN_TEST(test_audit_settings_put_modes_only_updates_modes);
     RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
+    RUN_TEST(test_audit_settings_allocation_failures_do_not_drop_mode_changes);
     RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
     RUN_TEST(test_audit_settings_put_combined_retention_and_modes);
     RUN_TEST(test_query_filters_by_details_event_type);

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <ctype.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -147,6 +148,11 @@ void audit_log_append(const http_request_t *req, const user_t *user,
  * current upstream behavior until modes are loaded. */
 static atomic_int decision_modes[AUTHZ_ACTION_COUNT];
 
+/* Lock order: decision_mutex, then the summary table or database mutex.
+ * Keep mode selection and accumulation together with transitions and all
+ * flush writers so no old summary can be queued or written after an update. */
+static pthread_mutex_t decision_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int64_t system_clock(void) { return (int64_t)time(NULL); }
 static int64_t (*audit_clock)(void) = system_clock;
 
@@ -238,8 +244,8 @@ static void write_summary_row(const audit_summary_entry_t *entry) {
         .request_id = entry->request_id[0] ? entry->request_id : "authorization-summary",
         .principal_user_id = entry->key.principal_user_id,
         .principal_username = entry->key.principal_username,
-        .auth_method = entry->key.auth_method[0] ? entry->key.auth_method : "unauthenticated",
-        .api_token_uuid = entry->key.api_token_uuid[0] ? entry->key.api_token_uuid : NULL,
+        .auth_method = entry->auth_method[0] ? entry->auth_method : "unauthenticated",
+        .api_token_uuid = entry->api_token_uuid[0] ? entry->api_token_uuid : NULL,
         .action = metadata->key,
         .target_type = entry->key.target_type,
         .target_uuid = entry->key.target_uuid[0] ? entry->key.target_uuid : NULL,
@@ -257,7 +263,8 @@ static void write_summary_row(const audit_summary_entry_t *entry) {
     free(serialized);
 }
 
-size_t audit_log_flush_summaries(bool closed_windows_only) {
+/* Caller holds decision_mutex, including through database writes. */
+static size_t flush_summaries_locked(bool closed_windows_only) {
     /* Small batch: this can run on a request thread with a small stack. */
     audit_summary_entry_t batch[AUDIT_SUMMARY_FLUSH_BATCH];
     int64_t current_window = audit_summary_window_start(audit_clock());
@@ -272,13 +279,25 @@ size_t audit_log_flush_summaries(bool closed_windows_only) {
     return flushed;
 }
 
+size_t audit_log_flush_summaries(bool closed_windows_only) {
+    pthread_mutex_lock(&decision_mutex);
+    size_t flushed = flush_summaries_locked(closed_windows_only);
+    pthread_mutex_unlock(&decision_mutex);
+    return flushed;
+}
+
 int audit_log_set_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]) {
     if (!modes) return -1;
-    audit_log_flush_summaries(false);
-    if (db_audit_save_decision_modes(modes) != 0) return -1;
+    pthread_mutex_lock(&decision_mutex);
+    flush_summaries_locked(false);
+    if (db_audit_save_decision_modes(modes) != 0) {
+        pthread_mutex_unlock(&decision_mutex);
+        return -1;
+    }
     for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
         atomic_store(&decision_modes[i], (int)modes[i]);
     }
+    pthread_mutex_unlock(&decision_mutex);
     return 0;
 }
 
@@ -299,12 +318,6 @@ static bool summarize_decision(const http_request_t *req, const user_t *user,
     audit_summary_key_init(&key);
     key.principal_user_id = user ? user->id : 0;
     if (user) safe_strcpy(key.principal_username, user->username, sizeof(key.principal_username), 0);
-    safe_strcpy(key.auth_method,
-                user && user->authentication_method[0] ? user->authentication_method : "unauthenticated",
-                sizeof(key.auth_method), 0);
-    if (user && user->authenticated_via_scoped_token) {
-        safe_strcpy(key.api_token_uuid, user->api_token_uuid, sizeof(key.api_token_uuid), 0);
-    }
     key.action = (int)action;
     safe_strcpy(key.target_type, camera ? "camera" : "system", sizeof(key.target_type), 0);
     if (camera) safe_strcpy(key.target_uuid, camera->camera_uuid, sizeof(key.target_uuid), 0);
@@ -316,6 +329,10 @@ static bool summarize_decision(const http_request_t *req, const user_t *user,
     key.window_start = audit_summary_window_start(now);
 
     audit_summary_sample_t sample = {
+        .auth_method = user && user->authentication_method[0]
+            ? user->authentication_method : "unauthenticated",
+        .api_token_uuid = user && user->authenticated_via_scoped_token
+            ? user->api_token_uuid : NULL,
         .request_id = req->request_id,
         .method = req->method_str,
         .path = req->path,
@@ -324,7 +341,7 @@ static bool summarize_decision(const http_request_t *req, const user_t *user,
     };
     audit_summary_add_result_t result = audit_summary_add(&key, now, &sample);
     if (result == AUDIT_SUMMARY_FULL) {
-        audit_log_flush_summaries(false);
+        flush_summaries_locked(false);
         result = audit_summary_add(&key, now, &sample);
     }
     return result == AUDIT_SUMMARY_ADDED;
@@ -364,12 +381,13 @@ void audit_log_authorization(const http_request_t *req, const user_t *user,
     bool read_only = strcmp(req->method_str, "GET") == 0 ||
                      strcmp(req->method_str, "HEAD") == 0;
     if (read_only && strcmp(outcome, "allowed") == 0) {
+        pthread_mutex_lock(&decision_mutex);
         audit_decision_mode_t mode = audit_log_get_decision_mode(action);
-        if (mode == AUDIT_DECISION_MODE_OFF) return;
-        if (mode == AUDIT_DECISION_MODE_SUMMARIZE &&
-            summarize_decision(req, user, action, camera, evaluation)) {
-            return;
-        }
+        bool handled = mode == AUDIT_DECISION_MODE_OFF ||
+            (mode == AUDIT_DECISION_MODE_SUMMARIZE &&
+             summarize_decision(req, user, action, camera, evaluation));
+        pthread_mutex_unlock(&decision_mutex);
+        if (handled) return;
     }
     cJSON *details = cJSON_CreateObject();
     if (details) {
