@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { USERS, login } from '../fixtures/test-fixtures';
 
 const enforcedKeys = [
   'live.view', 'recordings.replay', 'recordings.export', 'snapshot.create',
@@ -9,6 +10,11 @@ const enforcedKeys = [
 const unenforcedKeys = ['audio.listen', 'audio.talk', 'fleet.execute_job'];
 
 test.describe('API token permission catalog @ui @users', () => {
+  test.beforeEach(async ({ page }) => {
+    // Unmocked requests such as /api/client-config need a real session.
+    await login(page, USERS.admin);
+  });
+
   for (const width of [1280, 375]) {
     test(`offers server-enforced permissions and submits selections at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
@@ -25,7 +31,6 @@ test.describe('API token permission catalog @ui @users', () => {
       await page.route('**/api/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
         const responses: Record<string, unknown> = {
-          '/api/auth/verify': { ...admin, role: 'admin', role_id: 0, authenticated: true },
           '/api/auth/users': { users: [admin] },
           '/api/authorization/actions': { actions, count: actions.length },
           '/api/camera-collections': { collections: [
