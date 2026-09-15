@@ -7,6 +7,11 @@
 #include "database/db_auth.h"
 #include "web/request_response.h"
 
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "database/db_audit.h"
+
 /*
  * Append a redacted audit event using request and authenticated-principal
  * context. details must be a JSON object and remains owned by the caller.
@@ -66,5 +71,35 @@ void audit_log_sensitive_operation_end(
  * validation failures and downstream errors are covered consistently. */
 void audit_log_sensitive_operation_outcome(const http_request_t *req,
                                            const http_response_t *res);
+
+/*
+ * Per-action handling of allowed authorization decisions on read-only
+ * (GET/HEAD) requests. Denials, errors, mutating requests, sign-ins and
+ * operation outcomes are always recorded regardless of mode.
+ */
+
+/* Bits set in audit_log_decision_modes_init()'s return value. Each failure is
+ * independent and already logged accurately inside that call; a caller only
+ * needs these to decide whether to escalate further, not to build its own
+ * message. */
+#define AUDIT_DECISION_MODES_INIT_DB_FAILED 0x1    /* modes defaulted to record */
+#define AUDIT_DECISION_MODES_INIT_TABLE_FAILED 0x2 /* summarize falls back to record */
+
+/* Must be called exactly once at startup, before any request is served.
+ * Calling it again re-initializes the summary table and discards any
+ * summaries still pending from the previous call. Returns 0 on full success,
+ * otherwise a bitwise-OR of AUDIT_DECISION_MODES_INIT_* flags; both failure
+ * modes are non-fatal and already logged with an accurate cause. */
+int audit_log_decision_modes_init(void);
+audit_decision_mode_t audit_log_get_decision_mode(authorization_action_t action);
+int audit_log_set_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]);
+
+/* Writes pending summaries as audit rows. With closed_windows_only, entries
+ * for the current window stay pending. Returns entries flushed. */
+size_t audit_log_flush_summaries(bool closed_windows_only);
+
+/* Final flush and release. Call after request producers stop and before
+ * shutdown_database(). */
+void audit_log_shutdown_summaries(void);
 
 #endif /* LIGHTNVR_WEB_AUDIT_LOG_H */

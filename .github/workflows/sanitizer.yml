@@ -52,7 +52,7 @@ jobs:
           cd build
           echo "Running tests with ASan + UBSan enabled..."
           ctest --output-on-failure -V \
-            -R "test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite"
+            -R "test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_audit_log|test_audit_summary"
 
       - name: Smoke test - start and stop service
         run: |

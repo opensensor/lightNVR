@@ -3,12 +3,16 @@ import { fetchJSON } from '../../../query-client.js';
 import { enhancedFetch } from '../../../fetch-utils.js';
 import { useI18n } from '../../../i18n.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { AuditDecisionModes } from './AuditDecisionModes.jsx';
 import {
   EMPTY_AUDIT_FILTERS,
   auditDateRangeIsValid,
   auditOutcomeTone,
   auditPageBounds,
   buildAuditQuery,
+  defaultSinceForEventType,
+  formatSummaryCount,
+  summaryDetails,
 } from './auditHistory.js';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
@@ -32,6 +36,7 @@ function outcomeClass(outcome) {
 }
 
 function EventCard({ event, expanded, onToggle, onFilterAction, t }) {
+  const summary = summaryDetails(event);
   const target = [event.target_type, event.target_uuid].filter(Boolean).join(' · ') || t('audit.noTarget');
   const actor = event.principal_username || t('audit.unauthenticated');
   return (
@@ -41,8 +46,10 @@ function EventCard({ event, expanded, onToggle, onFilterAction, t }) {
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="font-mono text-left text-sm font-semibold break-all underline decoration-dotted underline-offset-2" onClick={onFilterAction} title={t('audit.filterToAction')}>{event.action}</button>
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${outcomeClass(event.outcome)}`}>{event.outcome}</span>
+            {summary && <span className="rounded-full px-2 py-0.5 text-xs font-semibold badge-info">{formatSummaryCount(summary.count)}</span>}
           </div>
           <time className="mt-1 block text-xs text-muted-foreground" dateTime={new Date(Number(event.occurred_at) * 1000).toISOString()}>{formatTimestamp(event.occurred_at)}</time>
+          {summary && <span className="mt-0.5 block text-xs text-muted-foreground">{t('audit.summaryRange', { from: formatTimestamp(summary.firstAt), to: formatTimestamp(summary.lastAt) })}</span>}
         </div>
         <button type="button" className="btn-secondary" aria-expanded={expanded} onClick={onToggle}>
           {expanded ? t('audit.hideDetails') : t('audit.showDetails')}
@@ -78,6 +85,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
   const [expandedUuid, setExpandedUuid] = useState('');
   const [retentionDays, setRetentionDays] = useState(365);
   const [retentionDraft, setRetentionDraft] = useState('365');
+  const [settings, setSettings] = useState(null);
   const [savingRetention, setSavingRetention] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSequence = useRef(0);
@@ -112,8 +120,9 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
   useEffect(() => {
     fetchJSON('/api/audit/settings', {
       headers: getAuthHeaders(), cache: 'no-store', timeout: 15000, retries: 0,
-    }).then((settings) => {
-      const days = Number(settings?.retention_days) || 365;
+    }).then((loadedSettings) => {
+      setSettings(loadedSettings);
+      const days = Number(loadedSettings?.retention_days) || 365;
       setRetentionDays(days);
       setRetentionDraft(String(days));
     }).catch((requestError) => setError(requestError.message));
@@ -141,7 +150,13 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
     setPageNumber(1);
     setExpandedUuid('');
   };
-  const updateDraft = (name, value) => setDraftFilters((current) => ({ ...current, [name]: value }));
+  const updateDraft = (name, value) => setDraftFilters((current) => {
+    const next = { ...current, [name]: value };
+    if (name === 'eventType') {
+      next.since = defaultSinceForEventType({ eventType: value, since: current.since });
+    }
+    return next;
+  });
   const filterToAction = (action) => {
     const next = { ...filters, action };
     setDraftFilters(next);
@@ -167,6 +182,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
       });
       setRetentionDays(response.retention_days);
       setRetentionDraft(String(response.retention_days));
+      setSettings(response);
       showStatusMessage(t('audit.retentionSaved', { count: response.pruned_events || 0 }), 'success');
       await loadEvents();
     } catch (requestError) {
@@ -221,11 +237,18 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
             </div>
           </section>
 
+          <AuditDecisionModes
+            settings={settings}
+            getAuthHeaders={getAuthHeaders}
+            onSaved={(response) => { setSettings(response); loadEvents(); }}
+          />
+
           <form className="mb-4 rounded-lg border border-border p-4" onSubmit={applyFilters}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{t('audit.filters')}</h3><button type="button" className="text-sm underline" onClick={clearFilters}>{t('audit.clearFilters')}</button></div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs font-medium">{t('audit.actor')}<select className={`${fieldClasses} mt-1`} value={draftFilters.principalUserId} onChange={(event) => updateDraft('principalUserId', event.currentTarget.value)}><option value="">{t('common.all')}</option>{users.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}</select></label>
               <label className="text-xs font-medium">{t('audit.outcome')}<select className={`${fieldClasses} mt-1`} value={draftFilters.outcome} onChange={(event) => updateDraft('outcome', event.currentTarget.value)}><option value="">{t('common.all')}</option>{['allowed', 'denied', 'success', 'failure', 'error'].map((outcome) => <option key={outcome} value={outcome}>{outcome}</option>)}</select></label>
+              <label className="text-xs font-medium">{t('audit.eventType')}<select className={`${fieldClasses} mt-1`} value={draftFilters.eventType} onChange={(event) => updateDraft('eventType', event.currentTarget.value)}><option value="">{t('common.all')}</option><option value="authorization.summary">{t('audit.eventTypeSummary')}</option><option value="authorization.decision">{t('audit.eventTypeDecision')}</option></select></label>
               <label className="text-xs font-medium sm:col-span-2">{t('audit.action')}<input className={`${fieldClasses} mt-1`} value={draftFilters.action} placeholder="recordings.export" onInput={(event) => updateDraft('action', event.currentTarget.value)} /></label>
               <label className="text-xs font-medium">{t('audit.since')}<input className={`${fieldClasses} mt-1`} type="datetime-local" value={draftFilters.since} onInput={(event) => updateDraft('since', event.currentTarget.value)} /></label>
               <label className="text-xs font-medium">{t('audit.until')}<input className={`${fieldClasses} mt-1`} type="datetime-local" value={draftFilters.until} onInput={(event) => updateDraft('until', event.currentTarget.value)} /></label>

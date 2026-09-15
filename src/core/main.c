@@ -82,6 +82,7 @@ void init_recordings_system(void);
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
 #include "web/batch_delete_progress.h"
+#include "web/audit_log.h"
 
 // Include necessary headers for signal handling
 #include <signal.h>
@@ -800,6 +801,13 @@ int main(int argc, char *argv[]) {
         log_error("Authorization action catalog does not match this build");
         goto cleanup;
     }
+    // Load per-action audit decision modes before any request is served.
+    // Not fatal either way: audit_log_decision_modes_init() already logs an
+    // accurate, specific message for each of its two independent failure
+    // modes (a DB read failure that defaults every action to "record", vs a
+    // summary-table allocation failure where loaded "off"/"summarize" modes
+    // still apply and only "summarize" degrades to recording individually).
+    audit_log_decision_modes_init();
     // Initialize schema cache
     log_info("Initializing schema cache...");
     init_schema_cache();
@@ -1312,6 +1320,7 @@ int main(int argc, char *argv[]) {
         static time_t last_ffmpeg_leak_check_time = 0;
         static time_t last_service_check_time = 0;
         static time_t last_db_backup_check_time = 0;
+        static time_t last_audit_summary_flush_time = 0;
         time_t now = time(NULL);
 
         // Initialize last_service_check_time on first iteration to avoid immediate re-check
@@ -1351,6 +1360,12 @@ int main(int argc, char *argv[]) {
         if (now - last_service_check_time > 30) {
             check_and_ensure_services();
             last_service_check_time = now;
+        }
+
+        // Write audit summaries whose 15-minute window has closed.
+        if (now - last_audit_summary_flush_time > 60) {
+            audit_log_flush_summaries(true);
+            last_audit_summary_flush_time = now;
         }
 
         // Check whether a scheduled database backup is due once per minute.
@@ -1689,6 +1704,10 @@ cleanup:
         // Add a memory barrier before database shutdown to ensure all previous operations are complete
         __sync_synchronize();
 
+        // Request producers are stopped: persist pending audit summaries
+        // before the final database backup and close.
+        audit_log_shutdown_summaries();
+
         // Ensure all database operations are complete before cleanup
         log_info("Ensuring all database operations are complete...");
         __sync_synchronize();
@@ -1796,6 +1815,10 @@ cleanup:
         shutdown_stream_state_adapter();
         shutdown_stream_state_manager();
         shutdown_storage_manager();
+
+        // Request producers are stopped: persist pending audit summaries
+        // before the final database backup and close.
+        audit_log_shutdown_summaries();
 
         // Ensure all database operations are complete before cleanup
         log_info("Ensuring all database operations are complete...");

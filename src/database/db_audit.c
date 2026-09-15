@@ -13,6 +13,7 @@
 #include "core/logger.h"
 #include "database/db_audit.h"
 #include "database/db_core.h"
+#include "database/db_system_settings.h"
 #include "utils/strings.h"
 
 static int64_t last_automatic_prune_at = 0;
@@ -284,6 +285,9 @@ static void add_query_filters(char *sql, size_t sql_size,
     if (query->outcome[0]) safe_strcat(sql, " AND outcome=?", sql_size);
     if (query->target_uuid[0]) safe_strcat(sql, " AND target_uuid=?", sql_size);
     if (query->request_id[0]) safe_strcat(sql, " AND request_id=?", sql_size);
+    if (query->event_type[0]) {
+        safe_strcat(sql, " AND json_extract(details_json,'$.event_type')=?", sql_size);
+    }
 }
 
 static int bind_query_filters(sqlite3_stmt *stmt,
@@ -307,6 +311,9 @@ static int bind_query_filters(sqlite3_stmt *stmt,
     if (query->request_id[0]) {
         sqlite3_bind_text(stmt, index++, query->request_id, -1,
                           SQLITE_TRANSIENT);
+    }
+    if (query->event_type[0]) {
+        sqlite3_bind_text(stmt, index++, query->event_type, -1, SQLITE_TRANSIENT);
     }
     return index;
 }
@@ -485,5 +492,78 @@ int db_audit_prune(int *deleted_count) {
             : AUDIT_PRUNE_INTERVAL_SECONDS;
     }
     pthread_mutex_unlock(mutex);
+    return result;
+}
+
+const char *audit_decision_mode_name(audit_decision_mode_t mode) {
+    switch (mode) {
+        case AUDIT_DECISION_MODE_SUMMARIZE: return "summarize";
+        case AUDIT_DECISION_MODE_OFF: return "off";
+        case AUDIT_DECISION_MODE_RECORD:
+        default: return "record";
+    }
+}
+
+int audit_decision_mode_from_name(const char *name, audit_decision_mode_t *mode) {
+    if (!name || !mode) return -1;
+    if (strcmp(name, "record") == 0) { *mode = AUDIT_DECISION_MODE_RECORD; return 0; }
+    if (strcmp(name, "summarize") == 0) { *mode = AUDIT_DECISION_MODE_SUMMARIZE; return 0; }
+    if (strcmp(name, "off") == 0) { *mode = AUDIT_DECISION_MODE_OFF; return 0; }
+    return -1;
+}
+
+int db_audit_load_decision_modes(audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]) {
+    if (!modes) return -1;
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) modes[i] = AUDIT_DECISION_MODE_RECORD;
+
+    char *value = NULL;
+    size_t value_len = 0;
+    int rc = db_get_system_setting_alloc(AUDIT_DECISION_MODES_SETTING_KEY,
+                                         &value, &value_len);
+    if (rc == 1) return 0;
+    if (rc != 0) return -1;
+
+    cJSON *object = cJSON_Parse(value);
+    free(value);
+    if (!cJSON_IsObject(object)) {
+        log_warn("Ignoring unparsable %s setting", AUDIT_DECISION_MODES_SETTING_KEY);
+        cJSON_Delete(object);
+        return 0;
+    }
+    for (const cJSON *item = object->child; item; item = item->next) {
+        authorization_action_t action = authorization_action_from_key(item->string);
+        audit_decision_mode_t mode;
+        if (action == AUTHZ_ACTION_INVALID || !cJSON_IsString(item) ||
+            audit_decision_mode_from_name(item->valuestring, &mode) != 0) {
+            log_warn("Ignoring invalid audit decision mode entry for %s",
+                     item->string ? item->string : "(null)");
+            continue;
+        }
+        modes[action] = mode;
+    }
+    cJSON_Delete(object);
+    return 0;
+}
+
+int db_audit_save_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]) {
+    if (!modes) return -1;
+    int count = 0;
+    const authorization_action_metadata_t *catalog = authorization_action_catalog(&count);
+    cJSON *object = cJSON_CreateObject();
+    if (!object || !catalog) { cJSON_Delete(object); return -1; }
+    for (int i = 0; i < count; i++) {
+        audit_decision_mode_t mode = modes[catalog[i].action];
+        if (mode == AUDIT_DECISION_MODE_RECORD) continue;
+        if (!cJSON_AddStringToObject(object, catalog[i].key,
+                                     audit_decision_mode_name(mode))) {
+            cJSON_Delete(object);
+            return -1;
+        }
+    }
+    char *serialized = cJSON_PrintUnformatted(object);
+    cJSON_Delete(object);
+    if (!serialized) return -1;
+    int result = db_set_system_setting(AUDIT_DECISION_MODES_SETTING_KEY, serialized);
+    free(serialized);
     return result;
 }

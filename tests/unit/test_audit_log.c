@@ -17,6 +17,7 @@
 #include "database/db_auth.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
+#include "database/db_system_settings.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_audit.h"
@@ -31,6 +32,14 @@ extern void db_audit_set_prune_budget_ms_for_testing(int budget_ms);
 extern int db_audit_get_prune_interval_seconds_for_testing(void);
 extern void db_audit_set_automatic_prune_state_for_testing(int64_t last_prune_at,
                                                            int interval_seconds);
+
+#include "web/audit_summary.h"
+
+extern void audit_log_set_clock_for_testing(int64_t (*clock_fn)(void));
+extern int audit_log_reset_summaries_for_testing(size_t capacity);
+
+static int64_t fake_now = 0;
+static int64_t fake_clock(void) { return fake_now; }
 
 static int64_t admin_user_id = 0;
 
@@ -59,7 +68,12 @@ void setUp(void) {
                           sqlite3_exec(db, "DELETE FROM audit_events;", NULL,
                                       NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, db_audit_set_retention_days(365));
+    db_set_system_setting(AUDIT_DECISION_MODES_SETTING_KEY, "{}");
     g_config.web_auth_enabled = false;
+
+    fake_now = 1757754000;
+    audit_log_set_clock_for_testing(fake_clock);
+    TEST_ASSERT_EQUAL_INT(0, audit_log_reset_summaries_for_testing(0));
 }
 
 void tearDown(void) {
@@ -750,6 +764,534 @@ void test_audit_api_denies_and_records_unauthenticated_access(void) {
     db_audit_page_free(&page);
 }
 
+void test_decision_modes_default_to_record_when_unset(void) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT];
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) modes[i] = AUDIT_DECISION_MODE_OFF;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(modes));
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, modes[i]);
+    }
+}
+
+void test_decision_modes_round_trip_and_store_only_non_defaults(void) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT] = {0};
+    modes[AUTHZ_LIVE_VIEW] = AUDIT_DECISION_MODE_SUMMARIZE;
+    modes[AUTHZ_SYSTEM_ADMIN] = AUDIT_DECISION_MODE_OFF;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_save_decision_modes(modes));
+
+    char stored[512];
+    TEST_ASSERT_EQUAL_INT(0, db_get_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY, stored, sizeof(stored)));
+    cJSON *object = cJSON_Parse(stored);
+    TEST_ASSERT_TRUE(cJSON_IsObject(object));
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(object));
+    TEST_ASSERT_EQUAL_STRING("summarize",
+        cJSON_GetObjectItemCaseSensitive(object, "live.view")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("off",
+        cJSON_GetObjectItemCaseSensitive(object, "system.admin")->valuestring);
+    cJSON_Delete(object);
+
+    audit_decision_mode_t loaded[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(modes[i], loaded[i]);
+    }
+}
+
+void test_decision_modes_ignore_invalid_stored_entries(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY,
+        "{\"live.view\":\"summarize\",\"no.such.action\":\"off\","
+        "\"system.admin\":\"shout\",\"recordings.replay\":7}"));
+    audit_decision_mode_t loaded[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, loaded[AUTHZ_LIVE_VIEW]);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_SYSTEM_ADMIN]);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_RECORDINGS_REPLAY]);
+
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY, "not json"));
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(loaded));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD, loaded[AUTHZ_LIVE_VIEW]);
+}
+
+static void decision_request(http_request_t *req, const char *method,
+                             const char *path, const char *client_ip) {
+    http_request_init(req);
+    safe_strcpy(req->method_str, method, sizeof(req->method_str), 0);
+    safe_strcpy(req->path, path, sizeof(req->path), 0);
+    safe_strcpy(req->client_ip, client_ip, sizeof(req->client_ip), 0);
+}
+
+static user_t decision_user(void) {
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    user.id = admin_user_id;
+    safe_strcpy(user.username, "admin", sizeof(user.username), 0);
+    safe_strcpy(user.authentication_method, "session",
+                sizeof(user.authentication_method), 0);
+    return user;
+}
+
+static fleet_camera_t decision_camera(const char *uuid) {
+    fleet_camera_t camera;
+    memset(&camera, 0, sizeof(camera));
+    safe_strcpy(camera.camera_uuid, uuid, sizeof(camera.camera_uuid), 0);
+    return camera;
+}
+
+static void allow_decision(const char *method, const char *path,
+                           const char *client_ip, const char *camera_uuid,
+                           const char *outcome) {
+    http_request_t req;
+    decision_request(&req, method, path, client_ip);
+    user_t user = decision_user();
+    fleet_camera_t camera = decision_camera(camera_uuid);
+    authorization_evaluation_t evaluation;
+    memset(&evaluation, 0, sizeof(evaluation));
+    evaluation.decision = AUTHZ_DECISION_ALLOW;
+    evaluation.source = AUTHZ_SOURCE_POLICY_GRANT;
+    safe_strcpy(evaluation.explanation, "Allowed by Administrator role grant",
+                sizeof(evaluation.explanation), 0);
+    audit_log_authorization(&req, &user, AUTHZ_LIVE_VIEW, &camera, &evaluation,
+                            outcome);
+}
+
+static int64_t live_view_rows(const char *outcome) {
+    audit_query_t query = {.page = 1, .page_size = 50};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    if (outcome) safe_strcpy(query.outcome, outcome, sizeof(query.outcome), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    int64_t total = page.total;
+    db_audit_page_free(&page);
+    return total;
+}
+
+static void set_live_view_mode(audit_decision_mode_t mode) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT] = {0};
+    modes[AUTHZ_LIVE_VIEW] = mode;
+    TEST_ASSERT_EQUAL_INT(0, audit_log_set_decision_modes(modes));
+}
+
+void test_record_mode_writes_one_row_per_allowed_read(void) {
+    for (int i = 0; i < 3; i++) {
+        allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    }
+    TEST_ASSERT_EQUAL_INT64(3, live_view_rows("allowed"));
+}
+
+void test_off_mode_skips_allowed_reads_but_records_denials(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_OFF);
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "denied");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("denied"));
+}
+
+void test_summarize_buffers_until_flush_then_writes_one_counted_row(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    for (int i = 0; i < 5; i++) {
+        fake_now = 1757754000 + i;
+        allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    }
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT64(1757754000, page.events[0].occurred_at);
+    TEST_ASSERT_EQUAL_STRING("cam-1", page.events[0].target_uuid);
+    TEST_ASSERT_EQUAL_STRING("192.0.2.10", page.events[0].remote_address);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_STRING("authorization.summary",
+        cJSON_GetObjectItemCaseSensitive(details, "event_type")->valuestring);
+    TEST_ASSERT_EQUAL_INT(5, cJSON_GetObjectItemCaseSensitive(details, "count")->valueint);
+    TEST_ASSERT_EQUAL_INT(1757754000, (int)cJSON_GetObjectItemCaseSensitive(details, "first_at")->valuedouble);
+    TEST_ASSERT_EQUAL_INT(1757754004, (int)cJSON_GetObjectItemCaseSensitive(details, "last_at")->valuedouble);
+    TEST_ASSERT_EQUAL_INT(AUDIT_SUMMARY_WINDOW_SECONDS,
+        cJSON_GetObjectItemCaseSensitive(details, "window_seconds")->valueint);
+    TEST_ASSERT_EQUAL_STRING("policy_grant",
+        cJSON_GetObjectItemCaseSensitive(details, "decision_source")->valuestring);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+void test_head_decision_is_summarized_like_get(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("HEAD", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(details, "count")->valueint);
+    TEST_ASSERT_EQUAL_STRING("HEAD",
+        cJSON_GetObjectItemCaseSensitive(details, "method")->valuestring);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+/*
+ * Guards item 1: AUDIT_SUMMARY_PATH_MAX must match http_request_t.path
+ * (MAX_PATH_LENGTH, 512), not the smaller value audit rows also allow.
+ * The path here is longer than the old 256-byte limit and shorter than 512,
+ * so it fails only if the summary path buffer truncates it.
+ */
+void test_summary_row_records_full_detail_fields_and_long_path(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    char long_path[300];
+    const char *prefix = "/api/detection/results/";
+    memset(long_path, 'x', sizeof(long_path) - 1);
+    long_path[sizeof(long_path) - 1] = '\0';
+    memcpy(long_path, prefix, strlen(prefix));
+    TEST_ASSERT_TRUE(strlen(long_path) > 256);
+    TEST_ASSERT_TRUE(strlen(long_path) < MAX_PATH_LENGTH);
+
+    allow_decision("GET", long_path, "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "live.view", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_STRING("GET",
+        cJSON_GetObjectItemCaseSensitive(details, "method")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(long_path,
+        cJSON_GetObjectItemCaseSensitive(details, "path")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("policy_grant",
+        cJSON_GetObjectItemCaseSensitive(details, "decision_source")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("Allowed by Administrator role grant",
+        cJSON_GetObjectItemCaseSensitive(details, "explanation")->valuestring);
+    TEST_ASSERT_EQUAL_INT(AUDIT_SUMMARY_WINDOW_SECONDS,
+        cJSON_GetObjectItemCaseSensitive(details, "window_seconds")->valueint);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(details, "first_at")->valuedouble > 0);
+    TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(details, "last_at")->valuedouble > 0);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+void test_summaries_split_by_client_and_camera_but_not_path(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    allow_decision("GET", "/api/hls/cam/index.m3u8", "192.0.2.10", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "100.64.0.9", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-2", "allowed");
+    TEST_ASSERT_EQUAL_UINT(3, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(3, live_view_rows("allowed"));
+}
+
+void test_mutating_requests_are_recorded_even_when_summarized_or_off(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("POST", "/api/streams/cam/snapshot", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+    set_live_view_mode(AUDIT_DECISION_MODE_OFF);
+    allow_decision("DELETE", "/api/streams/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(2, live_view_rows("allowed"));
+}
+
+void test_denied_and_error_are_never_summarized(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "denied");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "error");
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("denied"));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("error"));
+    TEST_ASSERT_EQUAL_UINT(0, audit_log_flush_summaries(false));
+}
+
+void test_closed_window_flush_keeps_current_window(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    fake_now = 1757754000;
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    fake_now = 1757754000 + AUDIT_SUMMARY_WINDOW_SECONDS;
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(true));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(2, live_view_rows("allowed"));
+}
+
+void test_backward_clock_flushes_instead_of_stranding(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    fake_now = 1757754000 + AUDIT_SUMMARY_WINDOW_SECONDS;
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    fake_now = 1757754000;
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(true));
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+}
+
+void test_full_table_flushes_early_without_losing_counts(void) {
+    TEST_ASSERT_EQUAL_INT(0, audit_log_reset_summaries_for_testing(2));
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.1", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.2", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.3", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(2, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(3, live_view_rows("allowed"));
+}
+
+void test_mode_change_flushes_pending_summaries(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    set_live_view_mode(AUDIT_DECISION_MODE_RECORD);
+    TEST_ASSERT_EQUAL_INT64(1, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+}
+
+void test_failed_summary_write_is_dropped_without_crashing(void) {
+    set_live_view_mode(AUDIT_DECISION_MODE_SUMMARIZE);
+    /* A control character makes db_audit_append() reject the row. It must sit
+     * between two printable characters: httpd_get_effective_client_ip()'s
+     * non-IP-literal fallback trims leading/trailing non-printable bytes
+     * (copy_trimmed_value(), isgraph()-based), so one at either end would be
+     * silently stripped before reaching db_audit_append()'s validation. */
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.1" "\x01" "0", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(0, audit_log_flush_summaries(false));
+}
+
+static void settings_request(http_request_t *req, const char *method,
+                             const char *body) {
+    http_request_init(req);
+    safe_strcpy(req->path, "/api/audit/settings", sizeof(req->path), 0);
+    safe_strcpy(req->method_str, method, sizeof(req->method_str), 0);
+    if (body) {
+        /* http_request_t.body is void *; the handler only reads it. */
+        req->body = (void *)body;
+        req->body_len = strlen(body);
+    }
+}
+
+static int64_t audit_rows_for_action(const char *action) {
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, action, sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    int64_t total = page.total;
+    db_audit_page_free(&page);
+    return total;
+}
+
+void test_audit_settings_get_lists_catalog_modes(void) {
+    http_request_t req;
+    settings_request(&req, "GET", NULL);
+    http_response_t res;
+    http_response_init(&res);
+    handle_get_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(root));
+    TEST_ASSERT_EQUAL_INT(AUDIT_SUMMARY_WINDOW_SECONDS,
+        cJSON_GetObjectItemCaseSensitive(root, "summary_window_seconds")->valueint);
+    cJSON *modes = cJSON_GetObjectItemCaseSensitive(root, "allowed_decision_modes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(modes));
+    int catalog_count = 0;
+    TEST_ASSERT_NOT_NULL(authorization_action_catalog(&catalog_count));
+    TEST_ASSERT_EQUAL_INT(catalog_count, cJSON_GetArraySize(modes));
+    cJSON *first = cJSON_GetArrayItem(modes, 0);
+    TEST_ASSERT_EQUAL_STRING("live.view",
+        cJSON_GetObjectItemCaseSensitive(first, "action")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("Live video",
+        cJSON_GetObjectItemCaseSensitive(first, "category")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("record",
+        cJSON_GetObjectItemCaseSensitive(first, "mode")->valuestring);
+    cJSON_Delete(root);
+    http_response_free(&res);
+}
+
+void test_audit_settings_put_modes_only_updates_modes(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"allowed_decision_modes\":{\"live.view\":\"summarize\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    TEST_ASSERT_NULL(strstr(res.body, "pruned_events"));
+    TEST_ASSERT_NOT_NULL(strstr(res.body, "\"retention_days\":365"));
+    http_response_free(&res);
+
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    audit_decision_mode_t stored[AUTHZ_ACTION_COUNT];
+    TEST_ASSERT_EQUAL_INT(0, db_audit_load_decision_modes(stored));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE, stored[AUTHZ_LIVE_VIEW]);
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.settings.update"));
+
+    audit_query_t query = {.page = 1, .page_size = 1};
+    safe_strcpy(query.action, "audit.settings.update", sizeof(query.action), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    cJSON *details = cJSON_Parse(page.events[0].details_json);
+    TEST_ASSERT_TRUE(cJSON_IsObject(details));
+    TEST_ASSERT_EQUAL_STRING("audit.decision_modes.update",
+        cJSON_GetObjectItemCaseSensitive(details, "event_type")->valuestring);
+    cJSON *changes = cJSON_GetObjectItemCaseSensitive(details, "changes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(changes));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(changes));
+    cJSON *change = cJSON_GetArrayItem(changes, 0);
+    TEST_ASSERT_EQUAL_STRING("live.view",
+        cJSON_GetObjectItemCaseSensitive(change, "action")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("record",
+        cJSON_GetObjectItemCaseSensitive(change, "previous")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("summarize",
+        cJSON_GetObjectItemCaseSensitive(change, "mode")->valuestring);
+    cJSON_Delete(details);
+    db_audit_page_free(&page);
+}
+
+void test_audit_settings_put_rejects_invalid_body_atomically(void) {
+    const char *bodies[] = {
+        "{\"retention_days\":30,\"allowed_decision_modes\":{\"live.view\":\"summarize\",\"no.such.action\":\"off\"}}",
+        "{\"retention_days\":30,\"allowed_decision_modes\":{\"live.view\":\"loud\"}}",
+        "{\"retention_days\":0,\"allowed_decision_modes\":{\"live.view\":\"summarize\"}}",
+        "{\"allowed_decision_modes\":[\"live.view\"]}",
+        "{}",
+    };
+    for (size_t i = 0; i < sizeof(bodies) / sizeof(bodies[0]); i++) {
+        http_request_t req;
+        settings_request(&req, "PUT", bodies[i]);
+        http_response_t res;
+        http_response_init(&res);
+        handle_put_audit_settings(&req, &res);
+        TEST_ASSERT_EQUAL_INT(400, res.status_code);
+        http_response_free(&res);
+    }
+    int retention_days = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_get_retention_days(&retention_days));
+    TEST_ASSERT_EQUAL_INT(365, retention_days);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_audit_settings_put_unchanged_modes_writes_no_event(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"allowed_decision_modes\":{\"live.view\":\"record\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    http_response_free(&res);
+    TEST_ASSERT_EQUAL_INT64(0, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_audit_settings_put_combined_retention_and_modes(void) {
+    http_request_t req;
+    settings_request(&req, "PUT",
+        "{\"retention_days\":120,\"allowed_decision_modes\":{\"live.view\":\"off\"}}");
+    http_response_t res;
+    http_response_init(&res);
+    handle_put_audit_settings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(root));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(root, "pruned_events"));
+    TEST_ASSERT_EQUAL_INT(120,
+        cJSON_GetObjectItemCaseSensitive(root, "retention_days")->valueint);
+    cJSON *modes = cJSON_GetObjectItemCaseSensitive(root, "allowed_decision_modes");
+    TEST_ASSERT_TRUE(cJSON_IsArray(modes));
+    bool found_off = false;
+    for (int i = 0; i < cJSON_GetArraySize(modes); i++) {
+        cJSON *item = cJSON_GetArrayItem(modes, i);
+        if (strcmp(cJSON_GetObjectItemCaseSensitive(item, "action")->valuestring,
+                   "live.view") == 0) {
+            TEST_ASSERT_EQUAL_STRING("off",
+                cJSON_GetObjectItemCaseSensitive(item, "mode")->valuestring);
+            found_off = true;
+        }
+    }
+    TEST_ASSERT_TRUE(found_off);
+    cJSON_Delete(root);
+    http_response_free(&res);
+
+    int retention_days = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_get_retention_days(&retention_days));
+    TEST_ASSERT_EQUAL_INT(120, retention_days);
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_OFF,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.retention.update"));
+    TEST_ASSERT_EQUAL_INT64(1, audit_rows_for_action("audit.settings.update"));
+}
+
+void test_query_filters_by_details_event_type(void) {
+    audit_event_input_t summary = event_input("request-summary", "live.view", "allowed");
+    summary.details_json = "{\"event_type\":\"authorization.summary\",\"count\":4}";
+    audit_event_input_t decision = event_input("request-decision", "live.view", "allowed");
+    decision.details_json = "{\"event_type\":\"authorization.decision\"}";
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&summary, NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_audit_append(&decision, NULL));
+
+    audit_query_t query = {.page = 1, .page_size = 20};
+    safe_strcpy(query.event_type, "authorization.summary", sizeof(query.event_type), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT64(1, page.total);
+    TEST_ASSERT_EQUAL_STRING("request-summary", page.events[0].request_id);
+    db_audit_page_free(&page);
+
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.path, "/api/audit/events", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    safe_strcpy(req.query_string,
+                "page=1&page_size=10&action=live.view&event_type=authorization.summary",
+                sizeof(req.query_string), 0);
+    http_response_t res;
+    http_response_init(&res);
+    handle_get_audit_events(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *list = cJSON_Parse(res.body);
+    TEST_ASSERT_TRUE(cJSON_IsObject(list));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(list, "count")->valueint);
+    cJSON_Delete(list);
+    http_response_free(&res);
+}
+
+void test_decision_modes_init_loads_stored_modes_into_memory(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+        AUDIT_DECISION_MODES_SETTING_KEY,
+        "{\"live.view\":\"summarize\",\"system.admin\":\"off\"}"));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT(0, audit_log_decision_modes_init());
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_SUMMARIZE,
+                          audit_log_get_decision_mode(AUTHZ_LIVE_VIEW));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_OFF,
+                          audit_log_get_decision_mode(AUTHZ_SYSTEM_ADMIN));
+    TEST_ASSERT_EQUAL_INT(AUDIT_DECISION_MODE_RECORD,
+                          audit_log_get_decision_mode(AUTHZ_RECORDINGS_REPLAY));
+
+    /* The summary table is live after init. */
+    allow_decision("GET", "/api/detection/results/cam", "192.0.2.10", "cam-1", "allowed");
+    TEST_ASSERT_EQUAL_INT64(0, live_view_rows("allowed"));
+    TEST_ASSERT_EQUAL_UINT(1, audit_log_flush_summaries(false));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     init_logger();
@@ -781,6 +1323,29 @@ int main(void) {
     RUN_TEST(test_audit_http_settings_list_and_csv_export);
     RUN_TEST(test_login_success_and_denial_are_audited_without_credentials);
     RUN_TEST(test_audit_api_denies_and_records_unauthenticated_access);
+    RUN_TEST(test_decision_modes_default_to_record_when_unset);
+    RUN_TEST(test_decision_modes_round_trip_and_store_only_non_defaults);
+    RUN_TEST(test_decision_modes_ignore_invalid_stored_entries);
+    RUN_TEST(test_record_mode_writes_one_row_per_allowed_read);
+    RUN_TEST(test_off_mode_skips_allowed_reads_but_records_denials);
+    RUN_TEST(test_summarize_buffers_until_flush_then_writes_one_counted_row);
+    RUN_TEST(test_head_decision_is_summarized_like_get);
+    RUN_TEST(test_summary_row_records_full_detail_fields_and_long_path);
+    RUN_TEST(test_summaries_split_by_client_and_camera_but_not_path);
+    RUN_TEST(test_mutating_requests_are_recorded_even_when_summarized_or_off);
+    RUN_TEST(test_denied_and_error_are_never_summarized);
+    RUN_TEST(test_closed_window_flush_keeps_current_window);
+    RUN_TEST(test_backward_clock_flushes_instead_of_stranding);
+    RUN_TEST(test_full_table_flushes_early_without_losing_counts);
+    RUN_TEST(test_mode_change_flushes_pending_summaries);
+    RUN_TEST(test_failed_summary_write_is_dropped_without_crashing);
+    RUN_TEST(test_audit_settings_get_lists_catalog_modes);
+    RUN_TEST(test_audit_settings_put_modes_only_updates_modes);
+    RUN_TEST(test_audit_settings_put_rejects_invalid_body_atomically);
+    RUN_TEST(test_audit_settings_put_unchanged_modes_writes_no_event);
+    RUN_TEST(test_audit_settings_put_combined_retention_and_modes);
+    RUN_TEST(test_query_filters_by_details_event_type);
+    RUN_TEST(test_decision_modes_init_loads_stored_modes_into_memory);
     int result = UNITY_END();
 
     shutdown_database();

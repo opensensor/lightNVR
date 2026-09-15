@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "core/authorization.h"
 
 #define AUDIT_EVENT_UUID_MAX 37
 #define AUDIT_REQUEST_ID_MAX 65
@@ -93,6 +94,7 @@ typedef struct {
     char outcome[AUDIT_OUTCOME_MAX];
     char target_uuid[AUDIT_QUERY_VALUE_MAX];
     char request_id[AUDIT_REQUEST_ID_MAX];
+    char event_type[AUDIT_QUERY_VALUE_MAX];
 } audit_query_t;
 
 typedef struct {
@@ -111,5 +113,24 @@ void db_audit_page_free(audit_page_t *page);
 int db_audit_get_retention_days(int *retention_days);
 int db_audit_set_retention_days(int retention_days);
 int db_audit_prune(int *deleted_count);
+
+typedef enum {
+    AUDIT_DECISION_MODE_RECORD = 0,
+    AUDIT_DECISION_MODE_SUMMARIZE = 1,
+    AUDIT_DECISION_MODE_OFF = 2
+} audit_decision_mode_t;
+
+#define AUDIT_DECISION_MODES_SETTING_KEY "audit_allowed_decision_modes"
+
+const char *audit_decision_mode_name(audit_decision_mode_t mode);
+int audit_decision_mode_from_name(const char *name, audit_decision_mode_t *mode);
+
+/* Fills every entry, defaulting to record. Unknown actions, invalid modes and
+ * unparsable JSON are ignored with a warning. Returns -1 only when the setting
+ * could not be read from the database. */
+int db_audit_load_decision_modes(audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]);
+
+/* Persists only non-record entries as a JSON object. */
+int db_audit_save_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]);
 
 #endif /* LIGHTNVR_DB_AUDIT_H */

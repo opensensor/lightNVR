@@ -1,10 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <ctype.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define LOG_COMPONENT "Audit"
 #include "core/logger.h"
@@ -12,6 +14,7 @@
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
 #include "web/audit_log.h"
+#include "web/audit_summary.h"
 #include "web/httpd_utils.h"
 
 static bool contains_case_insensitive(const char *value,
@@ -138,6 +141,195 @@ void audit_log_append(const http_request_t *req, const user_t *user,
     free(serialized);
 }
 
+#define AUDIT_SUMMARY_FLUSH_BATCH 8
+
+/* 0 == AUDIT_DECISION_MODE_RECORD, so the zero-initialized table is the
+ * current upstream behavior until modes are loaded. */
+static atomic_int decision_modes[AUTHZ_ACTION_COUNT];
+
+static int64_t system_clock(void) { return (int64_t)time(NULL); }
+static int64_t (*audit_clock)(void) = system_clock;
+
+void audit_log_set_clock_for_testing(int64_t (*clock_fn)(void)) {
+    audit_clock = clock_fn ? clock_fn : system_clock;
+}
+
+int audit_log_reset_summaries_for_testing(size_t capacity) {
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        atomic_store(&decision_modes[i], AUDIT_DECISION_MODE_RECORD);
+    }
+    return audit_summary_init(capacity ? capacity : AUDIT_SUMMARY_DEFAULT_CAPACITY);
+}
+
+int audit_log_decision_modes_init(void) {
+    audit_decision_mode_t modes[AUTHZ_ACTION_COUNT];
+    int rc = db_audit_load_decision_modes(modes);
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        atomic_store(&decision_modes[i], (int)modes[i]);
+    }
+    /* These two failures are independent and each gets its own accurate
+     * message, since the two low bits of the return value let the caller
+     * (main.c) tell them apart rather than print one message that may not
+     * match what actually happened. */
+    int result = 0;
+    if (rc != 0) {
+        /* db_audit_load_decision_modes() leaves every entry at the default
+         * (record) when it cannot read stored modes, so every decision really
+         * is recorded until settings are saved again. */
+        log_warn("Could not read audit decision modes; recording every authorization decision");
+        result |= AUDIT_DECISION_MODES_INIT_DB_FAILED;
+    }
+    if (audit_summary_init(AUDIT_SUMMARY_DEFAULT_CAPACITY) != 0) {
+        /* The loaded modes (including "off") still apply from decision_modes[]
+         * above; only "summarize" degrades, since it has nowhere to buffer. */
+        log_error("Failed to allocate audit summary table; summarize falls back "
+                  "to recording individually, off modes still apply");
+        result |= AUDIT_DECISION_MODES_INIT_TABLE_FAILED;
+    }
+    return result;
+}
+
+audit_decision_mode_t audit_log_get_decision_mode(authorization_action_t action) {
+    if ((int)action < 0 || action >= AUTHZ_ACTION_COUNT) return AUDIT_DECISION_MODE_RECORD;
+    return (audit_decision_mode_t)atomic_load(&decision_modes[action]);
+}
+
+static void write_summary_row(const audit_summary_entry_t *entry) {
+    const authorization_action_metadata_t *metadata =
+        authorization_action_metadata((authorization_action_t)entry->key.action);
+    if (!metadata) {
+        log_error("Failed to persist audit summary for unknown action id %d; "
+                  "%llu decisions not recorded",
+                  entry->key.action, (unsigned long long)entry->count);
+        return;
+    }
+
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type", "authorization.summary");
+        cJSON_AddNumberToObject(details, "count", (double)entry->count);
+        cJSON_AddNumberToObject(details, "first_at", (double)entry->first_at);
+        cJSON_AddNumberToObject(details, "last_at", (double)entry->last_at);
+        cJSON_AddNumberToObject(details, "window_seconds", AUDIT_SUMMARY_WINDOW_SECONDS);
+        cJSON_AddStringToObject(details, "method", entry->method);
+        cJSON_AddStringToObject(details, "path", entry->path);
+        cJSON_AddStringToObject(details, "decision_source", entry->decision_source);
+        cJSON_AddStringToObject(details, "explanation", entry->explanation);
+    }
+    cJSON *redacted = details ? redacted_details_copy(details, NULL) : NULL;
+    char *serialized = redacted ? cJSON_PrintUnformatted(redacted) : NULL;
+    cJSON_Delete(redacted);
+    cJSON_Delete(details);
+
+    /* A NULL here means details construction, redaction or serialization
+     * failed (allocation failure only -- redacted_details_copy() has no
+     * other NULL path). Treat it as a failed write like any other: log and
+     * drop the summary, rather than inserting a details-less "{}" row that
+     * would look like a real but unfilterable authorization.summary event. */
+    if (!serialized) {
+        log_error("Failed to persist audit summary for %s on %s; %llu decisions not recorded",
+                  metadata->key,
+                  entry->key.target_uuid[0] ? entry->key.target_uuid : "system",
+                  (unsigned long long)entry->count);
+        return;
+    }
+
+    audit_event_input_t input = {
+        .request_id = entry->request_id[0] ? entry->request_id : "authorization-summary",
+        .principal_user_id = entry->key.principal_user_id,
+        .principal_username = entry->key.principal_username,
+        .auth_method = entry->key.auth_method[0] ? entry->key.auth_method : "unauthenticated",
+        .api_token_uuid = entry->key.api_token_uuid[0] ? entry->key.api_token_uuid : NULL,
+        .action = metadata->key,
+        .target_type = entry->key.target_type,
+        .target_uuid = entry->key.target_uuid[0] ? entry->key.target_uuid : NULL,
+        .outcome = "allowed",
+        .remote_address = entry->key.remote_address,
+        .details_json = serialized,
+        .occurred_at = entry->first_at,
+    };
+    if (db_audit_append(&input, NULL) != 0) {
+        log_error("Failed to persist audit summary for %s on %s; %llu decisions not recorded",
+                  metadata->key,
+                  entry->key.target_uuid[0] ? entry->key.target_uuid : "system",
+                  (unsigned long long)entry->count);
+    }
+    free(serialized);
+}
+
+size_t audit_log_flush_summaries(bool closed_windows_only) {
+    /* Small batch: this can run on a request thread with a small stack. */
+    audit_summary_entry_t batch[AUDIT_SUMMARY_FLUSH_BATCH];
+    int64_t current_window = audit_summary_window_start(audit_clock());
+    size_t flushed = 0;
+    for (;;) {
+        size_t drained = audit_summary_drain(!closed_windows_only, current_window,
+                                             batch, AUDIT_SUMMARY_FLUSH_BATCH);
+        for (size_t i = 0; i < drained; i++) write_summary_row(&batch[i]);
+        flushed += drained;
+        if (drained < AUDIT_SUMMARY_FLUSH_BATCH) break;
+    }
+    return flushed;
+}
+
+int audit_log_set_decision_modes(const audit_decision_mode_t modes[AUTHZ_ACTION_COUNT]) {
+    if (!modes) return -1;
+    audit_log_flush_summaries(false);
+    if (db_audit_save_decision_modes(modes) != 0) return -1;
+    for (int i = 0; i < AUTHZ_ACTION_COUNT; i++) {
+        atomic_store(&decision_modes[i], (int)modes[i]);
+    }
+    return 0;
+}
+
+void audit_log_shutdown_summaries(void) {
+    size_t flushed = audit_log_flush_summaries(false);
+    if (flushed > 0) log_info("Flushed %zu audit summaries at shutdown", flushed);
+    audit_summary_shutdown();
+}
+
+/* Returns true when the decision was accounted for in a summary. False means
+ * the table is unavailable and the caller must record the decision itself. */
+static bool summarize_decision(const http_request_t *req, const user_t *user,
+                               authorization_action_t action,
+                               const fleet_camera_t *camera,
+                               const authorization_evaluation_t *evaluation) {
+    int64_t now = audit_clock();
+    audit_summary_key_t key;
+    audit_summary_key_init(&key);
+    key.principal_user_id = user ? user->id : 0;
+    if (user) safe_strcpy(key.principal_username, user->username, sizeof(key.principal_username), 0);
+    safe_strcpy(key.auth_method,
+                user && user->authentication_method[0] ? user->authentication_method : "unauthenticated",
+                sizeof(key.auth_method), 0);
+    if (user && user->authenticated_via_scoped_token) {
+        safe_strcpy(key.api_token_uuid, user->api_token_uuid, sizeof(key.api_token_uuid), 0);
+    }
+    key.action = (int)action;
+    safe_strcpy(key.target_type, camera ? "camera" : "system", sizeof(key.target_type), 0);
+    if (camera) safe_strcpy(key.target_uuid, camera->camera_uuid, sizeof(key.target_uuid), 0);
+    if (httpd_get_effective_client_ip(req, key.remote_address, sizeof(key.remote_address)) != 0) {
+        /* Clear any partial write: keys compare byte-wise. */
+        memset(key.remote_address, 0, sizeof(key.remote_address));
+        safe_strcpy(key.remote_address, req->client_ip, sizeof(key.remote_address), 0);
+    }
+    key.window_start = audit_summary_window_start(now);
+
+    audit_summary_sample_t sample = {
+        .request_id = req->request_id,
+        .method = req->method_str,
+        .path = req->path,
+        .decision_source = evaluation ? authorization_decision_source_name(evaluation->source) : "",
+        .explanation = evaluation ? evaluation->explanation : "",
+    };
+    audit_summary_add_result_t result = audit_summary_add(&key, now, &sample);
+    if (result == AUDIT_SUMMARY_FULL) {
+        audit_log_flush_summaries(false);
+        result = audit_summary_add(&key, now, &sample);
+    }
+    return result == AUDIT_SUMMARY_ADDED;
+}
+
 void audit_log_operation(const http_request_t *req, const user_t *user,
                          const char *action, const char *target_type,
                          const char *target_uuid, const char *operation,
@@ -169,6 +361,16 @@ void audit_log_authorization(const http_request_t *req, const user_t *user,
     const authorization_action_metadata_t *metadata =
         authorization_action_metadata(action);
     if (!metadata || !req || !outcome) return;
+    bool read_only = strcmp(req->method_str, "GET") == 0 ||
+                     strcmp(req->method_str, "HEAD") == 0;
+    if (read_only && strcmp(outcome, "allowed") == 0) {
+        audit_decision_mode_t mode = audit_log_get_decision_mode(action);
+        if (mode == AUDIT_DECISION_MODE_OFF) return;
+        if (mode == AUDIT_DECISION_MODE_SUMMARIZE &&
+            summarize_decision(req, user, action, camera, evaluation)) {
+            return;
+        }
+    }
     cJSON *details = cJSON_CreateObject();
     if (details) {
         cJSON_AddStringToObject(details, "event_type",
