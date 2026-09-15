@@ -37,7 +37,6 @@ export function TimelinePlayer({
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [detections, setDetections] = useState([]);
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -244,7 +243,6 @@ export function TimelinePlayer({
       // Update local state
       setCurrentSegmentIndex(state.currentSegmentIndex);
       setSegments(state.timelineSegments || []);
-      setPlaybackSpeed(state.playbackSpeed);
 
       // Handle video playback
       handleVideoPlayback(state);
