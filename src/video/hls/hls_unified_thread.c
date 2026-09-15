@@ -1861,8 +1861,8 @@ void *hls_unified_thread_func(void *arg) {
         bool context_valid = true;
 
         // Basic validation of context structure
-        if (ctx_to_free->stream_name == NULL || ctx_to_free->stream_name[0] == '\0') {
-            log_warn("Context has NULL or empty stream_name, may be corrupted");
+        if (ctx_to_free->stream_name[0] == '\0') {
+            log_warn("Context has empty stream_name, may be corrupted");
             context_valid = false;
         }
 
@@ -2499,8 +2499,8 @@ int stop_hls_unified_stream(const char *stream_name) {
             bool context_valid = true;
 
             // Basic validation of context structure
-            if (ctx_to_free->stream_name == NULL || ctx_to_free->stream_name[0] == '\0') {
-                log_warn("Context has NULL or empty stream_name, may be corrupted");
+            if (ctx_to_free->stream_name[0] == '\0') {
+                log_warn("Context has empty stream_name, may be corrupted");
                 context_valid = false;
             }
 
