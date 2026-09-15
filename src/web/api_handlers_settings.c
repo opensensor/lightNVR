@@ -36,6 +36,7 @@
 #include "core/mqtt_delivery_worker.h"
 #include "storage/storage_manager.h"
 #include "telemetry/system_health_policy.h"
+#include "web/audit_log.h"
 #include "utils/yaml_validate.h"
 
 /**
@@ -2072,24 +2073,33 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // We need to restart the database and stream manager
         log_info("Shutting down stream manager to change database path...");
         shutdown_stream_manager();
-        
+
+        // Persist any audit summaries buffered against the database we are
+        // about to close: audit_log_decision_modes_init() below reallocates
+        // the summary table from scratch on whichever database ends up live,
+        // and would otherwise silently drop pending counts.
+        audit_log_flush_summaries(false);
+
         log_info("Shutting down database...");
         shutdown_database();
-        
+
         log_info("Initializing database with new path: %s", g_config.db_path);
         if (init_database(g_config.db_path) != 0) {
             log_error("Failed to initialize database with new path, reverting to old path");
-            
+
             // Revert to the old path
             safe_strcpy(g_config.db_path, old_db_path, sizeof(g_config.db_path), 0);
-            
+
             // Try to reinitialize with the old path
             if (init_database(g_config.db_path) != 0) {
                 log_error("Failed to reinitialize database with old path, database may be unavailable");
             } else {
                 log_info("Successfully reinitialized database with old path");
+                // Reload decision modes (and reallocate a fresh summary
+                // table) against the database that is actually live again.
+                audit_log_decision_modes_init();
             }
-            
+
             // Reinitialize stream manager
             if (init_stream_manager(g_config.max_streams) != 0) {
                 log_error("Failed to reinitialize stream manager");
@@ -2103,6 +2113,11 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             http_response_set_json_error(res, 500, "Failed to initialize database with new path");
             return;
         }
+
+        // Reload decision modes (and reallocate a fresh summary table) from
+        // the newly active database; the in-memory copies otherwise still
+        // belong to the database this handler just closed.
+        audit_log_decision_modes_init();
 
         log_info("Reinitializing stream manager...");
         if (init_stream_manager(g_config.max_streams) != 0) {

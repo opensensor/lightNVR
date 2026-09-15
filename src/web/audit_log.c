@@ -221,6 +221,19 @@ static void write_summary_row(const audit_summary_entry_t *entry) {
     cJSON_Delete(redacted);
     cJSON_Delete(details);
 
+    /* A NULL here means details construction, redaction or serialization
+     * failed (allocation failure only -- redacted_details_copy() has no
+     * other NULL path). Treat it as a failed write like any other: log and
+     * drop the summary, rather than inserting a details-less "{}" row that
+     * would look like a real but unfilterable authorization.summary event. */
+    if (!serialized) {
+        log_error("Failed to persist audit summary for %s on %s; %llu decisions not recorded",
+                  metadata->key,
+                  entry->key.target_uuid[0] ? entry->key.target_uuid : "system",
+                  (unsigned long long)entry->count);
+        return;
+    }
+
     audit_event_input_t input = {
         .request_id = entry->request_id[0] ? entry->request_id : "authorization-summary",
         .principal_user_id = entry->key.principal_user_id,
@@ -232,7 +245,7 @@ static void write_summary_row(const audit_summary_entry_t *entry) {
         .target_uuid = entry->key.target_uuid[0] ? entry->key.target_uuid : NULL,
         .outcome = "allowed",
         .remote_address = entry->key.remote_address,
-        .details_json = serialized ? serialized : "{}",
+        .details_json = serialized,
         .occurred_at = entry->first_at,
     };
     if (db_audit_append(&input, NULL) != 0) {
