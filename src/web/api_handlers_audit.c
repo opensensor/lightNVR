@@ -188,9 +188,16 @@ void handle_get_audit_events(const http_request_t *req, http_response_t *res) {
 
 static void csv_cell(FILE *stream, const char *value) {
     fputc('"', stream);
-    if (value && strchr("=+-@", value[0])) {
-        /* Keep spreadsheet applications from interpreting exported cells. */
-        fputc('\'', stream);
+    if (value) {
+        const char *cursor = value;
+        while (*cursor &&
+               ((unsigned char)*cursor <= 0x20 || (unsigned char)*cursor == 0x7f)) {
+            cursor++;
+        }
+        if (*cursor && strchr("=+-@", *cursor)) {
+            /* Keep spreadsheet applications from interpreting exported cells. */
+            fputc('\'', stream);
+        }
     }
     for (const char *cursor = value ? value : ""; *cursor; cursor++) {
         if (*cursor == '"') fputc('"', stream);
@@ -391,7 +398,11 @@ void handle_put_audit_settings(const http_request_t *req,
 
     if (retention) {
         int previous_days = AUDIT_RETENTION_DEFAULT_DAYS;
-        db_audit_get_retention_days(&previous_days);
+        if (db_audit_get_retention_days(&previous_days) != 0) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 500, "Failed to load audit settings");
+            goto unlock_and_return;
+        }
         if (db_audit_set_retention_days(retention_days) != 0) {
             cJSON_Delete(body);
             http_response_set_json_error(res, 500, "Failed to save audit settings");
