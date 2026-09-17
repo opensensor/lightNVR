@@ -265,8 +265,21 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   // Redraw canvas when zones or image changes
   useEffect(() => {
     drawCanvas();
-  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, hoveredPoint, draggedPoint, draggedZone,
+  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, snapshotError, hoveredPoint, draggedPoint, draggedZone,
       streamWidth, streamHeight]);
+
+  // Redraw on resize too: the canvas is `w-full h-full` in a responsive
+  // modal, so a window/container resize changes getBoundingClientRect()
+  // without touching any state above -- without this, letterboxRef stays
+  // stale (computed for the old size) until some unrelated state change
+  // happens to trigger a redraw, and clicks in that window map incorrectly.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => drawCanvas());
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  });
 
   // Handle mouse down
   const handleMouseDown = (e) => {
