@@ -8,6 +8,11 @@ import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
 import { AlertDialog } from './common/ModalDialog.jsx';
+import {
+  computeImageLetterbox,
+  canvasPointToImageFraction,
+  imageFractionToCanvasPoint,
+} from '../../utils/zone-editor-geometry.js';
 
 /**
  * ZoneEditor Component
@@ -17,6 +22,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const { t } = useI18n();
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
+  // Where the image is actually drawn within the canvas (it may be
+  // letterboxed/pillarboxed to preserve aspect ratio). Mouse handlers read
+  // this to convert clicks into image-relative fractions consistently with
+  // how drawCanvas() last rendered it -- see zone-editor-geometry.js.
+  const letterboxRef = useRef({ offsetX: 0, offsetY: 0, drawWidth: 0, drawHeight: 0 });
   const [currentZone, setCurrentZone] = useState(null);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState(null);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -116,29 +126,20 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     if (image && imageLoaded && !snapshotError) {
       // Calculate the scaling and positioning to maintain aspect ratio
       const imageAspect = image.naturalWidth / image.naturalHeight;
-      const canvasAspect = canvas.width / canvas.height;
-
-      let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-      if (imageAspect > canvasAspect) {
-        // Image is wider than canvas (letterboxing - black bars on top and bottom)
-        drawWidth = canvas.width;
-        drawHeight = canvas.width / imageAspect;
-        offsetY = (canvas.height - drawHeight) / 2;
-      } else {
-        // Image is taller than canvas (pillarboxing - black bars on sides)
-        drawHeight = canvas.height;
-        drawWidth = canvas.height * imageAspect;
-        offsetX = (canvas.width - drawWidth) / 2;
-      }
+      const letterbox = computeImageLetterbox(canvas.width, canvas.height, imageAspect);
+      letterboxRef.current = letterbox;
 
       // Draw black background for letterboxing/pillarboxing
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw the image with proper aspect ratio
-      ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+      ctx.drawImage(image, letterbox.offsetX, letterbox.offsetY, letterbox.drawWidth, letterbox.drawHeight);
     } else {
+      // No image to letterbox against (still loading, or failed): zone
+      // points map 1:1 onto the placeholder canvas.
+      letterboxRef.current = { offsetX: 0, offsetY: 0, drawWidth: canvas.width, drawHeight: canvas.height };
+
       // Draw a placeholder background using the current theme's card colour
       ctx.fillStyle = getThemeColor('--card', '#ffffff');
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -163,17 +164,18 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Draw existing zones
     zoneList.forEach((zone, index) => {
       const isSelected = index === selectedZoneIndex;
-      drawZone(ctx, zone, canvas.width, canvas.height, isSelected, false, index);
+      drawZone(ctx, zone, letterboxRef.current, isSelected, false, index);
     });
 
     // Draw current zone being drawn
     if (currentZone && currentZone.polygon.length > 0) {
-      drawZone(ctx, currentZone, canvas.width, canvas.height, true, true, null);
+      drawZone(ctx, currentZone, letterboxRef.current, true, true, null);
     }
   };
 
-  // Draw a single zone
-  const drawZone = (ctx, zone, width, height, isSelected, isDrawing = false, zoneIndex = null) => {
+  // Draw a single zone. `letterbox` maps a point's stored [0,1] image
+  // fraction to canvas pixels -- see zone-editor-geometry.js.
+  const drawZone = (ctx, zone, letterbox, isSelected, isDrawing = false, zoneIndex = null) => {
     if (!zone.polygon || zone.polygon.length === 0) return;
 
     ctx.save();
@@ -181,8 +183,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Draw polygon
     ctx.beginPath();
     zone.polygon.forEach((point, i) => {
-      const x = point.x * width;
-      const y = point.y * height;
+      const { x, y } = imageFractionToCanvasPoint(point.x, point.y, letterbox);
       if (i === 0) {
         ctx.moveTo(x, y);
       } else {
@@ -206,8 +207,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
     // Draw points
     zone.polygon.forEach((point, i) => {
-      const x = point.x * width;
-      const y = point.y * height;
+      const { x, y } = imageFractionToCanvasPoint(point.x, point.y, letterbox);
 
       // Check if this point is being hovered or dragged
       const isHovered = hoveredPoint && hoveredPoint.zoneIndex === zoneIndex && hoveredPoint.pointIndex === i;
@@ -224,8 +224,9 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
     // Draw zone label
     if (zone.name && zone.polygon.length > 0) {
-      const centerX = zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length * width;
-      const centerY = zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length * height;
+      const avgX = zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length;
+      const avgY = zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length;
+      const { x: centerX, y: centerY } = imageFractionToCanvasPoint(avgX, avgY, letterbox);
 
       ctx.fillStyle = color;
       ctx.font = 'bold 14px sans-serif';
@@ -255,8 +256,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
 
     if (editMode === 'edit') {
       // Check if clicking on a point to drag
@@ -286,8 +287,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
 
     // Update cursor style based on hover
     if (editMode === 'edit' && !draggedPoint && !draggedZone) {
@@ -347,8 +348,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
 
     if (editMode === 'draw') {
       // Add point to current zone
