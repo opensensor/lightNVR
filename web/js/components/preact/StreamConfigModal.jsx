@@ -386,6 +386,8 @@ export function StreamConfigModal({
       {showZoneEditor && (
         <ZoneEditor
           streamName={currentStream.name}
+          streamWidth={currentStream.width}
+          streamHeight={currentStream.height}
           zones={detectionZones}
           onZonesChange={handleZonesChange}
           onClose={() => setShowZoneEditor(false)}
