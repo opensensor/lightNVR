@@ -12,13 +12,19 @@ import {
   computeImageLetterbox,
   canvasPointToImageFraction,
   imageFractionToCanvasPoint,
+  resolveImageAspect,
 } from '../../utils/zone-editor-geometry.js';
 
 /**
  * ZoneEditor Component
- * Allows users to draw and edit detection zones on a stream preview
+ * Allows users to draw and edit detection zones on a stream preview.
+ * `streamWidth`/`streamHeight` (the stream's configured resolution) are
+ * used to letterbox consistently with the real snapshot even while it's
+ * still loading or failed to load -- without them, zones would appear to
+ * shift between the placeholder and the real image on any camera whose
+ * aspect ratio doesn't match the editor's canvas.
  */
-export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
+export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], onZonesChange, onClose }) {
   const { t } = useI18n();
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
@@ -122,13 +128,18 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Pick an aspect ratio to letterbox against: the loaded snapshot when
+    // available, otherwise the stream's configured resolution, so zones
+    // stay in the same place whether or not the snapshot is currently
+    // showing (see zone-editor-geometry.js).
+    const imageAspect = resolveImageAspect(image, imageLoaded, snapshotError, streamWidth, streamHeight);
+    const letterbox = imageAspect
+      ? computeImageLetterbox(canvas.width, canvas.height, imageAspect)
+      : { offsetX: 0, offsetY: 0, drawWidth: canvas.width, drawHeight: canvas.height };
+    letterboxRef.current = letterbox;
+
     // Draw the image if loaded
     if (image && imageLoaded && !snapshotError) {
-      // Calculate the scaling and positioning to maintain aspect ratio
-      const imageAspect = image.naturalWidth / image.naturalHeight;
-      const letterbox = computeImageLetterbox(canvas.width, canvas.height, imageAspect);
-      letterboxRef.current = letterbox;
-
       // Draw black background for letterboxing/pillarboxing
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -136,29 +147,35 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       // Draw the image with proper aspect ratio
       ctx.drawImage(image, letterbox.offsetX, letterbox.offsetY, letterbox.drawWidth, letterbox.drawHeight);
     } else {
-      // No image to letterbox against (still loading, or failed): zone
-      // points map 1:1 onto the placeholder canvas.
-      letterboxRef.current = { offsetX: 0, offsetY: 0, drawWidth: canvas.width, drawHeight: canvas.height };
-
-      // Draw a placeholder background using the current theme's card colour
+      // No snapshot to draw: fill the full canvas (including any bars the
+      // letterbox above leaves outside the image area) with the theme's
+      // card colour, then draw the placeholder grid only within the image
+      // area itself, so the layout matches where the real image will sit
+      // once it loads.
       ctx.fillStyle = getThemeColor('--card', '#ffffff');
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(letterbox.offsetX, letterbox.offsetY, letterbox.drawWidth, letterbox.drawHeight);
+      ctx.clip();
 
       // Draw grid using the current theme's border colour
       ctx.strokeStyle = getThemeColor('--border', '#e5e7eb');
       ctx.lineWidth = 1;
-      for (let i = 0; i < canvas.width; i += 50) {
+      for (let i = letterbox.offsetX; i < letterbox.offsetX + letterbox.drawWidth; i += 50) {
         ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, canvas.height);
+        ctx.moveTo(i, letterbox.offsetY);
+        ctx.lineTo(i, letterbox.offsetY + letterbox.drawHeight);
         ctx.stroke();
       }
-      for (let i = 0; i < canvas.height; i += 50) {
+      for (let i = letterbox.offsetY; i < letterbox.offsetY + letterbox.drawHeight; i += 50) {
         ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(canvas.width, i);
+        ctx.moveTo(letterbox.offsetX, i);
+        ctx.lineTo(letterbox.offsetX + letterbox.drawWidth, i);
         ctx.stroke();
       }
+      ctx.restore();
     }
 
     // Draw existing zones
@@ -248,7 +265,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   // Redraw canvas when zones or image changes
   useEffect(() => {
     drawCanvas();
-  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, hoveredPoint, draggedPoint, draggedZone]);
+  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, hoveredPoint, draggedPoint, draggedZone,
+      streamWidth, streamHeight]);
 
   // Handle mouse down
   const handleMouseDown = (e) => {

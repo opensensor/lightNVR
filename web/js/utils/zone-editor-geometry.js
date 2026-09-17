@@ -67,6 +67,33 @@ export function canvasPointToImageFraction(canvasX, canvasY, letterbox) {
 }
 
 /**
+ * Picks the aspect ratio to letterbox the editor's canvas against: the
+ * loaded snapshot image when one is available, otherwise the stream's
+ * configured resolution (so the placeholder shown while the snapshot is
+ * loading, or after it fails, still letterboxes consistently with the real
+ * image -- rather than falling back to a plain 1:1 canvas fill that would
+ * make an already-saved zone appear to shift when the snapshot isn't
+ * available). Returns null when neither source is usable, meaning the
+ * caller has no aspect ratio to letterbox against at all.
+ *
+ * @param {{naturalWidth: number, naturalHeight: number}|null} image
+ * @param {boolean} imageLoaded
+ * @param {boolean} snapshotError
+ * @param {number} [fallbackWidth] - the stream's configured width
+ * @param {number} [fallbackHeight] - the stream's configured height
+ * @returns {number|null}
+ */
+export function resolveImageAspect(image, imageLoaded, snapshotError, fallbackWidth, fallbackHeight) {
+  if (image && imageLoaded && !snapshotError && image.naturalWidth > 0 && image.naturalHeight > 0) {
+    return image.naturalWidth / image.naturalHeight;
+  }
+  if (fallbackWidth > 0 && fallbackHeight > 0) {
+    return fallbackWidth / fallbackHeight;
+  }
+  return null;
+}
+
+/**
  * Inverse of canvasPointToImageFraction: converts a stored [0,1] zone
  * point back into canvas pixel coordinates for drawing, matching the
  * convention DetectionOverlay.jsx already uses.

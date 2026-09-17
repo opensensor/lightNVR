@@ -2,6 +2,7 @@ import {
   computeImageLetterbox,
   canvasPointToImageFraction,
   imageFractionToCanvasPoint,
+  resolveImageAspect,
 } from '../js/utils/zone-editor-geometry.js';
 
 describe('computeImageLetterbox', () => {
@@ -83,5 +84,34 @@ describe('imageFractionToCanvasPoint', () => {
     const roundTripped = canvasPointToImageFraction(canvasPoint.x, canvasPoint.y, letterbox);
     expect(roundTripped.x).toBeCloseTo(original.x);
     expect(roundTripped.y).toBeCloseTo(original.y);
+  });
+});
+
+describe('resolveImageAspect', () => {
+  const loadedImage = { naturalWidth: 2560, naturalHeight: 1920 };
+
+  it('prefers the loaded snapshot image over the configured fallback', () => {
+    const aspect = resolveImageAspect(loadedImage, true, false, 1920, 1080);
+    expect(aspect).toBeCloseTo(2560 / 1920);
+  });
+
+  it('falls back to the stream\'s configured resolution while the snapshot is still loading', () => {
+    // imageLoaded=false: the <img> hasn't fired onLoad yet.
+    const aspect = resolveImageAspect(loadedImage, false, false, 1920, 1080);
+    expect(aspect).toBeCloseTo(1920 / 1080);
+  });
+
+  it('falls back to the configured resolution when the snapshot failed to load', () => {
+    const aspect = resolveImageAspect(loadedImage, true, true, 1920, 1080);
+    expect(aspect).toBeCloseTo(1920 / 1080);
+  });
+
+  it('returns null when there is no image and no valid configured resolution', () => {
+    expect(resolveImageAspect(null, false, false, 0, 0)).toBeNull();
+    expect(resolveImageAspect(null, false, false, undefined, undefined)).toBeNull();
+  });
+
+  it('treats a zero or missing configured height as invalid rather than dividing by zero', () => {
+    expect(resolveImageAspect(null, false, false, 1920, 0)).toBeNull();
   });
 });
