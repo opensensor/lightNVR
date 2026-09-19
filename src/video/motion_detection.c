@@ -25,6 +25,12 @@
 #define MAX_MOTION_STREAMS MAX_STREAMS
 #define DEFAULT_SENSITIVITY 0.15f        // Lower sensitivity threshold (was 0.25)
 #define DEFAULT_MIN_MOTION_AREA 0.005f   // Lower min area (was 0.01)
+// A real subject (person, vehicle, package) never fills the entire scene;
+// an event that does is a global brightness/colour-balance shift -- most
+// commonly a camera's IR-cut filter flipping between day and night mode,
+// which can happen at any time of day, not just at dawn/dusk twilight --
+// not a localized object. Caps the false-positive flood that produced.
+#define DEFAULT_MAX_MOTION_AREA 0.90f
 #define DEFAULT_COOLDOWN_TIME 3
 #define DEFAULT_MOTION_HISTORY 2         // Reduced from 3 to save memory
 #define DEFAULT_BLUR_RADIUS 1            // Radius for simple box blur
@@ -57,6 +63,8 @@ typedef struct {
     int channels;
     float sensitivity;                   // Sensitivity threshold
     float min_motion_area;               // Minimum area to trigger detection
+    float max_motion_area;               // Maximum area before a change is treated as a
+                                          // global lighting/exposure shift, not a subject
     int cooldown_time;                   // Time between detections
     int blur_radius;                     // Blur radius for noise reduction
     int noise_threshold;                 // Threshold for noise filtering
@@ -247,6 +255,7 @@ static motion_stream_t *get_motion_stream(const char *stream_name) {
             // Initialize default values
             motion_streams[i]->sensitivity = DEFAULT_SENSITIVITY;
             motion_streams[i]->min_motion_area = DEFAULT_MIN_MOTION_AREA;
+            motion_streams[i]->max_motion_area = DEFAULT_MAX_MOTION_AREA;
             motion_streams[i]->cooldown_time = DEFAULT_COOLDOWN_TIME;
             motion_streams[i]->history_size = DEFAULT_MOTION_HISTORY;
             motion_streams[i]->blur_radius = DEFAULT_BLUR_RADIUS;
@@ -1215,7 +1224,9 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         );
 
         // Determine if motion is detected based on area threshold
-        motion_detected = (motion_area >= stream->min_motion_area) && (motion_score > 0.01f);
+        motion_detected = (motion_area >= stream->min_motion_area) &&
+                          (motion_area <= stream->max_motion_area) &&
+                          (motion_score > 0.01f);
     } else {
         // Simple frame differencing (original approach with improvements)
         int changed_pixels = 0;
@@ -1275,7 +1286,8 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         motion_score = motion_area;
 
         // Determine if motion is detected based on area threshold
-        motion_detected = (motion_area >= stream->min_motion_area);
+        motion_detected = (motion_area >= stream->min_motion_area) &&
+                          (motion_area <= stream->max_motion_area);
     }
 
     // Add current frame to history
