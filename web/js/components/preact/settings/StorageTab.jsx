@@ -8,6 +8,7 @@
 import { useCallback, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { archiveTargetWithoutTrigger, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.js';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
 import { ConfirmDialog } from '../common/ModalDialog.jsx';
 
@@ -191,10 +192,16 @@ function StorageTargetsPanel({ canModifySettings, t }) {
     { cache: 'no-store', timeout: 15000, retries: 1 },
     { staleTime: 10000 },
   );
+  const policiesQuery = useQuery(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const [editor, setEditor] = useState(null);
   const [busyKey, setBusyKey] = useState('');
   const [deleteTargetCandidate, setDeleteTargetCandidate] = useState(null);
   const targets = data?.targets || [];
+  // Only judge routing once both lists have loaded; otherwise every target
+  // would flash the "not routed" note while the policies are still in flight.
+  const routingKnown = !!policiesQuery.data && !!poolsQuery.data;
+  const routedTargets = referencedTargetUuids(policiesQuery.data?.policies, poolsQuery.data?.pools);
 
   const saveTarget = async () => {
     const reserveGb = Number(editor.reserve_gb);
@@ -247,9 +254,15 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   const probeTarget = async (target) => {
     setBusyKey(target.uuid);
     try {
-      await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
+      const probed = await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
       await refetch();
-      showStatusMessage(t('settings.storageTargets.probePassed'), 'success');
+      const status = probed?.health?.status;
+      if (status && status !== 'healthy') {
+        // The write succeeded, but placement only selects "healthy" targets.
+        showStatusMessage(t('settings.storageTargets.probePassedIneligible', { status }), 'warning', 9000);
+      } else {
+        showStatusMessage(t('settings.storageTargets.probePassed'), 'success');
+      }
     } catch (requestError) {
       await refetch();
       showStatusMessage(requestError.message, 'error', 7000);
@@ -313,6 +326,8 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                   {health.duplicate_filesystem && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.duplicateFilesystem')}</p>}
                   {(health.pressure === 'high' || health.pressure === 'reserve') && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.cleanupActive', { target: formatBytes(health.cleanup_target_bytes) })}</p>}
                   {health.last_error && <p class="text-xs text-[hsl(var(--danger))] mt-2">{health.last_error}</p>}
+                  {health.status === 'degraded' && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.degradedNotice')}</p>}
+                  {routingKnown && !targetIsRouted(target, routedTargets) && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2" data-testid="storage-target-not-routed">{t('settings.storageTargets.notRouted')}</p>}
                 </div>
                 {canModifySettings && <div class="flex flex-wrap gap-2 xl:justify-end">
                   <button type="button" class="btn-secondary" onClick={() => probeTarget(target)} disabled={!!busyKey}>{busyKey === target.uuid ? t('settings.storageTargets.probing') : t('settings.storageTargets.test')}</button>
@@ -580,6 +595,12 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
     const minimum = Number(editor.minimum_retention_days); const desired = Number(editor.desired_retention_days); const maximum = Number(editor.maximum_retention_days); const copies = Number(editor.required_copy_count); const migrationAfter = Number(editor.migration_after_days); const pressurePriority = Number(editor.pressure_priority);
     if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor.migration_target_uuid)) {
       showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
+      return null;
+    }
+    if (archiveTargetWithoutTrigger(editor)) {
+      // Passes server validation but the lifecycle scheduler never selects
+      // anything for it, so nothing would ever be moved.
+      showStatusMessage(t('settings.storagePolicies.archiveNoTrigger'), 'error', 9000);
       return null;
     }
     const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, primary_pool_uuid: editor.primary_pool_uuid || null, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor.migration_target_uuid || null, archive_after_seconds: Number(editor.archive_after_seconds ?? -1), hot_residency_seconds: Number(editor.hot_residency_seconds ?? -1), archive_protected: !!editor.archive_protected, archive_on_pressure: !!editor.archive_on_pressure, pressure_priority: pressurePriority };
