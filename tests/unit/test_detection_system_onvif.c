@@ -363,8 +363,12 @@ void test_onvif_transient_pull_failure_reuses_subscription(void) {
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
 }
 
-// A dropped HTTP connection and an empty HTTP 200 are both request failures;
-// neither should destroy a still-valid camera subscription after one poll.
+// Neither a dropped HTTP connection nor an empty HTTP 200 may destroy a
+// still-valid camera subscription. A connection the camera closes without any
+// response (Tapo, #603) is retried on the same subscription inside the same
+// poll, so that poll succeeds on the second request; an empty HTTP 200 is a
+// real (non-transport) failure and stays one, with the next poll reusing the
+// subscription.
 static void check_empty_pull_recovery(bool drop_connection) {
     fake_onvif_server_t server;
     TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
@@ -377,10 +381,10 @@ static void check_empty_pull_recovery(bool drop_connection) {
     int first = detect_motion_onvif(url, "", "", &result, "");
     int second = detect_motion_onvif(url, "", "", &result, "");
     shutdown_onvif_and_stop_server(&server);
-    TEST_ASSERT_EQUAL_INT(-1, first);
+    TEST_ASSERT_EQUAL_INT(drop_connection ? 0 : -1, first);
     TEST_ASSERT_EQUAL_INT(0, second);
     TEST_ASSERT_EQUAL_INT(1, server.create_count);
-    TEST_ASSERT_EQUAL_INT(2, server.pull_count);
+    TEST_ASSERT_EQUAL_INT(drop_connection ? 3 : 2, server.pull_count);
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
 }
 
@@ -390,6 +394,29 @@ void test_onvif_dropped_pull_reuses_subscription(void) {
 
 void test_onvif_empty_http_success_is_a_failed_poll(void) {
     check_empty_pull_recovery(false);
+}
+
+/* A camera that drops every connection for longer than the retry budget still
+ * fails the poll, but the subscription is retained and the next poll's retries
+ * get through as soon as the camera accepts a connection again (#603). */
+void test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.dropped_pulls_remaining = ONVIF_PULL_DROP_MAX_ATTEMPTS + 1;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+    detection_result_t result = {0};
+    int first = detect_motion_onvif(url, "", "", &result, "");
+    int second = detect_motion_onvif(url, "", "", &result, "");
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(-1, first);
+    TEST_ASSERT_EQUAL_INT(0, second);
+    TEST_ASSERT_EQUAL_INT(1, server.create_count);
+    /* First poll: every attempt in the budget dropped. Second poll: one more
+     * drop, then the camera answers the retry. */
+    TEST_ASSERT_EQUAL_INT(ONVIF_PULL_DROP_MAX_ATTEMPTS + 2, server.pull_count);
+    TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
 }
 
 void test_onvif_uses_scoped_subscription_address_with_escaped_query(void) {
@@ -661,6 +688,7 @@ int main(void) {
     RUN_TEST(test_onvif_transient_pull_failure_reuses_subscription);
     RUN_TEST(test_onvif_dropped_pull_reuses_subscription);
     RUN_TEST(test_onvif_empty_http_success_is_a_failed_poll);
+    RUN_TEST(test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription);
     RUN_TEST(test_onvif_uses_scoped_subscription_address_with_escaped_query);
     RUN_TEST(test_onvif_discovered_endpoint_is_not_retried_as_fallback);
     RUN_TEST(test_onvif_subscription_renews_camera_granted_lease);

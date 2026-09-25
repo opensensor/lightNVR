@@ -59,6 +59,17 @@
 #define ONVIF_PULL_FAILURE_WARN_COUNT 3
 #define ONVIF_PULL_FAILURE_REFRESH_SECONDS 120
 
+/* Some Tapo firmware (C530WS/C220 in #567/#603, C325WB elsewhere) accepts the
+ * TCP connection for a PullMessages/Renew/Unsubscribe request and closes it
+ * again within milliseconds without any HTTP response (libcurl: "Server
+ * returned nothing"), while the PullPoint itself stays valid and keeps queueing
+ * events. Clients that work with these cameras re-issue the request on the
+ * same subscription a few times per second instead of backing off or
+ * resubscribing, and enough of those retries get through. The budget
+ * (ONVIF_PULL_DROP_MAX_ATTEMPTS x ONVIF_PULL_DROP_RETRY_DELAY_MS, declared in
+ * onvif_detection.h) keeps a camera that drops every connection from stalling a
+ * poll for more than about two seconds. */
+
 /* External UUID generator (used for wsa:MessageID). */
 extern void generate_uuid(char *uuid, size_t size);
 
@@ -126,6 +137,35 @@ static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, v
 
     return realsize;
 }
+
+/* Opt-in libcurl trace for diagnosing camera-side connection handling
+ * (LIGHTNVR_ONVIF_CURL_TRACE=1). Only curl's own notes and the HTTP headers are
+ * logged; request and response bodies are not, so credentials, digests and
+ * event payloads never reach the log. */
+static int curl_trace_callback(CURL *handle, curl_infotype type, char *data,
+                               size_t size, void *userp) {
+    (void)handle;
+    (void)userp;
+    const char *prefix;
+    switch (type) {
+        case CURLINFO_TEXT: prefix = "*"; break;
+        case CURLINFO_HEADER_OUT: prefix = ">"; break;
+        case CURLINFO_HEADER_IN: prefix = "<"; break;
+        default: return 0;
+    }
+    while (size > 0 && (data[size - 1] == '\n' || data[size - 1] == '\r')) size--;
+    if (size > 0) log_info("ONVIF curl %s %.*s", prefix, (int)size, data);
+    return 0;
+}
+
+/* Transport-level outcome of one ONVIF HTTP exchange, for callers that need to
+ * tell "the camera dropped the connection" apart from every other failure. */
+typedef struct {
+    CURLcode curl_code;
+    long http_code;
+    double elapsed;
+    long new_connections;
+} onvif_request_status_t;
 
 /*
  * Create ONVIF SOAP request with WS-Security (if credentials provided) and
@@ -208,14 +248,21 @@ static char *create_onvif_request(const char *username, const char *password,
 }
 
 /*
- * Send ONVIF request to a full URL (bypassing the base URL + /onvif/ + service
- * construction). `action` is the WS-Addressing action URI; it's also added as
- * the `action=` parameter on the Content-Type header per SOAP 1.2, which
- * strict ONVIF servers require (#374).
+ * Core of one ONVIF HTTP exchange with a full URL (bypassing the base URL +
+ * /onvif/ + service construction). `action` is the WS-Addressing action URI;
+ * it's also added as the `action=` parameter on the Content-Type header per
+ * SOAP 1.2, which strict ONVIF servers require (#374).
+ *
+ * curl_mutex must be held by the caller. When `status` is provided the
+ * transport outcome is returned in it and curl-level failures are logged at
+ * debug level only, because the caller is retrying and reports the final
+ * result itself.
  */
-static char *send_onvif_request_to_url(const char *full_url, const char *username,
-                                       const char *password, const char *request_body,
-                                       const char *action) {
+static char *perform_onvif_request_locked(const char *full_url, const char *username,
+                                          const char *password, const char *request_body,
+                                          const char *action,
+                                          onvif_request_status_t *status) {
+    if (status) memset(status, 0, sizeof(*status));
     if (!initialized || !curl_handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
@@ -231,8 +278,6 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
         log_error("Failed to create ONVIF request");
         return NULL;
     }
-
-    pthread_mutex_lock(&curl_mutex);
 
     // Set up curl
     curl_easy_setopt(curl_handle, CURLOPT_URL, full_url);
@@ -267,8 +312,20 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
     CURLcode res = curl_easy_perform(curl_handle);
     long http_code = 0;
     double elapsed = 0;
+    long new_connections = 0;
     curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
     curl_easy_getinfo(curl_handle, CURLINFO_TOTAL_TIME, &elapsed);
+    /* 0 means the transfer ran on a reused keep-alive connection; libcurl
+     * retries a dead reused connection on a fresh one by itself, so a
+     * "returned nothing" with new_connections=1 is the camera closing a fresh
+     * connection, not a stale keep-alive. */
+    curl_easy_getinfo(curl_handle, CURLINFO_NUM_CONNECTS, &new_connections);
+    if (status) {
+        status->curl_code = res;
+        status->http_code = http_code;
+        status->elapsed = elapsed;
+        status->new_connections = new_connections;
+    }
 
     // Clean up request
     free(soap_request);
@@ -276,11 +333,18 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
 
     // Check for errors
     if (res != CURLE_OK) {
-        log_error("ONVIF request %s failed (curl=%d, HTTP=%ld, elapsed=%.3fs): %s",
-                  action ? action : "unknown", (int)res, http_code, elapsed,
-                  curl_easy_strerror(res));
+        if (status) {
+            log_debug("ONVIF request %s attempt failed (curl=%d, HTTP=%ld, elapsed=%.3fs, "
+                      "new connections=%ld): %s",
+                      action ? action : "unknown", (int)res, http_code, elapsed,
+                      new_connections, curl_easy_strerror(res));
+        } else {
+            log_error("ONVIF request %s failed (curl=%d, HTTP=%ld, elapsed=%.3fs, "
+                      "new connections=%ld): %s",
+                      action ? action : "unknown", (int)res, http_code, elapsed,
+                      new_connections, curl_easy_strerror(res));
+        }
         free(chunk.memory);
-        pthread_mutex_unlock(&curl_mutex);
         return NULL;
     }
 
@@ -291,12 +355,21 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
             onvif_log_soap_fault(chunk.memory, chunk.size, "ONVIF Detection");
         }
         free(chunk.memory);
-        pthread_mutex_unlock(&curl_mutex);
         return NULL;
     }
 
-    pthread_mutex_unlock(&curl_mutex);
     return chunk.memory;
+}
+
+/* One-shot ONVIF request to a full URL. */
+static char *send_onvif_request_to_url(const char *full_url, const char *username,
+                                       const char *password, const char *request_body,
+                                       const char *action) {
+    pthread_mutex_lock(&curl_mutex);
+    char *response = perform_onvif_request_locked(full_url, username, password,
+                                                  request_body, action, NULL);
+    pthread_mutex_unlock(&curl_mutex);
+    return response;
 }
 
 // Send ONVIF request and get response
@@ -470,6 +543,24 @@ static void apply_subscription_lease(onvif_subscription_t *subscription,
     subscription->renewal_time = subscription->creation_time + renewal_delay;
 }
 
+/* True when the camera accepted the TCP connection but produced no HTTP
+ * response at all. libcurl already retries a dead reused keep-alive connection
+ * on a fresh one before reporting these, so they mean the camera itself closed
+ * a fresh connection. Refused and timed-out connects are deliberately
+ * excluded: a camera that is down or wedged must not be hammered. */
+static bool is_transport_drop(const onvif_request_status_t *status) {
+    if (!status || status->http_code != 0) return false;
+    return status->curl_code == CURLE_GOT_NOTHING ||
+           status->curl_code == CURLE_RECV_ERROR ||
+           status->curl_code == CURLE_SEND_ERROR;
+}
+
+/* Send a subscription-scoped request (PullMessages, Renew, Unsubscribe) to the
+ * SubscriptionReference address. Transport drops are retried on the same
+ * subscription (ONVIF_PULL_DROP_MAX_ATTEMPTS). curl_mutex stays held for the
+ * whole burst so the retries land inside the one-to-two-second window in which
+ * these cameras accept a connection again, instead of queueing behind another
+ * camera's five-second long poll. */
 static char *send_subscription_request(const onvif_subscription_t *subscription,
                                        const char *request_body,
                                        const char *action) {
@@ -477,10 +568,40 @@ static char *send_subscription_request(const onvif_subscription_t *subscription,
 
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
-        return send_onvif_request_to_url(subscription->subscription_address,
-                                         subscription->username,
-                                         subscription->password,
-                                         request_body, action);
+        char *response = NULL;
+        onvif_request_status_t status = {0};
+        int attempts = 0;
+
+        pthread_mutex_lock(&curl_mutex);
+        while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
+            attempts++;
+            response = perform_onvif_request_locked(subscription->subscription_address,
+                                                    subscription->username,
+                                                    subscription->password,
+                                                    request_body, action, &status);
+            if (response || !is_transport_drop(&status) ||
+                attempts >= ONVIF_PULL_DROP_MAX_ATTEMPTS || is_shutdown_initiated()) {
+                break;
+            }
+            log_debug("ONVIF request %s: camera closed the connection without a "
+                      "response (curl=%d); retrying on the same subscription "
+                      "(attempt %d/%d)",
+                      action, (int)status.curl_code, attempts + 1,
+                      ONVIF_PULL_DROP_MAX_ATTEMPTS);
+            usleep(ONVIF_PULL_DROP_RETRY_DELAY_MS * 1000);
+        }
+        pthread_mutex_unlock(&curl_mutex);
+
+        /* HTTP-level failures (faults, non-200) were already reported by the
+         * core; only curl-level failures are left for us to report. */
+        if (!response && status.curl_code != CURLE_OK) {
+            log_error("ONVIF request %s failed after %d attempt%s (curl=%d, HTTP=%ld, "
+                      "elapsed=%.3fs, new connections=%ld): %s",
+                      action, attempts, attempts == 1 ? "" : "s",
+                      (int)status.curl_code, status.http_code, status.elapsed,
+                      status.new_connections, curl_easy_strerror(status.curl_code));
+        }
+        return response;
     }
 
     const char *last_slash = strrchr(subscription->subscription_address, '/');
@@ -755,8 +876,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
         subscriptions[slot].active = true;
         
-        log_info("Successfully created ONVIF subscription for %s (lease: %d seconds)",
-                 url, lease_seconds);
+        log_info("Successfully created ONVIF subscription for %s at %s (lease: %d seconds)",
+                 url, subscription_address, lease_seconds);
         free(subscription_address);
         pthread_mutex_unlock(&subscription_mutex);
         return &subscriptions[slot];
@@ -1145,6 +1266,12 @@ int init_onvif_detection_system(void) {
         return -1;
     }
 
+    if (getenv("LIGHTNVR_ONVIF_CURL_TRACE")) {
+        curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(curl_handle, CURLOPT_DEBUGFUNCTION, curl_trace_callback);
+        log_info("ONVIF detection: libcurl trace enabled (LIGHTNVR_ONVIF_CURL_TRACE)");
+    }
+
     // Initialize subscriptions
     pthread_mutex_lock(&subscription_mutex);
     subscription_count = 0;
@@ -1257,16 +1384,15 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     time_t event_timestamp = time(NULL);
 
     // Send PullMessages directly to the subscription address (the full URL returned by
-    // CreatePullPointSubscription per ONVIF spec).  Fall back to the legacy path-extraction
-    // approach only when the stored address is not an absolute HTTP URL.
+    // CreatePullPointSubscription per ONVIF spec).  send_subscription_request() retries
+    // camera-side connection drops on the same subscription before this counts as a
+    // failed poll (#603).  Fall back to the legacy path-extraction approach only when
+    // the stored address is not an absolute HTTP URL.
     char *response = NULL;
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
         log_debug("ONVIF Detection: Sending PullMessages to %s", subscription->subscription_address);
-        response = send_onvif_request_to_url(subscription->subscription_address,
-                                             subscription->username,
-                                             subscription->password,
-                                             request_body,
+        response = send_subscription_request(subscription, request_body,
                                              ONVIF_ACTION_PULL_MESSAGES);
     } else {
         // Legacy fallback: extract last path component and re-append under /onvif/

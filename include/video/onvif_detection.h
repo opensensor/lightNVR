@@ -6,6 +6,12 @@
 // Model type for ONVIF-based detection
 #define MODEL_TYPE_ONVIF "onvif"
 
+/* Bounded same-subscription retry for camera-side transport drops (a
+ * connection the camera accepts and closes without any HTTP response). See
+ * onvif_detection.c for the Tapo firmware behaviour this covers (#567, #603). */
+#define ONVIF_PULL_DROP_MAX_ATTEMPTS 6
+#define ONVIF_PULL_DROP_RETRY_DELAY_MS 250
+
 /**
  * Initialize the ONVIF detection system
  * 
