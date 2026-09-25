@@ -95,6 +95,19 @@ static void add_stream_with_quota(const char *name, int max_storage_mb) {
     TEST_ASSERT_EQUAL_INT(0, set_stream_retention_config(name, &cfg));
 }
 
+/* Configure a stream with an explicit tri-state retention policy
+ * (-1 inherit global, 0 unlimited, >0 days) and no quota. */
+static void add_stream_with_retention(const char *name, bool enabled,
+                                      int retention_days, int detection_retention_days) {
+    stream_config_t s = make_stream(name);
+    s.enabled = enabled;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&s));
+    stream_retention_config_t cfg = {.retention_days = retention_days,
+                                     .detection_retention_days = detection_retention_days,
+                                     .max_storage_mb = 0};
+    TEST_ASSERT_EQUAL_INT(0, set_stream_retention_config(name, &cfg));
+}
+
 static recording_metadata_t make_recording(const char *stream, const char *path, time_t start, uint64_t size_bytes) {
     recording_metadata_t m;
     memset(&m, 0, sizeof(m));
@@ -113,6 +126,30 @@ static recording_metadata_t make_recording(const char *stream, const char *path,
     m.retention_tier = RETENTION_TIER_STANDARD;
     m.disk_pressure_eligible = true;
     return m;
+}
+
+/* Create a small file under <root>/mp4/<file> plus its recordings row for
+ * `stream`, started `age_seconds` ago. Returns the row id. */
+static uint64_t add_recording_aged(const char *stream, const char *file, time_t age_seconds,
+                                   char *path_out, size_t path_size) {
+    mp4_path(path_out, path_size, file);
+    create_file(path_out, 1024);
+    recording_metadata_t rec = make_recording(stream, path_out, time(NULL) - age_seconds, 1024);
+    uint64_t id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    return id;
+}
+
+static void assert_recording_deleted(const char *path) {
+    recording_metadata_t meta;
+    TEST_ASSERT_EQUAL_INT(-1, access(path, F_OK));
+    TEST_ASSERT_NOT_EQUAL(0, get_recording_metadata_by_path(path, &meta));
+}
+
+static void assert_recording_kept(const char *path) {
+    recording_metadata_t meta;
+    TEST_ASSERT_EQUAL_INT(0, access(path, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_path(path, &meta));
 }
 
 static int count_recordings(void) {
@@ -305,6 +342,85 @@ void test_apply_retention_policy_removes_transcode_cache_alongside_recording(voi
     TEST_ASSERT_EQUAL_INT(0, access(keep_cache_path, F_OK));
 }
 
+void test_apply_retention_policy_expires_disabled_stream_recordings(void) {
+    /* A disabled camera's footage still occupies the volume and must age
+     * out on the same rules as an enabled one. The age-based passes used
+     * to iterate enabled streams only, so a camera "deleted" from the UI
+     * (which merely disables it) kept every recording until disk pressure
+     * reached it. Protected rows stay exempt exactly as before. */
+    const time_t expired = 20 * 86400;
+    const time_t fresh = 3600;
+    char enabled_old[PATH_MAX], enabled_new[PATH_MAX];
+    char disabled_old[PATH_MAX], disabled_new[PATH_MAX], disabled_protected[PATH_MAX];
+
+    create_mp4_dir();
+    TEST_ASSERT_EQUAL_INT(0, set_retention_days(14));
+    add_stream_with_retention("enabled_cam", true, -1, -1);
+    add_stream_with_retention("disabled_cam", false, -1, -1);
+
+    add_recording_aged("enabled_cam", "enabled-old.mp4", expired, enabled_old, sizeof(enabled_old));
+    add_recording_aged("enabled_cam", "enabled-new.mp4", fresh, enabled_new, sizeof(enabled_new));
+    add_recording_aged("disabled_cam", "disabled-old.mp4", expired, disabled_old, sizeof(disabled_old));
+    add_recording_aged("disabled_cam", "disabled-new.mp4", fresh, disabled_new, sizeof(disabled_new));
+    uint64_t protected_id = add_recording_aged("disabled_cam", "disabled-protected.mp4", expired,
+                                               disabled_protected, sizeof(disabled_protected));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(protected_id, true));
+
+    TEST_ASSERT_EQUAL_INT(2, apply_retention_policy());
+
+    assert_recording_deleted(enabled_old);
+    assert_recording_deleted(disabled_old);
+    assert_recording_kept(enabled_new);
+    assert_recording_kept(disabled_new);
+    assert_recording_kept(disabled_protected);
+    TEST_ASSERT_EQUAL_INT(3, count_recordings());
+}
+
+void test_apply_retention_policy_honours_disabled_stream_explicit_retention(void) {
+    /* Per-stream retention resolves identically for a disabled stream:
+     * 0 is explicitly unlimited and beats the global value, a positive
+     * value overrides the global value in both directions. */
+    char unlimited_old[PATH_MAX], short_old[PATH_MAX], short_new[PATH_MAX];
+
+    create_mp4_dir();
+    TEST_ASSERT_EQUAL_INT(0, set_retention_days(14));
+    add_stream_with_retention("disabled_unlimited", false, 0, 0);
+    add_stream_with_retention("disabled_short", false, 3, 3);
+
+    add_recording_aged("disabled_unlimited", "unlimited-old.mp4", 400 * 86400,
+                       unlimited_old, sizeof(unlimited_old));
+    /* Older than the 3-day override but younger than the 14-day global. */
+    add_recording_aged("disabled_short", "short-old.mp4", 5 * 86400, short_old, sizeof(short_old));
+    add_recording_aged("disabled_short", "short-new.mp4", 1 * 86400, short_new, sizeof(short_new));
+
+    TEST_ASSERT_EQUAL_INT(1, apply_retention_policy());
+
+    assert_recording_kept(unlimited_old);
+    assert_recording_deleted(short_old);
+    assert_recording_kept(short_new);
+}
+
+void test_apply_retention_policy_expires_recordings_of_deleted_streams(void) {
+    /* A permanently deleted camera leaves its rows behind with no streams
+     * row to carry a policy; they follow the global retention. With global
+     * retention off (0) they are left alone. */
+    char ghost_old[PATH_MAX], ghost_new[PATH_MAX];
+
+    create_mp4_dir();
+    add_recording_aged("ghost_cam", "ghost-old.mp4", 20 * 86400, ghost_old, sizeof(ghost_old));
+    add_recording_aged("ghost_cam", "ghost-new.mp4", 3600, ghost_new, sizeof(ghost_new));
+
+    TEST_ASSERT_EQUAL_INT(0, set_retention_days(0));
+    TEST_ASSERT_EQUAL_INT(0, apply_retention_policy());
+    assert_recording_kept(ghost_old);
+    assert_recording_kept(ghost_new);
+
+    TEST_ASSERT_EQUAL_INT(0, set_retention_days(14));
+    TEST_ASSERT_EQUAL_INT(1, apply_retention_policy());
+    assert_recording_deleted(ghost_old);
+    assert_recording_kept(ghost_new);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) return 1;
@@ -316,6 +432,9 @@ int main(void) {
     RUN_TEST(test_apply_retention_policy_cleans_low_ratio_orphans_when_storage_is_healthy);
     RUN_TEST(test_apply_retention_policy_skips_orphans_when_mp4_storage_is_inaccessible);
     RUN_TEST(test_apply_retention_policy_removes_transcode_cache_alongside_recording);
+    RUN_TEST(test_apply_retention_policy_expires_disabled_stream_recordings);
+    RUN_TEST(test_apply_retention_policy_honours_disabled_stream_explicit_retention);
+    RUN_TEST(test_apply_retention_policy_expires_recordings_of_deleted_streams);
     int result = UNITY_END();
 
     shutdown_database();

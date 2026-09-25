@@ -126,6 +126,29 @@ int set_stream_retention_config(const char *stream_name, const stream_retention_
 int get_all_stream_names(char names[][MAX_STREAM_NAME], int max_count);
 
 /**
+ * Get every configured stream name, enabled or not, for retention processing
+ *
+ * Enabled streams are listed first (each group sorted by name) so a cleanup
+ * pass working under a time budget reaches the live cameras before it works
+ * through a backlog on disabled ones.
+ *
+ * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_names_including_disabled(char names[][MAX_STREAM_NAME], int max_count);
+
+/**
+ * Get stream names that still own rows in `recordings` but no longer have a
+ * row in `streams` (cameras that were permanently deleted)
+ *
+ * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of orphaned stream names found (sorted by name), or -1 on error
+ */
+int get_orphaned_recording_stream_names(char names[][MAX_STREAM_NAME], int max_count);
+
+/**
  * Get storage usage for a stream in bytes
  *
  * @param stream_name Stream name

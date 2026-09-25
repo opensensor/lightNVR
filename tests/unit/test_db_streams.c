@@ -5,6 +5,7 @@
  * Tests add_stream_config, get_stream_config_by_name, update_stream_config,
  * delete_stream_config, get_all_stream_configs, count_stream_configs,
  * get_enabled_stream_count, stream retention config, get_all_stream_names,
+ * get_all_stream_names_including_disabled, get_orphaned_recording_stream_names,
  * and update_stream_video_params.
  */
 
@@ -20,6 +21,7 @@
 
 #include "unity.h"
 #include "database/db_core.h"
+#include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
 
@@ -315,6 +317,69 @@ void test_get_all_stream_names(void) {
     char names[10][MAX_STREAM_NAME];
     int n = get_all_stream_names(names, 10);
     TEST_ASSERT_EQUAL_INT(2, n);
+}
+
+void test_get_all_stream_names_including_disabled_lists_enabled_first(void) {
+    stream_config_t on_z = make_stream("z_on", true);
+    stream_config_t off_a = make_stream("a_off", false);
+    stream_config_t on_m = make_stream("m_on", true);
+    add_stream_config(&on_z);
+    add_stream_config(&off_a);
+    add_stream_config(&on_m);
+
+    char names[10][MAX_STREAM_NAME];
+    /* The enabled-only listing is unchanged for its other callers. */
+    TEST_ASSERT_EQUAL_INT(2, get_all_stream_names(names, 10));
+    TEST_ASSERT_EQUAL_STRING("m_on", names[0]);
+    TEST_ASSERT_EQUAL_STRING("z_on", names[1]);
+
+    /* Retention sees disabled streams too, after the enabled ones. */
+    TEST_ASSERT_EQUAL_INT(3, get_all_stream_names_including_disabled(names, 10));
+    TEST_ASSERT_EQUAL_STRING("m_on", names[0]);
+    TEST_ASSERT_EQUAL_STRING("z_on", names[1]);
+    TEST_ASSERT_EQUAL_STRING("a_off", names[2]);
+
+    /* The cap is honoured. */
+    TEST_ASSERT_EQUAL_INT(2, get_all_stream_names_including_disabled(names, 2));
+}
+
+static void add_recording_for(const char *stream, const char *path) {
+    recording_metadata_t m;
+    memset(&m, 0, sizeof(m));
+    safe_strcpy(m.stream_name, stream, sizeof(m.stream_name), 0);
+    safe_strcpy(m.file_path, path, sizeof(m.file_path), 0);
+    safe_strcpy(m.codec, "h264", sizeof(m.codec), 0);
+    safe_strcpy(m.trigger_type, "scheduled", sizeof(m.trigger_type), 0);
+    m.start_time = 1000;
+    m.end_time = 1060;
+    m.size_bytes = 1;
+    m.is_complete = true;
+    m.retention_override_days = -1;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&m));
+}
+
+void test_get_orphaned_recording_stream_names(void) {
+    sqlite3 *db = get_db_handle();
+    exec_sql_or_fail(db, "DELETE FROM recordings;");
+
+    char names[10][MAX_STREAM_NAME];
+    TEST_ASSERT_EQUAL_INT(0, get_orphaned_recording_stream_names(names, 10));
+
+    /* A configured stream, even a disabled one, is never orphaned. */
+    stream_config_t kept = make_stream("kept_cam", false);
+    add_stream_config(&kept);
+    add_recording_for("kept_cam", "/r/kept.mp4");
+    /* Rows whose stream row was permanently deleted are, once per name. */
+    add_recording_for("ghost_b", "/r/b1.mp4");
+    add_recording_for("ghost_b", "/r/b2.mp4");
+    add_recording_for("ghost_a", "/r/a1.mp4");
+
+    int n = get_orphaned_recording_stream_names(names, 10);
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_STRING("ghost_a", names[0]);
+    TEST_ASSERT_EQUAL_STRING("ghost_b", names[1]);
+
+    exec_sql_or_fail(db, "DELETE FROM recordings;");
 }
 
 /* ================================================================
@@ -739,6 +804,8 @@ int main(void) {
     RUN_TEST(test_stream_retention_tri_state_round_trip);
     RUN_TEST(test_detection_recording_schedule_round_trip);
     RUN_TEST(test_get_all_stream_names);
+    RUN_TEST(test_get_all_stream_names_including_disabled_lists_enabled_first);
+    RUN_TEST(test_get_orphaned_recording_stream_names);
     RUN_TEST(test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows);
     RUN_TEST(test_motion_trigger_source_defaults_empty);
     RUN_TEST(test_motion_trigger_source_round_trip);

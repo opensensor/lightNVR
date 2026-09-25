@@ -239,7 +239,11 @@ mp4_retention_days = 30
 
 - `path`: Directory where recordings are stored
 - `max_size`: Maximum storage size in bytes (0 means unlimited)
-- `retention_days`: Number of days to keep recordings
+- `retention_days`: Number of days to keep recordings. Age-based retention
+  applies to every configured camera, enabled or disabled (deleting a camera
+  from the UI without "permanent" only disables it), and to recordings whose
+  camera was permanently deleted; per-camera overrides still apply, and
+  protected recordings are never expired by age.
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
 - `record_mp4_directly`: Enable direct MP4 recording (instead of HLS-to-MP4 conversion)
 - `mp4_path`: Directory for direct MP4 recordings

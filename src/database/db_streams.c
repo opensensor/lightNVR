@@ -1808,13 +1808,12 @@ int set_stream_retention_config(const char *stream_name, const stream_retention_
 }
 
 /**
- * Get all stream names for retention policy processing
+ * Run a single-column name query and copy each row into `names`.
  *
- * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
- * @param max_count Maximum number of stream names to return
- * @return Number of streams found, or -1 on error
+ * Shared by the stream-name listings below; `caller` only labels log lines.
  */
-int get_all_stream_names(char names[][MAX_STREAM_NAME], int max_count) {
+static int collect_stream_names(const char *sql, const char *caller,
+                                char names[][MAX_STREAM_NAME], int max_count) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -1828,17 +1827,15 @@ int get_all_stream_names(char names[][MAX_STREAM_NAME], int max_count) {
     }
 
     if (!names || max_count <= 0) {
-        log_error("Invalid parameters for get_all_stream_names");
+        log_error("Invalid parameters for %s", caller);
         return -1;
     }
 
     pthread_mutex_lock(db_mutex);
 
-    const char *sql = "SELECT name FROM streams WHERE enabled = 1 ORDER BY name;";
-
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        log_error("Failed to prepare statement for %s: %s", caller, sqlite3_errmsg(db));
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
@@ -1855,6 +1852,56 @@ int get_all_stream_names(char names[][MAX_STREAM_NAME], int max_count) {
     pthread_mutex_unlock(db_mutex);
 
     return count;
+}
+
+/**
+ * Get all enabled stream names
+ *
+ * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_names(char names[][MAX_STREAM_NAME], int max_count) {
+    return collect_stream_names(
+        "SELECT name FROM streams WHERE enabled = 1 ORDER BY name;",
+        "get_all_stream_names", names, max_count);
+}
+
+/**
+ * Get every configured stream name, enabled or not, for retention processing
+ *
+ * Enabled streams are listed first (each group sorted by name) so a cleanup
+ * pass working under a time budget reaches the live cameras before it works
+ * through a backlog on disabled ones.
+ *
+ * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_names_including_disabled(char names[][MAX_STREAM_NAME], int max_count) {
+    return collect_stream_names(
+        "SELECT name FROM streams ORDER BY enabled DESC, name;",
+        "get_all_stream_names_including_disabled", names, max_count);
+}
+
+/**
+ * Get stream names that still own rows in `recordings` but no longer have a
+ * row in `streams` (cameras that were permanently deleted)
+ *
+ * @param names Array of stream name buffers (each should be MAX_STREAM_NAME chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of orphaned stream names found (sorted by name), or -1 on error
+ */
+int get_orphaned_recording_stream_names(char names[][MAX_STREAM_NAME], int max_count) {
+    // The DISTINCT runs first over the covering stream_name index, so the
+    // existence probe against `streams` costs one lookup per camera rather
+    // than one per recording row (about 20 ms at 500k rows).
+    return collect_stream_names(
+        "SELECT stream_name FROM (SELECT DISTINCT stream_name FROM recordings) r "
+        "WHERE stream_name IS NOT NULL AND stream_name != '' "
+        "AND NOT EXISTS (SELECT 1 FROM streams s WHERE s.name = r.stream_name) "
+        "ORDER BY stream_name;",
+        "get_orphaned_recording_stream_names", names, max_count);
 }
 
 /**

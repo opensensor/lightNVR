@@ -372,6 +372,52 @@ int delete_recording(const char *path) {
 }
 
 /**
+ * Collect the stream names an age-based retention pass must visit.
+ *
+ * Every configured stream is included whether or not it is enabled: a
+ * disabled camera's footage still occupies the volume and must age out on
+ * the same rules as when it was recording. Deleting a camera from the UI
+ * without "permanent" merely sets enabled = 0, so on a long-lived deployment
+ * disabled cameras can own most of the expired footage; the enabled-only
+ * listing used to leave all of it to disk-pressure cleanup.
+ *
+ * Names that survive only in `recordings` (permanently deleted cameras) are
+ * appended after the configured streams so their footage expires under the
+ * global policy.
+ *
+ * @param names          Buffer of max_count MAX_STREAM_NAME entries
+ * @param max_count      Capacity of names
+ * @param configured_out Receives how many leading entries are configured
+ *                       streams; entries at or beyond that index have no
+ *                       streams row.
+ * @return Total number of names collected, or -1 on error
+ */
+static int collect_retention_stream_names(char names[][MAX_STREAM_NAME],
+                                          int max_count,
+                                          int *configured_out) {
+    int configured = get_all_stream_names_including_disabled(names, max_count);
+    if (configured < 0) {
+        *configured_out = 0;
+        return -1;
+    }
+    *configured_out = configured;
+
+    if (configured >= max_count) {
+        return configured;
+    }
+
+    int orphans = get_orphaned_recording_stream_names(names + configured,
+                                                      max_count - configured);
+    if (orphans < 0) {
+        // Configured streams can still be processed; the orphans just wait.
+        log_warn("Failed to list recordings of deleted streams - skipping them this cycle");
+        return configured;
+    }
+
+    return configured + orphans;
+}
+
+/**
  * Apply per-stream retention policy
  *
  * This function processes each stream individually, applying:
@@ -379,6 +425,8 @@ int delete_recording(const char *path) {
  * 2. Storage quota enforcement per stream
  * 3. Orphaned database entry cleanup
  *
+ * Disabled streams are processed like enabled ones, and recordings whose
+ * stream was permanently deleted follow the global retention.
  * Protected recordings are never deleted.
  *
  * @return Number of recordings deleted, or -1 on error
@@ -397,7 +445,9 @@ int apply_retention_policy(void) {
         log_error("Failed to allocate stream-name buffer for retention policy");
         return -1;
     }
-    int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
+    int configured_count = 0;
+    int stream_count = collect_retention_stream_names(stream_names, MAX_STREAMS_BATCH,
+                                                      &configured_count);
 
     if (stream_count < 0) {
         log_error("Failed to get stream names for retention policy");
@@ -414,7 +464,8 @@ int apply_retention_policy(void) {
                  MAX_STREAMS_BATCH);
     }
 
-    log_info("Processing retention policy for %d streams", stream_count);
+    log_info("Processing retention policy for %d configured streams and %d deleted streams with recordings",
+             configured_count, stream_count - configured_count);
 
     // Allocate a reusable batch buffer on the heap (avoids large stack frames in loops)
     recording_metadata_t *batch = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
@@ -437,8 +488,14 @@ int apply_retention_policy(void) {
         const char *stream_name = stream_names[s];
         stream_retention_config_t config;
 
-        // Get stream-specific retention config
-        if (get_stream_retention_config(stream_name, &config) != 0) {
+        // Get stream-specific retention config. Entries past configured_count
+        // belong to permanently deleted cameras: no streams row survives, so
+        // their footage inherits the global policy and has no quota.
+        if (s >= configured_count) {
+            config.retention_days = -1;
+            config.detection_retention_days = -1;
+            config.max_storage_mb = 0;
+        } else if (get_stream_retention_config(stream_name, &config) != 0) {
             log_warn("Failed to get retention config for stream %s, using defaults", stream_name);
             config.retention_days = storage_manager.retention_days;
             config.detection_retention_days = config.retention_days;
@@ -1435,8 +1492,9 @@ static void standard_cleanup_cycle(void) {
             tier_recs = NULL;
         }
 
+        int configured_count = 0;
         int stream_count = stream_names
-            ? get_all_stream_names(stream_names, MAX_STREAMS_BATCH)
+            ? collect_retention_stream_names(stream_names, MAX_STREAMS_BATCH, &configured_count)
             : -1;
 
         if (stream_count == MAX_STREAMS_BATCH) {
@@ -1445,9 +1503,18 @@ static void standard_cleanup_cycle(void) {
         }
 
         for (int s = 0; s < stream_count && unified_ctrl.running; s++) {
-            // Get stream config for tier multipliers
+            // Get stream config for tier multipliers. Entries past
+            // configured_count belong to permanently deleted cameras: no
+            // streams row survives, so their footage follows the global
+            // retention with the default tier multipliers.
             stream_config_t sconfig;
-            if (get_stream_config_by_name(stream_names[s], &sconfig) != 0) {
+            if (s >= configured_count) {
+                memset(&sconfig, 0, sizeof(sconfig));
+                sconfig.retention_days = -1;
+                sconfig.tier_critical_multiplier = 3.0;
+                sconfig.tier_important_multiplier = 2.0;
+                sconfig.tier_ephemeral_multiplier = 0.25;
+            } else if (get_stream_config_by_name(stream_names[s], &sconfig) != 0) {
                 continue;
             }
 
