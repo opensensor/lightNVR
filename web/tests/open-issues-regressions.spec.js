@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import path from 'path';
 import { shouldFallbackFullscreenToSubStream } from '../js/components/preact/liveStreamPolicy.js';
 import { formatUtils } from '../js/components/preact/recordings/formatUtils.js';
 import { formatUptime } from '../js/components/preact/system/SystemUtils.js';
@@ -47,5 +49,22 @@ describe('open issue regressions', () => {
 
     // A timeline scrub that moves away from the media clock still needs a seek.
     expect(shouldSeekPlaybackPosition(120, 105.2, segmentStart, 5.2)).toBe(true);
+  });
+
+  test('shows one control bar for an investigation recording, not native plus custom (#568)', () => {
+    const source = readFileSync(
+      path.resolve(__dirname, '../js/components/preact/investigation/InvestigationView.jsx'),
+      'utf8',
+    );
+    const frameStart = source.indexOf('className="investigation-video-frame"');
+    const controlsStart = source.indexOf('className="investigation-player-controls"');
+    expect(frameStart).toBeGreaterThan(-1);
+    expect(controlsStart).toBeGreaterThan(frameStart);
+
+    const playerMarkup = source.slice(frameStart, controlsStart);
+    expect(playerMarkup).toContain('<video');
+    // The custom bar (play/pause, scrubber, fullscreen) is the only control
+    // bar, so the <video> must not also enable the browser's native controls.
+    expect(playerMarkup).not.toMatch(/^\s*controls(=|\s*$)/m);
   });
 });

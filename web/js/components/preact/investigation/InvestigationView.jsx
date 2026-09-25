@@ -352,13 +352,14 @@ function InvestigationPlayer({
           ref={videoFrameRef}
           style={{ aspectRatio: playerAspectRatio }}
         >
+          {/* No native controls: the page's own bar below is the only control
+              bar, so the recording is not shown with two sets (#568). */}
           {segment ? (
             <video
               ref={videoRef}
               muted={!primary}
               playsInline
               preload="metadata"
-              controls={!eptzActive}
               onPlay={handleNativePlay}
               onPause={handleNativePause}
               onWaiting={() => setStatus('late')}

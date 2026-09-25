@@ -78,7 +78,7 @@ test.describe('Investigation player regressions @ui @investigation', () => {
 
   });
 
-  test('keeps controls visible and preserves a 4:3 recording after metadata loads', async ({ page }) => {
+  test('keeps a single control bar visible and preserves a 4:3 recording after metadata loads', async ({ page }) => {
     await page.goto(
       `/investigation.html?cameras=${CAMERA_UUID}&start=${START_TIME}` +
       `&end=${END_TIME}&cursor=${START_TIME + 1}`,
@@ -105,7 +105,8 @@ test.describe('Investigation player regressions @ui @investigation', () => {
       const bounds = element.getBoundingClientRect();
       return bounds.width / bounds.height;
     })).toBeCloseTo(4 / 3, 2);
-    await expect.poll(() => video.evaluate(element => element.controls)).toBe(true);
+    // Only the page's own control bar is shown; native controls would duplicate it (#568).
+    await expect.poll(() => video.evaluate(element => element.controls)).toBe(false);
     await expect.poll(() => video.evaluate(element =>
       getComputedStyle(element).objectFit)).toBe('contain');
 
