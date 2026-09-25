@@ -262,6 +262,7 @@ services:
 |----------|---------|-------------|
 | `TZ` | `UTC` | Container timezone |
 | `GO2RTC_CONFIG_PERSIST` | `true` | Persist go2rtc config across restarts |
+| `LIGHTNVR_FFMPEG_MAX_RSS_MB` | `768` for audio, `1536` for video | Per-child RSS cutoff for ffmpeg started by managed go2rtc. Valid range: 128–2048 MiB. Audio-only jobs also receive an address-space limit 256 MiB above this value. |
 | `LIGHTNVR_ONVIF_NETWORK` | (none) | Override ONVIF discovery network (e.g., `192.168.1.0/24`) |
 | `LIGHTNVR_MIGRATIONS_DIR` | (none) | Override where database migrations are read from. Falls back to `./db/migrations`, then `/usr/share/lightnvr/migrations`, then a path relative to the binary. |
 

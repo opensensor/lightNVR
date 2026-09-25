@@ -26,6 +26,7 @@
 // declared in the public header (production code has no business mutating
 // a global backup timeout at runtime), so it's declared here instead.
 extern void db_backup_set_max_duration_seconds_for_testing(int seconds);
+extern int db_backup_pin_source_snapshot(sqlite3 *source_db);
 
 // Test-only hook into db_core.c's scheduled-backup worker, same convention:
 // swaps the cycle the worker runs so a test can hold it in flight or delay it
@@ -44,6 +45,8 @@ extern void db_scheduled_backup_set_cycle_fn_for_testing(int (*fn)(int (*real_cy
 #define TEST_ABORT_DB_PATH "/tmp/test_db_abort.sqlite"
 #define TEST_ABORT_BACKUP_PATH "/tmp/test_db_abort.sqlite.bak"
 #define TEST_SHUTDOWN_DB_PATH "/tmp/test_db_shutdown.sqlite"
+#define TEST_SNAPSHOT_DB_PATH "/tmp/test_db_snapshot.sqlite"
+#define TEST_SNAPSHOT_COPY_PATH "/tmp/test_db_snapshot_copy.sqlite"
 
 static void remove_database_files(const char *path) {
     char sidecar[256];
@@ -1446,6 +1449,57 @@ static int test_restore(void) {
     return 0;
 }
 
+static int test_backup_snapshot_stays_pinned_across_writer_commit(void) {
+    sqlite3 *seed = NULL, *source = NULL, *writer = NULL, *dest = NULL;
+    sqlite3_backup *backup = NULL;
+    int result = -1;
+    remove_database_files(TEST_SNAPSHOT_DB_PATH);
+    remove_database_files(TEST_SNAPSHOT_COPY_PATH);
+
+    if (sqlite3_open(TEST_SNAPSHOT_DB_PATH, &seed) != SQLITE_OK ||
+        sqlite3_exec(seed,
+            "PRAGMA journal_mode=WAL;"
+            "CREATE TABLE payload(data BLOB);"
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100) "
+            "INSERT INTO payload SELECT zeroblob(3000) FROM n;",
+            NULL, NULL, NULL) != SQLITE_OK) goto cleanup;
+    sqlite3_close(seed);
+    seed = NULL;
+
+    if (sqlite3_open_v2(TEST_SNAPSHOT_DB_PATH, &source,
+                        SQLITE_OPEN_READONLY | SQLITE_OPEN_PRIVATECACHE,
+                        NULL) != SQLITE_OK ||
+        sqlite3_open(TEST_SNAPSHOT_DB_PATH, &writer) != SQLITE_OK ||
+        sqlite3_open(TEST_SNAPSHOT_COPY_PATH, &dest) != SQLITE_OK ||
+        db_backup_pin_source_snapshot(source) != SQLITE_OK) goto cleanup;
+
+    backup = sqlite3_backup_init(dest, "main", source, "main");
+    if (!backup || sqlite3_backup_step(backup, 1) != SQLITE_OK) goto cleanup;
+    int remaining_before = sqlite3_backup_remaining(backup);
+    int pages_before = sqlite3_backup_pagecount(backup);
+    if (remaining_before < 2 ||
+        sqlite3_exec(writer, "INSERT INTO payload VALUES(zeroblob(3000));",
+                     NULL, NULL, NULL) != SQLITE_OK ||
+        sqlite3_backup_step(backup, 1) != SQLITE_OK ||
+        sqlite3_backup_pagecount(backup) != pages_before ||
+        sqlite3_backup_remaining(backup) != remaining_before - 1) {
+        printf("Concurrent write restarted incremental backup despite pinned snapshot\n");
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    if (backup) sqlite3_backup_finish(backup);
+    if (source) sqlite3_exec(source, "ROLLBACK;", NULL, NULL, NULL);
+    if (dest) sqlite3_close(dest);
+    if (writer) sqlite3_close(writer);
+    if (source) sqlite3_close(source);
+    if (seed) sqlite3_close(seed);
+    remove_database_files(TEST_SNAPSHOT_COPY_PATH);
+    remove_database_files(TEST_SNAPSHOT_DB_PATH);
+    return result;
+}
+
 // Main test function
 int main(void) {
     // Initialize logger
@@ -1463,6 +1517,11 @@ int main(void) {
     // Verify the database
     if (verify_database() != 0) {
         printf("Test failed: Database verification failed after creation\n");
+        return 1;
+    }
+
+    if (test_backup_snapshot_stays_pinned_across_writer_commit() != 0) {
+        printf("Test failed: incremental backup snapshot was not pinned\n");
         return 1;
     }
     

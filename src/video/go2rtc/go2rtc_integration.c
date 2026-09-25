@@ -1934,11 +1934,13 @@ bool go2rtc_sync_streams_from_database(void) {
 
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
+        free(db_streams);
         return false;
     }
 
     if (count == 0) {
         log_info("No streams found in database to sync with go2rtc");
+        free(db_streams);
         return true; // Not an error, just no streams
     }
 

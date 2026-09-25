@@ -148,6 +148,7 @@ target_compile_definitions(test_onvif_lpr_event PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 add_layer2_test_with_ffmpeg(test_api_detection)
+add_layer2_test_with_ffmpeg(test_mp4_failed_open_memory)
 add_layer2_test_with_ffmpeg(test_ffmpeg_rgb24_padding)
 add_layer2_test_with_curl(test_url_utils)
 add_layer2_test(test_db_streams)

@@ -7,7 +7,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
     set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 endif()
 
-project(LightNVR VERSION 0.42.6 LANGUAGES C CXX)
+project(LightNVR VERSION 0.42.7 LANGUAGES C CXX)
 
 # Set C/C++ standards
 set(CMAKE_C_STANDARD 11)
@@ -624,6 +624,11 @@ target_link_libraries(lightnvr_lib PUBLIC
 
 # Define the main executable
 add_executable(lightnvr src/core/main.c)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(lightnvr-ffmpeg-guard src/tools/ffmpeg_rss_guard.c)
+    set_target_properties(lightnvr-ffmpeg-guard PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 
 # Define source files for rebuild_recordings utility (excluding inih)
 set(REBUILD_RECORDINGS_SOURCES
@@ -765,6 +770,9 @@ endif()
 
 # Install targets
 install(TARGETS lightnvr rebuild_recordings DESTINATION bin)
+if(TARGET lightnvr-ffmpeg-guard)
+    install(TARGETS lightnvr-ffmpeg-guard DESTINATION bin)
+endif()
 install(DIRECTORY config/ DESTINATION /etc/lightnvr)
 install(DIRECTORY db/migrations/ DESTINATION share/lightnvr/migrations
         FILES_MATCHING PATTERN "*.sql")

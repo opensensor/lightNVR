@@ -327,6 +327,30 @@ static const char *backup_verify_mode_name(int mode) {
     }
 }
 
+/* BEGIN is deferred in SQLite. Until the source connection actually reads a
+ * page, each sqlite3_backup_step() releases its short-lived read snapshot and
+ * the next live write restarts the copy from page one. A busy detection DB can
+ * therefore copy indefinitely and retain its working memory until the
+ * 30-minute deadline. Force the WAL read snapshot before the first step;
+ * concurrent writers still proceed in WAL mode. */
+int db_backup_pin_source_snapshot(sqlite3 *source_db) {
+    if (!source_db) return SQLITE_MISUSE;
+    int rc = sqlite3_exec(source_db, "BEGIN;", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) return rc;
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(source_db,
+                            "SELECT count(*) FROM sqlite_schema;", -1,
+                            &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        int step_rc = sqlite3_step(stmt);
+        rc = step_rc == SQLITE_ROW ? SQLITE_OK
+                                   : (step_rc == SQLITE_DONE ? SQLITE_ERROR : step_rc);
+    }
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_OK) sqlite3_exec(source_db, "ROLLBACK;", NULL, NULL, NULL);
+    return rc;
+}
+
 // Backup the database to a specified path
 int backup_database(const char *source_path, const char *dest_path, bool abortable) {
     int rc = -1;
@@ -378,10 +402,9 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
     }
     preserve_wal_sidecars(source_db, source_path);
 
-    /* Pin one WAL snapshot across the incremental steps.  Without an explicit
-     * read transaction, every live detection/recording write can restart an
-     * online backup from page one between batches. */
-    rc = sqlite3_exec(source_db, "BEGIN;", NULL, NULL, NULL);
+    /* Pin one WAL snapshot across the incremental steps. A deferred BEGIN
+     * alone does not do this; the first real read must precede backup_step. */
+    rc = db_backup_pin_source_snapshot(source_db);
     if (rc != SQLITE_OK) {
         log_error("Failed to start backup snapshot: %s", sqlite3_errmsg(source_db));
         goto cleanup;
@@ -425,6 +448,8 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
      * on POSIX, closing any descriptor for an inode can discard this process's
      * SQLite advisory locks even while other descriptors remain open. */
     int busy_retries = 0;
+    int last_remaining = -1;
+    unsigned int copy_batches = 0;
     while (1) {
         rc = sqlite3_backup_step(backup, BACKUP_STEP_PAGES);
         if (rc == SQLITE_BUSY || rc == SQLITE_LOCKED) {
@@ -442,6 +467,18 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         }
 
         busy_retries = 0;
+        int remaining = sqlite3_backup_remaining(backup);
+        int total = sqlite3_backup_pagecount(backup);
+        if (last_remaining >= 0 && remaining > last_remaining) {
+            log_warn("Database backup copy restarted (%d -> %d pages remaining); "
+                     "source snapshot may not be pinned", last_remaining,
+                     remaining);
+        }
+        last_remaining = remaining;
+        if ((copy_batches++ % 16U) == 0U || rc == SQLITE_DONE) {
+            log_info("Database backup copy: %d/%d pages remaining",
+                     remaining, total);
+        }
         if (dest_cache_fd >= 0) {
             if (fdatasync(dest_cache_fd) != 0) {
                 log_error("Failed to flush backup batch for %s: %s",

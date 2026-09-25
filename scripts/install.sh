@@ -230,6 +230,10 @@ mkdir -p "$RUN_DIR"
 # Install binary
 echo "Installing binary..."
 install -m 755 "$BINARY_PATH" "$PREFIX/bin/lightnvr"
+if [ -x "$(dirname "$BINARY_PATH")/lightnvr-ffmpeg-guard" ]; then
+    install -m 755 "$(dirname "$BINARY_PATH")/lightnvr-ffmpeg-guard" \
+        "$PREFIX/bin/lightnvr-ffmpeg-guard"
+fi
 
 # Install SOD library if enabled
 if [ "$INSTALL_SOD" -eq 1 ]; then

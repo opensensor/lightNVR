@@ -388,6 +388,7 @@ RUN mkdir -p \
 
 # Copy binaries from builder
 COPY --from=builder /bin/lightnvr /bin/lightnvr
+COPY --from=builder /bin/lightnvr-ffmpeg-guard /bin/lightnvr-ffmpeg-guard
 COPY --from=builder /bin/go2rtc /bin/go2rtc
 COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
 COPY --from=builder /usr/lib/libuv.so* /usr/lib/
