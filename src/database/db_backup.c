@@ -20,6 +20,7 @@
 #include "database/db_core.h"
 #include "database/db_backup.h"
 #include "database/db_schema_utils.h"
+#include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 
@@ -239,9 +240,12 @@ static int sync_parent_directory(const char *path) {
     return 0;
 }
 
-static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
+/* Run a SQLite self-check pragma (integrity_check or quick_check) and treat
+ * anything other than a single "ok" row as failure. */
+static int run_check_pragma(sqlite3 *db_handle, const char *path_label,
+                            const char *pragma_sql) {
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db_handle, "PRAGMA integrity_check;", -1, &stmt, NULL);
+    int rc = sqlite3_prepare_v2(db_handle, pragma_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare integrity check for %s: %s",
                   path_label, sqlite3_errmsg(db_handle));
@@ -279,6 +283,22 @@ static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
 
     sqlite3_finalize(stmt);
     return 0;
+}
+
+static int run_integrity_check(sqlite3 *db_handle, const char *path_label) {
+    return run_check_pragma(db_handle, path_label, "PRAGMA integrity_check;");
+}
+
+static int run_quick_check(sqlite3 *db_handle, const char *path_label) {
+    return run_check_pragma(db_handle, path_label, "PRAGMA quick_check;");
+}
+
+static const char *backup_verify_mode_name(int mode) {
+    switch (mode) {
+        case DB_BACKUP_VERIFY_OFF:   return "off";
+        case DB_BACKUP_VERIFY_QUICK: return "quick";
+        default:                     return "full";
+    }
 }
 
 // Backup the database to a specified path
@@ -474,13 +494,37 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         .abortable = abortable,
         .deadline = &deadline,
     };
-    if (abortable) {
-        sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
-                                 progress_during_verification,
-                                 &verification_progress);
+    /* The destination is a page-level copy of a consistent snapshot, so the
+     * costly part of a full integrity_check (cross-checking every index
+     * against its table, which seeks all over the file) mostly re-verifies
+     * what the source already guaranteed. On slow disks that scan alone has
+     * been observed to exceed the stuck-backup safety valve (issue #580), so
+     * the operator can choose quick_check or skip the scan via
+     * [database] backup_verify. Default remains the full check. */
+    int verify_mode = g_config.db_backup_verify;
+    int verification_rc = 0;
+    if (verify_mode == DB_BACKUP_VERIFY_OFF) {
+        log_warn("Skipping post-copy verification of %s (backup_verify = off)", temp_path);
+    } else {
+        struct timespec verify_start;
+        clock_gettime(CLOCK_MONOTONIC, &verify_start);
+        if (abortable) {
+            sqlite3_progress_handler(dest_db, BACKUP_VERIFY_PROGRESS_OPS,
+                                     progress_during_verification,
+                                     &verification_progress);
+        }
+        verification_rc = verify_mode == DB_BACKUP_VERIFY_QUICK
+                          ? run_quick_check(dest_db, temp_path)
+                          : run_integrity_check(dest_db, temp_path);
+        sqlite3_progress_handler(dest_db, 0, NULL, NULL);
+        struct timespec verify_end;
+        clock_gettime(CLOCK_MONOTONIC, &verify_end);
+        double verify_secs = (double)(verify_end.tv_sec - verify_start.tv_sec) +
+                             (double)(verify_end.tv_nsec - verify_start.tv_nsec) / 1e9;
+        log_info("Backup verification (%s) of %s %s in %.1f s",
+                 backup_verify_mode_name(verify_mode), temp_path,
+                 verification_rc == 0 ? "passed" : "did not pass", verify_secs);
     }
-    int verification_rc = run_integrity_check(dest_db, temp_path);
-    sqlite3_progress_handler(dest_db, 0, NULL, NULL);
     if (verification_rc != 0) {
         if (abortable && verification_progress.deadline_hit) {
             log_error("Database backup aborting during verification: exceeded maximum duration of %d seconds (stuck-backup safety valve)",

@@ -159,6 +159,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 6, false},
     {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
     {"DB_STARTUP_CHECK",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_startup_check),           0, NULL, DB_STARTUP_CHECK_OFF, false},
+    {"DB_BACKUP_VERIFY",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_verify),           0, NULL, DB_BACKUP_VERIFY_FULL, false},
 
     // Sentinel to mark end of array
     {NULL, CONFIG_TYPE_BOOL, 0, 0, NULL, 0, false}
@@ -404,6 +405,7 @@ void load_default_config(config_t *config) {
     config->db_backup_retention_count = 6;
     config->db_post_backup_script[0] = '\0';
     config->db_startup_check = DB_STARTUP_CHECK_OFF;
+    config->db_backup_verify = DB_BACKUP_VERIFY_FULL;
     
     // Web server settings
     config->web_port = 8080;
@@ -644,6 +646,13 @@ int validate_config(config_t *config) {
         log_warn("db startup_check (%d) out of range [%d,%d]; using off",
                  config->db_startup_check, DB_STARTUP_CHECK_OFF, DB_STARTUP_CHECK_FULL);
         config->db_startup_check = DB_STARTUP_CHECK_OFF;
+    }
+
+    if (config->db_backup_verify < DB_BACKUP_VERIFY_OFF ||
+        config->db_backup_verify > DB_BACKUP_VERIFY_FULL) {
+        log_warn("db backup_verify (%d) out of range [%d,%d]; using full",
+                 config->db_backup_verify, DB_BACKUP_VERIFY_OFF, DB_BACKUP_VERIFY_FULL);
+        config->db_backup_verify = DB_BACKUP_VERIFY_FULL;
     }
 
     // Clamp capacity/pressure settings to sane ranges. min_free_pct must leave
@@ -904,6 +913,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 config->db_startup_check = DB_STARTUP_CHECK_QUICK;
             } else {
                 config->db_startup_check = safe_atoi(value, DB_STARTUP_CHECK_OFF);
+            }
+        } else if (strcmp(name, "backup_verify") == 0) {
+            if (strcasecmp(value, "off") == 0 || strcasecmp(value, "none") == 0) {
+                config->db_backup_verify = DB_BACKUP_VERIFY_OFF;
+            } else if (strcasecmp(value, "full") == 0) {
+                config->db_backup_verify = DB_BACKUP_VERIFY_FULL;
+            } else if (strcasecmp(value, "quick") == 0) {
+                config->db_backup_verify = DB_BACKUP_VERIFY_QUICK;
+            } else {
+                config->db_backup_verify = safe_atoi(value, DB_BACKUP_VERIFY_FULL);
             }
         }
     }
@@ -1833,6 +1852,9 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "startup_check = %s  ; Boot consistency check: off (default), quick, or full\n",
             config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
             config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
+    fprintf(file, "backup_verify = %s  ; Post-copy backup verification: full (default), quick, or off\n",
+            config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
+            config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
     fprintf(file, "post_backup_script = %s  ; Optional absolute path to executable hook\n\n",
             config->db_post_backup_script);
     
@@ -1996,6 +2018,9 @@ void print_config(const config_t *config) {
     printf("    Startup Check: %s\n",
            config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
            config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
+    printf("    Backup Verification: %s\n",
+           config->db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
+           config->db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
     printf("    Post-backup Script: %s\n",
            config->db_post_backup_script[0] ? config->db_post_backup_script : "(disabled)");
     

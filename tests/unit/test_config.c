@@ -114,6 +114,30 @@ void test_default_config_db_startup_check_is_off(void) {
     TEST_ASSERT_EQUAL_INT(DB_STARTUP_CHECK_OFF, cfg.db_startup_check);
 }
 
+void test_default_config_db_backup_verify_is_full(void) {
+    load_default_config(&cfg);
+    /* Operators opt into the cheaper quick_check (or none) for large databases
+     * on slow disks; the default keeps the historical full integrity_check. */
+    TEST_ASSERT_EQUAL_INT(DB_BACKUP_VERIFY_FULL, cfg.db_backup_verify);
+}
+
+void test_validate_config_clamps_out_of_range_backup_verify(void) {
+    load_default_config(&cfg);
+    cfg.db_backup_verify = 99;
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(DB_BACKUP_VERIFY_FULL, cfg.db_backup_verify);
+
+    load_default_config(&cfg);
+    cfg.db_backup_verify = -1;
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(DB_BACKUP_VERIFY_FULL, cfg.db_backup_verify);
+
+    load_default_config(&cfg);
+    cfg.db_backup_verify = DB_BACKUP_VERIFY_QUICK;
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(DB_BACKUP_VERIFY_QUICK, cfg.db_backup_verify);
+}
+
 void test_default_config_health_matches_ops03(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(cfg.health.enabled);
@@ -626,6 +650,8 @@ int main(void) {
     RUN_TEST(test_validate_config_clamps_negative_db_backup_values);
     RUN_TEST(test_default_config_db_startup_check_is_off);
     RUN_TEST(test_validate_config_clamps_out_of_range_startup_check);
+    RUN_TEST(test_default_config_db_backup_verify_is_full);
+    RUN_TEST(test_validate_config_clamps_out_of_range_backup_verify);
     RUN_TEST(test_validate_config_preserves_valid_startup_check);
 
     RUN_TEST(test_default_config_web_auth_enabled);

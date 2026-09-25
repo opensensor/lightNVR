@@ -35,6 +35,14 @@
 #define DB_STARTUP_CHECK_QUICK 1
 #define DB_STARTUP_CHECK_FULL  2
 
+/* Verification applied to the destination file after a database backup copy.
+ * full  = PRAGMA integrity_check (default; also cross-checks every index)
+ * quick = PRAGMA quick_check (page-level structure only, far less seeking)
+ * off   = no post-copy scan */
+#define DB_BACKUP_VERIFY_OFF   0
+#define DB_BACKUP_VERIFY_QUICK 1
+#define DB_BACKUP_VERIFY_FULL  2
+
 // Stream protocol enum
 typedef enum {
     STREAM_PROTOCOL_TCP = 0,
@@ -234,6 +242,7 @@ typedef struct {
     int db_backup_retention_count;         // Number of timestamped backups to retain (0 = latest .bak only)
     char db_post_backup_script[MAX_PATH_LENGTH]; // Optional executable path run after a verified backup
     int db_startup_check;                  // Boot consistency check: see DB_STARTUP_CHECK_*
+    int db_backup_verify;                  // Post-copy backup verification: see DB_BACKUP_VERIFY_*
     
     // Web server settings
     int web_thread_pool_size; // libuv UV_THREADPOOL_SIZE (default: 2x CPU cores, requires restart)

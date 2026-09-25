@@ -242,6 +242,7 @@ mp4_retention_days = 30
 path = /var/lib/lightnvr/data/database/lightnvr.db
 startup_check = off
 backup_retention_count = 6
+backup_verify = full
 ```
 
 - `path`: Path to the SQLite database file
@@ -257,6 +258,16 @@ backup_retention_count = 6
 - `backup_retention_count`: Number of timestamped backups to retain (default: 6).
   Each backup is a full copy of the database, so this multiplies disk usage by
   the database size.
+- `backup_verify`: Scan applied to the copied file after each backup before it
+  is published (default: `full`). `full` runs `PRAGMA integrity_check`, which
+  also cross-checks every index against its table and seeks across the whole
+  file; on a large database over a mechanical disk that scan can take longer
+  than the copy and may hit the 30-minute stuck-backup safety valve, in which
+  case the backup is discarded. `quick` runs `PRAGMA quick_check`, which
+  validates page structure (torn or truncated pages, corrupted b-trees) with
+  far fewer seeks; the backup is a page-level copy of a consistent snapshot, so
+  index/table consistency is inherited from the source. `off` skips the scan.
+  Every mode logs `Backup verification (<mode>) ... in N s`.
 
 ### Web Server Settings
 

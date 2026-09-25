@@ -326,6 +326,50 @@ static int test_backup(void) {
     return 0;
 }
 
+/* [database] backup_verify selects the post-copy scan (full, quick, off).
+ * Whatever the operator picks, the published file must still be a complete,
+ * self-contained, independently verifiable copy (issue #580). */
+static int check_published_backup_is_intact(const char *label) {
+    sqlite3 *backup_db = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int ok = -1;
+    if (sqlite3_open_v2(TEST_BACKUP_PATH, &backup_db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        printf("%s: cannot open published backup\n", label);
+        return -1;
+    }
+    if (sqlite3_prepare_v2(backup_db, "PRAGMA integrity_check;", -1, &stmt, NULL) == SQLITE_OK &&
+        sqlite3_step(stmt) == SQLITE_ROW &&
+        strcmp((const char *)sqlite3_column_text(stmt, 0), "ok") == 0) {
+        ok = 0;
+    } else {
+        printf("%s: published backup failed an independent integrity_check\n", label);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    sqlite3_close(backup_db);
+    return ok;
+}
+
+static int test_backup_verify_modes(void) {
+    const int modes[] = { DB_BACKUP_VERIFY_QUICK, DB_BACKUP_VERIFY_OFF, DB_BACKUP_VERIFY_FULL };
+    const char *names[] = { "quick", "off", "full" };
+    for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
+        g_config.db_backup_verify = modes[i];
+        unlink(TEST_BACKUP_PATH);
+        if (backup_database(TEST_DB_PATH, TEST_BACKUP_PATH, true) != 0) {
+            printf("backup_verify=%s: backup failed\n", names[i]);
+            g_config.db_backup_verify = DB_BACKUP_VERIFY_FULL;
+            return -1;
+        }
+        if (check_published_backup_is_intact(names[i]) != 0) {
+            g_config.db_backup_verify = DB_BACKUP_VERIFY_FULL;
+            return -1;
+        }
+    }
+    g_config.db_backup_verify = DB_BACKUP_VERIFY_FULL;
+    printf("Backup verify modes (quick/off/full) all produced intact backups\n");
+    return 0;
+}
+
 // Exercise more than one bounded sqlite3_backup_step() batch.  The production
 // regression only appears once databases are large enough to fill the cgroup's
 // filesystem cache, so the tiny recovery fixture above is not sufficient.
@@ -1070,6 +1114,11 @@ int main(void) {
 
     if (test_large_incremental_backup() != 0) {
         printf("Test failed: Large incremental backup failed\n");
+        return 1;
+    }
+
+    if (test_backup_verify_modes() != 0) {
+        printf("Test failed: backup_verify quick/off/full did not all yield an intact backup\n");
         return 1;
     }
 
