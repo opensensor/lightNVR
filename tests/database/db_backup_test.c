@@ -15,6 +15,9 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <dirent.h>
+#include <stdbool.h>
+#include <stdatomic.h>
+#include <time.h>
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
@@ -23,6 +26,12 @@
 // declared in the public header (production code has no business mutating
 // a global backup timeout at runtime), so it's declared here instead.
 extern void db_backup_set_max_duration_seconds_for_testing(int seconds);
+
+// Test-only hook into db_core.c's scheduled-backup worker, same convention:
+// swaps the cycle the worker runs so a test can hold it in flight or delay it
+// deterministically. The override receives the real cycle so it can still
+// delegate to it (and so the real copy/abort path stays under test).
+extern void db_scheduled_backup_set_cycle_fn_for_testing(int (*fn)(int (*real_cycle)(void)));
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
@@ -886,6 +895,39 @@ static int count_timestamped_backups(const char *db_path) {
     return count;
 }
 
+// Partial copies (.sqlite3.tmp and its -wal/-shm/-journal) an aborted or
+// still-running backup_database() would leave in the backup directory.
+static int count_temporary_backup_artifacts(const char *db_path) {
+    char backup_dir[PATH_MAX];
+    snprintf(backup_dir, sizeof(backup_dir), "%s.backups", db_path);
+    DIR *dir = opendir(backup_dir);
+    if (!dir) return 0;
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strstr(entry->d_name, ".sqlite3.tmp") != NULL) {
+            count++;
+        }
+    }
+    closedir(dir);
+    return count;
+}
+
+// Create a database file up front so init_database() sees an existing
+// database and does not take its own "initial backup" of a new one, which
+// would otherwise refresh last_backup_time and pre-empt the scheduler.
+static int create_existing_database_fixture(const char *db_path) {
+    sqlite3 *existing = NULL;
+    if (sqlite3_open(db_path, &existing) != SQLITE_OK) {
+        if (existing) sqlite3_close(existing);
+        return -1;
+    }
+    int rc = sqlite3_exec(existing, "CREATE TABLE existing_fixture(id INTEGER);",
+                          NULL, NULL, NULL);
+    sqlite3_close(existing);
+    return rc == SQLITE_OK ? 0 : -1;
+}
+
 static void remove_test_db_and_backups(const char *db_path) {
     char path[PATH_MAX];
     static const char *sidecar_suffixes[] = {"", ".bak", "-wal", "-shm", "-journal"};
@@ -917,14 +959,14 @@ static void remove_test_db_and_backups(const char *db_path) {
 
 // A failed scheduled attempt must wait for the next interval, but must not
 // count as a successful snapshot when deciding whether to back up at shutdown.
+// The cycle now runs on the worker thread: the tick only *starts* it, so the
+// test waits for the worker before checking the outcome, and the cooldown is
+// observed on the following tick exactly as before.
 static int test_failed_scheduled_backup_waits_without_suppressing_shutdown_backup(void) {
     shutdown_database();
     remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
     // Simulate an existing database with no successful backup yet.
-    sqlite3 *existing = NULL;
-    if (sqlite3_open(TEST_SHUTDOWN_DB_PATH, &existing) != SQLITE_OK) return -1;
-    sqlite3_exec(existing, "CREATE TABLE existing_fixture(id INTEGER);", NULL, NULL, NULL);
-    sqlite3_close(existing);
+    if (create_existing_database_fixture(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
     if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
     g_config.db_backup_interval_minutes = 60;
 
@@ -940,11 +982,14 @@ static int test_failed_scheduled_backup_waits_without_suppressing_shutdown_backu
 
     db_backup_set_max_duration_seconds_for_testing(-60);
     int first = maybe_run_scheduled_database_backup();
+    bool finished = db_scheduled_backup_wait_idle(30000);
     int second = maybe_run_scheduled_database_backup();
     db_backup_set_max_duration_seconds_for_testing(DB_BACKUP_MAX_DURATION_SECONDS_DEFAULT);
-    if (first != -1 || second != 0 ||
+    if (first != 1 || !finished || second != 0 ||
         count_timestamped_backups(TEST_SHUTDOWN_DB_PATH) != 0) {
-        printf("Failed backup was retried immediately or published as successful\n");
+        printf("Failed backup was not started (%d), never finished (%d), was retried "
+               "immediately (%d) or was published as successful\n",
+               first, finished, second);
         shutdown_database();
         remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
         return -1;
@@ -976,6 +1021,12 @@ static int test_shutdown_skips_backup_when_recent_backup_exists(void) {
 
     remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
 
+    // Existing database, so the backup counted below is the scheduled
+    // cycle's own rather than init_database()'s initial backup of a new one.
+    if (create_existing_database_fixture(TEST_SHUTDOWN_DB_PATH) != 0) {
+        printf("Failed to create fixture for shutdown-skip test\n");
+        return -1;
+    }
     if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) {
         printf("Failed to init database for shutdown-skip test\n");
         return -1;
@@ -983,8 +1034,12 @@ static int test_shutdown_skips_backup_when_recent_backup_exists(void) {
 
     g_config.db_backup_interval_minutes = 60;
 
-    if (maybe_run_scheduled_database_backup() != 0) {
-        printf("Scheduled backup failed in shutdown-skip test setup\n");
+    if (maybe_run_scheduled_database_backup() != 1) {
+        printf("Scheduled backup was not started in shutdown-skip test setup\n");
+        goto cleanup;
+    }
+    if (!db_scheduled_backup_wait_idle(30000)) {
+        printf("Scheduled backup did not finish in shutdown-skip test setup\n");
         goto cleanup;
     }
     int count_after_scheduled = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
@@ -1045,6 +1100,311 @@ static int test_shutdown_backs_up_when_scheduled_backups_disabled(void) {
 
     printf("Shutdown correctly backed up despite scheduled backups being disabled\n");
     return 0;
+}
+
+// ---- Scheduled-backup worker ------------------------------------------------
+//
+// State the injected cycle publishes for the tests below. The worker runs the
+// hook on its own thread, so everything is atomic.
+static atomic_int hook_cycles_entered;
+static atomic_bool hook_release;
+static atomic_bool hook_finished;
+static atomic_bool hook_db_open_at_end;
+static atomic_int hook_real_cycle_result;
+
+static void reset_hook_state(void) {
+    atomic_store(&hook_cycles_entered, 0);
+    atomic_store(&hook_release, false);
+    atomic_store(&hook_finished, false);
+    atomic_store(&hook_db_open_at_end, false);
+    atomic_store(&hook_real_cycle_result, 0);
+}
+
+static void publish_hook_outcome(int rc) {
+    atomic_store(&hook_real_cycle_result, rc);
+    // Ordering witness: was the global handle still open when the cycle
+    // finished? shutdown_database() must wait for the worker before closing
+    // it, so this is true whenever shutdown honoured that ordering.
+    atomic_store(&hook_db_open_at_end, get_db_handle() != NULL);
+    atomic_store(&hook_finished, true);
+}
+
+// Holds the cycle in flight until the test releases it, then runs the real
+// one so the ordinary completion path (timestamps, backup file) is exercised.
+static int gated_cycle(int (*real_cycle)(void)) {
+    atomic_fetch_add(&hook_cycles_entered, 1);
+    for (int i = 0; i < 1000 && !atomic_load(&hook_release); i++) {
+        usleep(10000);  // 10 s cap so a broken test cannot hang the binary
+    }
+    int rc = real_cycle();
+    publish_hook_outcome(rc);
+    return rc;
+}
+
+// Simulates a cycle that is still mid-copy when shutdown arrives: stays in
+// flight for a moment, then runs the real large-fixture copy -- which is what
+// the abort/cancel raised meanwhile must actually stop.
+#define DELAYED_CYCLE_HOLD_US 500000
+static int delayed_real_cycle(int (*real_cycle)(void)) {
+    atomic_fetch_add(&hook_cycles_entered, 1);
+    usleep(DELAYED_CYCLE_HOLD_US);
+    int rc = real_cycle();
+    publish_hook_outcome(rc);
+    return rc;
+}
+
+static int wait_for_hook_entry(void) {
+    for (int i = 0; i < 500; i++) {  // 5 s
+        if (atomic_load(&hook_cycles_entered) >= 1) return 0;
+        usleep(10000);
+    }
+    printf("Scheduled backup worker never entered the injected cycle\n");
+    return -1;
+}
+
+static double elapsed_ms_since(const struct timespec *start) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)(now.tv_sec - start->tv_sec) * 1000.0 +
+           (double)(now.tv_nsec - start->tv_nsec) / 1e6;
+}
+
+// Seed the live database with one blob larger than a single 16 MiB
+// sqlite3_backup_step() batch, so backup_database() reaches its
+// between-batches abort check before the copy would otherwise finish.
+static int seed_multi_batch_payload(sqlite3 *db) {
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_exec(db, "CREATE TABLE payload (id INTEGER PRIMARY KEY, data BLOB);",
+                     NULL, NULL, NULL) != SQLITE_OK) {
+        printf("Failed to create multi-batch payload table: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    if (sqlite3_prepare_v2(db, "INSERT INTO payload(data) VALUES(zeroblob(?));",
+                           -1, &stmt, NULL) != SQLITE_OK) {
+        printf("Failed to prepare multi-batch payload: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_bind_int(stmt, 1, 20 * 1024 * 1024);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        printf("Failed to populate multi-batch payload: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    return 0;
+}
+
+// The scheduler must never overlap cycles now that they run off the main
+// loop: a tick that arrives while the worker is still busy is a no-op, and
+// once the cycle completes its result feeds the same cooldown and
+// shutdown-skip decisions as the synchronous version did.
+static int test_scheduler_does_not_start_second_cycle_while_in_flight(void) {
+    int result = -1;
+
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (create_existing_database_fixture(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    g_config.db_backup_interval_minutes = 60;
+
+    reset_hook_state();
+    db_scheduled_backup_set_cycle_fn_for_testing(gated_cycle);
+
+    int first = maybe_run_scheduled_database_backup();
+    if (first != 1) {
+        printf("First tick should have started a cycle, returned %d\n", first);
+        goto cleanup;
+    }
+    if (wait_for_hook_entry() != 0) goto cleanup;
+    if (!db_scheduled_backup_in_flight()) {
+        printf("Scheduler does not report the running cycle as in flight\n");
+        goto cleanup;
+    }
+
+    int second = maybe_run_scheduled_database_backup();
+    if (second != 0 || atomic_load(&hook_cycles_entered) != 1) {
+        printf("A tick during an in-flight cycle started another one (rc=%d, cycles=%d)\n",
+               second, atomic_load(&hook_cycles_entered));
+        goto cleanup;
+    }
+
+    atomic_store(&hook_release, true);
+    if (!db_scheduled_backup_wait_idle(30000)) {
+        printf("Released cycle never finished\n");
+        goto cleanup;
+    }
+    if (db_scheduled_backup_in_flight() ||
+        atomic_load(&hook_real_cycle_result) != 0 ||
+        count_timestamped_backups(TEST_SHUTDOWN_DB_PATH) != 1) {
+        printf("Background cycle did not complete with one published backup (rc=%d, backups=%d)\n",
+               atomic_load(&hook_real_cycle_result),
+               count_timestamped_backups(TEST_SHUTDOWN_DB_PATH));
+        goto cleanup;
+    }
+
+    // Completion feeds the cooldown: the next tick within the interval is a
+    // no-op ...
+    int third = maybe_run_scheduled_database_backup();
+    if (third != 0 || atomic_load(&hook_cycles_entered) != 1) {
+        printf("Tick right after a completed cycle started another one (rc=%d)\n", third);
+        goto cleanup;
+    }
+
+    // ... and the shutdown decision: the backup the worker just took is recent.
+    db_scheduled_backup_set_cycle_fn_for_testing(NULL);
+    shutdown_database();
+    if (count_timestamped_backups(TEST_SHUTDOWN_DB_PATH) != 1) {
+        printf("Shutdown took a redundant backup after a completed background cycle\n");
+        goto cleanup;
+    }
+
+    printf("Scheduler refused to overlap an in-flight cycle and honoured its completion\n");
+    result = 0;
+
+cleanup:
+    atomic_store(&hook_release, true);
+    (void)db_scheduled_backup_wait_idle(30000);
+    db_scheduled_backup_set_cycle_fn_for_testing(NULL);
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    return result;
+}
+
+// Shared body for the two shutdown-with-in-flight-cycle tests below. Starts
+// a scheduled cycle on a multi-batch fixture that is deliberately still in
+// flight when shutdown_database() is called, and checks that shutdown
+// (1) waited for the worker instead of closing the handle under it, (2) got
+// the worker to abort within the bounded wait, (3) did not treat the aborted
+// cycle as a fresh backup, so its own final backup still ran, and (4) left
+// no partial temporary copy behind.
+//
+// raise_process_abort selects the caller being modelled: main.c's restart/
+// shutdown path raises request_background_abort() before shutting the
+// database down; a settings-driven database restart keeps the process
+// running, so it must not touch that never-reset flag and relies on
+// shutdown_database() cancelling the in-flight backup on its own.
+static int run_shutdown_with_in_flight_cycle(bool raise_process_abort) {
+    int result = -1;
+    struct timespec shutdown_started;
+    double shutdown_ms = 0;
+
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (create_existing_database_fixture(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    if (seed_multi_batch_payload(get_db_handle()) != 0) goto cleanup;
+    g_config.db_backup_interval_minutes = 60;
+
+    reset_hook_state();
+    db_scheduled_backup_set_cycle_fn_for_testing(delayed_real_cycle);
+
+    if (maybe_run_scheduled_database_backup() != 1) {
+        printf("Scheduled cycle was not started\n");
+        goto cleanup;
+    }
+    if (wait_for_hook_entry() != 0) goto cleanup;
+
+    if (raise_process_abort) {
+        // What signal_handler() / request_restart() do the instant a
+        // restart or shutdown is requested, before the main loop even exits.
+        request_background_abort();
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &shutdown_started);
+    shutdown_database();
+    shutdown_ms = elapsed_ms_since(&shutdown_started);
+
+    if (!atomic_load(&hook_finished)) {
+        printf("shutdown_database() returned while the scheduled cycle was still running\n");
+        goto cleanup;
+    }
+    if (!atomic_load(&hook_db_open_at_end)) {
+        printf("Database handle was closed before the in-flight scheduled cycle finished\n");
+        goto cleanup;
+    }
+    if (atomic_load(&hook_real_cycle_result) == 0) {
+        printf("In-flight scheduled cycle should have been aborted but completed\n");
+        goto cleanup;
+    }
+    if (db_scheduled_backup_in_flight()) {
+        printf("Worker still reported in flight after shutdown_database()\n");
+        goto cleanup;
+    }
+    // Waited for the held cycle (so the join is real), but well inside the
+    // bounded wait (so the abort was honoured promptly rather than the
+    // cycle running to completion or the budget expiring).
+    if (shutdown_ms < DELAYED_CYCLE_HOLD_US / 1000.0 * 0.8 ||
+        shutdown_ms > DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 2.0) {
+        printf("shutdown_database() took %.0f ms; expected to join the held cycle "
+               "within the bounded wait\n", shutdown_ms);
+        goto cleanup;
+    }
+    if (count_temporary_backup_artifacts(TEST_SHUTDOWN_DB_PATH) != 0) {
+        printf("Aborted scheduled cycle left a partial temporary backup behind\n");
+        goto cleanup;
+    }
+    // Exactly one backup: the shutdown backup. The aborted cycle must neither
+    // have published one nor refreshed last_backup_time and suppressed it.
+    int count = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    if (count != 1) {
+        printf("Expected only the shutdown backup after an aborted scheduled cycle, found %d\n",
+               count);
+        goto cleanup;
+    }
+    if (!raise_process_abort && is_background_abort_requested()) {
+        printf("shutdown_database() must not raise the process-wide abort flag on a database restart\n");
+        goto cleanup;
+    }
+
+    printf("Shutdown %s and joined the in-flight scheduled backup in %.0f ms, then took its own backup\n",
+           raise_process_abort ? "aborted" : "cancelled", shutdown_ms);
+    result = 0;
+
+cleanup:
+    db_scheduled_backup_set_cycle_fn_for_testing(NULL);
+    (void)db_scheduled_backup_wait_idle(30000);
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    return result;
+}
+
+// Settings-driven database restart (api_handlers_settings.c calls
+// shutdown_database() + init_database() with the process still running):
+// shutdown must cancel and join the in-flight cycle on its own, without the
+// process-wide abort flag. Runs before any test raises that flag.
+static int test_shutdown_cancels_and_joins_in_flight_scheduled_backup(void) {
+    if (is_background_abort_requested()) {
+        printf("Test-order bug: the process-wide abort flag is already set\n");
+        return -1;
+    }
+    if (run_shutdown_with_in_flight_cycle(false) != 0) return -1;
+
+    // The database must be usable again afterwards, including its scheduler:
+    // the cancel raised during shutdown must not leak into the next cycle.
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (create_existing_database_fixture(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    if (init_database(TEST_SHUTDOWN_DB_PATH) != 0) return -1;
+    g_config.db_backup_interval_minutes = 60;
+    int rc = maybe_run_scheduled_database_backup();
+    bool finished = db_scheduled_backup_wait_idle(30000);
+    int count = count_timestamped_backups(TEST_SHUTDOWN_DB_PATH);
+    shutdown_database();
+    remove_test_db_and_backups(TEST_SHUTDOWN_DB_PATH);
+    if (rc != 1 || !finished || count != 1) {
+        printf("Scheduler did not recover after a cancelled cycle (rc=%d, finished=%d, backups=%d)\n",
+               rc, finished, count);
+        return -1;
+    }
+    return 0;
+}
+
+// Process restart/shutdown (main.c): the abort flag is raised the moment the
+// restart or shutdown is requested; shutdown_database() must then join the
+// aborting worker within its bounded wait before taking the final backup and
+// closing the handle. Raises the never-reset process-wide flag, so it runs
+// last among the scheduler tests.
+static int test_shutdown_aborts_and_joins_in_flight_scheduled_backup(void) {
+    return run_shutdown_with_in_flight_cycle(true);
 }
 
 // Test restore functionality
@@ -1122,6 +1482,44 @@ int main(void) {
         return 1;
     }
 
+    // Scheduler / worker tests run before any test raises the never-reset
+    // process-wide abort flag: the scheduler refuses to start a cycle once
+    // it is set (a restart/shutdown is pending), and the last of these
+    // raises it itself.
+    if (test_failed_scheduled_backup_waits_without_suppressing_shutdown_backup() != 0) {
+        printf("Test failed: failed scheduled backup cooldown\n");
+        return 1;
+    }
+
+    if (test_shutdown_skips_backup_when_recent_backup_exists() != 0) {
+        printf("Test failed: shutdown did not skip a redundant backup\n");
+        return 1;
+    }
+
+    if (test_shutdown_backs_up_when_scheduled_backups_disabled() != 0) {
+        printf("Test failed: shutdown did not back up with scheduled backups disabled\n");
+        return 1;
+    }
+
+    if (test_scheduler_does_not_start_second_cycle_while_in_flight() != 0) {
+        printf("Test failed: scheduler overlapped an in-flight backup cycle\n");
+        return 1;
+    }
+
+    if (test_shutdown_cancels_and_joins_in_flight_scheduled_backup() != 0) {
+        printf("Test failed: shutdown did not cancel and join an in-flight scheduled backup (database restart)\n");
+        return 1;
+    }
+
+    if (test_shutdown_aborts_and_joins_in_flight_scheduled_backup() != 0) {
+        printf("Test failed: shutdown did not abort and join an in-flight scheduled backup (process shutdown)\n");
+        return 1;
+    }
+
+    // Restore the interval this file's own load_default_config() set, in
+    // case any later step in this binary implicitly depends on it.
+    load_default_config(&g_config);
+
     if (test_backup_aborts_when_shutdown_requested() != 0) {
         printf("Test failed: Backup did not abort early on restart/shutdown request\n");
         return 1;
@@ -1146,25 +1544,6 @@ int main(void) {
         printf("Test failed: Backup did not abort during post-copy verification on an exhausted duration budget\n");
         return 1;
     }
-
-    if (test_failed_scheduled_backup_waits_without_suppressing_shutdown_backup() != 0) {
-        printf("Test failed: failed scheduled backup cooldown\n");
-        return 1;
-    }
-
-    if (test_shutdown_skips_backup_when_recent_backup_exists() != 0) {
-        printf("Test failed: shutdown did not skip a redundant backup\n");
-        return 1;
-    }
-
-    if (test_shutdown_backs_up_when_scheduled_backups_disabled() != 0) {
-        printf("Test failed: shutdown did not back up with scheduled backups disabled\n");
-        return 1;
-    }
-
-    // Restore the interval this file's own load_default_config() set, in
-    // case any later step in this binary implicitly depends on it.
-    load_default_config(&g_config);
 
     // Corrupt the database
     if (corrupt_database() != 0) {

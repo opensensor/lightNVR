@@ -28,6 +28,7 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
+#include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 
 // Database handle
@@ -42,9 +43,52 @@ static char db_file_path[PATH_MAX] = {0};
 // Backup file path
 static char db_backup_path[PATH_MAX] = {0};
 
-// Last backup time
+// Last backup time.
+//
+// Both timestamps are shared between the main loop (scheduling decision),
+// the scheduled-backup worker thread (completion) and shutdown_database()
+// (final-backup decision), so every access goes through
+// scheduled_backup_lock.
 static time_t last_backup_time = 0;
 static time_t last_scheduled_backup_finished = 0;
+
+/*
+ * Scheduled-backup worker.
+ *
+ * The main loop still decides *when* a scheduled cycle is due (see
+ * maybe_run_scheduled_database_backup()), but the cycle itself -- a full
+ * copy plus verification that takes minutes on a multi-gigabyte database --
+ * runs on this dedicated thread so it no longer stalls the main loop's
+ * service self-healing and audit persistence for the duration.  One cycle
+ * at a time: while scheduled_backup_in_flight is set the scheduler does not
+ * start another.  The thread is joinable so shutdown_database() can wait
+ * for it (bounded) before closing the global handle.
+ */
+static pthread_mutex_t scheduled_backup_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t scheduled_backup_cond;
+static pthread_once_t scheduled_backup_cond_once = PTHREAD_ONCE_INIT;
+static clockid_t scheduled_backup_cond_clock = CLOCK_REALTIME;
+static pthread_t scheduled_backup_thread;
+// scheduled_backup_thread holds a thread nobody has joined or detached yet.
+static bool scheduled_backup_thread_joinable = false;
+// A cycle is running on the worker.
+static bool scheduled_backup_in_flight = false;
+// A bounded wait gave up on the running cycle (see db_scheduled_backup_wait_idle()).
+static bool scheduled_backup_abandoned = false;
+// shutdown_database() has run: no new cycle until init_database_ex() succeeds.
+static bool scheduled_backup_draining = false;
+
+/* Test-only seam: lets tests drive the scheduler state machine with a cycle
+ * that blocks or fails on demand.  The override receives the real cycle so
+ * it can still delegate to it.  Not declared in the public header (production
+ * code has no business swapping the backup out at runtime); the test file
+ * declares it `extern` instead. */
+typedef int (*scheduled_backup_cycle_fn)(int (*real_cycle)(void));
+static scheduled_backup_cycle_fn scheduled_backup_cycle_override = NULL;
+
+void db_scheduled_backup_set_cycle_fn_for_testing(scheduled_backup_cycle_fn fn) {
+    scheduled_backup_cycle_override = fn;
+}
 
 // Flag to indicate if WAL mode is enabled
 static bool wal_mode_enabled = false;
@@ -502,6 +546,167 @@ int checkpoint_database(void) {
     return 0;
 }
 
+static void scheduled_backup_cond_init(void) {
+    pthread_condattr_t attr;
+    pthread_condattr_init(&attr);
+#if defined(CLOCK_MONOTONIC)
+    /* A wall-clock step (NTP correction) during shutdown must not lengthen
+     * or defeat the bounded wait for the worker. */
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0) {
+        scheduled_backup_cond_clock = CLOCK_MONOTONIC;
+    }
+#endif
+    pthread_cond_init(&scheduled_backup_cond, &attr);
+    pthread_condattr_destroy(&attr);
+}
+
+static int run_real_scheduled_backup_cycle(void) {
+    return perform_database_backup_cycle("scheduled", true, true);
+}
+
+static void *scheduled_backup_thread_main(void *arg) {
+    (void)arg;
+    struct timespec started;
+    clock_gettime(CLOCK_MONOTONIC, &started);
+
+    int result = scheduled_backup_cycle_override
+        ? scheduled_backup_cycle_override(run_real_scheduled_backup_cycle)
+        : run_real_scheduled_backup_cycle();
+
+    struct timespec ended;
+    clock_gettime(CLOCK_MONOTONIC, &ended);
+    double elapsed_seconds = (double)(ended.tv_sec - started.tv_sec) +
+                             (double)(ended.tv_nsec - started.tv_nsec) / 1e9;
+    time_t finished = time(NULL);
+
+    if (result == 0) {
+        log_info("Scheduled database backup completed in background after %.1f s",
+                 elapsed_seconds);
+    } else {
+        log_warn("Scheduled database backup failed or was aborted in background "
+                 "after %.1f s; next attempt after the configured interval",
+                 elapsed_seconds);
+    }
+
+    pthread_mutex_lock(&scheduled_backup_lock);
+    // Allow storage to recover after a slow or failed cycle: a failed or
+    // aborted attempt waits out the interval like a successful one, but only
+    // a success refreshes last_backup_time, so it never counts as a usable
+    // snapshot or suppresses the shutdown backup.
+    last_scheduled_backup_finished = finished;
+    if (result == 0) {
+        last_backup_time = finished;
+    }
+    scheduled_backup_in_flight = false;
+    scheduled_backup_abandoned = false;
+    pthread_cond_broadcast(&scheduled_backup_cond);
+    pthread_mutex_unlock(&scheduled_backup_lock);
+    return NULL;
+}
+
+/* Caller holds scheduled_backup_lock.  Joins a worker whose cycle has
+ * finished so its thread resources are reclaimed; the join returns at once
+ * because the worker exits right after publishing its result. */
+static void reap_scheduled_backup_worker_locked(void) {
+    if (scheduled_backup_thread_joinable && !scheduled_backup_in_flight) {
+        pthread_join(scheduled_backup_thread, NULL);
+        scheduled_backup_thread_joinable = false;
+    }
+}
+
+bool db_scheduled_backup_in_flight(void) {
+    pthread_mutex_lock(&scheduled_backup_lock);
+    bool in_flight = scheduled_backup_in_flight;
+    pthread_mutex_unlock(&scheduled_backup_lock);
+    return in_flight;
+}
+
+bool db_scheduled_backup_wait_idle(int timeout_ms) {
+    pthread_once(&scheduled_backup_cond_once, scheduled_backup_cond_init);
+
+    struct timespec deadline;
+    clock_gettime(scheduled_backup_cond_clock, &deadline);
+    if (timeout_ms > 0) {
+        deadline.tv_sec += timeout_ms / 1000;
+        deadline.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+        if (deadline.tv_nsec >= 1000000000L) {
+            deadline.tv_sec += 1;
+            deadline.tv_nsec -= 1000000000L;
+        }
+    }
+
+    pthread_mutex_lock(&scheduled_backup_lock);
+    while (scheduled_backup_in_flight && !scheduled_backup_abandoned &&
+           timeout_ms > 0) {
+        if (pthread_cond_timedwait(&scheduled_backup_cond,
+                                   &scheduled_backup_lock, &deadline) == ETIMEDOUT) {
+            break;
+        }
+    }
+
+    bool idle = !scheduled_backup_in_flight;
+    if (idle) {
+        reap_scheduled_backup_worker_locked();
+    } else if (timeout_ms > 0 && !scheduled_backup_abandoned) {
+        /* The worker had its whole budget and is still not done: a stuck
+         * disk, or a long post-backup script.  Give up on it rather than
+         * make every later caller wait the full budget again.  It publishes
+         * its result whenever it finally finishes, and the scheduler keeps
+         * refusing to overlap it until then. */
+        scheduled_backup_abandoned = true;
+        if (scheduled_backup_thread_joinable) {
+            pthread_detach(scheduled_backup_thread);
+            scheduled_backup_thread_joinable = false;
+        }
+    }
+    pthread_mutex_unlock(&scheduled_backup_lock);
+    return idle;
+}
+
+/*
+ * Called at the top of shutdown_database(): stop the scheduled-backup worker
+ * before anything that assumes it is gone.  Its outcome feeds the final-
+ * backup decision (an aborted cycle must not read as a fresh backup), and
+ * sqlite3_shutdown() at the end of shutdown_database() is undefined while
+ * the worker's private backup connections are still open.
+ *
+ * Process restart/shutdown callers raised request_background_abort() long
+ * before reaching here, so the worker is already bailing out at its next
+ * between-batches or verification check.  A settings-driven database
+ * restart (api_handlers_settings.c) cannot use that never-reset flag because
+ * the process keeps running, so the in-flight backup is cancelled on its own
+ * instead.  Either way the wait is bounded; on expiry the handle is closed
+ * regardless, with the process-level shutdown watchdogs as the backstop.
+ */
+static void quiesce_scheduled_backup_worker(void) {
+    pthread_mutex_lock(&scheduled_backup_lock);
+    scheduled_backup_draining = true;
+    bool in_flight = scheduled_backup_in_flight;
+    pthread_mutex_unlock(&scheduled_backup_lock);
+
+    if (in_flight) {
+        log_info("Scheduled database backup still in flight; waiting up to %d s for it to stop",
+                 DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+        db_backup_request_cancel();
+        // Returns at once if an earlier bounded wait (main.c's) already gave
+        // up on this worker: its budget is not granted twice.
+        if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
+            log_error("Scheduled database backup worker has not stopped within its %d s budget; "
+                      "closing the database anyway",
+                      DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+            return;
+        }
+        log_info("In-flight scheduled database backup stopped");
+    } else {
+        // Reap a worker whose cycle already finished but was not joined yet.
+        (void)db_scheduled_backup_wait_idle(0);
+    }
+
+    // Idle: a cancel raised above (or by an earlier restart) must not leak
+    // into the next database's initial or scheduled backups.
+    db_backup_clear_cancel();
+}
+
 int maybe_run_scheduled_database_backup(void) {
     if (!db || db_file_path[0] == '\0') {
         return 0;
@@ -511,24 +716,64 @@ int maybe_run_scheduled_database_backup(void) {
         return 0;
     }
 
+    // A restart/shutdown is already pending: a cycle started now would only
+    // abort at its first between-batches check, and shutdown would then have
+    // to wait for it.
+    if (is_background_abort_requested()) {
+        return 0;
+    }
+
+    // The worker signals this condvar when it finishes, so it has to exist
+    // before the first worker does (db_scheduled_backup_wait_idle() may
+    // never have been called yet).
+    pthread_once(&scheduled_backup_cond_once, scheduled_backup_cond_init);
+
+    pthread_mutex_lock(&scheduled_backup_lock);
+
+    if (scheduled_backup_in_flight) {
+        // One cycle at a time; the next tick re-evaluates once it finishes.
+        pthread_mutex_unlock(&scheduled_backup_lock);
+        return 0;
+    }
+    reap_scheduled_backup_worker_locked();
+
+    if (scheduled_backup_draining) {
+        pthread_mutex_unlock(&scheduled_backup_lock);
+        return 0;
+    }
+
     time_t now = time(NULL);
     time_t interval_seconds = (time_t)g_config.db_backup_interval_minutes * 60;
     time_t last_cycle = last_scheduled_backup_finished > last_backup_time
         ? last_scheduled_backup_finished : last_backup_time;
     if (last_cycle != 0 && now - last_cycle < interval_seconds) {
+        pthread_mutex_unlock(&scheduled_backup_lock);
         return 0;
     }
 
-    int result = perform_database_backup_cycle("scheduled", true, true);
-    // Allow storage to recover after a slow or failed cycle. Failed attempts
-    // must not run again on every main-loop tick or count as usable backups.
-    last_scheduled_backup_finished = time(NULL);
-    if (result != 0) {
+    // Nothing is in flight here, so a cancel that shutdown_database() could
+    // not clear (its bounded wait gave up on a worker that has since
+    // finished) must not carry over and abort this fresh cycle.
+    db_backup_clear_cancel();
+
+    scheduled_backup_in_flight = true;
+    scheduled_backup_abandoned = false;
+    int rc = pthread_create(&scheduled_backup_thread, NULL,
+                            scheduled_backup_thread_main, NULL);
+    if (rc != 0) {
+        scheduled_backup_in_flight = false;
+        // Same cooldown as a failed cycle, so a persistent thread-creation
+        // failure is not retried on every main-loop tick.
+        last_scheduled_backup_finished = now;
+        pthread_mutex_unlock(&scheduled_backup_lock);
+        log_error("Failed to start scheduled database backup thread: %s", strerror(rc));
         return -1;
     }
+    scheduled_backup_thread_joinable = true;
+    pthread_mutex_unlock(&scheduled_backup_lock);
 
-    last_backup_time = last_scheduled_backup_finished;
-    return 0;
+    log_info("Scheduled database backup started in background");
+    return 1;
 }
 
 // Initialize the database
@@ -588,12 +833,14 @@ int init_database_ex(const char *db_path, unsigned flags) {
     log_info("Backup path set to: %s", db_backup_path);
 
     struct stat backup_stat;
+    pthread_mutex_lock(&scheduled_backup_lock);
     last_scheduled_backup_finished = 0;
     if (stat(db_backup_path, &backup_stat) == 0) {
         last_backup_time = backup_stat.st_mtime;
     } else {
         last_backup_time = 0;
     }
+    pthread_mutex_unlock(&scheduled_backup_lock);
 
     bool read_only = (flags & DB_INIT_READ_ONLY) == DB_INIT_READ_ONLY;
     if (!read_only) {
@@ -650,6 +897,11 @@ int init_database_ex(const char *db_path, unsigned flags) {
         }
 
         log_info("Database initialized successfully (read-only)");
+        // A read-only one-shot never runs the main loop, so it never
+        // schedules a cycle; kept symmetrical with the normal path below.
+        pthread_mutex_lock(&scheduled_backup_lock);
+        scheduled_backup_draining = false;
+        pthread_mutex_unlock(&scheduled_backup_lock);
         return 0;
     }
 
@@ -996,11 +1248,19 @@ int init_database_ex(const char *db_path, unsigned flags) {
         log_info("Creating initial backup of new database");
         if (perform_database_backup_cycle("initial", true, true) == 0) {
             log_info("Initial backup created successfully");
+            pthread_mutex_lock(&scheduled_backup_lock);
             last_backup_time = time(NULL);
+            pthread_mutex_unlock(&scheduled_backup_lock);
         } else {
             log_warn("Failed to create initial backup");
         }
     }
+
+    // The database is fully open: scheduled cycles may start again after a
+    // shutdown_database() (settings-driven restart) put the scheduler on hold.
+    pthread_mutex_lock(&scheduled_backup_lock);
+    scheduled_backup_draining = false;
+    pthread_mutex_unlock(&scheduled_backup_lock);
 
     return 0;
 }
@@ -1026,6 +1286,12 @@ static void reset_sqlite_internal_state(void) {
 void shutdown_database(void) {
     log_info("Starting database shutdown process");
 
+    // Stop the scheduled-backup worker first (bounded wait, see the helper):
+    // nothing below -- the final-backup decision, the handle close, or
+    // sqlite3_shutdown() -- may run while a scheduled copy is still in
+    // flight, and an aborted cycle must not read as a fresh backup.
+    quiesce_scheduled_backup_worker();
+
     // Create a final backup before shutting down.
     //
     // Skipped for read-only one-shot callers: the backup copies the whole
@@ -1035,6 +1301,12 @@ void shutdown_database(void) {
     time_t backup_interval_seconds = g_config.db_backup_interval_minutes > 0
         ? (time_t)g_config.db_backup_interval_minutes * 60 : 0;
     time_t now = time(NULL);
+    // Snapshot under the scheduler lock: the worker is idle after the wait
+    // above in every case except the abandoned one, where it may still
+    // publish a (stale) completion concurrently.
+    pthread_mutex_lock(&scheduled_backup_lock);
+    time_t last_backup_snapshot = last_backup_time;
+    pthread_mutex_unlock(&scheduled_backup_lock);
     // now >= last_backup_time guards two edge cases: a backward system clock
     // jump (NTP correction) after last_backup_time was recorded, and
     // time(NULL) itself failing (returns (time_t)-1 per POSIX). Either would
@@ -1043,8 +1315,8 @@ void shutdown_database(void) {
     // timestamp as "in the future") and skipping the shutdown backup when it
     // shouldn't be skipped.
     bool recent_backup_exists = backup_interval_seconds > 0 &&
-        last_backup_time != 0 && now >= last_backup_time &&
-        now - last_backup_time < backup_interval_seconds;
+        last_backup_snapshot != 0 && now >= last_backup_snapshot &&
+        now - last_backup_snapshot < backup_interval_seconds;
 
     if (db_init_flags & DB_INIT_NO_BACKUP) {
         log_info("Skipping shutdown backup (read-only initialization)");
@@ -1065,7 +1337,7 @@ void shutdown_database(void) {
         // between scheduled backups.
         log_info("Skipping final backup: last backup was %ld seconds ago, "
                  "within the %d-minute scheduled interval",
-                 (long)(now - last_backup_time),
+                 (long)(now - last_backup_snapshot),
                  g_config.db_backup_interval_minutes);
     } else if (db != NULL && db_file_path[0] != '\0') {
         log_info("Creating final backup before shutdown");

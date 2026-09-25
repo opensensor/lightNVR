@@ -1369,9 +1369,14 @@ int main(int argc, char *argv[]) {
         }
 
         // Check whether a scheduled database backup is due once per minute.
+        // Only the decision is made here: the cycle itself (copy +
+        // verification, minutes on a large database) runs on a dedicated
+        // worker thread, so this returns at once and no longer stalls the
+        // service check and audit flush above for its duration. The worker
+        // logs its own completion/failure; only a failure to start is ours.
         if (now - last_db_backup_check_time > 60) {
-            if (maybe_run_scheduled_database_backup() != 0) {
-                log_warn("Scheduled database backup attempt failed");
+            if (maybe_run_scheduled_database_backup() < 0) {
+                log_warn("Scheduled database backup could not be started");
             }
             last_db_backup_check_time = now;
         }
@@ -1399,6 +1404,15 @@ int main(int argc, char *argv[]) {
     // Cleanup
 cleanup:
     log_info("Starting cleanup process...");
+
+    // Every path into this label is a restart/shutdown. signal_handler() and
+    // request_restart() already raised the background-abort flag on the
+    // normal paths; raise it here too (idempotent) so an in-flight scheduled
+    // database backup on its worker thread bails out at its next
+    // between-batches check while the rest of this teardown runs, instead
+    // of holding up the bounded join before shutdown_database() below.
+    request_background_abort();
+
     shutdown_recording_transcode();
 
     // Stop request producers before any state they can inspect is dismantled.
@@ -1719,6 +1733,21 @@ cleanup:
         // Add a small delay after schema cache cleanup
         usleep(100000);  // 100ms
 
+        // Join the scheduled-backup worker before the final backup and the
+        // handle close inside shutdown_database(). The abort was requested
+        // when this shutdown began, so the worker is already stopping; this
+        // just bounds how long we wait for it. shutdown_database() repeats
+        // the wait as its own safety net for callers that do not come
+        // through here (settings-driven database restarts).
+        if (db_scheduled_backup_in_flight()) {
+            log_info("Waiting up to %d s for the in-flight scheduled database backup to abort...",
+                     DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+            if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
+                log_warn("Scheduled database backup worker did not stop within %d s, continuing shutdown",
+                         DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+            }
+        }
+
         log_info("Shutting down database...");
         shutdown_database();
 
@@ -1830,6 +1859,17 @@ cleanup:
 
         // Add a small delay
         usleep(100000);  // 100ms
+
+        // Same bounded join as the watchdog path above: never close the
+        // handle or take the final backup while a scheduled copy is in flight.
+        if (db_scheduled_backup_in_flight()) {
+            log_info("Waiting up to %d s for the in-flight scheduled database backup to abort...",
+                     DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+            if (!db_scheduled_backup_wait_idle(DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS)) {
+                log_warn("Scheduled database backup worker did not stop within %d s, continuing shutdown",
+                         DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS / 1000);
+            }
+        }
 
         // Shutdown database
         log_info("Shutting down database...");

@@ -3,6 +3,7 @@
 
 #include <sqlite3.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 // Include other database module headers
 #include "database/db_transaction.h"
@@ -82,10 +83,46 @@ void db_close_readonly_connection(sqlite3 *connection);
 int checkpoint_database(void);
 
 /**
- * Run periodic database backup work when the configured interval is due.
+ * Start a scheduled database backup cycle when the configured interval is
+ * due.
  *
- * @return 0 on success or no-op, non-zero on failure
+ * The decision (interval, cooldown after a failed attempt, one cycle at a
+ * time) is made by the caller's thread -- the main loop, once a minute --
+ * but the cycle itself (copy, verification, post-backup hook, retention)
+ * runs on a dedicated worker thread, so this returns immediately.  The
+ * interval is re-read from g_config on every call, so a runtime settings
+ * change takes effect at the next tick; setting it to 0 stops future cycles
+ * (an in-flight one finishes on its own).
+ *
+ * @return 1 when a cycle was started, 0 when nothing was due (or one is
+ *         already in flight), -1 when the worker thread could not be started
  */
 int maybe_run_scheduled_database_backup(void);
+
+/** Whether a scheduled backup cycle is currently running on the worker. */
+bool db_scheduled_backup_in_flight(void);
+
+/**
+ * Bound on how long shutdown waits for an in-flight scheduled backup after
+ * asking it to stop.  The worker aborts at its next between-batches (16 MiB)
+ * or verification-progress check and then only has to remove its temporary
+ * file, so it normally stops within seconds; the budget covers slow disks.
+ * The process-level shutdown watchdogs remain the backstop beyond it.
+ */
+#define DB_SCHEDULED_BACKUP_JOIN_TIMEOUT_MS (60 * 1000)
+
+/**
+ * Wait for an in-flight scheduled backup cycle to finish and reap its
+ * worker thread.  Does not itself request an abort: callers on the
+ * restart/shutdown path raise request_background_abort() first (the copy
+ * polls it between batches), and shutdown_database() calls this on its own
+ * before the final backup and the handle close.
+ *
+ * @param timeout_ms Maximum wait; 0 only reaps an already-finished worker.
+ *        When the budget expires the running cycle is given up on: later
+ *        calls return at once until it eventually publishes its result.
+ * @return true when no cycle is in flight on return
+ */
+bool db_scheduled_backup_wait_idle(int timeout_ms);
 
 #endif // LIGHTNVR_DB_CORE_H

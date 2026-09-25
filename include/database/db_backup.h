@@ -21,6 +21,20 @@
  */
 int backup_database(const char *source_path, const char *dest_path, bool abortable);
 
+/**
+ * Cancel the in-flight abortable backup (if any) at its next abort point,
+ * independently of the process-wide request_background_abort() flag.
+ *
+ * shutdown_database() uses this while it waits for the scheduled-backup
+ * worker on a settings-driven database restart, where the process keeps
+ * running and the never-reset process-wide flag must therefore stay clear.
+ * Non-abortable backups (the deliberate shutdown backup) ignore it.
+ */
+void db_backup_request_cancel(void);
+
+/** Clear a pending db_backup_request_cancel(); done once the worker is idle. */
+void db_backup_clear_cancel(void);
+
 /** Default maximum duration (seconds) an abortable backup may run before
  *  self-aborting as a stuck-backup safety valve. Not test-only (unlike
  *  db_backup_set_max_duration_seconds_for_testing(), declared separately in
