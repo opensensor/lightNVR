@@ -20,6 +20,11 @@
 #include "utils/strings.h"
 
 #define PLACEMENT_ASSIGNMENT_TTL_SECONDS 60
+/* A policy whose primary target is not eligible falls back on every
+ * placement decision (recording start and each segment rotation). Log that
+ * once per stream when the reason changes, and repeat at this cadence so a
+ * persistent misconfiguration stays visible without flooding the log. */
+#define PLACEMENT_FALLBACK_REPEAT_SECONDS 300
 
 typedef struct {
     storage_policy_t policy;
@@ -39,6 +44,100 @@ static int policy_cache_count = 0;
 static uint64_t policy_cache_generation = 0;
 static cached_assignment_t assignment_cache[MAX_STREAMS];
 
+typedef struct {
+    bool used;
+    char stream_name[MAX_STREAM_NAME];
+    char detail[256];
+    time_t logged_at;
+} fallback_note_t;
+
+static fallback_note_t fallback_notes[MAX_STREAMS];
+
+static void describe_ineligible_primary(const storage_policy_t *policy,
+                                        char *out, size_t out_size) {
+    if (policy->primary_pool_uuid[0]) {
+        snprintf(out, out_size, "pool %s has no eligible member",
+                 policy->primary_pool_uuid);
+        return;
+    }
+    if (!policy->primary_target_uuid[0]) {
+        snprintf(out, out_size, "no primary target configured");
+        return;
+    }
+    storage_target_t detail;
+    if (db_storage_target_get(policy->primary_target_uuid, &detail) !=
+        DB_STORAGE_TARGET_OK) {
+        snprintf(out, out_size, "target %s not found",
+                 policy->primary_target_uuid);
+        return;
+    }
+    snprintf(out, out_size,
+             "target \"%s\" enabled=%s type=%s health=%s%s%s",
+             detail.name, detail.enabled ? "yes" : "no", detail.target_type,
+             detail.health_status[0] ? detail.health_status : "unknown",
+             detail.last_error[0] ? " last_error=" : "", detail.last_error);
+}
+
+static fallback_note_t *find_fallback_note_locked(const char *stream_name,
+                                                  bool allocate) {
+    fallback_note_t *free_slot = NULL;
+    for (int index = 0; index < MAX_STREAMS; index++) {
+        if (fallback_notes[index].used) {
+            if (strcmp(fallback_notes[index].stream_name, stream_name) == 0) {
+                return &fallback_notes[index];
+            }
+        } else if (!free_slot) {
+            free_slot = &fallback_notes[index];
+        }
+    }
+    if (!allocate || !free_slot) return NULL;
+    memset(free_slot, 0, sizeof(*free_slot));
+    safe_strcpy(free_slot->stream_name, stream_name,
+                sizeof(free_slot->stream_name), 0);
+    return free_slot;
+}
+
+/* Called when a matched policy's primary is not eligible. Silent fallback is
+ * what left the reporter in issue #621 believing a passing "Test target" meant
+ * recordings would land there. */
+static void note_primary_fallback(const char *stream_name,
+                                  const storage_policy_t *policy,
+                                  const char *detail, const char *outcome) {
+    time_t now = time(NULL);
+    pthread_mutex_lock(&placement_cache_mutex);
+    fallback_note_t *note = find_fallback_note_locked(stream_name, true);
+    bool should_log = !note || !note->used ||
+                      strcmp(note->detail, detail) != 0 ||
+                      now - note->logged_at >= PLACEMENT_FALLBACK_REPEAT_SECONDS;
+    if (note) {
+        note->used = true;
+        safe_strcpy(note->detail, detail, sizeof(note->detail), 0);
+        if (should_log) note->logged_at = now;
+    }
+    pthread_mutex_unlock(&placement_cache_mutex);
+    if (should_log) {
+        log_warn("[%s] Storage policy \"%s\": primary not eligible (%s); %s",
+                 stream_name, policy->name, detail, outcome);
+    }
+}
+
+static void clear_primary_fallback(const char *stream_name,
+                                   const storage_policy_t *policy) {
+    bool was_falling_back = false;
+    pthread_mutex_lock(&placement_cache_mutex);
+    fallback_note_t *note = find_fallback_note_locked(stream_name, false);
+    if (note && note->used) {
+        note->used = false;
+        was_falling_back = true;
+    }
+    pthread_mutex_unlock(&placement_cache_mutex);
+    if (was_falling_back) {
+        log_info("[%s] Storage policy \"%s\": primary target eligible again; "
+                 "new segments record there",
+                 stream_name, policy->name);
+    }
+}
+
 static void clear_policy_cache_locked(void) {
     for (int index = 0; index < policy_cache_count; index++) {
         fleet_selector_free(policy_cache[index].selector);
@@ -53,6 +152,9 @@ void storage_placement_cache_invalidate(void) {
     pthread_mutex_lock(&placement_cache_mutex);
     clear_policy_cache_locked();
     policy_cache_generation = 0;
+    /* Policies changed: any fallback that was being reported belonged to the
+     * old policy set, so start the once-per-change reporting afresh. */
+    memset(fallback_notes, 0, sizeof(fallback_notes));
     pthread_mutex_unlock(&placement_cache_mutex);
 }
 
@@ -78,6 +180,19 @@ static int reload_policies_locked(uint64_t generation) {
                       policies[index].uuid,
                       error[0] ? error : "invalid selector JSON");
             continue;
+        }
+        const storage_policy_t *loaded = &policies[index];
+        if (loaded->migration_target_uuid[0] &&
+            loaded->migration_after_days <= 0 &&
+            loaded->archive_after_seconds < 0 &&
+            !loaded->archive_protected && !loaded->archive_on_pressure) {
+            /* Such a policy passes validation but the lifecycle scheduler
+             * never selects anything for it, so nothing is ever moved. */
+            log_warn("Storage policy \"%s\" names archive target %s but has no "
+                     "trigger (migration_after_days, archive_after_seconds, "
+                     "archive_protected or archive_on_pressure); no recordings "
+                     "will be moved",
+                     loaded->name, loaded->migration_target_uuid);
         }
         policy_cache[policy_cache_count].policy = policies[index];
         policy_cache[policy_cache_count].selector = selector;
@@ -273,6 +388,7 @@ int storage_placement_select(const char *stream_name,
               DB_STORAGE_POOL_OK
         : target_is_eligible(policy.primary_target_uuid, &target);
     if (primary_available) {
+        clear_primary_fallback(stream_name, &policy);
         char reason[64];
         snprintf(reason, sizeof(reason), policy.primary_pool_uuid[0]
             ? "policy-pool:%s" : "policy-primary:%s", policy.uuid);
@@ -280,16 +396,23 @@ int storage_placement_select(const char *stream_name,
         return 0;
     }
 
+    char detail[256];
+    describe_ineligible_primary(&policy, detail, sizeof(detail));
+
     if (strcmp(policy.fallback_mode, "pause") == 0) {
         placement->status = STORAGE_PLACEMENT_PAUSED;
         safe_strcpy(placement->reason, "policy-pause",
                     sizeof(placement->reason), 0);
+        note_primary_fallback(stream_name, &policy, detail,
+                              "recording paused (fallback_mode=pause)");
         return 0;
     }
     if (strcmp(policy.fallback_mode, "fail") == 0) {
         placement->status = STORAGE_PLACEMENT_FAILED;
         safe_strcpy(placement->reason, "policy-fail",
                     sizeof(placement->reason), 0);
+        note_primary_fallback(stream_name, &policy, detail,
+                              "recording failed (fallback_mode=fail)");
         return 0;
     }
 
@@ -300,6 +423,8 @@ int storage_placement_select(const char *stream_name,
         placement->status = STORAGE_PLACEMENT_PAUSED;
         safe_strcpy(placement->reason, "fallback-unavailable",
                     sizeof(placement->reason), 0);
+        note_primary_fallback(stream_name, &policy, detail,
+                              "fallback target unavailable as well; recording paused");
         return 0;
     }
     char reason[64];
@@ -307,6 +432,11 @@ int storage_placement_select(const char *stream_name,
              strcmp(policy.fallback_mode, "target") == 0
                 ? "policy-fallback:%s" : "policy-default:%s",
              policy.uuid);
+    char outcome[STORAGE_TARGET_NAME_MAX + 64];
+    snprintf(outcome, sizeof(outcome), "recording to %s target \"%s\" instead",
+             strcmp(policy.fallback_mode, "target") == 0 ? "fallback" : "default",
+             target.name);
+    note_primary_fallback(stream_name, &policy, detail, outcome);
     ready(placement, &target, reason);
     return 0;
 }

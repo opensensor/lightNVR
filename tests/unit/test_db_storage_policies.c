@@ -214,6 +214,52 @@ void test_unavailable_primary_honors_named_pause_and_fail_fallbacks(void) {
     TEST_ASSERT_EQUAL_STRING("policy-fail", placement.reason);
 }
 
+/* A target that passes a write test but sits above its high watermark is
+ * "degraded", and placement only accepts "healthy". The policy then silently
+ * routed to the default target (issue #621). Placement must skip the degraded
+ * primary and pick it up again once it is healthy. */
+void test_degraded_primary_is_skipped_until_healthy_again(void) {
+    storage_policy_t policy = policy_value("Watermark placement",
+                                           primary_target.uuid);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_POLICY_OK,
+                          db_storage_policy_create(&policy));
+
+    storage_target_health_update_t probe = {
+        .available = true,
+        .write_checked = true,
+        .writeable = true,
+        .cleanup_failed = false,
+        .capacity_bytes = 100ULL * 1024 * 1024 * 1024,
+        .available_bytes = 512ULL * 1024 * 1024,         /* 99.5% used; fixture watermark is 99% */
+        .filesystem_device = 1,
+        .probed_at = (int64_t)time(NULL),
+    };
+    safe_strcpy(probe.normalized_error, "none", sizeof(probe.normalized_error), 0);
+    storage_target_t probed;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_record_health(primary_target.uuid,
+                                                          &probe, &probed));
+    TEST_ASSERT_EQUAL_STRING("degraded", probed.health_status);
+
+    storage_placement_t placement;
+    TEST_ASSERT_EQUAL_INT(
+        0, storage_placement_select("lobby-camera", &placement));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PLACEMENT_READY, placement.status);
+    TEST_ASSERT_EQUAL_STRING(default_uuid, placement.target_uuid);
+    TEST_ASSERT_TRUE(strncmp(placement.reason, "policy-default:", 15) == 0);
+
+    probe.available_bytes = 50ULL * 1024 * 1024 * 1024;   /* 50% used */
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_record_health(primary_target.uuid,
+                                                          &probe, &probed));
+    TEST_ASSERT_EQUAL_STRING("healthy", probed.health_status);
+    TEST_ASSERT_EQUAL_INT(
+        0, storage_placement_select("lobby-camera", &placement));
+    TEST_ASSERT_EQUAL_INT(STORAGE_PLACEMENT_READY, placement.status);
+    TEST_ASSERT_EQUAL_STRING(primary_target.uuid, placement.target_uuid);
+    TEST_ASSERT_TRUE(strncmp(placement.reason, "policy-primary:", 15) == 0);
+}
+
 void test_camera_selectors_route_two_cameras_to_different_targets(void) {
     stream_config_t lobby;
     stream_config_t service;
@@ -444,6 +490,7 @@ int main(void) {
     RUN_TEST(test_policy_routes_new_recording_and_persists_audit_identity);
     RUN_TEST(test_unavailable_primary_uses_explicit_default_fallback);
     RUN_TEST(test_unavailable_primary_honors_named_pause_and_fail_fallbacks);
+    RUN_TEST(test_degraded_primary_is_skipped_until_healthy_again);
     RUN_TEST(test_camera_selectors_route_two_cameras_to_different_targets);
     RUN_TEST(test_policy_revision_validation_and_target_reference_safety);
     RUN_TEST(test_pool_placement_and_round_robin_allocation);

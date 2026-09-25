@@ -136,6 +136,18 @@ performance class, reserved headroom, watermarks, cached capacity, and health.
 Enabled roots must already be mounted and writable. lightNVR does not mount
 remote shares or store share credentials.
 
+**Adding a target does not by itself change where anything is recorded.** A
+target is inventory: new segments keep going to the default target until a
+camera placement policy routes cameras to the new target, either as the
+policy's primary target (or a pool containing it) or as its archive target
+with an age or pressure trigger. A passing **Test target** only proves the
+directory is writable. Two more things keep a target idle even with a policy:
+the target must be `healthy` (a target above its high watermark or inside its
+reserve is `degraded` and is skipped), and footage recorded before the policy
+existed is not attributed to it, so only new segments are affected. When a
+policy's primary target is skipped, the log reports
+`Storage policy "<name>": primary not eligible (...)` with the reason.
+
 Storage pools and selector-driven lifecycle policies are managed on the same
 page. A pool can allocate by most-free, round-robin, or explicit priority.
 Policies may place new segments into a pool, require distinct verified copies,
