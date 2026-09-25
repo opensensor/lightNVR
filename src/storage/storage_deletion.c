@@ -297,20 +297,39 @@ static int inventory_path(sqlite3 *db, const char *uuid, const char *path) {
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
-static int inventory_derivatives(sqlite3 *db, const char *uuid, uint64_t id) {
-    /* Journal only derivatives that exist: a recording without thumbnails or a
-     * transcode cache then costs one ledger row and one unlink instead of five.
-     * Derivatives a still-running consumer writes after this point are removed
-     * by the caller's post-deletion cleanup (storage_manager) rather than
-     * journaled speculatively. */
+#define DERIVATIVE_PATHS_MAX 32
+
+typedef struct {
+    int count;
+    char paths[DERIVATIVE_PATHS_MAX][MAX_PATH_LENGTH];
+} derivative_paths_t;
+
+static void derivative_add(derivative_paths_t *out, const char *path) {
+    /* Beyond the cap the caller's post-deletion sweep removes the rest. */
+    if (out->count >= DERIVATIVE_PATHS_MAX) return;
+    safe_strcpy(out->paths[out->count++], path, MAX_PATH_LENGTH, 0);
+}
+
+/*
+ * Probe the filesystem for a recording's derivatives (thumbnails, transcode
+ * cache, investigation stills) before the ledger transaction opens. Journal
+ * only derivatives that exist: a recording without any then costs one ledger
+ * row and one unlink instead of five. These access() and readdir() calls
+ * used to run inside BEGIN IMMEDIATE while holding the global database
+ * mutex, so a slow volume stalled every API request for the length of each
+ * deletion. Derivatives a still-running consumer writes after this point are
+ * removed by the caller's post-deletion cleanup (storage_manager).
+ */
+static int collect_derivatives(uint64_t id, derivative_paths_t *out) {
     char path[MAX_PATH_LENGTH], directory[MAX_PATH_LENGTH];
+    out->count = 0;
     for (int i = 0; i < 3; i++) {
         int n = snprintf(path, sizeof(path), "%s/thumbnails/%llu_%d.jpg", g_config.storage_path, (unsigned long long)id, i);
         if (n < 0 || n >= (int)sizeof(path)) return -1;
-        if (access(path, F_OK) == 0 && inventory_path(db, uuid, path)) return -1;
+        if (access(path, F_OK) == 0) derivative_add(out, path);
     }
     if (!build_recording_transcode_cache_path(g_config.storage_path, id, path, sizeof(path)) &&
-        access(path, F_OK) == 0 && inventory_path(db, uuid, path)) return -1;
+        access(path, F_OK) == 0) derivative_add(out, path);
     int n = snprintf(directory, sizeof(directory), "%s/thumbnails/investigation/%llu", g_config.storage_path, (unsigned long long)id);
     if (n < 0 || n >= (int)sizeof(directory)) return -1;
     DIR *dir = opendir(directory);
@@ -321,10 +340,18 @@ static int inventory_derivatives(sqlite3 *db, const char *uuid, uint64_t id) {
         size_t digits = strspn(entry->d_name, "0123456789");
         if (!digits || strcmp(entry->d_name + digits, ".jpg")) continue;
         n = snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
-        if (n < 0 || n >= (int)sizeof(path) || inventory_path(db, uuid, path)) { result = -1; break; }
+        if (n < 0 || n >= (int)sizeof(path)) { result = -1; break; }
+        derivative_add(out, path);
     }
     closedir(dir);
     return result;
+}
+
+static int inventory_derivatives(sqlite3 *db, const char *uuid, const derivative_paths_t *paths) {
+    for (int i = 0; i < paths->count; i++) {
+        if (inventory_path(db, uuid, paths->paths[i])) return -1;
+    }
+    return 0;
 }
 
 static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
@@ -336,6 +363,8 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     if (!db || !mutex || !id) return -1;
     char uuid[LIGHTNVR_UUID_STRING_SIZE];
     if (lightnvr_uuid_generate_v4(uuid)) return -1;
+    derivative_paths_t derivatives;
+    if (collect_derivatives(id, &derivatives) != 0) return -1;
     pthread_mutex_lock(mutex);
     if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
         pthread_mutex_unlock(mutex);
@@ -428,7 +457,7 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     };
     for (size_t i = 0; result == SQLITE_DONE && i < sizeof(inventory) / sizeof(inventory[0]); i++)
         if (execute_id(db, inventory[i], id, i < 5 ? uuid : NULL)) result = SQLITE_ERROR;
-    if (result == SQLITE_DONE && inventory_derivatives(db, uuid, id)) result = SQLITE_ERROR;
+    if (result == SQLITE_DONE && inventory_derivatives(db, uuid, &derivatives)) result = SQLITE_ERROR;
     bool committed = result == SQLITE_DONE && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK;
     if (!committed) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
     pthread_mutex_unlock(mutex);

@@ -40,7 +40,10 @@
 #define MAX_RECORDINGS_PER_STREAM 100
 // Rows per detections-prune statement. Bounded so a large backlog is worked
 // off across cycles instead of holding the database mutex for one huge delete.
-#define MAX_DETECTIONS_PER_BATCH 5000
+// Each detection row sits in more than a dozen indexes, so a 5000-row batch
+// held the writer mutex for hundreds of milliseconds at a time; 500 keeps a
+// batch to a few tens of milliseconds and pacing yields between batches.
+#define MAX_DETECTIONS_PER_BATCH 500
 
 // Maximum orphaned recordings to process per run
 #define MAX_ORPHANED_BATCH 500
@@ -80,9 +83,39 @@ static struct {
     .reserved_space = 0
 };
 
-static bool delete_recording_file_and_metadata(const recording_metadata_t *recording,
-                                               const char *context,
-                                               uint64_t *freed_bytes) {
+/*
+ * Maintenance shares one SQLite connection and one unfair mutex with every
+ * API handler. Deleting in a tight loop re-takes that mutex the instant it is
+ * released, so waiting handlers starve and the UI stalls for the length of a
+ * cleanup cycle. After each unit of work sleep at least as long as the work
+ * took, which caps maintenance at roughly half the wall clock, with a floor
+ * that guarantees a hand-off window and a ceiling so a slow volume cannot
+ * stall the cycle. Throughput stays ample: 20k deletions a day cost minutes.
+ */
+#define CLEANUP_PACE_MIN_US 5000L
+#define CLEANUP_PACE_MAX_US 250000L
+
+unsigned storage_cleanup_pace_delay_us(long elapsed_us) {
+    if (elapsed_us < CLEANUP_PACE_MIN_US) return (unsigned)CLEANUP_PACE_MIN_US;
+    if (elapsed_us > CLEANUP_PACE_MAX_US) return (unsigned)CLEANUP_PACE_MAX_US;
+    return (unsigned)elapsed_us;
+}
+
+static void cleanup_pace_begin(struct timespec *started) {
+    clock_gettime(CLOCK_MONOTONIC, started);
+}
+
+static void cleanup_pace_end(const struct timespec *started) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long elapsed_us = (now.tv_sec - started->tv_sec) * 1000000L +
+                      (now.tv_nsec - started->tv_nsec) / 1000L;
+    usleep(storage_cleanup_pace_delay_us(elapsed_us));
+}
+
+static bool delete_recording_file_and_metadata_now(const recording_metadata_t *recording,
+                                                   const char *context,
+                                                   uint64_t *freed_bytes) {
     uint64_t removed = 0;
     if (freed_bytes) *freed_bytes = 0;
     if (!recording || storage_recording_delete(recording->id, context, &removed) != 0)
@@ -106,6 +139,17 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
     }
 
     return true;
+}
+
+/* Every deletion path goes through here, so every path is paced. */
+static bool delete_recording_file_and_metadata(const recording_metadata_t *recording,
+                                               const char *context,
+                                               uint64_t *freed_bytes) {
+    struct timespec started;
+    cleanup_pace_begin(&started);
+    bool deleted = delete_recording_file_and_metadata_now(recording, context, freed_bytes);
+    cleanup_pace_end(&started);
+    return deleted;
 }
 
 /*
@@ -570,9 +614,12 @@ int apply_retention_policy(void) {
             do {
                 if (time(NULL) - budget_start >= RETENTION_TIME_BUDGET_SEC) break;
 
+                struct timespec prune_started;
+                cleanup_pace_begin(&prune_started);
                 pruned = delete_old_detections_for_stream(stream_name,
                                                           detection_max_age,
                                                           MAX_DETECTIONS_PER_BATCH);
+                cleanup_pace_end(&prune_started);
                 if (pruned > 0) {
                     detections_deleted += pruned;
                 }
@@ -641,8 +688,11 @@ int apply_retention_policy(void) {
             int lpr_deleted = 0;
             int pruned = 0;
             do {
+                struct timespec lpr_started;
+                cleanup_pace_begin(&lpr_started);
                 pruned = db_lpr_reads_prune(cutoff_ms,
                                             MAX_DETECTIONS_PER_BATCH);
+                cleanup_pace_end(&lpr_started);
                 if (pruned > 0) lpr_deleted += pruned;
             } while (pruned == MAX_DETECTIONS_PER_BATCH &&
                      time(NULL) - budget_start < RETENTION_TIME_BUDGET_SEC);

@@ -400,6 +400,17 @@ void test_apply_retention_policy_honours_disabled_stream_explicit_retention(void
     assert_recording_kept(short_new);
 }
 
+void test_cleanup_pace_sleeps_at_least_as_long_as_the_database_work(void) {
+    // Floor: a trivially fast deletion still yields a hand-off window.
+    TEST_ASSERT_EQUAL_UINT(5000, storage_cleanup_pace_delay_us(0));
+    TEST_ASSERT_EQUAL_UINT(5000, storage_cleanup_pace_delay_us(1200));
+    // Proportional: roughly a 50% duty cycle in the normal range.
+    TEST_ASSERT_EQUAL_UINT(40000, storage_cleanup_pace_delay_us(40000));
+    // Ceiling: a slow volume must not stall the cycle indefinitely.
+    TEST_ASSERT_EQUAL_UINT(250000, storage_cleanup_pace_delay_us(3000000));
+    TEST_ASSERT_EQUAL_UINT(5000, storage_cleanup_pace_delay_us(-5));
+}
+
 void test_apply_retention_policy_expires_recordings_of_deleted_streams(void) {
     /* A permanently deleted camera leaves its rows behind with no streams
      * row to carry a policy; they follow the global retention. With global
@@ -435,6 +446,7 @@ int main(void) {
     RUN_TEST(test_apply_retention_policy_expires_disabled_stream_recordings);
     RUN_TEST(test_apply_retention_policy_honours_disabled_stream_explicit_retention);
     RUN_TEST(test_apply_retention_policy_expires_recordings_of_deleted_streams);
+    RUN_TEST(test_cleanup_pace_sleeps_at_least_as_long_as_the_database_work);
     int result = UNITY_END();
 
     shutdown_database();

@@ -1663,13 +1663,7 @@ int get_recordings_for_retention(const char *stream_name,
     sqlite3_stmt *stmt;
     int count = 0;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
+    sqlite3 *db = NULL;
 
     if (!stream_name || !recordings || max_count <= 0) {
         log_error("Invalid parameters for get_recordings_for_retention");
@@ -1681,7 +1675,13 @@ int get_recordings_for_retention(const char *stream_name,
     time_t regular_cutoff = (retention_days > 0) ? now - ((time_t)retention_days * 86400) : 0;
     time_t detection_cutoff = (detection_retention_days > 0) ? now - ((time_t)detection_retention_days * 86400) : 0;
 
-    pthread_mutex_lock(db_mutex);
+    // Candidate selection runs on a read-only connection: WAL readers never
+    // block the writer, and maintenance must not queue behind (or starve)
+    // the global writer mutex that every API handler shares.
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Failed to open a read-only connection for %s", "get_recordings_for_retention");
+        return -1;
+    }
 
     // Query for recordings past retention, ordered by priority (regular first, then detection)
     // and by start_time (oldest first)
@@ -1713,7 +1713,7 @@ int get_recordings_for_retention(const char *stream_name,
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1782,7 +1782,7 @@ int get_recordings_for_retention(const char *stream_name,
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     return count;
 }
@@ -1806,20 +1806,20 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
     sqlite3_stmt *stmt;
     int count = 0;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
+    sqlite3 *db = NULL;
 
     if (!stream_name || !recordings || max_count <= 0) {
         log_error("Invalid parameters for get_recordings_for_quota_enforcement");
         return -1;
     }
 
-    pthread_mutex_lock(db_mutex);
+    // Candidate selection runs on a read-only connection: WAL readers never
+    // block the writer, and maintenance must not queue behind (or starve)
+    // the global writer mutex that every API handler shares.
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Failed to open a read-only connection for %s", "get_recordings_for_quota_enforcement");
+        return -1;
+    }
 
     // Get lower-priority unprotected recordings first.
     const char *sql =
@@ -1840,7 +1840,7 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1905,7 +1905,7 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     return count;
 }
@@ -2089,13 +2089,7 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     sqlite3_stmt *stmt;
     int count = 0;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
+    sqlite3 *db = NULL;
 
     if (!tier_multipliers || !recordings || max_count <= 0) {
         log_error("Invalid parameters for get_recordings_for_tiered_retention");
@@ -2110,7 +2104,13 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     time_t cutoff_standard = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_STANDARD] * 86400);
     time_t cutoff_ephemeral = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_EPHEMERAL] * 86400);
 
-    pthread_mutex_lock(db_mutex);
+    // Candidate selection runs on a read-only connection: WAL readers never
+    // block the writer, and maintenance must not queue behind (or starve)
+    // the global writer mutex that every API handler shares.
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Failed to open a read-only connection for %s", "get_recordings_for_tiered_retention");
+        return -1;
+    }
 
     // Select recordings past their tier-specific retention cutoff
     // Order by tier descending (ephemeral=3 first) then oldest first
@@ -2175,7 +2175,7 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare tiered retention query: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -2238,7 +2238,7 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     log_info("Found %d recordings eligible for tiered retention cleanup", count);
     return count;
@@ -2258,13 +2258,7 @@ static int get_pressure_cleanup_recordings(
     sqlite3_stmt *stmt;
     int count = 0;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
+    sqlite3 *db = NULL;
 
     if (!recordings || max_count <= 0 ||
         (storage_target_uuid && storage_target_uuid[0] == '\0')) {
@@ -2272,7 +2266,13 @@ static int get_pressure_cleanup_recordings(
         return -1;
     }
 
-    pthread_mutex_lock(db_mutex);
+    // Candidate selection runs on a read-only connection: WAL readers never
+    // block the writer, and maintenance must not queue behind (or starve)
+    // the global writer mutex that every API handler shares.
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Failed to open a read-only connection for %s", "get_pressure_cleanup_recordings");
+        return -1;
+    }
 
 #define POLICY_PRESSURE_GUARD \
         "AND deletion_pending=0 " \
@@ -2363,7 +2363,7 @@ static int get_pressure_cleanup_recordings(
     rc = sqlite3_prepare_v2(db, selected_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare pressure cleanup query: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -2440,7 +2440,7 @@ static int get_pressure_cleanup_recordings(
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     log_info("Found %d recordings eligible for disk pressure cleanup", count);
     return count;
@@ -2562,15 +2562,15 @@ int64_t get_stream_storage_bytes(const char *stream_name) {
     sqlite3_stmt *stmt;
     int64_t total_bytes = -1;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
+    sqlite3 *db = NULL;
 
-    if (!db) {
-        log_error("Database not initialized");
+    // Candidate selection runs on a read-only connection: WAL readers never
+    // block the writer, and maintenance must not queue behind (or starve)
+    // the global writer mutex that every API handler shares.
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Failed to open a read-only connection for %s", "get_stream_storage_bytes");
         return -1;
     }
-
-    pthread_mutex_lock(db_mutex);
 
     const char *sql;
     if (stream_name) {
@@ -2582,7 +2582,7 @@ int64_t get_stream_storage_bytes(const char *stream_name) {
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare storage bytes query: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -2595,7 +2595,7 @@ int64_t get_stream_storage_bytes(const char *stream_name) {
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     return total_bytes;
 }

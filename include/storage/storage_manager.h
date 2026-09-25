@@ -166,6 +166,12 @@ int delete_recording(const char *path);
 int apply_retention_policy(void);
 
 /**
+ * Sleep length in microseconds that maintenance takes after a unit of
+ * database work which held the writer mutex for elapsed_us. Exposed for tests.
+ */
+unsigned storage_cleanup_pace_delay_us(long elapsed_us);
+
+/**
  * Set maximum storage size
  *
  * @param max_size Maximum storage size in bytes (0 for unlimited)
