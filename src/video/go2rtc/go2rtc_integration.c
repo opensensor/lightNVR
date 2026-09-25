@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <limits.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -103,6 +105,286 @@ typedef struct {
 
 static stuck_stream_tracker_t g_stuck_trackers[MAX_TRACKED_STREAMS] = {0};
 static pthread_mutex_t g_stuck_tracker_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Result of one data-flow probe against go2rtc's /api/streams byte counters.
+typedef enum {
+    STREAM_FLOW_UNKNOWN = 0,  // could not tell (warmup, API error, first sample)
+    STREAM_FLOW_MISSING,      // go2rtc does not list the stream at all
+    STREAM_FLOW_FLOWING,      // byte counters advanced since the last probe
+    STREAM_FLOW_STALLED,      // no advance, below the stuck threshold
+    STREAM_FLOW_STUCK,        // no advance for STUCK_STREAM_MAX_STALLED_CHECKS probes
+} stream_flow_t;
+
+// ============================================================================
+// Per-stream recovery bookkeeping (#620)
+// ============================================================================
+//
+// A scoped recovery (DELETE + PUT of one stream through the go2rtc API) is
+// cheap but not free. In the bundled go2rtc a DELETE stops the old Stream
+// object, but a PUT that replaces an existing entry does not, and the preload
+// registry keeps pointing at whichever object it was attached to; a producer
+// blocked on a stalled camera connection can also outlive its Stream. Each
+// reload that is not followed by data flow therefore risks leaving another
+// producer behind holding an RTSP session on the camera, and in the field only
+// a go2rtc restart cleared the resulting persistent 404s (#620). Without
+// bookkeeping the monitor re-ran the same reload every 60-90 s for hours.
+// These helpers make the loop progress-aware:
+//   * the cooldown before the next scoped recovery doubles after every
+//     recovery that is not followed by observed data flow (capped);
+//   * after STREAM_RECOVERY_ESCALATE_AFTER fruitless recoveries on a stream
+//     that was healthy in this go2rtc process lifetime and whose camera is
+//     still TCP-reachable from LightNVR, the monitor escalates to a
+//     rate-limited go2rtc process restart, the only action that clears
+//     orphaned producers inside go2rtc.
+// Access to g_recovery_states is serialized by g_recovery_mutex because the
+// writer/detection threads feed it through
+// go2rtc_integration_report_proxy_open_failure().
+
+#define STREAM_RECOVERY_BACKOFF_MAX_SEC         (15 * 60)
+#define STREAM_RECOVERY_ESCALATE_AFTER          3
+#define STREAM_RECOVERY_ESCALATION_COOLDOWN_SEC (30 * 60)
+#define STREAM_PROXY_OPEN_FAILURE_THRESHOLD     3
+#define STREAM_CAMERA_PROBE_TIMEOUT_MS          3000
+
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    bool active;
+    int attempts_since_progress;          // scoped recoveries since data last flowed
+    time_t last_attempt_time;             // wall time of the last scoped recovery (any outcome)
+    time_t last_escalation_time;          // wall time of the last process-restart escalation
+    bool healthy_seen;                    // data flow observed at least once
+    uint64_t healthy_restart_generation;  // lifecycle restart generation when data last flowed
+    int proxy_open_failures;              // consecutive local-RTSP open failures reported by consumers
+} stream_recovery_state_t;
+
+static stream_recovery_state_t g_recovery_states[MAX_TRACKED_STREAMS] = {0};
+static pthread_mutex_t g_recovery_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Caller must hold g_recovery_mutex. */
+static stream_recovery_state_t *recovery_state_locked(const char *stream_name, bool create) {
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (g_recovery_states[i].active &&
+            strcmp(g_recovery_states[i].stream_name, stream_name) == 0) {
+            return &g_recovery_states[i];
+        }
+    }
+    if (!create) {
+        return NULL;
+    }
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (!g_recovery_states[i].active) {
+            memset(&g_recovery_states[i], 0, sizeof(g_recovery_states[i]));
+            safe_strcpy(g_recovery_states[i].stream_name, stream_name, MAX_STREAM_NAME, 0);
+            g_recovery_states[i].active = true;
+            return &g_recovery_states[i];
+        }
+    }
+    return NULL;
+}
+
+static time_t recovery_cooldown_sec(int attempts_since_progress) {
+    if (attempts_since_progress < 0) attempts_since_progress = 0;
+    if (attempts_since_progress > 8) attempts_since_progress = 8;
+    time_t cooldown = (time_t)STREAM_REREGISTRATION_COOLDOWN_SEC << attempts_since_progress;
+    if (cooldown > STREAM_RECOVERY_BACKOFF_MAX_SEC) {
+        cooldown = STREAM_RECOVERY_BACKOFF_MAX_SEC;
+    }
+    return cooldown;
+}
+
+static bool recovery_cooldown_elapsed(const char *stream_name, time_t now) {
+    bool elapsed = true;
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, false);
+    if (st && st->last_attempt_time > 0) {
+        elapsed = (now - st->last_attempt_time) >= recovery_cooldown_sec(st->attempts_since_progress);
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+    return elapsed;
+}
+
+static void note_recovery_attempt(const char *stream_name) {
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, true);
+    if (st) {
+        if (st->attempts_since_progress < INT_MAX) st->attempts_since_progress++;
+        st->last_attempt_time = time(NULL);
+        st->proxy_open_failures = 0;
+        log_info("Stream %s: scoped recovery #%d since last data flow; next one no sooner than %lds",
+                 stream_name, st->attempts_since_progress,
+                 (long)recovery_cooldown_sec(st->attempts_since_progress));
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+}
+
+static void note_stream_progress(const char *stream_name) {
+    // Read the lifecycle generation before taking g_recovery_mutex so the two
+    // locks are never nested.
+    uint64_t restart_generation = go2rtc_lifecycle_restart_generation();
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, true);
+    if (st) {
+        if (st->attempts_since_progress > 0) {
+            log_info("Stream %s: data flow restored after %d scoped recover%s",
+                     stream_name, st->attempts_since_progress,
+                     st->attempts_since_progress == 1 ? "y" : "ies");
+        }
+        st->attempts_since_progress = 0;
+        st->proxy_open_failures = 0;
+        st->healthy_seen = true;
+        st->healthy_restart_generation = restart_generation;
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+}
+
+static void note_escalation(const char *stream_name) {
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, true);
+    if (st) {
+        st->last_escalation_time = time(NULL);
+        st->attempts_since_progress = 0;
+        st->proxy_open_failures = 0;
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+}
+
+static int recovery_proxy_open_failures(const char *stream_name) {
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, false);
+    int failures = st ? st->proxy_open_failures : 0;
+    pthread_mutex_unlock(&g_recovery_mutex);
+    return failures;
+}
+
+/**
+ * @brief Extract host and port from a camera URL
+ *
+ * Accepts scheme://[user[:pass]@]host[:port][/...] (IPv6 hosts in brackets).
+ * The default port follows the scheme (rtsp 554, rtsps 322, http 80, https 443).
+ */
+static bool parse_url_host_port(const char *url, char *host, size_t host_size, int *port) {
+    if (!url || !host || host_size == 0 || !port) {
+        return false;
+    }
+
+    int default_port = 554;
+    const char *p = strstr(url, "://");
+    if (p) {
+        size_t scheme_len = (size_t)(p - url);
+        if (scheme_len == 4 && strncasecmp(url, "http", 4) == 0) {
+            default_port = 80;
+        } else if (scheme_len == 5 && strncasecmp(url, "https", 5) == 0) {
+            default_port = 443;
+        } else if (scheme_len == 5 && strncasecmp(url, "rtsps", 5) == 0) {
+            default_port = 322;
+        }
+        p += 3;
+    } else {
+        p = url;
+    }
+
+    const char *end = p + strcspn(p, "/?#");
+    const char *at = NULL;
+    for (const char *q = p; q < end; q++) {
+        if (*q == '@') at = q;
+    }
+    const char *hstart = at ? at + 1 : p;
+    const char *hend = end;
+    const char *pstart = NULL;
+
+    if (hstart < end && *hstart == '[') {
+        const char *rb = memchr(hstart, ']', (size_t)(end - hstart));
+        if (!rb) {
+            return false;
+        }
+        hstart++;
+        hend = rb;
+        if (rb + 1 < end && rb[1] == ':') {
+            pstart = rb + 2;
+        }
+    } else {
+        const char *colon = NULL;
+        for (const char *q = hstart; q < end; q++) {
+            if (*q == ':') colon = q;
+        }
+        if (colon) {
+            hend = colon;
+            pstart = colon + 1;
+        }
+    }
+
+    size_t hlen = (size_t)(hend - hstart);
+    if (hlen == 0 || hlen >= host_size) {
+        return false;
+    }
+    memcpy(host, hstart, hlen);
+    host[hlen] = '\0';
+
+    *port = default_port;
+    if (pstart && pstart < end) {
+        int v = atoi(pstart);
+        if (v > 0 && v <= 65535) {
+            *port = v;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Decide whether scoped recoveries have stopped making progress and a
+ *        go2rtc process restart is warranted for this stream.
+ *
+ * Deliberately conservative: a camera that is offline, or one that never
+ * produced data in this go2rtc lifetime (misconfigured), must not restart the
+ * shared go2rtc process. Only a stream that *was* healthy, whose camera still
+ * accepts TCP connections, and that go2rtc still cannot pull media from after
+ * repeated reloads qualifies -- that combination points at state inside go2rtc.
+ */
+static bool should_escalate_to_process_restart(const stream_config_t *config) {
+    if (!config || config->name[0] == '\0') {
+        return false;
+    }
+
+    time_t now = time(NULL);
+    uint64_t current_generation = go2rtc_lifecycle_restart_generation();
+    int attempts = 0;
+    bool eligible = false;
+
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(config->name, false);
+    if (st) {
+        attempts = st->attempts_since_progress;
+        eligible = st->healthy_seen &&
+                   st->healthy_restart_generation == current_generation &&
+                   st->attempts_since_progress >= STREAM_RECOVERY_ESCALATE_AFTER &&
+                   (st->last_escalation_time == 0 ||
+                    now - st->last_escalation_time >= STREAM_RECOVERY_ESCALATION_COOLDOWN_SEC);
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+
+    if (!eligible) {
+        return false;
+    }
+
+    char host[256];
+    int port = 0;
+    if (!parse_url_host_port(config->url, host, sizeof(host), &port)) {
+        log_debug("Stream %s: cannot parse camera host from URL; not escalating", config->name);
+        return false;
+    }
+
+    if (!go2rtc_stream_tcp_port_open(host, port, STREAM_CAMERA_PROBE_TIMEOUT_MS)) {
+        log_warn("Stream %s: %d scoped recoveries without data flow, but camera %s:%d is not "
+                 "reachable from LightNVR; not restarting go2rtc",
+                 config->name, attempts, host, port);
+        return false;
+    }
+
+    log_error("Stream %s: %d scoped recoveries without data flow while camera %s:%d is reachable; "
+              "escalating to a go2rtc process restart",
+              config->name, attempts, host, port);
+    return true;
+}
 
 // Unified monitor state
 static pthread_t g_monitor_thread;
@@ -200,7 +482,7 @@ static void reset_stuck_tracker(const char *stream_name) {
  *
  * Returns true if the stream appears to be stuck (no data flow)
  */
-static bool check_stream_data_flow(const char *stream_name) {
+static stream_flow_t check_stream_data_flow(const char *stream_name) {
     // Warmup guard: skip stuck detection for STUCK_STREAM_WARMUP_SEC after
     // connect or reconnect.  During this window go2rtc is still draining its
     // replay buffer and byte counters are legitimately stagnant — triggering
@@ -219,7 +501,7 @@ static bool check_stream_data_flow(const char *stream_name) {
                 log_debug("Stream %s: skipping stuck check (post-connect warmup, %lds remaining)",
                           stream_name,
                           (long)(STUCK_STREAM_WARMUP_SEC - (now_guard - start)));
-                return false;
+                return STREAM_FLOW_UNKNOWN;
             }
         }
     }
@@ -228,7 +510,7 @@ static bool check_stream_data_flow(const char *stream_name) {
     CURL *curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to init CURL for stuck stream check");
-        return false;
+        return STREAM_FLOW_UNKNOWN;
     }
 
     char url[512];
@@ -256,7 +538,7 @@ static bool check_stream_data_flow(const char *stream_name) {
         if (response) free(response);
         log_debug("Failed to fetch stream info for %s: %s", stream_name,
                   curl_easy_strerror(res));
-        return false;
+        return STREAM_FLOW_UNKNOWN;
     }
 
     // Parse the JSON response
@@ -265,14 +547,14 @@ static bool check_stream_data_flow(const char *stream_name) {
 
     if (!root) {
         log_debug("Failed to parse stream info JSON for %s", stream_name);
-        return false;
+        return STREAM_FLOW_UNKNOWN;
     }
 
     // Get or create tracker
     stuck_stream_tracker_t *tracker = get_or_create_stuck_tracker(stream_name);
     if (!tracker) {
         cJSON_Delete(root);
-        return false;
+        return STREAM_FLOW_UNKNOWN;
     }
 
     // Find the stream in the response
@@ -287,7 +569,7 @@ static bool check_stream_data_flow(const char *stream_name) {
     if (!stream_obj) {
         cJSON_Delete(root);
         log_debug("Stream %s not found in go2rtc response", stream_name);
-        return false;
+        return STREAM_FLOW_MISSING;
     }
 
     // Get total bytes from producers and consumers
@@ -319,7 +601,7 @@ static bool check_stream_data_flow(const char *stream_name) {
     cJSON_Delete(root);
 
     // Check if bytes have increased since last check
-    bool is_stuck = false;
+    stream_flow_t flow = STREAM_FLOW_UNKNOWN;
     time_t now = time(NULL);
 
     pthread_mutex_lock(&g_stuck_tracker_mutex);
@@ -344,9 +626,11 @@ static bool check_stream_data_flow(const char *stream_name) {
                           stream_name, (long long)total_bytes_recv, (long long)total_bytes_send);
             }
             tracker->stalled_checks = 0;
+            flow = STREAM_FLOW_FLOWING;
         } else {
             // No data flow - increment stalled counter
             tracker->stalled_checks++;
+            flow = STREAM_FLOW_STALLED;
             log_warn("Stream %s: no data flow detected for %d consecutive checks "
                      "(recv=%lld unchanged, send=%lld unchanged)",
                      stream_name, tracker->stalled_checks,
@@ -355,7 +639,7 @@ static bool check_stream_data_flow(const char *stream_name) {
             if (tracker->stalled_checks >= STUCK_STREAM_MAX_STALLED_CHECKS) {
                 log_error("Stream %s: appears STUCK - no data flow for %d checks",
                           stream_name, tracker->stalled_checks);
-                is_stuck = true;
+                flow = STREAM_FLOW_STUCK;
             }
         }
 
@@ -367,7 +651,7 @@ static bool check_stream_data_flow(const char *stream_name) {
 
     pthread_mutex_unlock(&g_stuck_tracker_mutex);
 
-    return is_stuck;
+    return flow;
 }
 
 /**
@@ -588,8 +872,9 @@ static bool stream_needs_reregistration(const char *stream_name) {
     }
 
     time_t now = time(NULL);
-    time_t last_reregister = atomic_load(&state->protocol_state.last_reconnect_time);
-    bool cooldown_elapsed = (now - last_reregister >= STREAM_REREGISTRATION_COOLDOWN_SEC);
+    // Progress-aware cooldown: 60 s after the first scoped recovery, doubling
+    // for every further recovery that is not followed by data flow (#620).
+    bool cooldown_elapsed = recovery_cooldown_elapsed(stream_name, now);
 
     /* --- Path 1: state-manager driven (non-go2rtc / explicitly tracked streams) --- */
     if (state->state == STREAM_STATE_ERROR || state->state == STREAM_STATE_RECONNECTING) {
@@ -615,6 +900,18 @@ static bool stream_needs_reregistration(const char *stream_name) {
                         stream_name, udt_attempts);
                 return true;
             }
+        }
+    }
+
+    /* --- Path 3: consumers (MP4 writer / detection) reported repeated failures
+     *     opening rtsp://localhost:<port>/<stream> (e.g. "404 Not Found").
+     *     This is the only signal for recording-only streams without a UDT. --- */
+    {
+        int proxy_failures = recovery_proxy_open_failures(stream_name);
+        if (proxy_failures >= STREAM_PROXY_OPEN_FAILURE_THRESHOLD && cooldown_elapsed) {
+            log_info("Stream %s has %d consecutive local RTSP open failures, needs go2rtc re-registration",
+                     stream_name, proxy_failures);
+            return true;
         }
     }
 
@@ -975,46 +1272,107 @@ static void *unified_health_monitor_thread(void *arg) {
             stream_config_t config;
             if (get_stream_config(stream, &config) != 0) continue;
 
-            // Check 1: Stream state-based re-registration (ERROR/RECONNECTING states)
-            if (stream_needs_reregistration(config.name)) {
-                log_info("Stream %s needs re-registration (state-based), attempting to fix", config.name);
+            bool yaml_backed = !g_config.audio_disabled &&
+                               config.go2rtc_source_override[0] != '\0';
 
-                if (recover_stream_scoped(&config)) {
-                    log_info("Completed stream-scoped recovery for %s", config.name);
-                    reset_stuck_tracker(config.name);  // Reset tracking after recovery
-
-                    // Update reconnect state
-                    stream_state_manager_t *state = get_stream_state_by_name(config.name);
-                    if (state) {
-                        atomic_store(&state->protocol_state.last_reconnect_time, time(NULL));
-                        atomic_store(&state->protocol_state.reconnect_attempts, 0);
-                    }
-
-                    // Signal the recording thread to reconnect cleanly rather than
-                    // discovering the stale RTSP connection through av_read_frame errors.
-                    signal_mp4_recording_reconnect(config.name);
-                } else {
-                    log_error("Failed stream-scoped recovery for %s", config.name);
-                }
-                continue;  // Skip stuck check for this stream, we just reloaded it
+            // Progress signal: a running detection thread proves the local
+            // proxy is delivering media for this stream.
+            if (get_unified_detection_effective_status(config.name) == STREAM_STATUS_RUNNING) {
+                note_stream_progress(config.name);
             }
 
-            // Check 2: Stuck stream detection (no data flow even though state looks OK)
-            // This catches cases where go2rtc thinks the stream is fine but no data is flowing
-            // (e.g., video doorbells that stop sending frames without disconnecting)
-            if (check_stream_data_flow(config.name)) {
-                log_warn("Stream %s detected as STUCK (no data flow), attempting scoped recovery",
-                         config.name);
+            // Check 1: state-based re-registration (ERROR/RECONNECTING state,
+            // UDT reconnect attempts, or consumer-reported local RTSP open failures).
+            bool recovery_needed = stream_needs_reregistration(config.name);
+            const char *reason = "state-based";
 
-                if (recover_stream_scoped(&config)) {
-                    log_info("Completed stream-scoped recovery for stuck stream %s", config.name);
-                    reset_stuck_tracker(config.name);  // Reset tracking after recovery
+            if (!recovery_needed) {
+                // Check 2: data-flow probe against go2rtc's byte counters. This
+                // catches streams go2rtc believes are fine but that deliver no
+                // data (e.g. doorbells that stop sending without disconnecting),
+                // and streams that vanished from go2rtc altogether.
+                stream_flow_t flow = check_stream_data_flow(config.name);
 
-                    // Signal the recording thread to reconnect cleanly after the reload.
-                    signal_mp4_recording_reconnect(config.name);
-                } else {
-                    log_error("Failed stream-scoped recovery for stuck stream %s", config.name);
+                if (flow == STREAM_FLOW_FLOWING) {
+                    note_stream_progress(config.name);
+                    continue;
                 }
+
+                if (flow == STREAM_FLOW_MISSING) {
+                    // Nothing else re-adds a stream that go2rtc dropped (a DELETE
+                    // whose response timed out was still applied, a go2rtc-side
+                    // drop, ...): writers and detection only ever see 404 from
+                    // the local proxy. Re-add it directly, no DELETE needed.
+                    if (!config.enabled || config.privacy_mode || yaml_backed ||
+                        !recovery_cooldown_elapsed(config.name, time(NULL))) {
+                        continue;
+                    }
+                    log_warn("Stream %s is missing from go2rtc; re-registering it", config.name);
+                    note_recovery_attempt(config.name);
+                    if (go2rtc_stream_register(config.name, config.url,
+                                               config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
+                                               config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
+                                               config.backchannel_enabled, config.protocol,
+                                               config.record_audio, config.codec)) {
+                        log_info("Re-registered missing stream %s with go2rtc", config.name);
+                        reset_stuck_tracker(config.name);
+                        signal_mp4_recording_reconnect(config.name);
+                    } else {
+                        log_error("Failed to re-register missing stream %s with go2rtc", config.name);
+                    }
+                    continue;
+                }
+
+                if (flow != STREAM_FLOW_STUCK) {
+                    continue;
+                }
+                if (!recovery_cooldown_elapsed(config.name, time(NULL))) {
+                    log_info("Stream %s is stuck but its recovery cooldown has not elapsed; waiting",
+                             config.name);
+                    continue;
+                }
+                recovery_needed = true;
+                reason = "stuck";
+            }
+
+            if (!config.enabled) {
+                continue;
+            }
+
+            log_info("Stream %s needs recovery (%s)", config.name, reason);
+
+            // Escalation: repeated scoped recoveries without progress on a
+            // camera that is still reachable means the fault is inside go2rtc
+            // (orphaned producers holding the camera's RTSP sessions); only a
+            // process restart clears that. Rate-limited like every other restart.
+            if (should_escalate_to_process_restart(&config)) {
+                if (can_restart_go2rtc() && restart_go2rtc_process(false)) {
+                    log_info("go2rtc process restarted to recover stream %s", config.name);
+                    note_escalation(config.name);
+                    process_restarted = true;
+                    break;  // give every stream time to reconnect before the next pass
+                }
+                log_warn("go2rtc restart for stream %s was rate-limited or failed; "
+                         "falling back to a scoped recovery", config.name);
+            }
+
+            note_recovery_attempt(config.name);
+            if (recover_stream_scoped(&config)) {
+                log_info("Completed stream-scoped recovery for %s (%s)", config.name, reason);
+                reset_stuck_tracker(config.name);  // Reset tracking after recovery
+
+                // Update reconnect state
+                stream_state_manager_t *state = get_stream_state_by_name(config.name);
+                if (state) {
+                    atomic_store(&state->protocol_state.last_reconnect_time, time(NULL));
+                    atomic_store(&state->protocol_state.reconnect_attempts, 0);
+                }
+
+                // Signal the recording thread to reconnect cleanly rather than
+                // discovering the stale RTSP connection through av_read_frame errors.
+                signal_mp4_recording_reconnect(config.name);
+            } else {
+                log_error("Failed stream-scoped recovery for %s (%s)", config.name, reason);
             }
         }
     }
@@ -1888,8 +2246,11 @@ static bool go2rtc_integration_reload_stream_config_locked(
         return false;
     }
 
-    // Unregister the old stream first (don't fail if it wasn't registered)
-    if (go2rtc_stream_unregister(stream_name)) {
+    // Unregister the old stream first (don't fail if it wasn't registered).
+    // go2rtc_stream_unregister() also detaches the preload consumer and, when
+    // the DELETE response times out, verifies against /api/streams (#620).
+    bool unregistered = go2rtc_stream_unregister(stream_name);
+    if (unregistered) {
         log_info("Unregistered old stream %s from go2rtc", stream_name);
     } else {
         log_info("Stream %s was not registered with go2rtc (or unregister failed)", stream_name);
@@ -1902,8 +2263,43 @@ static bool go2rtc_integration_reload_stream_config_locked(
     // H.264 transcoding fallback is added/omitted appropriately — #374/WebRTC)
     const char *codec = have_config ? config.codec : NULL;
     if (!go2rtc_stream_register(stream_name, url, username, password, backchannel, protocol, record_audio, codec)) {
-        log_error("Failed to re-register stream %s with go2rtc", stream_name);
-        return false;
+        // A PUT whose response timed out may still have been applied. Only
+        // trust a listed entry when we know the old one was removed first;
+        // otherwise it could be the stale registration.
+        if (unregistered && go2rtc_api_stream_exists(stream_name)) {
+            log_warn("Re-registration of %s reported failure but go2rtc lists the stream; continuing",
+                     stream_name);
+        } else {
+            log_error("Failed to re-register stream %s with go2rtc", stream_name);
+            return false;
+        }
+    }
+
+    // Verify the registration is visible before declaring success and retry
+    // once if it is not. PUT returning 200 is necessary, not sufficient.
+    if (!go2rtc_api_stream_exists(stream_name)) {
+        log_warn("Stream %s not visible in go2rtc after re-registration; retrying once", stream_name);
+        usleep(500000); // 500ms
+        if (!go2rtc_api_stream_exists(stream_name) &&
+            !go2rtc_stream_register(stream_name, url, username, password, backchannel, protocol,
+                                    record_audio, codec)) {
+            log_error("Failed to re-register stream %s with go2rtc on retry", stream_name);
+            return false;
+        }
+    }
+
+    // Re-attach the HLS/detection preload to the *new* go2rtc Stream object.
+    // go2rtc keys preloads by Stream pointer, so the preload that lived on the
+    // replaced object does not carry over (it was detached in unregister);
+    // without this the reloaded stream keeps no producer warm for snapshots.
+    go2rtc_stream_tracking_t *tracking = find_tracked_stream(stream_name);
+    if (tracking && tracking->using_go2rtc_for_hls) {
+        if (go2rtc_api_preload_stream(stream_name)) {
+            log_info("Re-attached go2rtc preload for stream %s after reload", stream_name);
+        } else {
+            log_warn("Failed to re-preload stream %s after reload; HLS/detection snapshots may be "
+                     "intermittent until go2rtc can reach the camera", stream_name);
+        }
     }
 
     char safe_url[MAX_URL_LENGTH];
@@ -2095,6 +2491,18 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
 // ============================================================================
 // Public Health Monitor API
 // ============================================================================
+
+void go2rtc_integration_report_proxy_open_failure(const char *stream_name) {
+    if (!stream_name || stream_name[0] == '\0') {
+        return;
+    }
+    pthread_mutex_lock(&g_recovery_mutex);
+    stream_recovery_state_t *st = recovery_state_locked(stream_name, true);
+    if (st && st->proxy_open_failures < INT_MAX) {
+        st->proxy_open_failures++;
+    }
+    pthread_mutex_unlock(&g_recovery_mutex);
+}
 
 bool go2rtc_integration_monitor_is_running(void) {
     return g_monitor_initialized && g_monitor_running;

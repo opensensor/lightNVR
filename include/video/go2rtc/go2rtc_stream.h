@@ -69,6 +69,19 @@ bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_
 bool go2rtc_stream_unregister(const char *stream_id);
 
 /**
+ * @brief Probe whether a TCP port accepts connections (bounded by timeout_ms)
+ *
+ * Used by the health monitor to tell "camera unreachable" apart from
+ * "go2rtc cannot produce media from a reachable camera" before escalating.
+ *
+ * @param host Hostname or IPv4 address
+ * @param port TCP port
+ * @param timeout_ms Connect timeout in milliseconds
+ * @return true if a TCP connection was established, false otherwise
+ */
+bool go2rtc_stream_tcp_port_open(const char *host, int port, int timeout_ms);
+
+/**
  * @brief Get the WebRTC URL for a stream
  * 
  * @param stream_id Identifier of the stream

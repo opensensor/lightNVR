@@ -219,6 +219,18 @@ bool go2rtc_integration_register_stream(const char *stream_name);
 bool go2rtc_integration_monitor_is_running(void);
 
 /**
+ * @brief Report that a consumer failed to open the local go2rtc RTSP URL
+ *
+ * Called by writer/detection threads (any thread) when avformat_open_input on
+ * rtsp://localhost:<port>/<stream> fails, e.g. with "404 Not Found". After
+ * repeated reports the unified health monitor re-registers the stream with
+ * go2rtc; the counter is cleared whenever data flow is observed again.
+ *
+ * @param stream_name Name of the stream
+ */
+void go2rtc_integration_report_proxy_open_failure(const char *stream_name);
+
+/**
  * @brief Get the number of go2rtc process restarts
  *
  * @return Number of restarts since initialization

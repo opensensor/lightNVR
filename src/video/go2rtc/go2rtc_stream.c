@@ -510,6 +510,12 @@ static bool go2rtc_stream_unregister_locked(const char *stream_id) {
         return false;
     }
 
+    // Detach the preload consumer first. go2rtc keys preloads by Stream
+    // object, and neither DELETE nor a replacing PUT stops the old object; a
+    // preload left behind keeps the old producer's reconnect loop (and its
+    // RTSP session to the camera) alive until go2rtc restarts (#620).
+    go2rtc_api_delete_preload(stream_id);
+
     // Unregister stream from go2rtc
     bool result = go2rtc_api_remove_stream(stream_id);
 
@@ -710,6 +716,13 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
     cleanup_dns_resolver();
 
     return result;
+}
+
+bool go2rtc_stream_tcp_port_open(const char *host, int port, int timeout_ms) {
+    if (!host || host[0] == '\0' || port <= 0 || port > 65535) {
+        return false;
+    }
+    return is_port_open(host, port, timeout_ms);
 }
 
 bool go2rtc_stream_is_initialized(void) {

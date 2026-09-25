@@ -60,6 +60,10 @@ static void configure_curl_timeouts(CURL *curl, long timeout_seconds) {
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 }
 
+// Defined with go2rtc_api_stream_exists() below; used by the DELETE path to
+// verify a removal whose HTTP response timed out.
+static int stream_listed_in_go2rtc(const char *stream_id);
+
 bool go2rtc_api_init(const char *api_host, int api_port) {
     if (g_initialized) {
         log_warn("go2rtc API client already initialized");
@@ -362,12 +366,14 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     // Log the URL for debugging
     log_info("DELETE URL: %s", url);
 
-    // Set CURL options for DELETE request
+    // Set CURL options for DELETE request.
+    // This is a mutation: the bundled go2rtc rewrites go2rtc.yaml before it
+    // answers, so give it the mutation budget rather than the read budget.
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
+    configure_curl_timeouts(curl, GO2RTC_API_MUTATION_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -375,6 +381,23 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     // Check for errors
     if (res != CURLE_OK) {
         log_error("CURL request failed: %s", curl_easy_strerror(res));
+
+        if (res == CURLE_OPERATION_TIMEDOUT) {
+            // go2rtc removes the stream from its map *before* the slow part
+            // (config file rewrite), so a late response almost always means
+            // the delete was applied. Verify instead of reporting a failure
+            // that callers then act on incorrectly (#620).
+            int listed = stream_listed_in_go2rtc(stream_id);
+            if (listed == 0) {
+                log_warn("DELETE for stream %s timed out but go2rtc no longer lists it; treating as removed",
+                         stream_id);
+                success = true;
+            } else if (listed == 1) {
+                log_error("DELETE for stream %s timed out and go2rtc still lists it", stream_id);
+            } else {
+                log_error("DELETE for stream %s timed out and go2rtc could not be queried", stream_id);
+            }
+        }
     } else {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
@@ -584,27 +607,34 @@ bool go2rtc_api_publish_stream_async(const char *stream_id,
     return true;
 }
 
-bool go2rtc_api_stream_exists(const char *stream_id) {
+/**
+ * @brief Query /api/streams and report whether stream_id is a key.
+ *
+ * @return 1 if listed, 0 if the listing was fetched and the stream is absent,
+ *         -1 if go2rtc could not be queried (transport error, non-200, bad JSON).
+ */
+static int stream_listed_in_go2rtc(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");
-        return false;
+        return -1;
     }
 
     if (!stream_id) {
         log_error("Invalid parameter for go2rtc_api_stream_exists");
-        return false;
+        return -1;
     }
 
     CURL *curl;
     CURLcode res;
     char url[URL_BUFFER_SIZE];
     bool exists = false;
+    bool queried = false;
 
     // Initialize CURL
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL");
-        return false;
+        return -1;
     }
 
     // Use dynamic memory so large /api/streams responses (many cameras) never
@@ -636,6 +666,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
             cJSON *json = cJSON_Parse(chunk.memory);
             if (json) {
                 exists = cJSON_HasObjectItem(json, stream_id);
+                queried = true;
                 cJSON_Delete(json);
                 if (exists) {
                     log_debug("Stream %s exists in go2rtc", stream_id);
@@ -657,10 +688,73 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
     curl_easy_cleanup(curl);
     free(chunk.memory);
 
+    if (!queried) {
+        return -1;
+    }
     if (!exists) {
         log_debug("Stream %s not found in go2rtc", stream_id);
     }
-    return exists;
+    return exists ? 1 : 0;
+}
+
+bool go2rtc_api_stream_exists(const char *stream_id) {
+    return stream_listed_in_go2rtc(stream_id) == 1;
+}
+
+bool go2rtc_api_delete_preload(const char *stream_id) {
+    if (!g_initialized) {
+        log_error("go2rtc API client not initialized");
+        return false;
+    }
+
+    if (!stream_id) {
+        log_error("Invalid parameter for go2rtc_api_delete_preload");
+        return false;
+    }
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        return false;
+    }
+
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
+
+    char encoded_id[URL_BUFFER_SIZE * 3];
+    simple_url_escape(stream_id, encoded_id, sizeof(encoded_id));
+
+    char url[URL_BUFFER_SIZE];
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, encoded_id);
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    // Detaching may have to wait for an in-flight producer dial to finish
+    // inside go2rtc, so use the mutation budget.
+    configure_curl_timeouts(curl, GO2RTC_API_MUTATION_TIMEOUT_SECONDS);
+
+    bool detached = false;
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        log_warn("CURL request failed for delete_preload %s: %s", stream_id, curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        if (http_code == 200) {
+            log_info("Detached go2rtc preload consumer from stream %s", stream_id);
+            detached = true;
+        } else {
+            // 404: no such stream; 500 "preload not found": nothing to detach.
+            log_debug("No go2rtc preload to detach for stream %s (status %ld): %s",
+                      stream_id, http_code, resp.buffer);
+        }
+    }
+
+    curl_easy_cleanup(curl);
+    return detached;
 }
 
 static bool json_counter_is_positive(const cJSON *object, const char *key) {

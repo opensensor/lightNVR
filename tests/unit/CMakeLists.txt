@@ -261,6 +261,16 @@ if(ENABLE_GO2RTC)
     )
     add_dependencies(test_go2rtc_substream_registration fake_go2rtc_server)
     set_tests_properties(test_go2rtc_substream_registration PROPERTIES TIMEOUT 60)
+    add_layer3_test(test_go2rtc_unregister_recovery)
+    target_compile_definitions(test_go2rtc_unregister_recovery PRIVATE
+        FAKE_GO2RTC_PATH="$<TARGET_FILE:fake_go2rtc_server>"
+    )
+    target_link_options(test_go2rtc_unregister_recovery PRIVATE
+        "-Wl,--wrap=go2rtc_api_delete_preload"
+        "-Wl,--wrap=go2rtc_api_remove_stream"
+    )
+    add_dependencies(test_go2rtc_unregister_recovery fake_go2rtc_server)
+    set_tests_properties(test_go2rtc_unregister_recovery PROPERTIES TIMEOUT 60)
 endif()
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_process_config_generation)

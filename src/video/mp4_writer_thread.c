@@ -43,6 +43,7 @@
 #include "storage/storage_manager_streams_cache.h"
 #include "storage/storage_manager.h"
 #include "telemetry/stream_metrics.h"
+#include "video/go2rtc/go2rtc_integration.h"
 
 static void update_writer_directory_from_path(mp4_writer_t *writer,
                                               const char *path) {
@@ -522,6 +523,17 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         if (ret < 0) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...",
                      stream_name, ret);
+
+            // "404 Not Found" from rtsp://localhost:<port>/<stream> means go2rtc
+            // cannot produce media for this stream right now (missing entry or
+            // producer cannot reach the camera). Retrying the open alone never
+            // fixes that, so tell the health monitor; after repeated reports it
+            // re-registers the stream with go2rtc (#620). Recording-only
+            // streams have no other way to raise this.
+            if (ret == AVERROR_HTTP_NOT_FOUND &&
+                go2rtc_integration_is_using_go2rtc_for_recording(stream_name)) {
+                go2rtc_integration_report_proxy_open_failure(stream_name);
+            }
 
             // Tiered backoff: give the stream progressively more time to heal.
             // Exponential for the first few retries (1 s → 16 s), then hold at

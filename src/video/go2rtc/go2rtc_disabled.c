@@ -25,6 +25,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 }
 bool go2rtc_api_remove_stream(const char *stream_id) { UNUSED(stream_id); return true; }
 bool go2rtc_api_stream_exists(const char *stream_id) { UNUSED(stream_id); return false; }
+bool go2rtc_api_delete_preload(const char *stream_id) { UNUSED(stream_id); return false; }
 bool go2rtc_api_parse_stream_activity_json(
     const char *json, go2rtc_stream_activity_t *streams, size_t stream_count) {
     UNUSED(json);
@@ -118,6 +119,9 @@ bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_
     UNUSED(protocol); return true;
 }
 bool go2rtc_stream_unregister(const char *stream_id) { UNUSED(stream_id); return true; }
+bool go2rtc_stream_tcp_port_open(const char *host, int port, int timeout_ms) {
+    UNUSED(host); UNUSED(port); UNUSED(timeout_ms); return false;
+}
 bool go2rtc_stream_get_webrtc_url(const char *stream_id, char *buffer, size_t buffer_size) {
     UNUSED(stream_id); UNUSED(buffer); UNUSED(buffer_size); return false;
 }
@@ -153,6 +157,7 @@ bool go2rtc_integration_full_start(void) { return false; }
 bool go2rtc_integration_restart_process(void) { return false; }
 void go2rtc_integration_cleanup(void) {}
 bool go2rtc_integration_is_initialized(void) { return false; }
+void go2rtc_integration_report_proxy_open_failure(const char *stream_name) { UNUSED(stream_name); }
 bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
     UNUSED(stream_name); UNUSED(url); UNUSED(url_size); return false;
 }

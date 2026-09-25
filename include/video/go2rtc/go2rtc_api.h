@@ -68,6 +68,21 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 bool go2rtc_api_remove_stream(const char *stream_id);
 
 /**
+ * @brief Detach the preload consumer from a stream (DELETE /api/preload?src=)
+ *
+ * go2rtc keys preload consumers by Stream object. A stream that is deleted
+ * or replaced through the API keeps its old Stream object alive as long as
+ * that preload consumer exists, together with its producer reconnect loop
+ * and its RTSP session to the camera (#620). Call this before removing or
+ * replacing a stream. Best effort: a stream without a preload is not an
+ * error.
+ *
+ * @param stream_id Identifier of the stream
+ * @return true if a preload consumer was detached, false otherwise
+ */
+bool go2rtc_api_delete_preload(const char *stream_id);
+
+/**
  * @brief Check if a stream exists in go2rtc
  * 
  * @param stream_id Identifier of the stream to check
