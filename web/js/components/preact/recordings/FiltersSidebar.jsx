@@ -13,7 +13,8 @@ import {
   FILTER_OPTIONS_LOADED,
   FILTER_OPTIONS_LOADING,
   areFilterOptionsInteractive,
-  shouldLoadFilterOptions
+  shouldLoadFilterOptions,
+  createCachedFilterOptionsLoader
 } from './lazyFilterOptions.js';
 import { AsyncButton } from '../AsyncButton.jsx';
 import { useI18n } from '../../../i18n.js';
@@ -88,7 +89,11 @@ const DEFAULT_SECTIONS = {
 const CAPTURE_METHOD_OPTIONS = ['continuous', 'scheduled', 'detection', 'motion', 'manual'];
 
 const getCountBadge = (values) => (values.length > 0 ? `${values.length} selected` : null);
-const loadDetectionLabelOptions = () => recordingsAPI.getAllDetectionLabels({ throwOnError: true });
+// A fresh label list is reused across sidebar mounts (collapse/expand, page
+// navigation) so the filter does not re-run the query on every visit.
+const loadDetectionLabelOptions = createCachedFilterOptionsLoader(
+  () => recordingsAPI.getAllDetectionLabels({ throwOnError: true })
+);
 const loadRecordingTagOptions = () => recordingsAPI.getAllRecordingTags({ throwOnError: true });
 
 /**

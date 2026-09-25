@@ -201,8 +201,35 @@ int get_recording_detection_summaries_on_connection(
  * @return Number of unique labels found, or -1 on error
  */
 int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels);
+
+/**
+ * Get the unique, non-blank detection labels of the given streams, sorted
+ * ascending and de-duplicated across streams, for the recordings filter.
+ *
+ * Runs on a private read-only connection (db_open_readonly_connection) and
+ * walks the (stream_name, label) index one seek per label instead of
+ * scanning every detection row, so the cost depends on the number of
+ * distinct labels rather than on the size of the detections table.
+ *
+ * @param stream_names Streams the caller may see
+ * @param stream_count Number of entries in stream_names
+ * @param labels Output array of label strings (caller provides buffer)
+ * @param max_labels Capacity of labels; the smallest labels are kept
+ * @return Number of labels written, 0 for an empty request, or -1 on error
+ */
 int get_unique_detection_labels_for_streams(
     const char *const *stream_names, int stream_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels);
+
+/**
+ * Same as get_unique_detection_labels_for_streams() but on a caller-supplied
+ * connection. No locking is performed: the caller owns the connection
+ * (typically one from db_open_readonly_connection(), or the shared handle in
+ * single-threaded tests that want to instrument the query with
+ * sqlite3_progress_handler()).
+ */
+int get_unique_detection_labels_for_streams_on_connection(
+    sqlite3 *db, const char *const *stream_names, int stream_count,
     char labels[][MAX_LABEL_LENGTH], int max_labels);
 
 /**

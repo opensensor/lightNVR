@@ -1180,78 +1180,126 @@ int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_lab
     return count;
 }
 
+/*
+ * The recordings filter needs the distinct labels of every authorized
+ * stream. SQLite has no loose index scan, so "SELECT DISTINCT label ...
+ * WHERE stream_name IN (...)" visits every detection row of those streams
+ * even though the answer is a dozen strings: seconds of I/O per request on a
+ * multi-million-row table, and the UI times out. That query shape cannot
+ * even use the partial (stream_name, label) index from migration 0079:
+ * SQLite only admits the index when the query also carries a range term on
+ * label (on 3.46 INDEXED BY reports "no query solution" without one), so it
+ * fell back to a row fetch per index entry.
+ *
+ * Walk the index instead. Each step seeks to the smallest label above the
+ * previous one for a single stream, which is one covering-index probe, so a
+ * request costs O(streams x labels x log N) regardless of row count. The
+ * predicate must keep the index's own WHERE clause and the range term
+ * spelled out or the planner drops back to a scan.
+ */
+static const char UNIQUE_LABEL_STEP_SQL[] =
+    "SELECT MIN(label) FROM detections "
+    "WHERE stream_name = ? AND label > ? "
+    "AND label IS NOT NULL AND TRIM(label) <> '';";
+
+/* Merge one label into the ascending, de-duplicated labels[] list, keeping
+ * the smallest max_labels entries. Returns the new count. */
+static int merge_unique_label(char labels[][MAX_LABEL_LENGTH], int count,
+                              int max_labels, const char *label) {
+    /* Compare what would be stored so over-long labels de-duplicate too. */
+    char stored[MAX_LABEL_LENGTH];
+    safe_strcpy(stored, label, sizeof(stored), 0);
+    if (stored[0] == '\0') return count;
+
+    int insert_at = 0;
+    while (insert_at < count && strcmp(labels[insert_at], stored) < 0) {
+        insert_at++;
+    }
+    if (insert_at < count && strcmp(labels[insert_at], stored) == 0) {
+        return count;
+    }
+    if (insert_at >= max_labels) return count;
+
+    int move_count = count < max_labels ? count - insert_at
+                                        : max_labels - insert_at - 1;
+    if (move_count > 0) {
+        memmove(labels[insert_at + 1], labels[insert_at],
+                (size_t)move_count * MAX_LABEL_LENGTH);
+    }
+    safe_strcpy(labels[insert_at], stored, MAX_LABEL_LENGTH, 0);
+    return count < max_labels ? count + 1 : count;
+}
+
+int get_unique_detection_labels_for_streams_on_connection(
+    sqlite3 *db, const char *const *stream_names, int stream_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels) {
+    if (!stream_names || stream_count <= 0 || !labels || max_labels <= 0) return 0;
+    if (!db) return -1;
+    memset(labels, 0, (size_t)max_labels * MAX_LABEL_LENGTH);
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, UNIQUE_LABEL_STEP_SQL, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare detection label walk: %s",
+                  sqlite3_errmsg(db));
+        return -1;
+    }
+
+    int count = 0;
+    bool failed = false;
+    /* Full text of the last label seen, so a label longer than
+     * MAX_LABEL_LENGTH cannot pin the walk on its truncated prefix. */
+    char *cursor = NULL;
+    for (int s = 0; s < stream_count && !failed; s++) {
+        const char *stream_name = stream_names[s];
+        if (!stream_name || stream_name[0] == '\0') continue;
+        free(cursor);
+        cursor = NULL;
+        /* A stream stops contributing after max_labels entries, matching the
+         * per-batch LIMIT the DISTINCT query used to apply. */
+        for (int step = 0; step < max_labels; step++) {
+            sqlite3_reset(stmt);
+            sqlite3_clear_bindings(stmt);
+            sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, 2, cursor ? cursor : "", -1,
+                              SQLITE_TRANSIENT);
+            rc = sqlite3_step(stmt);
+            if (rc != SQLITE_ROW) {
+                /* MIN() always yields exactly one row, so this is an error. */
+                log_error("Detection label walk failed for stream %s: %s",
+                          stream_name, sqlite3_errmsg(db));
+                failed = true;
+                break;
+            }
+            if (sqlite3_column_type(stmt, 0) == SQLITE_NULL) break;
+            const char *label = (const char *)sqlite3_column_text(stmt, 0);
+            if (!label) break;
+            char *next = strdup(label);
+            if (!next) {
+                log_error("Out of memory walking detection labels");
+                failed = true;
+                break;
+            }
+            free(cursor);
+            cursor = next;
+            count = merge_unique_label(labels, count, max_labels, label);
+        }
+    }
+    free(cursor);
+    sqlite3_finalize(stmt);
+    return failed ? -1 : count;
+}
+
 int get_unique_detection_labels_for_streams(
     const char *const *stream_names, int stream_count,
     char labels[][MAX_LABEL_LENGTH], int max_labels) {
     if (!stream_names || stream_count <= 0 || !labels || max_labels <= 0) return 0;
     sqlite3 *db = NULL;
     if (db_open_readonly_connection(&db) != 0) return -1;
-    memset(labels, 0, (size_t)max_labels * MAX_LABEL_LENGTH);
-    int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
-    int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
-    if (batch_limit > 256) batch_limit = 256;
-    int count = 0;
-    int final_rc = SQLITE_DONE;
-    for (int offset = 0; offset < stream_count; offset += batch_limit) {
-        int batch_count = stream_count - offset;
-        if (batch_count > batch_limit) batch_count = batch_limit;
-        size_t sql_size = 256 + (size_t)batch_count * 3;
-        char *sql = calloc(sql_size, 1);
-        if (!sql) {
-            final_rc = SQLITE_NOMEM;
-            break;
-        }
-        safe_strcpy(sql,
-            "SELECT DISTINCT label FROM detections WHERE label IS NOT NULL "
-            "AND TRIM(label)<>'' AND stream_name IN (", sql_size, 0);
-        for (int i = 0; i < batch_count; i++) {
-            safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);
-        }
-        safe_strcat(sql, ") ORDER BY label ASC LIMIT ?;", sql_size);
-
-        sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-        free(sql);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare scoped detection label query: %s",
-                      sqlite3_errmsg(db));
-            if (stmt) sqlite3_finalize(stmt);
-            final_rc = rc;
-            break;
-        }
-        for (int i = 0; i < batch_count; i++) {
-            sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
-                              SQLITE_TRANSIENT);
-        }
-        sqlite3_bind_int(stmt, batch_count + 1, max_labels);
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-            const char *label = (const char *)sqlite3_column_text(stmt, 0);
-            if (!label) continue;
-            int insert_at = 0;
-            while (insert_at < count &&
-                   strcmp(labels[insert_at], label) < 0) insert_at++;
-            if (insert_at < count && strcmp(labels[insert_at], label) == 0) {
-                continue;
-            }
-            if (insert_at < max_labels) {
-                int move_count = count < max_labels ? count - insert_at
-                                                    : max_labels - insert_at - 1;
-                if (move_count > 0) {
-                    memmove(labels[insert_at + 1], labels[insert_at],
-                            (size_t)move_count * MAX_LABEL_LENGTH);
-                }
-                safe_strcpy(labels[insert_at], label, MAX_LABEL_LENGTH, 0);
-                if (count < max_labels) count++;
-            }
-        }
-        if (stmt) sqlite3_finalize(stmt);
-        if (rc != SQLITE_DONE) {
-            final_rc = rc;
-            break;
-        }
-    }
+    int count = get_unique_detection_labels_for_streams_on_connection(
+        db, stream_names, stream_count, labels, max_labels);
     db_close_readonly_connection(db);
-    return final_rc == SQLITE_DONE ? count : -1;
+    return count;
 }
 
 /**

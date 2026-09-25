@@ -728,10 +728,12 @@ export const recordingsAPI = {
    */
   getAllDetectionLabels: async ({ throwOnError = false } = {}) => {
     try {
+      // Served by an index walk, so this normally takes milliseconds; a slow
+      // disk gets one generous attempt rather than a retry that would double
+      // the server-side work.
       const data = await fetchJSON('/api/recordings/detection-labels', {
-        timeout: 10000,
-        retries: 1,
-        retryDelay: 500
+        timeout: 15000,
+        retries: 0
       });
       return data.labels || [];
     } catch (error) {

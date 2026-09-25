@@ -206,6 +206,16 @@ describe('recordingsAPI', () => {
     await expect(recordingsAPI.getAllRecordingTags({ throwOnError: true })).rejects.toBe(error);
   });
 
+  test('getAllDetectionLabels gives the label list one generous attempt without retries', async () => {
+    fetchJSON.mockResolvedValue({ labels: ['car', 'person'] });
+
+    await expect(recordingsAPI.getAllDetectionLabels()).resolves.toEqual(['car', 'person']);
+    expect(fetchJSON).toHaveBeenCalledWith('/api/recordings/detection-labels', {
+      timeout: 15000,
+      retries: 0
+    });
+  });
+
   test('deleteSelectedRecordingsHttp delegates response handling to shared helper', async () => {
     const response = { json: jest.fn() };
     const expected = { succeeded: 2, failed: 0 };

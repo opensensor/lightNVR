@@ -72,6 +72,19 @@ static void clear_detections(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM detections;", NULL, NULL, NULL);
 }
 
+static void insert_raw_detection(const char *stream, const char *label,
+                                 time_t timestamp) {
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "INSERT INTO detections (stream_name, timestamp, label, confidence, source) "
+        "VALUES (?, ?, ?, 0.5, '');", -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, stream, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)timestamp);
+    sqlite3_bind_text(stmt, 3, label, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
 typedef struct {
     int calls;
     int abort_after;
@@ -152,26 +165,122 @@ void test_get_detection_labels_summary(void) {
 }
 
 void test_get_unique_detection_labels_for_streams(void) {
+    time_t now = time(NULL);
     detection_result_t person = make_result("person", 0.9f);
     detection_result_t car = make_result("car", 0.8f);
     detection_result_t dog = make_result("dog", 0.7f);
 
     TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
-        "authorized-camera", &person, time(NULL) - 3, 0));
+        "authorized-camera", &person, now - 3, 0));
     TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
-        "authorized-camera", &car, time(NULL) - 2, 0));
+        "authorized-camera", &car, now - 2, 0));
     TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
-        "other-camera", &dog, time(NULL) - 1, 0));
+        "authorized-camera", &car, now - 1, 0));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "other-camera", &dog, now - 1, 0));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "other-camera", &car, now, 0));
+    /* Blank labels never reach the filter list. */
+    insert_raw_detection("authorized-camera", "", now);
+    insert_raw_detection("authorized-camera", "   ", now);
 
-    const char *stream_names[] = {"authorized-camera"};
+    const char *one_stream[] = {"authorized-camera"};
     char labels[MAX_UNIQUE_DETECTION_LABELS][MAX_LABEL_LENGTH];
     int count = get_unique_detection_labels_for_streams(
-        stream_names, 1, labels,
-        MAX_UNIQUE_DETECTION_LABELS);
-
+        one_stream, 1, labels, MAX_UNIQUE_DETECTION_LABELS);
     TEST_ASSERT_EQUAL_INT(2, count);
     TEST_ASSERT_EQUAL_STRING("car", labels[0]);
     TEST_ASSERT_EQUAL_STRING("person", labels[1]);
+
+    /* Labels shared by several streams appear once, sorted across streams. */
+    const char *two_streams[] = {"other-camera", "authorized-camera"};
+    count = get_unique_detection_labels_for_streams(
+        two_streams, 2, labels, MAX_UNIQUE_DETECTION_LABELS);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_EQUAL_STRING("car", labels[0]);
+    TEST_ASSERT_EQUAL_STRING("dog", labels[1]);
+    TEST_ASSERT_EQUAL_STRING("person", labels[2]);
+
+    /* max_labels keeps the smallest labels, as the old LIMIT did. */
+    char two_labels[2][MAX_LABEL_LENGTH];
+    count = get_unique_detection_labels_for_streams(
+        two_streams, 2, two_labels, 2);
+    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_STRING("car", two_labels[0]);
+    TEST_ASSERT_EQUAL_STRING("dog", two_labels[1]);
+
+    /* Unknown or empty stream lists yield nothing rather than an error. */
+    const char *unknown[] = {"missing-camera", ""};
+    TEST_ASSERT_EQUAL_INT(0, get_unique_detection_labels_for_streams(
+        unknown, 2, labels, MAX_UNIQUE_DETECTION_LABELS));
+    TEST_ASSERT_EQUAL_INT(0, get_unique_detection_labels_for_streams(
+        one_stream, 0, labels, MAX_UNIQUE_DETECTION_LABELS));
+}
+
+/* Regression for the recordings filter timing out on large databases: the
+ * label list must come from index seeks, not from a DISTINCT that visits
+ * every detection row of every authorized stream. */
+void test_unique_detection_label_walk_seeks_instead_of_scanning(void) {
+    sqlite3 *db = get_db_handle();
+    time_t now = time(NULL);
+    static const char *const cycle[] = {"vehicle", "person", "animal"};
+    /* A label longer than MAX_LABEL_LENGTH must neither stall the walk on
+     * its truncated prefix nor be lost. */
+    char long_label[MAX_LABEL_LENGTH + 16];
+    memset(long_label, 'z', sizeof(long_label) - 1);
+    long_label[sizeof(long_label) - 1] = '\0';
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL));
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(db,
+        "INSERT INTO detections (stream_name, timestamp, label, confidence, source) "
+        "VALUES ('walk_cam', ?, ?, 0.5, '');", -1, &stmt, NULL));
+    for (int i = 0; i < 20000; i++) {
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)(now - 100000 + i));
+        sqlite3_bind_text(stmt, 2, i == 777 ? long_label : cycle[i % 3], -1,
+                          SQLITE_STATIC);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+    }
+    sqlite3_finalize(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL));
+
+    /* The DISTINCT query the handler used to run blows through this budget
+     * on the same rows, so the budget catches a regression back to a scan. */
+    query_progress_t progress = {.calls = 0, .abort_after = 20};
+    sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
+    int scan_rc = sqlite3_exec(db,
+        "SELECT DISTINCT label FROM detections WHERE label IS NOT NULL "
+        "AND TRIM(label)<>'' AND stream_name IN ('walk_cam') "
+        "ORDER BY label ASC LIMIT 128;", NULL, NULL, NULL);
+    sqlite3_progress_handler(db, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_INTERRUPT, scan_rc);
+
+    progress.calls = 0;
+    sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
+    const char *stream_names[] = {"walk_cam", "walk_cam_without_rows"};
+    char labels[MAX_UNIQUE_DETECTION_LABELS][MAX_LABEL_LENGTH];
+    int count = get_unique_detection_labels_for_streams_on_connection(
+        db, stream_names, 2, labels, MAX_UNIQUE_DETECTION_LABELS);
+    sqlite3_progress_handler(db, 0, NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(4, count);
+    TEST_ASSERT_EQUAL_STRING("animal", labels[0]);
+    TEST_ASSERT_EQUAL_STRING("person", labels[1]);
+    TEST_ASSERT_EQUAL_STRING("vehicle", labels[2]);
+    TEST_ASSERT_EQUAL_INT(MAX_LABEL_LENGTH - 1, (int)strlen(labels[3]));
+    TEST_ASSERT_EQUAL_STRING_LEN(long_label, labels[3], MAX_LABEL_LENGTH - 1);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
+
+    /* The public entry point (private read-only connection) agrees. */
+    count = get_unique_detection_labels_for_streams(
+        stream_names, 2, labels, MAX_UNIQUE_DETECTION_LABELS);
+    TEST_ASSERT_EQUAL_INT(4, count);
+    TEST_ASSERT_EQUAL_STRING("animal", labels[0]);
+    TEST_ASSERT_EQUAL_STRING_LEN(long_label, labels[3], MAX_LABEL_LENGTH - 1);
 }
 
 void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(void) {
@@ -462,6 +571,7 @@ int main(void) {
     RUN_TEST(test_delete_old_detections);
     RUN_TEST(test_get_detection_labels_summary);
     RUN_TEST(test_get_unique_detection_labels_for_streams);
+    RUN_TEST(test_unique_detection_label_walk_seeks_instead_of_scanning);
     RUN_TEST(test_get_recording_detection_summaries_batches_linked_and_fallback_rows);
     RUN_TEST(test_update_detections_recording_id);
     RUN_TEST(test_completed_recording_backfills_contained_detection_links);
