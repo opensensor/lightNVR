@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
+import { displayedVideoBox } from './useLiveDisplayMode.js';
 
 import { forwardRef, useImperativeHandle } from 'preact/compat';
 
@@ -74,21 +75,16 @@ export const DetectionOverlay = forwardRef(({
       return;
     }
 
-    // Calculate the scaling and positioning to maintain aspect ratio
-    const videoAspect = videoWidth / videoHeight;
-    const canvasAspect = canvas.width / canvas.height;
-
-    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-    if (videoAspect > canvasAspect) {
-      drawWidth = canvas.width;
-      drawHeight = canvas.width / videoAspect;
-      offsetY = (canvas.height - drawHeight) / 2;
-    } else {
-      drawHeight = canvas.height;
-      drawWidth = canvas.height * videoAspect;
-      offsetX = (canvas.width - drawWidth) / 2;
-    }
+    // Map normalized frame coordinates onto the displayed frame. The live
+    // display mode (#619) switches tiles between object-fit contain (letterbox)
+    // and cover (cropped), so read the effective fit from the element instead
+    // of assuming a letterboxed frame.
+    const objectFit = typeof getComputedStyle === 'function'
+      ? getComputedStyle(videoElement).objectFit
+      : 'contain';
+    const { drawWidth, drawHeight, offsetX, offsetY } = displayedVideoBox(
+      canvas.width, canvas.height, videoWidth, videoHeight, objectFit,
+    );
 
     // Draw zone polygons first (underneath detections)
     zones.forEach(zone => {

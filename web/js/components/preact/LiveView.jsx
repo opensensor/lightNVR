@@ -17,6 +17,8 @@ import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-
 import { useCollectionMembership } from './fleet/collectionMembership.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
+import { LiveDisplayModeToggle } from './LiveDisplayModeToggle.jsx';
+import { useLiveDisplayMode } from './useLiveDisplayMode.js';
 import { usePullToRefresh } from './usePullToRefresh.js';
 import { shouldShowGestureTip } from './mobileLiveGestures.js';
 import { fetchAllStreamSummaries } from '../../utils/stream-summaries.js';
@@ -58,6 +60,9 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     }
   );
   const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
+  // Fit (letterbox) or Fill (crop) for the grid tiles (#619). A single stream
+  // always shows its whole frame, so the preference only applies to grids.
+  const [displayMode, setDisplayMode] = useLiveDisplayMode();
   // Use the snapshot manager hook
   useSnapshotManager();
 
@@ -587,6 +592,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       id="live-page"
       data-testid="hls-view"
       className={`page ${isFullscreen ? 'fullscreen-mode' : ''} ${isSingleStream && !isFullscreen ? 'single-stream' : ''}`}
+      data-display-mode={isSingleStream ? 'fit' : displayMode}
     >
       {/* Include the SnapshotManager component */}
       <SnapshotManager />
@@ -774,6 +780,13 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             enabled={alwaysFullscreenOnTap}
             onChange={setAlwaysFullscreenOnTap}
           />
+
+          {!isSingleStream && (
+            <LiveDisplayModeToggle
+              mode={displayMode}
+              onChange={setDisplayMode}
+            />
+          )}
 
           {orderedStreams.length > 1 && (
             <button

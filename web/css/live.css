@@ -817,8 +817,21 @@
     position: absolute;
     width: 100%;
     height: 100%;
-    object-fit: cover; /* Change from contain to cover */
+    object-fit: contain; /* "Fit" display mode (default): whole frame, letterboxed */
     z-index: 1;
+}
+
+/* "Fill" display mode (#619): fill the tile and crop the frame edges.
+   The live view sets data-display-mode on #live-page from the toolbar toggle. */
+[data-display-mode="fill"] .video-element {
+    object-fit: cover;
+}
+
+/* A single tile in native or pseudo-native fullscreen always shows the whole frame. */
+.video-cell:fullscreen .video-element,
+.video-cell:-webkit-full-screen .video-element,
+.video-cell.pseudo-native-fullscreen .video-element {
+    object-fit: contain;
 }
 
 /* Detection overlay canvas - critical for detection bounding boxes */
@@ -843,7 +856,6 @@
 .fullscreen-mode .video-cell video {
     padding: 0;
     flex: 1;
-    object-fit: contain;
     height: 100%;
     max-height: 100vh;
 }

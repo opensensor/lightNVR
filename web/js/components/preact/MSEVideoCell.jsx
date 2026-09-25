@@ -759,7 +759,7 @@ export function MSEVideoCell({
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'contain',
+          // object-fit is set by live.css from the page's data-display-mode (#619).
           transform: zoom.transform,
           transformOrigin: 'center center'
         }}
