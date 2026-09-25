@@ -138,6 +138,102 @@ void test_create_list_update_and_delete_authorized_plan(void) {
     cJSON_Delete(deleted);
 }
 
+void test_sketch_round_trips_canonically_and_rejects_bad_shapes(void) {
+    const char *body =
+        "{\"name\":\"Sketched\",\"sketch\":{\"version\":1,\"shapes\":["
+        "{\"id\":\"room-1\",\"type\":\"rect\",\"x\":0.10004,\"y\":0.2,"
+        "\"w\":0.3,\"h\":0.25,\"label\":\"Lobby\",\"tone\":\"blue\","
+        "\"ignored\":\"dropped\"},"
+        "{\"id\":\"wall-1\",\"type\":\"wall\",\"points\":[[0,0.5],[1,0.5]]},"
+        "{\"id\":\"area-1\",\"type\":\"area\",\"label\":\"Parking\","
+        "\"points\":[[0.6,0.6],[0.9,0.6],[0.9,0.9]]},"
+        "{\"id\":\"label-1\",\"type\":\"label\",\"x\":0.5,\"y\":0.05,"
+        "\"text\":\"North entrance\",\"size\":\"lg\"}]}}";
+    cJSON *created = call(handle_post_operator_floor_plan,
+                          HTTP_METHOD_POST, "/api/live/plans", body, 201);
+    cJSON *sketch = cJSON_GetObjectItemCaseSensitive(created, "sketch");
+    TEST_ASSERT_TRUE(cJSON_IsObject(sketch));
+    cJSON *shapes = cJSON_GetObjectItemCaseSensitive(sketch, "shapes");
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetArraySize(shapes));
+    cJSON *room = cJSON_GetArrayItem(shapes, 0);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(room, "ignored"));
+    TEST_ASSERT_EQUAL_STRING("Lobby", cJSON_GetObjectItemCaseSensitive(
+        room, "label")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("blue", cJSON_GetObjectItemCaseSensitive(
+        room, "tone")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        room, "filled")));
+    TEST_ASSERT_EQUAL_INT(1000, (int)(cJSON_GetObjectItemCaseSensitive(
+        room, "x")->valuedouble * 10000.0 + 0.5));
+    TEST_ASSERT_EQUAL_STRING("slate", cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(shapes, 1), "tone")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("lg", cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(shapes, 3), "size")->valuestring);
+    char plan_uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(plan_uuid, cJSON_GetObjectItemCaseSensitive(
+        created, "uuid")->valuestring, sizeof(plan_uuid), 0);
+    cJSON_Delete(created);
+
+    // The list endpoint carries the sketch too.
+    cJSON *listed = call(handle_get_operator_floor_plans,
+                         HTTP_METHOD_GET, "/api/live/plans", NULL, 200);
+    cJSON *first = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(listed, "plans"), 0);
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(first, "sketch"), "shapes")));
+    cJSON_Delete(listed);
+
+    char path[128];
+    snprintf(path, sizeof(path), "/api/live/plans/%s", plan_uuid);
+
+    // Updates without a sketch field keep the drawing.
+    cJSON *renamed = call(handle_put_operator_floor_plan, HTTP_METHOD_PUT,
+                          path, "{\"name\":\"Renamed\",\"revision\":1,"
+                          "\"cameras\":[]}", 200);
+    TEST_ASSERT_EQUAL_INT(4, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(renamed, "sketch"), "shapes")));
+    cJSON_Delete(renamed);
+
+    // Invalid shapes are rejected as a whole.
+    static const char *const invalid[] = {
+        "{\"id\":\"bad\",\"type\":\"rect\",\"x\":0.9,\"y\":0.1,"
+        "\"w\":0.3,\"h\":0.2}",
+        "{\"id\":\"bad\",\"type\":\"wall\",\"points\":[[0,0]]}",
+        "{\"id\":\"bad\",\"type\":\"area\",\"points\":[[0,0],[1,1]]}",
+        "{\"id\":\"bad\",\"type\":\"label\",\"x\":0.5,\"y\":0.5,"
+        "\"text\":\"\"}",
+        "{\"id\":\"bad\",\"type\":\"label\",\"x\":0.5,\"y\":0.5,"
+        "\"text\":\"line\\nbreak\"}",
+        "{\"id\":\"bad id\",\"type\":\"wall\",\"points\":[[0,0],[1,1]]}",
+        "{\"id\":\"bad\",\"type\":\"rect\",\"x\":0.1,\"y\":0.1,"
+        "\"w\":0.2,\"h\":0.2,\"tone\":\"#ff0000\"}",
+        "{\"id\":\"bad\",\"type\":\"circle\",\"x\":0.1,\"y\":0.1}",
+        "{\"id\":\"dup\",\"type\":\"wall\",\"points\":[[0,0],[1,1]]},"
+        "{\"id\":\"dup\",\"type\":\"wall\",\"points\":[[0,1],[1,0]]}",
+    };
+    for (size_t index = 0; index < sizeof(invalid) / sizeof(invalid[0]);
+         index++) {
+        char update[1024];
+        snprintf(update, sizeof(update),
+                 "{\"name\":\"Renamed\",\"revision\":2,\"cameras\":[],"
+                 "\"sketch\":{\"version\":1,\"shapes\":[%s]}}",
+                 invalid[index]);
+        cJSON *rejected = call(handle_put_operator_floor_plan,
+                               HTTP_METHOD_PUT, path, update, 400);
+        cJSON_Delete(rejected);
+    }
+
+    // Explicit null clears the sketch.
+    cJSON *cleared = call(handle_put_operator_floor_plan, HTTP_METHOD_PUT,
+                          path, "{\"name\":\"Renamed\",\"revision\":2,"
+                          "\"cameras\":[],\"sketch\":null}", 200);
+    TEST_ASSERT_TRUE(cJSON_IsNull(
+        cJSON_GetObjectItemCaseSensitive(cleared, "sketch")));
+    cJSON_Delete(cleared);
+}
+
 void test_rejects_unknown_camera_placement(void) {
     const char *body =
         "{\"name\":\"Unknown\",\"cameras\":[{"
@@ -247,6 +343,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_create_list_update_and_delete_authorized_plan);
     RUN_TEST(test_rejects_unknown_camera_placement);
+    RUN_TEST(test_sketch_round_trips_canonically_and_rejects_bad_shapes);
     RUN_TEST(test_upload_replace_and_remove_background);
     int result = UNITY_END();
     shutdown_database();

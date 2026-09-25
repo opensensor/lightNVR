@@ -29,6 +29,16 @@
 // must stay comfortably below that once headers are accounted for.
 #define OPERATOR_FLOOR_PLAN_BACKGROUND_MAX (768 * 1024)
 
+// Layout sketch bounds. Shapes use normalized plan coordinates (0..1) so
+// they survive canvas resizes and background swaps like camera markers do.
+#define SKETCH_MAX_SHAPES 400
+#define SKETCH_MAX_POINTS 64
+#define SKETCH_MIN_POLYLINE_POINTS 2
+#define SKETCH_MIN_POLYGON_POINTS 3
+#define SKETCH_MIN_RECT_SIDE 0.005
+#define SKETCH_ID_MAX 32
+#define SKETCH_TEXT_MAX 96
+
 // A background change spans both SQLite and the filesystem. Serialize the
 // whole operation so concurrent replace/remove requests cannot leave the MIME
 // metadata pointing at a file removed by another request.
@@ -141,6 +151,256 @@ static bool parse_revision(const cJSON *body, int64_t *revision) {
     return true;
 }
 
+static const char *const SKETCH_TONES[] = {
+    "slate", "blue", "green", "amber", "red", "violet",
+};
+static const char *const SKETCH_LABEL_SIZES[] = {"sm", "md", "lg"};
+
+static bool sketch_enum_field(const cJSON *item, const char *key,
+                              const char *const *allowed, size_t allowed_count,
+                              const char **value) {
+    const cJSON *field = cJSON_GetObjectItemCaseSensitive(item, key);
+    if (!field) {
+        *value = allowed[0];
+        return true;
+    }
+    if (!cJSON_IsString(field) || !field->valuestring) return false;
+    for (size_t index = 0; index < allowed_count; index++) {
+        if (strcmp(field->valuestring, allowed[index]) == 0) {
+            *value = allowed[index];
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sketch_text_valid(const char *text, size_t minimum,
+                              size_t maximum) {
+    size_t length = strnlen(text, maximum + 1);
+    if (length < minimum || length > maximum) return false;
+    for (const unsigned char *cursor = (const unsigned char *)text; *cursor;
+         cursor++) {
+        if (*cursor < 0x20 || *cursor == 0x7f) return false;
+    }
+    return true;
+}
+
+static bool sketch_optional_text(const cJSON *item, const char *key,
+                                 const char **value) {
+    const cJSON *field = cJSON_GetObjectItemCaseSensitive(item, key);
+    *value = NULL;
+    if (!field || cJSON_IsNull(field)) return true;
+    if (!cJSON_IsString(field) || !field->valuestring) return false;
+    if (field->valuestring[0] == '\0') return true;
+    if (!sketch_text_valid(field->valuestring, 1, SKETCH_TEXT_MAX)) {
+        return false;
+    }
+    *value = field->valuestring;
+    return true;
+}
+
+static bool sketch_id_valid(const char *id) {
+    size_t length = strnlen(id, SKETCH_ID_MAX + 1);
+    if (length == 0 || length > SKETCH_ID_MAX) return false;
+    for (const char *cursor = id; *cursor; cursor++) {
+        if (!isalnum((unsigned char)*cursor) && *cursor != '_' &&
+            *cursor != '-') return false;
+    }
+    return true;
+}
+
+static double sketch_round(double value) {
+    return round(value * 10000.0) / 10000.0;
+}
+
+static bool sketch_unit_field(const cJSON *item, const char *key,
+                              double minimum, double *value) {
+    const cJSON *field = cJSON_GetObjectItemCaseSensitive(item, key);
+    if (!cJSON_IsNumber(field) || !isfinite(field->valuedouble) ||
+        field->valuedouble < minimum || field->valuedouble > 1.0) {
+        return false;
+    }
+    *value = sketch_round(field->valuedouble);
+    return true;
+}
+
+static bool sketch_points(const cJSON *item, int minimum, cJSON *out) {
+    const cJSON *points = cJSON_GetObjectItemCaseSensitive(item, "points");
+    if (!cJSON_IsArray(points)) return false;
+    int count = cJSON_GetArraySize(points);
+    if (count < minimum || count > SKETCH_MAX_POINTS) return false;
+    cJSON *canonical = cJSON_AddArrayToObject(out, "points");
+    if (!canonical) return false;
+    for (int index = 0; index < count; index++) {
+        const cJSON *point = cJSON_GetArrayItem(points, index);
+        if (!cJSON_IsArray(point) || cJSON_GetArraySize(point) != 2) {
+            return false;
+        }
+        const cJSON *x = cJSON_GetArrayItem(point, 0);
+        const cJSON *y = cJSON_GetArrayItem(point, 1);
+        if (!cJSON_IsNumber(x) || !cJSON_IsNumber(y) ||
+            !isfinite(x->valuedouble) || !isfinite(y->valuedouble) ||
+            x->valuedouble < 0.0 || x->valuedouble > 1.0 ||
+            y->valuedouble < 0.0 || y->valuedouble > 1.0) return false;
+        cJSON *pair = cJSON_CreateArray();
+        if (!pair) return false;
+        cJSON_AddItemToArray(pair, cJSON_CreateNumber(
+            sketch_round(x->valuedouble)));
+        cJSON_AddItemToArray(pair, cJSON_CreateNumber(
+            sketch_round(y->valuedouble)));
+        cJSON_AddItemToArray(canonical, pair);
+    }
+    return true;
+}
+
+/**
+ * Validate one client shape and append its canonical form (known fields
+ * only, rounded coordinates) to `shapes`.
+ */
+static bool sketch_shape(const cJSON *item, cJSON *shapes) {
+    if (!cJSON_IsObject(item)) return false;
+    const cJSON *type = cJSON_GetObjectItemCaseSensitive(item, "type");
+    const cJSON *id = cJSON_GetObjectItemCaseSensitive(item, "id");
+    const char *tone = NULL;
+    if (!cJSON_IsString(type) || !type->valuestring ||
+        !cJSON_IsString(id) || !id->valuestring ||
+        !sketch_id_valid(id->valuestring) ||
+        !sketch_enum_field(item, "tone", SKETCH_TONES,
+                           sizeof(SKETCH_TONES) / sizeof(SKETCH_TONES[0]),
+                           &tone)) return false;
+    cJSON *out = cJSON_CreateObject();
+    if (!out) return false;
+    cJSON_AddItemToArray(shapes, out);
+    cJSON_AddStringToObject(out, "id", id->valuestring);
+    cJSON_AddStringToObject(out, "type", type->valuestring);
+    cJSON_AddStringToObject(out, "tone", tone);
+    const char *text = NULL;
+    if (strcmp(type->valuestring, "rect") == 0) {
+        double x, y, w, h;
+        const cJSON *filled = cJSON_GetObjectItemCaseSensitive(item, "filled");
+        if (!sketch_unit_field(item, "x", 0.0, &x) ||
+            !sketch_unit_field(item, "y", 0.0, &y) ||
+            !sketch_unit_field(item, "w", SKETCH_MIN_RECT_SIDE, &w) ||
+            !sketch_unit_field(item, "h", SKETCH_MIN_RECT_SIDE, &h) ||
+            x + w > 1.0 + 1e-6 || y + h > 1.0 + 1e-6 ||
+            (filled && !cJSON_IsBool(filled)) ||
+            !sketch_optional_text(item, "label", &text)) return false;
+        cJSON_AddNumberToObject(out, "x", x);
+        cJSON_AddNumberToObject(out, "y", y);
+        cJSON_AddNumberToObject(out, "w", fmin(w, 1.0 - x));
+        cJSON_AddNumberToObject(out, "h", fmin(h, 1.0 - y));
+        cJSON_AddBoolToObject(out, "filled", !filled || cJSON_IsTrue(filled));
+        if (text) cJSON_AddStringToObject(out, "label", text);
+        return true;
+    }
+    if (strcmp(type->valuestring, "wall") == 0) {
+        return sketch_points(item, SKETCH_MIN_POLYLINE_POINTS, out);
+    }
+    if (strcmp(type->valuestring, "area") == 0) {
+        if (!sketch_points(item, SKETCH_MIN_POLYGON_POINTS, out) ||
+            !sketch_optional_text(item, "label", &text)) return false;
+        if (text) cJSON_AddStringToObject(out, "label", text);
+        return true;
+    }
+    if (strcmp(type->valuestring, "label") == 0) {
+        double x, y;
+        const char *size = NULL;
+        const cJSON *label = cJSON_GetObjectItemCaseSensitive(item, "text");
+        if (!sketch_unit_field(item, "x", 0.0, &x) ||
+            !sketch_unit_field(item, "y", 0.0, &y) ||
+            !cJSON_IsString(label) || !label->valuestring ||
+            !sketch_text_valid(label->valuestring, 1, SKETCH_TEXT_MAX) ||
+            !sketch_enum_field(item, "size", SKETCH_LABEL_SIZES,
+                               sizeof(SKETCH_LABEL_SIZES) /
+                                   sizeof(SKETCH_LABEL_SIZES[0]),
+                               &size)) return false;
+        cJSON_AddNumberToObject(out, "x", x);
+        cJSON_AddNumberToObject(out, "y", y);
+        cJSON_AddStringToObject(out, "text", label->valuestring);
+        cJSON_AddStringToObject(out, "size", size);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Parse the optional "sketch" field into canonical JSON owned by the caller.
+ * Absent -> *sketch_json = NULL (leave stored sketch unchanged). null or no
+ * shapes -> "" (clear). Anything else is fully validated and re-encoded so
+ * only known fields with bounded values ever reach storage.
+ */
+static bool parse_sketch(const cJSON *body, char **sketch_json,
+                         http_response_t *res) {
+    *sketch_json = NULL;
+    const cJSON *sketch = cJSON_GetObjectItemCaseSensitive(body, "sketch");
+    if (!sketch) return true;
+    const cJSON *shapes = cJSON_IsObject(sketch)
+        ? cJSON_GetObjectItemCaseSensitive(sketch, "shapes") : NULL;
+    if (cJSON_IsNull(sketch) || (cJSON_IsObject(sketch) && !shapes) ||
+        (cJSON_IsArray(shapes) && cJSON_GetArraySize(shapes) == 0)) {
+        *sketch_json = strdup("");
+        if (!*sketch_json) {
+            http_response_set_json_error(res, 500, "Memory allocation failed");
+            return false;
+        }
+        return true;
+    }
+    const cJSON *version = cJSON_IsObject(sketch)
+        ? cJSON_GetObjectItemCaseSensitive(sketch, "version") : NULL;
+    if (!cJSON_IsArray(shapes) ||
+        (version && (!cJSON_IsNumber(version) || version->valueint != 1))) {
+        http_response_set_json_error(res, 400, "Invalid floor plan sketch");
+        return false;
+    }
+    int count = cJSON_GetArraySize(shapes);
+    if (count > SKETCH_MAX_SHAPES) {
+        http_response_set_json_error(res, 400,
+                                     "Too many floor plan sketch shapes");
+        return false;
+    }
+    cJSON *canonical = cJSON_CreateObject();
+    cJSON *out_shapes = canonical
+        ? cJSON_AddArrayToObject(canonical, "shapes") : NULL;
+    if (!canonical || !out_shapes ||
+        !cJSON_AddNumberToObject(canonical, "version", 1)) {
+        cJSON_Delete(canonical);
+        http_response_set_json_error(res, 500, "Memory allocation failed");
+        return false;
+    }
+    bool valid = true;
+    for (int index = 0; valid && index < count; index++) {
+        const cJSON *item = cJSON_GetArrayItem(shapes, index);
+        valid = sketch_shape(item, out_shapes);
+        const cJSON *id = valid
+            ? cJSON_GetObjectItemCaseSensitive(item, "id") : NULL;
+        for (int previous = 0; valid && previous < index; previous++) {
+            const cJSON *other = cJSON_GetObjectItemCaseSensitive(
+                cJSON_GetArrayItem(out_shapes, previous), "id");
+            if (other && strcmp(other->valuestring, id->valuestring) == 0) {
+                valid = false;
+            }
+        }
+    }
+    if (!valid) {
+        cJSON_Delete(canonical);
+        http_response_set_json_error(res, 400, "Invalid floor plan sketch");
+        return false;
+    }
+    char *encoded = cJSON_PrintUnformatted(canonical);
+    cJSON_Delete(canonical);
+    if (!encoded) {
+        http_response_set_json_error(res, 500, "Memory allocation failed");
+        return false;
+    }
+    if (strlen(encoded) > OPERATOR_FLOOR_PLAN_SKETCH_MAX) {
+        free(encoded);
+        http_response_set_json_error(res, 400, "Floor plan sketch too large");
+        return false;
+    }
+    *sketch_json = encoded;
+    return true;
+}
+
 static bool parse_plan(
     const cJSON *body, bool creating, operator_floor_plan_t *plan,
     operator_floor_plan_camera_t **cameras, int *camera_count,
@@ -210,13 +470,21 @@ static bool parse_plan(
 static cJSON *plan_json(
     const operator_floor_plan_t *plan,
     const operator_floor_plan_camera_t *placements, int placement_count,
-    const fleet_camera_t *authorized, int authorized_count) {
+    const fleet_camera_t *authorized, int authorized_count,
+    const char *sketch_json) {
     cJSON *root = cJSON_CreateObject();
     cJSON *cameras = root ? cJSON_AddArrayToObject(root, "cameras") : NULL;
     if (!root || !cameras) {
         cJSON_Delete(root);
         return NULL;
     }
+    // The stored sketch is canonical JSON written by parse_sketch, so a
+    // parse failure means corruption; expose it as "no sketch" rather than
+    // failing the whole plan.
+    cJSON *sketch = sketch_json && sketch_json[0]
+        ? cJSON_Parse(sketch_json) : NULL;
+    if (sketch) cJSON_AddItemToObject(root, "sketch", sketch);
+    else cJSON_AddNullToObject(root, "sketch");
     cJSON_AddStringToObject(root, "uuid", plan->uuid);
     cJSON_AddStringToObject(root, "name", plan->name);
     if (plan->location_uuid[0]) {
@@ -346,8 +614,11 @@ static cJSON *load_one_json(const char *uuid, const user_t *user,
         http_response_set_json_error(res, 500, "Failed to load floor plan");
         return NULL;
     }
+    char *sketch_json = NULL;
+    db_operator_floor_plan_sketch_load(uuid, &sketch_json);
     cJSON *json = plan_json(&plan, placements, placement_count,
-                            authorized, authorized_count);
+                            authorized, authorized_count, sketch_json);
+    free(sketch_json);
     free(placements);
     free(authorized);
     return json;
@@ -387,8 +658,14 @@ void handle_get_operator_floor_plans(const http_request_t *req,
             plans[index].uuid, placements,
             OPERATOR_FLOOR_PLAN_MAX_CAMERAS);
         if (placement_count < 0) continue;
+        char *sketch_json = NULL;
+        if (plans[index].sketch_bytes > 0) {
+            db_operator_floor_plan_sketch_load(plans[index].uuid,
+                                               &sketch_json);
+        }
         cJSON *item = plan_json(&plans[index], placements, placement_count,
-                                authorized, authorized_count);
+                                authorized, authorized_count, sketch_json);
+        free(sketch_json);
         if (item) cJSON_AddItemToArray(items, item);
     }
     cJSON_AddBoolToObject(root, "can_modify", can_modify(&user));
@@ -449,14 +726,18 @@ void handle_post_operator_floor_plan(const http_request_t *req,
     operator_floor_plan_t plan;
     operator_floor_plan_camera_t *placements = NULL;
     int placement_count = 0;
+    char *sketch_json = NULL;
     if (!parse_plan(body, true, &plan, &placements, &placement_count, res) ||
+        !parse_sketch(body, &sketch_json, res) ||
         !placements_allowed(&user, placements, placement_count, res)) {
+        free(sketch_json);
         free(placements);
         cJSON_Delete(body);
         return;
     }
     db_operator_floor_plan_result_t result = db_operator_floor_plan_create(
-        &plan, placements, placement_count);
+        &plan, placements, placement_count, sketch_json);
+    free(sketch_json);
     free(placements);
     cJSON_Delete(body);
     if (result != DB_OPERATOR_FLOOR_PLAN_OK) {
@@ -481,19 +762,23 @@ void handle_put_operator_floor_plan(const http_request_t *req,
     operator_floor_plan_camera_t *placements = NULL;
     int placement_count = 0;
     int64_t revision = 0;
+    char *sketch_json = NULL;
     if (!parse_plan(body, false, &plan, &placements, &placement_count, res) ||
         !parse_revision(body, &revision) ||
+        !parse_sketch(body, &sketch_json, res) ||
         !placements_allowed(&user, placements, placement_count, res)) {
         if (res->status_code < 400) {
             http_response_set_json_error(res, 400, "Invalid revision");
         }
+        free(sketch_json);
         free(placements);
         cJSON_Delete(body);
         return;
     }
     safe_strcpy(plan.uuid, uuid, sizeof(plan.uuid), 0);
     db_operator_floor_plan_result_t result = db_operator_floor_plan_update(
-        &plan, placements, placement_count, revision);
+        &plan, placements, placement_count, revision, sketch_json);
+    free(sketch_json);
     free(placements);
     cJSON_Delete(body);
     if (result != DB_OPERATOR_FLOOR_PLAN_OK) {

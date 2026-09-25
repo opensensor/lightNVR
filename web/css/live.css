@@ -406,22 +406,266 @@
 .live-building-plan.is-editing .live-plan-canvas { cursor: crosshair; }
 .live-plan-ground { fill: #081522; }
 .live-plan-grid-line { fill: none; stroke: #183047; stroke-width: 1; }
-.live-plan-building-shell {
-    fill: #102438;
-    stroke: #7890a6;
-    stroke-width: 10;
-}
-.live-plan-interior-walls {
+
+/* Layout sketch: rooms, walls, areas and labels drawn on the plan. */
+.live-plan-sketch { --sketch-tone: #94a3b8; }
+.live-plan-sketch:not(.is-editing) { pointer-events: none; }
+.tone-slate { --sketch-tone: #94a3b8; }
+.tone-blue { --sketch-tone: #60a5fa; }
+.tone-green { --sketch-tone: #4ade80; }
+.tone-amber { --sketch-tone: #fbbf24; }
+.tone-red { --sketch-tone: #f87171; }
+.tone-violet { --sketch-tone: #a78bfa; }
+.live-plan-shape { outline: none; }
+.live-plan-sketch.is-editing .live-plan-shape { cursor: move; }
+.live-plan-shape-rect {
     fill: none;
-    stroke: #5e768c;
-    stroke-width: 7;
-    stroke-linecap: square;
+    stroke: var(--sketch-tone);
+    stroke-width: 5;
+    stroke-linejoin: round;
 }
-.live-plan-corridor {
-    fill: #183149;
-    stroke: #36536c;
-    stroke-width: 2;
-    stroke-dasharray: 9 7;
+.live-plan-shape-rect.is-filled { fill: var(--sketch-tone); fill-opacity: 0.14; }
+.live-plan-shape-wall {
+    fill: none;
+    stroke: var(--sketch-tone);
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.live-plan-shape-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 26;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: stroke;
+}
+.live-plan-shape-area {
+    fill: var(--sketch-tone);
+    fill-opacity: 0.12;
+    stroke: var(--sketch-tone);
+    stroke-width: 3;
+    stroke-dasharray: 10 8;
+    stroke-linejoin: round;
+}
+.live-plan-shape-label,
+.live-plan-shape-text {
+    fill: #f8fafc;
+    stroke: #07111d;
+    stroke-width: 4;
+    paint-order: stroke;
+    font-weight: 700;
+    pointer-events: none;
+}
+/* Text labels take their size from the fontSize attribute per shape. */
+.live-plan-shape-label { font-size: 16px; }
+.live-plan-shape-text { fill: var(--sketch-tone); }
+.live-plan-sketch.is-editing .live-plan-shape-label,
+.live-plan-sketch.is-editing .live-plan-shape-text { pointer-events: auto; }
+.live-plan-canvas:focus { outline: none; }
+.live-plan-shape.is-selected .live-plan-shape-rect,
+.live-plan-shape.is-selected .live-plan-shape-wall,
+.live-plan-shape.is-selected .live-plan-shape-area,
+.live-plan-shape.is-selected .live-plan-shape-text {
+    filter: drop-shadow(0 0 6px var(--sketch-tone));
+}
+.live-plan-shape.is-selected .live-plan-shape-rect,
+.live-plan-shape.is-selected .live-plan-shape-area { stroke: #fff; }
+.live-plan-shape:focus-visible .live-plan-shape-rect,
+.live-plan-shape:focus-visible .live-plan-shape-wall,
+.live-plan-shape:focus-visible .live-plan-shape-area { stroke: #fff; }
+.live-plan-shape-handle {
+    fill: #fff;
+    stroke: var(--sketch-tone);
+    stroke-width: 2.5;
+    cursor: crosshair;
+}
+.live-plan-drawing-rect {
+    fill: var(--sketch-tone);
+    fill-opacity: 0.1;
+    stroke: #fff;
+    stroke-width: 3;
+    stroke-dasharray: 8 6;
+    pointer-events: none;
+}
+.live-plan-drawing { pointer-events: none; }
+.live-plan-drawing-line {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 4;
+    stroke-dasharray: 8 6;
+    stroke-linecap: round;
+}
+.live-plan-drawing-area { fill: #fff; fill-opacity: 0.08; stroke: none; }
+.live-plan-drawing-point { fill: #fff; stroke: #07111d; stroke-width: 2; }
+.live-plan-drawing-point.is-closable { fill: #4ade80; }
+
+.live-plan-sketch-tools {
+    position: absolute;
+    z-index: 3;
+    top: 0.7rem;
+    left: 0.7rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: calc(100% - 1.4rem);
+    padding: 0.4rem;
+    border: 1px solid rgb(148 163 184 / 0.28);
+    border-radius: 0.55rem;
+    background: rgb(3 10 18 / 0.88);
+    color: #e2e8f0;
+    backdrop-filter: blur(5px);
+}
+.live-plan-sketch-tool-group { display: flex; gap: 0.25rem; }
+.live-plan-sketch-tools button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid rgb(148 163 184 / 0.35);
+    border-radius: 0.4rem;
+    background: rgb(15 23 42 / 0.7);
+    color: #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.live-plan-sketch-tools button:hover:not(:disabled) { background: rgb(30 41 59 / 0.9); }
+.live-plan-sketch-tools button:disabled { opacity: 0.4; }
+.live-plan-sketch-tools button.is-active {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+.live-plan-sketch-hint {
+    flex: 1 1 100%;
+    margin: 0;
+    color: #a9bdd2;
+    font-size: 0.7rem;
+    line-height: 1.35;
+}
+.live-plan-canvas.is-drawing { cursor: crosshair; }
+
+.live-plan-background-hint .live-plan-hint-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.4rem;
+}
+.live-plan-background-hint .live-plan-hint-actions button {
+    min-height: 2.75rem;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid rgb(148 163 184 / 0.45);
+    border-radius: 0.4rem;
+    color: #e2e8f0;
+}
+.live-plan-background-hint .live-plan-hint-actions button.btn-primary {
+    border-color: transparent;
+}
+
+.live-plan-sketch-inspector { font-size: 0.75rem; }
+.live-plan-sketch-selected {
+    display: grid;
+    gap: 0.5rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.live-plan-sketch-selected-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.live-plan-sketch-selected-head button,
+.live-plan-sketch-actions button {
+    min-height: 2.5rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.4rem;
+}
+.live-plan-sketch-actions { display: flex; gap: 0.4rem; }
+.live-plan-sketch-actions button { flex: 1 1 auto; }
+.live-plan-sketch-actions button.is-danger { color: hsl(var(--danger)); }
+.live-plan-sketch-tones { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.live-plan-sketch-tones button {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    border: 2px solid transparent;
+    border-radius: 0.45rem;
+    background: hsl(var(--muted));
+}
+.live-plan-sketch-tones button i,
+.live-plan-sketch-list button i {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background: var(--sketch-tone);
+}
+.live-plan-sketch-tones button.is-active { border-color: hsl(var(--foreground)); }
+.live-plan-sketch-field {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.live-plan-sketch-field > span { font-weight: 600; }
+.live-plan-sketch-field input,
+.live-plan-sketch-field select {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.35rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font: inherit;
+}
+.live-plan-sketch-field.is-check {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.45rem;
+}
+.live-plan-sketch-field.is-check input { width: 1.1rem; min-height: 0; }
+.live-plan-sketch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+}
+.live-plan-sketch-points summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0.25rem 0;
+}
+.live-plan-sketch-points > .live-plan-sketch-grid { margin-top: 0.35rem; }
+.live-plan-sketch-list { margin-top: 0.65rem; }
+.live-plan-sketch-list > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.live-plan-sketch-list > p {
+    margin: 0.35rem 0 0;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.7rem;
+}
+.live-plan-sketch-list > div:last-child { display: grid; gap: 0.15rem; margin-top: 0.4rem; }
+.live-plan-sketch-list button {
+    min-height: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 0.4rem;
+    text-align: left;
+    font-size: 0.75rem;
+}
+.live-plan-sketch-list button:hover,
+.live-plan-sketch-list button.is-selected { background: hsl(var(--muted)); }
+.live-plan-sketch-list button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .live-plan-file-input { display: none; }

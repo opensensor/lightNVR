@@ -2035,6 +2035,12 @@ static const char migration_0086_down[] =
     "DROP INDEX IF EXISTS idx_storage_deletion_object_deletion;\n"
     "DROP INDEX IF EXISTS idx_recordings_deletion_pending;";
 
+static const char migration_0087_up[] =
+    "ALTER TABLE operator_floor_plans ADD COLUMN sketch_json TEXT;";
+
+static const char migration_0087_down[] =
+    "ALTER TABLE operator_floor_plans DROP COLUMN sketch_json;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2638,8 +2644,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0086_down,
         .is_embedded = true
     },
+    {
+        .version = "0087",
+        .description = "add_floor_plan_sketch",
+        .sql_up = migration_0087_up,
+        .sql_down = migration_0087_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 86
+#define EMBEDDED_MIGRATIONS_COUNT 87
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

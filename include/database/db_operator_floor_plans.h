@@ -8,6 +8,9 @@
 #define OPERATOR_FLOOR_PLAN_NAME_MAX 128
 #define OPERATOR_FLOOR_PLAN_MAX_VISIBLE 256
 #define OPERATOR_FLOOR_PLAN_MAX_CAMERAS 1000
+// Canonical sketch JSON is produced by the API layer; the database only
+// bounds its size so a plan row can never approach the request cap.
+#define OPERATOR_FLOOR_PLAN_SKETCH_MAX (256 * 1024)
 
 typedef struct {
     char uuid[CAMERA_UUID_STRING_SIZE];
@@ -17,6 +20,7 @@ typedef struct {
     int canvas_width;
     int canvas_height;
     char background_mime[16];
+    int sketch_bytes;
     int64_t revision;
     int64_t created_at;
     int64_t updated_at;
@@ -46,13 +50,27 @@ db_operator_floor_plan_result_t db_operator_floor_plan_get(
 int db_operator_floor_plan_camera_list(
     const char *plan_uuid, operator_floor_plan_camera_t *cameras,
     int max_count);
+/**
+ * sketch_json is the canonical layout sketch: NULL leaves the stored sketch
+ * untouched on update (and stores none on create), an empty string clears
+ * it, anything else replaces it. It must be at most
+ * OPERATOR_FLOOR_PLAN_SKETCH_MAX bytes.
+ */
 db_operator_floor_plan_result_t db_operator_floor_plan_create(
     operator_floor_plan_t *plan,
-    const operator_floor_plan_camera_t *cameras, int camera_count);
+    const operator_floor_plan_camera_t *cameras, int camera_count,
+    const char *sketch_json);
 db_operator_floor_plan_result_t db_operator_floor_plan_update(
     operator_floor_plan_t *plan,
     const operator_floor_plan_camera_t *cameras, int camera_count,
-    int64_t expected_revision);
+    int64_t expected_revision, const char *sketch_json);
+/**
+ * Load the stored sketch JSON into a malloc'd string owned by the caller.
+ * *sketch_json is NULL when the plan has no sketch. Returns NOT_FOUND for an
+ * unknown plan.
+ */
+db_operator_floor_plan_result_t db_operator_floor_plan_sketch_load(
+    const char *uuid, char **sketch_json);
 db_operator_floor_plan_result_t db_operator_floor_plan_delete(
     const char *uuid, int64_t expected_revision);
 db_operator_floor_plan_result_t db_operator_floor_plan_set_background(

@@ -10,6 +10,37 @@ import {
   floorPlanPayload,
   normalizeCoverage,
 } from './liveOperator.js';
+import {
+  SKETCH_TONES,
+  appendPolylinePoint,
+  closesPolygon,
+  createHistory,
+  createShapeId,
+  duplicateShape,
+  finishPolyline,
+  gridStep,
+  moveShapeVertex,
+  pushHistory,
+  rectFromPoints,
+  redoHistory,
+  resizeRectCorner,
+  shapeBounds,
+  sketchPayload,
+  sketchShapesFromPlan,
+  snapPoint,
+  translateShape,
+  undoHistory,
+} from './planSketch.js';
+import { PlanSketchLayer } from './PlanSketchLayer.jsx';
+import { PlanSketchInspector, PlanSketchTools } from './PlanSketchControls.jsx';
+
+const TOOL_SHORTCUTS = { v: 'select', r: 'room', w: 'wall', a: 'area', l: 'label' };
+
+function isFormField(target) {
+  const tag = target?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+    Boolean(target?.isContentEditable);
+}
 
 const BACKGROUND_MAX_BYTES = 768 * 1024;
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg'];
@@ -161,6 +192,13 @@ export function LiveBuildingPlan({
   const [createPlanOpen, setCreatePlanOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [sketchTool, setSketchTool] = useState('select');
+  const [sketchTone, setSketchTone] = useState(SKETCH_TONES[0]);
+  const [sketchHistory, setSketchHistory] = useState(() => createHistory([]));
+  const [selectedShapeId, setSelectedShapeId] = useState('');
+  const [drawing, setDrawing] = useState(null);
+  const [snap, setSnap] = useState(true);
+  const drawingRef = useRef(null);
 
   const plansQuery = useQuery({
     queryKey: ['operator-floor-plans'],
@@ -190,12 +228,22 @@ export function LiveBuildingPlan({
     setZoom(1);
     setCenter({ x: 0.5, y: 0.5 });
     setBackgroundVersion(0);
+    setSketchTool('select');
+    setSketchHistory(createHistory([]));
+    setSelectedShapeId('');
+    setDrawing(null);
   }, [plan?.uuid]);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { centerRef.current = center; }, [center]);
+  useEffect(() => { drawingRef.current = drawing; }, [drawing]);
 
   const cameras = editing ? draftCameras : (plan?.cameras || []);
+  const viewSketch = useMemo(() => sketchShapesFromPlan(plan), [plan]);
+  const draftSketch = sketchHistory.present;
+  const sketchShapes = editing ? draftSketch : viewSketch;
+  const selectedShape = editing
+    ? draftSketch.find((shape) => shape.id === selectedShapeId) || null : null;
   const placedUuids = useMemo(() => new Set(
     cameras.map((camera) => camera.camera_uuid),
   ), [cameras]);
@@ -427,7 +475,7 @@ export function LiveBuildingPlan({
       onClose={() => setCreatePlanOpen(false)}
       onSubmit={createPlan}
       title="Create building plan"
-      description="Give this building or floor a clear name. Upload a floor plan image and place cameras after it is created."
+      description="Give this building or floor a clear name. Draw the layout or upload a floor plan image, then place cameras."
       inputLabel="Plan name"
       placeholder="Main building · First floor"
       confirmLabel="Create plan"
@@ -489,6 +537,79 @@ export function LiveBuildingPlan({
     };
   };
 
+  // Sketch geometry uses the full plan so walls can run along its edges;
+  // grid snapping is the default and Alt bypasses it for one gesture.
+  const sketchPointFromEvent = (event) => {
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const transformed = point.matrixTransform(matrix.inverse());
+    return snapPoint({
+      x: transformed.x / width,
+      y: transformed.y / height,
+    }, { width, height }, snap && !event.altKey);
+  };
+
+  const commitSketch = (next) => setSketchHistory((history) => pushHistory(history, next));
+  const shapeIds = () => draftSketch.map((shape) => shape.id);
+  const selectShape = (shapeId) => {
+    setSelectedShapeId(shapeId);
+    if (shapeId) {
+      setSelectedCameraUuid('');
+      setPlacementCameraUuid('');
+    }
+  };
+  const addShape = (shape, nextTool = sketchTool) => {
+    if (!shape) return;
+    commitSketch([...draftSketch, shape]);
+    selectShape(shape.id);
+    setSketchTool(nextTool);
+  };
+  const replaceShape = (next) => {
+    commitSketch(draftSketch.map((shape) => shape.id === next.id ? next : shape));
+    if (next.tone) setSketchTone(next.tone);
+  };
+  const deleteSelectedShape = () => {
+    if (!selectedShape) return;
+    commitSketch(draftSketch.filter((shape) => shape.id !== selectedShape.id));
+    setSelectedShapeId('');
+  };
+  const duplicateSelectedShape = () => {
+    if (!selectedShape) return;
+    addShape(duplicateShape(selectedShape, shapeIds(), { width, height }), 'select');
+  };
+  const nudgeSelectedShape = (stepsX, stepsY) => {
+    if (!selectedShape) return;
+    const step = gridStep({ width, height });
+    replaceShape(translateShape(selectedShape, stepsX * step.x, stepsY * step.y));
+  };
+  const selectTool = (tool) => {
+    setSketchTool(tool);
+    setDrawing(null);
+    if (tool !== 'select') {
+      setPlacementCameraUuid('');
+      setSelectedShapeId('');
+    }
+  };
+  const undoSketch = () => setSketchHistory((history) => undoHistory(history));
+  const redoSketch = () => setSketchHistory((history) => redoHistory(history));
+  const finishDrawing = () => {
+    const current = drawingRef.current;
+    if (!current || current.tool === 'room') return;
+    setDrawing(null);
+    addShape(finishPolyline(current.tool, current.points, createShapeId(shapeIds()), sketchTone));
+  };
+  const cancelDrawing = () => {
+    if (!drawingRef.current) return;
+    setDrawing(null);
+    showStatusMessage(t('live.plan.sketch.discardDrawing'), 'info', 1500);
+  };
+  const drawingClosable = Boolean(drawing && drawing.tool === 'area' && drawing.cursor &&
+    closesPolygon(drawing.points, drawing.cursor, { width, height }));
+
   const placeCamera = (cameraUuid, point = { x: 0.5, y: 0.5 }) => {
     setDraftCameras((current) => {
       const existing = current.find((camera) => camera.camera_uuid === cameraUuid);
@@ -500,6 +621,9 @@ export function LiveBuildingPlan({
     });
     setSelectedCameraUuid(cameraUuid);
     setPlacementCameraUuid(cameraUuid);
+    setSelectedShapeId('');
+    setSketchTool('select');
+    setDrawing(null);
   };
 
   const updateSelectedPlacement = (changes) => {
@@ -507,10 +631,14 @@ export function LiveBuildingPlan({
       camera.camera_uuid === selectedCameraUuid ? { ...camera, ...changes } : camera));
   };
 
-  const startEditing = () => {
+  const startEditing = (tool = 'select') => {
     setDraftCameras((plan.cameras || []).map((camera) => ({ ...camera })));
     setDraftSize(null);
     setDraftRevision(plan.revision);
+    setSketchHistory(createHistory(viewSketch));
+    setSelectedShapeId('');
+    setDrawing(null);
+    setSketchTool(tool);
     setEditing(true);
   };
   const cancelEditing = () => {
@@ -519,6 +647,10 @@ export function LiveBuildingPlan({
     setDraftSize(null);
     setDraftRevision(null);
     setPlacementCameraUuid('');
+    setSketchHistory(createHistory([]));
+    setSelectedShapeId('');
+    setDrawing(null);
+    setSketchTool('select');
   };
   const savePlan = async () => {
     setBusy(true);
@@ -532,6 +664,7 @@ export function LiveBuildingPlan({
             ...sizeForSave,
             revision: draftRevision ?? plan.revision,
           }, draftCameras),
+          sketch: sketchPayload(draftSketch),
         }),
         timeout: 15000,
         retries: 0,
@@ -541,6 +674,10 @@ export function LiveBuildingPlan({
       setDraftSize(null);
       setDraftRevision(null);
       setPlacementCameraUuid('');
+      setSketchHistory(createHistory([]));
+      setSelectedShapeId('');
+      setDrawing(null);
+      setSketchTool('select');
       showStatusMessage(`Saved ${updated.name}`, 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
@@ -565,7 +702,26 @@ export function LiveBuildingPlan({
   const handleSurfacePointerDown = (event) => {
     suppressClickRef.current = false;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (editing) {
+      try {
+        svgRef.current?.focus({ preventScroll: true });
+      } catch {
+        // Focus is a keyboard convenience only.
+      }
+    }
     if (editing && placementCameraUuid) return;
+    if (editing && sketchTool === 'room') {
+      const start = sketchPointFromEvent(event);
+      if (!start) return;
+      interactionRef.current = {
+        mode: 'draw-rect', pointerId: event.pointerId,
+        startX: event.clientX, startY: event.clientY, start, moved: false,
+      };
+      setDrawing({ tool: 'room', start, current: start });
+      return;
+    }
+    // Point-by-point tools add on click; a press must not start a pan.
+    if (editing && sketchTool !== 'select') return;
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return;
     const screenPlanWidth = Math.hypot(matrix.a, matrix.b) * width;
@@ -598,6 +754,62 @@ export function LiveBuildingPlan({
     };
     setSelectedCameraUuid(cameraUuid);
     setPlacementCameraUuid(cameraUuid);
+    setSelectedShapeId('');
+  };
+
+  const handleShapePointerDown = (event, shapeId, handle) => {
+    if (!editing || sketchTool !== 'select' || placementCameraUuid) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.stopPropagation();
+    suppressClickRef.current = false;
+    const matrix = svgRef.current?.getScreenCTM();
+    const shape = draftSketch.find((candidate) => candidate.id === shapeId);
+    if (!matrix || !shape) return;
+    interactionRef.current = {
+      mode: 'shape',
+      pointerId: event.pointerId,
+      shapeId,
+      handle,
+      original: shape,
+      before: draftSketch,
+      startX: event.clientX,
+      startY: event.clientY,
+      screenPlanWidth: Math.hypot(matrix.a, matrix.b) * width,
+      screenPlanHeight: Math.hypot(matrix.c, matrix.d) * height,
+      moved: false,
+    };
+    selectShape(shapeId);
+  };
+
+  const handleShapeClick = (event, shapeId) => {
+    if (!editing || sketchTool !== 'select' || placementCameraUuid) return;
+    event.stopPropagation();
+    if (suppressClickRef.current) return;
+    selectShape(shapeId);
+  };
+
+  const applyShapeDrag = (interaction, event) => {
+    let next = interaction.original;
+    if (interaction.handle.kind === 'move') {
+      const dx = (event.clientX - interaction.startX) / interaction.screenPlanWidth;
+      const dy = (event.clientY - interaction.startY) / interaction.screenPlanHeight;
+      next = translateShape(interaction.original, dx, dy);
+      if (snap && !event.altKey) {
+        const bounds = shapeBounds(next);
+        const snapped = snapPoint({ x: bounds.x0, y: bounds.y0 }, { width, height });
+        next = translateShape(next, snapped.x - bounds.x0, snapped.y - bounds.y0);
+      }
+    } else {
+      const point = sketchPointFromEvent(event);
+      if (!point) return;
+      next = interaction.handle.kind === 'corner'
+        ? resizeRectCorner(interaction.original, interaction.handle.corner, point)
+        : moveShapeVertex(interaction.original, interaction.handle.index, point);
+    }
+    setSketchHistory((history) => ({
+      ...history,
+      present: history.present.map((shape) => shape.id === next.id ? next : shape),
+    }));
   };
 
   /**
@@ -617,11 +829,28 @@ export function LiveBuildingPlan({
 
   const handleSurfacePointerMove = (event) => {
     const interaction = interactionRef.current;
-    if (!interaction || event.pointerId !== interaction.pointerId) return;
+    if (!interaction) {
+      const current = drawingRef.current;
+      if (current && current.tool !== 'room') {
+        const cursor = sketchPointFromEvent(event);
+        if (cursor) setDrawing((state) => state ? { ...state, cursor } : state);
+      }
+      return;
+    }
+    if (event.pointerId !== interaction.pointerId) return;
     const dx = event.clientX - interaction.startX;
     const dy = event.clientY - interaction.startY;
     if (!interaction.moved && Math.hypot(dx, dy) < 4) return;
     if (!interaction.moved) beginDrag(interaction, event);
+    if (interaction.mode === 'draw-rect') {
+      const current = sketchPointFromEvent(event);
+      if (current) setDrawing({ tool: 'room', start: interaction.start, current });
+      return;
+    }
+    if (interaction.mode === 'shape') {
+      applyShapeDrag(interaction, event);
+      return;
+    }
     if (interaction.mode === 'camera') {
       const point = pointFromEvent(event);
       if (point) {
@@ -638,10 +867,25 @@ export function LiveBuildingPlan({
   };
 
   const handleSurfacePointerEnd = (event) => {
-    if (!interactionRef.current ||
-      event.pointerId !== interactionRef.current.pointerId) return;
+    const interaction = interactionRef.current;
+    if (!interaction || event.pointerId !== interaction.pointerId) return;
     interactionRef.current = null;
     setPanning(false);
+    if (interaction.mode === 'draw-rect') {
+      const current = drawingRef.current;
+      setDrawing(null);
+      const rect = current && interaction.moved
+        ? rectFromPoints(current.start, current.current) : null;
+      if (rect) {
+        addShape({
+          id: createShapeId(shapeIds()), type: 'rect', tone: sketchTone,
+          ...rect, filled: true,
+        });
+      }
+    } else if (interaction.mode === 'shape' && interaction.moved) {
+      setSketchHistory((history) => pushHistory(
+        { ...history, present: interaction.before }, history.present));
+    }
     try {
       svgRef.current?.releasePointerCapture(event.pointerId);
     } catch {
@@ -651,8 +895,58 @@ export function LiveBuildingPlan({
 
   const openBackgroundPicker = () => fileInputRef.current?.click();
 
+  const handleKeyDown = (event) => {
+    if (!editing) return;
+    if (event.key === 'Escape') {
+      if (drawingRef.current) cancelDrawing();
+      else if (selectedShapeId) setSelectedShapeId('');
+      else if (sketchTool !== 'select') selectTool('select');
+      else return;
+      event.preventDefault();
+      return;
+    }
+    if (isFormField(event.target)) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) redoSketch();
+      else undoSketch();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && key === 'y') {
+      event.preventDefault();
+      redoSketch();
+      return;
+    }
+    if (event.key === 'Enter' && drawingRef.current &&
+      event.target?.tagName !== 'BUTTON' && event.target?.tagName !== 'A') {
+      event.preventDefault();
+      finishDrawing();
+      return;
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedShape) {
+      event.preventDefault();
+      deleteSelectedShape();
+      return;
+    }
+    if (event.key.startsWith('Arrow') && selectedShape) {
+      event.preventDefault();
+      const steps = event.shiftKey ? 5 : 1;
+      if (event.key === 'ArrowLeft') nudgeSelectedShape(-steps, 0);
+      if (event.key === 'ArrowRight') nudgeSelectedShape(steps, 0);
+      if (event.key === 'ArrowUp') nudgeSelectedShape(0, -steps);
+      if (event.key === 'ArrowDown') nudgeSelectedShape(0, steps);
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && TOOL_SHORTCUTS[key]) {
+      event.preventDefault();
+      selectTool(TOOL_SHORTCUTS[key]);
+    }
+  };
+
   return <>
-    <section className={`live-building-plan ${editing ? 'is-editing' : ''}`}>
+    <section className={`live-building-plan ${editing ? 'is-editing' : ''}`}
+      onKeyDown={handleKeyDown}>
       <header className="live-plan-toolbar">
         <div>
           <span className="live-plan-eyebrow">Building plan</span>
@@ -704,7 +998,7 @@ export function LiveBuildingPlan({
                 Delete
               </button>
               <button type="button" onClick={() => setCreatePlanOpen(true)} disabled={busy}>New plan</button>
-              <button type="button" className="btn-primary" onClick={startEditing}
+              <button type="button" className="btn-primary" onClick={() => startEditing()}
                 disabled={busy}>Edit layout</button>
             </>
           )}
@@ -724,7 +1018,16 @@ export function LiveBuildingPlan({
           {editing && placementCameraUuid && (
             <div className="live-plan-placement-hint">Click the plan to position {streamsByUuid.get(placementCameraUuid)?.name}</div>
           )}
-          <svg ref={svgRef} className={`live-plan-canvas ${panning ? 'is-panning' : ''}`}
+          {editing && (
+            <PlanSketchTools tool={sketchTool} onToolChange={selectTool}
+              canUndo={sketchHistory.past.length > 0}
+              canRedo={sketchHistory.future.length > 0}
+              onUndo={undoSketch} onRedo={redoSketch}
+              snap={snap} onSnapChange={setSnap}
+              shapeCount={draftSketch.length} t={t} />
+          )}
+          <svg ref={svgRef} tabIndex="-1"
+            className={`live-plan-canvas ${panning ? 'is-panning' : ''} ${editing && sketchTool !== 'select' ? 'is-drawing' : ''}`}
             viewBox={viewBox} role="img" aria-label={`${plan.name} camera plan`}
             onPointerDown={handleSurfacePointerDown}
             onPointerMove={handleSurfacePointerMove}
@@ -732,9 +1035,43 @@ export function LiveBuildingPlan({
             onPointerCancel={handleSurfacePointerEnd}
             onClick={(event) => {
               if (suppressClickRef.current) return;
-              if (!editing || !placementCameraUuid) return;
-              const point = pointFromEvent(event);
-              if (point) placeCamera(placementCameraUuid, point);
+              if (!editing) return;
+              if (placementCameraUuid) {
+                const point = pointFromEvent(event);
+                if (point) placeCamera(placementCameraUuid, point);
+                return;
+              }
+              if (sketchTool === 'wall' || sketchTool === 'area') {
+                const point = sketchPointFromEvent(event);
+                if (!point) return;
+                const current = drawingRef.current;
+                if (current && current.tool === sketchTool) {
+                  if (sketchTool === 'area' &&
+                    closesPolygon(current.points, point, { width, height })) {
+                    finishDrawing();
+                    return;
+                  }
+                  setDrawing({ ...current, points: appendPolylinePoint(current.points, point), cursor: point });
+                } else {
+                  setDrawing({ tool: sketchTool, points: [[point.x, point.y]], cursor: point });
+                }
+                return;
+              }
+              if (sketchTool === 'label') {
+                const point = sketchPointFromEvent(event);
+                if (!point) return;
+                addShape({
+                  id: createShapeId(shapeIds()), type: 'label', tone: sketchTone,
+                  x: point.x, y: point.y, text: t('live.plan.sketch.defaultLabel'), size: 'md',
+                }, 'select');
+                return;
+              }
+              if (sketchTool === 'select' && selectedShapeId) setSelectedShapeId('');
+            }}
+            onDblClick={(event) => {
+              if (!editing || !drawingRef.current) return;
+              event.preventDefault();
+              finishDrawing();
             }}
             onDragOver={(event) => {
               if (editing && event.dataTransfer?.types?.includes('application/x-lightnvr-camera')) {
@@ -759,27 +1096,18 @@ export function LiveBuildingPlan({
             <rect width={width} height={height} className="live-plan-ground" />
             <rect width={width} height={height}
               fill={`url(#plan-grid-${plan.uuid})`} />
-            {plan.background_mime ? (
+            {plan.background_mime && (
               <image href={planBackgroundUrl(plan, backgroundVersion)} x="0" y="0"
                 width={width} height={height}
                 preserveAspectRatio="none" className="live-plan-background" />
-            ) : (
-              <>
-                <rect x={width * 0.07} y={height * 0.08}
-                  width={width * 0.86} height={height * 0.84}
-                  rx="8" className="live-plan-building-shell" />
-                <path d={`M ${width * 0.38} ${height * 0.08} V ${height * 0.38}
-                  M ${width * 0.38} ${height * 0.62} V ${height * 0.92}
-                  M ${width * 0.68} ${height * 0.08} V ${height * 0.38}
-                  M ${width * 0.68} ${height * 0.62} V ${height * 0.92}
-                  M ${width * 0.07} ${height * 0.38} H ${width * 0.93}
-                  M ${width * 0.07} ${height * 0.62} H ${width * 0.93}`}
-                  className="live-plan-interior-walls" />
-                <rect x={width * 0.44} y={height * 0.35}
-                  width={width * 0.12} height={height * 0.3}
-                  className="live-plan-corridor" />
-              </>
             )}
+            <PlanSketchLayer shapes={sketchShapes} width={width} height={height}
+              editing={editing} selectedShapeId={selectedShapeId}
+              markerScale={markerScale} drawing={drawing}
+              drawingClosable={drawingClosable} t={t}
+              onShapePointerDown={handleShapePointerDown}
+              onShapeClick={handleShapeClick}
+              onShapeDblClick={() => {}} />
 
             {renderedMarkers.map((marker) => {
               const markerX = marker.x * width;
@@ -832,15 +1160,19 @@ export function LiveBuildingPlan({
               );
             })}
           </svg>
-          {!plan.background_mime && !editing && (
+          {!plan.background_mime && !editing && viewSketch.length === 0 && (
             <div className="live-plan-background-hint">
-              <strong>No floor plan image yet</strong>
-              <p>The rooms shown here are only a placeholder. {canModify
-                ? 'Upload a scanned plan, site drawing, or PNG/JPEG export (up to 768 KB) to map the real building.'
-                : 'An administrator can upload a plan of the real building.'}</p>
+              <strong>{t('live.plan.sketch.emptyTitle')}</strong>
+              <p>{canModify
+                ? t('live.plan.sketch.emptyBody')
+                : t('live.plan.sketch.emptyBodyReadOnly')}</p>
               {canModify && (
-                <button type="button" className="btn-primary" disabled={busy}
-                  onClick={openBackgroundPicker}>Upload floor plan image</button>
+                <div className="live-plan-hint-actions">
+                  <button type="button" className="btn-primary" disabled={busy}
+                    onClick={() => startEditing('room')}>{t('live.plan.sketch.drawLayout')}</button>
+                  <button type="button" disabled={busy}
+                    onClick={openBackgroundPicker}>{t('live.plan.sketch.uploadImage')}</button>
+                </div>
               )}
             </div>
           )}
@@ -879,7 +1211,14 @@ export function LiveBuildingPlan({
               </small>
             </div>
           )}
-          {selectedStream && selectedPlacement ? (
+          {editing && (
+            <PlanSketchInspector uid={`${panelUid}-sketch`} shapes={draftSketch}
+              selectedShape={selectedShape} t={t}
+              onSelect={selectShape} onChange={replaceShape}
+              onDelete={deleteSelectedShape} onDuplicate={duplicateSelectedShape}
+              onDeselect={() => setSelectedShapeId('')} />
+          )}
+          {selectedShape ? null : selectedStream && selectedPlacement ? (
             <>
               <PlanCameraPreview stream={selectedStream} />
               <div className="live-plan-camera-summary">

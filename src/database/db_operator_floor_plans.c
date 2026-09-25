@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "database/db_core.h"
@@ -16,7 +17,8 @@
 #define PLAN_FIELDS \
     "uuid,name,COALESCE(location_uuid,''),COALESCE(parent_plan_uuid,'')," \
     "canvas_width,canvas_height,COALESCE(background_mime,'')," \
-    "revision,created_at,updated_at"
+    "revision,created_at,updated_at," \
+    "COALESCE(length(CAST(sketch_json AS BLOB)),0)"
 
 static void copy_column(char *destination, size_t size,
                         sqlite3_stmt *statement, int column) {
@@ -39,6 +41,7 @@ static void populate_plan(sqlite3_stmt *statement,
     plan->revision = sqlite3_column_int64(statement, 7);
     plan->created_at = sqlite3_column_int64(statement, 8);
     plan->updated_at = sqlite3_column_int64(statement, 9);
+    plan->sketch_bytes = sqlite3_column_int(statement, 10);
 }
 
 static bool valid_name(const char *name) {
@@ -55,6 +58,26 @@ static bool valid_background_mime(const char *background_mime) {
     return background_mime[0] == '\0' ||
         strcmp(background_mime, "image/png") == 0 ||
         strcmp(background_mime, "image/jpeg") == 0;
+}
+
+/**
+ * NULL means "no change" (update) or "no sketch" (create); an empty string
+ * clears the sketch. The API layer canonicalizes the JSON, so the database
+ * only enforces the size bound.
+ */
+static bool valid_sketch(const char *sketch_json) {
+    return !sketch_json ||
+        strnlen(sketch_json, OPERATOR_FLOOR_PLAN_SKETCH_MAX + 1) <=
+            OPERATOR_FLOOR_PLAN_SKETCH_MAX;
+}
+
+static void bind_sketch(sqlite3_stmt *statement, int index,
+                        const char *sketch_json) {
+    if (sketch_json && sketch_json[0]) {
+        sqlite3_bind_text(statement, index, sketch_json, -1, SQLITE_TRANSIENT);
+    } else {
+        sqlite3_bind_null(statement, index);
+    }
 }
 
 static bool valid_plan(const operator_floor_plan_t *plan, bool require_uuid) {
@@ -243,12 +266,13 @@ int db_operator_floor_plan_camera_list(
 
 db_operator_floor_plan_result_t db_operator_floor_plan_create(
     operator_floor_plan_t *plan,
-    const operator_floor_plan_camera_t *cameras, int camera_count) {
+    const operator_floor_plan_camera_t *cameras, int camera_count,
+    const char *sketch_json) {
     sqlite3 *database = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
     char name[OPERATOR_FLOOR_PLAN_NAME_MAX];
     if (!database || !mutex || !valid_plan(plan, false) ||
-        !valid_cameras(cameras, camera_count) ||
+        !valid_cameras(cameras, camera_count) || !valid_sketch(sketch_json) ||
         copy_trimmed_value(name, sizeof(name), plan->name, 0) == 0 ||
         lightnvr_uuid_generate_v4(plan->uuid) != 0) {
         return DB_OPERATOR_FLOOR_PLAN_INVALID;
@@ -273,8 +297,8 @@ db_operator_floor_plan_result_t db_operator_floor_plan_create(
     result = sqlite3_prepare_v2(
         database,
         "INSERT INTO operator_floor_plans"
-        "(uuid,name,location_uuid,parent_plan_uuid,canvas_width,canvas_height) "
-        "VALUES(?,?,?,?,?,?);", -1, &statement, NULL);
+        "(uuid,name,location_uuid,parent_plan_uuid,canvas_width,canvas_height,"
+        "sketch_json) VALUES(?,?,?,?,?,?,?);", -1, &statement, NULL);
     if (result == SQLITE_OK) {
         sqlite3_bind_text(statement, 1, plan->uuid, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 2, name, -1, SQLITE_TRANSIENT);
@@ -286,6 +310,7 @@ db_operator_floor_plan_result_t db_operator_floor_plan_create(
         else sqlite3_bind_null(statement, 4);
         sqlite3_bind_int(statement, 5, plan->canvas_width);
         sqlite3_bind_int(statement, 6, plan->canvas_height);
+        bind_sketch(statement, 7, sketch_json);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -311,12 +336,13 @@ db_operator_floor_plan_result_t db_operator_floor_plan_create(
 db_operator_floor_plan_result_t db_operator_floor_plan_update(
     operator_floor_plan_t *plan,
     const operator_floor_plan_camera_t *cameras, int camera_count,
-    int64_t expected_revision) {
+    int64_t expected_revision, const char *sketch_json) {
     sqlite3 *database = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
     char name[OPERATOR_FLOOR_PLAN_NAME_MAX];
     if (!database || !mutex || expected_revision < 1 ||
         !valid_plan(plan, true) || !valid_cameras(cameras, camera_count) ||
+        !valid_sketch(sketch_json) ||
         copy_trimmed_value(name, sizeof(name), plan->name, 0) == 0) {
         return DB_OPERATOR_FLOOR_PLAN_INVALID;
     }
@@ -339,11 +365,17 @@ db_operator_floor_plan_result_t db_operator_floor_plan_update(
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(
         database,
-        "UPDATE operator_floor_plans SET name=?,location_uuid=?,"
-        "parent_plan_uuid=?,canvas_width=?,canvas_height=?,"
-        "revision=revision+1,updated_at=strftime('%s','now') "
-        "WHERE uuid=? AND revision=?;", -1, &statement, NULL);
+        sketch_json
+            ? "UPDATE operator_floor_plans SET name=?,location_uuid=?,"
+              "parent_plan_uuid=?,canvas_width=?,canvas_height=?,"
+              "revision=revision+1,updated_at=strftime('%s','now'),"
+              "sketch_json=? WHERE uuid=? AND revision=?;"
+            : "UPDATE operator_floor_plans SET name=?,location_uuid=?,"
+              "parent_plan_uuid=?,canvas_width=?,canvas_height=?,"
+              "revision=revision+1,updated_at=strftime('%s','now') "
+              "WHERE uuid=? AND revision=?;", -1, &statement, NULL);
     if (result == SQLITE_OK) {
+        int next = 6;
         sqlite3_bind_text(statement, 1, name, -1, SQLITE_TRANSIENT);
         if (plan->location_uuid[0]) sqlite3_bind_text(
             statement, 2, plan->location_uuid, -1, SQLITE_TRANSIENT);
@@ -353,8 +385,9 @@ db_operator_floor_plan_result_t db_operator_floor_plan_update(
         else sqlite3_bind_null(statement, 3);
         sqlite3_bind_int(statement, 4, plan->canvas_width);
         sqlite3_bind_int(statement, 5, plan->canvas_height);
-        sqlite3_bind_text(statement, 6, plan->uuid, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(statement, 7, expected_revision);
+        if (sketch_json) bind_sketch(statement, next++, sketch_json);
+        sqlite3_bind_text(statement, next++, plan->uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, next, expected_revision);
         result = sqlite3_step(statement);
     }
     int changed = result == SQLITE_DONE ? sqlite3_changes(database) : 0;
@@ -454,6 +487,47 @@ db_operator_floor_plan_result_t db_operator_floor_plan_set_background(
         outcome = result == SQLITE_DONE ? DB_OPERATOR_FLOOR_PLAN_OK
                                         : DB_OPERATOR_FLOOR_PLAN_ERROR;
     }
+    pthread_mutex_unlock(mutex);
+    return outcome;
+}
+
+db_operator_floor_plan_result_t db_operator_floor_plan_sketch_load(
+    const char *uuid, char **sketch_json) {
+    sqlite3 *database = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!sketch_json) return DB_OPERATOR_FLOOR_PLAN_INVALID;
+    *sketch_json = NULL;
+    if (!database || !mutex || !lightnvr_uuid_is_valid(uuid)) {
+        return DB_OPERATOR_FLOOR_PLAN_INVALID;
+    }
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(
+        database,
+        "SELECT sketch_json FROM operator_floor_plans WHERE uuid=? LIMIT 1;",
+        -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1, uuid, -1, SQLITE_TRANSIENT);
+        result = sqlite3_step(statement);
+    }
+    db_operator_floor_plan_result_t outcome = DB_OPERATOR_FLOOR_PLAN_NOT_FOUND;
+    if (result == SQLITE_ROW) {
+        outcome = DB_OPERATOR_FLOOR_PLAN_OK;
+        const unsigned char *text = sqlite3_column_text(statement, 0);
+        int bytes = sqlite3_column_bytes(statement, 0);
+        if (text && bytes > 0 && bytes <= OPERATOR_FLOOR_PLAN_SKETCH_MAX) {
+            *sketch_json = malloc((size_t)bytes + 1);
+            if (*sketch_json) {
+                memcpy(*sketch_json, text, (size_t)bytes);
+                (*sketch_json)[bytes] = '\0';
+            } else {
+                outcome = DB_OPERATOR_FLOOR_PLAN_ERROR;
+            }
+        }
+    } else if (result != SQLITE_DONE) {
+        outcome = DB_OPERATOR_FLOOR_PLAN_ERROR;
+    }
+    if (statement) sqlite3_finalize(statement);
     pthread_mutex_unlock(mutex);
     return outcome;
 }

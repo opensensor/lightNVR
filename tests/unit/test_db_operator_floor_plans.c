@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -65,7 +66,7 @@ void test_create_update_and_delete_plan_camera_placements(void) {
 
     TEST_ASSERT_EQUAL_INT(
         DB_OPERATOR_FLOOR_PLAN_OK,
-        db_operator_floor_plan_create(&plan, &marker, 1));
+        db_operator_floor_plan_create(&plan, &marker, 1, NULL));
     TEST_ASSERT_EQUAL_INT64(1, plan.revision);
 
     operator_floor_plan_t plans[4];
@@ -79,7 +80,7 @@ void test_create_update_and_delete_plan_camera_placements(void) {
     marker.x = 0.2;
     TEST_ASSERT_EQUAL_INT(
         DB_OPERATOR_FLOOR_PLAN_OK,
-        db_operator_floor_plan_update(&plan, &marker, 1, plan.revision));
+        db_operator_floor_plan_update(&plan, &marker, 1, plan.revision, NULL));
     TEST_ASSERT_EQUAL_INT64(2, plan.revision);
     TEST_ASSERT_EQUAL_INT(
         DB_OPERATOR_FLOOR_PLAN_STALE,
@@ -102,18 +103,18 @@ void test_rejects_duplicate_or_out_of_bounds_placements(void) {
     }
     TEST_ASSERT_EQUAL_INT(
         DB_OPERATOR_FLOOR_PLAN_INVALID,
-        db_operator_floor_plan_create(&plan, markers, 2));
+        db_operator_floor_plan_create(&plan, markers, 2, NULL));
     plan = make_plan("Outside canvas");
     markers[0].x = 1.1;
     TEST_ASSERT_EQUAL_INT(
         DB_OPERATOR_FLOOR_PLAN_INVALID,
-        db_operator_floor_plan_create(&plan, markers, 1));
+        db_operator_floor_plan_create(&plan, markers, 1, NULL));
 }
 
 void test_set_and_clear_background_without_revision_bump(void) {
     operator_floor_plan_t plan = make_plan("Warehouse");
     TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
-        db_operator_floor_plan_create(&plan, NULL, 0));
+        db_operator_floor_plan_create(&plan, NULL, 0, NULL));
     TEST_ASSERT_EQUAL_STRING("", plan.background_mime);
 
     TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
@@ -147,6 +148,53 @@ void test_set_and_clear_background_without_revision_bump(void) {
     TEST_ASSERT_EQUAL_INT64(1, current.revision);
 }
 
+void test_sketch_is_stored_kept_and_cleared_with_revision(void) {
+    operator_floor_plan_t plan = make_plan("Sketched");
+    const char *sketch =
+        "{\"version\":1,\"shapes\":[{\"id\":\"a\",\"type\":\"rect\","
+        "\"tone\":\"slate\",\"x\":0.1,\"y\":0.1,\"w\":0.2,\"h\":0.2,"
+        "\"filled\":true}]}";
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_create(&plan, NULL, 0, sketch));
+    TEST_ASSERT_EQUAL_INT((int)strlen(sketch), plan.sketch_bytes);
+
+    char *loaded = NULL;
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_sketch_load(plan.uuid, &loaded));
+    TEST_ASSERT_NOT_NULL(loaded);
+    TEST_ASSERT_EQUAL_STRING(sketch, loaded);
+    free(loaded);
+
+    // NULL leaves the sketch alone while other fields and the revision move.
+    plan.canvas_width = 1600;
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_update(&plan, NULL, 0, plan.revision, NULL));
+    TEST_ASSERT_EQUAL_INT64(2, plan.revision);
+    TEST_ASSERT_EQUAL_INT((int)strlen(sketch), plan.sketch_bytes);
+
+    // An empty string clears it.
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_update(&plan, NULL, 0, plan.revision, ""));
+    TEST_ASSERT_EQUAL_INT(0, plan.sketch_bytes);
+    loaded = (char *)"stale";
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK,
+        db_operator_floor_plan_sketch_load(plan.uuid, &loaded));
+    TEST_ASSERT_NULL(loaded);
+
+    // Oversized sketches never reach the row.
+    char *huge = malloc(OPERATOR_FLOOR_PLAN_SKETCH_MAX + 2);
+    TEST_ASSERT_NOT_NULL(huge);
+    memset(huge, 'x', OPERATOR_FLOOR_PLAN_SKETCH_MAX + 1);
+    huge[OPERATOR_FLOOR_PLAN_SKETCH_MAX + 1] = '\0';
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_INVALID,
+        db_operator_floor_plan_update(&plan, NULL, 0, plan.revision, huge));
+    free(huge);
+
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_NOT_FOUND,
+        db_operator_floor_plan_sketch_load(
+            "00000000-0000-4000-8000-000000000000", &loaded));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -157,6 +205,7 @@ int main(void) {
     RUN_TEST(test_create_update_and_delete_plan_camera_placements);
     RUN_TEST(test_rejects_duplicate_or_out_of_bounds_placements);
     RUN_TEST(test_set_and_clear_background_without_revision_bump);
+    RUN_TEST(test_sketch_is_stored_kept_and_cleared_with_revision);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
