@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <syslog.h>
@@ -756,6 +757,9 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "db_backup_interval_minutes", g_config.db_backup_interval_minutes);
     cJSON_AddNumberToObject(settings, "db_backup_retention_count", g_config.db_backup_retention_count);
     cJSON_AddStringToObject(settings, "db_post_backup_script", g_config.db_post_backup_script);
+    cJSON_AddStringToObject(settings, "db_backup_verify",
+                            g_config.db_backup_verify == DB_BACKUP_VERIFY_OFF ? "off" :
+                            g_config.db_backup_verify == DB_BACKUP_VERIFY_QUICK ? "quick" : "full");
     cJSON_AddStringToObject(settings, "models_path", g_config.models_path);
     cJSON_AddNumberToObject(settings, "buffer_size", g_config.buffer_size);
     cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
@@ -1982,6 +1986,29 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.db_backup_retention_count = value;
         settings_changed = true;
         log_info("Updated db_backup_retention_count: %d", g_config.db_backup_retention_count);
+    }
+
+    cJSON *db_backup_verify = cJSON_GetObjectItem(settings, "db_backup_verify");
+    if (db_backup_verify && cJSON_IsString(db_backup_verify)) {
+        const char *mode = db_backup_verify->valuestring;
+        int value;
+        if (strcasecmp(mode, "full") == 0) {
+            value = DB_BACKUP_VERIFY_FULL;
+        } else if (strcasecmp(mode, "quick") == 0) {
+            value = DB_BACKUP_VERIFY_QUICK;
+        } else if (strcasecmp(mode, "off") == 0) {
+            value = DB_BACKUP_VERIFY_OFF;
+        } else {
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "Invalid db_backup_verify: expected \"full\", \"quick\" or \"off\"");
+            return;
+        }
+        if (value != g_config.db_backup_verify) {
+            g_config.db_backup_verify = value;
+            settings_changed = true;
+            log_info("Updated db_backup_verify: %s", mode);
+        }
     }
 
     cJSON *db_post_backup_script = cJSON_GetObjectItem(settings, "db_post_backup_script");

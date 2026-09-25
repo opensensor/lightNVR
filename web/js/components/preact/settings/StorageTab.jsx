@@ -925,6 +925,24 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupRetentionHelpBefore')} <code>.bak</code> {t('settings.databaseBackupRetentionHelpAfter')}</span>
           </div>
         </div>
+        <div data-setting-label={t('settings.databaseBackupVerify')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-db-backup-verify" class="font-medium">{t('settings.databaseBackupVerify')}</label>
+          <div class="col-span-2">
+            <select
+              id="setting-db-backup-verify"
+              name="dbBackupVerify"
+              class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.dbBackupVerify}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            >
+              <option value="full">{t('settings.databaseBackupVerifyFull')}</option>
+              <option value="quick">{t('settings.databaseBackupVerifyQuick')}</option>
+              <option value="off">{t('settings.databaseBackupVerifyOff')}</option>
+            </select>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupVerifyHelp')}</span>
+          </div>
+        </div>
         <div data-setting-label={t('settings.postBackupScript')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
           <label for="setting-db-post-backup-script" class="font-medium">{t('settings.postBackupScript')}</label>
           <div class="col-span-2">
