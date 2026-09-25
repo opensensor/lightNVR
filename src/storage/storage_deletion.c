@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "database/db_core.h"
@@ -19,8 +20,20 @@
 #include "utils/strings.h"
 #include "utils/uuid.h"
 
+/* Seconds between full-ledger finalization sweeps in the worker. Deletions are
+ * normally finalized by uuid right after their objects complete; the sweep
+ * only recovers deletions interrupted between those two steps. */
+#define STORAGE_DELETION_SWEEP_INTERVAL_SEC 60
+/* Rows removed per prune transaction, bounding how long the mutex is held. */
+#define STORAGE_DELETION_PRUNE_BATCH 500
+/* Due objects considered per worker pass, in earliest-due order, before the
+ * FIFO ordering below picks among them. Bounds the sort to a window the
+ * partial index can deliver without scanning the ledger. */
+#define STORAGE_DELETION_DUE_WINDOW 256
+
 typedef struct {
     int64_t id;
+    char deletion[LIGHTNVR_UUID_STRING_SIZE];
     char target[LIGHTNVR_UUID_STRING_SIZE];
     char key[MAX_PATH_LENGTH];
     char upload_id[1024];
@@ -92,21 +105,72 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
     return 1;
 }
 
-static void finalize_deletions_locked(sqlite3 *db) {
-    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) return;
-    const char *sql = "UPDATE storage_deletions SET completed_at=strftime('%s','now') "
-        "WHERE completed_at IS NULL AND NOT EXISTS(SELECT 1 FROM storage_deletion_objects o "
-        "WHERE o.deletion_uuid=storage_deletions.uuid AND o.state<>'completed');"
-        "UPDATE detections SET recording_id=NULL WHERE recording_id IN "
-        "(SELECT r.id FROM recordings r JOIN storage_deletions d ON d.recording_id=r.id "
-        "WHERE r.deletion_pending=1 AND d.completed_at IS NOT NULL);"
-        "DELETE FROM recordings WHERE deletion_pending=1 AND EXISTS(SELECT 1 FROM storage_deletions d "
-        "WHERE d.recording_id=recordings.id AND d.completed_at IS NOT NULL);COMMIT;";
-    if (sqlite3_exec(db, sql, NULL, NULL, NULL) != SQLITE_OK)
-        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+static int execute_uuid(sqlite3 *db, const char *sql, const char *uuid) {
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        if (uuid) sqlite3_bind_text(statement, 1, uuid, -1, SQLITE_TRANSIENT);
+        result = sqlite3_step(statement);
+    }
+    if (statement) sqlite3_finalize(statement);
+    return result == SQLITE_DONE ? 0 : -1;
 }
 
+/* Close deletions whose objects have all completed, detach their detections
+ * and drop the recording rows. With a uuid only that ledger entry is inspected
+ * (primary key + idx_storage_deletion_object_deletion); without one the sweep
+ * walks the open entries through idx_storage_deletion_completed and the
+ * pending recordings through idx_recordings_deletion_pending, so its cost
+ * follows the in-flight set rather than the size of the ledger or catalog. */
+static int finalize_deletions_locked(sqlite3 *db, const char *uuid) {
+    static const char *const scoped[] = {
+        "UPDATE storage_deletions SET completed_at=strftime('%s','now') WHERE uuid=?1 AND completed_at IS NULL "
+        "AND NOT EXISTS(SELECT 1 FROM storage_deletion_objects o WHERE o.deletion_uuid=?1 AND o.state<>'completed');",
+        "UPDATE detections SET recording_id=NULL WHERE recording_id IN "
+        "(SELECT recording_id FROM storage_deletions WHERE uuid=?1 AND completed_at IS NOT NULL);",
+        "DELETE FROM recordings WHERE deletion_pending=1 AND id IN "
+        "(SELECT recording_id FROM storage_deletions WHERE uuid=?1 AND completed_at IS NOT NULL);"
+    };
+    static const char *const sweep[] = {
+        "UPDATE storage_deletions SET completed_at=strftime('%s','now') "
+        "WHERE completed_at IS NULL AND NOT EXISTS(SELECT 1 FROM storage_deletion_objects o "
+        "WHERE o.deletion_uuid=storage_deletions.uuid AND o.state<>'completed');",
+        "UPDATE detections SET recording_id=NULL WHERE recording_id IN "
+        "(SELECT r.id FROM recordings r JOIN storage_deletions d ON d.recording_id=r.id "
+        "WHERE r.deletion_pending=1 AND d.completed_at IS NOT NULL);",
+        "DELETE FROM recordings WHERE deletion_pending=1 AND EXISTS(SELECT 1 FROM storage_deletions d "
+        "WHERE d.recording_id=recordings.id AND d.completed_at IS NOT NULL);"
+    };
+    const char *const *steps = uuid ? scoped : sweep;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) return -1;
+    int result = 0;
+    for (size_t i = 0; result == 0 && i < 3; i++) result = execute_uuid(db, steps[i], uuid);
+    if (result == 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) return 0;
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return -1;
+}
+
+#define DELETION_DUE_SELECT \
+    "SELECT o.id,o.deletion_uuid,COALESCE(o.target_uuid,''),o.object_key,o.file_path,o.size_bytes,o.upload_id " \
+    "FROM storage_deletion_objects o LEFT JOIN storage_targets t ON t.uuid=o.target_uuid WHERE "
+#define DELETION_DUE_FILTER \
+    " AND (?2=0 OR COALESCE(t.target_type,'filesystem')='filesystem') " \
+    "AND NOT EXISTS(SELECT 1 FROM storage_deletions d JOIN storage_read_leases l ON l.recording_id=d.recording_id " \
+    "WHERE d.uuid=o.deletion_uuid AND l.expires_at>strftime('%s','now')) " \
+    "AND NOT EXISTS(SELECT 1 FROM storage_deletions d JOIN storage_retrieval_jobs j ON j.recording_id=d.recording_id " \
+    "WHERE d.uuid=o.deletion_uuid AND j.state='fetching') ORDER BY o.id LIMIT ?3;"
+
 static int process_due(const char *deletion_uuid, bool local_only, uint64_t *removed) {
+    /* One deletion: probe its objects through idx_storage_deletion_object_deletion.
+     * Sweep: take the earliest-due window from idx_storage_deletion_object_open
+     * (a partial index over open objects) and keep FIFO order inside it; the
+     * plain ORDER BY o.id form makes the planner walk the whole table. */
+    static const char *const scoped = DELETION_DUE_SELECT
+        "o.deletion_uuid=?1 AND o.state<>'completed' AND o.next_attempt_at<=strftime('%s','now')" DELETION_DUE_FILTER;
+    static const char *const sweep = DELETION_DUE_SELECT
+        "o.id IN (SELECT id FROM storage_deletion_objects WHERE state<>'completed' "
+        "AND next_attempt_at<=strftime('%s','now') ORDER BY next_attempt_at,id LIMIT ?1)" DELETION_DUE_FILTER;
+    static time_t last_sweep;
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return -1;
@@ -114,38 +178,41 @@ static int process_due(const char *deletion_uuid, bool local_only, uint64_t *rem
     int count = 0;
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
-    const char *sql = "SELECT o.id,COALESCE(o.target_uuid,''),o.object_key,o.file_path,o.size_bytes,o.upload_id "
-        "FROM storage_deletion_objects o LEFT JOIN storage_targets t ON t.uuid=o.target_uuid "
-        "WHERE o.state<>'completed' AND o.next_attempt_at<=strftime('%s','now') "
-        "AND (? IS NULL OR o.deletion_uuid=?) AND (?=0 OR COALESCE(t.target_type,'filesystem')='filesystem') "
-        "AND NOT EXISTS(SELECT 1 FROM storage_deletions d JOIN storage_read_leases l ON l.recording_id=d.recording_id "
-        "WHERE d.uuid=o.deletion_uuid AND l.expires_at>strftime('%s','now')) "
-        "AND NOT EXISTS(SELECT 1 FROM storage_deletions d JOIN storage_retrieval_jobs j ON j.recording_id=d.recording_id "
-        "WHERE d.uuid=o.deletion_uuid AND j.state='fetching') "
-        "ORDER BY o.id LIMIT ?;";
-    if (sqlite3_prepare_v2(db, sql, -1, &statement, NULL) == SQLITE_OK) {
-        if (deletion_uuid) {
-            sqlite3_bind_text(statement, 1, deletion_uuid, -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(statement, 2, deletion_uuid, -1, SQLITE_TRANSIENT);
-        }
-        sqlite3_bind_int(statement, 3, local_only);
-        sqlite3_bind_int(statement, 4, local_only ? 32 : 1);
+    if (sqlite3_prepare_v2(db, deletion_uuid ? scoped : sweep, -1, &statement, NULL) == SQLITE_OK) {
+        if (deletion_uuid) sqlite3_bind_text(statement, 1, deletion_uuid, -1, SQLITE_TRANSIENT);
+        else sqlite3_bind_int(statement, 1, STORAGE_DELETION_DUE_WINDOW);
+        sqlite3_bind_int(statement, 2, local_only);
+        sqlite3_bind_int(statement, 3, local_only ? 32 : 1);
         while (count < 32 && sqlite3_step(statement) == SQLITE_ROW) {
             deletion_item_t *item = &items[count++];
             memset(item, 0, sizeof(*item));
             item->id = sqlite3_column_int64(statement, 0);
-            safe_strcpy(item->target, (const char *)sqlite3_column_text(statement, 1), sizeof(item->target), 0);
-            safe_strcpy(item->key, (const char *)sqlite3_column_text(statement, 2), sizeof(item->key), 0);
-            safe_strcpy(item->path, (const char *)sqlite3_column_text(statement, 3), sizeof(item->path), 0);
-            item->size = (uint64_t)sqlite3_column_int64(statement, 4);
-            safe_strcpy(item->upload_id, (const char *)sqlite3_column_text(statement, 5), sizeof(item->upload_id), 0);
+            safe_strcpy(item->deletion, (const char *)sqlite3_column_text(statement, 1), sizeof(item->deletion), 0);
+            safe_strcpy(item->target, (const char *)sqlite3_column_text(statement, 2), sizeof(item->target), 0);
+            safe_strcpy(item->key, (const char *)sqlite3_column_text(statement, 3), sizeof(item->key), 0);
+            safe_strcpy(item->path, (const char *)sqlite3_column_text(statement, 4), sizeof(item->path), 0);
+            item->size = (uint64_t)sqlite3_column_int64(statement, 5);
+            safe_strcpy(item->upload_id, (const char *)sqlite3_column_text(statement, 6), sizeof(item->upload_id), 0);
         }
     }
     if (statement) sqlite3_finalize(statement);
     pthread_mutex_unlock(mutex);
     for (int i = 0; i < count; i++) process_item(&items[i], local_only, removed);
     pthread_mutex_lock(mutex);
-    finalize_deletions_locked(db);
+    if (deletion_uuid) {
+        finalize_deletions_locked(db, deletion_uuid);
+    } else {
+        for (int i = 0; i < count; i++) {
+            int seen = 0;
+            for (int j = 0; j < i && !seen; j++) seen = strcmp(items[j].deletion, items[i].deletion) == 0;
+            if (!seen) finalize_deletions_locked(db, items[i].deletion);
+        }
+        time_t now = time(NULL);
+        if (now - last_sweep >= STORAGE_DELETION_SWEEP_INTERVAL_SEC) {
+            last_sweep = now;
+            finalize_deletions_locked(db, NULL);
+        }
+    }
     pthread_mutex_unlock(mutex);
     return count;
 }
@@ -155,6 +222,68 @@ static bool recovery_read_only(void) {
     return value && !strcmp(value, "1");
 }
 int storage_deletion_process_one(void) { return recovery_read_only() ? 0 : process_due(NULL, false, NULL); }
+
+int storage_deletion_finalize_all(void) {
+    if (recovery_read_only()) return 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    int result = finalize_deletions_locked(db, NULL);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+/* Remove one batch of finished ledger entries. Both statements select the same
+ * rows (same ordered window, one transaction, and the first touches only the
+ * child table), so objects are removed explicitly even when the connection has
+ * foreign-key enforcement off; with it on, the cascade finds nothing left. */
+static int prune_batch_locked(sqlite3 *db, int64_t cutoff, int limit) {
+    static const char *const steps[] = {
+        "DELETE FROM storage_deletion_objects WHERE deletion_uuid IN (SELECT uuid FROM storage_deletions "
+        "WHERE completed_at IS NOT NULL AND completed_at<?1 ORDER BY completed_at,rowid LIMIT ?2);",
+        "DELETE FROM storage_deletions WHERE rowid IN (SELECT rowid FROM storage_deletions "
+        "WHERE completed_at IS NOT NULL AND completed_at<?1 ORDER BY completed_at,rowid LIMIT ?2);"
+    };
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) return -1;
+    int pruned = 0;
+    for (size_t i = 0; pruned >= 0 && i < 2; i++) {
+        sqlite3_stmt *statement = NULL;
+        int result = sqlite3_prepare_v2(db, steps[i], -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            sqlite3_bind_int64(statement, 1, (sqlite3_int64)cutoff);
+            sqlite3_bind_int(statement, 2, limit);
+            result = sqlite3_step(statement);
+        }
+        if (statement) sqlite3_finalize(statement);
+        pruned = result == SQLITE_DONE ? sqlite3_changes(db) : -1;
+    }
+    if (pruned >= 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) return pruned;
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return -1;
+}
+
+int storage_deletion_prune_completed(int older_than_days, int max_rows) {
+    if (recovery_read_only()) return 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    if (older_than_days <= 0) older_than_days = STORAGE_DELETION_PRUNE_DEFAULT_DAYS;
+    if (max_rows <= 0) max_rows = STORAGE_DELETION_PRUNE_DEFAULT_ROWS;
+    int64_t cutoff = (int64_t)time(NULL) - (int64_t)older_than_days * 86400;
+    int pruned = 0;
+    while (pruned < max_rows) {
+        int limit = max_rows - pruned;
+        if (limit > STORAGE_DELETION_PRUNE_BATCH) limit = STORAGE_DELETION_PRUNE_BATCH;
+        pthread_mutex_lock(mutex);
+        int batch = prune_batch_locked(db, cutoff, limit);
+        pthread_mutex_unlock(mutex);
+        if (batch < 0) return pruned ? pruned : -1;
+        pruned += batch;
+        if (batch < limit) break;
+    }
+    return pruned;
+}
 
 static int inventory_path(sqlite3 *db, const char *uuid, const char *path) {
     sqlite3_stmt *stmt = NULL;
@@ -169,14 +298,19 @@ static int inventory_path(sqlite3 *db, const char *uuid, const char *path) {
 }
 
 static int inventory_derivatives(sqlite3 *db, const char *uuid, uint64_t id) {
-    // Journal generated names as well as existing files: an in-flight consumer
-    // may finish writing before the recording's read lease expires.
+    /* Journal only derivatives that exist: a recording without thumbnails or a
+     * transcode cache then costs one ledger row and one unlink instead of five.
+     * Derivatives a still-running consumer writes after this point are removed
+     * by the caller's post-deletion cleanup (storage_manager) rather than
+     * journaled speculatively. */
     char path[MAX_PATH_LENGTH], directory[MAX_PATH_LENGTH];
     for (int i = 0; i < 3; i++) {
         int n = snprintf(path, sizeof(path), "%s/thumbnails/%llu_%d.jpg", g_config.storage_path, (unsigned long long)id, i);
-        if (n < 0 || n >= (int)sizeof(path) || inventory_path(db, uuid, path)) return -1;
+        if (n < 0 || n >= (int)sizeof(path)) return -1;
+        if (access(path, F_OK) == 0 && inventory_path(db, uuid, path)) return -1;
     }
-    if (!build_recording_transcode_cache_path(g_config.storage_path, id, path, sizeof(path)) && inventory_path(db, uuid, path)) return -1;
+    if (!build_recording_transcode_cache_path(g_config.storage_path, id, path, sizeof(path)) &&
+        access(path, F_OK) == 0 && inventory_path(db, uuid, path)) return -1;
     int n = snprintf(directory, sizeof(directory), "%s/thumbnails/investigation/%llu", g_config.storage_path, (unsigned long long)id);
     if (n < 0 || n >= (int)sizeof(directory)) return -1;
     DIR *dir = opendir(directory);
@@ -300,7 +434,8 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     pthread_mutex_unlock(mutex);
     if (!committed) return -1;
     /* Preserve synchronous local reclamation for the pressure controller. Remote
-     * work is handled by the background worker and remains in the journal. */
+     * work is handled by the background worker and remains in the journal. Only
+     * this deletion's ledger entry is inspected and finalized here. */
     process_due(uuid, true, removed);
     pthread_mutex_lock(mutex);
     statement = NULL;

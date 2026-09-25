@@ -20,4 +20,19 @@ int storage_recording_expire_policy(uint64_t recording_id);
 int storage_recording_expire_age(uint64_t recording_id, int64_t cutoff);
 /* Process one durable deletion item. Network I/O occurs only in the worker. */
 int storage_deletion_process_one(void);
+/* Close every deletion whose objects have all completed and drop the recording
+ * rows it still holds. Per-deletion paths finalize only their own ledger entry;
+ * the worker runs this sweep periodically to recover deletions interrupted
+ * between object completion and finalization. Returns 0 or -1. */
+int storage_deletion_finalize_all(void);
+/* Trim finished ledger entries: storage_deletions rows whose completed_at is
+ * older than older_than_days (default STORAGE_DELETION_PRUNE_DEFAULT_DAYS when
+ * <= 0) together with their object rows, at most max_rows entries per call
+ * (default STORAGE_DELETION_PRUNE_DEFAULT_ROWS when <= 0), in batches that
+ * each hold the database mutex briefly. Intended for the deep maintenance
+ * cycle. Returns the number of storage_deletions rows removed, or -1 when a
+ * database error prevented any progress. */
+#define STORAGE_DELETION_PRUNE_DEFAULT_DAYS 7
+#define STORAGE_DELETION_PRUNE_DEFAULT_ROWS 50000
+int storage_deletion_prune_completed(int older_than_days, int max_rows);
 #endif

@@ -1572,10 +1572,22 @@ static void deep_maintenance_cycle(void) {
         log_warn("Deep maintenance: session cleanup error");
     }
 
-    // 2. Run a standard cleanup as part of deep maintenance
+    // 2. Prune completed deletion-ledger entries. Every recording deletion
+    //    journals a storage_deletions row plus one object row per file; left
+    //    alone they grew to millions of rows on a busy site and made every
+    //    later deletion (and everything waiting on the DB mutex) slower.
+    int ledger_pruned = storage_deletion_prune_completed(STORAGE_DELETION_PRUNE_DEFAULT_DAYS,
+                                                        STORAGE_DELETION_PRUNE_DEFAULT_ROWS);
+    if (ledger_pruned > 0) {
+        log_info("Deep maintenance: pruned %d completed deletion ledger entries", ledger_pruned);
+    } else if (ledger_pruned < 0) {
+        log_warn("Deep maintenance: deletion ledger prune error");
+    }
+
+    // 3. Run a standard cleanup as part of deep maintenance
     standard_cleanup_cycle();
 
-    // 3. Update deep maintenance timestamp
+    // 4. Update deep maintenance timestamp
     pthread_mutex_lock(&unified_ctrl.mutex);
     unified_ctrl.health.last_deep_time = time(NULL);
     pthread_mutex_unlock(&unified_ctrl.mutex);

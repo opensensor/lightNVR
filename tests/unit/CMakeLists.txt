@@ -187,6 +187,7 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
 add_layer2_test(test_storage_manager_retention)
 add_layer2_test(test_storage_target_pressure_cleanup)
 add_layer2_test(test_storage_migration)
+add_layer2_test(test_storage_deletion_ledger)   # Layer 2: deletion ledger scoping, pruning, indexes
 if(ENABLE_S3_ARCHIVE)
     add_layer2_test(test_storage_archive)
     target_link_options(test_storage_archive PRIVATE "-Wl,--wrap=uv_timer_start")

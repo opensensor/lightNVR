@@ -2019,6 +2019,22 @@ static const char migration_0085_up[] =
 static const char migration_0085_down[] =
     "DROP INDEX IF EXISTS idx_storage_migration_recording_state;";
 
+static const char migration_0086_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_recordings_deletion_pending\n"
+    "    ON recordings(deletion_pending) WHERE deletion_pending = 1;\n"
+    "CREATE INDEX IF NOT EXISTS idx_storage_deletion_object_deletion\n"
+    "    ON storage_deletion_objects(deletion_uuid);\n"
+    "CREATE INDEX IF NOT EXISTS idx_storage_deletion_object_open\n"
+    "    ON storage_deletion_objects(next_attempt_at, id) WHERE state <> 'completed';\n"
+    "CREATE INDEX IF NOT EXISTS idx_storage_deletion_completed\n"
+    "    ON storage_deletions(completed_at);";
+
+static const char migration_0086_down[] =
+    "DROP INDEX IF EXISTS idx_storage_deletion_completed;\n"
+    "DROP INDEX IF EXISTS idx_storage_deletion_object_open;\n"
+    "DROP INDEX IF EXISTS idx_storage_deletion_object_deletion;\n"
+    "DROP INDEX IF EXISTS idx_recordings_deletion_pending;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2615,8 +2631,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0085_down,
         .is_embedded = true
     },
+    {
+        .version = "0086",
+        .description = "index_storage_deletion_ledger",
+        .sql_up = migration_0086_up,
+        .sql_down = migration_0086_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 85
+#define EMBEDDED_MIGRATIONS_COUNT 86
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
