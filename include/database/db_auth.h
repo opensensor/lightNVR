@@ -133,7 +133,9 @@ int db_auth_delete_user(int64_t user_id);
 
 /**
  * @brief Get a user by ID
- * 
+ *
+ * Reads a private read-only connection (see db_auth_validate_session_with_context).
+ *
  * @param user_id User ID
  * @param user Pointer to store the user information
  * @return 0 on success, non-zero on failure
@@ -151,7 +153,9 @@ int db_auth_get_user_by_username(const char *username, user_t *user);
 
 /**
  * @brief Get a user by API key
- * 
+ *
+ * Reads a private read-only connection (see db_auth_validate_session_with_context).
+ *
  * @param api_key API key
  * @param user Pointer to store the user information
  * @return 0 on success, non-zero on failure
@@ -212,7 +216,15 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
 
 /**
  * @brief Validate a session token
- * 
+ *
+ * The session/user lookup runs on a private read-only connection
+ * (db_open_readonly_connection) and therefore never waits for the shared
+ * writer mutex or a long-running statement on the shared handle; it only sees
+ * committed rows. The only write is the session-tracking UPDATE on the shared
+ * handle, which is throttled: last_activity_at / idle_expires_at are rewritten
+ * at most once per 60 s per session (or when the idle deadline is within 60 s),
+ * and ip_address / user_agent only when they differ from the stored values.
+ *
  * @param token Session token
  * @param user_id Pointer to store the user ID (optional, can be NULL)
  * @param ip_address Current client IP address for session tracking (optional, can be NULL)

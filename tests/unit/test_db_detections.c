@@ -428,14 +428,24 @@ void test_recent_detection_queries_do_not_scan_full_stream_history(void) {
     progress.calls = 0;
     sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
 
+    /* The public entry point runs on a private read-only connection where
+     * this progress handler cannot see it, so instrument the query through
+     * the connection-taking variant on the shared handle... */
     recording_detection_summary_t summary;
-    int summary_result = get_recording_detection_summaries(
-        &recording, 1, &summary);
+    int summary_result = get_recording_detection_summaries_on_connection(
+        db, &recording, 1, &summary);
 
     sqlite3_progress_handler(db, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(0, summary_result);
     TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summary, "person"));
     TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
+
+    /* ...and check the snapshot-backed public call agrees with it. */
+    recording_detection_summary_t snapshot_summary;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_detection_summaries(
+        &recording, 1, &snapshot_summary));
+    TEST_ASSERT_TRUE(snapshot_summary.has_detection);
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&snapshot_summary, "person"));
 }
 
 int main(void) {

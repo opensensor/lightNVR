@@ -62,6 +62,22 @@ static inline const char *recording_capture_method(
 #define RETENTION_TIER_EPHEMERAL  3
 
 /**
+ * In-process change generation for the recordings table.
+ *
+ * Incremented after every mutation performed through this module that can
+ * change what the recording list or count queries return (insert, completion,
+ * start-time correction, protection toggle, deletion via
+ * delete_recording_metadata / delete_old_recording_metadata). Callers that
+ * cache derived values (for example the exact page total) compare the
+ * generation they cached against the current one to drop stale entries early.
+ * Retention deletions that go straight through storage_deletion.c do not bump
+ * it, so any cache must still bound staleness with a TTL.
+ *
+ * @return Monotonically increasing generation (starts at 1)
+ */
+uint64_t db_recordings_generation(void);
+
+/**
  * Add recording metadata to the database
  * 
  * @param metadata Recording metadata
@@ -109,7 +125,11 @@ int get_recording_metadata(time_t start_time, time_t end_time,
                           int max_count);
 
 /**
- * Get total count of recordings matching filter criteria
+ * Get total count of recordings matching filter criteria.
+ *
+ * Runs on a private read-only connection (db_open_readonly_connection) so a
+ * multi-second COUNT never holds or waits for the shared writer mutex; it sees
+ * the latest committed WAL snapshot, never uncommitted rows.
  *
  * @param start_time Start time filter (0 for no filter)
  * @param end_time End time filter (0 for no filter)
@@ -130,7 +150,10 @@ int get_recording_count(time_t start_time, time_t end_time,
                        const char *tag_filter, const char *capture_method_filter);
 
 /**
- * Get paginated recording metadata from the database with sorting
+ * Get paginated recording metadata from the database with sorting.
+ *
+ * Runs on a private read-only connection (see get_recording_count); the
+ * connection lives only for prepare/step/row-copy of this one query.
  *
  * @param start_time Start time filter (0 for no filter)
  * @param end_time End time filter (0 for no filter)
@@ -161,6 +184,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 /**
  * Get recording metadata by ID
+ *
+ * Runs on a private read-only connection (see get_recording_count): it never
+ * waits for the shared writer mutex and sees committed rows only, so callers
+ * must not rely on it observing rows they inserted in a still-open
+ * transaction on the shared handle.
  *
  * @param id Recording ID
  * @param metadata Pointer to metadata structure to fill

@@ -3,7 +3,54 @@
 
 #include <sys/types.h>  /* for off_t */
 #include <time.h>       /* for time_t */
+#include <stdint.h>
 #include "database/database_manager.h"  /* for recording_metadata_t */
+
+/*
+ * Short-TTL cache for the exact page total of GET /api/recordings.
+ *
+ * The clock and the recordings generation are passed in rather than read
+ * internally so the cache is testable in isolation; the handler passes
+ * time(NULL) and db_recordings_generation(). Entries live 10 s, and any
+ * generation change invalidates them immediately.
+ */
+
+/**
+ * Build the cache key for one filter signature. Every predicate input of
+ * get_recording_count() plus the principal (user_id) and the server-resolved
+ * stream scope are length-prefixed into the key, so two requests share an
+ * entry only when they would run the identical COUNT.
+ *
+ * @return malloc()ed key (caller frees), or NULL on allocation failure
+ */
+char *recordings_count_cache_build_key(int64_t user_id, time_t start_time,
+                                       time_t end_time, const char *stream_name,
+                                       int has_detection,
+                                       const char *detection_label,
+                                       int protected_filter,
+                                       const char * const *allowed_streams,
+                                       int allowed_streams_count,
+                                       const char *tag_filter,
+                                       const char *capture_method_filter);
+
+/**
+ * Look up a cached total.
+ *
+ * @param key        Key from recordings_count_cache_build_key()
+ * @param now        Current time (injectable clock)
+ * @param generation Current db_recordings_generation()
+ * @param total      Receives the cached total on a hit
+ * @return 1 on a fresh hit (same generation, stored less than 10 s ago), else 0
+ */
+int recordings_count_cache_lookup(const char *key, time_t now,
+                                  uint64_t generation, int *total);
+
+/** Store/refresh a total for key at time now under generation. */
+void recordings_count_cache_store(const char *key, time_t now,
+                                  uint64_t generation, int total);
+
+/** Drop every cached total. */
+void recordings_count_cache_reset(void);
 
 /**
  * Get the total count of recordings matching given filters

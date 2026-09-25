@@ -254,6 +254,46 @@ void test_validate_session_updates_client_context_when_changed(void) {
     sqlite3_finalize(stmt);
 }
 
+/* The request gate reads sessions and users on a private read-only snapshot
+ * and only writes session tracking on the shared handle. Those reads must
+ * return the committed state promptly while another thread holds a write
+ * transaction on the shared handle (a retention DELETE, a bulk import), and
+ * must never observe that transaction's uncommitted rows. */
+void test_session_and_user_reads_use_committed_snapshot_and_do_not_block(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("snapuser", "pass", NULL,
+                                                 USER_ROLE_USER, true, &uid));
+    char api_key[64];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(uid, api_key, sizeof(api_key)));
+
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL));
+
+    /* A session created inside the open transaction is invisible to the gate. */
+    char token[128];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(uid, "127.0.0.1", "SnapAgent",
+                                                    3600, token, sizeof(token)));
+    time_t started = time(NULL);
+    int64_t out_uid = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, &out_uid));
+
+    /* Committed rows stay readable while the writer holds the transaction. */
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(uid, &user));
+    TEST_ASSERT_EQUAL_STRING("snapuser", user.username);
+    memset(&user, 0, sizeof(user));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_api_key(api_key, &user));
+    TEST_ASSERT_EQUAL_INT64(uid, user.id);
+    /* busy_timeout on the read-only connection is 10 s; a reader queued
+     * behind the writer would take at least that long. */
+    TEST_ASSERT_TRUE(time(NULL) - started < 5);
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(token, &out_uid));
+    TEST_ASSERT_EQUAL_INT64(uid, out_uid);
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(db));
+}
+
 /* delete_session invalidates */
 void test_delete_session(void) {
     int64_t uid = 0;
@@ -545,6 +585,7 @@ int main(void) {
     RUN_TEST(test_create_and_validate_session);
     RUN_TEST(test_validate_session_throttles_tracking_updates);
     RUN_TEST(test_validate_session_updates_client_context_when_changed);
+    RUN_TEST(test_session_and_user_reads_use_committed_snapshot_and_do_not_block);
     RUN_TEST(test_delete_session);
     RUN_TEST(test_list_sessions_and_trusted_devices);
     RUN_TEST(test_role_name_conversions);

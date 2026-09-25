@@ -11,6 +11,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <pthread.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
@@ -34,6 +37,190 @@
 #define MAX_SELECTED_STREAM_NAME_LEN 64
 #define MAX_BATCHED_DETECTION_RECORDINGS 1000
 #define MAX_BATCHED_TAG_RECORDINGS 100
+
+/*
+ * Exact-total cache for GET /api/recordings.
+ *
+ * The page total is an exact COUNT(*) over the same predicate as the page
+ * query; on a large archive with detection/tag sub-selects it is the most
+ * expensive statement of the request and a browser re-issues it on every
+ * page flip, sort change and poll. Entries are keyed on the complete filter
+ * signature (every predicate input plus the server-resolved stream scope and
+ * the principal), live for RECORDING_COUNT_CACHE_TTL_SECONDS, and are also
+ * dropped as soon as db_recordings_generation() moves (segment completed,
+ * deleted, protected...). The response contract is unchanged: "total" is
+ * still returned, it may just be up to 10 s old.
+ */
+#define RECORDING_COUNT_CACHE_TTL_SECONDS 10
+#define RECORDING_COUNT_CACHE_ENTRIES 32
+
+typedef struct {
+    char *key;
+    int total;
+    time_t stored_at;
+    uint64_t generation;
+} recording_count_cache_entry_t;
+
+static recording_count_cache_entry_t
+    recording_count_cache[RECORDING_COUNT_CACHE_ENTRIES];
+static pthread_mutex_t recording_count_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static unsigned recording_count_cache_cursor;
+
+typedef struct {
+    char *data;
+    size_t length;
+    size_t capacity;
+    bool failed;
+} count_key_builder_t;
+
+static void count_key_append(count_key_builder_t *builder, const char *bytes,
+                             size_t count) {
+    if (builder->failed) return;
+    if (builder->length + count + 1 > builder->capacity) {
+        size_t capacity = builder->capacity ? builder->capacity : 256;
+        while (capacity < builder->length + count + 1) capacity *= 2;
+        char *grown = realloc(builder->data, capacity);
+        if (!grown) {
+            builder->failed = true;
+            return;
+        }
+        builder->data = grown;
+        builder->capacity = capacity;
+    }
+    memcpy(builder->data + builder->length, bytes, count);
+    builder->length += count;
+    builder->data[builder->length] = '\0';
+}
+
+/* Length-prefixed so ("a,b" + "c") and ("a" + "b,c") never share a key. */
+static void count_key_append_text(count_key_builder_t *builder, const char *tag,
+                                  const char *value) {
+    char header[64];
+    size_t length = value ? strlen(value) : 0;
+    int written = snprintf(header, sizeof(header), "%s=%zu:", tag, length);
+    if (written < 0 || (size_t)written >= sizeof(header)) {
+        builder->failed = true;
+        return;
+    }
+    count_key_append(builder, header, (size_t)written);
+    if (length > 0) count_key_append(builder, value, length);
+    count_key_append(builder, ";", 1);
+}
+
+static void count_key_append_int(count_key_builder_t *builder, const char *tag,
+                                 long long value) {
+    char text[80];
+    int written = snprintf(text, sizeof(text), "%s=%lld;", tag, value);
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        builder->failed = true;
+        return;
+    }
+    count_key_append(builder, text, (size_t)written);
+}
+
+char *recordings_count_cache_build_key(int64_t user_id, time_t start_time,
+                                       time_t end_time, const char *stream_name,
+                                       int has_detection,
+                                       const char *detection_label,
+                                       int protected_filter,
+                                       const char * const *allowed_streams,
+                                       int allowed_streams_count,
+                                       const char *tag_filter,
+                                       const char *capture_method_filter) {
+    count_key_builder_t builder = {0};
+    count_key_append_int(&builder, "user", (long long)user_id);
+    count_key_append_int(&builder, "start", (long long)start_time);
+    count_key_append_int(&builder, "end", (long long)end_time);
+    count_key_append_text(&builder, "stream", stream_name);
+    count_key_append_int(&builder, "detection", has_detection);
+    count_key_append_text(&builder, "label", detection_label);
+    count_key_append_int(&builder, "protected", protected_filter);
+    count_key_append_text(&builder, "tag", tag_filter);
+    count_key_append_text(&builder, "capture", capture_method_filter);
+    int scope_count = allowed_streams ? allowed_streams_count : 0;
+    count_key_append_int(&builder, "scope", scope_count);
+    for (int i = 0; i < scope_count; i++) {
+        count_key_append_text(&builder, "n", allowed_streams[i]);
+    }
+    if (builder.failed) {
+        free(builder.data);
+        return NULL;
+    }
+    return builder.data;
+}
+
+static recording_count_cache_entry_t *count_cache_find_locked(const char *key) {
+    for (int i = 0; i < RECORDING_COUNT_CACHE_ENTRIES; i++) {
+        recording_count_cache_entry_t *entry = &recording_count_cache[i];
+        if (entry->key && strcmp(entry->key, key) == 0) return entry;
+    }
+    return NULL;
+}
+
+static bool count_cache_entry_fresh(const recording_count_cache_entry_t *entry,
+                                    time_t now, uint64_t generation) {
+    return entry->key && entry->generation == generation &&
+           now >= entry->stored_at &&
+           now - entry->stored_at < RECORDING_COUNT_CACHE_TTL_SECONDS;
+}
+
+int recordings_count_cache_lookup(const char *key, time_t now,
+                                  uint64_t generation, int *total) {
+    if (!key || !total) return 0;
+    int hit = 0;
+    pthread_mutex_lock(&recording_count_cache_mutex);
+    recording_count_cache_entry_t *entry = count_cache_find_locked(key);
+    if (entry && count_cache_entry_fresh(entry, now, generation)) {
+        *total = entry->total;
+        hit = 1;
+    }
+    pthread_mutex_unlock(&recording_count_cache_mutex);
+    return hit;
+}
+
+void recordings_count_cache_store(const char *key, time_t now,
+                                  uint64_t generation, int total) {
+    if (!key || total < 0) return;
+    pthread_mutex_lock(&recording_count_cache_mutex);
+    recording_count_cache_entry_t *entry = count_cache_find_locked(key);
+    if (!entry) {
+        /* Prefer an empty slot, then any stale one, then round-robin. */
+        for (int i = 0; i < RECORDING_COUNT_CACHE_ENTRIES && !entry; i++) {
+            if (!recording_count_cache[i].key) entry = &recording_count_cache[i];
+        }
+        for (int i = 0; i < RECORDING_COUNT_CACHE_ENTRIES && !entry; i++) {
+            if (!count_cache_entry_fresh(&recording_count_cache[i], now,
+                                         generation)) {
+                entry = &recording_count_cache[i];
+            }
+        }
+        if (!entry) {
+            entry = &recording_count_cache[recording_count_cache_cursor++ %
+                                           RECORDING_COUNT_CACHE_ENTRIES];
+        }
+        char *copy = strdup(key);
+        if (!copy) {
+            pthread_mutex_unlock(&recording_count_cache_mutex);
+            return;
+        }
+        free(entry->key);
+        entry->key = copy;
+    }
+    entry->total = total;
+    entry->stored_at = now;
+    entry->generation = generation;
+    pthread_mutex_unlock(&recording_count_cache_mutex);
+}
+
+void recordings_count_cache_reset(void) {
+    pthread_mutex_lock(&recording_count_cache_mutex);
+    for (int i = 0; i < RECORDING_COUNT_CACHE_ENTRIES; i++) {
+        free(recording_count_cache[i].key);
+        memset(&recording_count_cache[i], 0, sizeof(recording_count_cache[i]));
+    }
+    recording_count_cache_cursor = 0;
+    pthread_mutex_unlock(&recording_count_cache_mutex);
+}
 
 static int parse_selected_streams(const char *csv,
                                   char values[][MAX_SELECTED_STREAM_NAME_LEN],
@@ -350,13 +537,36 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         : allowed_streams_count;
 
     const char *tag_filt = tag_filter_str[0] != '\0' ? tag_filter_str : NULL;
+    const char *capture_filt = capture_method_str[0] != '\0' ? capture_method_str : NULL;
+    const char *stream_filt = stream_name[0] != '\0' ? stream_name : NULL;
 
-    int total_count = get_recording_count(start_time, end_time,
-                                          stream_name[0] != '\0' ? stream_name : NULL,
-                                          has_detection, label_filter, protected_filter,
-                                          streams_filter, streams_filter_count,
-                                          tag_filt,
-                                          capture_method_str[0] != '\0' ? capture_method_str : NULL);
+    /* Exact total, served from the short-TTL cache when the same principal
+     * asked the same question recently. limit=all sizes the page from the
+     * total, so it always recounts. The generation is sampled before the
+     * count so a write racing the COUNT invalidates what we store. */
+    uint64_t recordings_generation = db_recordings_generation();
+    time_t count_now = time(NULL);
+    char *count_key = all_limit_requested ? NULL
+        : recordings_count_cache_build_key(auth_user.id, start_time, end_time,
+                                           stream_filt, has_detection,
+                                           label_filter, protected_filter,
+                                           streams_filter, streams_filter_count,
+                                           tag_filt, capture_filt);
+    int total_count = -1;
+    if (!count_key ||
+        !recordings_count_cache_lookup(count_key, count_now,
+                                       recordings_generation, &total_count)) {
+        total_count = get_recording_count(start_time, end_time, stream_filt,
+                                          has_detection, label_filter,
+                                          protected_filter, streams_filter,
+                                          streams_filter_count, tag_filt,
+                                          capture_filt);
+        if (count_key && total_count >= 0) {
+            recordings_count_cache_store(count_key, count_now,
+                                         recordings_generation, total_count);
+        }
+    }
+    free(count_key);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
@@ -385,14 +595,12 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     }
 
     // Get recordings with pagination
-    int count = get_recording_metadata_paginated(start_time, end_time,
-                                                 stream_name[0] != '\0' ? stream_name : NULL,
+    int count = get_recording_metadata_paginated(start_time, end_time, stream_filt,
                                                  has_detection, label_filter, protected_filter,
                                                  sort_field, sort_order,
                                                  recordings, limit, offset,
                                                  streams_filter, streams_filter_count,
-                                                 tag_filt,
-                                                 capture_method_str[0] != '\0' ? capture_method_str : NULL);
+                                                 tag_filt, capture_filt);
 
     if (count < 0) {
         log_error("Failed to get recordings from database");

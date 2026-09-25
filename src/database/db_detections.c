@@ -994,17 +994,10 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 
 #define RECORDING_DETECTION_QUERY_BATCH_SIZE 100
 
-int get_recording_detection_summaries(
-    const recording_metadata_t *recordings, int count,
+int get_recording_detection_summaries_on_connection(
+    sqlite3 *db, const recording_metadata_t *recordings, int count,
     recording_detection_summary_t *summaries) {
-    if (!recordings || count <= 0 || !summaries) {
-        return -1;
-    }
-
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-    if (!db) {
-        log_error("Database not initialized");
+    if (!db || !recordings || count <= 0 || !summaries) {
         return -1;
     }
 
@@ -1052,13 +1045,11 @@ int get_recording_detection_summaries(
             "ORDER BY recording_id, label_count DESC, label;",
             sizeof(sql));
 
-        pthread_mutex_lock(db_mutex);
         sqlite3_stmt *stmt = NULL;
         int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare recording detection summaries: %s",
                       sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
 
@@ -1098,18 +1089,35 @@ int get_recording_detection_summaries(
             }
         }
 
+        sqlite3_finalize(stmt);
         if (rc != SQLITE_DONE) {
             log_error("Failed to fetch recording detection summaries: %s",
                       sqlite3_errmsg(db));
-            sqlite3_finalize(stmt);
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
     }
 
     return 0;
+}
+
+int get_recording_detection_summaries(
+    const recording_metadata_t *recordings, int count,
+    recording_detection_summary_t *summaries) {
+    if (!recordings || count <= 0 || !summaries) {
+        return -1;
+    }
+
+    /* Page enrichment reads a private read-only WAL snapshot so the list
+     * endpoint never queues behind the shared writer mutex. */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    int result = get_recording_detection_summaries_on_connection(
+        db, recordings, count, summaries);
+    db_close_readonly_connection(db);
+    return result;
 }
 
 int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels) {

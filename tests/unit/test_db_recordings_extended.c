@@ -369,6 +369,175 @@ void test_recording_filters_match_unlinked_points_and_spanning_intervals(void) {
     TEST_ASSERT_EQUAL_STRING("cam_interval", out[0].stream_name);
 }
 
+static void raw_insert_recording(const char *stream, const char *path,
+                                 time_t start, int is_complete) {
+    /* Bypasses db_recordings.c entirely (no generation bump), like an
+     * importer or migration writing straight through the shared handle. */
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
+        "size_bytes, codec, is_complete, trigger_type, schedule_restricted, "
+        "disk_pressure_eligible) VALUES (?, ?, ?, ?, 2048, 'h264', ?, "
+        "'scheduled', 1, 1);", -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, stream, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, path, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start);
+    sqlite3_bind_int64(stmt, 4, (sqlite3_int64)(start + 60));
+    sqlite3_bind_int(stmt, 5, is_complete);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
+/* The list/count/detail reads now run on a private read-only connection.
+ * They must see every row committed through the shared handle, whether it
+ * went through the module API or raw SQL (WAL visibility). */
+void test_readonly_list_reads_see_rows_committed_on_shared_handle(void) {
+    clear_recordings();
+    time_t now = time(NULL);
+    for (int i = 0; i < 3; i++) {
+        char path[64];
+        snprintf(path, sizeof(path), "/rec/wal-api-%d.mp4", i);
+        recording_metadata_t m = make_rec("wal_cam", path, now - (i + 1) * 100);
+        TEST_ASSERT_TRUE(add_recording_metadata(&m) > 0);
+    }
+    raw_insert_recording("wal_cam", "/rec/wal-raw.mp4", now, 1);
+    raw_insert_recording("wal_cam", "/rec/wal-open.mp4", now + 100, 0);
+
+    TEST_ASSERT_EQUAL_INT(4, get_recording_count(0, 0, "wal_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL));
+
+    recording_metadata_t out[8];
+    int n = get_recording_metadata_paginated(0, 0, "wal_cam", 0, NULL, -1,
+                                             "start_time", "desc", out, 8, 0,
+                                             NULL, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(4, n);
+    TEST_ASSERT_EQUAL_STRING("/rec/wal-raw.mp4", out[0].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/wal-api-0.mp4", out[1].file_path);
+
+    recording_metadata_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(out[0].id, &got));
+    TEST_ASSERT_EQUAL_STRING("wal_cam", got.stream_name);
+    TEST_ASSERT_EQUAL_UINT64(2048, got.size_bytes);
+}
+
+/* The exact total and the page query are built from the same predicate; the
+ * count must equal the number of rows a large enough page returns, including
+ * the scope intersection used by the API handler. */
+void test_recording_count_matches_paginated_rows_for_combined_filters(void) {
+    clear_recordings();
+    time_t now = time(NULL);
+    /* The window predicate is on start_time only, so every "inside" fixture
+     * starts inside [now-480, now-100]; a2 starts after the window. */
+    recording_metadata_t a0 = make_rec("cam_a", "/rec/f-a0.mp4", now - 470);
+    recording_metadata_t a1 = make_rec("cam_a", "/rec/f-a1.mp4", now - 400);
+    recording_metadata_t a2 = make_rec("cam_a", "/rec/f-a2.mp4", now - 50);
+    recording_metadata_t b0 = make_rec("cam_b", "/rec/f-b0.mp4", now - 450);
+    recording_metadata_t c0 = make_rec("cam_c", "/rec/f-c0.mp4", now - 450);
+    safe_strcpy(a2.trigger_type, "detection", sizeof(a2.trigger_type), 0);
+    TEST_ASSERT_TRUE(add_recording_metadata(&a0) > 0);
+    uint64_t a1_id = add_recording_metadata(&a1);
+    TEST_ASSERT_TRUE(a1_id > 0);
+    /* add_recording_metadata() does not persist the protected flag; protection
+     * is applied afterwards through set_recording_protected(). */
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(a1_id, true));
+    TEST_ASSERT_TRUE(add_recording_metadata(&a2) > 0);
+    TEST_ASSERT_TRUE(add_recording_metadata(&b0) > 0);
+    TEST_ASSERT_TRUE(add_recording_metadata(&c0) > 0);
+
+    /* Explicit stream predicate AND server scope AND window AND unprotected. */
+    const char *scope[] = {"cam_a", "cam_c"};
+    time_t window_start = now - 480;
+    time_t window_end = now - 100;
+    int count = get_recording_count(window_start, window_end, "cam_a,cam_b", 0,
+                                    NULL, 0, scope, 2, NULL, NULL);
+    recording_metadata_t out[16];
+    int rows = get_recording_metadata_paginated(window_start, window_end,
+                                                "cam_a,cam_b", 0, NULL, 0,
+                                                "start_time", "asc", out, 16, 0,
+                                                scope, 2, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_INT(count, rows);
+    TEST_ASSERT_EQUAL_STRING("/rec/f-a0.mp4", out[0].file_path);
+
+    /* No scope: the explicit predicate alone. */
+    count = get_recording_count(window_start, window_end, "cam_a,cam_b", 0,
+                                NULL, -1, NULL, 0, NULL, NULL);
+    rows = get_recording_metadata_paginated(window_start, window_end,
+                                            "cam_a,cam_b", 0, NULL, -1,
+                                            "start_time", "asc", out, 16, 0,
+                                            NULL, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(3, count);
+    TEST_ASSERT_EQUAL_INT(count, rows);
+}
+
+/* A retention DELETE or a bulk import holds a write transaction on the shared
+ * handle for seconds. The snapshot reads must return the committed state
+ * promptly instead of queueing behind it, and must not leak uncommitted rows. */
+void test_readonly_list_reads_do_not_block_on_open_write_transaction(void) {
+    clear_recordings();
+    time_t now = time(NULL);
+    recording_metadata_t committed = make_rec("txn_cam", "/rec/txn-1.mp4", now - 100);
+    TEST_ASSERT_TRUE(add_recording_metadata(&committed) > 0);
+
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL));
+    raw_insert_recording("txn_cam", "/rec/txn-uncommitted.mp4", now, 1);
+
+    time_t started = time(NULL);
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "txn_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL));
+    recording_metadata_t out[4];
+    TEST_ASSERT_EQUAL_INT(1, get_recording_metadata_paginated(
+        0, 0, "txn_cam", 0, NULL, -1, "start_time", "desc", out, 4, 0,
+        NULL, 0, NULL, NULL));
+    TEST_ASSERT_EQUAL_STRING("/rec/txn-1.mp4", out[0].file_path);
+    /* busy_timeout on the read-only connection is 10 s; a reader that had
+     * queued behind the writer would take at least that long. */
+    TEST_ASSERT_TRUE(time(NULL) - started < 5);
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "txn_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL));
+}
+
+/* The generation feeds the list handler's total cache: every mutation that
+ * can change the list or its count must move it; reads and unrelated
+ * retention bookkeeping must not. */
+void test_recordings_generation_bumps_only_on_list_affecting_mutations(void) {
+    time_t now = time(NULL);
+    uint64_t before = db_recordings_generation();
+    TEST_ASSERT_GREATER_THAN_UINT64(0, before);
+
+    recording_metadata_t m = make_rec("gen_cam", "/rec/gen.mp4", now);
+    uint64_t id = add_recording_metadata(&m);
+    TEST_ASSERT_TRUE(id > 0);
+    uint64_t after_add = db_recordings_generation();
+    TEST_ASSERT_GREATER_THAN_UINT64(before, after_add);
+
+    TEST_ASSERT_EQUAL_INT(0, update_recording_metadata(id, now + 60, 4096, true));
+    uint64_t after_update = db_recordings_generation();
+    TEST_ASSERT_GREATER_THAN_UINT64(after_add, after_update);
+
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, true));
+    uint64_t after_protect = db_recordings_generation();
+    TEST_ASSERT_GREATER_THAN_UINT64(after_update, after_protect);
+
+    TEST_ASSERT_EQUAL_INT(0, update_recording_start_time(id, now - 5));
+    uint64_t after_start = db_recordings_generation();
+    TEST_ASSERT_GREATER_THAN_UINT64(after_protect, after_start);
+
+    /* Retention tier does not participate in any list predicate. */
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(id, RETENTION_TIER_CRITICAL));
+    TEST_ASSERT_EQUAL_UINT64(after_start, db_recordings_generation());
+
+    recording_metadata_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &got));
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "gen_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL));
+    TEST_ASSERT_EQUAL_UINT64(after_start, db_recordings_generation());
+}
+
 /* set_recording_retention_tier */
 void test_set_recording_retention_tier(void) {
     time_t now = time(NULL);
@@ -503,6 +672,10 @@ int main(void) {
     RUN_TEST(test_get_recording_metadata_paginated);
     RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);
     RUN_TEST(test_recording_filters_match_unlinked_points_and_spanning_intervals);
+    RUN_TEST(test_readonly_list_reads_see_rows_committed_on_shared_handle);
+    RUN_TEST(test_recording_count_matches_paginated_rows_for_combined_filters);
+    RUN_TEST(test_readonly_list_reads_do_not_block_on_open_write_transaction);
+    RUN_TEST(test_recordings_generation_bumps_only_on_list_affecting_mutations);
     RUN_TEST(test_set_recording_retention_tier);
     RUN_TEST(test_set_recording_disk_pressure_eligible);
     RUN_TEST(test_add_recording_defaults_unprotected_to_pressure_eligible);

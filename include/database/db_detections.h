@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sqlite3.h>
 #include "database/db_recordings.h"
 #include "video/detection_result.h"
 
@@ -168,6 +169,10 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
  * Linked point detections use recording_id directly; unlinked legacy/API
  * detections and external-motion intervals retain time-overlap fallback.
  *
+ * Runs on a private read-only connection (db_open_readonly_connection), so it
+ * neither takes nor waits for the shared writer mutex and only sees committed
+ * rows.
+ *
  * @param recordings Recording metadata for the requested page
  * @param count Number of recordings and output summaries
  * @param summaries Output summaries in the same order as recordings
@@ -175,6 +180,17 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
  */
 int get_recording_detection_summaries(
     const recording_metadata_t *recordings, int count,
+    recording_detection_summary_t *summaries);
+
+/**
+ * Same as get_recording_detection_summaries() but on a caller-supplied
+ * connection. No locking is performed: the caller owns the connection
+ * (typically one from db_open_readonly_connection(), or the shared handle in
+ * single-threaded tests that want to instrument the query with
+ * sqlite3_progress_handler()).
+ */
+int get_recording_detection_summaries_on_connection(
+    sqlite3 *db, const recording_metadata_t *recordings, int count,
     recording_detection_summary_t *summaries);
 
 /**

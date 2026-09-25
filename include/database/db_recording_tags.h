@@ -45,6 +45,10 @@ int db_recording_tag_get(uint64_t recording_id, char tags[][MAX_TAG_LENGTH], int
  * Get tags for multiple recordings with one query per bounded batch.
  * Results use the same order as recording_ids.
  *
+ * Runs on a private read-only connection (db_open_readonly_connection), so it
+ * neither takes nor waits for the shared writer mutex and only sees committed
+ * rows.
+ *
  * @param recording_ids Recording IDs to load
  * @param count Number of recording IDs and output entries
  * @param tag_lists Output tag lists, one per recording ID

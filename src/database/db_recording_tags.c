@@ -111,9 +111,10 @@ int db_recording_tag_get_batch(const uint64_t *recording_ids, int count,
                                recording_tag_list_t *tag_lists) {
     if (!recording_ids || count <= 0 || !tag_lists) return -1;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mtx = get_db_mutex();
-    if (!db) {
+    /* Page enrichment reads a private read-only WAL snapshot so the list
+     * endpoint never queues behind the shared writer mutex. */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
         log_error("Database not initialized");
         return -1;
     }
@@ -139,12 +140,11 @@ int db_recording_tag_get_batch(const uint64_t *recording_ids, int count,
         }
         safe_strcat(sql, ") ORDER BY recording_id, tag;", sizeof(sql));
 
-        pthread_mutex_lock(mtx);
         sqlite3_stmt *stmt = NULL;
         int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare batch tag select: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(mtx);
+            db_close_readonly_connection(db);
             return -1;
         }
 
@@ -175,13 +175,13 @@ int db_recording_tag_get_batch(const uint64_t *recording_ids, int count,
         if (rc != SQLITE_DONE) {
             log_error("Failed to fetch batch recording tags: %s", sqlite3_errmsg(db));
             sqlite3_finalize(stmt);
-            pthread_mutex_unlock(mtx);
+            db_close_readonly_connection(db);
             return -1;
         }
         sqlite3_finalize(stmt);
-        pthread_mutex_unlock(mtx);
     }
 
+    db_close_readonly_connection(db);
     return total;
 }
 

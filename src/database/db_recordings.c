@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sqlite3.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "database/db_recordings.h"
 #include "storage/storage_deletion.h"
@@ -20,6 +21,25 @@
 
 #define MAX_MULTI_FILTER_VALUES 32
 #define MAX_MULTI_FILTER_VALUE_LEN 128
+
+/*
+ * In-process change generation for the recordings table. Every mutation that
+ * can alter what the recording list / count queries return bumps it, so
+ * short-TTL caches keyed on a filter signature can drop stale totals as soon
+ * as a segment completes or is deleted instead of waiting for the TTL.
+ * Deletions that bypass this module (storage_deletion.c retention sweeps) are
+ * covered by the TTL alone.
+ */
+static atomic_uint_fast64_t recordings_generation = 1;
+
+static void bump_recordings_generation(void) {
+    atomic_fetch_add_explicit(&recordings_generation, 1, memory_order_relaxed);
+}
+
+uint64_t db_recordings_generation(void) {
+    return (uint64_t)atomic_load_explicit(&recordings_generation,
+                                          memory_order_relaxed);
+}
 
 /*
  * Link detections which arrived while a recording segment was rotating or
@@ -275,6 +295,7 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
         log_error("Failed to add recording metadata: %s", sqlite3_errmsg(db));
     } else {
         recording_id = (uint64_t)sqlite3_last_insert_rowid(db);
+        bump_recordings_generation();
         log_debug("Added recording metadata with ID %llu", (unsigned long long)recording_id);
     }
 
@@ -330,6 +351,7 @@ int update_recording_metadata(uint64_t id, time_t end_time,
 
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
+    bump_recordings_generation();
 
     if (is_complete && end_time > 0) {
         int linked = backfill_recording_detection_links_locked(db, id);
@@ -395,6 +417,7 @@ int update_recording_start_time(uint64_t id, time_t start_time) {
 
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
+    bump_recordings_generation();
 
     log_debug("Corrected start_time for recording ID %llu to %ld",
               (unsigned long long)id, (long)start_time);
@@ -407,20 +430,18 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     sqlite3_stmt *stmt;
     int result = -1;
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
     if (!metadata) {
         log_error("Invalid parameters for get_recording_metadata_by_id");
         return -1;
     }
 
-    pthread_mutex_lock(db_mutex);
+    /* Detail/playback/download lookups read a private WAL snapshot so they
+     * never queue behind the writer mutex (see db_open_readonly_connection). */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Database not initialized");
+        return -1;
+    }
 
     const char *sql = "SELECT r.id, r.stream_name, r.file_path, "
                       "r.start_time, r.end_time, "
@@ -433,7 +454,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -527,7 +548,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
 
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     if (result == 0 && metadata->storage_target_uuid[0] &&
         metadata->object_key[0]) {
@@ -829,16 +850,6 @@ int get_recording_count(time_t start_time, time_t end_time,
     int tag_filter_count = parse_csv_filter_values(tag_filter, tag_filters, MAX_MULTI_FILTER_VALUES);
     int capture_method_count = parse_csv_filter_values(capture_method_filter, capture_method_filters, MAX_MULTI_FILTER_VALUES);
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
-    pthread_mutex_lock(db_mutex);
-
     // Build query based on filters
     char sql[8192];
 
@@ -966,10 +977,19 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     log_debug("SQL query for get_recording_count: %s", sql);
 
+    /* The exact COUNT can take seconds on a large archive. Run it on a
+     * private read-only WAL snapshot so it neither waits for nor blocks the
+     * shared writer connection (retention DELETEs, segment INSERTs). */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1033,7 +1053,7 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     log_debug("Total count of recordings matching criteria: %d", count);
     return count;
@@ -1061,20 +1081,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     int tag_filter_count = parse_csv_filter_values(tag_filter, tag_filters, MAX_MULTI_FILTER_VALUES);
     int capture_method_count = parse_csv_filter_values(capture_method_filter, capture_method_filters, MAX_MULTI_FILTER_VALUES);
 
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
     if (!metadata || limit <= 0) {
         log_error("Invalid parameters for get_recording_metadata_paginated");
         return -1;
     }
-
-    pthread_mutex_lock(db_mutex);
 
     // Validate and sanitize sort field to prevent SQL injection
     char safe_sort_field[32] = "start_time"; // Default sort field
@@ -1244,10 +1254,19 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     log_debug("SQL query for get_recording_metadata_paginated: %s", sql);
 
+    /* Page reads use a private read-only WAL snapshot (see get_recording_count)
+     * so the interactive list never queues behind the writer mutex. The
+     * snapshot is held only for prepare/step/row-copy and closed before return. */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1384,7 +1403,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    db_close_readonly_connection(db);
 
     log_debug("Found %d recordings in database matching criteria (page %d, limit %d)",
              count, (offset / limit) + 1, limit);
@@ -1393,7 +1412,9 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 // Delete recording metadata from the database
 int delete_recording_metadata(uint64_t id) {
-    return storage_recording_delete(id, "recording deletion", NULL);
+    int rc = storage_recording_delete(id, "recording deletion", NULL);
+    if (rc == 0) bump_recordings_generation();
+    return rc;
 }
 
 // Delete old recording metadata from the database
@@ -1417,6 +1438,7 @@ int delete_old_recording_metadata(uint64_t max_age) {
     pthread_mutex_unlock(mutex);
     for (int i = 0; i < count; i++)
         if (storage_recording_expire_age(ids[i], cutoff) == 0) deleted++;
+    if (deleted > 0) bump_recordings_generation();
     return deleted;
 }
 
@@ -1463,6 +1485,7 @@ int set_recording_protected(uint64_t id, bool protected) {
         return -1;
     }
 
+    bump_recordings_generation();
     log_info("Recording %llu protection set to %s", (unsigned long long)id, protected ? "true" : "false");
     return 0;
 }

@@ -1038,8 +1038,10 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
         return -1;
     }
 
-    sqlite3 *db = get_db_handle();
-    if (!db) {
+    /* Request-gate lookup: read a private WAL snapshot so an authenticated
+     * request never waits behind a long statement on the shared handle. */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
         log_error("Database not initialized");
         return -1;
     }
@@ -1048,6 +1050,7 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     int rc = prepare_user_lookup_stmt(db, "WHERE id = ?", &stmt);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1056,12 +1059,14 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_error("User not found: %lld", (long long)user_id);
         sqlite3_finalize(stmt);
+        db_close_readonly_connection(db);
         return -1;
     }
 
     populate_user_from_stmt(stmt, user);
 
     sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
 
     return 0;
 }
@@ -1112,8 +1117,10 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
         return -1;
     }
 
-    sqlite3 *db = get_db_handle();
-    if (!db) {
+    /* Request-gate lookup on a private read-only WAL snapshot (see
+     * db_auth_get_user_by_id). */
+    sqlite3 *db = NULL;
+    if (db_open_readonly_connection(&db) != 0) {
         log_error("Database not initialized");
         return -1;
     }
@@ -1122,6 +1129,7 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     int rc = prepare_user_lookup_stmt(db, "WHERE api_key = ?", &stmt);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        db_close_readonly_connection(db);
         return -1;
     }
 
@@ -1130,12 +1138,14 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_debug("User not found for API key");
         sqlite3_finalize(stmt);
+        db_close_readonly_connection(db);
         return -1;
     }
 
     populate_user_from_stmt(stmt, user);
 
     sqlite3_finalize(stmt);
+    db_close_readonly_connection(db);
 
     return 0;
 }
@@ -1571,6 +1581,9 @@ int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
         return -1;
     }
 
+    /* The shared handle is only used for the (throttled) tracking UPDATE
+     * below; every read runs on a private read-only WAL snapshot so the
+     * request gate never waits behind a long retention statement. */
     sqlite3 *db = get_db_handle();
     if (!db) {
         log_error("Database not initialized");
@@ -1583,25 +1596,39 @@ int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
     bool has_ua_column = cached_column_exists("sessions", "user_agent");
     bool has_tracking_columns = has_idle_expires_column && has_last_activity_column;
 
-    // Query the session
-    sqlite3_stmt *stmt;
-    const char *sql = has_tracking_columns
-        ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, COALESCE(s.last_activity_at, s.created_at), u.is_active "
-          "FROM sessions s "
-          "JOIN users u ON s.user_id = u.id "
-          "WHERE s.token = ?;"
-        : has_idle_expires_column
-        ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, u.is_active "
-          "FROM sessions s "
-          "JOIN users u ON s.user_id = u.id "
-          "WHERE s.token = ?;"
-        : "SELECT s.id, s.user_id, s.expires_at, u.is_active "
-          "FROM sessions s "
-          "JOIN users u ON s.user_id = u.id "
-          "WHERE s.token = ?;";
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    /*
+     * One SELECT fetches the session, its owner's active flag and the stored
+     * client context, so a session check costs exactly one snapshot read.
+     * Column positions are fixed regardless of schema vintage:
+     *   0 id, 1 user_id, 2 expires_at, 3 idle_expires_at, 4 last_activity_at,
+     *   5 is_active, 6 ip_address, 7 user_agent
+     */
+    char sql[512];
+    int select_written = snprintf(sql, sizeof(sql),
+                           "SELECT s.id, s.user_id, s.expires_at, %s, %s, u.is_active, %s, %s "
+                           "FROM sessions s "
+                           "JOIN users u ON s.user_id = u.id "
+                           "WHERE s.token = ?;",
+                           has_idle_expires_column ? "s.idle_expires_at" : "s.expires_at",
+                           has_tracking_columns ? "COALESCE(s.last_activity_at, s.created_at)" : "0",
+                           has_ip_column ? "COALESCE(s.ip_address, '')" : "''",
+                           has_ua_column ? "COALESCE(s.user_agent, '')" : "''");
+    if (select_written < 0 || (size_t)select_written >= sizeof(sql)) {
+        log_error("Failed to build session lookup SQL");
+        return -1;
+    }
+
+    sqlite3 *ro = NULL;
+    if (db_open_readonly_connection(&ro) != 0) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(ro, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(ro));
+        db_close_readonly_connection(ro);
         return -1;
     }
 
@@ -1610,72 +1637,51 @@ int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_debug("Session not found for token");
         sqlite3_finalize(stmt);
+        db_close_readonly_connection(ro);
         return -1;
     }
 
     int64_t session_id = sqlite3_column_int64(stmt, 0);
-
-    // Check if the session has expired
+    int64_t id = sqlite3_column_int64(stmt, 1);
     time_t expires_at = sqlite3_column_int64(stmt, 2);
     time_t idle_expires_at = has_idle_expires_column ? sqlite3_column_int64(stmt, 3) : expires_at;
     time_t last_activity_at = has_tracking_columns ? sqlite3_column_int64(stmt, 4) : 0;
+    int is_active = sqlite3_column_int(stmt, 5);
+    const char *stored_ip = (const char *)sqlite3_column_text(stmt, 6);
+    const char *stored_ua = (const char *)sqlite3_column_text(stmt, 7);
+    bool update_ip = has_ip_column && tracking_value_differs(stored_ip, ip_address);
+    bool update_ua = has_ua_column && tracking_value_differs(stored_ua, user_agent);
+
+    sqlite3_finalize(stmt);
+    db_close_readonly_connection(ro);
+
     time_t now = time(NULL);
 
+    // Check if the session has expired
     if (now > expires_at || now > idle_expires_at) {
         log_debug("Session has expired");
-        sqlite3_finalize(stmt);
         return -1;
     }
 
     // Check if the user is active
-    int is_active = sqlite3_column_int(stmt, has_tracking_columns ? 5 : (has_idle_expires_column ? 4 : 3));
     if (!is_active) {
         log_debug("User is inactive");
-        sqlite3_finalize(stmt);
         return -1;
     }
 
     // Session is valid
-    int64_t id = sqlite3_column_int64(stmt, 1);
     if (user_id) {
         *user_id = id;
     }
 
-    sqlite3_finalize(stmt);
-
-    bool update_ip = false;
-    bool update_ua = false;
-    if ((has_ip_column && ip_address) || (has_ua_column && user_agent)) {
-        const char *tracking_sql = has_ip_column && has_ua_column
-            ? "SELECT COALESCE(ip_address, ''), COALESCE(user_agent, '') FROM sessions WHERE id = ?;"
-            : has_ip_column
-            ? "SELECT COALESCE(ip_address, '') FROM sessions WHERE id = ?;"
-            : has_ua_column
-            ? "SELECT COALESCE(user_agent, '') FROM sessions WHERE id = ?;"
-            : NULL;
-        if (tracking_sql) {
-            rc = sqlite3_prepare_v2(db, tracking_sql, -1, &stmt, NULL);
-            if (rc == SQLITE_OK) {
-                sqlite3_bind_int64(stmt, 1, session_id);
-                if (sqlite3_step(stmt) == SQLITE_ROW) {
-                    int column_index = 0;
-                    const char *stored_ip = has_ip_column
-                        ? (const char *)sqlite3_column_text(stmt, column_index++)
-                        : "";
-                    const char *stored_ua = has_ua_column
-                        ? (const char *)sqlite3_column_text(stmt, column_index)
-                        : "";
-                    update_ip = has_ip_column && tracking_value_differs(stored_ip, ip_address);
-                    update_ua = has_ua_column && tracking_value_differs(stored_ua, user_agent);
-                }
-                sqlite3_finalize(stmt);
-            } else {
-                log_warn("Failed to prepare session client-context lookup for session %lld: %s",
-                         (long long)session_id, sqlite3_errmsg(db));
-            }
-        }
-    }
-
+    /*
+     * Tracking write-back, on the shared handle. It is already throttled:
+     * last_activity_at/idle_expires_at are only rewritten when the stored
+     * activity is >= 60 s old (or the idle deadline is within 60 s), and the
+     * client IP / user agent only when they actually changed. A steady stream
+     * of authenticated requests therefore costs one UPDATE per minute per
+     * session, not one per request.
+     */
     bool refresh_tracking = has_tracking_columns && should_refresh_session_tracking(now, last_activity_at, idle_expires_at);
     if (refresh_tracking || update_ip || update_ua) {
         time_t new_idle_expires_at = now + default_session_idle_expiry_seconds();
