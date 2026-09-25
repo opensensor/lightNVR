@@ -79,22 +79,19 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     }
 
     if (existing >= 0) {
-        // Stream already has a writer, replace it
-        log_info("Replacing existing MP4 writer for stream %s", local_stream_name);
-
-        // Store the old writer to close after releasing the lock
         old_writer = mp4_writers[existing];
-
-        // Replace with the new writer
-        mp4_writers[existing] = writer;
         pthread_mutex_unlock(&mp4_writers_mutex);
-
-        // Close the old writer
-        if (old_writer) {
-            mp4_writer_close(old_writer);
+        if (old_writer == writer) {
+            return 0;
         }
-
-        return 0;
+        // A registered writer belongs to a recording thread that is still
+        // alive (threads unregister before they close and exit). Replacing
+        // and closing it from another thread frees memory that thread is
+        // using; refuse and let the caller retry after it has gone.
+        log_error("Refusing to register a second MP4 writer for stream %s: "
+                  "the previous recording thread still owns one",
+                  local_stream_name);
+        return -1;
     }
 
     if (slot == -1) {

@@ -17,6 +17,7 @@
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/mp4_writer.h"
+#include "video/mp4_recording.h"
 #include "database/database_manager.h"
 
 // We no longer maintain a separate array of MP4 writers here
@@ -312,9 +313,20 @@ int get_recording_state(const char *stream_name) {
         if (mp4_writer_is_recording(writer)) {
             return 1; // Recording thread is actively running
         }
-        // Writer exists but thread is not running - recording has died
+        // The reader is down, but while the outer recording thread is alive
+        // it restarts the reader itself (bounded attempts, then a cooldown).
+        // Reporting it as stopped made the service check start a second
+        // thread for the stream on top of the live one.
+        if (mp4_recording_thread_alive(stream_name)) {
+            log_debug("MP4 recording thread for stream %s is alive and recovering its reader",
+                      stream_name);
+            return 1;
+        }
         log_debug("MP4 writer exists for stream %s but recording thread is not running", stream_name);
         return 0;
+    }
+    if (mp4_recording_thread_alive(stream_name)) {
+        return 1; // Outer thread is still connecting; it will register its writer
     }
 
     // Also check the active_recordings array for backward compatibility

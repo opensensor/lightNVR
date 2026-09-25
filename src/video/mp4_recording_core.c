@@ -113,21 +113,109 @@ static void *mp4_recording_thread(void *arg);
  * @param ctx         The dead context extracted from recording_contexts[].
  * @param stream_name For logging only.
  */
-static void cleanup_dead_recording(mp4_recording_ctx_t *ctx, const char *stream_name) {
-    // Join the outer recording thread — it will stop the inner RTSP thread,
-    // unregister the writer, and close it.  15 seconds is enough for the
-    // inner thread's 10-second join timeout plus margin.
-    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 15);
-    if (join_result == 0) {
-        // Thread exited — safe to free the context.
-        free(ctx);
-        log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
-    } else {
-        log_warn("Could not join outer recording thread for %s within 15s, detaching", stream_name);
-        pthread_detach(ctx->thread);
-        // Cannot safely free ctx — the detached thread still references it.
-        // Accept the small leak; the OS reclaims memory on process exit.
+/*
+ * Decide whether a start request for stream_name may proceed.
+ *
+ * Returns 0 when no context exists for the stream (a stopped one was reaped
+ * first if necessary), 1 when a context already serves it (the caller reports
+ * success), and -1 when the previous context has stopped but its thread has
+ * not finished exiting (the caller reports failure so the next service check
+ * retries).
+ *
+ * The outer recording thread owns its inner RTSP reader: it restarts a dead
+ * reader itself, with bounded attempts and then a cooldown, and it is the only
+ * thread that unregisters and closes the writer. A context whose thread is
+ * still running is therefore never torn down from here. The previous "exists
+ * but is dead" path did exactly that whenever the reader was merely
+ * restarting: it detached the live thread after a 15 s join timeout and
+ * started a second thread for the same stream, whose writer registration
+ * replaced and closed the writer the detached thread was still using. On
+ * cameras the box cannot reach that produced a SIGSEGV every few minutes.
+ */
+static int claim_start_for_stream(const char *stream_name) {
+    mp4_recording_ctx_t *stopped = NULL;
+    int slot = -1;
+    pthread_mutex_lock(&recording_contexts_mutex);
+    for (int i = 0; i < g_config.max_streams; i++) {
+        mp4_recording_ctx_t *ctx = recording_contexts[i];
+        if (!ctx || strcmp(ctx->config.name, stream_name) != 0) {
+            continue;
+        }
+        if (ctx->running) {
+            mp4_writer_t *writer = ctx->mp4_writer;
+            bool healthy = writer && mp4_writer_is_recording(writer);
+            pthread_mutex_unlock(&recording_contexts_mutex);
+            if (healthy) {
+                log_info("MP4 recording for stream %s already running and healthy", stream_name);
+            } else if (!writer) {
+                log_info("MP4 recording for stream %s is initializing, skipping duplicate start", stream_name);
+            } else {
+                log_info("MP4 recording thread for stream %s is alive and recovering its RTSP reader; "
+                         "leaving it to finish", stream_name);
+            }
+            return 1;
+        }
+        if (ctx->reaping) {
+            pthread_mutex_unlock(&recording_contexts_mutex);
+            log_info("MP4 recording for stream %s is being reaped by another starter", stream_name);
+            return -1;
+        }
+        // The thread cleared running on its way out (or a stop request did).
+        // Reap it here, but keep the slot until the join succeeds so nobody
+        // starts a second thread for the stream in the meantime.
+        ctx->reaping = 1;
+        stopped = ctx;
+        slot = i;
+        break;
     }
+    pthread_mutex_unlock(&recording_contexts_mutex);
+    if (!stopped) {
+        return 0;
+    }
+
+    int join_result = pthread_join_with_timeout(stopped->thread, NULL, 15);
+    pthread_mutex_lock(&recording_contexts_mutex);
+    if (join_result != 0) {
+        stopped->reaping = 0;
+        pthread_mutex_unlock(&recording_contexts_mutex);
+        log_warn("MP4 recording thread for stream %s has stopped but not exited within 15 s; "
+                 "will retry on the next check", stream_name);
+        return -1;
+    }
+    if (recording_contexts[slot] == stopped) {
+        recording_contexts[slot] = NULL;
+    }
+    pthread_mutex_unlock(&recording_contexts_mutex);
+
+    // The thread normally stops its reader, unregisters and closes its writer
+    // before exiting. A writer still attached means it left through an error
+    // path before that block; the thread is gone, so closing here is safe.
+    if (stopped->mp4_writer) {
+        mp4_writer_t *writer = stopped->mp4_writer;
+        stopped->mp4_writer = NULL;
+        unregister_mp4_writer_for_stream(stream_name);
+        mp4_writer_close(writer);
+    }
+    free(stopped);
+    log_info("Reaped exited MP4 recording thread for stream %s, restarting", stream_name);
+    return 0;
+}
+
+bool mp4_recording_thread_alive(const char *stream_name) {
+    if (!stream_name || stream_name[0] == '\0') {
+        return false;
+    }
+    bool alive = false;
+    pthread_mutex_lock(&recording_contexts_mutex);
+    for (int i = 0; i < g_config.max_streams; i++) {
+        mp4_recording_ctx_t *ctx = recording_contexts[i];
+        if (ctx && ctx->running && strcmp(ctx->config.name, stream_name) == 0) {
+            alive = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&recording_contexts_mutex);
+    return alive;
 }
 
 int get_mp4_recording_runtime_info(const char *stream_name,
@@ -266,10 +354,19 @@ static void *mp4_recording_thread(void *arg) {
 
     // Register the MP4 writer for this stream so get_recording_state() can find it
     if (register_mp4_writer_for_stream(stream_name, ctx->mp4_writer) != 0) {
-        log_warn("Failed to register MP4 writer for stream %s", stream_name);
-    } else {
-        log_info("Registered MP4 writer for stream %s", stream_name);
+        // The previous recording thread for this stream still owns a
+        // registered writer (it was stopped but has not finished exiting).
+        // Two threads on one stream would free each other's state, so back
+        // off; the next service check starts again once it is gone.
+        log_warn("Not starting MP4 recording for %s: its previous writer is still registered",
+                 stream_name);
+        mp4_writer_t *unregistered = ctx->mp4_writer;
+        ctx->mp4_writer = NULL;
+        mp4_writer_close(unregistered);
+        ctx->running = 0;
+        return NULL;
     }
+    log_info("Registered MP4 writer for stream %s", stream_name);
 
     // Set segment duration in the MP4 writer
     int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
@@ -516,6 +613,7 @@ static void *mp4_recording_thread(void *arg) {
         mp4_writer_close(writer);
     }
 
+    ctx->running = 0;
     log_info("MP4 recording thread for stream %s exited", stream_name);
     return NULL;
 }
@@ -637,39 +735,9 @@ int start_mp4_recording(const char *stream_name) {
         return -1;
     }
 
-    // Check if already running — also verify the recording is actually healthy.
-    // Extract a dead context (if any) under the mutex, then join it outside.
-    // FIX: treat writer==NULL + ctx->running==1 as "initializing" to prevent
-    // duplicate instances during the RTSP-connect window (see start_mp4_recording_with_trigger).
-    mp4_recording_ctx_t *dead_ctx = NULL;
-    pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < g_config.max_streams; i++) {
-        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
-            if (writer && mp4_writer_is_recording(writer)) {
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s already running and healthy", stream_name);
-                return 0;  // Already running and healthy
-            }
-            if (!writer && recording_contexts[i]->running) {
-                // Still initializing — mp4_writer not yet assigned by the thread.  // <-- bug fix
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s is initializing, skipping duplicate start", stream_name);
-                return 0;
-            }
-            // Dead — extract from slot under the lock, join outside
-            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-            dead_ctx = recording_contexts[i];
-            dead_ctx->running = 0;
-            recording_contexts[i] = NULL;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&recording_contexts_mutex);
-
-    // Join the dead thread outside the mutex (can block up to 15 s)
-    if (dead_ctx) {
-        cleanup_dead_recording(dead_ctx, stream_name);
+    int claim = claim_start_for_stream(stream_name);
+    if (claim != 0) {
+        return claim > 0 ? 0 : -1;
     }
 
     // MAJOR ARCHITECTURAL CHANGE: We no longer need to start the HLS streaming thread
@@ -765,36 +833,9 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         return -1;
     }
 
-    // Check if already running — also verify the recording is actually healthy.
-    mp4_recording_ctx_t *dead_ctx = NULL;
-    pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < g_config.max_streams; i++) {
-        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
-            if (writer && mp4_writer_is_recording(writer)) {
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s already running and healthy", stream_name);
-                return 0;  // Already running and healthy
-            }
-            if (!writer && recording_contexts[i]->running) {
-                // Still initializing — mp4_writer not yet assigned by the thread.  // <-- bug fix
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s is initializing, skipping duplicate start", stream_name);
-                return 0;
-            }
-            // Dead — extract from slot under the lock, join outside
-            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-            dead_ctx = recording_contexts[i];
-            dead_ctx->running = 0;
-            recording_contexts[i] = NULL;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&recording_contexts_mutex);
-
-    // Join the dead thread outside the mutex (can block up to 15 s)
-    if (dead_ctx) {
-        cleanup_dead_recording(dead_ctx, stream_name);
+    int claim = claim_start_for_stream(stream_name);
+    if (claim != 0) {
+        return claim > 0 ? 0 : -1;
     }
 
     log_info("Using standalone recording thread for stream %s with custom URL", stream_name);
@@ -957,38 +998,9 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
         return -1;
     }
 
-    // Check if already running — also verify the recording is actually healthy.
-    mp4_recording_ctx_t *dead_ctx = NULL;
-    pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < g_config.max_streams; i++) {
-        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
-            if (writer && mp4_writer_is_recording(writer)) {
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s already running and healthy", stream_name);
-                return 0;  // Already running and healthy
-            }
-            if (!writer && recording_contexts[i]->running) {
-                // Still initializing — mp4_writer not yet assigned by the thread.
-                // RTSP connect / avformat_find_stream_info still in progress.
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s is initializing, skipping duplicate start", stream_name);
-                return 0;
-            }
-
-            // Dead — extract from slot under the lock, join outside
-            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-            dead_ctx = recording_contexts[i];
-            dead_ctx->running = 0;
-            recording_contexts[i] = NULL;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&recording_contexts_mutex);
-
-    // Join the dead thread outside the mutex (can block up to 15 s)
-    if (dead_ctx) {
-        cleanup_dead_recording(dead_ctx, stream_name);
+    int claim = claim_start_for_stream(stream_name);
+    if (claim != 0) {
+        return claim > 0 ? 0 : -1;
     }
 
     const char *effective_trigger_type =
@@ -1092,38 +1104,9 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     // Override the URL with the provided one
     safe_strcpy(config.url, url, sizeof(config.url), 0);
 
-    // Check if already running — also verify the recording is actually healthy.
-    // FIX: treat writer==NULL + ctx->running==1 as "initializing" to prevent
-    // duplicate instances during the RTSP-connect window (see start_mp4_recording_with_trigger).
-    mp4_recording_ctx_t *dead_ctx = NULL;
-    pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < g_config.max_streams; i++) {
-        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
-            if (writer && mp4_writer_is_recording(writer)) {
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s already running and healthy", stream_name);
-                return 0;  // Already running and healthy
-            }
-            if (!writer && recording_contexts[i]->running) {
-                // Still initializing — mp4_writer not yet assigned by the thread.  // <-- bug fix
-                pthread_mutex_unlock(&recording_contexts_mutex);
-                log_info("MP4 recording for stream %s is initializing, skipping duplicate start", stream_name);
-                return 0;
-            }
-            // Dead — extract from slot under the lock, join outside
-            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-            dead_ctx = recording_contexts[i];
-            dead_ctx->running = 0;
-            recording_contexts[i] = NULL;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&recording_contexts_mutex);
-
-    // Join the dead thread outside the mutex (can block up to 15 s)
-    if (dead_ctx) {
-        cleanup_dead_recording(dead_ctx, stream_name);
+    int claim = claim_start_for_stream(stream_name);
+    if (claim != 0) {
+        return claim > 0 ? 0 : -1;
     }
 
     const char *effective_trigger_type =

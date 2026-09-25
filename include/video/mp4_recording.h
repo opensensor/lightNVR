@@ -25,6 +25,7 @@
 typedef struct {
     stream_config_t config;    // Stream configuration
     int running;               // Flag indicating if the thread is running
+    int reaping;               // A starter is joining this stopped thread
     pthread_t thread;          // Recording thread
     char output_path[MAX_PATH_LENGTH]; // Path to the output MP4 file
     storage_placement_t placement; // Initial target identity and policy audit
@@ -150,6 +151,13 @@ bool stream_has_continuous_writer(const char *stream_name);
  *
  * @return 0 when a recording context exists, 1 when idle, -1 on bad input
  */
+/**
+ * True while a recording thread for the stream is alive: healthy, still
+ * connecting, or restarting its RTSP reader. Such a thread owns its writer
+ * and heals itself; callers must not start a second one.
+ */
+bool mp4_recording_thread_alive(const char *stream_name);
+
 int get_mp4_recording_runtime_info(const char *stream_name,
                                    recording_runtime_info_t *info);
 

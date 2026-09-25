@@ -896,10 +896,13 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
         safe_strcpy(sname, "unknown", MAX_STREAM_NAME, 0);
     }
 
-    // Capture thread handle locally before any operations that might
-    // race with thread context being freed.
-    mp4_writer_thread_t *tctx = writer->thread_ctx;
-    // cppcheck-suppress knownConditionTrueFalse
+    // Claim the context atomically. Two stoppers (the outer recording
+    // thread restarting its reader and a close from another thread) must
+    // never both join and free the same context; the second one sees NULL
+    // and returns. Nothing below touches writer->thread_ctx again, so a
+    // reader started later by the owner is never clobbered.
+    mp4_writer_thread_t *tctx = __atomic_exchange_n(&writer->thread_ctx, NULL,
+                                                    __ATOMIC_ACQ_REL);
     if (!tctx) {
         return;
     }
@@ -936,13 +939,10 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
         pthread_detach(thread_handle);
 
         // Do NOT free tctx — the detached thread may still be using it.
-        // Mark writer->thread_ctx = NULL so no one else tries to use it.
-        writer->thread_ctx = NULL;
     } else if (join_ret != 0) {
         log_warn("pthread_timedjoin_np for %s returned error %d", sname, join_ret);
         // Thread is in an unknown state — detach to be safe
         pthread_detach(thread_handle);
-        writer->thread_ctx = NULL;
     } else {
         // Thread exited cleanly — safe to free resources
         tctx->running = 0;
@@ -952,7 +952,6 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
         }
 
         free(tctx);
-        writer->thread_ctx = NULL;
     }
 
     // Update component state in shutdown coordinator
