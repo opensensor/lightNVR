@@ -19,6 +19,42 @@
 /**
  * Log FFmpeg error
  */
+uint8_t *ffmpeg_frame_to_rgb24_padded(const AVFrame *frame, size_t *rgb_size_out) {
+    if (rgb_size_out) *rgb_size_out = 0;
+    if (!frame || frame->width <= 0 || frame->height <= 0 ||
+        frame->format == AV_PIX_FMT_NONE || frame->hw_frames_ctx || !frame->data[0]) {
+        return NULL;
+    }
+
+    struct SwsContext *sws_ctx = sws_getContext(
+        frame->width, frame->height, frame->format,
+        frame->width, frame->height, AV_PIX_FMT_RGB24,
+        SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws_ctx) return NULL;
+
+    size_t rgb_size = (size_t)frame->width * (size_t)frame->height * 3;
+    uint8_t *rgb_buf = malloc(rgb_size + RGB24_SWS_TAIL_PADDING);
+    if (!rgb_buf) {
+        sws_freeContext(sws_ctx);
+        return NULL;
+    }
+    /* Zero the slack so an unconverted right edge or the padding itself never
+     * leaks uninitialised heap bytes into JPEGs sent to a detector. */
+    memset(rgb_buf + rgb_size, 0, RGB24_SWS_TAIL_PADDING);
+
+    uint8_t *rgb_data[4] = {rgb_buf, NULL, NULL, NULL};
+    int rgb_linesize[4]  = {frame->width * 3, 0, 0, 0};
+    int rows = sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
+                         0, frame->height, rgb_data, rgb_linesize);
+    sws_freeContext(sws_ctx);
+    if (rows <= 0) {
+        free(rgb_buf);
+        return NULL;
+    }
+    if (rgb_size_out) *rgb_size_out = rgb_size;
+    return rgb_buf;
+}
+
 void log_ffmpeg_error(int err, const char *message) {
     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(err, error_buf, AV_ERROR_MAX_STRING_SIZE);

@@ -245,7 +245,9 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     }
 
     int rgb_linesize = out_w * 3;
-    rgb_buf = av_malloc((size_t)rgb_linesize * out_h);
+    // Tail slack: libswscale's SIMD paths read (and for some widths write)
+    // past the last packed RGB24 row; see RGB24_SWS_TAIL_PADDING (#587).
+    rgb_buf = av_malloc((size_t)rgb_linesize * out_h + RGB24_SWS_TAIL_PADDING);
     if (!rgb_buf) goto done;
 
     uint8_t *dst_data[4] = {rgb_buf, NULL, NULL, NULL};

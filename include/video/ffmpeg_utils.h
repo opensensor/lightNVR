@@ -15,6 +15,37 @@
 void log_ffmpeg_error(int err, const char *message);
 
 /**
+ * Tail slack for packed RGB24 buffers handed to libswscale.
+ *
+ * libswscale's x86 SSSE3 yuv420p->rgb24 converter (ff_yuv_420_rgb24_ssse3 in
+ * libswscale/x86/yuv_2_rgb.asm) advances 16 pixels per loop iteration, but the
+ * C wrapper (YUV2RGB_LOOP in libswscale/x86/yuv2rgb.c) only rounds the width up
+ * to 8 before checking it against the stride. For any width with (w % 16) >= 8
+ * (1080-wide portrait cameras, 856, 1000, 1512, 1944, ...) the last row is
+ * written up to 8 pixels (24 bytes) past w*h*3. The rgb24->yuv420p input
+ * readers used by the MJPEG encoder also read up to 64 bytes past the end of
+ * the last row, for every geometry. Present in FFmpeg 4.3 through 8.1.
+ *
+ * A buffer sized exactly w*h*3 that sits directly below the heap arena's top
+ * chunk therefore gets glibc's "malloc(): corrupted top size" abort (#587).
+ * Keep linesize == w*3 (every consumer assumes packed rows) and over-allocate
+ * the tail by this many bytes instead.
+ */
+#define RGB24_SWS_TAIL_PADDING 128
+
+/**
+ * Convert a decoded frame to a freshly malloc'd packed RGB24 buffer at the
+ * frame's own resolution (linesize == width*3). The allocation carries
+ * RGB24_SWS_TAIL_PADDING zeroed bytes after the last row; see above.
+ *
+ * @param frame        Decoded software frame (hardware frames are rejected)
+ * @param rgb_size_out Optional: receives width*height*3 (the payload size,
+ *                     not the allocation size)
+ * @return malloc'd buffer (caller frees) or NULL on failure
+ */
+uint8_t *ffmpeg_frame_to_rgb24_padded(const AVFrame *frame, size_t *rgb_size_out);
+
+/**
  * Initialize FFmpeg libraries
  */
 void init_ffmpeg(void);

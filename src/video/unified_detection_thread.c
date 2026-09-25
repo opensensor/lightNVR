@@ -33,6 +33,7 @@
 #include <libavutil/time.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
+#include "video/ffmpeg_utils.h"
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -2913,23 +2914,14 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
  * Does NOT handle ONVIF (event-based, no frame needed).
  */
 /* Convert a decoded frame to a freshly malloc'd packed RGB24 buffer at the
- * frame's own resolution (caller frees). Returns NULL on failure. */
+ * frame's own resolution (caller frees). Returns NULL on failure.
+ *
+ * Goes through the shared helper, which over-allocates the tail: with a
+ * buffer sized exactly w*h*3, libswscale's SIMD yuv420p->rgb24 path writes
+ * past the end for widths with (w % 16) >= 8, and that overrun corrupted the
+ * heap under the snapshot-timeout fallback in #587. */
 static uint8_t *frame_to_rgb24(const AVFrame *frame) {
-    struct SwsContext *sws_ctx = sws_getContext(
-        frame->width, frame->height, frame->format,
-        frame->width, frame->height, AV_PIX_FMT_RGB24,
-        SWS_BILINEAR, NULL, NULL, NULL);
-    if (!sws_ctx) return NULL;
-
-    uint8_t *rgb_buf = malloc((size_t)frame->width * frame->height * 3);
-    if (!rgb_buf) { sws_freeContext(sws_ctx); return NULL; }
-
-    uint8_t *rgb_data[4] = {rgb_buf, NULL, NULL, NULL};
-    int rgb_linesize[4]  = {frame->width * 3, 0, 0, 0};
-    sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
-              0, frame->height, rgb_data, rgb_linesize);
-    sws_freeContext(sws_ctx);
-    return rgb_buf;
+    return ffmpeg_frame_to_rgb24_padded(frame, NULL);
 }
 
 static void append_engine_result(unified_detection_ctx_t *ctx,
