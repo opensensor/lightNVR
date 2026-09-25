@@ -248,7 +248,10 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
     buffer->buffer_seconds = buffer_seconds;
     buffer->mode = mode;
 
-    // Estimate packet count (assume 15 FPS average)
+    // Initial slot estimate assumes a 15 FPS stream. Streams that deliver more
+    // packets per second (higher FPS, audio track) grow the slot array on
+    // demand in packet_buffer_add_packet() so the configured time window is
+    // honoured instead of being silently cut short by the slot count.
     buffer->max_packets = packet_buffer_estimate_packet_count(15, buffer_seconds);
 
     // Allocate packet array
@@ -343,6 +346,57 @@ void destroy_packet_buffer(packet_buffer_t *buffer) {
 }
 
 /**
+ * Upper bound on packets per second used when growing a buffer's slot array.
+ * Bounds the slot array (not the packet payloads, which are bounded by the
+ * time window) for pathological streams. 120 pps covers 60 FPS video plus a
+ * 48 kHz AAC audio track with headroom.
+ */
+#define PACKET_BUFFER_MAX_PACKETS_PER_SECOND 120
+
+/**
+ * Grow the slot array of a full buffer so more packets fit inside the
+ * configured time window. Caller must hold buffer->mutex.
+ *
+ * Re-linearizes the ring so the oldest packet lands at index 0; head/tail are
+ * rebased accordingly.
+ *
+ * @return 0 if the array was grown, -1 if the ceiling was reached or the
+ *         allocation failed (caller should evict instead).
+ */
+static int packet_buffer_grow_locked(packet_buffer_t *buffer) {
+    int ceiling = packet_buffer_estimate_packet_count(PACKET_BUFFER_MAX_PACKETS_PER_SECOND,
+                                                      buffer->buffer_seconds);
+    if (buffer->max_packets >= ceiling) {
+        return -1;
+    }
+
+    int new_max = buffer->max_packets * 2;
+    if (new_max > ceiling) {
+        new_max = ceiling;
+    }
+
+    buffered_packet_t *grown = (buffered_packet_t *)calloc((size_t)new_max, sizeof(*grown));
+    if (!grown) {
+        log_warn("[%s] Failed to grow packet buffer to %d slots; evicting instead",
+                 buffer->stream_name, new_max);
+        return -1;
+    }
+
+    for (int i = 0; i < buffer->count; i++) {
+        grown[i] = buffer->packets[(buffer->tail + i) % buffer->max_packets];
+    }
+
+    free(buffer->packets);
+    buffer->packets = grown;
+    buffer->tail = 0;
+    buffer->head = buffer->count;   // count < new_max, so no wrap
+    log_info("[%s] Packet buffer slots grown %d -> %d to honour %ds pre-buffer window",
+             buffer->stream_name, buffer->max_packets, new_max, buffer->buffer_seconds);
+    buffer->max_packets = new_max;
+    return 0;
+}
+
+/**
  * Add a packet to the buffer
  */
 int packet_buffer_add_packet(packet_buffer_t *buffer, const AVPacket *packet, time_t timestamp) {
@@ -371,8 +425,15 @@ int packet_buffer_add_packet(packet_buffer_t *buffer, const AVPacket *packet, ti
         }
     }
 
-    // Fallback: if buffer is still full (burst of packets within the time window),
-    // evict the oldest by packet count to guarantee a free slot.
+    // The slot array is sized from a 15 FPS estimate. If it is full while the
+    // oldest packet is still inside the configured window, the stream simply
+    // produces more packets per second than that estimate (e.g. 30 FPS video
+    // plus audio). Grow the array instead of evicting, otherwise a 30 s
+    // pre-buffer silently becomes ~15 s (issue #494). Only fall back to
+    // count-based eviction once the growth ceiling is reached.
+    if (buffer->count >= buffer->max_packets) {
+        packet_buffer_grow_locked(buffer);
+    }
     if (buffer->count >= buffer->max_packets) {
         if (buffer->packets[buffer->tail].packet) {
             buffer->current_memory_usage -= buffer->packets[buffer->tail].data_size;

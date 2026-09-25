@@ -281,6 +281,80 @@ void test_estimate_packet_count_positive(void) {
 }
 
 /* ================================================================
+ * slot growth (issue #494): the slot array starts from a 15 fps estimate
+ * and must grow so a faster stream still fills the whole time window
+ * ================================================================ */
+
+void test_high_packet_rate_fills_whole_window(void) {
+    const int window_s = 30;
+    const int pps = 40;               /* 30 fps video + audio */
+    packet_buffer_t *b = create_packet_buffer("fast_cam", window_s, BUFFER_MODE_MEMORY);
+    TEST_ASSERT_NOT_NULL(b);
+
+    /* 15 fps * 30 s * 1.2 = 540 initial slots; feed 1200 packets in 30 s */
+    time_t t0 = 1000000;
+    for (int i = 0; i < pps * window_s; i++) {
+        AVPacket *p = make_pkt(16 + (i % 200), i % pps == 0);
+        TEST_ASSERT_NOT_NULL(p);
+        TEST_ASSERT_EQUAL_INT(0, packet_buffer_add_packet(b, p, t0 + i / pps));
+        av_packet_free(&p);
+    }
+
+    int count = 0;
+    size_t mem = 0;
+    int dur = 0;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_get_stats(b, &count, &mem, &dur));
+    TEST_ASSERT_EQUAL_INT(pps * window_s, count);      /* nothing dropped */
+    TEST_ASSERT_EQUAL_INT(window_s - 1, dur);          /* whole window retained */
+
+    /* FIFO order survives re-linearization: first packet added comes out first */
+    AVPacket *out = NULL;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_pop_oldest(b, &out));
+    TEST_ASSERT_EQUAL_INT(16, out->size);
+    av_packet_free(&out);
+
+    /* Time-based eviction still bounds the window after growth */
+    for (int i = 0; i < pps * 10; i++) {
+        AVPacket *p = make_pkt(8, false);
+        packet_buffer_add_packet(b, p, t0 + window_s + i / pps);
+        av_packet_free(&p);
+    }
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_get_stats(b, &count, &mem, &dur));
+    TEST_ASSERT_TRUE(dur <= window_s);
+    TEST_ASSERT_TRUE(count <= pps * (window_s + 1));
+
+    destroy_packet_buffer(b);
+}
+
+void test_slot_growth_stops_at_ceiling(void) {
+    const int window_s = 5;
+    packet_buffer_t *b = create_packet_buffer("burst_cam", window_s, BUFFER_MODE_MEMORY);
+    TEST_ASSERT_NOT_NULL(b);
+
+    /* ceiling = 120 pps * 5 s * 1.2 = 720 slots; push far more within one second */
+    const int ceiling = packet_buffer_estimate_packet_count(120, window_s);
+    time_t t0 = 2000000;
+    for (int i = 0; i < ceiling * 3; i++) {
+        AVPacket *p = make_pkt(8, false);
+        TEST_ASSERT_EQUAL_INT(0, packet_buffer_add_packet(b, p, t0));
+        av_packet_free(&p);
+    }
+
+    int count = 0;
+    size_t mem = 0;
+    int dur = 0;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_get_stats(b, &count, &mem, &dur));
+    TEST_ASSERT_EQUAL_INT(ceiling, count);             /* capped, oldest evicted by count */
+    TEST_ASSERT_EQUAL_INT(0, dur);
+
+    int called = 0;
+    TEST_ASSERT_EQUAL_INT(ceiling, packet_buffer_flush(b, count_cb, &called));
+    TEST_ASSERT_EQUAL_INT(ceiling, called);
+
+    destroy_packet_buffer(b);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -302,6 +376,8 @@ int main(void) {
     RUN_TEST(test_flush_null_callback_returns_error);
     RUN_TEST(test_clear_empties_buffer);
     RUN_TEST(test_estimate_packet_count_positive);
+    RUN_TEST(test_high_packet_rate_fills_whole_window);
+    RUN_TEST(test_slot_growth_stops_at_ceiling);
     return UNITY_END();
 }
 
