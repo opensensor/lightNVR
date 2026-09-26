@@ -154,6 +154,14 @@ if(TARGET lightnvr-ffmpeg-guard)
     add_executable(test_ffmpeg_guard_probe ffmpeg_guard_probe.c)
     set_target_properties(test_ffmpeg_guard_probe PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND
+       CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+       CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_ffmpeg_guard_probe PRIVATE
+            -fno-sanitize=address,undefined)
+        target_link_options(test_ffmpeg_guard_probe PRIVATE
+            -fno-sanitize=address,undefined)
+    endif()
     add_test(NAME test_ffmpeg_guard COMMAND sh
         "${CMAKE_CURRENT_SOURCE_DIR}/test_ffmpeg_guard.sh"
         "$<TARGET_FILE:lightnvr-ffmpeg-guard>"
