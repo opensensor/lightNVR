@@ -208,6 +208,11 @@ typedef struct {
     AVCodecContext *decoder_ctx;
     int video_stream_idx;
     int audio_stream_idx;
+
+    // Monotonic deadlines for blocking FFmpeg I/O (microseconds, 0 = disarmed).
+    // Each field belongs to its reader thread and that thread's interrupt callback.
+    int64_t input_io_deadline_us;
+    int64_t detection_io_deadline_us;
     
     // Statistics
     uint64_t total_packets_processed;
