@@ -1120,10 +1120,16 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     // The image ships an RSS guard for go2rtc's child transcoders. A single
     // runaway ffmpeg otherwise charges the whole container's memory cgroup.
     // Native installations without the guard keep go2rtc's normal ffmpeg bin.
-    if (access("/bin/lightnvr-ffmpeg-guard", X_OK) == 0) {
-        fprintf(config_file, "  bin: /bin/lightnvr-ffmpeg-guard\n");
-    } else if (access("/usr/local/bin/lightnvr-ffmpeg-guard", X_OK) == 0) {
-        fprintf(config_file, "  bin: /usr/local/bin/lightnvr-ffmpeg-guard\n");
+    static const char *const guard_paths[] = {
+        "/bin/lightnvr-ffmpeg-guard",            // container image
+        "/usr/bin/lightnvr-ffmpeg-guard",        // .deb package
+        "/usr/local/bin/lightnvr-ffmpeg-guard",  // scripts/install.sh default prefix
+    };
+    for (size_t i = 0; i < sizeof(guard_paths) / sizeof(guard_paths[0]); i++) {
+        if (access(guard_paths[i], X_OK) == 0) {
+            fprintf(config_file, "  bin: %s\n", guard_paths[i]);
+            break;
+        }
     }
     fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast\"\n");
     fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast\"\n");

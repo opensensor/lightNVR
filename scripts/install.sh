@@ -230,9 +230,26 @@ mkdir -p "$RUN_DIR"
 # Install binary
 echo "Installing binary..."
 install -m 755 "$BINARY_PATH" "$PREFIX/bin/lightnvr"
-if [ -x "$(dirname "$BINARY_PATH")/lightnvr-ffmpeg-guard" ]; then
-    install -m 755 "$(dirname "$BINARY_PATH")/lightnvr-ffmpeg-guard" \
-        "$PREFIX/bin/lightnvr-ffmpeg-guard"
+
+# The go2rtc ffmpeg guard is built next to the main binary. BINARY_PATH is
+# usually the ./lightnvr symlink build.sh leaves in the source tree, so resolve
+# it before looking beside it, then fall back to the known build directories.
+GUARD_PATH=""
+for path in \
+    "$(dirname "$(readlink -f "$BINARY_PATH")")/lightnvr-ffmpeg-guard" \
+    "build/Release/bin/lightnvr-ffmpeg-guard" \
+    "build/Debug/bin/lightnvr-ffmpeg-guard" \
+    "build/bin/lightnvr-ffmpeg-guard"; do
+    if [ -x "$path" ]; then
+        GUARD_PATH="$path"
+        break
+    fi
+done
+if [ -n "$GUARD_PATH" ]; then
+    echo "Installing ffmpeg guard from $GUARD_PATH..."
+    install -m 755 "$GUARD_PATH" "$PREFIX/bin/lightnvr-ffmpeg-guard"
+else
+    echo "WARNING: lightnvr-ffmpeg-guard not found; go2rtc will run ffmpeg without a memory guard"
 fi
 
 # Install SOD library if enabled

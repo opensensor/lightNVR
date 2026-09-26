@@ -105,6 +105,7 @@ jobs:
 
           # Binaries
           docker cp "${CID}:/bin/lightnvr" "${PKG_DIR}/usr/bin/lightnvr"
+          docker cp "${CID}:/bin/lightnvr-ffmpeg-guard" "${PKG_DIR}/usr/bin/lightnvr-ffmpeg-guard"
           docker cp "${CID}:/bin/go2rtc"   "${PKG_DIR}/usr/bin/go2rtc"
 
           # Bundle only libsod (not available as a system package).
@@ -292,6 +293,7 @@ jobs:
 
           # ── Permissions ─────────────────────────────────────────────────────
           chmod 755 "${PKG_DIR}/usr/bin/lightnvr"
+          chmod 755 "${PKG_DIR}/usr/bin/lightnvr-ffmpeg-guard"
           chmod 755 "${PKG_DIR}/usr/bin/go2rtc"
           find "${PKG_DIR}/usr/lib/lightnvr" -type f -exec chmod 644 {} \;
           find "${PKG_DIR}/usr/lib/lightnvr" -type l | while read link; do
