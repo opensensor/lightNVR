@@ -720,10 +720,11 @@ int system_health_collect_tier(system_health_sampling_tier_t tier) {
         collected.observations_dropped += sink.dropped + provider_dropped;
         if (ran) completed++;
     }
+    pthread_mutex_lock(&state->lock);
+    /* Stamp under the lock that assigns the sequence: a stamp taken before it
+     * can predate a generation another tier publishes first. */
     collected.completed_monotonic_ms = monotonic_ms();
     collected.completed_wall_time_ms = wall_time_ms();
-
-    pthread_mutex_lock(&state->lock);
     state->tier_cache[tier] = collected;
     state->tier_valid[tier] = true;
     state->stats.collections_completed += completed;

@@ -71,6 +71,8 @@
 #define BASE_RECONNECT_DELAY_MS 500
 #define MAX_RECONNECT_DELAY_MS 30000
 #define MAX_PACKET_TIMEOUT_SEC 10
+#define OPEN_TIMEOUT_US (5LL * AV_TIME_BASE)
+#define READ_TIMEOUT_US ((int64_t)MAX_PACKET_TIMEOUT_SEC * AV_TIME_BASE)
 
 // Detection error codes
 // Returned by detect_objects_api_snapshot when go2rtc snapshot is unavailable
@@ -237,7 +239,10 @@ static int ffmpeg_interrupt_callback(void *opaque) {
     if (!atomic_load(&ctx->running) || is_shutdown_initiated()) {
         return 1;  // Abort the operation
     }
-    return 0;  // Continue
+    // The reconnect watchdog cannot run while FFmpeg is blocked inside I/O.
+    // Bound the operation itself, including a peer that sends only control data.
+    return ctx->input_io_deadline_us > 0 &&
+           av_gettime_relative() >= ctx->input_io_deadline_us;
 }
 
 /**
@@ -841,12 +846,8 @@ static void detection_stream_backoff(unified_detection_ctx_t *ctx, int *delay_ms
     if (*delay_ms > MAX_RECONNECT_DELAY_MS) *delay_ms = MAX_RECONNECT_DELAY_MS;
 }
 
-/* Interrupt callback for the detection stream's blocking FFmpeg I/O.
- * Without it, av_read_frame()/avformat_open_input() can block indefinitely on
- * a network read (stimeout only covers RTSP, not HTTP/MJPEG), so a stop request
- * or shutdown would wedge pthread_join() until a watchdog times out. Returns 1
- * to abort when the thread is asked to stop, the UDT is stopping, or the
- * process is shutting down. */
+/* The optional detection source needs its own deadline: its I/O runs in a
+ * separate thread and may use HTTP/MJPEG as well as RTSP. */
 static int detection_stream_interrupt_cb(void *opaque) {
     unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)opaque;
     if (!ctx) return 1;
@@ -855,7 +856,8 @@ static int detection_stream_interrupt_cb(void *opaque) {
         is_shutdown_initiated()) {
         return 1;
     }
-    return 0;
+    return ctx->detection_io_deadline_us > 0 &&
+           av_gettime_relative() >= ctx->detection_io_deadline_us;
 }
 
 static void *detection_stream_thread_func(void *arg) {
@@ -890,7 +892,8 @@ static void *detection_stream_thread_func(void *arg) {
 
         AVDictionary *opts = NULL;
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);
-        av_dict_set(&opts, "stimeout",        "5000000", 0);
+        av_dict_set(&opts, "timeout",         "5000000", 0);
+        av_dict_set(&opts, "rw_timeout",      "5000000", 0);
         av_dict_set(&opts, "analyzeduration", "2000000", 0);
         av_dict_set(&opts, "probesize",       "2000000", 0);
         /* Refuse file://, concat:, subfile: and other local-resource demuxers.
@@ -898,6 +901,7 @@ static void *detection_stream_thread_func(void *arg) {
         av_dict_set(&opts, "protocol_whitelist",
                     "udp,rtp,rtsp,rtsps,tcp,tls,https,http", 0);
 
+        ctx->detection_io_deadline_us = av_gettime_relative() + OPEN_TIMEOUT_US;
         int ret = avformat_open_input(&fmt_ctx, ctx->detection_stream_url, NULL, &opts);
         av_dict_free(&opts);
 
@@ -918,7 +922,9 @@ static void *detection_stream_thread_func(void *arg) {
             continue;
         }
 
-        if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
+        ctx->detection_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
+        if (avformat_find_stream_info(fmt_ctx, NULL) < 0 ||
+            detection_stream_interrupt_cb(ctx)) {
             log_warn("[%s] Detection stream thread: could not read stream info", ctx->stream_name);
             avformat_close_input(&fmt_ctx);
             detection_stream_backoff(ctx, &reconnect_delay_ms);
@@ -984,10 +990,13 @@ static void *detection_stream_thread_func(void *arg) {
         }
 
         while (atomic_load(&ctx->detection_stream_thread_running) && stream_ok) {
+            ctx->detection_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
             int rd = av_read_frame(fmt_ctx, pkt);
-            if (rd < 0) {
-                log_warn("[%s] Detection stream thread: read error, reconnecting",
-                         ctx->stream_name);
+            bool timed_out = av_gettime_relative() >= ctx->detection_io_deadline_us;
+            ctx->detection_io_deadline_us = 0;
+            if (rd < 0 || timed_out) {
+                log_warn("[%s] Detection stream thread: %s, reconnecting",
+                         ctx->stream_name, timed_out ? "I/O deadline exceeded" : "read error");
                 stream_ok = false;
                 break;
             }
@@ -1042,15 +1051,16 @@ static void *detection_stream_thread_func(void *arg) {
             }
         }
 
+        // Allow main-stream detection to resume before closing the stale source.
+        atomic_store(&ctx->detection_stream_connected, 0);
+        atomic_store(&ctx->detection_stream_result, 0);
+        ctx->detection_io_deadline_us = av_gettime_relative() + OPEN_TIMEOUT_US;
         if (pkt)   av_packet_free(&pkt);
         if (frame) av_frame_free(&frame);
         avcodec_free_context(&dec_ctx);
         avformat_close_input(&fmt_ctx);
 
-        /* Clear connected flag and any pending result so the main loop falls
-         * back to main-stream detection immediately on the next keyframe. */
-        atomic_store(&ctx->detection_stream_connected, 0);
-        atomic_store(&ctx->detection_stream_result, 0);
+        ctx->detection_io_deadline_us = 0;
 
         if (atomic_load(&ctx->detection_stream_thread_running) && !stream_ok) {
             log_info("[%s] Detection stream thread: reconnecting in %d ms",
@@ -1096,11 +1106,8 @@ static void stop_detection_stream_thread(unified_detection_ctx_t *ctx) {
 
     log_info("[%s] Requesting detection stream thread to stop", ctx->stream_name);
 
-    /* pthread_join blocks until the currently outstanding av_read_frame()
-     * (or avformat_open_input()) returns. stimeout=5000000 caps that at
-     * ~5 s for well-behaved demuxers; a half-open RTSP session may push the
-     * worst case higher. Acceptable because this path runs only during UDT
-     * teardown. The compare-exchange above guarantees only one caller joins. */
+    /* The interrupt callback observes the stop flag during FFmpeg I/O.
+     * The compare-exchange above guarantees only one caller joins. */
     pthread_join(ctx->detection_stream_thread, NULL);
     log_info("[%s] Detection stream thread joined", ctx->stream_name);
 }
@@ -1586,18 +1593,20 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         return -1;
     }
 
-    // Set interrupt callback to allow cancellation during shutdown
+    // Bound blocking I/O as well as allowing cancellation during shutdown.
     ctx->input_ctx->interrupt_callback.callback = ffmpeg_interrupt_callback;
     ctx->input_ctx->interrupt_callback.opaque = ctx;
 
     // Set RTSP options
     AVDictionary *opts = NULL;
     av_dict_set(&opts, "rtsp_transport", "tcp", 0);
-    av_dict_set(&opts, "stimeout", "5000000", 0);  // 5 second timeout
+    av_dict_set(&opts, "timeout", "5000000", 0);  // RTSP socket timeout (microseconds)
+    av_dict_set(&opts, "rw_timeout", "5000000", 0);
     av_dict_set(&opts, "analyzeduration", "1000000", 0);
     av_dict_set(&opts, "probesize", "1000000", 0);
 
     // Open input
+    ctx->input_io_deadline_us = av_gettime_relative() + OPEN_TIMEOUT_US;
     int ret = avformat_open_input(&ctx->input_ctx, ctx->rtsp_url, NULL, &opts);
     av_dict_free(&opts);
 
@@ -1611,12 +1620,14 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
     }
 
     // Find stream info
+    ctx->input_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
     ret = avformat_find_stream_info(ctx->input_ctx, NULL);
-    if (ret < 0) {
+    if (ret < 0 || ffmpeg_interrupt_callback(ctx)) {
         log_error("[%s] Failed to find stream info", ctx->stream_name);
         avformat_close_input(&ctx->input_ctx);
         return -1;
     }
+    ctx->input_io_deadline_us = 0;
 
     // Find video stream
     ctx->video_stream_idx = -1;
@@ -1791,9 +1802,11 @@ static void disconnect_from_stream(unified_detection_ctx_t *ctx) {
     }
 
     if (ctx->input_ctx) {
+        ctx->input_io_deadline_us = av_gettime_relative() + OPEN_TIMEOUT_US;
         avformat_close_input(&ctx->input_ctx);
         ctx->input_ctx = NULL;
     }
+    ctx->input_io_deadline_us = 0;
 
     ctx->video_stream_idx = -1;
     ctx->audio_stream_idx = -1;
@@ -1921,8 +1934,13 @@ static void *unified_detection_thread_func(void *arg) {
                     }
                 }
 
-                // Read packet
-                if (av_read_frame(ctx->input_ctx, pkt) >= 0) {
+                // A wall-clock check after av_read_frame cannot interrupt a
+                // stalled read. Arm a monotonic deadline before entering FFmpeg.
+                ctx->input_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
+                int read_ret = av_read_frame(ctx->input_ctx, pkt);
+                bool read_timed_out = av_gettime_relative() >= ctx->input_io_deadline_us;
+                ctx->input_io_deadline_us = 0;
+                if (read_ret >= 0 && !read_timed_out) {
                     // Only treat non-empty packets as evidence the stream
                     // is delivering media. Libav's RTSP demuxer can return
                     // zero-length packets (RTSP control chatter, EOF resync)
@@ -1947,14 +1965,12 @@ static void *unified_detection_thread_func(void *arg) {
                     // Re-read state after process_packet as it may have changed
                     // (e.g., detection triggered -> RECORDING, or post-buffer expired -> BUFFERING)
                     state = atomic_load(&ctx->state);
-
-                    av_packet_unref(pkt);
                 } else {
                     // Read error - check if timeout
                     time_t now = time(NULL);
                     time_t last = atomic_load(&ctx->last_packet_time);
 
-                    if (now - last > MAX_PACKET_TIMEOUT_SEC) {
+                    if (read_timed_out || now - last > MAX_PACKET_TIMEOUT_SEC) {
                         if (!saw_real_packets) {
                             // Handshake succeeded but no real media packets
                             // ever arrived. Treat as a soft connection
@@ -1977,7 +1993,8 @@ static void *unified_detection_thread_func(void *arg) {
                                 reconnect_delay_ms = MAX_RECONNECT_DELAY_MS;
                             }
                         } else {
-                            log_warn("[%s] Packet timeout, reconnecting", stream_name);
+                            log_warn("[%s] %s, reconnecting", stream_name,
+                                     read_timed_out ? "I/O deadline exceeded" : "Packet timeout");
                         }
                         disconnect_from_stream(ctx);
                         state = UDT_STATE_RECONNECTING;
@@ -1991,6 +2008,7 @@ static void *unified_detection_thread_func(void *arg) {
                         av_usleep(10000);
                     }
                 }
+                av_packet_unref(pkt);
                 break;
 
             case UDT_STATE_RECONNECTING:

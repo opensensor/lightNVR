@@ -324,6 +324,15 @@ add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body 
 add_layer2_test(test_motion_max_area)            # Layer 2: motion detector max-area sanity cap
 add_layer3_test(test_cross_stream_motion_trigger)
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
+add_layer3_test(test_detection_io_recovery)
+target_compile_definitions(test_detection_io_recovery PRIVATE
+    TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
+)
+target_link_options(test_detection_io_recovery PRIVATE
+    "-Wl,--wrap=avformat_open_input" "-Wl,--wrap=avformat_find_stream_info"
+    "-Wl,--wrap=av_read_frame" "-Wl,--wrap=av_gettime_relative"
+)
+set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.
