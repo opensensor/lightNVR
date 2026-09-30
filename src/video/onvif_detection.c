@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <time.h>
 
 #include "core/logger.h"
@@ -103,6 +104,7 @@ typedef struct {
     time_t first_pull_failure_time;
     int consecutive_pull_failures;
     bool active;
+    CURL *curl;                     // Connection for this PullPoint (see subscription_locks)
 } onvif_subscription_t;
 
 // Hash map to store subscriptions by URL
@@ -111,6 +113,30 @@ static onvif_subscription_t subscriptions[MAX_SUBSCRIPTIONS];
 static int subscription_count = 0;
 static pthread_mutex_t subscription_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool subscriptions_shutting_down = false;
+
+/* Each PullPoint talks to its camera over its own CURL handle, serialized by
+ * the lock of the same index. A PullMessages long poll holds the camera's
+ * connection for up to five seconds, so sharing one handle across cameras
+ * (the previous design) queued every camera behind every other camera's poll
+ * and behind the drop retries of #603: with three cameras, a Tapo that only
+ * accepts a fresh connection for a short window after each response was
+ * polled once every ten to twenty-five seconds and hit closed windows. The
+ * locks outlive their slots (a slot is reset in place), so they are
+ * initialized once and never destroyed. */
+static pthread_mutex_t subscription_locks[MAX_SUBSCRIPTIONS];
+static pthread_once_t subscription_locks_once = PTHREAD_ONCE_INIT;
+
+static void init_subscription_locks(void) {
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++)
+        pthread_mutex_init(&subscription_locks[i], NULL);
+}
+
+static pthread_mutex_t *subscription_lock(const onvif_subscription_t *subscription) {
+    ptrdiff_t index = subscription - subscriptions;
+    if (index < 0 || index >= MAX_SUBSCRIPTIONS) return NULL;
+    pthread_once(&subscription_locks_once, init_subscription_locks);
+    return &subscription_locks[index];
+}
 
 // Callback function for curl to write data
 static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
@@ -156,6 +182,28 @@ static int curl_trace_callback(CURL *handle, curl_infotype type, char *data,
     while (size > 0 && (data[size - 1] == '\n' || data[size - 1] == '\r')) size--;
     if (size > 0) log_info("ONVIF curl %s %.*s", prefix, (int)size, data);
     return 0;
+}
+
+static CURL *create_curl_handle(void) {
+    CURL *handle = curl_easy_init();
+    if (!handle) return NULL;
+    if (getenv("LIGHTNVR_ONVIF_CURL_TRACE")) {
+        curl_easy_setopt(handle, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(handle, CURLOPT_DEBUGFUNCTION, curl_trace_callback);
+    }
+    return handle;
+}
+
+/* Drop a PullPoint's connection. Waits for a request in flight on it. */
+static void release_subscription_curl(onvif_subscription_t *subscription) {
+    pthread_mutex_t *lock = subscription_lock(subscription);
+    if (!lock) return;
+    pthread_mutex_lock(lock);
+    if (subscription->curl) {
+        curl_easy_cleanup(subscription->curl);
+        subscription->curl = NULL;
+    }
+    pthread_mutex_unlock(lock);
 }
 
 /* Transport-level outcome of one ONVIF HTTP exchange, for callers that need to
@@ -258,12 +306,15 @@ static char *create_onvif_request(const char *username, const char *password,
  * debug level only, because the caller is retrying and reports the final
  * result itself.
  */
-static char *perform_onvif_request_locked(const char *full_url, const char *username,
+/* The caller holds the lock that serializes `handle` (curl_mutex for the
+ * shared handle, the slot lock for a subscription's own). */
+static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
+                                          const char *username,
                                           const char *password, const char *request_body,
                                           const char *action,
                                           onvif_request_status_t *status) {
     if (status) memset(status, 0, sizeof(*status));
-    if (!initialized || !curl_handle) {
+    if (!initialized || !handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
     }
@@ -280,9 +331,9 @@ static char *perform_onvif_request_locked(const char *full_url, const char *user
     }
 
     // Set up curl
-    curl_easy_setopt(curl_handle, CURLOPT_URL, full_url);
-    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, soap_request);
-    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, strlen(soap_request));
+    curl_easy_setopt(handle, CURLOPT_URL, full_url);
+    curl_easy_setopt(handle, CURLOPT_POSTFIELDS, soap_request);
+    curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE, strlen(soap_request));
 
     /* Content-Type carries the SOAP 1.2 action parameter in addition to the
      * charset. Fall back to the plain type when no action is provided. */
@@ -298,28 +349,28 @@ static char *perform_onvif_request_locked(const char *full_url, const char *user
 
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, content_type);
-    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
 
     // Set up response buffer
     memory_struct_t chunk = {0};
 
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(handle, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
 
     // Perform request
-    CURLcode res = curl_easy_perform(curl_handle);
+    CURLcode res = curl_easy_perform(handle);
     long http_code = 0;
     double elapsed = 0;
     long new_connections = 0;
-    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_easy_getinfo(curl_handle, CURLINFO_TOTAL_TIME, &elapsed);
+    curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(handle, CURLINFO_TOTAL_TIME, &elapsed);
     /* 0 means the transfer ran on a reused keep-alive connection; libcurl
      * retries a dead reused connection on a fresh one by itself, so a
      * "returned nothing" with new_connections=1 is the camera closing a fresh
      * connection, not a stale keep-alive. */
-    curl_easy_getinfo(curl_handle, CURLINFO_NUM_CONNECTS, &new_connections);
+    curl_easy_getinfo(handle, CURLINFO_NUM_CONNECTS, &new_connections);
     if (status) {
         status->curl_code = res;
         status->http_code = http_code;
@@ -366,8 +417,8 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
                                        const char *password, const char *request_body,
                                        const char *action) {
     pthread_mutex_lock(&curl_mutex);
-    char *response = perform_onvif_request_locked(full_url, username, password,
-                                                  request_body, action, NULL);
+    char *response = perform_onvif_request_locked(curl_handle, full_url, username,
+                                                  password, request_body, action, NULL);
     pthread_mutex_unlock(&curl_mutex);
     return response;
 }
@@ -556,12 +607,12 @@ static bool is_transport_drop(const onvif_request_status_t *status) {
 }
 
 /* Send a subscription-scoped request (PullMessages, Renew, Unsubscribe) to the
- * SubscriptionReference address. Transport drops are retried on the same
- * subscription (ONVIF_PULL_DROP_MAX_ATTEMPTS). curl_mutex stays held for the
- * whole burst so the retries land inside the one-to-two-second window in which
- * these cameras accept a connection again, instead of queueing behind another
- * camera's five-second long poll. */
-static char *send_subscription_request(const onvif_subscription_t *subscription,
+ * SubscriptionReference address on the subscription's own connection.
+ * Transport drops are retried on the same subscription
+ * (ONVIF_PULL_DROP_MAX_ATTEMPTS); the slot lock stays held for the whole burst
+ * so the retries land inside the short window in which these cameras accept
+ * a connection again. Other cameras are not affected. */
+static char *send_subscription_request(onvif_subscription_t *subscription,
                                        const char *request_body,
                                        const char *action) {
     if (!subscription || !request_body || !action) return NULL;
@@ -571,11 +622,21 @@ static char *send_subscription_request(const onvif_subscription_t *subscription,
         char *response = NULL;
         onvif_request_status_t status = {0};
         int attempts = 0;
+        pthread_mutex_t *lock = subscription_lock(subscription);
+        if (!lock) return NULL;
 
-        pthread_mutex_lock(&curl_mutex);
+        pthread_mutex_lock(lock);
+        if (!subscription->curl) subscription->curl = create_curl_handle();
+        if (!subscription->curl) {
+            pthread_mutex_unlock(lock);
+            log_error("Failed to create a curl handle for the ONVIF subscription of %s",
+                      subscription->camera_url);
+            return NULL;
+        }
         while (attempts < ONVIF_PULL_DROP_MAX_ATTEMPTS) {
             attempts++;
-            response = perform_onvif_request_locked(subscription->subscription_address,
+            response = perform_onvif_request_locked(subscription->curl,
+                                                    subscription->subscription_address,
                                                     subscription->username,
                                                     subscription->password,
                                                     request_body, action, &status);
@@ -590,13 +651,13 @@ static char *send_subscription_request(const onvif_subscription_t *subscription,
                       ONVIF_PULL_DROP_MAX_ATTEMPTS);
             usleep(ONVIF_PULL_DROP_RETRY_DELAY_MS * 1000);
         }
-        pthread_mutex_unlock(&curl_mutex);
+        pthread_mutex_unlock(lock);
 
         /* HTTP-level failures (faults, non-200) were already reported by the
          * core; only curl-level failures are left for us to report. */
         if (!response && status.curl_code != CURLE_OK) {
-            log_error("ONVIF request %s failed after %d attempt%s (curl=%d, HTTP=%ld, "
-                      "elapsed=%.3fs, new connections=%ld): %s",
+            log_error("ONVIF request %s failed after %d attempt%s (last attempt: curl=%d, "
+                      "HTTP=%ld, elapsed=%.3fs, new connections=%ld): %s",
                       action, attempts, attempts == 1 ? "" : "s",
                       (int)status.curl_code, status.http_code, status.elapsed,
                       status.new_connections, curl_easy_strerror(status.curl_code));
@@ -650,6 +711,7 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
                  subscription->camera_url);
     }
     subscription->active = false;
+    release_subscription_curl(subscription);
 }
 
 /*
@@ -859,6 +921,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     if (slot >= 0) {
         /* An inactive slot can contain failure state and an old subscription
          * address. Start the replacement with a completely clean record. */
+        release_subscription_curl(&subscriptions[slot]);
         memset(&subscriptions[slot], 0, sizeof(subscriptions[slot]));
 
         // Store camera URL, username, and password
@@ -1258,7 +1321,7 @@ int init_onvif_detection_system(void) {
         return -1;
     }
 
-    curl_handle = curl_easy_init();
+    curl_handle = create_curl_handle();
     if (!curl_handle) {
         log_error("Failed to initialize curl handle");
         // Note: Don't call curl_global_cleanup() here - it's managed centrally
@@ -1267,14 +1330,14 @@ int init_onvif_detection_system(void) {
     }
 
     if (getenv("LIGHTNVR_ONVIF_CURL_TRACE")) {
-        curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
-        curl_easy_setopt(curl_handle, CURLOPT_DEBUGFUNCTION, curl_trace_callback);
         log_info("ONVIF detection: libcurl trace enabled (LIGHTNVR_ONVIF_CURL_TRACE)");
     }
 
     // Initialize subscriptions
     pthread_mutex_lock(&subscription_mutex);
     subscription_count = 0;
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++)
+        release_subscription_curl(&subscriptions[i]);
     memset(subscriptions, 0, sizeof(subscriptions));
     subscriptions_shutting_down = false;
     pthread_mutex_unlock(&subscription_mutex);
@@ -1302,6 +1365,8 @@ void shutdown_onvif_detection_system(void) {
             unsubscribe_subscription_locked(&subscriptions[i]);
         }
     }
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++)
+        release_subscription_curl(&subscriptions[i]);
     subscription_count = 0;
     memset(subscriptions, 0, sizeof(subscriptions));
     pthread_mutex_unlock(&subscription_mutex);

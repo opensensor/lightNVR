@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,7 +56,23 @@ typedef struct {
     int pull_count;
     int renew_count;
     int unsubscribe_count;
+    int pull_delay_ms;      // Hold every PullMessages this long before answering
+    volatile bool pull_in_progress;
 } fake_onvif_server_t;
+
+static void sleep_ms(int milliseconds) {
+    struct timespec delay = {
+        .tv_sec = milliseconds / 1000,
+        .tv_nsec = (long)(milliseconds % 1000) * 1000000L,
+    };
+    nanosleep(&delay, NULL);
+}
+
+static uint64_t monotonic_ms(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+}
 
 static void send_xml_response_with_status(int client_fd, int status,
                                           const char *reason,
@@ -209,6 +226,11 @@ static void *fake_onvif_server_main(void *arg) {
                 "<Envelope><Body><UnsubscribeResponse/></Body></Envelope>");
         } else if (strstr(request, "PullMessages")) {
             server->pull_count++;
+            if (server->pull_delay_ms > 0) {
+                server->pull_in_progress = true;
+                sleep_ms(server->pull_delay_ms);
+                server->pull_in_progress = false;
+            }
             if (server->scoped_subscription_address) {
                 server->saw_subscription_target =
                     strstr(request, "POST /pull_service?one=1&two=2 HTTP/") != NULL &&
@@ -417,6 +439,55 @@ void test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription(void)
      * drop, then the camera answers the retry. */
     TEST_ASSERT_EQUAL_INT(ONVIF_PULL_DROP_MAX_ATTEMPTS + 2, server.pull_count);
     TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+typedef struct {
+    char url[64];
+    int rc;
+} poll_job_t;
+
+static void *poll_job_main(void *arg) {
+    poll_job_t *job = arg;
+    detection_result_t result = {0};
+    job->rc = detect_motion_onvif(job->url, "", "", &result, "");
+    return NULL;
+}
+
+/* One camera's PullMessages long poll (five seconds on real cameras) must not
+ * delay another camera's subscription or poll: each PullPoint has its own
+ * connection. With a shared connection the second camera waited out the
+ * first camera's poll (#603). */
+void test_onvif_slow_camera_does_not_delay_another_camera(void) {
+    fake_onvif_server_t slow, fast;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&slow));
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&fast));
+    slow.pull_delay_ms = 1500;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    poll_job_t slow_job = {0};
+    snprintf(slow_job.url, sizeof(slow_job.url), "http://127.0.0.1:%d", slow.port);
+    pthread_t slow_thread;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&slow_thread, NULL, poll_job_main, &slow_job));
+    for (int waited = 0; !slow.pull_in_progress && waited < 5000; waited += 10) sleep_ms(10);
+    TEST_ASSERT_TRUE(slow.pull_in_progress);
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", fast.port);
+    detection_result_t result = {0};
+    uint64_t started = monotonic_ms();
+    int rc = detect_motion_onvif(url, "", "", &result, "");
+    uint64_t elapsed = monotonic_ms() - started;
+
+    pthread_join(slow_thread, NULL);
+    shutdown_onvif_detection_system();
+    stop_fake_onvif_server(&slow);
+    stop_fake_onvif_server(&fast);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(0, slow_job.rc);
+    TEST_ASSERT_LESS_THAN_UINT64(1000U, elapsed);
+    TEST_ASSERT_EQUAL_INT(1, fast.create_count);
+    TEST_ASSERT_EQUAL_INT(1, fast.pull_count);
+    TEST_ASSERT_EQUAL_INT(1, slow.pull_count);
 }
 
 void test_onvif_uses_scoped_subscription_address_with_escaped_query(void) {
@@ -689,6 +760,7 @@ int main(void) {
     RUN_TEST(test_onvif_dropped_pull_reuses_subscription);
     RUN_TEST(test_onvif_empty_http_success_is_a_failed_poll);
     RUN_TEST(test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription);
+    RUN_TEST(test_onvif_slow_camera_does_not_delay_another_camera);
     RUN_TEST(test_onvif_uses_scoped_subscription_address_with_escaped_query);
     RUN_TEST(test_onvif_discovered_endpoint_is_not_retried_as_fallback);
     RUN_TEST(test_onvif_subscription_renews_camera_granted_lease);
