@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -214,6 +215,46 @@ static void test_overlap_is_skipped_and_slow_does_not_block_fast(void) {
     fake_destroy(&fast);
 }
 
+typedef struct {
+    system_health_sampling_tier_t tier;
+    atomic_uint *inversions;
+} ordering_worker_t;
+
+static void *ordering_worker_main(void *argument) {
+    ordering_worker_t *worker = argument;
+    system_health_summary_t summaries[SYSTEM_HEALTH_RING_SAMPLES];
+    for (unsigned int round = 0; round < 20000U; ++round) {
+        (void)system_health_collect_tier(worker->tier);
+        size_t count = system_health_summary_copy(summaries,
+                                                  SYSTEM_HEALTH_RING_SAMPLES);
+        for (size_t index = 1; index < count; ++index) {
+            if (summaries[index].sequence <= summaries[index - 1].sequence ||
+                summaries[index].completed_monotonic_ms <
+                    summaries[index - 1].completed_monotonic_ms)
+                atomic_fetch_add(worker->inversions, 1U);
+        }
+    }
+    return NULL;
+}
+
+static void test_concurrent_tiers_publish_in_completion_order(void) {
+    system_health_options_t configuration = options();
+    TEST_ASSERT_EQUAL_INT(0, system_health_init(&configuration));
+    atomic_uint inversions = 0U;
+    ordering_worker_t workers[SYSTEM_HEALTH_TIER_COUNT];
+    pthread_t threads[SYSTEM_HEALTH_TIER_COUNT];
+    for (size_t tier = 0; tier < SYSTEM_HEALTH_TIER_COUNT; ++tier) {
+        workers[tier].tier = (system_health_sampling_tier_t)tier;
+        workers[tier].inversions = &inversions;
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[tier], NULL,
+                                                ordering_worker_main,
+                                                &workers[tier]));
+    }
+    for (size_t tier = 0; tier < SYSTEM_HEALTH_TIER_COUNT; ++tier)
+        pthread_join(threads[tier], NULL);
+    TEST_ASSERT_EQUAL_UINT(0U, atomic_load(&inversions));
+}
+
 static void test_workers_wake_and_shutdown_quickly(void) {
     system_health_options_t configuration = options();
     fake_state_t state;
@@ -240,6 +281,7 @@ int main(void) {
     RUN_TEST(test_completed_generations_are_immutable_and_bounded);
     RUN_TEST(test_overflow_errors_and_stale_values_are_visible);
     RUN_TEST(test_overlap_is_skipped_and_slow_does_not_block_fast);
+    RUN_TEST(test_concurrent_tiers_publish_in_completion_order);
     RUN_TEST(test_workers_wake_and_shutdown_quickly);
     return UNITY_END();
 }
