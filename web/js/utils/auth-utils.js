@@ -28,6 +28,7 @@ export function getAuthHeaders() {
  * Clear all authentication state
  */
 export function clearAuthState() {
+  window._lightnvrUserKey = null;
   // Clear localStorage
   localStorage.removeItem('auth');
 

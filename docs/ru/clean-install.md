@@ -1,0 +1,29 @@
+# Чистая установка новой версии форка
+
+Скрипт `scripts/install-fork.sh` предназначен для нового Linux-сервера с Git, Docker Engine и плагином Docker Compose v2. Он собирает собственный образ из https://github.com/zirocool93/NVR, а не загружает upstream lightNVR. По умолчанию используется ветка `codex/mobile-live-favorites`; можно указать точный commit через `--ref`. Dockerfile и его функции сохранены. Рекурсивные субмодули и первая сборка требуют времени, диска и памяти.
+
+```bash
+curl -fL https://raw.githubusercontent.com/zirocool93/NVR/codex/mobile-live-favorites/scripts/install-fork.sh -o install-fork.sh
+less install-fork.sh
+sudo bash install-fork.sh --dir /opt/nvr-fork
+```
+
+По умолчанию Web UI доступен только локально: http://127.0.0.1:8080. Для подключения с рабочего компьютера используйте SSH-туннель:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 пользователь@сервер
+```
+
+Откройте http://127.0.0.1:8080, войдите `admin / admin` и сразу смените пароль. Для доверенной локальной сети можно выбрать `--bind 0.0.0.0`; для Интернета настройте HTTPS и проверенную схему доступа к go2rtc отдельно. Порт go2rtc 1984 привязан к loopback; RTSP 8554 и WebRTC 8555 TCP/UDP опубликованы для камер/клиентов. Требуется отсутствие конфликтов этих портов с другими сервисами. Внешний WebRTC зависит от маршрутизации/ICE и не настраивается этим скриптом.
+
+Создаются source, config, data, compose.yaml и .env в выбранном каталоге. Записывается полный source commit, образ получает тег по этому commit. Уже существующий каталог отвергается: скрипт не предназначен для обновления существующей установки или переноса архива. При ошибке данные сохраняются. Не запускайте повторно с тем же каталогом без диагностики; автоматического удаления нет.
+
+```bash
+cd /opt/nvr-fork
+sudo docker compose -p nvr-fork logs --tail 100 nvr
+sudo docker compose -p nvr-fork ps
+sudo docker compose -p nvr-fork stop
+sudo docker compose -p nvr-fork start
+```
+
+Healthcheck подтверждает доступность Web UI. После установки добавьте камеру и проверьте реальное видео, запись, мобильный просмотр и избранное. Этот документ не утверждает успешную контейнерную сборку: в среде разработки Docker daemon недоступен; ранее проверены frontend и native backend сборки. Скрипт проверен синтаксически и изолированным тестом с заменой Docker/Git, включая отказ при существующем каталоге.

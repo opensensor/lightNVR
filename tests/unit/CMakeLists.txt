@@ -183,6 +183,13 @@ add_layer2_test(test_api_handlers_fleet)
 add_layer2_test(test_api_handlers_workspaces)
 add_layer2_test(test_db_live_saved_layouts)
 add_layer2_test(test_api_handlers_live_layouts)
+add_layer2_test(test_api_handlers_ui_preferences)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_options(test_api_handlers_ui_preferences PRIVATE
+        "-Wl,--wrap=httpd_check_action_access"
+        "-Wl,--wrap=authorization_filter_cameras"
+    )
+endif()
 add_layer2_test(test_db_operator_floor_plans)
 add_layer2_test(test_api_handlers_operator_floor_plans)
 add_layer2_test(test_api_handlers_investigations)

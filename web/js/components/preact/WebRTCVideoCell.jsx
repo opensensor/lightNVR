@@ -321,6 +321,7 @@ export function WebRTCVideoCell({
         console.warn('Failed to get go2rtc URL from settings, using default:', err);
         go2rtcBaseUrl = `${window.location.origin}/go2rtc`;
       }
+      if (cellAbortSignal.aborted) return;
 
       // Load server-configurable connection timeouts (falls back to defaults)
       try {
@@ -330,11 +331,12 @@ export function WebRTCVideoCell({
       } catch (err) {
         console.warn('Failed to load WebRTC timeouts, using defaults:', err);
       }
+      if (cellAbortSignal.aborted) return;
 
       // Fetch ICE server configuration from API (includes TURN if configured)
       let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
       try {
-        const iceResponse = await fetch('/api/ice-servers');
+        const iceResponse = await fetch('/api/ice-servers', { signal: cellAbortSignal });
         if (iceResponse.ok) {
           const iceConfig = await iceResponse.json();
           if (iceConfig.ice_servers && iceConfig.ice_servers.length > 0) {
@@ -345,6 +347,7 @@ export function WebRTCVideoCell({
       } catch (err) {
         console.warn('Failed to fetch ICE servers config, using defaults:', err);
       }
+      if (cellAbortSignal.aborted) return;
 
       // Create a new RTCPeerConnection
       const pc = new RTCPeerConnection({
@@ -356,6 +359,11 @@ export function WebRTCVideoCell({
       });
 
       peerConnectionRef.current = pc;
+      if (cellAbortSignal.aborted) {
+        if (pc.signalingState !== 'closed') pc.close();
+        if (peerConnectionRef.current === pc) peerConnectionRef.current = null;
+        return;
+      }
 
       // Set up event handlers
       pc.ontrack = (event) => {
@@ -865,6 +873,8 @@ export function WebRTCVideoCell({
         // Component unmounted or attempt superseded — nothing to report
         if (isGateAbort(error) || cellAbortSignal.aborted) {
           clearTimeout(connectionTimeout);
+          if (pc.signalingState !== 'closed') pc.close();
+          if (peerConnectionRef.current === pc) peerConnectionRef.current = null;
           return;
         }
         console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);

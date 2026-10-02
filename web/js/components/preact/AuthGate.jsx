@@ -7,6 +7,7 @@ import {
   validateSession,
 } from '../../utils/auth-utils.js';
 import { validateForcedPasswordChange } from './forcedPasswordChange.js';
+import { uiAccountScopeKey } from '../../utils/mobile-ui.js';
 
 export function RequiredPasswordChange({ session }) {
   const { t } = useI18n();
@@ -150,10 +151,14 @@ export function AuthGate({ children }) {
     validateSession().then((result) => {
       if (!active) return;
       if (!result.valid) {
+        window._lightnvrUserKey = null;
         clearAuthState();
         redirectToLogin('session_expired');
         return;
       }
+      // Ключи пользовательских настроек включают идентификатор проверенной
+      // сессии, чтобы общий query-кэш не переносил данные между аккаунтами.
+      window._lightnvrUserKey = uiAccountScopeKey(result);
       setSession(result);
     });
     return () => { active = false; };

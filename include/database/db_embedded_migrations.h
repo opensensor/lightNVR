@@ -2041,6 +2041,30 @@ static const char migration_0087_up[] =
 static const char migration_0087_down[] =
     "ALTER TABLE operator_floor_plans DROP COLUMN sketch_json;";
 
+static const char migration_0088_up[] =
+    "CREATE TABLE IF NOT EXISTS user_preferences (\n"
+    "    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+    "    preference_key TEXT NOT NULL,\n"
+    "    value_json TEXT NOT NULL CHECK (json_valid(value_json)),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),\n"
+    "    PRIMARY KEY (user_id, preference_key)\n"
+    ");\n"
+    "\n"
+    "CREATE TABLE IF NOT EXISTS user_favorites (\n"
+    "    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+    "    camera_uuid TEXT NOT NULL REFERENCES streams(camera_uuid) ON DELETE CASCADE,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),\n"
+    "    PRIMARY KEY (user_id, camera_uuid)\n"
+    ");\n"
+    "\n"
+    "CREATE INDEX IF NOT EXISTS idx_user_favorites_order\n"
+    "    ON user_favorites(user_id, created_at, camera_uuid);";
+
+static const char migration_0088_down[] =
+    "DROP INDEX IF EXISTS idx_user_favorites_order;\n"
+    "DROP TABLE IF EXISTS user_favorites;\n"
+    "DROP TABLE IF EXISTS user_preferences;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2651,8 +2675,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0087_down,
         .is_embedded = true
     },
+    {
+        .version = "0088",
+        .description = "user_ui_preferences_favorites",
+        .sql_up = migration_0088_up,
+        .sql_down = migration_0088_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 87
+#define EMBEDDED_MIGRATIONS_COUNT 88
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
