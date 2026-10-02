@@ -4,16 +4,18 @@ set -Eeuo pipefail
 trap 'echo "Ошибка установки в строке $LINENO. Данные сохранены; проверьте журнал Docker Compose." >&2' ERR
 
 usage() {
-  echo 'Использование: bash install-fork.sh [--dir /opt/nvr-fork] [--ref ветка_или_commit] [--bind 127.0.0.1] [--port 8080]'
+  echo 'Использование: bash install-fork.sh [--dir /opt/nvr-fork] [--ref ветка_или_commit] [--bind 127.0.0.1] [--port 8080] [--resume-source-only]'
   echo 'Нужны Linux, Git, Docker Engine с Compose v2 и доступ к Docker daemon.'
 }
 install_dir=/opt/nvr-fork
 source_ref=codex/mobile-live-favorites
 web_bind=127.0.0.1
 web_port=8080
+resume_source_only=false
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
+    --resume-source-only) resume_source_only=true; shift ;;
     --dir|--ref|--bind|--port)
       (($# >= 2)) || { usage; exit 2; }
       case "$1" in
@@ -36,13 +38,28 @@ for tool in git docker; do
 done
 docker info >/dev/null
 docker compose version >/dev/null
-[[ ! -e $install_dir && ! -L $install_dir ]] || { echo 'Каталог уже существует. Чистая установка не перезаписывает данные.' >&2; exit 1; }
 umask 077
-mkdir -p "$install_dir"
+if $resume_source_only; then
+  [[ -d $install_dir/source/.git && ! -L $install_dir && ! -L $install_dir/source ]] || { echo 'Нет отдельного незавершённого клона source.' >&2; exit 1; }
+  shopt -s nullglob dotglob
+  entries=("$install_dir"/*)
+  [[ ${#entries[@]} == 1 && ${entries[0]} == "$install_dir/source" ]] || { echo 'Продолжение разрешено только для каталога с одним source, без config/data.' >&2; exit 1; }
+  [[ $(git -C "$install_dir/source" config --get remote.origin.url) == https://github.com/zirocool93/NVR.git ]] || { echo 'Клон принадлежит другому репозиторию.' >&2; exit 1; }
+  git -C "$install_dir/source" fetch origin
+else
+  [[ ! -e $install_dir && ! -L $install_dir ]] || { echo 'Каталог уже существует. Чистая установка не перезаписывает данные.' >&2; exit 1; }
+  mkdir -p "$install_dir"
+  git clone --no-checkout https://github.com/zirocool93/NVR.git "$install_dir/source"
+fi
 install_dir=$(cd "$install_dir" && pwd -P)
-git clone --no-checkout https://github.com/zirocool93/NVR.git "$install_dir/source"
-git -C "$install_dir/source" checkout --detach "$source_ref"
-revision=$(git -C "$install_dir/source" rev-parse HEAD)
+# Разрешаем удалённую ветку до checkout: автоматический DWIM создаёт -b,
+# несовместимый с --detach при первом checkout после --no-checkout clone.
+if revision=$(git -C "$install_dir/source" rev-parse --verify "refs/remotes/origin/$source_ref^{commit}" 2>/dev/null); then
+  :
+else
+  revision=$(git -C "$install_dir/source" rev-parse --verify "$source_ref^{commit}")
+fi
+git -C "$install_dir/source" checkout --detach "$revision"
 git -C "$install_dir/source" submodule update --init --recursive
 mkdir "$install_dir/config" "$install_dir/data"
 cat > "$install_dir/compose.yaml" <<'YAML'
