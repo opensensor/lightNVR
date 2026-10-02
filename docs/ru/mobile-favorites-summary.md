@@ -83,3 +83,6 @@
 - `web/js/utils/mobile-ui.js`
 - `web/tests/e2e/mobile-favorites.browser.cjs`
 - `web/tests/mobile-ui.spec.js`
+
+## Дополнение: публикация
+Ветка опубликована: https://github.com/zirocool93/NVR/tree/codex/mobile-live-favorites. Implementation commit: 27f268c01f01878a23811baa9f3ac60fbe30077d. Первоначальная отметка о локальном состоянии выше относится к завершению предыдущей итерации. Добавлены scripts/install-fork.sh, docs/ru/clean-install.md и tests/unit/test_install_fork.py. Инструкция: [Чистая установка](clean-install.md). Для повторения изолированной проверки: python3 tests/unit/test_install_fork.py на Linux. Скрипт синтаксически проверен; реальные Docker build/up ещё не проверены. Основная ветка и действующий сервер не изменены.
