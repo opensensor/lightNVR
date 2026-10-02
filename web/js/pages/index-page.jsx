@@ -15,6 +15,8 @@ import { setupSessionValidation } from '../utils/auth-utils.js';
 import { SetupWizard } from '../components/preact/SetupWizard.jsx';
 import { AuthGate } from '../components/preact/AuthGate.jsx';
 import { initI18n } from '../i18n.js';
+import { UiModeControl } from '../components/preact/UiModeControl.jsx';
+import { MobileLiveView } from '../components/preact/MobileLiveView.jsx';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -88,7 +90,10 @@ function App() {
     return (
         <>
             {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
-            {useWebRTC
+            <UiModeControl>
+            {({ isMobile }) => isMobile
+                ? <MobileLiveView viewFlags={viewFlags} />
+                : useWebRTC
                 ? <WebRTCView 
                     audioDisabled={viewFlags.audioDisabled}
                     isAutoDisabled={viewFlags.autoDisabled}
@@ -103,6 +108,7 @@ function App() {
                     isHlsDisabled={viewFlags.hlsDisabled}
                     isMseDisabled={viewFlags.mseDisabled}
                   />}
+            </UiModeControl>
         </>
     );
 }
