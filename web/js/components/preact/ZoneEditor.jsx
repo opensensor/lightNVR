@@ -28,6 +28,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   const { t } = useI18n();
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
+  const snapshotTimeoutRef = useRef(null);
   // Where the image is actually drawn within the canvas (it may be
   // letterboxed/pillarboxed to preserve aspect ratio). Mouse handlers read
   // this to convert clicks into image-relative fractions consistently with
@@ -93,16 +94,26 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
       // Set a timeout to show canvas anyway after 10 seconds
       const timeout = setTimeout(() => {
-        if (!imageLoaded) {
-          console.warn('Snapshot not loaded, showing canvas without background');
-          setImageLoaded(true);
-          setSnapshotError(true);
-        }
+        snapshotTimeoutRef.current = null;
+        console.warn('Snapshot not loaded, showing canvas without background');
+        setImageLoaded(true);
+        setSnapshotError(true);
       }, 10000);
+      snapshotTimeoutRef.current = timeout;
 
-      return () => clearTimeout(timeout);
+      return () => {
+        clearTimeout(timeout);
+        if (snapshotTimeoutRef.current === timeout) snapshotTimeoutRef.current = null;
+      };
     }
   }, [streamName]);
+
+  const clearSnapshotTimeout = () => {
+    if (snapshotTimeoutRef.current !== null) {
+      clearTimeout(snapshotTimeoutRef.current);
+      snapshotTimeoutRef.current = null;
+    }
+  };
 
   // Read a CSS custom property and return a usable hsl() colour string.
   // The project's theme variables are stored as bare "H S% L%" triplets so we
@@ -539,12 +550,14 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                   className="hidden"
                   crossOrigin="anonymous"
                   onLoad={() => {
+                    clearSnapshotTimeout();
                     console.log('✅ Snapshot loaded successfully');
                     setImageLoaded(true);
                     setSnapshotError(false);
                     drawCanvas();
                   }}
                   onError={(e) => {
+                    clearSnapshotTimeout();
                     console.error('❌ Failed to load snapshot:', e);
                     console.error('Snapshot URL was:', snapshotUrl);
                     setSnapshotError(true);
