@@ -997,9 +997,6 @@ export function StreamConfigModal({
                                 <p className="text-sm mb-2 text-muted-foreground">
                                   <strong className="text-foreground">ℹ️ {t('streamsConfig.usingDefaultApiEndpoint')}</strong>
                                 </p>
-                                <p className="text-xs font-mono px-2 py-1 rounded bg-background text-foreground">
-                                  http://localhost:9001/detect
-                                </p>
                                 <p className="text-xs mt-2 text-muted-foreground">
                                   {t('streamsConfig.configuredInLightnvrIni')} <code className="px-1 rounded bg-background">[api_detection]</code>
                                 </p>

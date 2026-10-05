@@ -379,8 +379,12 @@ void load_default_config(config_t *config) {
     safe_strcpy(config->models_path, "/var/lib/lightnvr/models", MAX_PATH_LENGTH, 0);
     
     // API detection settings
-    safe_strcpy(config->api_detection_url, "http://localhost:8000/detect", MAX_URL_LENGTH, 0);
+    safe_strcpy(config->api_detection_url, "http://localhost:8000/api/v1/detect", MAX_URL_LENGTH, 0);
     safe_strcpy(config->api_detection_backend, "onnx", 32, 0); // Default to ONNX backend
+    safe_strcpy(config->api_detection_format, API_DETECTION_FORMAT_NAME_LIGHT_OBJECT_DETECT,
+                sizeof(config->api_detection_format), 0);
+    safe_strcpy(config->api_detection_detector_name, "default",
+                sizeof(config->api_detection_detector_name), 0);
 
     // Global detection defaults
     config->default_detection_threshold = 50;  // 50% confidence threshold
@@ -853,6 +857,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->api_detection_url, value, MAX_URL_LENGTH, 0);
         } else if (strcmp(name, "backend") == 0) {
             safe_strcpy(config->api_detection_backend, value, sizeof(config->api_detection_backend), 0);
+        } else if (strcmp(name, "format") == 0) {
+            if (!config_set_api_detection_format(config, value)) {
+                log_warn("Unknown [api_detection] format '%s'; expected %s or %s, keeping %s",
+                         value, API_DETECTION_FORMAT_NAME_LIGHT_OBJECT_DETECT,
+                         API_DETECTION_FORMAT_NAME_DOODS2, config->api_detection_format);
+            }
+        } else if (strcmp(name, "detector_name") == 0) {
+            safe_strcpy(config->api_detection_detector_name, value,
+                        sizeof(config->api_detection_detector_name), 0);
         } else if (strcmp(name, "detection_threshold") == 0) {
             config->default_detection_threshold = safe_atoi(value, 0);
             // Clamp to valid range
@@ -1826,6 +1839,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
     fprintf(file, "backend = %s\n", config->api_detection_backend);
+    fprintf(file, "format = %s  ; Request format: light-object-detect (multipart upload) or doods2 (JSON body)\n",
+            config->api_detection_format);
+    fprintf(file, "detector_name = %s  ; DOODS2 only: detector_name sent with each request\n",
+            config->api_detection_detector_name);
     fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
@@ -2088,4 +2105,63 @@ void print_config(const config_t *config) {
             }
         }
     }
+}
+
+/* ------------------------------------------------------------------------- */
+/* API detection wire format helpers                                         */
+/* ------------------------------------------------------------------------- */
+
+const char *api_detection_format_name(api_detection_format_t format) {
+    switch (format) {
+    case API_DETECTION_FORMAT_DOODS2:
+        return API_DETECTION_FORMAT_NAME_DOODS2;
+    case API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT:
+    default:
+        return API_DETECTION_FORMAT_NAME_LIGHT_OBJECT_DETECT;
+    }
+}
+
+bool api_detection_format_parse(const char *name, api_detection_format_t *out) {
+    if (!name || !out) {
+        return false;
+    }
+
+    // Tolerate surrounding whitespace from hand-edited ini files.
+    while (*name == ' ' || *name == '\t') {
+        name++;
+    }
+    size_t len = strlen(name);
+    while (len > 0 && (name[len - 1] == ' ' || name[len - 1] == '\t')) {
+        len--;
+    }
+    if (len == 0 || len >= API_DETECTION_FORMAT_MAX) {
+        return false;
+    }
+
+    char trimmed[API_DETECTION_FORMAT_MAX];
+    memcpy(trimmed, name, len);
+    trimmed[len] = '\0';
+
+    if (strcasecmp(trimmed, API_DETECTION_FORMAT_NAME_LIGHT_OBJECT_DETECT) == 0 ||
+        strcasecmp(trimmed, "light_object_detect") == 0 ||
+        strcasecmp(trimmed, "lod") == 0) {
+        *out = API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT;
+        return true;
+    }
+    if (strcasecmp(trimmed, API_DETECTION_FORMAT_NAME_DOODS2) == 0 ||
+        strcasecmp(trimmed, "doods") == 0) {
+        *out = API_DETECTION_FORMAT_DOODS2;
+        return true;
+    }
+    return false;
+}
+
+bool config_set_api_detection_format(config_t *config, const char *name) {
+    api_detection_format_t format;
+    if (!config || !api_detection_format_parse(name, &format)) {
+        return false;
+    }
+    safe_strcpy(config->api_detection_format, api_detection_format_name(format),
+                sizeof(config->api_detection_format), 0);
+    return true;
 }

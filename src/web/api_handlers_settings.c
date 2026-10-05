@@ -790,6 +790,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     // API detection settings
     cJSON_AddStringToObject(settings, "api_detection_url", g_config.api_detection_url);
     cJSON_AddStringToObject(settings, "api_detection_backend", g_config.api_detection_backend);
+    cJSON_AddStringToObject(settings, "api_detection_format", g_config.api_detection_format);
+    cJSON_AddStringToObject(settings, "api_detection_detector_name", g_config.api_detection_detector_name);
 
     // Detection defaults
     cJSON_AddNumberToObject(settings, "default_detection_threshold", g_config.default_detection_threshold);
@@ -953,6 +955,20 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_error("Failed to parse settings JSON from request body");
         http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
+    }
+
+    // Preflight: reject an unknown api_detection_format before any setting is
+    // applied, so a bad request cannot leave g_config partially updated.
+    {
+        const cJSON *format = cJSON_GetObjectItem(settings, "api_detection_format");
+        api_detection_format_t parsed_format;
+        if (format && cJSON_IsString(format) &&
+            !api_detection_format_parse(format->valuestring, &parsed_format)) {
+            log_warn("Rejected invalid api_detection_format setting");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400, "Invalid api_detection_format: expected light-object-detect or doods2");
+            return;
+        }
     }
 
     // Update settings
@@ -1552,6 +1568,24 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         safe_strcpy(g_config.api_detection_backend, api_detection_backend->valuestring, sizeof(g_config.api_detection_backend), 0);
         settings_changed = true;
         log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
+    }
+
+    // API detection request format (light-object-detect or doods2); validated above.
+    cJSON *api_detection_format = cJSON_GetObjectItem(settings, "api_detection_format");
+    if (api_detection_format && cJSON_IsString(api_detection_format) &&
+        config_set_api_detection_format(&g_config, api_detection_format->valuestring)) {
+        settings_changed = true;
+        log_info("Updated api_detection_format: %s", g_config.api_detection_format);
+    }
+
+    // DOODS2 detector name
+    cJSON *api_detection_detector_name = cJSON_GetObjectItem(settings, "api_detection_detector_name");
+    if (api_detection_detector_name && cJSON_IsString(api_detection_detector_name)) {
+        const char *detector_name = api_detection_detector_name->valuestring;
+        safe_strcpy(g_config.api_detection_detector_name, detector_name[0] ? detector_name : "default",
+                    sizeof(g_config.api_detection_detector_name), 0);
+        settings_changed = true;
+        log_info("Updated api_detection_detector_name: %s", g_config.api_detection_detector_name);
     }
 
     // In-process LiteRT (TFLite) detection engine settings

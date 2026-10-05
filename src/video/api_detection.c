@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <stdint.h>
@@ -15,6 +16,7 @@
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
 #include "core/event_producers.h"
+#include "utils/base64.h"
 #include "utils/strings.h"
 #include "video/api_detection.h"
 #include "video/detection_result.h"
@@ -42,9 +44,19 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Initial buffer size (in bytes) for CURL responses to reduce realloc churn.
 #define API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE 1024
 
+// Maximum length of the fully built request URL.
+#define API_DETECTION_REQUEST_URL_MAX 1024
+
+// DOODS2 request body up to (and including) the opening quote of the base64 "data" value.
+#define DOODS2_BODY_PREFIX_FORMAT "{\"id\":%s,\"detector_name\":%s,\"detect\":{\"*\":%.2f},\"data\":\""
+
 // ASCII printable character range used when sanitizing response previews.
 #define ASCII_PRINTABLE_MIN 32
 #define ASCII_PRINTABLE_MAX 126
+
+// Returned by the snapshot entry point when go2rtc cannot supply a frame; the
+// caller falls back to the decode path. Mirrors DETECT_SNAPSHOT_UNAVAILABLE.
+#define API_DETECTION_SNAPSHOT_UNAVAILABLE -2
 
 // Structure to hold memory for curl response
 typedef struct {
@@ -185,37 +197,340 @@ static bool validate_api_detection_base_url(const char *base_url, const char *co
     return true;
 }
 
-// Helper to build the API detection URL with common query parameters.
-// Returns 0 on success, -1 on error (e.g., buffer too small or invalid args).
-static int build_api_detection_url(char *buffer,
-                                   size_t buffer_size,
-                                   const char *base_url,
-                                   const char *backend,
-                                   float threshold,
-                                   bool return_image_flag) {
+// Resolve the special "api-detection" model path to the globally configured URL.
+static const char *resolve_api_url(const char *api_url, const char *context) {
+    if (api_url && strcmp(api_url, "api-detection") == 0) {
+        log_info("%s: Using API URL from config: %s", context,
+                 g_config.api_detection_url[0] ? g_config.api_detection_url : "NULL");
+        return g_config.api_detection_url;
+    }
+    return api_url;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Request options                                                           */
+/* ------------------------------------------------------------------------- */
+
+void api_detection_options_from_config(api_detection_options_t *options) {
+    if (!options) {
+        return;
+    }
+    memset(options, 0, sizeof(*options));
+
+    api_detection_format_t format = API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT;
+    if (g_config.api_detection_format[0] != '\0' &&
+        !api_detection_format_parse(g_config.api_detection_format, &format)) {
+        log_warn("API Detection: Unknown api_detection format '%s', using %s",
+                 g_config.api_detection_format,
+                 api_detection_format_name(API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT));
+        format = API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT;
+    }
+    options->format = format;
+    safe_strcpy(options->backend, g_config.api_detection_backend, sizeof(options->backend), 0);
+    safe_strcpy(options->detector_name, g_config.api_detection_detector_name,
+                sizeof(options->detector_name), 0);
+}
+
+int api_detection_options_apply_json(api_detection_options_t *options,
+                                     const char *config_json) {
+    if (!options) {
+        return -1;
+    }
+    if (!config_json || config_json[0] == '\0') {
+        return 0;
+    }
+
+    cJSON *root = cJSON_Parse(config_json);
+    if (!root) {
+        log_warn("API Detection: Engine config is not valid JSON");
+        return -1;
+    }
+
+    int rc = 0;
+    if (!cJSON_IsObject(root)) {
+        log_warn("API Detection: Engine config must be a JSON object");
+        rc = -1;
+    } else {
+        const cJSON *format = cJSON_GetObjectItemCaseSensitive(root, "format");
+        if (format && !cJSON_IsNull(format)) {
+            api_detection_format_t parsed;
+            if (cJSON_IsString(format) && api_detection_format_parse(format->valuestring, &parsed)) {
+                options->format = parsed;
+            } else {
+                log_warn("API Detection: Engine config names an unknown format%s%s",
+                         cJSON_IsString(format) ? ": " : "",
+                         cJSON_IsString(format) ? format->valuestring : "");
+                rc = -1;
+            }
+        }
+
+        const cJSON *backend = cJSON_GetObjectItemCaseSensitive(root, "backend");
+        if (cJSON_IsString(backend) && backend->valuestring[0] != '\0') {
+            safe_strcpy(options->backend, backend->valuestring, sizeof(options->backend), 0);
+        }
+
+        const cJSON *detector = cJSON_GetObjectItemCaseSensitive(root, "detector_name");
+        if (cJSON_IsString(detector) && detector->valuestring[0] != '\0') {
+            safe_strcpy(options->detector_name, detector->valuestring,
+                        sizeof(options->detector_name), 0);
+        }
+    }
+
+    cJSON_Delete(root);
+    return rc;
+}
+
+static const api_detection_options_t *resolve_options(const api_detection_options_t *options,
+                                                      api_detection_options_t *storage) {
+    if (options) {
+        return options;
+    }
+    api_detection_options_from_config(storage);
+    return storage;
+}
+
+static const char *effective_detector_name(const api_detection_options_t *options) {
+    return (options->detector_name[0] != '\0') ? options->detector_name : "default";
+}
+
+/* ------------------------------------------------------------------------- */
+/* Request construction                                                      */
+/* ------------------------------------------------------------------------- */
+
+int api_detection_build_request_url(char *buffer, size_t buffer_size,
+                                    const char *base_url, float threshold,
+                                    const api_detection_options_t *options) {
     if (buffer == NULL || buffer_size == 0 || base_url == NULL || !is_safe_base_url(base_url)) {
         return -1;
     }
 
-    const char *backend_param = sanitize_backend(backend);
-    float actual_threshold = normalize_api_detection_threshold(threshold);
-    const char *return_image_value = return_image_flag ? "true" : "false";
-    char separator = (strchr(base_url, '?') != NULL) ? '&' : '?';
+    api_detection_options_t storage;
+    options = resolve_options(options, &storage);
 
-    int url_len = snprintf(buffer,
-                           buffer_size,
-                           "%s%cbackend=%s&confidence_threshold=%.2f&return_image=%s",
-                           base_url,
-                           separator,
-                           backend_param,
-                           actual_threshold,
-                           return_image_value);
+    int url_len;
+    if (options->format == API_DETECTION_FORMAT_DOODS2) {
+        // DOODS2 carries every parameter in the JSON body; the URL is used verbatim.
+        url_len = snprintf(buffer, buffer_size, "%s", base_url);
+    } else {
+        const char *backend_param = sanitize_backend(options->backend);
+        float actual_threshold = normalize_api_detection_threshold(threshold);
+        char separator = (strchr(base_url, '?') != NULL) ? '&' : '?';
+
+        url_len = snprintf(buffer, buffer_size,
+                           "%s%cbackend=%s&confidence_threshold=%.2f&return_image=false",
+                           base_url, separator, backend_param, actual_threshold);
+    }
+
     if (url_len < 0 || (size_t)url_len >= buffer_size) {
         return -1;
     }
-
     return 0;
 }
+
+// JSON-quote a string (including the surrounding double quotes). Caller frees.
+static char *json_quote(const char *text) {
+    cJSON *item = cJSON_CreateString(text ? text : "");
+    if (!item) {
+        return NULL;
+    }
+    char *quoted = cJSON_PrintUnformatted(item);
+    cJSON_Delete(item);
+    return quoted;
+}
+
+char *api_detection_build_doods2_body(const unsigned char *jpeg_data, size_t jpeg_size,
+                                      float threshold, const char *request_id,
+                                      const api_detection_options_t *options) {
+    if (!jpeg_data || jpeg_size == 0) {
+        return NULL;
+    }
+
+    api_detection_options_t storage;
+    options = resolve_options(options, &storage);
+
+    char *id_json = json_quote((request_id && request_id[0]) ? request_id : "lightnvr");
+    char *detector_json = json_quote(effective_detector_name(options));
+    char *encoded = base64_encode_alloc(jpeg_data, jpeg_size);
+    char *body = NULL;
+
+    if (id_json && detector_json && encoded) {
+        // DOODS2 filters on a 0-100 confidence scale; "*" applies to every label.
+        double percent = (double)normalize_api_detection_threshold(threshold) * 100.0;
+        int prefix_len = snprintf(NULL, 0, DOODS2_BODY_PREFIX_FORMAT, id_json, detector_json, percent);
+        size_t encoded_len = strlen(encoded);
+        if (prefix_len > 0) {
+            size_t total = (size_t)prefix_len + encoded_len + 3; // closing quote, brace, NUL
+            body = malloc(total);
+            if (body) {
+                int written = snprintf(body, total, DOODS2_BODY_PREFIX_FORMAT, id_json, detector_json, percent);
+                if (written == prefix_len) {
+                    memcpy(body + written, encoded, encoded_len);
+                    body[written + encoded_len] = '"';
+                    body[written + encoded_len + 1] = '}';
+                    body[written + encoded_len + 2] = '\0';
+                } else {
+                    free(body);
+                    body = NULL;
+                }
+            }
+        }
+    }
+
+    if (!body) {
+        log_error("API Detection: Failed to build DOODS2 request body (%zu byte JPEG)", jpeg_size);
+    }
+
+    free(id_json);
+    free(detector_json);
+    free(encoded);
+    return body;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Response parsing                                                          */
+/* ------------------------------------------------------------------------- */
+
+static bool number_item(const cJSON *object, const char *key, double *out) {
+    const cJSON *item = object ? cJSON_GetObjectItem(object, key) : NULL;
+    if (!item || !cJSON_IsNumber(item)) {
+        return false;
+    }
+    *out = item->valuedouble;
+    return true;
+}
+
+// Extract a normalized box from either the light-object-detect shape
+// (x_min/y_min/x_max/y_max, flat or nested under "bounding_box") or the
+// DOODS2 shape (top/left/bottom/right).
+static bool extract_box(const cJSON *detection, double *x_min, double *y_min,
+                        double *x_max, double *y_max) {
+    const cJSON *nested = cJSON_GetObjectItem(detection, "bounding_box");
+    const cJSON *source = (nested && cJSON_IsObject(nested)) ? nested : detection;
+
+    if (number_item(source, "x_min", x_min) && number_item(source, "y_min", y_min) &&
+        number_item(source, "x_max", x_max) && number_item(source, "y_max", y_max)) {
+        return true;
+    }
+
+    return number_item(detection, "left", x_min) && number_item(detection, "top", y_min) &&
+           number_item(detection, "right", x_max) && number_item(detection, "bottom", y_max);
+}
+
+static void log_json_item(const char *message, const cJSON *item, bool as_error) {
+    char *json_str = cJSON_Print(item);
+    if (!json_str) {
+        return;
+    }
+    if (as_error) {
+        log_error("%s: %s", message, json_str);
+    } else {
+        log_warn("%s: %s", message, json_str);
+    }
+    free(json_str);
+}
+
+int api_detection_parse_response(const char *json,
+                                 const api_detection_options_t *options,
+                                 detection_result_t *result) {
+    if (!json || !result) {
+        return -1;
+    }
+    memset(result, 0, sizeof(*result));
+
+    api_detection_options_t storage;
+    options = resolve_options(options, &storage);
+    const bool doods2 = (options->format == API_DETECTION_FORMAT_DOODS2);
+
+    cJSON *root = cJSON_Parse(json);
+    if (!root) {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        log_error("API Detection: Failed to parse JSON response: %s", error_ptr ? error_ptr : "Unknown error");
+        return -1;
+    }
+
+    if (doods2) {
+        const cJSON *error = cJSON_GetObjectItem(root, "error");
+        if (error && cJSON_IsString(error) && error->valuestring[0] != '\0') {
+            log_error("API Detection: DOODS2 reported an error: %s", error->valuestring);
+            cJSON_Delete(root);
+            return -1;
+        }
+    }
+
+    const cJSON *detections = cJSON_GetObjectItem(root, "detections");
+    if (detections && cJSON_IsNull(detections)) {
+        // An explicit null is "nothing detected", not a malformed reply.
+        cJSON_Delete(root);
+        return 0;
+    }
+    if (!detections || !cJSON_IsArray(detections)) {
+        log_error("API Detection: Invalid JSON response: missing or invalid 'detections' array");
+        log_json_item("API Detection: Full JSON response", root, true);
+        cJSON_Delete(root);
+        return -1;
+    }
+
+    int array_size = cJSON_GetArraySize(detections);
+    for (int i = 0; i < array_size; i++) {
+        if (result->count >= MAX_DETECTIONS) {
+            log_warn("API Detection: Maximum number of detections reached (%d)", MAX_DETECTIONS);
+            break;
+        }
+
+        const cJSON *detection = cJSON_GetArrayItem(detections, i);
+        if (!detection || !cJSON_IsObject(detection)) {
+            continue;
+        }
+
+        const cJSON *label = cJSON_GetObjectItem(detection, "label");
+        double confidence = 0.0;
+        double x_min = 0.0, y_min = 0.0, x_max = 0.0, y_max = 0.0;
+
+        if (!label || !cJSON_IsString(label) ||
+            !number_item(detection, "confidence", &confidence) ||
+            !extract_box(detection, &x_min, &y_min, &x_max, &y_max)) {
+            log_warn("API Detection: Invalid detection data in JSON response");
+            log_json_item("API Detection: Detection JSON", detection, false);
+            continue;
+        }
+
+        if (doods2) {
+            confidence /= 100.0;
+        }
+        if (confidence < 0.0) {
+            confidence = 0.0;
+        } else if (confidence > 1.0) {
+            confidence = 1.0;
+        }
+
+        detection_t *entry = &result->detections[result->count];
+        safe_strcpy(entry->label, label->valuestring, MAX_LABEL_LENGTH, 0);
+        entry->confidence = (float)confidence;
+        entry->x = (float)x_min;
+        entry->y = (float)y_min;
+        entry->width = (float)(x_max - x_min);
+        entry->height = (float)(y_max - y_min);
+
+        const cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
+        entry->track_id = (track_id && cJSON_IsNumber(track_id)) ? (int)track_id->valuedouble : -1;
+
+        const cJSON *zone_id = cJSON_GetObjectItem(detection, "zone_id");
+        if (zone_id && cJSON_IsString(zone_id)) {
+            safe_strcpy(entry->zone_id, zone_id->valuestring, MAX_ZONE_ID_LENGTH, 0);
+        } else {
+            entry->zone_id[0] = '\0';
+        }
+
+        result->count++;
+    }
+
+    cJSON_Delete(root);
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* HTTP transport                                                            */
+/* ------------------------------------------------------------------------- */
 
 // Callback function for curl to write data
 static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
@@ -302,6 +617,213 @@ static void log_tls_error_details(const char *context, CURL *curl, CURLcode res,
               context);
 }
 
+// Copy a printable prefix of the response body for logging.
+static void make_response_preview(const memory_struct_t *chunk,
+                                  char *preview, size_t preview_size) {
+    size_t copy_len = 0;
+    if (chunk->memory && preview_size > 0) {
+        copy_len = chunk->size < (preview_size - 1) ? chunk->size : (preview_size - 1);
+        memcpy(preview, chunk->memory, copy_len);
+    }
+    if (preview_size > 0) {
+        preview[copy_len] = '\0';
+    }
+    for (size_t i = 0; i < copy_len; i++) {
+        if (preview[i] < ASCII_PRINTABLE_MIN || preview[i] > ASCII_PRINTABLE_MAX) {
+            preview[i] = '.';
+        }
+    }
+}
+
+// Build the light-object-detect multipart body: one "file" part holding the JPEG.
+// curl_mime_data copies the bytes, so the caller may free jpeg_data afterwards.
+static curl_mime *build_multipart_body(CURL *curl, const unsigned char *jpeg_data,
+                                       size_t jpeg_size, const char *context) {
+    curl_mime *mime = curl_mime_init(curl);
+    if (!mime) {
+        log_error("%s: Failed to create mime structure", context);
+        return NULL;
+    }
+
+    curl_mimepart *part = curl_mime_addpart(mime);
+    if (!part) {
+        log_error("%s: Failed to add mime part", context);
+        curl_mime_free(mime);
+        return NULL;
+    }
+
+    CURLcode rc;
+    if ((rc = curl_mime_name(part, "file")) != CURLE_OK ||
+        (rc = curl_mime_data(part, (const char *)jpeg_data, jpeg_size)) != CURLE_OK ||
+        (rc = curl_mime_filename(part, "snapshot.jpg")) != CURLE_OK ||
+        (rc = curl_mime_type(part, "image/jpeg")) != CURLE_OK) {
+        log_error("%s: Failed to build multipart body: %s", context, curl_easy_strerror(rc));
+        curl_mime_free(mime);
+        return NULL;
+    }
+
+    return mime;
+}
+
+/**
+ * Send one JPEG to the detection API using the selected wire format and parse
+ * the reply into result. Does not touch the database.
+ *
+ * Returns 0 on success, -1 on any transport, HTTP, or parse failure.
+ */
+static int perform_detection_request(const char *context, const char *base_url,
+                                     const unsigned char *jpeg_data, size_t jpeg_size,
+                                     float threshold, const char *request_id,
+                                     const api_detection_options_t *options,
+                                     detection_result_t *result) {
+    CURL *curl = NULL;
+    curl_mime *mime = NULL;
+    struct curl_slist *headers = NULL;
+    char *body = NULL;
+    memory_struct_t chunk = {0};
+    char request_url[API_DETECTION_REQUEST_URL_MAX];
+    char preview[API_DETECTION_RESPONSE_PREVIEW_LEN];
+    int ret = -1;
+
+    if (api_detection_build_request_url(request_url, sizeof(request_url),
+                                        base_url, threshold, options) != 0) {
+        log_error("%s: Failed to construct request URL for %s", context, base_url);
+        return -1;
+    }
+
+    // Use a per-call curl handle so detection requests can run concurrently.
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        log_error("%s: Failed to initialize CURL handle", context);
+        return -1;
+    }
+
+    if (options->format == API_DETECTION_FORMAT_DOODS2) {
+        body = api_detection_build_doods2_body(jpeg_data, jpeg_size, threshold, request_id, options);
+        if (!body) {
+            goto cleanup;
+        }
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)strlen(body));
+        log_info("%s: Sending DOODS2 request to %s (detector: %s, threshold: %.2f, %zu byte JPEG)",
+                 context, request_url, effective_detector_name(options),
+                 normalize_api_detection_threshold(threshold), jpeg_size);
+    } else {
+        mime = build_multipart_body(curl, jpeg_data, jpeg_size, context);
+        if (!mime) {
+            goto cleanup;
+        }
+        curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+        log_info("%s: Sending request to %s (backend: %s, threshold: %.2f, %zu byte JPEG)",
+                 context, request_url, sanitize_backend(options->backend),
+                 normalize_api_detection_threshold(threshold), jpeg_size);
+    }
+
+    headers = curl_slist_append(headers, "accept: application/json");
+    curl_easy_setopt(curl, CURLOPT_URL, request_url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    chunk.memory = malloc(API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE);
+    if (chunk.memory == NULL) {
+        log_error("%s: Failed to allocate memory for curl response buffer", context);
+        goto cleanup;
+    }
+    chunk.size = 0;
+    chunk.capacity = API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
+    chunk.memory[0] = '\0';
+
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
+    setup_common_curl_options(curl);
+
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        log_error("%s: curl_easy_perform() failed: %s", context, curl_easy_strerror(res));
+        log_tls_error_details(context, curl, res, request_url);
+
+        if (res == CURLE_COULDNT_CONNECT) {
+            log_error("%s: Could not connect to server at %s. Is the API server running?", context, request_url);
+        } else if (res == CURLE_OPERATION_TIMEDOUT) {
+            log_error("%s: Connection to %s timed out. Server might be slow or unreachable.", context, request_url);
+        } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
+            log_error("%s: Could not resolve host %s. Check your network connection and DNS settings.", context, request_url);
+        }
+        goto cleanup;
+    }
+
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code != 200) {
+        make_response_preview(&chunk, preview, sizeof(preview));
+        log_error("%s: API request failed with HTTP code %ld (format: %s, response: %s)",
+                  context, http_code, api_detection_format_name(options->format), preview);
+        goto cleanup;
+    }
+
+    if (!chunk.memory || chunk.size == 0) {
+        log_error("%s: Empty response from server", context);
+        goto cleanup;
+    }
+
+    make_response_preview(&chunk, preview, sizeof(preview));
+    log_info("%s: Response preview: %s", context, preview);
+
+    ret = api_detection_parse_response(chunk.memory, options, result);
+    if (ret != 0) {
+        log_error("%s: Response size: %zu bytes", context, chunk.size);
+    }
+
+cleanup:
+    free(body);
+    free(chunk.memory);
+    curl_mime_free(mime);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return ret;
+}
+
+/**
+ * Apply zone and object filters, persist, and publish detections for a stream.
+ * Returns 0 on success, -1 when zone filtering fails.
+ */
+static int finalize_detections(const char *context, const char *stream_name,
+                               detection_result_t *result, time_t frame_timestamp,
+                               uint64_t recording_id) {
+    if (!stream_name || stream_name[0] == '\0') {
+        log_warn("%s: No stream name provided, skipping database storage", context);
+        return 0;
+    }
+
+    log_info("%s: Filtering %d detections by zones for stream %s", context, result->count, stream_name);
+    if (filter_detections_by_zones(stream_name, result) != 0) {
+        log_error("%s: Failed to filter detections by zones for stream %s, aborting detection pipeline for this frame",
+                  context, stream_name);
+        return -1;
+    }
+
+    filter_detections_by_stream_objects(stream_name, result);
+
+    time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
+    store_detections_in_db(stream_name, result, timestamp, recording_id);
+
+    if (result->count > 0) {
+        char event_error[256] = {0};
+        if (event_producer_publish_detection_for_stream(
+                stream_name, result, timestamp,
+                event_error, sizeof(event_error)) != 0) {
+            log_debug("%s: Event enqueue failed for %s: %s", context, stream_name, event_error);
+        }
+    }
+
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Lifecycle                                                                 */
+/* ------------------------------------------------------------------------- */
+
 /**
  * Initialize the API detection system
  */
@@ -363,59 +885,52 @@ void shutdown_api_detection_system(void) {
     log_info("API detection system shutdown complete");
 }
 
-/**
- * Detect objects using the API with go2rtc snapshot
- */
-int detect_objects_api(const char *api_url, const unsigned char *frame_data,
-                      int width, int height, int channels, detection_result_t *result,
-                      const char *stream_name, float threshold, uint64_t recording_id,
-                      time_t frame_timestamp) {
+/* ------------------------------------------------------------------------- */
+/* Entry points                                                              */
+/* ------------------------------------------------------------------------- */
+
+int detect_objects_api_with_options(const char *api_url, const unsigned char *frame_data,
+                                    int width, int height, int channels,
+                                    detection_result_t *result, const char *stream_name,
+                                    float threshold, uint64_t recording_id,
+                                    time_t frame_timestamp,
+                                    const api_detection_options_t *options) {
+    static const char *context = "API Detection";
+
     // Check if we're in shutdown mode or if the stream has been stopped.
     if (is_shutdown_initiated()) {
-        log_info("API Detection: System shutdown in progress, skipping detection");
+        log_info("%s: System shutdown in progress, skipping detection", context);
         return -1;
     }
 
     // Initialize result to empty at the beginning to prevent segmentation faults.
-    if (result) {
-        memset(result, 0, sizeof(detection_result_t));
-    } else {
-        log_error("API Detection: NULL result pointer provided");
+    if (!result) {
+        log_error("%s: NULL result pointer provided", context);
         return -1;
     }
+    memset(result, 0, sizeof(detection_result_t));
 
-    // Check if api_url is the special "api-detection" string.
-    // If so, get the actual URL from the global config.
-    const char *actual_api_url = api_url;
-    if (api_url && strcmp(api_url, "api-detection") == 0) {
-        actual_api_url = g_config.api_detection_url;
-        log_info("API Detection: Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
-    }
-
-    log_info("API Detection: Starting detection with API URL: %s", actual_api_url);
-    log_info("API Detection: Stream name: %s", stream_name ? stream_name : "NULL");
+    const char *actual_api_url = resolve_api_url(api_url, context);
+    log_info("%s: Starting detection with API URL: %s", context, actual_api_url ? actual_api_url : "NULL");
+    log_info("%s: Stream name: %s", context, stream_name ? stream_name : "NULL");
 
     if (!is_api_detection_system_initialized()) {
         log_error("API detection system not initialized");
         return -1;
     }
 
-    if (!validate_api_detection_base_url(actual_api_url, "API Detection")) {
+    if (!validate_api_detection_base_url(actual_api_url, context)) {
         return -1;
     }
+
+    api_detection_options_t storage;
+    options = resolve_options(options, &storage);
 
     // Use go2rtc to get a JPEG snapshot directly only when we do not already
     // have a decoded frame. This avoids re-entering the go2rtc snapshot path
     // during fallback flows that already decoded a local frame.
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
-    CURL *local_curl = NULL;
-    curl_mime *mime = NULL;
-    curl_mimepart *part = NULL;
-    memory_struct_t chunk = {0};
-    struct curl_slist *headers = NULL;
-    cJSON *root = NULL;
-    int ret = -1;
     bool go2rtc_initialized = false;
     bool snapshot_ok = false;
 
@@ -427,14 +942,14 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
 
     if (snapshot_ok) {
-        log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
+        log_info("%s: Successfully fetched snapshot from go2rtc: %zu bytes", context, jpeg_size);
     } else {
         if (!stream_name || stream_name[0] == '\0') {
-            log_debug("API Detection: No stream name provided for go2rtc snapshot, using cached JPEG encoding");
+            log_debug("%s: No stream name provided for go2rtc snapshot, using cached JPEG encoding", context);
         } else if (!go2rtc_initialized) {
-            log_debug("API Detection: go2rtc not initialized, using cached JPEG encoding");
+            log_debug("%s: go2rtc not initialized, using cached JPEG encoding", context);
         } else {
-            log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
+            log_warn("%s: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding", context);
         }
 
         // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory.
@@ -449,304 +964,50 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         //   cache-clear in the encoder module); there is no per-call teardown here.
         jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, API_DETECTION_JPEG_QUALITY_DEFAULT);
         if (!encoder) {
-            log_error("API Detection: Failed to get cached JPEG encoder");
-            goto cleanup;
+            log_error("%s: Failed to get cached JPEG encoder", context);
+            return -1;
         }
 
         // Encode directly to memory - no temp file needed
-        int encode_result = jpeg_encoder_cache_encode_to_memory(encoder, frame_data, &jpeg_data, &jpeg_size);
-        if (encode_result != 0) {
-            log_error("API Detection: Failed to encode frame to JPEG using cached encoder");
-            goto cleanup;
+        if (jpeg_encoder_cache_encode_to_memory(encoder, frame_data, &jpeg_data, &jpeg_size) != 0) {
+            log_error("%s: Failed to encode frame to JPEG using cached encoder", context);
+            return -1;
         }
 
-        log_info("API Detection: Encoded frame to JPEG using cached encoder: %zu bytes", jpeg_size);
+        log_info("%s: Encoded frame to JPEG using cached encoder: %zu bytes", context, jpeg_size);
     }
 
     // Validate JPEG data.
     if (!jpeg_data || jpeg_size == 0) {
-        log_error("API Detection: No JPEG data available");
-        goto cleanup;
+        log_error("%s: No JPEG data available", context);
+        free(jpeg_data);
+        return -1;
     }
 
-    // Use a per-call curl handle so detection requests can run concurrently.
-    local_curl = curl_easy_init();
-    if (local_curl == NULL) {
-        log_error("API Detection: Failed to initialize CURL handle");
-        goto cleanup;
-    }
-
-    // Set up curl for multipart/form-data using the modern mime API.
-    // Note: curl_mime_* replaced deprecated curl_formadd in libcurl 7.56.0.
-    mime = curl_mime_init(local_curl);
-    if (!mime) {
-        log_error("API Detection: Failed to create mime structure");
-        goto cleanup;
-    }
-
-    part = curl_mime_addpart(mime);
-    if (!part) {
-        log_error("API Detection: Failed to add mime part");
-        goto cleanup;
-    }
-
-    CURLcode mime_result;
-    mime_result = curl_mime_name(part, "file");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection: Failed to set mime name: %s", curl_easy_strerror(mime_result));
-        goto cleanup;
-    }
-
-    // Use curl_mime_data to pass data directly from memory (CURL_ZERO_TERMINATED not used; we pass size).
-    // curl_mime_data copies the data, so jpeg_data can be freed after this call.
-    mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection: Failed to set mime data: %s", curl_easy_strerror(mime_result));
-        goto cleanup;
-    }
-
-    mime_result = curl_mime_filename(part, "snapshot.jpg");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection: Failed to set mime filename: %s", curl_easy_strerror(mime_result));
-        goto cleanup;
-    }
-
-    mime_result = curl_mime_type(part, "image/jpeg");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection: Failed to set mime type: %s", curl_easy_strerror(mime_result));
-        goto cleanup;
-    }
-
-    // Free the JPEG data now that curl has copied it.
+    int ret = perform_detection_request(context, actual_api_url, jpeg_data, jpeg_size,
+                                        threshold, stream_name, options, result);
     free(jpeg_data);
-    jpeg_data = NULL;
 
-    log_info("API Detection: Successfully added JPEG data to form (%zu bytes)", jpeg_size);
-
-    const char *backend = g_config.api_detection_backend;
-    const char *safe_backend = sanitize_backend(backend);
-    float actual_threshold = normalize_api_detection_threshold(threshold);
-
-    char url_with_params[1024];
-    if (build_api_detection_url(url_with_params,
-                                sizeof(url_with_params),
-                                actual_api_url,
-                                backend,
-                                threshold,
-                                false) != 0) {
-        log_error("API Detection: Failed to construct URL with parameters.");
-        goto cleanup;
+    if (ret == 0) {
+        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
     }
-    log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
-             url_with_params, safe_backend, actual_threshold);
-
-    curl_easy_setopt(local_curl, CURLOPT_URL, url_with_params);
-    curl_easy_setopt(local_curl, CURLOPT_MIMEPOST, mime);
-
-    headers = curl_slist_append(headers, "accept: application/json");
-    curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
-
-    chunk.memory = malloc(API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE);
-    if (chunk.memory == NULL) {
-        log_error("API Detection: Failed to allocate memory for curl response buffer");
-        goto cleanup;
-    }
-    chunk.size = 0;
-    chunk.capacity = API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
-    chunk.memory[0] = '\0';
-
-    curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
-    curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
-
-    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
-    setup_common_curl_options(local_curl);
-
-    log_info("API Detection: Sending request to %s", url_with_params);
-
-    CURLcode res = curl_easy_perform(local_curl);
-
-    if (res != CURLE_OK) {
-        log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        log_tls_error_details("API Detection", local_curl, res, url_with_params);
-
-        if (res == CURLE_COULDNT_CONNECT) {
-            log_error("API Detection: Could not connect to server at %s. Is the API server running?", url_with_params);
-        } else if (res == CURLE_OPERATION_TIMEDOUT) {
-            log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", url_with_params);
-        } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-            log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", url_with_params);
-        }
-
-        goto cleanup;
-    }
-
-    long http_code = 0;
-    curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-    if (http_code != 200) {
-        log_error("API request failed with HTTP code %ld", http_code);
-        goto cleanup;
-    }
-
-    if (!chunk.memory || chunk.size == 0) {
-        log_error("API Detection: Empty response from server");
-        goto cleanup;
-    }
-
-    char preview[API_DETECTION_RESPONSE_PREVIEW_LEN];
-    int preview_len = (int)(chunk.size < (API_DETECTION_RESPONSE_PREVIEW_LEN - 1)
-                                ? chunk.size
-                                : (API_DETECTION_RESPONSE_PREVIEW_LEN - 1));
-    memcpy(preview, chunk.memory, preview_len);
-    preview[preview_len] = '\0';
-    // Replace non-printable characters with dots
-    for (int i = 0; i < preview_len; i++) {
-        if (preview[i] < ASCII_PRINTABLE_MIN || preview[i] > ASCII_PRINTABLE_MAX) {
-            preview[i] = '.';
-        }
-    }
-    log_info("API Detection: Response preview: %s", preview);
-
-    root = cJSON_Parse(chunk.memory);
-
-    if (!root) {
-        const char *error_ptr = cJSON_GetErrorPtr();
-        log_error("Failed to parse JSON response: %s", error_ptr ? error_ptr : "Unknown error");
-        log_error("API Detection: Response size: %zu bytes", chunk.size);
-        log_error("API Detection: Response preview: %s", preview);
-        goto cleanup;
-    }
-
-    cJSON *detections = cJSON_GetObjectItem(root, "detections");
-    if (!detections || !cJSON_IsArray(detections)) {
-        log_error("Invalid JSON response: missing or invalid 'detections' array");
-        char *json_str = cJSON_Print(root);
-        if (json_str) {
-            log_error("API Detection: Full JSON response: %s", json_str);
-            free(json_str);
-        }
-        goto cleanup;
-    }
-
-    int array_size = cJSON_GetArraySize(detections);
-    for (int i = 0; i < array_size; i++) {
-        if (result->count >= MAX_DETECTIONS) {
-            log_warn("Maximum number of detections reached (%d)", MAX_DETECTIONS);
-            break;
-        }
-
-        cJSON *detection = cJSON_GetArrayItem(detections, i);
-        if (!detection) continue;
-
-        // Extract the detection data
-        cJSON *label = cJSON_GetObjectItem(detection, "label");
-        cJSON *confidence = cJSON_GetObjectItem(detection, "confidence");
-
-        // The bounding box coordinates might be in a nested object
-        cJSON *bounding_box = cJSON_GetObjectItem(detection, "bounding_box");
-        cJSON *x_min = NULL;
-        cJSON *y_min = NULL;
-        cJSON *x_max = NULL;
-        cJSON *y_max = NULL;
-
-        if (bounding_box) {
-            x_min = cJSON_GetObjectItem(bounding_box, "x_min");
-            y_min = cJSON_GetObjectItem(bounding_box, "y_min");
-            x_max = cJSON_GetObjectItem(bounding_box, "x_max");
-            y_max = cJSON_GetObjectItem(bounding_box, "y_max");
-            log_info("API Detection: Found bounding_box object in JSON response");
-        } else {
-            x_min = cJSON_GetObjectItem(detection, "x_min");
-            y_min = cJSON_GetObjectItem(detection, "y_min");
-            x_max = cJSON_GetObjectItem(detection, "x_max");
-            y_max = cJSON_GetObjectItem(detection, "y_max");
-            log_info("API Detection: Using direct coordinates from JSON response");
-        }
-
-        if (!label || !cJSON_IsString(label) ||
-            !confidence || !cJSON_IsNumber(confidence) ||
-            !x_min || !cJSON_IsNumber(x_min) ||
-            !y_min || !cJSON_IsNumber(y_min) ||
-            !x_max || !cJSON_IsNumber(x_max) ||
-            !y_max || !cJSON_IsNumber(y_max)) {
-            log_warn("Invalid detection data in JSON response");
-            char *json_str = cJSON_Print(detection);
-            if (json_str) {
-                log_warn("Detection JSON: %s", json_str);
-                free(json_str);
-            }
-            continue;
-        }
-
-        // Add the detection to the result
-        safe_strcpy(result->detections[result->count].label, label->valuestring, MAX_LABEL_LENGTH, 0);
-        result->detections[result->count].confidence = (float)confidence->valuedouble;
-        result->detections[result->count].x = (float)x_min->valuedouble;
-        result->detections[result->count].y = (float)y_min->valuedouble;
-        result->detections[result->count].width = (float)(x_max->valuedouble - x_min->valuedouble);
-        result->detections[result->count].height = (float)(y_max->valuedouble - y_min->valuedouble);
-
-        // Parse optional track_id field
-        cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
-        if (track_id && cJSON_IsNumber(track_id)) {
-            result->detections[result->count].track_id = (int)track_id->valuedouble;
-        } else {
-            result->detections[result->count].track_id = -1; // No tracking
-        }
-
-        // Parse optional zone_id field
-        cJSON *zone_id = cJSON_GetObjectItem(detection, "zone_id");
-        if (zone_id && cJSON_IsString(zone_id)) {
-            safe_strcpy(result->detections[result->count].zone_id, zone_id->valuestring, MAX_ZONE_ID_LENGTH, 0);
-        } else {
-            result->detections[result->count].zone_id[0] = '\0'; // Empty zone
-        }
-
-        result->count++;
-    }
-
-    // Filter detections by zones before storing
-    if (stream_name && stream_name[0] != '\0') {
-        log_info("API Detection: Filtering %d detections by zones for stream %s", result->count, stream_name);
-        int filter_ret = filter_detections_by_zones(stream_name, result);
-        if (filter_ret != 0) {
-            log_error("Failed to filter detections by zones, aborting detection pipeline for this frame");
-            goto cleanup;
-        }
-
-        filter_detections_by_stream_objects(stream_name, result);
-
-        time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
-        store_detections_in_db(stream_name, result, timestamp, recording_id);
-
-        if (result->count > 0) {
-            char event_error[256] = {0};
-            if (event_producer_publish_detection_for_stream(
-                    stream_name, result, timestamp,
-                    event_error, sizeof(event_error)) != 0) {
-                log_debug("API Detection: Event enqueue failed for %s: %s",
-                          stream_name, event_error);
-            }
-        }
-    } else {
-        log_warn("No stream name provided, skipping database storage");
-    }
-
-    ret = 0;
-
-cleanup:
-    cJSON_Delete(root);
-    free(chunk.memory);
-    curl_mime_free(mime);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(local_curl);
-    free(jpeg_data);
 
     if (ret != 0) {
         result->count = 0;
+        return ret;
     }
 
-    return ret;
+    log_info("%s: Successfully detected %d objects", context, result->count);
+    return 0;
+}
+
+int detect_objects_api(const char *api_url, const unsigned char *frame_data,
+                      int width, int height, int channels, detection_result_t *result,
+                      const char *stream_name, float threshold, uint64_t recording_id,
+                      time_t frame_timestamp) {
+    return detect_objects_api_with_options(api_url, frame_data, width, height, channels,
+                                           result, stream_name, threshold, recording_id,
+                                           frame_timestamp, NULL);
 }
 
 /**
@@ -758,357 +1019,88 @@ cleanup:
  *
  * Returns: 0 on success, -1 on general failure, -2 if go2rtc snapshot failed
  */
-int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
-                                detection_result_t *result, float threshold,
-                                uint64_t recording_id, time_t frame_timestamp) {
+int detect_objects_api_snapshot_with_options(const char *api_url, const char *stream_name,
+                                             detection_result_t *result, float threshold,
+                                             uint64_t recording_id, time_t frame_timestamp,
+                                             const api_detection_options_t *options) {
+    static const char *context = "API Detection (snapshot)";
+
     // Check if we're in shutdown mode
     if (is_shutdown_initiated()) {
-        log_info("API Detection (snapshot): System shutdown in progress, skipping detection");
+        log_info("%s: System shutdown in progress, skipping detection", context);
         return -1;
     }
 
     // Stream name is required for go2rtc snapshot
     if (!stream_name || stream_name[0] == '\0') {
-        log_error("API Detection (snapshot): Stream name is required");
+        log_error("%s: Stream name is required", context);
         return -1;
     }
 
     // Initialize result
-    if (result) {
-        memset(result, 0, sizeof(detection_result_t));
-    } else {
-        log_error("API Detection (snapshot): NULL result pointer provided");
+    if (!result) {
+        log_error("%s: NULL result pointer provided", context);
         return -1;
     }
+    memset(result, 0, sizeof(detection_result_t));
 
-    // Handle "api-detection" special string
-    const char *actual_api_url = api_url;
-    if (api_url && strcmp(api_url, "api-detection") == 0) {
-        actual_api_url = g_config.api_detection_url;
-        log_info("API Detection (snapshot): Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
-    }
+    const char *actual_api_url = resolve_api_url(api_url, context);
 
     if (!is_api_detection_system_initialized()) {
         log_error("API detection system not initialized");
         return -1;
     }
 
-    if (!validate_api_detection_base_url(actual_api_url, "API Detection (snapshot)")) {
+    if (!validate_api_detection_base_url(actual_api_url, context)) {
         return -1;
     }
+
+    api_detection_options_t storage;
+    options = resolve_options(options, &storage);
 
     // Try to get snapshot from go2rtc (only if go2rtc is initialized)
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
 
     if (!go2rtc_integration_is_initialized()) {
-        log_debug("API Detection (snapshot): go2rtc not initialized, skipping snapshot for stream %s", stream_name);
-        return -2;  // Special return code: go2rtc not available, caller should fall back
+        log_debug("%s: go2rtc not initialized, skipping snapshot for stream %s", context, stream_name);
+        return API_DETECTION_SNAPSHOT_UNAVAILABLE;  // caller should fall back
     }
 
     if (!go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
-        log_warn("API Detection (snapshot): Failed to get snapshot from go2rtc for stream %s", stream_name);
-        return -2;  // Special return code: go2rtc failed, caller should fall back
+        log_warn("%s: Failed to get snapshot from go2rtc for stream %s", context, stream_name);
+        return API_DETECTION_SNAPSHOT_UNAVAILABLE;  // caller should fall back
     }
 
-    log_info("API Detection (snapshot): Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
+    log_info("%s: Successfully fetched snapshot from go2rtc: %zu bytes", context, jpeg_size);
 
     // Validate JPEG data
     if (!jpeg_data || jpeg_size == 0) {
-        log_error("API Detection (snapshot): No JPEG data available");
-        if (jpeg_data) free(jpeg_data);
-        return -2;
-    }
-
-    // Create a per-call curl handle to allow parallel requests from multiple threads
-    // This avoids the global mutex bottleneck that was serializing all detection calls
-    CURL *local_curl = curl_easy_init();
-    if (!local_curl) {
-        log_error("API Detection (snapshot): Failed to create curl handle");
+        log_error("%s: No JPEG data available", context);
         free(jpeg_data);
-        return -1;
+        return API_DETECTION_SNAPSHOT_UNAVAILABLE;
     }
 
-    // Set up curl for multipart/form-data
-    curl_mime *mime = NULL;
-    curl_mimepart *part = NULL;
-    memory_struct_t chunk = {0};
-    chunk.memory = NULL;
-    struct curl_slist *headers = NULL;
-
-    // Create the mime structure
-    mime = curl_mime_init(local_curl);
-    if (!mime) {
-        log_error("API Detection (snapshot): Failed to create mime structure");
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Add the file part
-    part = curl_mime_addpart(mime);
-    if (!part) {
-        log_error("API Detection (snapshot): Failed to add mime part");
-        curl_mime_free(mime);
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Set up the mime part
-    CURLcode mime_result;
-    mime_result = curl_mime_name(part, "file");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection (snapshot): curl_mime_name failed: %s",
-                  curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection (snapshot): curl_mime_data failed: %s",
-                  curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    mime_result = curl_mime_filename(part, "snapshot.jpg");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection (snapshot): curl_mime_filename failed: %s",
-                  curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    mime_result = curl_mime_type(part, "image/jpeg");
-    if (mime_result != CURLE_OK) {
-        log_error("API Detection (snapshot): curl_mime_type failed: %s",
-                  curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Free JPEG data now that curl has copied it
+    int ret = perform_detection_request(context, actual_api_url, jpeg_data, jpeg_size,
+                                        threshold, stream_name, options, result);
     free(jpeg_data);
-    jpeg_data = NULL;
 
-    const char *backend = g_config.api_detection_backend;
-    const char *sanitized_backend = sanitize_backend(backend);
-    float actual_threshold = normalize_api_detection_threshold(threshold);
+    if (ret == 0) {
+        ret = finalize_detections(context, stream_name, result, frame_timestamp, recording_id);
+    }
 
-    char url_with_params[1024];
-    if (build_api_detection_url(url_with_params,
-                                sizeof(url_with_params),
-                                actual_api_url,
-                                backend,
-                                threshold,
-                                false) != 0) {
-        log_error("API Detection (snapshot): URL too long when constructing request");
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
+    if (ret != 0) {
+        result->count = 0;
         return -1;
     }
 
-    log_info("API Detection (snapshot): Sending request to %s (backend: %s, threshold: %.2f)",
-             url_with_params,
-             sanitized_backend,
-             actual_threshold);
-
-    // Set up the request
-    curl_easy_setopt(local_curl, CURLOPT_URL, url_with_params);
-    curl_easy_setopt(local_curl, CURLOPT_MIMEPOST, mime);
-
-    headers = curl_slist_append(headers, "accept: application/json");
-    curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
-
-    chunk.memory = malloc(API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE);
-    if (chunk.memory == NULL) {
-        log_error("API Detection (snapshot): Failed to allocate memory for curl response buffer");
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-    chunk.size = 0;
-    chunk.capacity = API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
-    chunk.memory[0] = '\0';
-
-    curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
-    curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
-    setup_common_curl_options(local_curl);
-
-    // Perform the request
-    CURLcode res = curl_easy_perform(local_curl);
-
-    if (res != CURLE_OK) {
-        log_error("API Detection (snapshot): curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        log_tls_error_details("API Detection (snapshot)", local_curl, res, url_with_params);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Check HTTP response code
-    long http_code = 0;
-    curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-    if (http_code != 200) {
-        log_error("API Detection (snapshot): HTTP error %ld", http_code);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Parse JSON response
-    if (!chunk.memory || chunk.size == 0) {
-        log_error("API Detection (snapshot): Empty response");
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    cJSON *root = cJSON_Parse(chunk.memory);
-    if (!root) {
-        log_error("API Detection (snapshot): Failed to parse JSON response");
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Extract detections
-    cJSON *detections = cJSON_GetObjectItem(root, "detections");
-    if (!detections || !cJSON_IsArray(detections)) {
-        log_error("API Detection (snapshot): Invalid JSON response");
-        cJSON_Delete(root);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(local_curl);
-        return -1;
-    }
-
-    // Process each detection
-    int array_size = cJSON_GetArraySize(detections);
-    for (int i = 0; i < array_size; i++) {
-        if (result->count >= MAX_DETECTIONS) {
-            log_warn("API Detection (snapshot): Maximum detections reached");
-            break;
-        }
-
-        cJSON *detection = cJSON_GetArrayItem(detections, i);
-        if (!detection) continue;
-
-        cJSON *label = cJSON_GetObjectItem(detection, "label");
-        cJSON *confidence = cJSON_GetObjectItem(detection, "confidence");
-
-        cJSON *bounding_box = cJSON_GetObjectItem(detection, "bounding_box");
-        cJSON *x_min = NULL, *y_min = NULL, *x_max = NULL, *y_max = NULL;
-
-        if (bounding_box) {
-            x_min = cJSON_GetObjectItem(bounding_box, "x_min");
-            y_min = cJSON_GetObjectItem(bounding_box, "y_min");
-            x_max = cJSON_GetObjectItem(bounding_box, "x_max");
-            y_max = cJSON_GetObjectItem(bounding_box, "y_max");
-        } else {
-            x_min = cJSON_GetObjectItem(detection, "x_min");
-            y_min = cJSON_GetObjectItem(detection, "y_min");
-            x_max = cJSON_GetObjectItem(detection, "x_max");
-            y_max = cJSON_GetObjectItem(detection, "y_max");
-        }
-
-        if (!label || !cJSON_IsString(label) ||
-            !confidence || !cJSON_IsNumber(confidence) ||
-            !x_min || !cJSON_IsNumber(x_min) ||
-            !y_min || !cJSON_IsNumber(y_min) ||
-            !x_max || !cJSON_IsNumber(x_max) ||
-            !y_max || !cJSON_IsNumber(y_max)) {
-            continue;
-        }
-
-        // Add detection to result
-        safe_strcpy(result->detections[result->count].label, label->valuestring, MAX_LABEL_LENGTH, 0);
-        result->detections[result->count].confidence = (float)confidence->valuedouble;
-        result->detections[result->count].x = (float)x_min->valuedouble;
-        result->detections[result->count].y = (float)y_min->valuedouble;
-        result->detections[result->count].width = (float)(x_max->valuedouble - x_min->valuedouble);
-        result->detections[result->count].height = (float)(y_max->valuedouble - y_min->valuedouble);
-
-        cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
-        result->detections[result->count].track_id = (track_id && cJSON_IsNumber(track_id))
-            ? (int)track_id->valuedouble : -1;
-
-        cJSON *zone_id = cJSON_GetObjectItem(detection, "zone_id");
-        if (zone_id && cJSON_IsString(zone_id)) {
-            safe_strcpy(result->detections[result->count].zone_id, zone_id->valuestring, MAX_ZONE_ID_LENGTH, 0);
-        } else {
-            result->detections[result->count].zone_id[0] = '\0';
-        }
-
-        result->count++;
-    }
-
-    // Filter by zones and store in database
-    if (stream_name && stream_name[0] != '\0') {
-        log_info("API Detection (snapshot): Filtering %d detections by zones for stream %s",
-                 result->count, stream_name);
-        if (filter_detections_by_zones(stream_name, result) != 0) {
-            log_error("API Detection (snapshot): Failed to filter detections by zones for stream %s",
-                      stream_name);
-
-            // Clean up on error to avoid leaking resources
-            cJSON_Delete(root);
-            free(chunk.memory);
-            curl_mime_free(mime);
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(local_curl);
-
-            return -1;
-        }
-
-        // Filter detections by per-stream object include/exclude lists
-        filter_detections_by_stream_objects(stream_name, result);
-
-        time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
-        store_detections_in_db(stream_name, result, timestamp, recording_id);
-
-        // Publish asynchronously through the normalized event bus.
-        if (result->count > 0) {
-            char event_error[256] = {0};
-            if (event_producer_publish_detection_for_stream(
-                    stream_name, result, timestamp,
-                    event_error, sizeof(event_error)) != 0) {
-                log_debug("API Detection (snapshot): Event enqueue failed for %s: %s",
-                          stream_name, event_error);
-            }
-        }
-    }
-
-    // Clean up
-    cJSON_Delete(root);
-    free(chunk.memory);
-    curl_mime_free(mime);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(local_curl);
-
-    log_info("API Detection (snapshot): Successfully detected %d objects", result->count);
+    log_info("%s: Successfully detected %d objects", context, result->count);
     return 0;
+}
+
+int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
+                                detection_result_t *result, float threshold,
+                                uint64_t recording_id, time_t frame_timestamp) {
+    return detect_objects_api_snapshot_with_options(api_url, stream_name, result, threshold,
+                                                    recording_id, frame_timestamp, NULL);
 }

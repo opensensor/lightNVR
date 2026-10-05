@@ -482,6 +482,128 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     rmdir(dir);
 }
 
+void test_default_config_api_detection_settings(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_STRING("http://localhost:8000/api/v1/detect", cfg.api_detection_url);
+    TEST_ASSERT_EQUAL_STRING("onnx", cfg.api_detection_backend);
+    TEST_ASSERT_EQUAL_STRING("light-object-detect", cfg.api_detection_format);
+    TEST_ASSERT_EQUAL_STRING("default", cfg.api_detection_detector_name);
+}
+
+void test_config_set_api_detection_format_normalizes_and_rejects(void) {
+    load_default_config(&cfg);
+
+    TEST_ASSERT_TRUE(config_set_api_detection_format(&cfg, "DOODS"));
+    TEST_ASSERT_EQUAL_STRING("doods2", cfg.api_detection_format);
+
+    /* Unknown names are rejected and the previous value is kept. */
+    TEST_ASSERT_FALSE(config_set_api_detection_format(&cfg, "deepstack"));
+    TEST_ASSERT_EQUAL_STRING("doods2", cfg.api_detection_format);
+    TEST_ASSERT_FALSE(config_set_api_detection_format(&cfg, ""));
+    TEST_ASSERT_FALSE(config_set_api_detection_format(NULL, "doods2"));
+
+    TEST_ASSERT_TRUE(config_set_api_detection_format(&cfg, " Light-Object-Detect "));
+    TEST_ASSERT_EQUAL_STRING("light-object-detect", cfg.api_detection_format);
+}
+
+void test_save_config_writes_api_detection_format(void) {
+    char temp_dir[] = "/tmp/lightnvr_save_config_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+
+    char config_path[MAX_PATH_LENGTH];
+    snprintf(config_path, sizeof(config_path), "%s/lightnvr.ini", dir);
+
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(config_set_api_detection_format(&cfg, "doods2"));
+    snprintf(cfg.api_detection_detector_name, sizeof(cfg.api_detection_detector_name), "tensorflow");
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
+
+    FILE *saved = fopen(config_path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    if (saved) {
+        char file_buffer[8192] = {0};
+        size_t bytes_read = fread(file_buffer, 1, sizeof(file_buffer) - 1, saved);
+        TEST_ASSERT_GREATER_THAN(0, (int)bytes_read);
+        file_buffer[bytes_read] = '\0';
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "[api_detection]"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "format = doods2"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "detector_name = tensorflow"));
+        fclose(saved);
+    }
+
+    unlink(config_path);
+    rmdir(dir);
+}
+
+void test_load_config_parses_api_detection_format(void) {
+    char temp_dir[] = "/tmp/lightnvr_load_config_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+
+    char config_path[MAX_PATH_LENGTH];
+    char web_root[MAX_PATH_LENGTH];
+    snprintf(config_path, sizeof(config_path), "%s/test.ini", dir);
+    snprintf(web_root, sizeof(web_root), "%s/web", dir);
+    TEST_ASSERT_EQUAL_INT(0, ensure_dir(web_root));
+
+    FILE *config_file = fopen(config_path, "w");
+    TEST_ASSERT_NOT_NULL(config_file);
+    fprintf(config_file,
+            "[general]\n"
+            "pid_file = %s/lightnvr.pid\n"
+            "log_file = %s/lightnvr.log\n\n"
+            "[storage]\n"
+            "path = %s/storage\n"
+            "path_hls = %s/hls\n\n"
+            "[models]\n"
+            "path = %s/models\n\n"
+            "[database]\n"
+            "path = %s/lightnvr.db\n\n"
+            "[web]\n"
+            "root = %s\n\n"
+            "[api_detection]\n"
+            "url = http://doods:8080/detect\n"
+            "format = DOODS2\n"
+            "detector_name = tensorflow\n",
+            dir, dir, dir, dir, dir, dir, web_root);
+    fclose(config_file);
+
+    set_custom_config_path(config_path);
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_STRING("http://doods:8080/detect", cfg.api_detection_url);
+    TEST_ASSERT_EQUAL_STRING("doods2", cfg.api_detection_format);
+    TEST_ASSERT_EQUAL_STRING("tensorflow", cfg.api_detection_detector_name);
+
+    /* An unknown format keeps the default rather than poisoning later requests. */
+    config_file = fopen(config_path, "w");
+    TEST_ASSERT_NOT_NULL(config_file);
+    fprintf(config_file,
+            "[general]\n"
+            "pid_file = %s/lightnvr.pid\n"
+            "log_file = %s/lightnvr.log\n\n"
+            "[storage]\n"
+            "path = %s/storage\n"
+            "path_hls = %s/hls\n\n"
+            "[models]\n"
+            "path = %s/models\n\n"
+            "[database]\n"
+            "path = %s/lightnvr.db\n\n"
+            "[web]\n"
+            "root = %s\n\n"
+            "[api_detection]\n"
+            "format = deepstack\n",
+            dir, dir, dir, dir, dir, dir, web_root);
+    fclose(config_file);
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_STRING("light-object-detect", cfg.api_detection_format);
+    TEST_ASSERT_EQUAL_STRING("default", cfg.api_detection_detector_name);
+
+    unlink(config_path);
+    rmdir(web_root);
+    rmdir(dir);
+}
+
 void test_env_integer_whitespace_handling(void) {
     char temp_dir[] = "/tmp/lightnvr_load_config_XXXXXX";
     char *dir = mkdtemp(temp_dir);
@@ -681,6 +803,10 @@ int main(void) {
     RUN_TEST(test_get_loaded_config_path_initially);
     RUN_TEST(test_save_config_accepts_hidden_ini_dotfile);
     RUN_TEST(test_env_integer_whitespace_handling);
+    RUN_TEST(test_default_config_api_detection_settings);
+    RUN_TEST(test_config_set_api_detection_format_normalizes_and_rejects);
+    RUN_TEST(test_save_config_writes_api_detection_format);
+    RUN_TEST(test_load_config_parses_api_detection_format);
 
     int result = UNITY_END();
     shutdown_logger();
