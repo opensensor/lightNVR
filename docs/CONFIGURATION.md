@@ -79,10 +79,11 @@ max_streams = 32
 path = /var/lib/lightnvr/data/models
 
 [api_detection]
-url = http://localhost:9001/api/v1/detect
-backend = onnx  ; Detection backend: onnx (YOLOv8), tflite, or opencv
-confidence_threshold = 0.35
-filter_classes = car,motorcycle,truck,bus,bicycle  ; Comma-separated class filter
+url = http://localhost:8000/api/v1/detect
+format = light-object-detect  ; Request format: light-object-detect or doods2
+backend = onnx  ; light-object-detect backend: onnx (YOLOv8), tflite, or opencv
+detector_name = default  ; doods2 detector_name
+detection_threshold = 50
 
 [memory]
 buffer_size = 1024  ; Buffer size in KB
@@ -364,16 +365,68 @@ path = /var/lib/lightnvr/data/models
 
 ```ini
 [api_detection]
-url = http://localhost:9001/api/v1/detect
-backend = onnx
-confidence_threshold = 0.35
-filter_classes = car,motorcycle,truck,bus,bicycle
+url = http://localhost:8000/api/v1/detect
+format = light-object-detect  ; or doods2
+backend = onnx                ; light-object-detect only
+detector_name = default       ; doods2 only
+detection_threshold = 50      ; Default confidence threshold (0-100%)
 ```
 
-- `url`: URL of the external detection API
-- `backend`: Detection backend to use: `onnx` (YOLOv8 - best accuracy), `tflite`, or `opencv`
-- `confidence_threshold`: Minimum confidence threshold for detections (0.0-1.0)
-- `filter_classes`: Comma-separated list of object classes to detect (empty = all classes)
+- `url`: URL of the external detection API. A stream's **Custom API Endpoint**
+  overrides it for that stream. Query parameters in either URL are passed
+  through to the server.
+- `format`: Wire format used when posting snapshots: `light-object-detect`
+  (default) or `doods2`. Both are described below.
+- `backend`: `light-object-detect` only. Inference backend requested from the
+  server: `onnx` (YOLOv8 - best accuracy), `tflite`, or `opencv`.
+- `detector_name`: `doods2` only. The `detector_name` sent with each request;
+  it must match one of the detectors the server lists at `GET /detectors`.
+- `detection_threshold`: Default confidence threshold (0-100%) for streams that
+  do not set their own.
+
+A stream whose only detection engine is an `api` engine may override `format`,
+`backend` and `detector_name` in that engine's `config` object via
+`PUT /api/streams/{name}/detection-engines`; see
+[Detection Engines](DETECTION_ENGINES.md).
+
+#### Wire formats
+
+LightNVR grabs one JPEG per detection interval and posts it to the API. It
+never asks the detector to open the camera stream itself, so streaming request
+modes offered by some servers are not used.
+
+**light-object-detect** (default)
+
+Request: `POST <url>?backend=<backend>&confidence_threshold=<0-1>&return_image=false`
+as `multipart/form-data` with a single `file` part containing the JPEG.
+
+Response:
+
+```json
+{"detections": [
+  {"label": "person", "confidence": 0.91,
+   "x_min": 0.10, "y_min": 0.20, "x_max": 0.40, "y_max": 0.80}
+]}
+```
+
+Coordinates are normalized 0-1 and `confidence` is 0-1. The box may instead be
+nested under a `bounding_box` object. Optional `track_id` (number) and
+`zone_id` (string) are stored when present. Any server that implements this
+contract works with the default format.
+
+**doods2**
+
+Request: `POST <url>` with `Content-Type: application/json`:
+
+```json
+{"id": "<stream name>", "detector_name": "<detector_name>",
+ "detect": {"*": <threshold x 100>}, "data": "<base64 JPEG>"}
+```
+
+Response: the standard [DOODS2](https://github.com/snowzach/doods2) detect
+response. `top`/`left`/`bottom`/`right` are normalized 0-1 and `confidence` is
+0-100; LightNVR converts both to its internal 0-1 scale. A non-empty `error`
+field fails the request.
 
 ### Memory Optimization
 

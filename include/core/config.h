@@ -6,6 +6,19 @@
 
 #include "telemetry/system_health_policy.h"
 
+// Wire formats supported by the external detection API client (api_detection.c).
+#define API_DETECTION_FORMAT_MAX 32
+#define API_DETECTION_BACKEND_MAX 32
+#define API_DETECTION_DETECTOR_NAME_MAX 64
+#define API_DETECTION_FORMAT_NAME_LIGHT_OBJECT_DETECT "light-object-detect"
+#define API_DETECTION_FORMAT_NAME_DOODS2 "doods2"
+
+typedef enum {
+    API_DETECTION_FORMAT_LIGHT_OBJECT_DETECT = 0, // multipart "file" upload + query params
+    API_DETECTION_FORMAT_DOODS2 = 1,              // JSON body with base64 "data"
+} api_detection_format_t;
+
+
 // Maximum length for path strings
 #define MAX_PATH_LENGTH 512
 // Maximum length for stream names
@@ -227,6 +240,8 @@ typedef struct {
     // API detection settings
     char api_detection_url[MAX_URL_LENGTH]; // URL for the detection API
     char api_detection_backend[32];        // Backend to use: onnx, tflite, opencv (default: onnx)
+    char api_detection_format[API_DETECTION_FORMAT_MAX];   // Wire format: light-object-detect (default) or doods2
+    char api_detection_detector_name[API_DETECTION_DETECTOR_NAME_MAX]; // DOODS2 detector_name (default: "default")
 
     // Global detection defaults (used when per-stream settings are not specified)
     int default_detection_threshold;       // Default confidence threshold for detection (0-100)
@@ -472,5 +487,22 @@ static inline int configured_stream_slots(void) {
     if (slots <= 0 || slots > MAX_STREAMS) return MAX_STREAMS;
     return slots;
 }
+
+/**
+ * Canonical name for an API detection wire format.
+ */
+const char *api_detection_format_name(api_detection_format_t format);
+
+/**
+ * Parse a format name (case-insensitive; accepts "light-object-detect"/"lod"
+ * and "doods2"/"doods"). Returns false for unknown names, leaving *out untouched.
+ */
+bool api_detection_format_parse(const char *name, api_detection_format_t *out);
+
+/**
+ * Store the canonical name of a parsed format in config->api_detection_format.
+ * Returns false (and leaves the config untouched) for unknown names.
+ */
+bool config_set_api_detection_format(config_t *config, const char *name);
 
 #endif /* LIGHTNVR_CONFIG_H */

@@ -1,11 +1,12 @@
 /**
- * DetectionTab — Detection models path, API URL / backend, default detection
+ * DetectionTab — Detection models path, API URL / request format / backend, default detection
  * threshold (used when a stream enables detection-based recording).
  *
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
 export function DetectionTab({ settings, handleInputChange, handleThresholdChange, canModifySettings, t }) {
+  const isDoods2 = settings.apiDetectionFormat === 'doods2';
   return (
     <div class="space-y-6">
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
@@ -37,6 +38,23 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.detectionModelsPathHelp')}</span>
           </div>
         </div>
+        <div data-setting-label={t('settings.apiDetectionFormat')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-api-detection-format" class="font-medium">{t('settings.apiDetectionFormat')}</label>
+          <div class="col-span-2">
+            <select
+              id="setting-api-detection-format"
+              name="apiDetectionFormat"
+              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.apiDetectionFormat || 'light-object-detect'}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            >
+              <option value="light-object-detect">{t('settings.apiDetectionFormatLightObjectDetect')}</option>
+              <option value="doods2">{t('settings.apiDetectionFormatDoods2')}</option>
+            </select>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionFormatHelp')}</span>
+          </div>
+        </div>
         <div data-setting-label={t('settings.apiDetectionUrl')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-api-detection-url" class="font-medium">{t('settings.apiDetectionUrl')}</label>
           <div class="col-span-2">
@@ -48,29 +66,51 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
               value={settings.apiDetectionUrl}
               onChange={handleInputChange}
               disabled={!canModifySettings}
-              placeholder="http://localhost:8000/detect"
+              placeholder={isDoods2 ? 'http://localhost:8080/detect' : 'http://localhost:8000/api/v1/detect'}
             />
-            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionUrlHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">
+              {isDoods2 ? t('settings.apiDetectionUrlHelpDoods2') : t('settings.apiDetectionUrlHelp')}
+            </span>
           </div>
         </div>
-        <div data-setting-label={t('settings.apiDetectionBackend')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-api-detection-backend" class="font-medium">{t('settings.apiDetectionBackend')}</label>
-          <div class="col-span-2">
-            <select
-              id="setting-api-detection-backend"
-              name="apiDetectionBackend"
-              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.apiDetectionBackend}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            >
-              <option value="onnx">{t('settings.apiDetectionBackendOnnx')}</option>
-              <option value="tflite">{t('settings.apiDetectionBackendTflite')}</option>
-              <option value="opencv">{t('settings.apiDetectionBackendOpencv')}</option>
-            </select>
-            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionBackendHelp')}</span>
+        {!isDoods2 && (
+          <div data-setting-label={t('settings.apiDetectionBackend')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-api-detection-backend" class="font-medium">{t('settings.apiDetectionBackend')}</label>
+            <div class="col-span-2">
+              <select
+                id="setting-api-detection-backend"
+                name="apiDetectionBackend"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.apiDetectionBackend}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              >
+                <option value="onnx">{t('settings.apiDetectionBackendOnnx')}</option>
+                <option value="tflite">{t('settings.apiDetectionBackendTflite')}</option>
+                <option value="opencv">{t('settings.apiDetectionBackendOpencv')}</option>
+              </select>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionBackendHelp')}</span>
+            </div>
           </div>
-        </div>
+        )}
+        {isDoods2 && (
+          <div data-setting-label={t('settings.apiDetectionDetectorName')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-api-detection-detector-name" class="font-medium">{t('settings.apiDetectionDetectorName')}</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-api-detection-detector-name"
+                name="apiDetectionDetectorName"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.apiDetectionDetectorName || ''}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="default"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionDetectorNameHelp')}</span>
+            </div>
+          </div>
+        )}
         <div data-setting-label={t('settings.defaultDetectionThreshold')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-default-detection-threshold" class="font-medium">{t('settings.defaultDetectionThreshold')}</label>
           <div class="col-span-2">

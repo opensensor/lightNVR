@@ -24,7 +24,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 #### 🎯 Smart Detection & Recording
 - **Detection Zones**: Visual polygon-based zone editor for targeted object detection - define multiple zones per camera with custom class filters and confidence thresholds
-- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/opensensor/light-object-detect) API for ONNX/TFLite-based object detection with zone filtering
+- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/opensensor/light-object-detect) API for ONNX/TFLite-based object detection with zone filtering; [DOODS2](https://github.com/snowzach/doods2) servers are supported through a selectable request format
 - **ONVIF Motion Events**: Automated recording triggered by ONVIF motion detection events
 - **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
 
@@ -295,6 +295,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
    - Enable **Detection Based Recording**
    - Set **API Detection URL** to `http://localhost:9001/api/v1/detect`
    - Choose detection backend: `onnx` (recommended), `tflite`, or `opencv`
+   - Running [DOODS2](https://github.com/snowzach/doods2) instead? Set **API Request Format** to DOODS2 in **Settings → Detection** and point the URL at its `/detect` endpoint (see [API Detection Settings](docs/CONFIGURATION.md#api-detection-settings))
    - Configure **Detection Zones** to define areas of interest
 
    See [Zone Configuration Guide](docs/ZONE_CONFIGURATION.md) for detailed zone setup instructions.

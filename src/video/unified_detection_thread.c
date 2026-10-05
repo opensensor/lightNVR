@@ -167,6 +167,31 @@ static const char *get_actual_api_url(const char *stream_name, const char *model
     }
     return actual_api_url;
 }
+
+/**
+ * Resolve the request options for the stream's API detector: the global
+ * [api_detection] settings first, then per-engine overrides from the engine's
+ * config JSON ({"format","backend","detector_name"}) when the stream's only
+ * engine is an api engine. That is the single-engine dispatch path, which is
+ * the only place an API engine actually runs today.
+ */
+static void resolve_api_detection_options(const unified_detection_ctx_t *ctx,
+                                          api_detection_options_t *options)
+{
+    api_detection_options_from_config(options);
+    if (!ctx || ctx->engine_count != 1) {
+        return;
+    }
+    const stream_detection_engine_t *engine = &ctx->engines[0];
+    if (strcmp(engine->engine_type, "api") != 0 || engine->config_json[0] == '\0') {
+        return;
+    }
+    if (api_detection_options_apply_json(options, engine->config_json) != 0) {
+        log_warn("[%s] Detection engine %s has an invalid api detection config; using global settings",
+                 ctx->stream_name, engine->engine_key);
+        api_detection_options_from_config(options);
+    }
+}
 /**
  * Helper to update stored video parameters, distinguishing between
  * container-derived FPS values and provisional fallbacks that should
@@ -2842,9 +2867,11 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
 
         detection_result_t result;
         memset(&result, 0, sizeof(result));
-        int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
-                                                     &result, ctx->detection_threshold,
-                                                     rec_id, frame_timestamp);
+        api_detection_options_t api_options;
+        resolve_api_detection_options(ctx, &api_options);
+        int detect_ret = detect_objects_api_snapshot_with_options(
+            ctx->model_path, ctx->stream_name, &result, ctx->detection_threshold,
+            rec_id, frame_timestamp, &api_options);
 
         if (detect_ret != DETECT_SNAPSHOT_UNAVAILABLE) {
             if (detect_ret != 0) {
@@ -3056,10 +3083,13 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         if (!rgb_buf) return false;
 
         const char *api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
+        api_detection_options_t api_options;
+        resolve_api_detection_options(ctx, &api_options);
         int ret = api_url
-            ? detect_objects_api(api_url, rgb_buf, width, height, 3,
-                                 result, ctx->stream_name, ctx->detection_threshold,
-                                 rec_id, now)
+            ? detect_objects_api_with_options(api_url, rgb_buf, width, height, 3,
+                                              result, ctx->stream_name,
+                                              ctx->detection_threshold, rec_id, now,
+                                              &api_options)
             : -1;
         free(rgb_buf);
 

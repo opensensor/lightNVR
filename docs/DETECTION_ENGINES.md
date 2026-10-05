@@ -53,6 +53,27 @@ rows including the compatibility engine. Relative object model paths resolve
 under the configured models directory. `config` must be a bounded JSON object
 and must not contain credentials.
 
+For `api` engines, `model_path` is the detection endpoint URL and `config` may
+carry request options that override the global `[api_detection]` settings:
+`format` (`light-object-detect` or `doods2`), `backend` (light-object-detect)
+and `detector_name` (doods2). See the wire formats in
+[CONFIGURATION.md](CONFIGURATION.md#wire-formats).
+
+```json
+{
+  "key": "doods",
+  "type": "api",
+  "model_path": "http://doods:8080/detect",
+  "enabled": true,
+  "threshold": 0.4,
+  "interval_seconds": 2,
+  "config": {"format": "doods2", "detector_name": "tensorflow"}
+}
+```
+
+The override takes effect when this is the stream's only engine (leave the
+stream's legacy detection model empty); see the runtime boundaries below.
+
 ## Runtime boundaries
 
 - Motion and local object engines share decoded frames and run at their own
