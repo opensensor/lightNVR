@@ -15,6 +15,7 @@ import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx
 import { useI18n } from '../../i18n.js';
 import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
+import { useCameraFavorites } from './live/cameraFavorites.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { LiveDisplayModeToggle } from './LiveDisplayModeToggle.jsx';
@@ -117,6 +118,23 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     isLoading: isCollectionLoading,
     error: collectionError,
   } = useCollectionMembership(collectionFilter);
+
+  // Per-user favorites: a star on each tile plus a toolbar filter (#624).
+  const [favoritesOnly, setFavoritesOnly] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('favorites') === '1';
+  });
+  const {
+    favoriteUuids,
+    canModify: canModifyFavorites,
+    toggleFavorite,
+    pendingUuid: pendingFavoriteUuid,
+    isLoading: favoritesLoading,
+  } = useCameraFavorites();
+  const favoritesAvailable = canModifyFavorites || favoriteUuids.size > 0;
+  // A stale ?favorites=1 must not blank the grid when favorites are unavailable
+  // (older server, read-only identity); keep filtering while they load.
+  const favoritesFilterActive = favoritesOnly && (favoritesLoading || favoritesAvailable);
 
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
@@ -406,6 +424,9 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     if (collectionFilter) url.searchParams.set('collection', collectionFilter);
     else url.searchParams.delete('collection');
 
+    if (favoritesOnly) url.searchParams.set('favorites', '1');
+    else url.searchParams.delete('favorites');
+
     // Omit params when at their defaults (true) to keep URL clean
     if (!showLabels) url.searchParams.set('labels', '0');
     else url.searchParams.delete('labels');
@@ -421,13 +442,21 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
     localStorage.setItem('lightnvr-show-detections', String(showDetections));
-  }, [tagFilter, collectionFilter, showLabels, showControls, showDetections]);
+  }, [tagFilter, collectionFilter, favoritesOnly, showLabels, showControls, showDetections]);
 
   useEffect(() => {
     if (collectionError) {
       showStatusMessage(t('collections.loadMembersError', { message: collectionError.message }));
     }
   }, [collectionError, t]);
+
+  const handleToggleFavorite = useCallback(async (cameraUuid) => {
+    try {
+      await toggleFavorite(cameraUuid);
+    } catch (error) {
+      showStatusMessage(t('live.favoriteUpdateError', { message: error.message }), 'error');
+    }
+  }, [toggleFavorite, t]);
 
   // The playback grid intentionally excludes administratively disabled
   // cameras, but the Navigator's availability inventory must still include
@@ -452,12 +481,13 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
   const tagFilteredStreams = useMemo(() => {
     return streams.filter((stream) => {
       if (collectionFilter && !collectionCameraUuids.has(stream.camera_uuid)) return false;
+      if (favoritesFilterActive && !favoriteUuids.has(stream.camera_uuid)) return false;
       if (operatorFilter && !operatorFilter.cameraUuids.has(stream.camera_uuid)) return false;
       if (operatorFilter && operatorFilter.availability !== 'all' &&
           stream.availability !== operatorFilter.availability) return false;
       return !tagFilter || (stream.tags && stream.tags.split(',').map(tag => tag.trim()).includes(tagFilter));
     });
-  }, [streams, tagFilter, collectionFilter, collectionCameraUuids, operatorFilter]);
+  }, [streams, tagFilter, collectionFilter, collectionCameraUuids, favoritesFilterActive, favoriteUuids, operatorFilter]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -670,6 +700,18 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
         </div>
         {operatorSurface === 'grid' && (
         <div className="controls flex items-center space-x-2">
+          {favoritesAvailable && (
+            <button
+              type="button"
+              id="hls-favorites-filter"
+              className={`px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
+              aria-pressed={favoritesOnly}
+              title={t('live.favoritesOnly')}
+              onClick={() => { setFavoritesOnly((current) => !current); setCurrentPage(0); }}
+            >
+              <span aria-hidden="true">{favoritesOnly ? '\u2605' : '\u2606'}</span> {t('live.favorites')}
+            </button>
+          )}
           {collections.length > 0 && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="hls-collection-filter" className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
@@ -919,7 +961,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             </div>
           ) : orderedStreams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-0 text-muted-foreground text-lg">{t('live.navigator.noCameras')}</p>
+              <p className="mb-0 text-muted-foreground text-lg">{favoritesFilterActive ? t('live.noFavorites') : t('live.navigator.noCameras')}</p>
             </div>
           ) : (
             // Render each tile using its persisted playback profile. The active
@@ -979,6 +1021,23 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
                       {t('live.dragToReorder')}
                     </div>
                   )}
+                  {canModifyFavorites && showControls && !reorderMode && (() => {
+                    const isFavorite = favoriteUuids.has(stream.camera_uuid);
+                    const label = t(isFavorite ? 'live.removeFavorite' : 'live.addFavorite', { stream: stream.name });
+                    return (
+                      <button
+                        type="button"
+                        className={`favorite-toggle${isFavorite ? ' is-favorite' : ''}`}
+                        aria-pressed={isFavorite}
+                        aria-label={label}
+                        title={label}
+                        disabled={pendingFavoriteUuid === stream.camera_uuid}
+                        onClick={(event) => { event.stopPropagation(); handleToggleFavorite(stream.camera_uuid); }}
+                      >
+                        {isFavorite ? '\u2605' : '\u2606'}
+                      </button>
+                    );
+                  })()}
                   <PlaybackTransportCell
                     stream={stream}
                     audioDisabled={audioDisabled}
