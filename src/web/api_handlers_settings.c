@@ -957,6 +957,20 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Preflight: reject an unknown api_detection_format before any setting is
+    // applied, so a bad request cannot leave g_config partially updated.
+    {
+        const cJSON *format = cJSON_GetObjectItem(settings, "api_detection_format");
+        api_detection_format_t parsed_format;
+        if (format && cJSON_IsString(format) &&
+            !api_detection_format_parse(format->valuestring, &parsed_format)) {
+            log_warn("Rejected invalid api_detection_format setting");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400, "Invalid api_detection_format: expected light-object-detect or doods2");
+            return;
+        }
+    }
+
     // Update settings
     bool settings_changed = false;
     bool restart_required = false;
@@ -1556,15 +1570,10 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
     }
 
-    // API detection request format (light-object-detect or doods2)
+    // API detection request format (light-object-detect or doods2); validated above.
     cJSON *api_detection_format = cJSON_GetObjectItem(settings, "api_detection_format");
-    if (api_detection_format && cJSON_IsString(api_detection_format)) {
-        if (!config_set_api_detection_format(&g_config, api_detection_format->valuestring)) {
-            log_warn("Rejected invalid api_detection_format setting");
-            cJSON_Delete(settings);
-            http_response_set_json_error(res, 400, "Invalid api_detection_format: expected light-object-detect or doods2");
-            return;
-        }
+    if (api_detection_format && cJSON_IsString(api_detection_format) &&
+        config_set_api_detection_format(&g_config, api_detection_format->valuestring)) {
         settings_changed = true;
         log_info("Updated api_detection_format: %s", g_config.api_detection_format);
     }

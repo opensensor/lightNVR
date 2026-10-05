@@ -47,6 +47,9 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Maximum length of the fully built request URL.
 #define API_DETECTION_REQUEST_URL_MAX 1024
 
+// DOODS2 request body up to (and including) the opening quote of the base64 "data" value.
+#define DOODS2_BODY_PREFIX_FORMAT "{\"id\":%s,\"detector_name\":%s,\"detect\":{\"*\":%.2f},\"data\":\""
+
 // ASCII printable character range used when sanitizing response previews.
 #define ASCII_PRINTABLE_MIN 32
 #define ASCII_PRINTABLE_MAX 126
@@ -353,15 +356,13 @@ char *api_detection_build_doods2_body(const unsigned char *jpeg_data, size_t jpe
     if (id_json && detector_json && encoded) {
         // DOODS2 filters on a 0-100 confidence scale; "*" applies to every label.
         double percent = (double)normalize_api_detection_threshold(threshold) * 100.0;
-        static const char *prefix_format =
-            "{\"id\":%s,\"detector_name\":%s,\"detect\":{\"*\":%.2f},\"data\":\"";
-        int prefix_len = snprintf(NULL, 0, prefix_format, id_json, detector_json, percent);
+        int prefix_len = snprintf(NULL, 0, DOODS2_BODY_PREFIX_FORMAT, id_json, detector_json, percent);
         size_t encoded_len = strlen(encoded);
         if (prefix_len > 0) {
             size_t total = (size_t)prefix_len + encoded_len + 3; // closing quote, brace, NUL
             body = malloc(total);
             if (body) {
-                int written = snprintf(body, total, prefix_format, id_json, detector_json, percent);
+                int written = snprintf(body, total, DOODS2_BODY_PREFIX_FORMAT, id_json, detector_json, percent);
                 if (written == prefix_len) {
                     memcpy(body + written, encoded, encoded_len);
                     body[written + encoded_len] = '"';
@@ -853,17 +854,35 @@ int init_api_detection_system(void) {
  * Shutdown the API detection system
  */
 void shutdown_api_detection_system(void) {
+    bool was_initialized = false;
+
     pthread_mutex_lock(&curl_mutex);
-
-    if (!initialized) {
-        pthread_mutex_unlock(&curl_mutex);
-        return;
-    }
-
+    was_initialized = initialized;
     initialized = false;
     pthread_mutex_unlock(&curl_mutex);
 
-    log_info("API detection system shutdown");
+    // Always attempt to clean up resources, even if not marked as initialized.
+    log_info("Shutting down API detection system (initialized: %s)",
+             was_initialized ? "yes" : "no");
+
+    /*
+     * Cleanup cached JPEG encoders used for API detection snapshots.
+     *
+     * jpeg_encoder_cleanup_all() releases any process-wide encoder instances
+     * and associated buffers that may have been cached for performance during
+     * detection. This prevents a persistent memory footprint across repeated
+     * init/shutdown cycles of the API detection system.
+     *
+     * It is safe to call multiple times, but it must be done as part of the
+     * shutdown sequence to ensure all encoder resources are freed once API
+     * detection is no longer in use.
+     */
+    jpeg_encoder_cleanup_all();
+
+    // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
+    // The global cleanup will happen at program shutdown
+
+    log_info("API detection system shutdown complete");
 }
 
 /* ------------------------------------------------------------------------- */
