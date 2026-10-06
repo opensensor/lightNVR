@@ -390,12 +390,25 @@ static void track_ffmpeg_processes(void) {
  * browser playback stall. Record the arguments of the VAAPI invocation and
  * its exit status, then pass through to the real encoder: the status check
  * proves the driver actually accepted the options rather than the request
- * quietly succeeding via the software fallback. Needs a render node, so it
- * is skipped on GPU-less hosts such as CI. */
+ * quietly succeeding via the software fallback. Needs a working VAAPI
+ * HEVC-decode/H.264-encode pipeline, so it is skipped on hosts without one
+ * (GPU-less CI, an inaccessible render node, FFmpeg built without VAAPI);
+ * production falls back to software in all of those cases. */
 void test_vaapi_transcode_sets_explicit_rate_control(void) {
     if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
-    if (access("/dev/dri/renderD128", F_OK) != 0) {
-        TEST_IGNORE_MESSAGE("no VAAPI render node");
+    if (access("/dev/dri/renderD128", R_OK | W_OK) != 0) {
+        TEST_IGNORE_MESSAGE("no accessible VAAPI render node");
+        return;
+    }
+    /* Probe the baseline pipeline without rate-control options, so a failure
+     * below can only mean those options broke an otherwise usable path. */
+    char probe[1024];
+    snprintf(probe, sizeof(probe),
+             "-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 "
+             "-hwaccel_output_format vaapi -i \"%s\" -c:v h264_vaapi -an -f null -",
+             g_hevc_fixture);
+    if (run_ffmpeg(probe) != 0) {
+        TEST_IGNORE_MESSAGE("VAAPI HEVC decode / H.264 encode not usable on this host");
         return;
     }
     install_ffmpeg_wrapper(
@@ -426,12 +439,12 @@ void test_vaapi_transcode_sets_explicit_rate_control(void) {
     while (fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\n")] = '\0';
         if (strcmp(prev, "-rc_mode") == 0 && strcmp(line, "CQP") == 0) has_cqp = true;
-        if (strcmp(prev, "-qp") == 0 && atoi(line) > 0) has_qp = true;
+        if (strcmp(prev, "-qp") == 0 && strcmp(line, "24") == 0) has_qp = true;
         snprintf(prev, sizeof(prev), "%s", line);
     }
     fclose(file);
     TEST_ASSERT_TRUE_MESSAGE(has_cqp, "VAAPI encode is missing -rc_mode CQP");
-    TEST_ASSERT_TRUE_MESSAGE(has_qp, "VAAPI encode is missing -qp <n>");
+    TEST_ASSERT_TRUE_MESSAGE(has_qp, "VAAPI encode is missing -qp 24");
 
     snprintf(path, sizeof(path), "%s/vaapi_rc", g_test_dir);
     file = fopen(path, "r");
