@@ -187,14 +187,22 @@ static int transcode_cache_locked(const char *original_path, const char *cache_p
      * When the source has no audio stream, ffmpeg's default stream
      * selection simply produces no audio output track, so this is a no-op
      * for video-only sources (e.g. any recording made while audio_disabled
-     * is set). */
+     * is set).
+     *
+     * -rc_mode CQP -qp 24 sets rate control explicitly. Without it h264_vaapi
+     * uses the driver's default quality level with no bound on bitrate,
+     * which produced ~21 Mbit/s from a 2560x1920 source. CQP is used rather
+     * than -b:v/-maxrate because some drivers (e.g. Intel HD 630) support
+     * only CQP and refuse to open the encoder otherwise. If a driver rejects
+     * it anyway, the software fallback below still produces the cache. */
     char *argv_vaapi[] = {
         (char *)FFMPEG_BINARY, "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
         "-filter_threads", "1", "-threads", "1",
         "-hwaccel", "vaapi", "-hwaccel_device", VAAPI_RENDER_NODE,
         "-hwaccel_output_format", "vaapi",
         "-i", (char *)original_path,
-        "-c:v", "h264_vaapi", "-threads", "1", "-c:a", "aac",
+        "-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", "24",
+        "-threads", "1", "-c:a", "aac",
         "-f", "mp4", tmp_path, NULL
     };
     /* Bound decoder/encoder threads explicitly: FFmpeg otherwise sizes them
