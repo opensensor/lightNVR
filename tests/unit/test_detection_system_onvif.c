@@ -44,6 +44,7 @@ typedef struct {
     bool saw_requested_lease;
     bool saw_renewed_lease;
     bool discover_common_service;
+    bool two_profiles;      // GetProfiles returns two consecutive <trt:Profiles>
     bool reject_create;
     int granted_lease_seconds;
     int pull_failures_remaining;
@@ -146,7 +147,18 @@ static void *fake_onvif_server_main(void *arg) {
                 server->port, server->port, event_path);
             send_xml_response(client_fd, body);
         } else if (strstr(request, "GetProfiles")) {
-            send_xml_response(client_fd,
+            /* Consecutive same-named elements are exactly what ezxml's
+             * `sibling` chain skips (#625), so the optional sub-stream
+             * profile follows the main one directly. */
+            const char *sub_profile = server->two_profiles
+                ? "<trt:Profiles token=\"Profile_Sub\">"
+                  "<tt:Name>SubStream</tt:Name>"
+                  "<tt:VideoSourceConfiguration><tt:SourceToken>video0</tt:SourceToken>"
+                  "</tt:VideoSourceConfiguration>"
+                  "</trt:Profiles>"
+                : "";
+            char body[2048];
+            snprintf(body, sizeof(body),
                 "<Envelope><Body><trt:GetProfilesResponse>"
                 "<trt:Profiles token=\"Profile_S\">"
                 "<tt:Name>MainStream</tt:Name>"
@@ -158,7 +170,9 @@ static void *fake_onvif_server_main(void *arg) {
                 "</tt:Resolution><tt:RateControl><tt:FrameRateLimit>15</tt:FrameRateLimit>"
                 "<tt:BitrateLimit>2048</tt:BitrateLimit></tt:RateControl>"
                 "</tt:VideoEncoderConfiguration>"
-                "</trt:Profiles></trt:GetProfilesResponse></Body></Envelope>");
+                "</trt:Profiles>%s</trt:GetProfilesResponse></Body></Envelope>",
+                sub_profile);
+            send_xml_response(client_fd, body);
         } else if (strstr(request, "GetStreamUri")) {
             send_xml_response(client_fd,
                 "<Envelope><Body><trt:GetStreamUriResponse><trt:MediaUri>"
@@ -684,6 +698,30 @@ void test_onvif_profile_reports_ptz_configuration(void) {
                              profiles[0].ptz_configuration_token);
 }
 
+/* Regression for #625: ezxml's `sibling` pointer skips repeated tags, so a
+ * camera advertising main + sub streams used to report only the first. */
+void test_onvif_profiles_enumerates_consecutive_profiles(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.two_profiles = true;
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[96];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/onvif/device_service",
+             server.port);
+
+    onvif_profile_t profiles[4];
+    int count = get_onvif_device_profiles(url, "", "", profiles, 4);
+
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_STRING("Profile_S", profiles[0].token);
+    TEST_ASSERT_EQUAL_STRING("MainStream", profiles[0].name);
+    TEST_ASSERT_EQUAL_STRING("Profile_Sub", profiles[1].token);
+    TEST_ASSERT_EQUAL_STRING("SubStream", profiles[1].name);
+    TEST_ASSERT_EQUAL_STRING("", profiles[1].ptz_configuration_token);
+}
+
 /* Regression for #547: ONVIF used to hardcode recording_id=0 when it stored
  * the parsed event, bypassing the annotation linkage used by every frame-based
  * detector. Verify the actual persisted foreign key against a live writer ID. */
@@ -769,6 +807,7 @@ int main(void) {
     RUN_TEST(test_onvif_tapo_smart_event_reports_vehicle_class);
     RUN_TEST(test_onvif_license_plate_event_does_not_trigger_motion);
     RUN_TEST(test_onvif_profile_reports_ptz_configuration);
+    RUN_TEST(test_onvif_profiles_enumerates_consecutive_profiles);
     RUN_TEST(test_onvif_detection_links_to_active_continuous_recording);
     int result = UNITY_END();
     shutdown_logger();
