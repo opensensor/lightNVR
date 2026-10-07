@@ -1339,6 +1339,39 @@ POST /api/camera-collections/{collection_uuid}/preview
 Returns the authorized `matched_count` and a sample of at most 50 camera UUIDs,
 names, and location paths.
 
+### Camera Favorites
+
+Favorites are a personal, per-user set of cameras. The Live view shows them as
+a **Favorites** filter and puts a star on each tile to add or remove a camera.
+They are private to the signed-in user; while authentication is disabled there
+is a single installation-wide set. Deleting a user or a camera removes its
+entries.
+
+```
+GET /api/camera-favorites
+PUT /api/camera-favorites/{camera_uuid}
+DELETE /api/camera-favorites/{camera_uuid}
+```
+
+`GET` returns `favorites` (each with `camera_uuid` and `created_at`, oldest
+first) and `can_modify`. Cameras outside the caller's current live-view scope
+are omitted. Demo and scoped-token identities receive an empty list with
+`can_modify: false`.
+
+```json
+{
+  "favorites": [
+    {"camera_uuid": "7c0b1b0e-4d2f-4c7a-9f1e-2e3a8b6c1d55", "created_at": 1759600000}
+  ],
+  "can_modify": true
+}
+```
+
+`PUT` adds a camera and returns its record; `DELETE` removes one and returns
+`removed` to say whether it was present. Both are idempotent and require an
+interactive user (403 for demo or scoped-token sessions). `PUT` answers 404 for
+a camera that does not exist or that the caller cannot view.
+
 ### Storage Targets
 
 Storage target endpoints require the global `storage.configure` action. They
