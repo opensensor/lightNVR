@@ -55,6 +55,7 @@
 #include "web/api_handlers_storage_compliance.h"
 #include "web/api_handlers_workspaces.h"
 #include "web/api_handlers_live_layouts.h"
+#include "web/api_handlers_ui_preferences.h"
 #include "web/api_handlers_operator_floor_plans.h"
 #include "web/api_handlers_lpr.h"
 #include "web/api_handlers_detection_engines.h"
@@ -175,6 +176,18 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_put_live_layout);
     http_server_register_handler(server, "/api/live/layouts/#", "DELETE",
                                  handle_delete_live_layout);
+
+    // Персональные настройки интерфейса и избранные камеры.
+    http_server_register_handler(server, "/api/ui/preferences", "GET",
+                                 handle_get_ui_preferences);
+    http_server_register_handler(server, "/api/ui/preferences", "PUT",
+                                 handle_put_ui_preferences);
+    http_server_register_handler(server, "/api/ui/favorites", "GET",
+                                 handle_get_ui_favorites);
+    http_server_register_handler(server, "/api/ui/favorites", "POST",
+                                 handle_post_ui_favorite);
+    http_server_register_handler(server, "/api/ui/favorites/#", "DELETE",
+                                 handle_delete_ui_favorite);
 
     // Saved static and selector-backed smart camera collections
     http_server_register_handler(server, "/api/camera-collections", "GET",
