@@ -1595,7 +1595,9 @@ skip_audio_stream:
 
     // Set options for fast start - EXACTLY match rtsp_recorder.c
     AVDictionary *opts = NULL;
-    av_dict_set(&opts, "movflags", "+faststart", 0);  // This is the ONLY option in rtsp_recorder.c
+    if (g_config.mp4_faststart) {  // [storage] mp4_faststart (default true)
+        av_dict_set(&opts, "movflags", "+faststart", 0);  // This is the ONLY option in rtsp_recorder.c
+    }
 
     // Open output file
     ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
