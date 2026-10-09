@@ -741,6 +741,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(settings, "lpr_retention_days", days);
     }
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
+    cJSON_AddBoolToObject(settings, "mp4_faststart", g_config.mp4_faststart);
     cJSON_AddNumberToObject(settings, "storage_min_free_pct", g_config.storage_min_free_pct);
     cJSON_AddNumberToObject(settings, "storage_pressure_warning_pct", g_config.storage_pressure_warning_pct);
     cJSON_AddNumberToObject(settings, "storage_pressure_critical_pct", g_config.storage_pressure_critical_pct);
@@ -1336,6 +1337,14 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.auto_delete_oldest = cJSON_IsTrue(auto_delete_oldest);
         settings_changed = true;
         log_info("Updated auto_delete_oldest: %s", g_config.auto_delete_oldest ? "true" : "false");
+    }
+
+    // MP4 faststart (applies to segments opened after the change)
+    cJSON *mp4_faststart = cJSON_GetObjectItem(settings, "mp4_faststart");
+    if (mp4_faststart && cJSON_IsBool(mp4_faststart)) {
+        g_config.mp4_faststart = cJSON_IsTrue(mp4_faststart);
+        settings_changed = true;
+        log_info("Updated mp4_faststart: %s", g_config.mp4_faststart ? "true" : "false");
     }
 
     // Capacity-based retention: minimum free-space headroom to maintain (%)
