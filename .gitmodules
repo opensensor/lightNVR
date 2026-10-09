@@ -5,3 +5,6 @@
 [submodule "third_party/litert"]
 	path = third_party/litert
 	url = https://github.com/google-ai-edge/LiteRT.git
+[submodule "third_party/faac"]
+	path = third_party/faac
+	url = https://github.com/FreewareAdvancedAudio/faac.git

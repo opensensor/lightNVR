@@ -39,12 +39,14 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/ffmpeg_utils.h"
+#include "video/faac_encoder.h"
 #include "telemetry/recording_io_metrics.h"
 
 // Structure to hold audio transcoding context
 typedef struct {
     AVCodecContext *decoder_ctx;
     AVCodecContext *encoder_ctx;
+    faac_encoder_wrapper_t *faac_enc;
     SwrContext *swr_ctx;
     AVAudioFifo *fifo;          // Buffer to accumulate samples for the encoder
     int64_t fifo_pts;           // Running PTS for frames read from the FIFO
@@ -70,13 +72,16 @@ typedef struct {
  * Get the effective encoder frame size, applying a fallback when the
  * encoder does not set frame_size.
  */
-static int get_encoder_frame_size(const AVCodecContext *encoder_ctx)
+static int get_encoder_frame_size(const audio_transcoder_t *transcoder)
 {
-    if (!encoder_ctx) {
+    if (!transcoder) {
         return DEFAULT_AAC_FRAME_SIZE;
     }
-    if (encoder_ctx->frame_size > 0) {
-        return encoder_ctx->frame_size;
+    if (transcoder->faac_enc) {
+        return faac_wrapper_get_frame_samples(transcoder->faac_enc);
+    }
+    if (transcoder->encoder_ctx && transcoder->encoder_ctx->frame_size > 0) {
+        return transcoder->encoder_ctx->frame_size;
     }
     return DEFAULT_AAC_FRAME_SIZE;
 }
@@ -150,14 +155,6 @@ static int init_audio_transcoder(const char *stream_name,
         return -1;
     }
 
-    // Find the AAC encoder
-    encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
-    if (!encoder) {
-        log_error("Failed to find AAC encoder for %s", stream_name);
-        unlock_audio_transcoders();
-        return -1;
-    }
-
     // Create decoder context
     audio_transcoders[slot].decoder_ctx = avcodec_alloc_context3(decoder);
     if (!audio_transcoders[slot].decoder_ctx) {
@@ -184,68 +181,46 @@ static int init_audio_transcoder(const char *stream_name,
         goto cleanup;
     }
 
-    // Create encoder context
-    audio_transcoders[slot].encoder_ctx = avcodec_alloc_context3(encoder);
-    if (!audio_transcoders[slot].encoder_ctx) {
-        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
-                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
-        log_error("Failed to allocate encoder context for %s", stream_name);
+    int sr = audio_transcoders[slot].decoder_ctx->sample_rate;
+    int nb_ch = 1;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    if (audio_transcoders[slot].decoder_ctx->ch_layout.nb_channels > 0)
+        nb_ch = audio_transcoders[slot].decoder_ctx->ch_layout.nb_channels;
+#else
+    if (audio_transcoders[slot].decoder_ctx->channels > 0)
+        nb_ch = audio_transcoders[slot].decoder_ctx->channels;
+#endif
+    if (nb_ch < MIN_AUDIO_CHANNELS) nb_ch = MIN_AUDIO_CHANNELS;
+
+    faac_encoder_config_t faac_cfg = {
+        .sample_rate = (uint32_t)sr,
+        .num_channels = (uint32_t)nb_ch,
+        .input_format = FAAC_INPUT_16BIT,
+        .bit_rate_per_channel = (sr >= 32000) ? 64000 : 32000,
+        .object_type = FAAC_OBJ_AUTO
+    };
+
+    audio_transcoders[slot].faac_enc = faac_wrapper_open(&faac_cfg);
+    if (!audio_transcoders[slot].faac_enc) {
+        log_error("Failed to open FAAC encoder for %s", stream_name);
         goto cleanup;
     }
 
-    // Set encoder parameters
-    audio_transcoders[slot].encoder_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP; // AAC requires float planar format
-    audio_transcoders[slot].encoder_ctx->sample_rate = audio_transcoders[slot].decoder_ctx->sample_rate;
+    enum AVSampleFormat enc_sample_fmt = AV_SAMPLE_FMT_S16;
 
-    // Handle channel layout using the newer FFmpeg API (5.0+)
+    // Set up sample format conversion for the encoder
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-    // Copy channel layout from decoder to encoder
-    av_channel_layout_copy(&audio_transcoders[slot].encoder_ctx->ch_layout,
-                          &audio_transcoders[slot].decoder_ctx->ch_layout);
-
-    // If channel layout is not set, default to stereo
-    if (audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels == 0) {
-        av_channel_layout_default(&audio_transcoders[slot].encoder_ctx->ch_layout, 2); // Default to stereo
-    }
-#else
-    // For older FFmpeg versions
-    audio_transcoders[slot].encoder_ctx->channels = audio_transcoders[slot].decoder_ctx->channels;
-    audio_transcoders[slot].encoder_ctx->channel_layout = av_get_default_channel_layout(audio_transcoders[slot].decoder_ctx->channels);
-#endif
-
-    // Scale bit rate based on sample rate and channels to avoid
-    // "Too many bits per frame" warnings from the AAC encoder.
-    {
-        int sr = audio_transcoders[slot].encoder_ctx->sample_rate;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-        int ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
-#else
-        int ch = audio_transcoders[slot].encoder_ctx->channels;
-#endif
-        if (ch < MIN_AUDIO_CHANNELS) ch = MIN_AUDIO_CHANNELS;
-        // 64 kbps per channel for ≥32 kHz, 32 kbps per channel for lower rates
-        int64_t br = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
-        audio_transcoders[slot].encoder_ctx->bit_rate = br;
-    }
-    audio_transcoders[slot].encoder_ctx->time_base = (AVRational){1, audio_transcoders[slot].encoder_ctx->sample_rate};
-
-    // Open encoder
-    ret = avcodec_open2(audio_transcoders[slot].encoder_ctx, encoder, NULL);
-    if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to open AAC encoder");
-        goto cleanup;
-    }
-
-    // Set up sample format conversion (PCM decoders output S16, AAC needs FLTP)
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    AVChannelLayout out_ch_layout;
+    av_channel_layout_default(&out_ch_layout, nb_ch);
     ret = swr_alloc_set_opts2(&audio_transcoders[slot].swr_ctx,
-                              &audio_transcoders[slot].encoder_ctx->ch_layout,
-                              audio_transcoders[slot].encoder_ctx->sample_fmt,
-                              audio_transcoders[slot].encoder_ctx->sample_rate,
+                              &out_ch_layout,
+                              enc_sample_fmt,
+                              sr,
                               &audio_transcoders[slot].decoder_ctx->ch_layout,
                               audio_transcoders[slot].decoder_ctx->sample_fmt,
                               audio_transcoders[slot].decoder_ctx->sample_rate,
                               0, NULL);
+    av_channel_layout_uninit(&out_ch_layout);
     if (ret < 0 || !audio_transcoders[slot].swr_ctx) {
         if (ret == AVERROR(ENOMEM) || !audio_transcoders[slot].swr_ctx) {
             recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
@@ -257,9 +232,9 @@ static int init_audio_transcoder(const char *stream_name,
     }
 #else
     audio_transcoders[slot].swr_ctx = swr_alloc_set_opts(NULL,
-        audio_transcoders[slot].encoder_ctx->channel_layout,
-        audio_transcoders[slot].encoder_ctx->sample_fmt,
-        audio_transcoders[slot].encoder_ctx->sample_rate,
+        av_get_default_channel_layout(nb_ch),
+        enc_sample_fmt,
+        sr,
         audio_transcoders[slot].decoder_ctx->channel_layout,
         audio_transcoders[slot].decoder_ctx->sample_fmt,
         audio_transcoders[slot].decoder_ctx->sample_rate,
@@ -280,18 +255,10 @@ static int init_audio_transcoder(const char *stream_name,
     }
 
     // Allocate an audio FIFO to buffer samples for the AAC encoder.
-    // AAC requires exactly frame_size (1024) samples per frame, but PCM
-    // packets are typically much smaller (e.g. 160 samples at 8 kHz/20 ms).
     {
-        int enc_frame_size = get_encoder_frame_size(audio_transcoders[slot].encoder_ctx);
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-        int nb_ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
-#else
-        int nb_ch = audio_transcoders[slot].encoder_ctx->channels;
-#endif
-        if (nb_ch < 1) nb_ch = 1;
+        int enc_frame_size = get_encoder_frame_size(&audio_transcoders[slot]);
         audio_transcoders[slot].fifo = av_audio_fifo_alloc(
-            audio_transcoders[slot].encoder_ctx->sample_fmt,
+            enc_sample_fmt,
             nb_ch,
             enc_frame_size * 4);
         if (!audio_transcoders[slot].fifo) {
@@ -361,24 +328,17 @@ static int init_audio_transcoder(const char *stream_name,
     // Store stream name
     safe_strcpy(audio_transcoder_stream_names[slot], stream_name, MAX_STREAM_NAME, 0);
 
-    log_info("Successfully initialized audio transcoder from PCM to AAC for %s", stream_name);
-
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
-            audio_transcoders[slot].encoder_ctx->sample_rate,
-            audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels,
-            audio_transcoders[slot].encoder_ctx->bit_rate);
-#else
-    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
-            audio_transcoders[slot].encoder_ctx->sample_rate,
-            audio_transcoders[slot].encoder_ctx->channels,
-            audio_transcoders[slot].encoder_ctx->bit_rate);
-#endif
+    log_info("Successfully initialized FAAC audio transcoder for %s (Sample rate: %d, Channels: %d, Delay: %d)",
+             stream_name, sr, nb_ch, faac_wrapper_get_encoder_delay(audio_transcoders[slot].faac_enc));
 
     pthread_mutex_unlock(&audio_transcoder_mutex);
     return slot;
 
 cleanup:
+    if (audio_transcoders[slot].faac_enc) {
+        faac_wrapper_close(&audio_transcoders[slot].faac_enc);
+    }
+
     if (audio_transcoders[slot].decoder_ctx) {
         avcodec_free_context(&audio_transcoders[slot].decoder_ctx);
         audio_transcoders[slot].decoder_ctx = NULL;
@@ -438,6 +398,10 @@ void cleanup_audio_transcoder(const char *stream_name) {
         if (audio_transcoder_stream_names[i][0] != '\0' &&
             strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
             // Found the transcoder for this stream
+            if (audio_transcoders[i].faac_enc) {
+                faac_wrapper_close(&audio_transcoders[i].faac_enc);
+            }
+
             if (audio_transcoders[i].decoder_ctx) {
                 avcodec_free_context(&audio_transcoders[i].decoder_ctx);
                 audio_transcoders[i].decoder_ctx = NULL;
@@ -659,18 +623,30 @@ int transcode_audio_packet(const char *stream_name,
     // Convert sample format from decoder output (e.g. S16) to encoder input (FLTP),
     // then buffer through the FIFO so the AAC encoder always receives exactly
     // frame_size (1024) samples — regardless of how small the incoming PCM packets are.
+    int sr = audio_transcoders[transcoder_idx].decoder_ctx->sample_rate;
+    int nb_ch = 1;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    if (audio_transcoders[transcoder_idx].decoder_ctx->ch_layout.nb_channels > 0)
+        nb_ch = audio_transcoders[transcoder_idx].decoder_ctx->ch_layout.nb_channels;
+#else
+    if (audio_transcoders[transcoder_idx].decoder_ctx->channels > 0)
+        nb_ch = audio_transcoders[transcoder_idx].decoder_ctx->channels;
+#endif
+    if (nb_ch < MIN_AUDIO_CHANNELS) nb_ch = MIN_AUDIO_CHANNELS;
+
+    enum AVSampleFormat enc_sample_fmt = AV_SAMPLE_FMT_S16;
+
     AVFrame *enc_frame = NULL;
     if (audio_transcoders[transcoder_idx].swr_ctx) {
         AVFrame *resampled = audio_transcoders[transcoder_idx].resampled_frame;
         av_frame_unref(resampled);
-        resampled->format = audio_transcoders[transcoder_idx].encoder_ctx->sample_fmt;
-        resampled->sample_rate = audio_transcoders[transcoder_idx].encoder_ctx->sample_rate;
+        resampled->format = enc_sample_fmt;
+        resampled->sample_rate = sr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-        av_channel_layout_copy(&resampled->ch_layout,
-                               &audio_transcoders[transcoder_idx].encoder_ctx->ch_layout);
+        av_channel_layout_default(&resampled->ch_layout, nb_ch);
 #else
-        resampled->channel_layout = audio_transcoders[transcoder_idx].encoder_ctx->channel_layout;
-        resampled->channels = audio_transcoders[transcoder_idx].encoder_ctx->channels;
+        resampled->channel_layout = av_get_default_channel_layout(nb_ch);
+        resampled->channels = nb_ch;
 #endif
         // Let swr determine the output nb_samples
         resampled->nb_samples = swr_get_out_samples(audio_transcoders[transcoder_idx].swr_ctx,
@@ -713,7 +689,7 @@ int transcode_audio_packet(const char *stream_name,
             }
 
             // The AAC encoder needs exactly frame_size samples per frame.
-            int enc_frame_size = get_encoder_frame_size(audio_transcoders[transcoder_idx].encoder_ctx);
+            int enc_frame_size = get_encoder_frame_size(&audio_transcoders[transcoder_idx]);
 
             if (av_audio_fifo_size(audio_transcoders[transcoder_idx].fifo) < enc_frame_size) {
                 // Not enough samples yet — return without producing an output packet.
@@ -722,15 +698,14 @@ int transcode_audio_packet(const char *stream_name,
 
             // Prepare a frame with exactly enc_frame_size samples from the FIFO.
             av_frame_unref(resampled);
-            resampled->format      = audio_transcoders[transcoder_idx].encoder_ctx->sample_fmt;
+            resampled->format      = enc_sample_fmt;
             resampled->nb_samples  = enc_frame_size;
-            resampled->sample_rate = audio_transcoders[transcoder_idx].encoder_ctx->sample_rate;
+            resampled->sample_rate = sr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-            av_channel_layout_copy(&resampled->ch_layout,
-                                   &audio_transcoders[transcoder_idx].encoder_ctx->ch_layout);
+            av_channel_layout_default(&resampled->ch_layout, nb_ch);
 #else
-            resampled->channel_layout = audio_transcoders[transcoder_idx].encoder_ctx->channel_layout;
-            resampled->channels       = audio_transcoders[transcoder_idx].encoder_ctx->channels;
+            resampled->channel_layout = av_get_default_channel_layout(nb_ch);
+            resampled->channels       = nb_ch;
 #endif
             ret = av_frame_get_buffer(resampled, 0);
             if (ret < 0) {
@@ -749,7 +724,6 @@ int transcode_audio_packet(const char *stream_name,
             audio_transcoders[transcoder_idx].fifo_pts += ret;
             enc_frame = resampled;
         } else {
-            // No FIFO (shouldn't happen for AAC encoding) — fall through directly.
             resampled->pts = audio_transcoders[transcoder_idx].frame->pts;
             enc_frame = resampled;
         }
@@ -757,42 +731,45 @@ int transcode_audio_packet(const char *stream_name,
         enc_frame = audio_transcoders[transcoder_idx].frame;
     }
 
-    // Send frame to encoder
-    ret = avcodec_send_frame(audio_transcoders[transcoder_idx].encoder_ctx,
-                            enc_frame);
-    if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to send frame to encoder");
-        return ret;
-    }
+    if (audio_transcoders[transcoder_idx].faac_enc) {
+        uint32_t total_samples = (uint32_t)(enc_frame->nb_samples * nb_ch);
+        uint32_t out_cap = faac_wrapper_get_max_output_bytes(audio_transcoders[transcoder_idx].faac_enc);
+        uint8_t *out_buf = av_malloc(out_cap);
+        if (!out_buf) {
+            return AVERROR(ENOMEM);
+        }
+        uint32_t bytes_written = 0;
+        int faac_res = faac_wrapper_encode(audio_transcoders[transcoder_idx].faac_enc,
+                                           enc_frame->data[0], total_samples,
+                                           out_buf, out_cap, &bytes_written);
+        if (faac_res < 0) {
+            av_free(out_buf);
+            log_error("FAAC encoding failed for %s", stream_name);
+            return -1;
+        }
 
-    // Receive packet from encoder
-    av_packet_unref(audio_transcoders[transcoder_idx].out_pkt);
-    ret = avcodec_receive_packet(audio_transcoders[transcoder_idx].encoder_ctx,
-                                audio_transcoders[transcoder_idx].out_pkt);
-    if (ret < 0) {
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            // Need more input or end of file, not an error
+        av_packet_unref(out_pkt);
+        if (bytes_written > 0) {
+            ret = av_new_packet(out_pkt, (int)bytes_written);
+            if (ret < 0) {
+                av_free(out_buf);
+                return ret;
+            }
+            memcpy(out_pkt->data, out_buf, bytes_written);
+            av_free(out_buf);
+
+            out_pkt->pts = enc_frame->pts;
+            out_pkt->dts = out_pkt->pts;
+            out_pkt->time_base = (AVRational){1, sr};
+            out_pkt->stream_index = in_pkt->stream_index;
             return 0;
         }
-        log_ffmpeg_error(ret, "Failed to receive packet from encoder");
-        return ret;
+        av_free(out_buf);
+        return 0;
     }
 
-    // Copy output packet to caller's packet
-    av_packet_unref(out_pkt);
-    ret = av_packet_ref(out_pkt, audio_transcoders[transcoder_idx].out_pkt);
-    if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to copy output packet");
-        return ret;
-    }
-
-    // Set output packet time base to match the encoder's time base
-    out_pkt->time_base = audio_transcoders[transcoder_idx].encoder_ctx->time_base;
-
-    // Set output packet stream index to match the input packet
-    out_pkt->stream_index = in_pkt->stream_index;
-
-    return 0;
+    log_error("No audio encoder available for %s", stream_name);
+    return -1;
 }
 
 /**
@@ -810,11 +787,7 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
                                  AVCodecParameters **transcoded_params) {
     int ret = 0;
     AVCodecContext *decoder_ctx = NULL;
-    AVCodecContext *encoder_ctx = NULL;
     const AVCodec *decoder = NULL;
-    const AVCodec *encoder = NULL;
-    AVFrame *frame = NULL;
-    AVPacket *pkt = NULL;
 
     // Allocate output codec parameters
     *transcoded_params = avcodec_parameters_alloc();
@@ -823,8 +796,7 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
                                     RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
         log_error("Failed to allocate transcoded codec parameters for %s",
                 stream_name ? stream_name : "unknown");
-        ret = AVERROR(ENOMEM);
-        goto cleanup;
+        return AVERROR(ENOMEM);
     }
 
     // Find the PCM decoder for the specific codec
@@ -833,15 +805,6 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
         log_error("Failed to find decoder for PCM audio (codec_id=%d) in %s",
                 codec_params->codec_id, stream_name ? stream_name : "unknown");
         ret = AVERROR_DECODER_NOT_FOUND;
-        goto cleanup;
-    }
-
-    // Find the AAC encoder
-    encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
-    if (!encoder) {
-        log_error("Failed to find AAC encoder for %s",
-                stream_name ? stream_name : "unknown");
-        ret = AVERROR_ENCODER_NOT_FOUND;
         goto cleanup;
     }
 
@@ -873,75 +836,69 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
         goto cleanup;
     }
 
-    // Create encoder context
-    encoder_ctx = avcodec_alloc_context3(encoder);
-    if (!encoder_ctx) {
-        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
-                                    RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
-        log_error("Failed to allocate encoder context for %s",
-                stream_name ? stream_name : "unknown");
-        ret = AVERROR(ENOMEM);
+    int sr = decoder_ctx->sample_rate;
+    int nb_ch = 1;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    if (decoder_ctx->ch_layout.nb_channels > 0)
+        nb_ch = decoder_ctx->ch_layout.nb_channels;
+#else
+    if (decoder_ctx->channels > 0)
+        nb_ch = decoder_ctx->channels;
+#endif
+    if (nb_ch < MIN_AUDIO_CHANNELS) nb_ch = MIN_AUDIO_CHANNELS;
+
+    faac_encoder_config_t faac_cfg = {
+        .sample_rate = (uint32_t)sr,
+        .num_channels = (uint32_t)nb_ch,
+        .input_format = FAAC_INPUT_16BIT,
+        .bit_rate_per_channel = (sr >= 32000) ? 64000 : 32000,
+        .object_type = FAAC_OBJ_AUTO
+    };
+
+    faac_encoder_wrapper_t *faac_enc = faac_wrapper_open(&faac_cfg);
+    if (!faac_enc) {
+        log_error("Failed to open FAAC encoder for %s", stream_name ? stream_name : "unknown");
+        ret = -1;
         goto cleanup;
     }
 
-    // Set encoder parameters
-    encoder_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP; // AAC requires float planar format
-    encoder_ctx->sample_rate = decoder_ctx->sample_rate;
+    int profile = (faac_wrapper_get_sample_rate(faac_enc) > (uint32_t)sr)
+        ? FF_PROFILE_AAC_HE
+        : FF_PROFILE_AAC_LOW;
 
-    // Handle channel layout using the newer FFmpeg API (5.0+)
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-    // Copy channel layout from decoder to encoder
-    av_channel_layout_copy(&encoder_ctx->ch_layout, &decoder_ctx->ch_layout);
-
-    // If channel layout is not set, default to stereo
-    if (encoder_ctx->ch_layout.nb_channels == 0) {
-        av_channel_layout_default(&encoder_ctx->ch_layout, 2); // Default to stereo
-    }
-#else
-    // For older FFmpeg versions
-    encoder_ctx->channels = decoder_ctx->channels;
-    encoder_ctx->channel_layout = av_get_default_channel_layout(decoder_ctx->channels);
-#endif
-
-    // Scale bit rate based on sample rate and channels
-    {
-        int sr = encoder_ctx->sample_rate;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-        int ch = encoder_ctx->ch_layout.nb_channels;
-#else
-        int ch = encoder_ctx->channels;
-#endif
-        if (ch < MIN_AUDIO_CHANNELS) ch = MIN_AUDIO_CHANNELS;
-        encoder_ctx->bit_rate = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
-    }
-    encoder_ctx->time_base = (AVRational){1, encoder_ctx->sample_rate};
-
-    // Open encoder
-    ret = avcodec_open2(encoder_ctx, encoder, NULL);
-    if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to open AAC encoder");
-        goto cleanup;
-    }
-
-    // Get the encoder parameters
-    ret = avcodec_parameters_from_context(*transcoded_params, encoder_ctx);
-    if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to get parameters from encoder context");
-        goto cleanup;
-    }
-
-    log_info("Successfully configured transcoding from PCM to AAC for %s",
-            stream_name ? stream_name : "unknown");
+    (*transcoded_params)->codec_type = AVMEDIA_TYPE_AUDIO;
+    (*transcoded_params)->codec_id = AV_CODEC_ID_AAC;
+    (*transcoded_params)->sample_rate = sr;
+    (*transcoded_params)->bit_rate = faac_cfg.bit_rate_per_channel * nb_ch;
+    (*transcoded_params)->profile = profile;
+    (*transcoded_params)->frame_size = faac_wrapper_get_frame_samples(faac_enc);
+    (*transcoded_params)->initial_padding = faac_wrapper_get_encoder_delay(faac_enc);
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
-            encoder_ctx->sample_rate, encoder_ctx->ch_layout.nb_channels, encoder_ctx->bit_rate);
+    av_channel_layout_copy(&(*transcoded_params)->ch_layout, &decoder_ctx->ch_layout);
+    if ((*transcoded_params)->ch_layout.nb_channels == 0) {
+        av_channel_layout_default(&(*transcoded_params)->ch_layout, nb_ch);
+    }
 #else
-    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
-            encoder_ctx->sample_rate, encoder_ctx->channels, encoder_ctx->bit_rate);
+    (*transcoded_params)->channels = nb_ch;
+    (*transcoded_params)->channel_layout = av_get_default_channel_layout(nb_ch);
 #endif
 
-    ret = 0; // Success
+    const uint8_t *asc = NULL;
+    size_t asc_len = 0;
+    if (faac_wrapper_get_asc(faac_enc, &asc, &asc_len) == 0 && asc_len > 0) {
+        (*transcoded_params)->extradata = av_malloc(asc_len + AV_INPUT_BUFFER_PADDING_SIZE);
+        if ((*transcoded_params)->extradata) {
+            memcpy((*transcoded_params)->extradata, asc, asc_len);
+            memset((*transcoded_params)->extradata + asc_len, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+            (*transcoded_params)->extradata_size = (int)asc_len;
+        }
+    }
+    faac_wrapper_close(&faac_enc);
+
+    log_info("Successfully configured transcoding from PCM to AAC via FAAC for %s (Sample rate: %d, Channels: %d, Delay: %d)",
+            stream_name ? stream_name : "unknown", sr, nb_ch, (*transcoded_params)->initial_padding);
+    ret = 0;
 
 cleanup:
     if (decoder_ctx) avcodec_free_context(&decoder_ctx);

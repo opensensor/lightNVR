@@ -311,6 +311,7 @@ endif()
 # ====================================================================
 # Layer 3: Integration tests — lightnvr_lib + FFmpeg
 # ====================================================================
+add_layer3_test(test_faac_encoder)
 add_layer3_test(test_stream_manager)
 add_layer3_test(test_stream_state)
 add_layer3_test(test_packet_buffer)
