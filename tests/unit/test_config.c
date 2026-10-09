@@ -83,6 +83,39 @@ void test_default_config_retention_days(void) {
     TEST_ASSERT_EQUAL_INT(30, cfg.retention_days);
 }
 
+void test_default_config_mp4_faststart_on(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.mp4_faststart);
+}
+
+/* save_config must write mp4_faststart, or a settings save from the web UI
+ * would silently turn faststart back on at the next start. */
+void test_save_config_round_trips_mp4_faststart(void) {
+    char temp_dir[] = "/tmp/lightnvr_faststart_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+    char config_path[MAX_PATH_LENGTH];
+    snprintf(config_path, sizeof(config_path), "%s/faststart.ini", dir);
+
+    load_default_config(&cfg);
+    cfg.mp4_faststart = false;
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
+
+    FILE *saved = fopen(config_path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char line[512];
+    bool found = false;
+    while (fgets(line, sizeof(line), saved)) {
+        if (strncmp(line, "mp4_faststart = false", 21) == 0) {
+            found = true;
+        }
+    }
+    fclose(saved);
+    unlink(config_path);
+    rmdir(dir);
+    TEST_ASSERT_TRUE(found);
+}
+
 void test_default_config_buffer_size(void) {
     load_default_config(&cfg);
     TEST_ASSERT_GREATER_THAN_INT(0, cfg.buffer_size);
@@ -636,7 +669,8 @@ void test_env_integer_whitespace_handling(void) {
             "[storage]\n"
             "path = %s\n"
             "path_hls = %s\n"
-            "mp4_directory_format = year_month\n\n"
+            "mp4_directory_format = year_month\n"
+            "mp4_faststart = false\n\n"
             "[models]\n"
             "path = %s\n\n"
             "[database]\n"
@@ -686,6 +720,7 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
     TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
+    TEST_ASSERT_FALSE(cfg.mp4_faststart);
     TEST_ASSERT_TRUE(cfg.audio_disabled);
     TEST_ASSERT_TRUE(cfg.auto_disabled);
     TEST_ASSERT_EQUAL_STRING("conservative", cfg.health.profile);
@@ -748,6 +783,8 @@ int main(void) {
     RUN_TEST(test_default_config_web_port);
     RUN_TEST(test_default_config_log_level);
     RUN_TEST(test_default_config_retention_days);
+    RUN_TEST(test_default_config_mp4_faststart_on);
+    RUN_TEST(test_save_config_round_trips_mp4_faststart);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);
     RUN_TEST(test_default_config_db_path_nonempty);

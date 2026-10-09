@@ -847,8 +847,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     // Use faststart to move moov atom to beginning for better compatibility
     // This creates standard MP4 files that play in all applications
-    // The + prefix adds to existing flags rather than replacing them
-    av_dict_set(&out_opts, "movflags", "+faststart", 0);
+    // The + prefix adds to existing flags rather than replacing them.
+    // [storage] mp4_faststart = false skips it: the rewrite re-reads and
+    // re-writes the whole segment, which triples the I/O on a NAS.
+    if (g_config.mp4_faststart) {
+        av_dict_set(&out_opts, "movflags", "+faststart", 0);
+    }
 
     // CRITICAL FIX: Validate output_file parameter before attempting to open
     if (!output_file || output_file[0] == '\0') {
