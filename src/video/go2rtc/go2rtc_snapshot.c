@@ -132,10 +132,22 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
 
     // Format the URL for the go2rtc snapshot API
     // go2rtc runs on port 1984 and provides snapshots at: /api/frame.jpeg?src={stream_name}
-    // We add cache=30s to allow go2rtc to return a cached frame if the stream is temporarily
-    // unavailable (e.g., video doorbell in sleep mode). This prevents timeouts when the
-    // producer is reconnecting, as long as a frame was captured within the last 30 seconds.
-    snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=30s", encoded_name);
+    // cache=N is an unconditional TTL cache, not a fallback for an unavailable producer.
+    // go2rtc checks it before touching the stream at all and, on a hit, writes the stored
+    // payload and returns (see handlerKeyframe in internal/mjpeg/mjpeg.go), so a healthy
+    // stream is served the same stale bytes as a stalled one. A window of N seconds makes
+    // every detection inside it run on one frozen frame and hides a newly arrived object
+    // for up to N seconds. This was 30s, which silently defeated any detection_interval
+    // shorter than 30s.
+    //
+    // On a miss go2rtc waits for the stream's *next* keyframe, so the fetch costs up to
+    // one GOP (measured ~1s on a 1s GOP; a cache hit is ~1ms). That cost lands on this
+    // thread: the UDT main loop calls run_detection_on_frame() between av_read_frame()
+    // calls, so a slow fetch stalls packet reading for the stream. A larger value trades
+    // detection freshness for less stalling. 1s bounds staleness at roughly one detection
+    // interval, which is as fine as lightNVR can express since both detection gates
+    // compare whole seconds.
+    snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=1s", encoded_name);
 
     log_debug("Fetching snapshot from go2rtc: %s", url);
     
