@@ -306,7 +306,7 @@ static void parse_mode_level_options(ezxml_t parent, const char *name,
 
     out->present = true;
 
-    for (ezxml_t child = node->child; child && out->mode_count < 4; child = child->sibling) {
+    for (ezxml_t child = node->child; child && out->mode_count < 4; child = child->ordered) {
         const char *local = xml_local_name(child->name);
         if (local && strcmp(local, "Mode") == 0) {
             safe_strcpy(out->modes[out->mode_count], ezxml_txt(child),
@@ -406,7 +406,7 @@ static int parse_options_response(const char *response, onvif_imaging_options_t 
 
     for (ezxml_t child = options_node->child;
          child && options->ir_cut_filter_mode_count < 4;
-         child = child->sibling) {
+         child = child->ordered) {
         const char *local = xml_local_name(child->name);
         if (local && strcmp(local, "IrCutFilterModes") == 0) {
             safe_strcpy(options->ir_cut_filter_modes[options->ir_cut_filter_mode_count],

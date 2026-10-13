@@ -334,7 +334,7 @@ void test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache(vo
  * checking the final cache (which passed even when duplicate jobs caused OOM).
  * Holding each invocation briefly makes overlapping requests exercise a cache
  * miss. Force software encoding so these checks also work on VAAPI hosts. */
-static void track_ffmpeg_processes(void) {
+static void install_ffmpeg_wrapper(const char *script) {
     char real_ffmpeg[1024];
     FILE *pipe = popen("command -v ffmpeg", "r");
     TEST_ASSERT_NOT_NULL(pipe);
@@ -348,22 +348,7 @@ static void track_ffmpeg_processes(void) {
     snprintf(wrapper, sizeof(wrapper), "%s/ffmpeg", g_test_dir);
     FILE *file = fopen(wrapper, "w");
     TEST_ASSERT_NOT_NULL(file);
-    fputs("#!/bin/sh\n"
-          "for arg do\n"
-          "  [ \"$arg\" != h264_vaapi ] || exit 1\n"
-          "done\n"
-          "printf 'start\\n' >> \"$LIGHTNVR_TEST_TRANSCODE_DIR/starts\"\n"
-          "owned=0\n"
-          "if mkdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; then\n"
-          "  owned=1\n"
-          "else\n"
-          "  touch \"$LIGHTNVR_TEST_TRANSCODE_DIR/overlap\"\n"
-          "fi\n"
-          "sleep 1\n"
-          "\"$LIGHTNVR_TEST_REAL_FFMPEG\" \"$@\"\n"
-          "rc=$?\n"
-          "if [ \"$owned\" = 1 ]; then rmdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; fi\n"
-          "exit \"$rc\"\n", file);
+    fputs(script, file);
     TEST_ASSERT_EQUAL_INT(0, fclose(file));
     TEST_ASSERT_EQUAL_INT(0, chmod(wrapper, 0700));
 
@@ -376,6 +361,98 @@ static void track_ffmpeg_processes(void) {
     int rc = setenv("PATH", wrapped_path, 1);
     free(wrapped_path);
     TEST_ASSERT_EQUAL_INT(0, rc);
+}
+
+static void track_ffmpeg_processes(void) {
+    install_ffmpeg_wrapper(
+        "#!/bin/sh\n"
+        "for arg do\n"
+        "  [ \"$arg\" != h264_vaapi ] || exit 1\n"
+        "done\n"
+        "printf 'start\\n' >> \"$LIGHTNVR_TEST_TRANSCODE_DIR/starts\"\n"
+        "owned=0\n"
+        "if mkdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; then\n"
+        "  owned=1\n"
+        "else\n"
+        "  touch \"$LIGHTNVR_TEST_TRANSCODE_DIR/overlap\"\n"
+        "fi\n"
+        "sleep 1\n"
+        "\"$LIGHTNVR_TEST_REAL_FFMPEG\" \"$@\"\n"
+        "rc=$?\n"
+        "if [ \"$owned\" = 1 ]; then rmdir \"$LIGHTNVR_TEST_TRANSCODE_DIR/active\"; fi\n"
+        "exit \"$rc\"\n");
+}
+
+/* Regression test: the VAAPI encode used to pass no rate-control options at
+ * all, so h264_vaapi fell back to the driver's default quality level ("No
+ * quality level set; using default (20)") with no bound on bitrate. On a
+ * 2560x1920 source that produced ~21 Mbit/s output, large enough to make
+ * browser playback stall. Record the arguments of the VAAPI invocation and
+ * its exit status, then pass through to the real encoder: the status check
+ * proves the driver actually accepted the options rather than the request
+ * quietly succeeding via the software fallback. Needs a working VAAPI
+ * HEVC-decode/H.264-encode pipeline, so it is skipped on hosts without one
+ * (GPU-less CI, an inaccessible render node, FFmpeg built without VAAPI);
+ * production falls back to software in all of those cases. */
+void test_vaapi_transcode_sets_explicit_rate_control(void) {
+    if (s_skip) { TEST_IGNORE_MESSAGE("ffmpeg/ffprobe not found in PATH"); return; }
+    if (access("/dev/dri/renderD128", R_OK | W_OK) != 0) {
+        TEST_IGNORE_MESSAGE("no accessible VAAPI render node");
+        return;
+    }
+    /* Probe the baseline pipeline without rate-control options, so a failure
+     * below can only mean those options broke an otherwise usable path. */
+    char probe[1024];
+    snprintf(probe, sizeof(probe),
+             "-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 "
+             "-hwaccel_output_format vaapi -i \"%s\" -c:v h264_vaapi -an -f null -",
+             g_hevc_fixture);
+    if (run_ffmpeg(probe) != 0) {
+        TEST_IGNORE_MESSAGE("VAAPI HEVC decode / H.264 encode not usable on this host");
+        return;
+    }
+    install_ffmpeg_wrapper(
+        "#!/bin/sh\n"
+        "vaapi=0\n"
+        "for arg do\n"
+        "  [ \"$arg\" != h264_vaapi ] || vaapi=1\n"
+        "done\n"
+        "if [ \"$vaapi\" = 0 ]; then exec \"$LIGHTNVR_TEST_REAL_FFMPEG\" \"$@\"; fi\n"
+        "printf '%s\\n' \"$@\" > \"$LIGHTNVR_TEST_TRANSCODE_DIR/vaapi_args\"\n"
+        "\"$LIGHTNVR_TEST_REAL_FFMPEG\" \"$@\"\n"
+        "rc=$?\n"
+        "echo \"$rc\" > \"$LIGHTNVR_TEST_TRANSCODE_DIR/vaapi_rc\"\n"
+        "exit \"$rc\"\n");
+
+    char cache_path[320];
+    snprintf(cache_path, sizeof(cache_path), "%s/rate_control_out.mp4", g_test_dir);
+    TEST_ASSERT_EQUAL_INT(0, ensure_recording_transcode_cache(g_hevc_fixture, cache_path));
+
+    char path[320];
+    snprintf(path, sizeof(path), "%s/vaapi_args", g_test_dir);
+    FILE *file = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL_MESSAGE(file, "VAAPI encoder was never invoked");
+    char prev[256] = "";
+    char line[256];
+    bool has_cqp = false;
+    bool has_qp = false;
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\n")] = '\0';
+        if (strcmp(prev, "-rc_mode") == 0 && strcmp(line, "CQP") == 0) has_cqp = true;
+        if (strcmp(prev, "-qp") == 0 && strcmp(line, "24") == 0) has_qp = true;
+        snprintf(prev, sizeof(prev), "%s", line);
+    }
+    fclose(file);
+    TEST_ASSERT_TRUE_MESSAGE(has_cqp, "VAAPI encode is missing -rc_mode CQP");
+    TEST_ASSERT_TRUE_MESSAGE(has_qp, "VAAPI encode is missing -qp 24");
+
+    snprintf(path, sizeof(path), "%s/vaapi_rc", g_test_dir);
+    file = fopen(path, "r");
+    TEST_ASSERT_NOT_NULL(file);
+    int vaapi_rc = -1;
+    TEST_ASSERT_EQUAL_INT(1, fscanf(file, "%d", &vaapi_rc));
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, vaapi_rc, "driver rejected the VAAPI rate-control options");
 }
 
 static void assert_ffmpeg_process_counts(int expected_starts) {
@@ -559,6 +636,7 @@ int main(void) {
     RUN_TEST(test_ensure_cache_skips_retranscode_when_cache_already_exists);
     RUN_TEST(test_ensure_cache_fails_gracefully_for_missing_source);
     RUN_TEST(test_ensure_cache_concurrent_calls_for_same_recording_dont_corrupt_cache);
+    RUN_TEST(test_vaapi_transcode_sets_explicit_rate_control);
     RUN_TEST(test_concurrent_playback_requests_share_one_transcode);
     RUN_TEST(test_different_recordings_transcode_one_at_a_time);
     RUN_TEST(test_failed_transcode_releases_slot_for_retry);

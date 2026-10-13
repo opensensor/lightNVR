@@ -124,6 +124,32 @@ bool db_is_setup_complete(void) {
     return (val[0] == '1');
 }
 
+int db_get_setup_status(bool *complete, long long *completed_at) {
+    if (!complete || !completed_at) return -1;
+    *complete = false;
+    *completed_at = 0;
+    sqlite3 *connection = NULL;
+    if (db_open_readonly_connection(&connection) != 0) return -1;
+    sqlite3_busy_timeout(connection, 1000);
+    const char *sql =
+        "SELECT (SELECT value FROM system_settings WHERE key = 'setup_complete'), "
+        "(SELECT value FROM system_settings WHERE key = 'setup_completed_at');";
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(connection, sql, -1, &statement, NULL);
+    if (rc == SQLITE_OK) rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        const char *value = (const char *)sqlite3_column_text(statement, 0);
+        const char *timestamp = (const char *)sqlite3_column_text(statement, 1);
+        *complete = value && value[0] == '1';
+        *completed_at = timestamp ? strtoll(timestamp, NULL, 10) : 0;
+    } else {
+        log_error("Failed to read setup status: %s", sqlite3_errmsg(connection));
+    }
+    if (statement) sqlite3_finalize(statement);
+    db_close_readonly_connection(connection);
+    return rc == SQLITE_ROW ? 0 : -1;
+}
+
 int db_mark_setup_complete(void) {
     if (db_set_system_setting("setup_complete", "1") != 0) return -1;
 

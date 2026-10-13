@@ -85,9 +85,9 @@ function loadImageSize(file) {
 
 function PlanCameraPreview({ stream }) {
   const [failed, setFailed] = useState(false);
-  const url = stream?.availability === 'live'
-    ? `/go2rtc/api/frame.jpeg?src=${encodeURIComponent(stream.name)}&t=${Date.now()}`
-    : null;
+  const url = useMemo(() => stream?.availability === 'live'
+    ? `/go2rtc/api/frame.jpeg?src=${encodeURIComponent(stream.name)}&cache=5s&t=${Date.now()}`
+    : null, [stream?.availability, stream?.name]);
   useEffect(() => setFailed(false), [stream?.camera_uuid]);
   if (!url || failed) {
     return <div className="live-plan-preview-placeholder">Camera preview unavailable</div>;

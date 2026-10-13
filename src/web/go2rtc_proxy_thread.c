@@ -211,8 +211,11 @@ static void *proxy_worker_thread(void *arg) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, proxy_header_cb);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, ctx);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    /* Snapshot previews should release proxy slots promptly when a source
+     * cannot produce a frame. HLS retains its longer streaming timeout. */
+    bool snapshot_request = strcmp(ctx->request.path, "/go2rtc/api/frame.jpeg") == 0;
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, snapshot_request ? 10L : 30L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, snapshot_request ? 2L : 5L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);

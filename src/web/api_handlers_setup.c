@@ -16,6 +16,7 @@
 #include "database/db_system_settings.h"
 #define LOG_COMPONENT "SetupAPI"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "cjson/cJSON.h"
 
 /**
@@ -23,15 +24,14 @@
  * No authentication guard – needed so the wizard can show before auth is configured.
  */
 void handle_get_setup_status(const http_request_t *req, http_response_t *res) {
-    (void)req;
-
-    bool complete = db_is_setup_complete();
-
-    /* Read optional completed_at timestamp */
-    char ts_buf[32] = {0};
+    bool complete = false;
     long long completed_at = 0;
-    if (db_get_system_setting("setup_completed_at", ts_buf, sizeof(ts_buf)) == 0) {
-        completed_at = strtoll(ts_buf, NULL, 10);
+    api_phase_timer_t phase = api_phase_begin(req, "setup status database read");
+    int result = db_get_setup_status(&complete, &completed_at);
+    api_phase_end(&phase);
+    if (result != 0) {
+        http_response_set_json_error(res, 503, "Setup status temporarily unavailable");
+        return;
     }
 
     cJSON *obj = cJSON_CreateObject();

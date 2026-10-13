@@ -977,8 +977,10 @@ int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
         dts_offset[i] = 0;
     }
 
-    // Set movflags for faststart (moov atom at beginning)
-    av_dict_set(&opts, "movflags", "+faststart", 0);
+    // Snapshot the live option when opening this MP4 output.
+    if (config_get_mp4_faststart(&g_config)) {
+        av_dict_set(&opts, "movflags", "+faststart", 0);
+    }
 
     // Open output file
     if (!(output_ctx->oformat->flags & AVFMT_NOFILE)) {

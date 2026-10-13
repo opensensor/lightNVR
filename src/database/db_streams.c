@@ -1248,13 +1248,12 @@ int get_stream_config_by_uuid(const char *camera_uuid, stream_config_t *stream) 
  * @param max_count Maximum number of streams to return
  * @return Number of streams found, or -1 on error
  */
-int get_all_stream_configs(stream_config_t *streams, int max_count) {
+static int get_all_stream_configs_on_connection(sqlite3 *db,
+                                                stream_config_t *streams,
+                                                int max_count) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
-
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
 
     if (!db) {
         log_error("Database not initialized");
@@ -1265,8 +1264,6 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         log_error("Invalid parameters for get_all_stream_configs");
         return -1;
     }
-
-    pthread_mutex_lock(db_mutex);
 
     // After migrations, all columns are guaranteed to exist
     const char *sql =
@@ -1306,11 +1303,10 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    while (count < max_count && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         stream_config_t *s = &streams[count];
         memset(s, 0, sizeof(stream_config_t));
 
@@ -1534,8 +1530,29 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         sqlite3_finalize(stmt);
         stmt = NULL;
     }
-    pthread_mutex_unlock(db_mutex);
+    if (rc != SQLITE_DONE && count < max_count) {
+        log_error("Failed to read stream configurations: %s", sqlite3_errmsg(db));
+        return -1;
+    }
 
+    return count;
+}
+
+int get_all_stream_configs(stream_config_t *streams, int max_count) {
+    pthread_mutex_t *mutex = get_db_mutex();
+    pthread_mutex_lock(mutex);
+    int count = get_all_stream_configs_on_connection(get_db_handle(), streams, max_count);
+    pthread_mutex_unlock(mutex);
+    return count;
+}
+
+int get_all_stream_configs_readonly(stream_config_t *streams, int max_count) {
+    if (!streams || max_count <= 0) return -1;
+    sqlite3 *connection = NULL;
+    if (db_open_readonly_connection(&connection) != 0) return -1;
+    sqlite3_busy_timeout(connection, 1000);
+    int count = get_all_stream_configs_on_connection(connection, streams, max_count);
+    db_close_readonly_connection(connection);
     return count;
 }
 

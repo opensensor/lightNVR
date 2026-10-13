@@ -311,7 +311,7 @@ static ezxml_t find_space(ezxml_t spaces, const char *space_name, const char *pr
     }
 
     ezxml_t first_match = NULL;
-    for (ezxml_t child = spaces->child; child; child = child->sibling) {
+    for (ezxml_t child = spaces->child; child; child = child->ordered) {
         const char *local = xml_local_name(child->name);
         if (!local || strcmp(local, space_name) != 0) {
             continue;
@@ -413,7 +413,7 @@ static char *parse_service_url(const char *response, const char *namespace_fragm
     if (xml) {
         ezxml_t services_response = find_descendant_local(xml, "GetServicesResponse");
         if (services_response) {
-            for (ezxml_t service = services_response->child; service && !service_url; service = service->sibling) {
+            for (ezxml_t service = services_response->child; service && !service_url; service = service->ordered) {
                 const char *local = xml_local_name(service->name);
                 if (!local || strcmp(local, "Service") != 0) {
                     continue;
@@ -818,7 +818,7 @@ int onvif_ptz_get_presets(const char *ptz_url, const char *profile_token,
         if (get_presets_response) {
             for (ezxml_t preset = get_presets_response->child;
                  preset && count < max_presets;
-                 preset = preset->sibling) {
+                 preset = preset->ordered) {
                 const char *local = xml_local_name(preset->name);
                 if (!local || strcmp(local, "Preset") != 0) {
                     continue;

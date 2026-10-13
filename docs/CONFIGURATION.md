@@ -246,6 +246,7 @@ mp4_retention_days = 30
   camera was permanently deleted; per-camera overrides still apply, and
   protected recordings are never expired by age.
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
+- `mp4_faststart`: Whether to rewrite each finished MP4 segment with its index (moov) at the front (default `true`). The rewrite re-reads and re-writes the whole segment, which roughly triples I/O on network storage (NFS/SMB) or a slow HDD; players that use HTTP range requests play either layout, so set `false` when recording to a NAS.
 - `record_mp4_directly`: Enable direct MP4 recording (instead of HLS-to-MP4 conversion)
 - `mp4_path`: Directory for direct MP4 recordings
 - `mp4_directory_format`: Recording folder layout: `flat`, `year_month` (`YYYY/MM`), or `year_month_day` (`YYYY/MM/DD`, default)
@@ -317,7 +318,22 @@ web_thread_pool_size = 8
   Container deployments may set the equivalent
   `LIGHTNVR_AUDIO_DISABLED=true` environment variable.
 - `trusted_proxy_cidrs`: Comma- or newline-separated list of IPv4/IPv6 CIDRs allowed to set `X-Forwarded-For` / `X-Real-IP` headers. Required when running behind a reverse proxy (nginx, Caddy, Traefik, Kubernetes ingress) — without it, the audit log, login allow-list, and rate limiter all see every request as coming from the proxy itself. See [Reverse Proxy & HTTPS](REVERSE_PROXY.md).
-- `web_thread_pool_size`: Number of worker threads for the web server (default: 8)
+- `web_thread_pool_size`: Number of worker threads for HTTP handlers (default:
+  twice the CPU core count, bounded to 2–128; requires restart). An explicit
+  `UV_THREADPOOL_SIZE` environment variable takes precedence. API requests,
+  including reads of stored detection results, share this pool. Camera detection
+  and calls to an external object detector run on separate camera threads;
+  go2rtc HTTP proxies also use separate threads. Increasing this value cannot
+  resolve a shared database lock or increase the detector's processing capacity.
+
+Slow-request logs distinguish `HTTP worker queue wait`, `handler execution`,
+and `event loop completion wait`, using the request path and request ID. Endpoint
+phases such as `stream configuration database read` identify delays inside an
+already-running handler. Stream inventory and setup-status reads use private
+read-only SQLite connections, so they can read committed data while the shared
+writer connection is busy. Disk stalls or database locks outside WAL mode can
+still delay reads; a setup-status database failure returns HTTP 503 rather than
+incorrectly reporting that initial setup is incomplete.
 
 > ⚠️ **Default credentials are `admin` / `admin`.** Combined with the default
 > `bind_ip = 0.0.0.0`, anyone who can reach port 8080 can reach your cameras and

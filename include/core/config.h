@@ -211,6 +211,13 @@ typedef struct {
     uint64_t max_storage_size; // in bytes
     int retention_days;
     bool auto_delete_oldest;
+    // MP4 "faststart": after a segment closes, rewrite it with the moov atom
+    // moved to the front. That re-reads and re-writes the whole segment, which
+    // roughly triples the I/O on network storage (NFS/SMB) or a slow HDD.
+    // Players that use HTTP range requests play either layout, so a site
+    // recording to a NAS may turn it off. Default true (historical behaviour).
+    // Access through config_get/set_mp4_faststart(), including persistence.
+    bool mp4_faststart;
 
     // Capacity-based retention (bounds usage by disk size, not just by time).
     // The cleanup thread keeps at least storage_min_free_pct of the volume free
@@ -396,6 +403,16 @@ int save_config(const config_t *config, const char *path);
  * @param config Pointer to config structure to fill with defaults
  */
 void load_default_config(config_t *config);
+
+/** Thread-safe access to the live MP4 faststart option. Muxers read it once
+ *  when opening an output; an open output keeps its original muxer flags. */
+bool config_get_mp4_faststart(const config_t *config);
+void config_set_mp4_faststart(config_t *config, bool enabled);
+
+/** Shallow configuration copy synchronized with MP4 faststart updates.
+ *  Other fields still require caller-provided synchronization if mutated
+ *  concurrently. The destination shares the source's streams allocation. */
+void config_copy(config_t *destination, const config_t *source);
 
 /**
  * Set the detection grace period, clamped to its valid range (0..60 s).

@@ -9,6 +9,12 @@ Operational health does not change the semantics of `GET /api/health`.
 `/api/health` remains the process liveness endpoint suitable for a service
 manager; a warning or critical operational incident does not make it fail.
 
+`GET /api/health?liveness=true` returns only process liveness, uptime,
+request counters, and a timestamp. It skips camera inventory, metrics,
+storage, and detector reads. LightNVR's HTTP watchdog uses this form so a
+slow camera health response does not produce a false process-health failure.
+The full `/api/health` response remains available to the dashboard.
+
 ## Current state
 
 `GET /api/system/health` returns schema version 1:

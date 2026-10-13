@@ -47,6 +47,9 @@ static bool g_accept_publish_jobs = false;
 #define GO2RTC_API_READ_TIMEOUT_SECONDS 5L
 #define GO2RTC_API_MUTATION_TIMEOUT_SECONDS 10L
 #define GO2RTC_API_CONNECT_TIMEOUT_SECONDS 2L
+/* Inventory enrichment is optional and runs on HTTP workers. It must not
+ * spend the normal control-plane timeout waiting for a busy media service. */
+#define GO2RTC_API_ACTIVITY_TIMEOUT_MS 500L
 
 /*
  * Every request in this module targets the local go2rtc process.  These calls
@@ -865,6 +868,9 @@ bool go2rtc_api_get_stream_activity(go2rtc_stream_activity_t *streams,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, GO2RTC_API_ACTIVITY_TIMEOUT_MS);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
+                     GO2RTC_API_ACTIVITY_TIMEOUT_MS);
 
     CURLcode result = curl_easy_perform(curl);
     long http_code = 0;

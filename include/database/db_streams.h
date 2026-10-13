@@ -76,6 +76,10 @@ int get_stream_config_by_uuid(const char *camera_uuid, stream_config_t *stream);
  */
 int get_all_stream_configs(stream_config_t *streams, int max_count);
 
+/* Read committed configurations on a private read-only connection, without
+ * waiting for the application's writer mutex. Intended for HTTP inventory. */
+int get_all_stream_configs_readonly(stream_config_t *streams, int max_count);
+
 /**
  * Count the number of stream configurations in the database
  *

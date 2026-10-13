@@ -9,15 +9,21 @@
 #include <libavutil/imgutils.h>
 
 #include "unity.h"
+#include "core/config.h"
 #include "video/mp4_segment_recorder.h"
+#include "video/mp4_writer.h"
+#include "video/mp4_writer_internal.h"
 
 static char test_dir[128];
 static char source_path[160];
 static char output_path[160];
 static AVFormatContext *input;
 static segment_info_t segment;
+static bool saved_faststart;
 
 void setUp(void) {
+    saved_faststart = config_get_mp4_faststart(&g_config);
+    config_set_mp4_faststart(&g_config, true);
     strcpy(test_dir, "/tmp/lightnvr_segment_boundaries_XXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(test_dir));
     snprintf(source_path, sizeof(source_path), "%s/source.mp4", test_dir);
@@ -27,6 +33,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    config_set_mp4_faststart(&g_config, saved_faststart);
     avformat_close_input(&input);
     av_packet_free(&segment.pending_video_keyframe);
     unlink(source_path);
@@ -142,6 +149,59 @@ static void record_and_check_boundary(int expected_camera_seconds,
     avformat_close_input(&recorded);
 }
 
+static void check_faststart_layout(bool enabled) {
+    FILE *file = fopen(output_path, "rb");
+    TEST_ASSERT_NOT_NULL(file);
+    long moov = -1, mdat = -1;
+    unsigned char header[8];
+    while (fread(header, 1, sizeof(header), file) == sizeof(header)) {
+        long offset = ftell(file) - 8;
+        uint32_t size = ((uint32_t)header[0] << 24) |
+                        ((uint32_t)header[1] << 16) |
+                        ((uint32_t)header[2] << 8) | header[3];
+        if (!memcmp(header + 4, "moov", 4)) moov = offset;
+        if (!memcmp(header + 4, "mdat", 4)) mdat = offset;
+        if (size < 8 || fseek(file, size - 8, SEEK_CUR) != 0) break;
+    }
+    fclose(file);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, moov);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, mdat);
+    TEST_ASSERT_EQUAL(enabled, moov < mdat);
+}
+
+void test_segments_snapshot_live_faststart_setting_at_open(void) {
+    open_fixture(10);
+    record_and_check_boundary(30, 30);
+    check_faststart_layout(true);
+    config_set_mp4_faststart(&g_config, false);
+    record_and_check_boundary(60, 30);
+    check_faststart_layout(false);
+}
+
+void test_writer_keeps_faststart_snapshot_after_live_update(void) {
+    open_fixture(10);
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(packet);
+    TEST_ASSERT_EQUAL_INT(0, av_read_frame(input, packet));
+    TEST_ASSERT_TRUE(packet->flags & AV_PKT_FLAG_KEY);
+
+    for (int enabled = 0; enabled <= 1; ++enabled) {
+        config_set_mp4_faststart(&g_config, enabled);
+        mp4_writer_t *writer = mp4_writer_create(output_path, "faststart-test");
+        TEST_ASSERT_NOT_NULL(writer);
+        mp4_writer_set_audio(writer, 0);
+        TEST_ASSERT_EQUAL_INT(0, mp4_writer_initialize(
+            writer, packet, input->streams[0]));
+        TEST_ASSERT_EQUAL_INT(0, mp4_writer_write_packet(
+            writer, packet, input->streams[0]));
+        // Changing the setting while open must not change this file's layout.
+        config_set_mp4_faststart(&g_config, !enabled);
+        mp4_writer_close(writer);
+        check_faststart_layout(enabled);
+    }
+    av_packet_free(&packet);
+}
+
 void test_keyframe_at_duration_closes_current_segment_and_starts_next(void) {
     open_fixture(10);
     record_and_check_boundary(30, 30);
@@ -158,5 +218,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_keyframe_at_duration_closes_current_segment_and_starts_next);
     RUN_TEST(test_non_keyframe_at_duration_waits_for_next_keyframe);
+    RUN_TEST(test_segments_snapshot_live_faststart_setting_at_open);
+    RUN_TEST(test_writer_keeps_faststart_snapshot_after_live_update);
     return UNITY_END();
 }

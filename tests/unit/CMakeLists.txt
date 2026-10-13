@@ -262,6 +262,13 @@ if(YAML_FOUND)
 endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
+    add_layer2_test_with_curl(test_go2rtc_proxy_thread)
+    target_link_options(test_go2rtc_proxy_thread PRIVATE
+        "-Wl,--wrap=go2rtc_proxy_authorize_request"
+        "-Wl,--wrap=libuv_send_response_ex"
+        "-Wl,--wrap=curl_easy_perform"
+    )
+    set_tests_properties(test_go2rtc_proxy_thread PROPERTIES TIMEOUT 25)
     add_layer2_test_with_curl(test_go2rtc_stream_activity)
     add_layer2_test_with_curl(test_go2rtc_publish_async)
     add_executable(fake_go2rtc_server fake_go2rtc_server.c)
@@ -318,9 +325,15 @@ set_tests_properties(test_hls_cleanup PROPERTIES TIMEOUT 30)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries)
+add_layer3_test(test_mp4_faststart)
+target_compile_definitions(test_mp4_faststart PRIVATE
+    RECORDING_FIXTURE="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4")
+target_link_options(test_mp4_faststart PRIVATE "-Wl,--wrap=avformat_write_header")
 add_layer3_test(test_audio_voice_enhancement)
 add_layer3_test(test_timestamp_manager)
 add_layer3_test(test_api_handlers_system)
+add_layer3_test(test_api_read_isolation)
+set_tests_properties(test_api_read_isolation PROPERTIES TIMEOUT 15)
 add_layer1_test(test_external_motion_trigger)    # Layer 1: external_motion_trigger state-machine (PR #356)
 add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body parsing (#466)
 add_layer2_test(test_motion_max_area)            # Layer 2: motion detector max-area sanity cap

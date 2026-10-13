@@ -449,7 +449,7 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
         if (get_profiles_response) {
             for (ezxml_t profile = get_profiles_response->child;
                  profile && profile_count < max_profiles;
-                 profile = profile->sibling) {
+                 profile = profile->ordered) {
                 const char *local = xml_local_name(profile->name);
                 if (local && strcmp(local, "Profiles") == 0) {
                     profile_elements[profile_count++] = profile;

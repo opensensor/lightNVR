@@ -253,9 +253,11 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
         }
     }
 
-    // Set movflags for faststart
+    // Snapshot the live option when opening this MP4 output.
     AVDictionary *opts = NULL;
-    av_dict_set(&opts, "movflags", "+faststart", 0);
+    if (config_get_mp4_faststart(&g_config)) {
+        av_dict_set(&opts, "movflags", "+faststart", 0);
+    }
 
     ret = avformat_write_header(output_ctx, &opts);
     av_dict_free(&opts);

@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <ctype.h>
 #include <string.h>
 
 #include "unity.h"
@@ -7,6 +8,20 @@
 
 void setUp(void) {}
 void tearDown(void) {}
+
+/* Percent-encoding hex digits are case-insensitive (RFC 3986 §2.1), and
+ * url_apply_credentials() delegates encoding to libcurl, whose case varies
+ * by version (e.g. libcurl 8.14.1 emits "%3a"). Normalize only the escape
+ * digits so the rest of the URL is still compared exactly. */
+static void uppercase_percent_escapes(char *url) {
+    for (char *p = url; *p; p++) {
+        if (p[0] == '%' && isxdigit((unsigned char)p[1]) && isxdigit((unsigned char)p[2])) {
+            p[1] = (char)toupper((unsigned char)p[1]);
+            p[2] = (char)toupper((unsigned char)p[2]);
+            p += 2;
+        }
+    }
+}
 
 void test_url_apply_credentials_injects_credentials(void) {
     char url[256];
@@ -17,8 +32,7 @@ void test_url_apply_credentials_injects_credentials(void) {
 void test_url_apply_credentials_replaces_existing_credentials(void) {
     char url[256];
     TEST_ASSERT_EQUAL_INT(0, url_apply_credentials("rtsp://old:creds@camera/live", "new@user", "p:ss", url, sizeof(url)));
-    /* Uppercase hex digits: RFC 3986 §2.1 says producers should normalize to
-     * uppercase, which url_apply_credentials has done since 650c2987. */
+    uppercase_percent_escapes(url);
     TEST_ASSERT_EQUAL_STRING("rtsp://new%40user:p%3Ass@camera/live", url);
 }
 

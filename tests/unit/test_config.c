@@ -16,6 +16,9 @@
 #include <stdbool.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <sched.h>
+#include <stdatomic.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -81,6 +84,107 @@ void test_default_config_log_level(void) {
 void test_default_config_retention_days(void) {
     load_default_config(&cfg);
     TEST_ASSERT_EQUAL_INT(30, cfg.retention_days);
+}
+
+void test_default_config_mp4_faststart_on(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
+}
+
+/* save_config must write mp4_faststart, or a settings save from the web UI
+ * would silently turn faststart back on at the next start. */
+void test_save_config_round_trips_mp4_faststart(void) {
+    char temp_dir[] = "/tmp/lightnvr_faststart_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+    char config_path[MAX_PATH_LENGTH];
+    snprintf(config_path, sizeof(config_path), "%s/faststart.ini", dir);
+
+    load_default_config(&cfg);
+    config_set_mp4_faststart(&cfg, false);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
+
+    FILE *saved = fopen(config_path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    char line[512];
+    bool found = false;
+    while (fgets(line, sizeof(line), saved)) {
+        if (strncmp(line, "mp4_faststart = false", 21) == 0) {
+            found = true;
+        }
+    }
+    fclose(saved);
+    unlink(config_path);
+    rmdir(dir);
+    TEST_ASSERT_TRUE(found);
+}
+
+static atomic_bool faststart_writer_stop;
+static atomic_int faststart_writer_updates;
+
+static void *toggle_faststart(void *unused) {
+    (void)unused;
+    bool enabled = false;
+    while (!atomic_load(&faststart_writer_stop)) {
+        config_set_mp4_faststart(&cfg, enabled);
+        enabled = !enabled;
+        atomic_fetch_add(&faststart_writer_updates, 1);
+    }
+    return NULL;
+}
+
+/* Exercise every shared read, including the whole-config snapshot that used
+ * to bypass the option accessors. This also provides a ThreadSanitizer gate. */
+void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
+    char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", dir);
+    load_default_config(&cfg);
+
+    atomic_store(&faststart_writer_stop, false);
+    atomic_store(&faststart_writer_updates, 0);
+    pthread_t writer;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&writer, NULL, toggle_faststart, NULL));
+    int save_result = 0;
+    int valid_saves = 0;
+    while (atomic_load(&faststart_writer_updates) == 0) {
+        sched_yield();
+    }
+    for (int i = 0; i < 50; ++i) {
+        (void)config_get_mp4_faststart(&cfg);
+        config_t snapshot;
+        config_copy(&snapshot, &cfg);
+        (void)config_get_mp4_faststart(&snapshot);
+        save_result = save_config(&cfg, path);
+        if (save_result != 0) break;
+        FILE *file = fopen(path, "r");
+        if (!file) break;
+        char line[512];
+        while (fgets(line, sizeof(line), file)) {
+            if (strncmp(line, "mp4_faststart = true", strlen("mp4_faststart = true")) == 0 ||
+                strncmp(line, "mp4_faststart = false", strlen("mp4_faststart = false")) == 0) {
+                ++valid_saves;
+            }
+        }
+        fclose(file);
+    }
+    atomic_store(&faststart_writer_stop, true);
+    int join_result = pthread_join(writer, NULL);
+    unlink(path);
+    rmdir(dir);
+    TEST_ASSERT_EQUAL_INT(0, join_result);
+    TEST_ASSERT_EQUAL_INT(0, save_result);
+    TEST_ASSERT_EQUAL_INT(50, valid_saves);
+
+    config_set_mp4_faststart(&cfg, false);
+    config_t snapshot;
+    config_copy(&snapshot, &cfg);
+    config_set_mp4_faststart(&cfg, true);
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&snapshot));
+    TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
+    TEST_ASSERT_EQUAL_PTR(cfg.streams, snapshot.streams);
 }
 
 void test_default_config_buffer_size(void) {
@@ -636,7 +740,8 @@ void test_env_integer_whitespace_handling(void) {
             "[storage]\n"
             "path = %s\n"
             "path_hls = %s\n"
-            "mp4_directory_format = year_month\n\n"
+            "mp4_directory_format = year_month\n"
+            "mp4_faststart = false\n\n"
             "[models]\n"
             "path = %s\n\n"
             "[database]\n"
@@ -686,6 +791,7 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
     TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
+    TEST_ASSERT_FALSE(config_get_mp4_faststart(&cfg));
     TEST_ASSERT_TRUE(cfg.audio_disabled);
     TEST_ASSERT_TRUE(cfg.auto_disabled);
     TEST_ASSERT_EQUAL_STRING("conservative", cfg.health.profile);
@@ -748,6 +854,9 @@ int main(void) {
     RUN_TEST(test_default_config_web_port);
     RUN_TEST(test_default_config_log_level);
     RUN_TEST(test_default_config_retention_days);
+    RUN_TEST(test_default_config_mp4_faststart_on);
+    RUN_TEST(test_save_config_round_trips_mp4_faststart);
+    RUN_TEST(test_mp4_faststart_concurrent_reads_copies_and_saves);
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);
     RUN_TEST(test_default_config_db_path_nonempty);

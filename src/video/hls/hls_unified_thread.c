@@ -1375,10 +1375,10 @@ void *hls_unified_thread_func(void *arg) {
                 // Unref packet
                 av_packet_unref(pkt);
 
-                // Check if we haven't received a packet in a while
+                // This timestamp tracks successful HLS writes, not input reads.
                 time_t now = time(NULL);
                 if (now - last_packet_time > MAX_PACKET_TIMEOUT) {
-                    log_error("No packets received from stream %s for %ld seconds, reconnecting",
+                    log_error("No video packets successfully written to HLS for stream %s for %ld seconds, reconnecting",
                              stream_name, now - last_packet_time);
                     thread_state = HLS_THREAD_RECONNECTING;
                     reconnect_attempt = 1;
