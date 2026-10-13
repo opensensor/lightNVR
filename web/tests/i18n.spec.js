@@ -16,6 +16,34 @@ const ptBrCatalog = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
+const filCatalog = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../public/locales/fil.json'),
+  'utf8',
+));
+const localeManifest = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../public/locales/manifest.json'),
+  'utf8',
+));
+
+test('Filipino is selectable and has a flag and valid translation placeholders', () => {
+  expect(localeManifest.locales).toContainEqual({
+    code: 'fil', name: 'Filipino', nativeName: 'Filipino',
+  });
+  const flag = fs.readFileSync(path.resolve(__dirname, '../public/locales/fil.png'));
+  expect(flag.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+
+  const englishCatalog = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, '../public/locales/en.json'), 'utf8',
+  ));
+  const placeholders = (value) => (value.match(/\{[^}]+\}/g) || []).sort();
+  for (const [key, value] of Object.entries(filCatalog)) {
+    expect(englishCatalog).toHaveProperty([key]);
+    expect(typeof value).toBe('string');
+    expect(value.trim()).not.toBe('');
+    expect(placeholders(value)).toEqual(placeholders(englishCatalog[key]));
+  }
+});
+
 const REPORTED_PT_BR_TRANSLATIONS = {
   'availability.live': 'Ao vivo agora',
   'availability.neverConnected': 'Nunca conectada',
@@ -108,6 +136,7 @@ describe('i18n locale selection', () => {
             { code: 'en', nativeName: 'English' },
             { code: 'es', nativeName: 'Español' },
             { code: 'de', nativeName: 'Deutsch' },
+            { code: 'fil', nativeName: 'Filipino' },
             { code: 'pt-BR', nativeName: 'Português (Brasil)' },
           ],
         }));
@@ -117,6 +146,7 @@ describe('i18n locale selection', () => {
         return Promise.resolve(createJsonResponse({
           'nav.settings': 'Settings',
           'login.rememberDevice': 'Remember this device for {days} days',
+          'englishOnly': 'English fallback',
         }));
       }
 
@@ -125,6 +155,10 @@ describe('i18n locale selection', () => {
           'nav.settings': 'Configurações',
           'login.rememberDevice': 'Lembrar este dispositivo por {days} dias',
         }));
+      }
+
+      if (url.endsWith('/locales/fil.json')) {
+        return Promise.resolve(createJsonResponse(filCatalog));
       }
 
       if (url.endsWith('/locales/es.json')) {
@@ -161,6 +195,57 @@ describe('i18n locale selection', () => {
     expect(document.documentElement.lang).toBe('pt-BR');
     expect(t('nav.settings')).toBe('Configurações');
     expect(t('login.rememberDevice', { days: 30 })).toBe('Lembrar este dispositivo por 30 dias');
+  });
+
+  test.each(['fil', 'fil-PH', 'FIL_ph', 'tl', 'tl-PH', 'TL_ph'])(
+    'recognizes Filipino or Tagalog browser preference %s', async (language) => {
+      navigator.languages = [language, 'en-US'];
+      await initI18n();
+
+      expect(getBrowserPreferredLocale()).toBe('fil');
+      expect(getLocale()).toBe('fil');
+      expect(getLocalePreference()).toBeNull();
+      expect(document.documentElement.lang).toBe('fil');
+      expect(t('nav.settings')).toBe('Mga Setting');
+      expect(t('login.rememberDevice', { days: 30 })).toBe('Tandaan ang device na ito sa loob ng 30 araw');
+      expect(t('englishOnly')).toBe('English fallback');
+      expect(fetch).toHaveBeenCalledWith('http://localhost/locales/fil.json', { cache: 'no-cache' });
+    },
+  );
+
+  test('preserves browser preference order when resolving language aliases', () => {
+    expect(resolveSupportedLocale(['tl-PH', 'en-US'])).toBe('fil');
+    expect(resolveSupportedLocale(['en-US', 'tl-PH'])).toBe('en');
+    expect(resolveSupportedLocale(['ceb-PH', 'fil-PH'])).toBe('fil');
+    expect(resolveSupportedLocale('ceb-PH')).toBe('en');
+  });
+
+  test('persists Filipino selected via Tagalog and restores it on initialization', async () => {
+    await setLocalePreference('tl-PH');
+    expect(getLocalePreference()).toBe('fil');
+    expect(localStorage.setItem).toHaveBeenCalledWith('lightnvr-locale-preference', 'fil');
+
+    __resetI18nStateForTests();
+    await initI18n();
+    expect(getLocale()).toBe('fil');
+    expect(getLocalePreference()).toBe('fil');
+    expect(t('nav.settings')).toBe('Mga Setting');
+
+    await setLocalePreference(null);
+    expect(getLocale()).toBe('pt-BR');
+    expect(getLocalePreference()).toBeNull();
+  });
+
+  test('recognizes Filipino when the manifest cannot be loaded', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn((url, options) => url.endsWith('/locales/manifest.json')
+      ? Promise.reject(new Error('manifest unavailable'))
+      : originalFetch(url, options));
+    navigator.languages = ['tl-PH', 'en-US'];
+
+    await initI18n();
+    expect(getLocale()).toBe('fil');
+    expect(t('nav.settings')).toBe('Mga Setting');
   });
 
   test('stores manual overrides and can return to browser default', async () => {

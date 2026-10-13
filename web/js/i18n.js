@@ -14,6 +14,7 @@ const FALLBACK_MANIFEST = {
     { code: 'es', name: 'Spanish', nativeName: 'Español' },
     { code: 'de', name: 'German', nativeName: 'Deutsch' },
     { code: 'fr', name: 'French', nativeName: 'Français' },
+    { code: 'fil', name: 'Filipino', nativeName: 'Filipino' },
     { code: 'it', name: 'Italian', nativeName: 'Italiano' },
     { code: 'ja', name: 'Japanese', nativeName: '日本語' },
     { code: 'ko', name: 'Korean', nativeName: '한국어' },
@@ -75,7 +76,9 @@ export function resolveSupportedLocale(candidates) {
       return exactMatch;
     }
 
-    const baseLanguage = candidate.split('-')[0].toLowerCase();
+    // Browsers may identify Filipino preferences with the Tagalog code.
+    const candidateLanguage = candidate.split('-')[0].toLowerCase();
+    const baseLanguage = candidateLanguage === 'tl' ? 'fil' : candidateLanguage;
     const baseMatch = supportedLocales.find((locale) => locale.toLowerCase().split('-')[0] === baseLanguage);
     if (baseMatch) {
       return baseMatch;
