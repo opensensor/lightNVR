@@ -16,7 +16,6 @@ void test_faac_encoder_flushes_buffered_audio(void) {
     const faac_encoder_config_t config = {
         .sample_rate = 44100,
         .num_channels = 1,
-        .input_format = FAAC_INPUT_16BIT,
         .bit_rate_per_channel = 64000,
         .object_type = FAAC_OBJ_AUTO
     };
@@ -74,7 +73,6 @@ void test_faac_he_aac_v1_uses_full_rate_sample_clock(void) {
     const faac_encoder_config_t config = {
         .sample_rate = 32000,
         .num_channels = 1,
-        .input_format = FAAC_INPUT_16BIT,
         .bit_rate_per_channel = 64000,
         .object_type = FAAC_OBJ_HE_AAC_V1
     };

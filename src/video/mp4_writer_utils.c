@@ -92,7 +92,6 @@ static faac_encoder_config_t make_faac_config(int sample_rate, int channels)
     return (faac_encoder_config_t){
         .sample_rate = (uint32_t)sample_rate,
         .num_channels = (uint32_t)channels,
-        .input_format = FAAC_INPUT_16BIT,
         .bit_rate_per_channel = sample_rate >= 32000 ? 64000 : 32000,
         .object_type = FAAC_OBJ_AUTO
     };

@@ -40,7 +40,7 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     params.sample_rate = config->sample_rate;
     params.num_channels = config->num_channels;
     params.output_format = FAAC_STREAM_RAW; // Raw AAC for MP4 container
-    params.input_format = config->input_format != FAAC_INPUT_NULL ? config->input_format : FAAC_INPUT_16BIT;
+    params.input_format = FAAC_INPUT_16BIT;
     params.object_type = config->object_type; // FAAC_OBJ_AUTO by default
 
     // Set bitrate per channel (matching FFmpeg defaults: 64kbps/ch for >=32kHz, 32kbps/ch otherwise)

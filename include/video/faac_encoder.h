@@ -13,13 +13,10 @@ extern "C" {
 
 typedef struct faac_adapter faac_adapter_t;
 
-/**
- * Configuration for opening a FAAC encoder adapter.
- */
+/** Configuration for the adapter, which accepts interleaved signed 16-bit PCM. */
 typedef struct faac_encoder_config {
-    uint32_t sample_rate;        /**< Input sample rate in Hz */
+    uint32_t sample_rate;        /**< Input PCM sample rate in Hz */
     uint32_t num_channels;       /**< Number of audio channels */
-    enum faac_input_format input_format; /**< Input PCM sample format (16BIT, FLOAT, etc.) */
     uint32_t bit_rate_per_channel; /**< Bitrate in bps per channel (0 for default ~64kbps/ch) */
     enum faac_object_type object_type; /**< FAAC_OBJ_AUTO, FAAC_OBJ_HE_AAC_V1, FAAC_OBJ_LOW */
 } faac_encoder_config_t;
