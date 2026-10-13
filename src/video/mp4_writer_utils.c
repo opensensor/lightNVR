@@ -46,8 +46,7 @@
 // Structure to hold audio transcoding context
 typedef struct {
     AVCodecContext *decoder_ctx;
-    AVCodecContext *encoder_ctx;
-    faac_encoder_wrapper_t *faac_enc;
+    faac_adapter_t *faac_enc;
     SwrContext *swr_ctx;
     AVAudioFifo *fifo;          // Buffer to accumulate samples for the encoder
     int64_t fifo_pts;           // Running PTS for frames read from the FIFO
@@ -56,6 +55,9 @@ typedef struct {
     AVPacket *in_pkt;
     AVPacket *out_pkt;
     int initialized;
+    uint64_t faac_input_samples;
+    uint64_t faac_output_frames;
+    bool faac_flushed;
 
     // Voice-enhancement filter graph (discussion #395).  filter_graph is NULL
     // when the feature is disabled or the graph hasn't been constructed yet.
@@ -79,10 +81,7 @@ static int get_encoder_frame_size(const audio_transcoder_t *transcoder)
         return DEFAULT_AAC_FRAME_SIZE;
     }
     if (transcoder->faac_enc) {
-        return faac_wrapper_get_frame_samples(transcoder->faac_enc);
-    }
-    if (transcoder->encoder_ctx && transcoder->encoder_ctx->frame_size > 0) {
-        return transcoder->encoder_ctx->frame_size;
+        return faac_adapter_get_frame_samples(transcoder->faac_enc);
     }
     return DEFAULT_AAC_FRAME_SIZE;
 }
@@ -124,7 +123,6 @@ static int init_audio_transcoder(const char *stream_name,
     int ret = -1;
     int slot = -1;
     const AVCodec *decoder = NULL;
-    const AVCodec *encoder = NULL;
 
     lock_audio_transcoders();
 
@@ -201,7 +199,7 @@ static int init_audio_transcoder(const char *stream_name,
         .object_type = FAAC_OBJ_AUTO
     };
 
-    audio_transcoders[slot].faac_enc = faac_wrapper_open(&faac_cfg);
+    audio_transcoders[slot].faac_enc = faac_adapter_open(&faac_cfg);
     if (!audio_transcoders[slot].faac_enc) {
         log_error("Failed to open FAAC encoder for %s", stream_name);
         goto cleanup;
@@ -271,6 +269,9 @@ static int init_audio_transcoder(const char *stream_name,
         }
     }
     audio_transcoders[slot].fifo_pts = 0;
+    audio_transcoders[slot].faac_input_samples = 0;
+    audio_transcoders[slot].faac_output_frames = 0;
+    audio_transcoders[slot].faac_flushed = false;
 
     // Allocate frame and packets
     audio_transcoders[slot].frame = av_frame_alloc();
@@ -330,24 +331,19 @@ static int init_audio_transcoder(const char *stream_name,
     safe_strcpy(audio_transcoder_stream_names[slot], stream_name, MAX_STREAM_NAME, 0);
 
     log_info("Successfully initialized FAAC audio transcoder for %s (Sample rate: %d, Channels: %d, Delay: %d)",
-             stream_name, sr, nb_ch, faac_wrapper_get_encoder_delay(audio_transcoders[slot].faac_enc));
+             stream_name, sr, nb_ch, faac_adapter_get_encoder_delay(audio_transcoders[slot].faac_enc));
 
     pthread_mutex_unlock(&audio_transcoder_mutex);
     return slot;
 
 cleanup:
     if (audio_transcoders[slot].faac_enc) {
-        faac_wrapper_close(&audio_transcoders[slot].faac_enc);
+        faac_adapter_close(&audio_transcoders[slot].faac_enc);
     }
 
     if (audio_transcoders[slot].decoder_ctx) {
         avcodec_free_context(&audio_transcoders[slot].decoder_ctx);
         audio_transcoders[slot].decoder_ctx = NULL;
-    }
-
-    if (audio_transcoders[slot].encoder_ctx) {
-        avcodec_free_context(&audio_transcoders[slot].encoder_ctx);
-        audio_transcoders[slot].encoder_ctx = NULL;
     }
 
     if (audio_transcoders[slot].swr_ctx) {
@@ -400,17 +396,12 @@ void cleanup_audio_transcoder(const char *stream_name) {
             strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
             // Found the transcoder for this stream
             if (audio_transcoders[i].faac_enc) {
-                faac_wrapper_close(&audio_transcoders[i].faac_enc);
+                faac_adapter_close(&audio_transcoders[i].faac_enc);
             }
 
             if (audio_transcoders[i].decoder_ctx) {
                 avcodec_free_context(&audio_transcoders[i].decoder_ctx);
                 audio_transcoders[i].decoder_ctx = NULL;
-            }
-
-            if (audio_transcoders[i].encoder_ctx) {
-                avcodec_free_context(&audio_transcoders[i].encoder_ctx);
-                audio_transcoders[i].encoder_ctx = NULL;
             }
 
             if (audio_transcoders[i].swr_ctx) {
@@ -734,13 +725,13 @@ int transcode_audio_packet(const char *stream_name,
 
     if (audio_transcoders[transcoder_idx].faac_enc) {
         uint32_t total_samples = (uint32_t)(enc_frame->nb_samples * nb_ch);
-        uint32_t out_cap = faac_wrapper_get_max_output_bytes(audio_transcoders[transcoder_idx].faac_enc);
+        uint32_t out_cap = faac_adapter_get_max_output_bytes(audio_transcoders[transcoder_idx].faac_enc);
         uint8_t *out_buf = av_malloc(out_cap);
         if (!out_buf) {
             return AVERROR(ENOMEM);
         }
         uint32_t bytes_written = 0;
-        int faac_res = faac_wrapper_encode(audio_transcoders[transcoder_idx].faac_enc,
+        int faac_res = faac_adapter_encode(audio_transcoders[transcoder_idx].faac_enc,
                                            enc_frame->data[0], total_samples,
                                            out_buf, out_cap, &bytes_written);
         if (faac_res < 0) {
@@ -748,6 +739,8 @@ int transcode_audio_packet(const char *stream_name,
             log_error("FAAC encoding failed for %s", stream_name);
             return -1;
         }
+        audio_transcoders[transcoder_idx].faac_input_samples += av_rescale(enc_frame->nb_samples,
+            faac_adapter_get_sample_rate(audio_transcoders[transcoder_idx].faac_enc), sr);
 
         av_packet_unref(out_pkt);
         if (bytes_written > 0) {
@@ -758,6 +751,7 @@ int transcode_audio_packet(const char *stream_name,
             }
             memcpy(out_pkt->data, out_buf, bytes_written);
             av_free(out_buf);
+            audio_transcoders[transcoder_idx].faac_output_frames++;
 
             out_pkt->pts = enc_frame->pts;
             out_pkt->dts = out_pkt->pts;
@@ -771,6 +765,119 @@ int transcode_audio_packet(const char *stream_name,
 
     log_error("No audio encoder available for %s", stream_name);
     return -1;
+}
+
+/* Append one access unit returned by FAAC to the caller-owned flush list. */
+static int append_faac_flush_packet(audio_transcoder_t *t, AVPacket ***packets,
+                                    int *count, const uint8_t *data, uint32_t size)
+{
+    if (size > INT_MAX) return AVERROR(EOVERFLOW);
+    AVPacket **grown = av_realloc_array(*packets, (size_t)*count + 1, sizeof(**packets));
+    if (!grown) return AVERROR(ENOMEM);
+    *packets = grown;
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) return AVERROR(ENOMEM);
+    int ret = av_new_packet(pkt, (int)size);
+    if (ret < 0) { av_packet_free(&pkt); return ret; }
+    memcpy(pkt->data, data, size);
+    (*packets)[(*count)++] = pkt;
+    t->faac_output_frames++;
+    return 0;
+}
+
+int transcode_audio_flush(const char *stream_name, AVPacket ***packets_out,
+                          int *packet_count_out, int *discard_padding_out)
+{
+    if (!stream_name || !packets_out || !packet_count_out || !discard_padding_out)
+        return AVERROR(EINVAL);
+    *packets_out = NULL;
+    *packet_count_out = 0;
+    *discard_padding_out = 0;
+    audio_transcoder_t *t = NULL;
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (audio_transcoders[i].initialized && audio_transcoder_stream_names[i][0] &&
+            strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            t = &audio_transcoders[i]; break;
+        }
+    }
+    if (!t || !t->faac_enc || t->faac_flushed) return 0;
+
+    /* swr may retain samples for filter delay even when input and output rates
+       match. Drain those before the FIFO's final partial frame. */
+    if (t->swr_ctx && t->fifo) {
+        for (;;) {
+            int cap = swr_get_out_samples(t->swr_ctx, 0);
+            if (cap <= 0) break;
+            AVFrame *f = t->resampled_frame;
+            av_frame_unref(f);
+            f->format = AV_SAMPLE_FMT_S16;
+            f->sample_rate = t->decoder_ctx->sample_rate;
+            f->nb_samples = cap;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+            av_channel_layout_copy(&f->ch_layout, &t->decoder_ctx->ch_layout);
+#else
+            f->channel_layout = t->decoder_ctx->channel_layout;
+            f->channels = t->decoder_ctx->channels;
+#endif
+            int ret = av_frame_get_buffer(f, 0);
+            if (ret < 0) return ret;
+            ret = swr_convert(t->swr_ctx, f->data, cap, NULL, 0);
+            if (ret < 0) return ret;
+            if (ret == 0) break;
+            f->nb_samples = ret;
+            int converted_samples = ret;
+            ret = av_audio_fifo_write(t->fifo, (void **)f->data, converted_samples);
+            if (ret != converted_samples) return AVERROR(ENOMEM);
+        }
+    }
+
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 37, 100)
+    int channels = t->decoder_ctx->channels;
+#else
+    int channels = t->decoder_ctx->ch_layout.nb_channels;
+#endif
+    if (channels < 1) channels = 1;
+    int pending = t->fifo ? av_audio_fifo_size(t->fifo) : 0;
+    if (pending > 0) {
+        AVFrame *f = t->resampled_frame;
+        av_frame_unref(f);
+        f->format = AV_SAMPLE_FMT_S16; f->sample_rate = t->decoder_ctx->sample_rate;
+        f->nb_samples = pending;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        av_channel_layout_default(&f->ch_layout, channels);
+#else
+        f->channel_layout = av_get_default_channel_layout(channels); f->channels = channels;
+#endif
+        int ret = av_frame_get_buffer(f, 0); if (ret < 0) return ret;
+        ret = av_audio_fifo_read(t->fifo, (void **)f->data, pending);
+        if (ret != pending) return AVERROR(EINVAL);
+        uint32_t cap = faac_adapter_get_max_output_bytes(t->faac_enc), written = 0;
+        uint8_t *buf = av_malloc(cap); if (!buf) return AVERROR(ENOMEM);
+        ret = faac_adapter_encode(t->faac_enc, f->data[0], (uint32_t)pending * channels,
+                                  buf, cap, &written);
+        if (ret < 0) { av_free(buf); return AVERROR_EXTERNAL; }
+        t->faac_input_samples += av_rescale(pending,
+            faac_adapter_get_sample_rate(t->faac_enc), t->decoder_ctx->sample_rate);
+        if (written) ret = append_faac_flush_packet(t, packets_out, packet_count_out, buf, written);
+        av_free(buf); if (ret < 0) return ret;
+    }
+
+    /* FAAC explicitly requires zero-sample calls until it returns no bytes. */
+    for (;;) {
+        uint32_t cap = faac_adapter_get_max_output_bytes(t->faac_enc), written = 0;
+        uint8_t *buf = av_malloc(cap); if (!buf) return AVERROR(ENOMEM);
+        int ret = faac_adapter_encode(t->faac_enc, NULL, 0, buf, cap, &written);
+        if (ret < 0) { av_free(buf); return AVERROR_EXTERNAL; }
+        if (written) ret = append_faac_flush_packet(t, packets_out, packet_count_out, buf, written);
+        av_free(buf); if (ret < 0) return ret;
+        if (!written) break;
+    }
+    t->faac_flushed = true;
+    uint64_t coded = t->faac_output_frames * faac_adapter_get_frame_samples(t->faac_enc);
+    uint64_t accounted = faac_adapter_get_encoder_delay(t->faac_enc) + t->faac_input_samples;
+    if (coded > accounted && coded - accounted <= INT_MAX)
+        *discard_padding_out = (int)(coded - accounted);
+    return 0;
 }
 
 /**
@@ -856,24 +963,26 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
         .object_type = FAAC_OBJ_AUTO
     };
 
-    faac_encoder_wrapper_t *faac_enc = faac_wrapper_open(&faac_cfg);
+    faac_adapter_t *faac_enc = faac_adapter_open(&faac_cfg);
     if (!faac_enc) {
         log_error("Failed to open FAAC encoder for %s", stream_name ? stream_name : "unknown");
         ret = -1;
         goto cleanup;
     }
 
-    int profile = faac_wrapper_get_sample_rate(faac_enc) > (uint32_t)sr
+    int profile = faac_adapter_get_sample_rate(faac_enc) > (uint32_t)sr
         ? AV_PROFILE_AAC_HE
         : AV_PROFILE_AAC_LOW;
 
     (*transcoded_params)->codec_type = AVMEDIA_TYPE_AUDIO;
     (*transcoded_params)->codec_id = AV_CODEC_ID_AAC;
-    (*transcoded_params)->sample_rate = sr;
+    /* FAAC reports the coded/output rate. HE-AAC v1 accepts core-rate PCM
+     * but emits access units on the doubled full-rate sample clock. */
+    (*transcoded_params)->sample_rate = (int)faac_adapter_get_sample_rate(faac_enc);
     (*transcoded_params)->bit_rate = faac_cfg.bit_rate_per_channel * nb_ch;
     (*transcoded_params)->profile = profile;
-    (*transcoded_params)->frame_size = faac_wrapper_get_frame_samples(faac_enc);
-    (*transcoded_params)->initial_padding = faac_wrapper_get_encoder_delay(faac_enc);
+    (*transcoded_params)->frame_size = faac_adapter_get_frame_samples(faac_enc);
+    (*transcoded_params)->initial_padding = faac_adapter_get_encoder_delay(faac_enc);
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
     av_channel_layout_copy(&(*transcoded_params)->ch_layout, &decoder_ctx->ch_layout);
@@ -887,7 +996,7 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
 
     const uint8_t *asc = NULL;
     size_t asc_len = 0;
-    if (faac_wrapper_get_asc(faac_enc, &asc, &asc_len) == 0 && asc_len > 0) {
+    if (faac_adapter_get_asc(faac_enc, &asc, &asc_len) == 0 && asc_len > 0) {
         (*transcoded_params)->extradata = av_malloc(asc_len + AV_INPUT_BUFFER_PADDING_SIZE);
         if ((*transcoded_params)->extradata) {
             memcpy((*transcoded_params)->extradata, asc, asc_len);
@@ -895,7 +1004,7 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
             (*transcoded_params)->extradata_size = (int)asc_len;
         }
     }
-    faac_wrapper_close(&faac_enc);
+    faac_adapter_close(&faac_enc);
 
     log_info("Successfully configured transcoding from PCM to AAC via FAAC for %s (Sample rate: %d, Channels: %d, Delay: %d)",
             stream_name ? stream_name : "unknown", sr, nb_ch, (*transcoded_params)->initial_padding);

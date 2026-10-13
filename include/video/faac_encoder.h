@@ -11,10 +11,10 @@
 extern "C" {
 #endif
 
-typedef struct faac_encoder_wrapper faac_encoder_wrapper_t;
+typedef struct faac_adapter faac_adapter_t;
 
 /**
- * Configuration structure for opening a FAAC encoder wrapper instance.
+ * Configuration for opening a FAAC encoder adapter.
  */
 typedef struct faac_encoder_config {
     uint32_t sample_rate;        /**< Input sample rate in Hz */
@@ -28,44 +28,44 @@ typedef struct faac_encoder_config {
  * Open and initialize a FAAC encoder instance.
  *
  * @param config Pointer to encoder configuration.
- * @return Pointer to wrapper instance on success, NULL on failure.
+ * @return Pointer to the adapter on success, NULL on failure.
  */
-faac_encoder_wrapper_t *faac_wrapper_open(const faac_encoder_config_t *config);
+faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config);
 
 /**
  * Retrieve the AudioSpecificConfig (extradata) produced by FAAC.
  *
- * @param wrapper Encoder instance pointer.
- * @param asc_out Pointer to receive the extradata buffer pointer (owned by wrapper).
+ * @param adapter Encoder instance pointer.
+ * @param asc_out Pointer to receive the extradata buffer pointer (owned by adapter).
  * @param asc_size_out Pointer to receive the extradata length in bytes.
  * @return 0 on success, negative error code on failure.
  */
-int faac_wrapper_get_asc(faac_encoder_wrapper_t *wrapper, const uint8_t **asc_out, size_t *asc_size_out);
+int faac_adapter_get_asc(faac_adapter_t *adapter, const uint8_t **asc_out, size_t *asc_size_out);
 
 /**
  * Get frame_samples (number of samples per channel per frame required by encoder).
  */
-uint32_t faac_wrapper_get_frame_samples(faac_encoder_wrapper_t *wrapper);
+uint32_t faac_adapter_get_frame_samples(faac_adapter_t *adapter);
 
 /**
  * Get maximum output bytes per encoded frame.
  */
-uint32_t faac_wrapper_get_max_output_bytes(faac_encoder_wrapper_t *wrapper);
+uint32_t faac_adapter_get_max_output_bytes(faac_adapter_t *adapter);
 
 /**
  * Get resolved sample rate (e.g. extended rate for HE-AAC).
  */
-uint32_t faac_wrapper_get_sample_rate(faac_encoder_wrapper_t *wrapper);
+uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter);
 
 /**
  * Get gapless playback encoder delay (priming delay in samples/channel).
  */
-uint32_t faac_wrapper_get_encoder_delay(faac_encoder_wrapper_t *wrapper);
+uint32_t faac_adapter_get_encoder_delay(faac_adapter_t *adapter);
 
 /**
  * Encode interleaved PCM samples.
  *
- * @param wrapper Encoder instance.
+ * @param adapter Encoder instance.
  * @param pcm_data Pointer to input PCM buffer (interleaved across channels).
  * @param total_samples Total number of samples in pcm_data (samples_per_channel * num_channels).
  *                      Pass 0 to flush.
@@ -74,7 +74,7 @@ uint32_t faac_wrapper_get_encoder_delay(faac_encoder_wrapper_t *wrapper);
  * @param bytes_written Pointer to receive actual encoded bytes written to out_buf.
  * @return 0 on success (or when 0 bytes written during buffering/flush), negative code on error.
  */
-int faac_wrapper_encode(faac_encoder_wrapper_t *wrapper,
+int faac_adapter_encode(faac_adapter_t *adapter,
                         const void *pcm_data,
                         uint32_t total_samples,
                         uint8_t *out_buf,
@@ -82,9 +82,9 @@ int faac_wrapper_encode(faac_encoder_wrapper_t *wrapper,
                         uint32_t *bytes_written);
 
 /**
- * Close and free FAAC encoder instance.
+ * Close and free the FAAC encoder adapter.
  */
-void faac_wrapper_close(faac_encoder_wrapper_t **wrapper_ptr);
+void faac_adapter_close(faac_adapter_t **adapter_ptr);
 
 #ifdef __cplusplus
 }

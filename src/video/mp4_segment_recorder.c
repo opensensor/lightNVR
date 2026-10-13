@@ -1087,6 +1087,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				// AVERROR_EXIT means the interrupt callback returned 1.
 				// This happens when shutdown_requested is set (e.g., during
 				// dead-recording cleanup) or during global shutdown.
+				// Treat this as the final segment too, so delayed AAC is drained
+				// before its MP4 trailer is written.
+				shutdown_detected = true;
 				log_warn("RTSP read interrupted (AVERROR_EXIT) for %s — "
 				         "recording thread is being stopped", output_file);
 				break;
@@ -1787,6 +1790,49 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    /* The transcoder belongs to the writer and spans ordinary segment
+     * rotations. Drain it only for the final shutdown segment, while this
+     * segment's audio stream and MP4 muxer are still open. */
+    int final_audio_error = 0;
+    if (shutdown_detected && needs_audio_transcoding && out_audio_stream && output_ctx) {
+        const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
+            ? segment_info_ptr->stream_name : rtsp_url;
+        AVPacket **flush_packets = NULL;
+        int flush_count = 0, discard_padding = 0;
+        int flush_ret = transcode_audio_flush(transcoder_key, &flush_packets,
+                                               &flush_count, &discard_padding);
+        if (flush_ret < 0) {
+            log_error("Failed to flush AAC transcoder for %s: %d", transcoder_key, flush_ret);
+            final_audio_error = flush_ret;
+        } else {
+            if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
+                next_transcoded_audio_pts = segment_index <= 1
+                    ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
+            }
+            for (int i = 0; i < flush_count; i++) {
+                AVPacket *flush_pkt = flush_packets[i];
+                flush_pkt->stream_index = out_audio_stream->index;
+                flush_pkt->pts = flush_pkt->dts = next_transcoded_audio_pts;
+                flush_pkt->duration = out_audio_stream->codecpar->frame_size > 0
+                    ? out_audio_stream->codecpar->frame_size : 1024;
+                if (i == flush_count - 1 && discard_padding > 0 &&
+                    discard_padding < flush_pkt->duration) {
+                    /* Shorten the final MP4 sample duration. This carries the
+                     * padding trim through MOV muxer versions that predate
+                     * AV_PKT_DATA_SKIP_SAMPLES edit-list support. */
+                    flush_pkt->duration -= discard_padding;
+                    out_audio_stream->codecpar->trailing_padding = discard_padding;
+                }
+                flush_pkt->time_base = out_audio_stream->time_base;
+                next_transcoded_audio_pts += flush_pkt->duration;
+                int write_ret = av_interleaved_write_frame(output_ctx, flush_pkt);
+                if (write_ret < 0) { final_audio_error = write_ret; break; }
+            }
+        }
+        for (int i = 0; i < flush_count; i++) av_packet_free(&flush_packets[i]);
+        av_free(flush_packets);
+    }
+
     // Write trailer
     if (output_ctx && output_ctx->pb) {
         ret = av_write_trailer(output_ctx);
@@ -1798,6 +1844,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             trailer_written = true;
             log_debug("Successfully wrote trailer to output file");
         }
+        if (ret >= 0 && final_audio_error < 0) ret = final_audio_error;
     }
 
     // BUGFIX: Update per-stream segment info for the next segment

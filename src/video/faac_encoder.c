@@ -7,7 +7,7 @@
 #define LOG_COMPONENT "FAACEncoder"
 #include "core/logger.h"
 
-struct faac_encoder_wrapper {
+struct faac_adapter {
     faac_encoder *enc;
     faac_encoder_info info;
     uint8_t *asc_buf;
@@ -15,25 +15,25 @@ struct faac_encoder_wrapper {
     uint32_t num_channels;
 };
 
-faac_encoder_wrapper_t *faac_wrapper_open(const faac_encoder_config_t *config) {
+faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     if (!config || config->sample_rate == 0 || config->num_channels == 0) {
-        log_error("faac_wrapper_open: invalid configuration parameters");
+        log_error("faac_adapter_open: invalid configuration parameters");
         return NULL;
     }
 
-    faac_encoder_wrapper_t *wrapper = calloc(1, sizeof(faac_encoder_wrapper_t));
-    if (!wrapper) {
-        log_error("faac_wrapper_open: memory allocation failed for wrapper");
+    faac_adapter_t *adapter = calloc(1, sizeof(faac_adapter_t));
+    if (!adapter) {
+        log_error("faac_adapter_open: memory allocation failed for adapter");
         return NULL;
     }
 
-    wrapper->num_channels = config->num_channels;
+    adapter->num_channels = config->num_channels;
 
     faac_params params;
     faac_status status = faac_params_init(&params, sizeof(params));
     if (status != FAAC_OK) {
         log_error("faac_params_init failed: %s", faac_strerror(status));
-        free(wrapper);
+        free(adapter);
         return NULL;
     }
 
@@ -51,80 +51,80 @@ faac_encoder_wrapper_t *faac_wrapper_open(const faac_encoder_config_t *config) {
     params.bit_rate = br_per_ch;
     params.rate_control = FAAC_RC_AUTO; // ABR when bit_rate is set
 
-    status = faac_encoder_open(&params, &wrapper->enc);
-    if (status != FAAC_OK || !wrapper->enc) {
+    status = faac_encoder_open(&params, &adapter->enc);
+    if (status != FAAC_OK || !adapter->enc) {
         log_error("faac_encoder_open failed: %s", faac_strerror(status));
-        free(wrapper);
+        free(adapter);
         return NULL;
     }
 
     // Query encoder info
-    wrapper->info.struct_size = sizeof(faac_encoder_info);
-    status = faac_encoder_get_info(wrapper->enc, &wrapper->info);
+    adapter->info.struct_size = sizeof(faac_encoder_info);
+    status = faac_encoder_get_info(adapter->enc, &adapter->info);
     if (status != FAAC_OK) {
         log_error("faac_encoder_get_info failed: %s", faac_strerror(status));
-        faac_encoder_close(&wrapper->enc);
-        free(wrapper);
+        faac_encoder_close(&adapter->enc);
+        free(adapter);
         return NULL;
     }
 
     // Query AudioSpecificConfig (extradata)
     const uint8_t *asc_ptr = NULL;
     uint32_t asc_len = 0;
-    status = faac_encoder_asc(wrapper->enc, &asc_ptr, &asc_len);
+    status = faac_encoder_asc(adapter->enc, &asc_ptr, &asc_len);
     if (status == FAAC_OK && asc_ptr && asc_len > 0) {
-        wrapper->asc_buf = malloc(asc_len);
-        if (wrapper->asc_buf) {
-            memcpy(wrapper->asc_buf, asc_ptr, asc_len);
-            wrapper->asc_size = asc_len;
+        adapter->asc_buf = malloc(asc_len);
+        if (adapter->asc_buf) {
+            memcpy(adapter->asc_buf, asc_ptr, asc_len);
+            adapter->asc_size = asc_len;
         }
     } else {
         log_warn("faac_encoder_asc did not return extradata: %s", faac_strerror(status));
     }
 
     log_info("Opened FAAC encoder: %u Hz, %u ch, bitrate %u bps/ch, frame_samples %u, delay %u, obj_type %d",
-             wrapper->info.sample_rate, config->num_channels, wrapper->info.bit_rate,
-             wrapper->info.frame_samples, wrapper->info.encoder_delay, (int)wrapper->info.object_type);
+             adapter->info.sample_rate, config->num_channels, adapter->info.bit_rate,
+             adapter->info.frame_samples, adapter->info.encoder_delay, (int)adapter->info.object_type);
 
-    return wrapper;
+    return adapter;
 }
 
-int faac_wrapper_get_asc(faac_encoder_wrapper_t *wrapper, const uint8_t **asc_out, size_t *asc_size_out) {
-    if (!wrapper || !asc_out || !asc_size_out) {
+int faac_adapter_get_asc(faac_adapter_t *adapter, const uint8_t **asc_out, size_t *asc_size_out) {
+    if (!adapter || !asc_out || !asc_size_out) {
         return -1;
     }
-    *asc_out = wrapper->asc_buf;
-    *asc_size_out = wrapper->asc_size;
-    return (wrapper->asc_buf && wrapper->asc_size > 0) ? 0 : -1;
+    *asc_out = adapter->asc_buf;
+    *asc_size_out = adapter->asc_size;
+    return (adapter->asc_buf && adapter->asc_size > 0) ? 0 : -1;
 }
 
-uint32_t faac_wrapper_get_frame_samples(faac_encoder_wrapper_t *wrapper) {
-    return wrapper ? wrapper->info.frame_samples : 1024;
+uint32_t faac_adapter_get_frame_samples(faac_adapter_t *adapter) {
+    return adapter ? adapter->info.frame_samples : 1024;
 }
 
-uint32_t faac_wrapper_get_max_output_bytes(faac_encoder_wrapper_t *wrapper) {
-    return wrapper ? wrapper->info.max_output_bytes : 2048;
+uint32_t faac_adapter_get_max_output_bytes(faac_adapter_t *adapter) {
+    return adapter ? adapter->info.max_output_bytes : 2048;
 }
 
-uint32_t faac_wrapper_get_sample_rate(faac_encoder_wrapper_t *wrapper) {
-    return wrapper ? wrapper->info.sample_rate : 0;
+uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter) {
+    return adapter ? adapter->info.sample_rate : 0;
 }
 
-uint32_t faac_wrapper_get_encoder_delay(faac_encoder_wrapper_t *wrapper) {
-    return wrapper ? wrapper->info.encoder_delay : 0;
+uint32_t faac_adapter_get_encoder_delay(faac_adapter_t *adapter) {
+    return adapter ? adapter->info.encoder_delay : 0;
 }
 
-int faac_wrapper_encode(faac_encoder_wrapper_t *wrapper,
+int faac_adapter_encode(faac_adapter_t *adapter,
                         const void *pcm_data,
                         uint32_t total_samples,
                         uint8_t *out_buf,
                         uint32_t out_cap,
                         uint32_t *bytes_written) {
-    if (!wrapper || !wrapper->enc || !bytes_written) {
+    if (!adapter || !adapter->enc || !bytes_written) {
         return -1;
     }
 
-    faac_status status = faac_encoder_encode(wrapper->enc, pcm_data, total_samples,
+    faac_status status = faac_encoder_encode(adapter->enc, pcm_data, total_samples,
                                             out_buf, out_cap, bytes_written);
     if (status != FAAC_OK) {
         log_error("faac_encoder_encode error: %s", faac_strerror(status));
@@ -134,17 +134,17 @@ int faac_wrapper_encode(faac_encoder_wrapper_t *wrapper,
     return 0;
 }
 
-void faac_wrapper_close(faac_encoder_wrapper_t **wrapper_ptr) {
-    if (!wrapper_ptr || !*wrapper_ptr) {
+void faac_adapter_close(faac_adapter_t **adapter_ptr) {
+    if (!adapter_ptr || !*adapter_ptr) {
         return;
     }
-    faac_encoder_wrapper_t *wrapper = *wrapper_ptr;
-    if (wrapper->enc) {
-        faac_encoder_close(&wrapper->enc);
+    faac_adapter_t *adapter = *adapter_ptr;
+    if (adapter->enc) {
+        faac_encoder_close(&adapter->enc);
     }
-    if (wrapper->asc_buf) {
-        free(wrapper->asc_buf);
+    if (adapter->asc_buf) {
+        free(adapter->asc_buf);
     }
-    free(wrapper);
-    *wrapper_ptr = NULL;
+    free(adapter);
+    *adapter_ptr = NULL;
 }

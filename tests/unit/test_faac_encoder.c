@@ -1,72 +1,97 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+/**
+ * @file test_faac_encoder.c
+ * @brief Layer 3 Unity tests for the FAAC adapter.
+ */
 
+#include <stdint.h>
+#include <stdlib.h>
+
+#include "unity.h"
 #include "video/faac_encoder.h"
 
-static void test_faac_encoder_lifecycle(void) {
-    faac_encoder_config_t config = {
+void setUp(void) {}
+void tearDown(void) {}
+
+void test_faac_encoder_flushes_buffered_audio(void) {
+    const faac_encoder_config_t config = {
         .sample_rate = 44100,
         .num_channels = 1,
         .input_format = FAAC_INPUT_16BIT,
         .bit_rate_per_channel = 64000,
         .object_type = FAAC_OBJ_AUTO
     };
+    faac_adapter_t *adapter = faac_adapter_open(&config);
+    TEST_ASSERT_NOT_NULL(adapter);
 
-    faac_encoder_wrapper_t *wrapper = faac_wrapper_open(&config);
-    assert(wrapper != NULL);
-
-    uint32_t frame_samples = faac_wrapper_get_frame_samples(wrapper);
-    assert(frame_samples > 0);
-
-    uint32_t max_out = faac_wrapper_get_max_output_bytes(wrapper);
-    assert(max_out > 0);
-
-    uint32_t delay = faac_wrapper_get_encoder_delay(wrapper);
-    printf("FAAC encoder opened: frame_samples=%u, max_output=%u, delay=%u\n",
-           frame_samples, max_out, delay);
+    uint32_t frame_samples = faac_adapter_get_frame_samples(adapter);
+    uint32_t max_output = faac_adapter_get_max_output_bytes(adapter);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, frame_samples);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, max_output);
 
     const uint8_t *asc = NULL;
-    size_t asc_len = 0;
-    int asc_res = faac_wrapper_get_asc(wrapper, &asc, &asc_len);
-    assert(asc_res == 0);
-    assert(asc != NULL);
-    assert(asc_len > 0);
+    size_t asc_size = 0;
+    TEST_ASSERT_EQUAL_INT(0, faac_adapter_get_asc(adapter, &asc, &asc_size));
+    TEST_ASSERT_NOT_NULL(asc);
+    TEST_ASSERT_GREATER_THAN_UINT(0, asc_size);
 
-    // Encode PCM 16-bit audio samples over multiple frames to test priming and encoding
-    size_t pcm_samples = frame_samples * config.num_channels;
-    int16_t *pcm_buf = calloc(pcm_samples, sizeof(int16_t));
-    assert(pcm_buf != NULL);
+    int16_t *pcm = calloc(frame_samples, sizeof(*pcm));
+    uint8_t *output = malloc(max_output);
+    TEST_ASSERT_NOT_NULL(pcm);
+    TEST_ASSERT_NOT_NULL(output);
 
-    uint8_t *out_buf = malloc(max_out);
-    assert(out_buf != NULL);
-
-    uint32_t total_aac_bytes = 0;
+    uint64_t encoded_bytes = 0;
     for (int frame = 0; frame < 5; frame++) {
         uint32_t bytes_written = 0;
-        int enc_res = faac_wrapper_encode(wrapper, pcm_buf, (uint32_t)pcm_samples,
-                                           out_buf, max_out, &bytes_written);
-        assert(enc_res == 0);
-        total_aac_bytes += bytes_written;
-        printf("Frame %d: FAAC encoded %zu PCM samples -> %u AAC bytes\n",
-               frame, pcm_samples, bytes_written);
+        TEST_ASSERT_EQUAL_INT(0, faac_adapter_encode(
+            adapter, pcm, frame_samples, output, max_output, &bytes_written));
+        encoded_bytes += bytes_written;
     }
+    TEST_ASSERT_GREATER_THAN_UINT64(0, encoded_bytes);
 
-    assert(total_aac_bytes > 0);
-    printf("Total AAC bytes produced across 5 frames: %u\n", total_aac_bytes);
+    /* FAAC may return delayed access units over multiple zero-sample calls. */
+    uint32_t bytes_written = 0;
+    uint64_t flushed_bytes = 0;
+    int flush_calls = 0;
+    do {
+        bytes_written = 0;
+        TEST_ASSERT_EQUAL_INT(0, faac_adapter_encode(
+            adapter, NULL, 0, output, max_output, &bytes_written));
+        flushed_bytes += bytes_written;
+        flush_calls++;
+    } while (bytes_written > 0 && flush_calls < 16);
+    TEST_ASSERT_EQUAL_UINT32(0, bytes_written);
+    TEST_ASSERT_LESS_THAN_INT(16, flush_calls);
+    TEST_ASSERT_GREATER_THAN_UINT64(0, flushed_bytes);
+    TEST_ASSERT_GREATER_THAN_UINT64(0, encoded_bytes);
 
-    free(pcm_buf);
-    free(out_buf);
-    faac_wrapper_close(&wrapper);
-    assert(wrapper == NULL);
+    free(output);
+    free(pcm);
+    faac_adapter_close(&adapter);
+    TEST_ASSERT_NULL(adapter);
+}
 
-    printf("test_faac_encoder_lifecycle passed!\n");
+void test_faac_he_aac_v1_uses_full_rate_sample_clock(void) {
+    const faac_encoder_config_t config = {
+        .sample_rate = 32000,
+        .num_channels = 1,
+        .input_format = FAAC_INPUT_16BIT,
+        .bit_rate_per_channel = 64000,
+        .object_type = FAAC_OBJ_HE_AAC_V1
+    };
+    faac_adapter_t *adapter = faac_adapter_open(&config);
+    TEST_ASSERT_NOT_NULL(adapter);
+
+    TEST_ASSERT_EQUAL_UINT32(64000, faac_adapter_get_sample_rate(adapter));
+    TEST_ASSERT_EQUAL_UINT32(2048, faac_adapter_get_frame_samples(adapter));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, faac_adapter_get_encoder_delay(adapter));
+
+    faac_adapter_close(&adapter);
+    TEST_ASSERT_NULL(adapter);
 }
 
 int main(void) {
-    printf("Running FAAC encoder unit tests...\n");
-    test_faac_encoder_lifecycle();
-    printf("All FAAC encoder unit tests passed successfully!\n");
-    return 0;
+    UNITY_BEGIN();
+    RUN_TEST(test_faac_encoder_flushes_buffered_audio);
+    RUN_TEST(test_faac_he_aac_v1_uses_full_rate_sample_clock);
+    return UNITY_END();
 }

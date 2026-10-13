@@ -48,12 +48,6 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
  */
 bool is_pcm_codec(enum AVCodecID codec_id);
 
-/* Standalone recording benchmark controls. This upstream-FAAC baseline uses
- * FFmpeg for both decoding and muxing, so these setters intentionally do not
- * change the production path. */
-void mp4_writer_benchmark_set_native_audio_decoder(bool enabled);
-void mp4_writer_benchmark_set_faam_muxer(bool enabled);
-
 /**
  * Check if an audio codec is compatible with MP4 format
  *
@@ -90,6 +84,10 @@ int transcode_audio_packet(const char *stream_name,
                           const AVPacket *in_pkt,
                           AVPacket *out_pkt,
                           const AVStream *input_stream);
+
+/* Drain delayed PCM/AAC data at end of the final recording segment. */
+int transcode_audio_flush(const char *stream_name, AVPacket ***packets_out,
+                          int *packet_count_out, int *discard_padding_out);
 
 /**
  * Clean up the audio transcoder for a stream
