@@ -24,6 +24,7 @@
 #include "web/audit_log.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "utils/strings.h"
 #include "core/config.h"
 
@@ -598,6 +599,8 @@ typedef struct {
     request_handler_t handler;          // Handler function to call
     write_complete_action_t action;     // Post-response action (keep-alive/close)
     audit_sensitive_operation_context_t audit_context;
+    api_phase_timer_t queued_timer;
+    api_phase_timer_t completion_timer;
 } handler_work_t;
 
 /**
@@ -608,6 +611,9 @@ typedef struct {
  */
 static void handler_work_cb(uv_work_t *req) {
     handler_work_t *hw = (handler_work_t *)req->data;
+    api_phase_end(&hw->queued_timer);
+    api_phase_timer_t execution = api_phase_begin(&hw->conn->request,
+                                                 "handler execution");
     audit_log_sensitive_operation_begin(&hw->conn->request,
                                         &hw->audit_context);
     hw->handler(&hw->conn->request, &hw->conn->response);
@@ -615,6 +621,9 @@ static void handler_work_cb(uv_work_t *req) {
                                       &hw->conn->response,
                                       &hw->audit_context);
     maybe_compress_response(&hw->conn->request, &hw->conn->response);
+    api_phase_end(&execution);
+    hw->completion_timer = api_phase_begin(&hw->conn->request,
+                                           "event loop completion wait");
 }
 
 /**
@@ -626,6 +635,7 @@ static void handler_work_cb(uv_work_t *req) {
  */
 static void handler_after_work_cb(uv_work_t *req, int status) {
     handler_work_t *hw = (handler_work_t *)req->data;
+    if (status != UV_ECANCELED) api_phase_end(&hw->completion_timer);
     libuv_connection_t *conn = hw->conn;
     write_complete_action_t action = hw->action;
     safe_free(hw);
@@ -816,6 +826,7 @@ static int on_message_complete(llhttp_t *parser) {
         hw->conn = conn;
         hw->handler = handler;
         hw->action = action;
+        hw->queued_timer = api_phase_begin(&conn->request, "HTTP worker queue wait");
         conn->handler_on_worker = true;
         conn->deferred_action = action;  // Store action for async responses
 
@@ -855,6 +866,7 @@ static int on_message_complete(llhttp_t *parser) {
         hw->conn = conn;
         hw->handler = static_file_resolve_handler;
         hw->action = action;
+        hw->queued_timer = api_phase_begin(&conn->request, "HTTP worker queue wait");
         conn->handler_on_worker = true;
         conn->deferred_action = action;
 

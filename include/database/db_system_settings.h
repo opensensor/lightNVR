@@ -55,6 +55,10 @@ int db_set_system_setting(const char *key, const char *value);
  */
 bool db_is_setup_complete(void);
 
+/* Read both setup fields on a private read-only connection. Missing settings
+ * mean incomplete/zero; database errors return -1 rather than incomplete. */
+int db_get_setup_status(bool *complete, long long *completed_at);
+
 /**
  * @brief Convenience: mark setup as complete (sets setup_complete = "1"
  *        and records setup_completed_at as the current epoch second).

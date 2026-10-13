@@ -451,7 +451,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         return;
     }
     phase = api_phase_begin(req, "stream configuration database read");
-    int count = get_all_stream_configs(db_streams, g_config.max_streams);
+    int count = get_all_stream_configs_readonly(db_streams, g_config.max_streams);
     api_phase_end(&phase);
 
     if (count < 0) {
@@ -467,7 +467,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     fleet_camera_t *fleet_cameras = NULL;
     int fleet_camera_count = 0;
     phase = api_phase_begin(req, "camera inventory database read");
-    int inventory_result = db_fleet_camera_load(&fleet_cameras, &fleet_camera_count);
+    int inventory_result = db_fleet_camera_load_readonly(&fleet_cameras, &fleet_camera_count);
     api_phase_end(&phase);
     if (inventory_result != 0) {
         free(db_streams);

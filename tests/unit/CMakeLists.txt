@@ -330,6 +330,8 @@ target_link_options(test_mp4_faststart PRIVATE "-Wl,--wrap=avformat_write_header
 add_layer3_test(test_audio_voice_enhancement)
 add_layer3_test(test_timestamp_manager)
 add_layer3_test(test_api_handlers_system)
+add_layer3_test(test_api_read_isolation)
+set_tests_properties(test_api_read_isolation PROPERTIES TIMEOUT 15)
 add_layer1_test(test_external_motion_trigger)    # Layer 1: external_motion_trigger state-machine (PR #356)
 add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body parsing (#466)
 add_layer2_test(test_motion_max_area)            # Layer 2: motion detector max-area sanity cap

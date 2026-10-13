@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { displayedVideoBox } from './useLiveDisplayMode.js';
+import { startDetectionPolling } from '../../utils/detection-polling.js';
 
 import { forwardRef, useImperativeHandle } from 'preact/compat';
 
@@ -28,9 +29,6 @@ export const DetectionOverlay = forwardRef(({
   const [detections, setDetections] = useState([]);
   const [zones, setZones] = useState([]);
   const canvasRef = useRef(null);
-  const intervalRef = useRef(null);
-  const errorCountRef = useRef(0);
-  const currentIntervalRef = useRef(1000); // Start with 1 second polling interval
 
   // Expose the canvas ref to parent components
   useImperativeHandle(ref, () => ({
@@ -150,78 +148,21 @@ export const DetectionOverlay = forwardRef(({
     }
   }, [detections, zones, videoRef]);
 
-  // Poll for detections
-  const pollDetections = useCallback(() => {
-    if (!videoRef.current || !videoRef.current.videoWidth) {
-      // Video not loaded yet, skip this cycle
-      return;
-    }
-
-    // Fetch detection results from API
-    fetch(`/api/detection/results/${encodeURIComponent(streamName)}`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Failed to fetch detection results: ${response.status}`);
-        }
-        // Reset error count on success
-        errorCountRef.current = 0;
-        return response.json();
-      })
-      .then(data => {
-        // Update detections state if we have detections
-        if (data && data.detections) {
-          setDetections(data.detections);
-        }
-      })
-      .catch(error => {
-        console.error(`Error fetching detection results for ${streamName}:`, error);
-        // Clear detections on error
-        setDetections([]);
-
-        // Implement backoff strategy on errors
-        errorCountRef.current++;
-        if (errorCountRef.current > 3) {
-          // After 3 consecutive errors, slow down polling to avoid overwhelming the server
-          clearInterval(intervalRef.current);
-          currentIntervalRef.current = Math.min(5000, currentIntervalRef.current * 2); // Max 5 seconds
-          console.log(`Reducing detection polling frequency to ${currentIntervalRef.current}ms due to errors`);
-
-          // Create a new interval with the updated timing
-          intervalRef.current = setInterval(pollDetections, currentIntervalRef.current);
-        }
-      });
-  }, [streamName, videoRef]);
-
   // Start/stop detection polling based on enabled prop
   useEffect(() => {
-    // Only start polling if detection is enabled and we have a model
-    if (enabled && detectionModel && videoRef.current && canvasRef.current) {
-      console.log(`Starting detection polling for stream ${streamName}`);
-
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-
-      // Start a new polling interval
-      intervalRef.current = setInterval(pollDetections, currentIntervalRef.current);
-
-      // Return cleanup function
-      return () => {
-        console.log(`Cleaning up detection polling for stream ${streamName}`);
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      };
-    }
-
-    // If not enabled, clean up any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, [enabled, detectionModel, streamName, pollDetections, videoRef]);
+    if (!enabled || !detectionModel || !streamName || !canvasRef.current) return;
+    return startDetectionPolling({
+      streamName,
+      canPoll: () => Boolean(videoRef.current?.videoWidth),
+      onResults: data => {
+        if (data?.detections) setDetections(data.detections);
+      },
+      onError: error => {
+        console.error(`Error fetching detection results for ${streamName}:`, error);
+        setDetections([]);
+      },
+    });
+  }, [enabled, detectionModel, streamName, videoRef]);
 
   // Draw detections whenever they change
   useEffect(() => {
