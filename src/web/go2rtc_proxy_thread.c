@@ -206,6 +206,11 @@ static void *proxy_worker_thread(void *arg) {
         goto done;
     }
 
+    // PATH_AS_IS preserves the exact, already-validated path, but it is NOT
+    // sufficient on its own: even with the path preserved, go2rtc's traversal
+    // redirects would re-open the bypass by pointing curl at an endpoint that
+    // was never authorized. Disabling redirect following below is what
+    // actually closes it.
     curl_easy_setopt(curl, CURLOPT_URL, ctx->url);
     curl_easy_setopt(curl, CURLOPT_PATH_AS_IS, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, proxy_write_cb);
@@ -218,7 +223,8 @@ static void *proxy_worker_thread(void *arg) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, snapshot_request ? 10L : 30L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, snapshot_request ? 2L : 5L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    // A redirect target has not been authorized. Never follow it internally.
+    // A redirect target has not been authorized. Never follow it internally —
+    // this (not PATH_AS_IS) is what closes the traversal-redirect bypass.
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     struct curl_slist *headers = NULL;

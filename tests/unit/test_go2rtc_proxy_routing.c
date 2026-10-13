@@ -187,8 +187,9 @@ void test_normal_static_files_still_work_outside_the_go2rtc_namespace(void) {
 }
 
 void test_raw_go2rtc_traversal_never_falls_through_to_static_files(void) {
-    // The prefix directories exist, so the OS can actually resolve these
-    // literal dot segments to the private file outside web_root.
+    // Dot segments (literal or percent-encoded) are rejected in on_url()
+    // before routing, authorization, curl, or static-file resolution ever
+    // see the path, so no consumer can interpret it a second, different way.
     const char *paths[] = {
         "/go2rtc/api/hls/../../../../private.txt",
         "/go2rtc/api/hls/../../../../private.txt?id=unused",
@@ -201,7 +202,29 @@ void test_raw_go2rtc_traversal_never_falls_through_to_static_files(void) {
         for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
             char response[4096];
             int status = raw_request(methods[j], paths[i], response);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(404, status, paths[i]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(400, status, paths[i]);
+            TEST_ASSERT_NULL(strstr(response, outside_marker));
+        }
+    }
+    assert_no_upstream_contact();
+}
+
+void test_raw_static_file_traversal_is_rejected_outside_go2rtc(void) {
+    // The same dot-segment rejection closes the general static-file
+    // traversal: a path that would otherwise concatenate past web_root is
+    // refused before static_file_resolve_handler can resolve it.
+    const char *paths[] = {
+        "/../../private.txt",
+        "/assets/../../../private.txt",
+        "/././private.txt",
+        "/..%2f..%2f..%2fprivate.txt"
+    };
+    const char *methods[] = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"};
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+        for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
+            char response[4096];
+            int status = raw_request(methods[j], paths[i], response);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(400, status, paths[i]);
             TEST_ASSERT_NULL(strstr(response, outside_marker));
         }
     }
@@ -232,6 +255,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_normal_static_files_still_work_outside_the_go2rtc_namespace);
     RUN_TEST(test_raw_go2rtc_traversal_never_falls_through_to_static_files);
+    RUN_TEST(test_raw_static_file_traversal_is_rejected_outside_go2rtc);
     RUN_TEST(test_raw_go2rtc_requests_enforce_methods_before_static_fallback);
     return UNITY_END();
 }
