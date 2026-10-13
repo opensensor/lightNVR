@@ -34,6 +34,7 @@
 #include "utils/strings.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_authorization.h"
 #include "database/db_streams.h"
 #include "web/api_handlers_auth.h"
 #include "web/api_handlers_go2rtc_proxy.h"
@@ -793,6 +794,7 @@ void test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filena
 
     http_request_t manifest_req;
     http_request_init(&manifest_req);
+    safe_strcpy(manifest_req.method_str, "GET", sizeof(manifest_req.method_str), 0);
     safe_strcpy(manifest_req.path, "/go2rtc/api/stream.m3u8",
                 sizeof(manifest_req.path), 0);
     safe_strcpy(manifest_req.query_string, "src=media-cache-camera",
@@ -810,6 +812,7 @@ void test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filena
 
     http_request_t segment_req;
     http_request_init(&segment_req);
+    safe_strcpy(segment_req.method_str, "GET", sizeof(segment_req.method_str), 0);
     safe_strcpy(segment_req.path, "/go2rtc/api/hls/segment.m4s",
                 sizeof(segment_req.path), 0);
     safe_strcpy(segment_req.query_string, "id=unit-session-1",
@@ -853,6 +856,116 @@ void test_go2rtc_proxy_only_intercepts_supported_http_paths(void) {
         go2rtc_proxy_path_matches("/go2rtc/api/streams/private"));
     TEST_ASSERT_FALSE(go2rtc_proxy_path_matches("/go2rtc/"));
     TEST_ASSERT_FALSE(go2rtc_proxy_path_matches(NULL));
+}
+
+void test_go2rtc_proxy_rejects_traversal_with_a_valid_viewer_hls_session(void) {
+    stream_config_t stream = {0};
+    safe_strcpy(stream.name, "proxy-security-camera", sizeof(stream.name), 0);
+    safe_strcpy(stream.url, "rtsp://camera/live", sizeof(stream.url), 0);
+    stream.enabled = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&stream));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(stream.name, &stream));
+
+    int64_t version = 0, next_version = 0, user_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    authorization_role_t role = {0};
+    safe_strcpy(role.name, "Proxy live-only regression", sizeof(role.name), 0);
+    role.action_mask = authorization_action_bit(AUTHZ_LIVE_VIEW);
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_role_create(&role, version, &next_version));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("proxyviewer", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &user_id));
+    authorization_grant_input_t grant = {0};
+    safe_strcpy(grant.role_uuid, role.uuid, sizeof(grant.role_uuid), 0);
+    safe_strcpy(grant.scope_type, "selector", sizeof(grant.scope_type), 0);
+    snprintf(grant.selector_json, sizeof(grant.selector_json),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}", stream.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_replace_user_policy(
+        user_id, "policy", &grant, 1, version, &next_version));
+    char token[64], cookie[96];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(user_id, "192.0.2.20",
+                                                 "TestAgent", 3600, token, sizeof(token)));
+    snprintf(cookie, sizeof(cookie), "session=%s", token);
+
+    http_request_t req;
+    http_request_init(&req);
+    safe_strcpy(req.client_ip, "192.0.2.20", sizeof(req.client_ip), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    safe_strcpy(req.path, "/go2rtc/api/stream.m3u8", sizeof(req.path), 0);
+    safe_strcpy(req.query_string, "src=proxy-security-camera", sizeof(req.query_string), 0);
+    add_header(&req, "Cookie", cookie);
+    http_response_t res;
+    http_response_init(&res);
+    TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
+    const char manifest[] = "#EXTM3U\nhls/playlist.m3u8?id=security-viewer-session\n";
+    go2rtc_proxy_capture_hls_sessions(&req, manifest, sizeof(manifest) - 1);
+
+    safe_strcpy(req.path, "/go2rtc/api/streams", sizeof(req.path), 0);
+    TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
+    TEST_ASSERT_EQUAL_INT(403, res.status_code);
+    http_response_free(&res);
+    safe_strcpy(req.query_string, "id=security-viewer-session", sizeof(req.query_string), 0);
+    const char *media_paths[] = {
+        "/go2rtc/api/hls/playlist.m3u8", "/go2rtc/api/hls/init.mp4",
+        "/go2rtc/api/hls/segment.ts", "/go2rtc/api/hls/segment.m4s"
+    };
+    for (size_t i = 0; i < sizeof(media_paths) / sizeof(media_paths[0]); i++) {
+        safe_strcpy(req.path, media_paths[i], sizeof(req.path), 0);
+        http_response_init(&res);
+        TEST_ASSERT_TRUE_MESSAGE(go2rtc_proxy_authorize_request(&req, &res), media_paths[i]);
+        http_response_free(&res);
+    }
+    const char *attack_paths[] = {
+        "/go2rtc/api/hls/../streams", "/go2rtc/api/hls/../config",
+        "/go2rtc/api/hls/../restart", "/go2rtc/api/hls/../reload",
+        "/go2rtc/api/hls/%2e%2e/streams", "/go2rtc/api/hls/%2E%2E%2Fconfig",
+        "/go2rtc/api/hls/..%2fstreams", "/go2rtc/api/hls/.%2e/streams",
+        "/go2rtc/api/hls/segment.ts/../../streams",
+        "/go2rtc/api/hls//../streams", "/go2rtc/api/hls/./segment.ts",
+        "/go2rtc/api/hls/segment.ts%2f..%2f..%2fconfig",
+        "/go2rtc/api/stream.m3u8/../streams", "/go2rtc/api/frame.jpeg/../config",
+        "/go2rtc/api/hls/segment.ts#fragment", "/go2rtc/api/hls/segment.ts?extra=1"
+    };
+    const char *methods[] = {"GET", "POST", "PUT", "DELETE"};
+    for (size_t i = 0; i < sizeof(attack_paths) / sizeof(attack_paths[0]); i++) {
+        TEST_ASSERT_FALSE_MESSAGE(go2rtc_proxy_path_matches(attack_paths[i]), attack_paths[i]);
+        safe_strcpy(req.path, attack_paths[i], sizeof(req.path), 0);
+        for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
+            safe_strcpy(req.method_str, methods[j], sizeof(req.method_str), 0);
+            http_response_init(&res);
+            TEST_ASSERT_FALSE_MESSAGE(go2rtc_proxy_authorize_request(&req, &res), attack_paths[i]);
+            TEST_ASSERT_EQUAL_INT(404, res.status_code);
+            http_response_free(&res);
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal(stream.name, true));
+}
+
+void test_go2rtc_proxy_enforces_registered_methods_even_for_admins(void) {
+    g_config.web_auth_enabled = false;
+    const char *paths[] = {
+        "/go2rtc/api/streams", "/go2rtc/api/reload",
+        "/go2rtc/api/stream.m3u8", "/go2rtc/api/frame.jpeg",
+        "/go2rtc/api/hls/segment.ts"
+    };
+    const char *methods[] = {"GET", "POST", "PUT", "DELETE", "HEAD", "PATCH", "OPTIONS", ""};
+    http_request_t req;
+    http_request_init(&req);
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+        safe_strcpy(req.path, paths[i], sizeof(req.path), 0);
+        const char *allowed = i == 1 ? "POST" : "GET";
+        for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
+            if (strcmp(allowed, methods[j]) == 0) continue;
+            safe_strcpy(req.method_str, methods[j], sizeof(req.method_str), 0);
+            http_response_t res;
+            http_response_init(&res);
+            TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
+            TEST_ASSERT_EQUAL_INT(405, res.status_code);
+            TEST_ASSERT_EQUAL_STRING(allowed, find_response_header(&res, "Allow"));
+            http_response_free(&res);
+        }
+    }
 }
 
 /* ================================================================
@@ -905,6 +1018,8 @@ int main(void) {
     RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);
     RUN_TEST(test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filename_as_camera);
     RUN_TEST(test_go2rtc_proxy_only_intercepts_supported_http_paths);
+    RUN_TEST(test_go2rtc_proxy_rejects_traversal_with_a_valid_viewer_hls_session);
+    RUN_TEST(test_go2rtc_proxy_enforces_registered_methods_even_for_admins);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

@@ -129,18 +129,33 @@ static size_t buffered_header_cb(char *buffer, size_t size, size_t nitems, void 
     return total;
 }
 
-/**
- * @brief Check if path should be proxied (streaming endpoints only)
- */
-static bool should_proxy_path(const char *path) {
-    // Only proxy HLS streaming endpoints and health check
-    // WebRTC connects directly to go2rtc for lower latency
-    if (strstr(path, "/api/streams") != NULL) return true;   // Health check endpoint
-    if (strstr(path, "/api/reload") != NULL) return true;    // Stream reload endpoint
-    if (strstr(path, "/api/stream.m3u8") != NULL) return true;
-    if (strstr(path, "/api/hls/") != NULL) return true;
-    if (strstr(path, "/api/frame.jpeg") != NULL) return true;
-    return false;
+typedef enum {
+    GO2RTC_PROXY_NONE,
+    GO2RTC_PROXY_STREAMS,
+    GO2RTC_PROXY_RELOAD,
+    GO2RTC_PROXY_MANIFEST,
+    GO2RTC_PROXY_SNAPSHOT,
+    GO2RTC_PROXY_HLS
+} go2rtc_proxy_endpoint_t;
+
+static go2rtc_proxy_endpoint_t classify_proxy_path(const char *path) {
+    if (!path) return GO2RTC_PROXY_NONE;
+    if (strcmp(path, "/go2rtc/api/streams") == 0) return GO2RTC_PROXY_STREAMS;
+    if (strcmp(path, "/go2rtc/api/reload") == 0) return GO2RTC_PROXY_RELOAD;
+    if (strcmp(path, "/go2rtc/api/stream.m3u8") == 0) return GO2RTC_PROXY_MANIFEST;
+    if (strcmp(path, "/go2rtc/api/frame.jpeg") == 0) return GO2RTC_PROXY_SNAPSHOT;
+    // go2rtc uses fixed HLS filenames; session IDs belong in the query string.
+    // Exact matches reject dot segments, encoded separators and path suffixes
+    // before curl or go2rtc can interpret them as a different API endpoint.
+    if (strcmp(path, "/go2rtc/api/hls/playlist.m3u8") == 0 ||
+        strcmp(path, "/go2rtc/api/hls/init.mp4") == 0 ||
+        strcmp(path, "/go2rtc/api/hls/segment.ts") == 0 ||
+        strcmp(path, "/go2rtc/api/hls/segment.m4s") == 0) return GO2RTC_PROXY_HLS;
+    return GO2RTC_PROXY_NONE;
+}
+
+bool go2rtc_proxy_path_matches(const char *path) {
+    return classify_proxy_path(path) != GO2RTC_PROXY_NONE;
 }
 
 static void audit_hls_session_denial(const http_request_t *req) {
@@ -218,30 +233,37 @@ static bool authorize_hls_session_request(const http_request_t *req,
 
 bool go2rtc_proxy_authorize_request(const http_request_t *req,
                                     http_response_t *res) {
-    if (strstr(req->path, "/api/streams") ||
-        strstr(req->path, "/api/reload")) {
+    if (!req || !res) return false;
+    go2rtc_proxy_endpoint_t endpoint = classify_proxy_path(req->path);
+    if (endpoint == GO2RTC_PROXY_NONE) {
+        http_response_set_json_error(res, 404, "Not found");
+        return false;
+    }
+    const char *allowed_method = endpoint == GO2RTC_PROXY_RELOAD ? "POST" : "GET";
+    if (strcmp(req->method_str, allowed_method) != 0) {
+        http_response_set_json_error(res, 405, "Method not allowed");
+        http_response_add_header(res, "Allow", allowed_method);
+        return false;
+    }
+    if (endpoint == GO2RTC_PROXY_STREAMS || endpoint == GO2RTC_PROXY_RELOAD) {
         return httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN) != 0;
     }
     char stream_name[MAX_STREAM_NAME] = {0};
     authorization_action_t action = AUTHZ_LIVE_VIEW;
-    if (strstr(req->path, "/api/frame.jpeg")) {
+    if (endpoint == GO2RTC_PROXY_SNAPSHOT) {
         action = AUTHZ_SNAPSHOT_CREATE;
         if (http_request_get_query_param(req, "src", stream_name,
                                          sizeof(stream_name)) < 0) {
             http_response_set_json_error(res, 400, "Missing src camera");
             return false;
         }
-    } else if (strstr(req->path, "/api/stream.m3u8")) {
+    } else if (endpoint == GO2RTC_PROXY_MANIFEST) {
         if (http_request_get_query_param(req, "src", stream_name,
                                          sizeof(stream_name)) < 0) {
             http_response_set_json_error(res, 400, "Missing src camera");
             return false;
         }
     } else {
-        if (!strstr(req->path, "/api/hls/")) {
-            http_response_set_json_error(res, 404, "Not found");
-            return false;
-        }
         return authorize_hls_session_request(req, res);
     }
     return httpd_authorize_media_stream_action(req, res, action,
@@ -291,7 +313,7 @@ void go2rtc_proxy_capture_hls_sessions(const http_request_t *req,
                                        const void *manifest,
                                        size_t manifest_size) {
     if (!req || !manifest || manifest_size == 0 ||
-        !strstr(req->path, "/api/stream.m3u8")) return;
+        classify_proxy_path(req->path) != GO2RTC_PROXY_MANIFEST) return;
     char stream_name[MAX_STREAM_NAME] = {0};
     char fingerprint[65] = {0};
     if (http_request_get_query_param(req, "src", stream_name,
@@ -329,12 +351,6 @@ void go2rtc_proxy_capture_hls_sessions_for(const char *stream_name,
 }
 
 void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
-    // Check if this path should be proxied
-    if (!should_proxy_path(req->path)) {
-        log_debug("go2rtc proxy: Path not in scope: %s", req->path);
-        http_response_set_json_error(res, 404, "Not found");
-        return;
-    }
     if (!go2rtc_proxy_authorize_request(req, res)) return;
 
     // Initialize semaphore on first use
@@ -394,6 +410,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     // Configure curl for buffered response
     curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_PATH_AS_IS, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffered_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, buffered_header_cb);
@@ -401,8 +418,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    // A redirect target has not been authorized. Never follow it internally.
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     // Set method and body
     struct curl_slist *headers = NULL;

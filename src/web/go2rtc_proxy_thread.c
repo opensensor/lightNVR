@@ -190,7 +190,7 @@ static void *proxy_worker_thread(void *arg) {
     }
     if (ctx->authorization_denied) goto done;
 
-    if (strstr(ctx->request.path, "/api/stream.m3u8") &&
+    if (strcmp(ctx->request.path, "/go2rtc/api/stream.m3u8") == 0 &&
         http_request_get_query_param(&ctx->request, "src",
                                      ctx->capture_stream_name,
                                      sizeof(ctx->capture_stream_name)) >= 0 &&
@@ -207,6 +207,7 @@ static void *proxy_worker_thread(void *arg) {
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, ctx->url);
+    curl_easy_setopt(curl, CURLOPT_PATH_AS_IS, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, proxy_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, proxy_header_cb);
@@ -217,8 +218,8 @@ static void *proxy_worker_thread(void *arg) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, snapshot_request ? 10L : 30L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, snapshot_request ? 2L : 5L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    // A redirect target has not been authorized. Never follow it internally.
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
 
     struct curl_slist *headers = NULL;
 
@@ -330,18 +331,6 @@ static void proxy_async_cb(uv_async_t *handle) {
 // ============================================================================
 // Public API
 // ============================================================================
-
-bool go2rtc_proxy_path_matches(const char *path) {
-    if (!path) return false;
-    // Only intercept the HTTP endpoints registered by libuv_api_handlers.
-    // WebRTC SDP and MSE WebSockets connect directly to go2rtc and must never
-    // enter this extra libcurl proxy hop.
-    return strcmp(path, "/go2rtc/api/streams") == 0 ||
-           strcmp(path, "/go2rtc/api/reload") == 0 ||
-           strcmp(path, "/go2rtc/api/stream.m3u8") == 0 ||
-           strncmp(path, "/go2rtc/api/hls/", 16) == 0 ||
-           strcmp(path, "/go2rtc/api/frame.jpeg") == 0;
-}
 
 int go2rtc_proxy_thread_init(uv_loop_t *loop) {
     if (!loop) {

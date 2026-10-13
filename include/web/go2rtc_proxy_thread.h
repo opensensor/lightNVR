@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <uv.h>
 #include "web/libuv_server.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 
 /**
  * Initialise the proxy async mechanism.
@@ -49,12 +50,6 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn,
  * (the connection will already be torn down by libuv shutdown).
  */
 void go2rtc_proxy_thread_shutdown(void);
-
-/**
- * Quick prefix check – returns true when @p path should be handled by the
- * proxy rather than the normal handler registry.
- */
-bool go2rtc_proxy_path_matches(const char *path);
 
 #endif /* HTTP_BACKEND_LIBUV */
 #endif /* GO2RTC_PROXY_THREAD_H */

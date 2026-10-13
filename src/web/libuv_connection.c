@@ -795,7 +795,9 @@ static int on_message_complete(llhttp_t *parser) {
     // Go2rtc proxy paths use dedicated detached threads so both authorization
     // (which may access SQLite) and the blocking curl call stay off the event
     // loop and the shared libuv worker pool.
-    if (go2rtc_proxy_path_matches(conn->request.path)) {
+    // Use the resolved route so its registered HTTP method is respected.
+    // The worker also validates the exact endpoint and method before curl.
+    if (handler == handle_go2rtc_proxy) {
         uv_read_stop((uv_stream_t *)&conn->handle);
         if (go2rtc_proxy_thread_submit(conn, action) == 0) {
             return HPE_PAUSED;
