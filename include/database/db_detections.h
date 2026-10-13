@@ -61,6 +61,12 @@ int get_external_motion_detection_intervals(const char *stream_name,
 int get_detections_from_db_time_range(const char *stream_name, detection_result_t *result, 
                                      uint64_t max_age, time_t start_time, time_t end_time);
 
+/* Read result data and event ranges from one private, committed snapshot.
+ * Returns the number of detections, or -1 on error. */
+int get_detection_results_readonly(const char *stream_name, detection_result_t *result,
+                                   time_t *timestamps, time_t *end_timestamps,
+                                   uint64_t max_age, time_t start_time, time_t end_time);
+
 /**
  * Get timestamps for detections
  * 

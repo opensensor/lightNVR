@@ -113,6 +113,36 @@ void test_operational_health_is_unknown_before_first_baseline(void) {
     http_response_free(&response);
 }
 
+void test_disabled_sampler_reports_runtime_state_and_pending_restart(void) {
+    system_health_options_t options;
+    system_health_options_defaults(&options);
+    options.enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, system_health_init(&options));
+    for (int desired_enabled = 0; desired_enabled < 2; desired_enabled++) {
+        g_config.health.enabled = desired_enabled != 0;
+        http_request_t request;
+        http_response_t response;
+        http_request_init(&request);
+        http_response_init(&response);
+        handle_get_system_health(&request, &response);
+        TEST_ASSERT_EQUAL_INT(200, response.status_code);
+        cJSON *root = response_json(&response);
+        cJSON *monitoring = cJSON_GetObjectItemCaseSensitive(root, "monitoring");
+        TEST_ASSERT_TRUE(cJSON_IsObject(monitoring));
+        TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(monitoring, "initialized")));
+        TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(monitoring, "enabled")));
+        TEST_ASSERT_EQUAL_INT(desired_enabled, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(monitoring, "configured_enabled")));
+        TEST_ASSERT_EQUAL_INT(desired_enabled, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(monitoring, "restart_required")));
+        TEST_ASSERT_EQUAL_INT(0, cJSON_GetObjectItemCaseSensitive(monitoring, "worker_threads")->valueint);
+        TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(root, "snapshot"), "available")));
+        cJSON_Delete(root);
+        http_response_free(&response);
+    }
+    g_config.health.enabled = true;
+    system_health_shutdown();
+}
+
 void test_operational_health_serializes_snapshot_without_sampling_requests(void) {
     system_health_options_t options;
     system_health_options_defaults(&options);
@@ -335,6 +365,7 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_operational_health_is_unknown_before_first_baseline);
+    RUN_TEST(test_disabled_sampler_reports_runtime_state_and_pending_restart);
     RUN_TEST(test_operational_health_serializes_snapshot_without_sampling_requests);
     RUN_TEST(test_incident_history_is_deterministic_bounded_and_privacy_safe);
     RUN_TEST(test_incident_history_validates_auth_limit_and_cursor);

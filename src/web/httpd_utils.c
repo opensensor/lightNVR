@@ -665,7 +665,7 @@ int httpd_evaluate_stream_action(const user_t *user,
     if (!user || !stream_name || !evaluation) return -1;
     fleet_camera_t camera;
     memset(&camera, 0, sizeof(camera));
-    int result = db_fleet_camera_find_by_name(stream_name, &camera);
+    int result = db_fleet_camera_find_by_name_readonly(stream_name, &camera);
     if (result != 0) return result;
     return authorization_evaluate(user, action, &camera, evaluation);
 }
@@ -794,7 +794,7 @@ int httpd_authorize_stream_action_with_context(
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
-    int result = db_fleet_camera_find_by_name(stream_name, camera);
+    int result = db_fleet_camera_find_by_name_readonly(stream_name, camera);
     if (result > 0) {
         const authorization_action_metadata_t *metadata =
             authorization_action_metadata(action);

@@ -14,6 +14,7 @@
 #include "web/httpd_utils.h"
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "core/config.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
@@ -40,8 +41,11 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
-                                       stream_name)) return;
+    api_phase_timer_t phase = api_phase_begin(req, "detection camera authorization");
+    bool authorized = httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                                   stream_name);
+    api_phase_end(&phase);
+    if (!authorized) return;
 
     log_info("Handling GET /api/detection/results/%s request", stream_name);
 
@@ -95,9 +99,6 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     detection_result_t result;
     memset(&result, 0, sizeof(detection_result_t));
     
-    // Use the time range function
-    int count = get_detections_from_db_time_range(stream_name, &result, max_age, start_time, end_time);
-    
     // Also get the timestamps for each detection
     time_t timestamps[MAX_DETECTIONS];
     time_t end_timestamps[MAX_DETECTIONS];
@@ -106,8 +107,11 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     
     // Get persisted event ranges. Ordinary model detections have identical
     // start/end values; external motion start/stop events may span segments.
-    get_detection_time_ranges(stream_name, &result, timestamps, end_timestamps,
-                              max_age, start_time, end_time);
+    phase = api_phase_begin(req, "detection result database snapshot");
+    int count = get_detection_results_readonly(stream_name, &result,
+                                               timestamps, end_timestamps,
+                                               max_age, start_time, end_time);
+    api_phase_end(&phase);
     
     if (count < 0) {
         log_error("Failed to get detections from database for stream: %s", stream_name);

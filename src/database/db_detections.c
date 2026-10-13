@@ -496,31 +496,15 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
  * @param end_time End time filter (0 for no filter)
  * @return 0 on success, non-zero on failure
  */
-int get_detection_time_ranges(const char *stream_name,
-                              const detection_result_t *result,
-                              time_t *timestamps,
-                              time_t *end_timestamps,
-                              uint64_t max_age,
-                              time_t start_time,
-                              time_t end_time) {
+static int read_detection_rows(sqlite3 *db, const char *stream_name,
+                               int maximum, detection_result_t *result,
+                               time_t *timestamps, time_t *end_timestamps,
+                               uint64_t max_age, time_t start_time, time_t end_time) {
+    if (!db || !stream_name || !timestamps || maximum < 0 || maximum > MAX_DETECTIONS)
+        return -1;
+    if (maximum == 0) return 0;
     int rc;
-    sqlite3_stmt *stmt;
-    
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
-    
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-    
-    if (!stream_name || !result || !timestamps) {
-        log_error("Invalid parameters for get_detection_timestamps");
-        return -1;
-    }
-    
-    pthread_mutex_lock(db_mutex);
-    
+    sqlite3_stmt *stmt = NULL;
     // Build query based on filters
     char sql[2048];
     
@@ -543,7 +527,6 @@ int get_detection_time_ranges(const char *stream_name,
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
 
@@ -574,7 +557,6 @@ int get_detection_time_ranges(const char *stream_name,
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
         
@@ -596,7 +578,6 @@ int get_detection_time_ranges(const char *stream_name,
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
         
@@ -627,7 +608,6 @@ int get_detection_time_ranges(const char *stream_name,
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
         
@@ -649,7 +629,6 @@ int get_detection_time_ranges(const char *stream_name,
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
             log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
             return -1;
         }
         
@@ -658,24 +637,60 @@ int get_detection_time_ranges(const char *stream_name,
         sqlite3_bind_int(stmt, 2, MAX_DETECTIONS);
     }
     
-    // Execute query and fetch results
-    // Both get_detections_from_db_time_range and this function use the same
-    // ORDER BY timestamp DESC, so results are in the same order - just assign directly
     int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < result->count) {
-        // Get timestamp and assign directly by index
-        // The queries return results in the same order, so index matching works
+    while (count < maximum && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         timestamps[count] = (time_t)sqlite3_column_int64(stmt, 0);
-        if (end_timestamps) {
-            end_timestamps[count] = (time_t)sqlite3_column_int64(stmt, 1);
+        if (end_timestamps) end_timestamps[count] = (time_t)sqlite3_column_int64(stmt, 1);
+        if (result) {
+            detection_t *detection = &result->detections[count];
+            const char *label = (const char *)sqlite3_column_text(stmt, 2);
+            safe_strcpy(detection->label, label ? label : "unknown", MAX_LABEL_LENGTH, 0);
+            detection->confidence = (float)sqlite3_column_double(stmt, 3);
+            detection->x = (float)sqlite3_column_double(stmt, 4);
+            detection->y = (float)sqlite3_column_double(stmt, 5);
+            detection->width = (float)sqlite3_column_double(stmt, 6);
+            detection->height = (float)sqlite3_column_double(stmt, 7);
         }
         count++;
     }
-
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(db_mutex);
+    if (rc != SQLITE_DONE && count < maximum) {
+        log_error("Failed to read detection rows: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+    if (result) result->count = count;
+    return count;
+}
 
-    return 0;
+int get_detection_time_ranges(const char *stream_name,
+                              const detection_result_t *result,
+                              time_t *timestamps, time_t *end_timestamps,
+                              uint64_t max_age, time_t start_time, time_t end_time) {
+    if (!result) return -1;
+    pthread_mutex_t *mutex = get_db_mutex();
+    pthread_mutex_lock(mutex);
+    int count = read_detection_rows(get_db_handle(), stream_name, result->count,
+                                    NULL, timestamps, end_timestamps,
+                                    max_age, start_time, end_time);
+    pthread_mutex_unlock(mutex);
+    return count < 0 ? -1 : 0;
+}
+
+int get_detection_results_readonly(const char *stream_name,
+                                   detection_result_t *result,
+                                   time_t *timestamps, time_t *end_timestamps,
+                                   uint64_t max_age, time_t start_time, time_t end_time) {
+    if (!stream_name || !result || !timestamps) return -1;
+    memset(result, 0, sizeof(*result));
+    sqlite3 *connection = NULL;
+    if (db_open_readonly_connection(&connection) != 0) return -1;
+    sqlite3_busy_timeout(connection, 1000);
+    /* Results and timestamps come from one SELECT and the same WAL snapshot. */
+    int count = read_detection_rows(connection, stream_name, MAX_DETECTIONS,
+                                    result, timestamps, end_timestamps,
+                                    max_age, start_time, end_time);
+    db_close_readonly_connection(connection);
+    return count;
 }
 
 int get_detection_timestamps(const char *stream_name,

@@ -142,6 +142,8 @@ typedef struct {
 } grant_cache_entry_t;
 
 struct authorization_context {
+    bool legacy_policy_version_loaded;
+    int64_t legacy_policy_version;
     grant_cache_entry_t *grants;
     int grant_count;
     int grant_capacity;
@@ -343,7 +345,11 @@ static int evaluate_principal(authorization_context_t *context,
     }
 
     if (strcmp(user->authorization_mode, "policy") != 0) {
-        (void)db_authorization_get_policy_version(&evaluation->policy_version);
+        if (!context->legacy_policy_version_loaded) {
+            (void)db_authorization_get_policy_version_readonly(&context->legacy_policy_version);
+            context->legacy_policy_version_loaded = true;
+        }
+        evaluation->policy_version = context->legacy_policy_version;
         return evaluate_legacy(user, metadata, camera, evaluation);
     }
 

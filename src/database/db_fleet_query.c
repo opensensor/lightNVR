@@ -259,12 +259,12 @@ int db_fleet_camera_load_readonly(fleet_camera_t **cameras, int *count) {
     return load_fleet_cameras(NULL, true, cameras, count);
 }
 
-int db_fleet_camera_find_by_name(const char *stream_name,
-                                 fleet_camera_t *camera) {
+static int find_camera_by_name(const char *stream_name, bool readonly,
+                               fleet_camera_t *camera) {
     if (!stream_name || stream_name[0] == '\0' || !camera) return -1;
     fleet_camera_t *loaded = NULL;
     int count = 0;
-    if (load_fleet_cameras(stream_name, false, &loaded, &count) != 0) return -1;
+    if (load_fleet_cameras(stream_name, readonly, &loaded, &count) != 0) return -1;
     if (count == 0) return 1;
     if (count != 1) {
         free(loaded);
@@ -273,6 +273,15 @@ int db_fleet_camera_find_by_name(const char *stream_name,
     *camera = loaded[0];
     free(loaded);
     return 0;
+}
+
+int db_fleet_camera_find_by_name(const char *stream_name, fleet_camera_t *camera) {
+    return find_camera_by_name(stream_name, false, camera);
+}
+
+int db_fleet_camera_find_by_name_readonly(const char *stream_name,
+                                         fleet_camera_t *camera) {
+    return find_camera_by_name(stream_name, true, camera);
 }
 
 void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {

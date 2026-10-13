@@ -13,6 +13,7 @@
 #include "web/httpd_utils.h"
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "core/config.h"
 #include "core/authorization.h"
 #include "database/db_fleet_query.h"
@@ -30,7 +31,10 @@
  */
 void handle_get_detection_models(const http_request_t *req, http_response_t *res) {
     user_t user;
-    if (!httpd_check_action_access(req, &user)) {
+    api_phase_timer_t phase = api_phase_begin(req, "model list authentication");
+    bool authenticated = httpd_check_action_access(req, &user);
+    api_phase_end(&phase);
+    if (!authenticated) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -156,8 +160,10 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     }
 
     // Check if models directory exists
+    phase = api_phase_begin(req, "model directory scan");
     DIR *dir = opendir(models_dir);
     if (!dir) {
+        api_phase_end(&phase);
         log_warn("Models directory does not exist: %s", models_dir);
         cJSON_AddStringToObject(response, "message", "Models directory does not exist");
         // Still return the built-in models above
@@ -247,6 +253,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     
     // Close directory
     closedir(dir);
+    api_phase_end(&phase);
     
     // Add model count to response
     cJSON_AddNumberToObject(response, "count", model_count);

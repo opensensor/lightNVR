@@ -140,14 +140,10 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
     return 0;
 }
 
-int db_authorization_get_policy_version(int64_t *version) {
+static int get_policy_version_on_connection(sqlite3 *db, int64_t *version) {
     if (!version) return -1;
     *version = 0;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
-
-    pthread_mutex_lock(mutex);
+    if (!db) return -1;
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(
         db, "SELECT version FROM authz_policy_state WHERE id = 1;", -1,
@@ -159,8 +155,26 @@ int db_authorization_get_policy_version(int64_t *version) {
         rc = SQLITE_ERROR;
     }
     if (stmt) sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
     return rc == SQLITE_OK ? 0 : -1;
+}
+
+int db_authorization_get_policy_version(int64_t *version) {
+    pthread_mutex_t *mutex = get_db_mutex();
+    pthread_mutex_lock(mutex);
+    int result = get_policy_version_on_connection(get_db_handle(), version);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+int db_authorization_get_policy_version_readonly(int64_t *version) {
+    if (!version) return -1;
+    *version = 0;
+    sqlite3 *connection = NULL;
+    if (db_open_readonly_connection(&connection) != 0) return -1;
+    sqlite3_busy_timeout(connection, 1000);
+    int result = get_policy_version_on_connection(connection, version);
+    db_close_readonly_connection(connection);
+    return result;
 }
 
 static bool valid_selector(const char *selector_json) {

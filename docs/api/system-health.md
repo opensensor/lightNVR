@@ -53,6 +53,11 @@ Important contracts:
   `error`. An unavailable value is JSON `null`, never a fabricated zero.
 - `snapshot.sequence`, timestamps, and age are nullable until the first
   generation completes. Freshness is `unknown`, `fresh`, or `stale`.
+- `monitoring` reports the saved effective enable flag (`configured_enabled`),
+  sampler initialization and runtime enable state (`initialized`, `enabled`),
+  worker count, and whether the enable flag differs from the running sampler
+  (`restart_required`). Disabled monitoring can still have persisted incident
+  history; those records do not establish current resource pressure.
 - Observations carry only bounded logical resource IDs. The response excludes
   raw paths, device serial/WWN values, addresses, credentials, command lines,
   and command output.

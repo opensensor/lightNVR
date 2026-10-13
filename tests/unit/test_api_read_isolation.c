@@ -12,11 +12,14 @@
 #include "unity.h"
 #include "core/config.h"
 #include "database/db_core.h"
+#include "database/db_authorization.h"
+#include "database/db_detections.h"
 #include "database/db_fleet_query.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
 #include "web/api_handlers_setup.h"
 #include "web/request_response.h"
+#include "core/authorization.h"
 #include "cjson/cJSON.h"
 
 static char database_path[128];
@@ -28,6 +31,7 @@ static bool writer_released;
 
 void setUp(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM streams;"
+        "DELETE FROM detections;"
         "DELETE FROM system_settings WHERE key IN ('setup_complete', 'setup_completed_at');",
         NULL, NULL, NULL);
     stream_config_t stream = {0};
@@ -152,6 +156,70 @@ void test_private_readers_only_see_committed_settings_and_inventory(void) {
     free(cameras);
 }
 
+void test_legacy_authorization_does_not_wait_for_busy_writer(void) {
+    int64_t expected_version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&expected_version));
+    pthread_t writer = start_busy_writer();
+    fleet_camera_t camera;
+    int found = db_fleet_camera_find_by_name_readonly("cam_a", &camera);
+    user_t admin = { .role = USER_ROLE_ADMIN, .is_active = true };
+    authorization_evaluation_t evaluation;
+    int authorized = authorization_evaluate(&admin, AUTHZ_LIVE_VIEW, &camera, &evaluation);
+    bool completed_while_busy = finish_busy_writer(writer);
+    TEST_ASSERT_TRUE(completed_while_busy);
+    TEST_ASSERT_EQUAL_INT(0, found);
+    TEST_ASSERT_EQUAL_INT(0, authorized);
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_ALLOW, evaluation.decision);
+    TEST_ASSERT_EQUAL_INT64(expected_version, evaluation.policy_version);
+}
+
+void test_detection_snapshot_does_not_wait_for_busy_writer(void) {
+    detection_result_t input = { .count = 1 };
+    strcpy(input.detections[0].label, "person");
+    input.detections[0].confidence = .9f;
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam_a", &input, 100, 0));
+    pthread_t writer = start_busy_writer();
+    detection_result_t result;
+    time_t starts[MAX_DETECTIONS] = {0};
+    time_t ends[MAX_DETECTIONS] = {0};
+    int count = get_detection_results_readonly("cam_a", &result, starts, ends, 0, 90, 110);
+    bool completed_while_busy = finish_busy_writer(writer);
+    TEST_ASSERT_TRUE(completed_while_busy);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("person", result.detections[0].label);
+    TEST_ASSERT_FLOAT_WITHIN(.001f, .9f, result.detections[0].confidence);
+    TEST_ASSERT_EQUAL_INT64(100, starts[0]);
+    TEST_ASSERT_EQUAL_INT64(100, ends[0]);
+}
+
+void test_detection_snapshot_only_sees_committed_rows_and_preserves_event_ranges(void) {
+    time_t now = time(NULL);
+    detection_result_t motion = { .count = 1 };
+    strcpy(motion.detections[0].label, "motion");
+    motion.detections[0].confidence = 1.0f;
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections("cam_a", &motion, now - 120, 0));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections("cam_a", now - 10));
+    detection_result_t person = { .count = 1 };
+    strcpy(person.detections[0].label, "person");
+    person.detections[0].confidence = .9f;
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam_a", &person, now - 20, 0));
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "BEGIN IMMEDIATE; UPDATE detections SET label = 'uncommitted';", NULL, NULL, NULL));
+    detection_result_t result;
+    time_t starts[MAX_DETECTIONS] = {0};
+    time_t ends[MAX_DETECTIONS] = {0};
+    int count = get_detection_results_readonly("cam_a", &result, starts, ends, 0, now - 60, now);
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL_STRING("person", result.detections[0].label);
+    TEST_ASSERT_EQUAL_INT64(now - 20, starts[0]);
+    TEST_ASSERT_EQUAL_INT64(now - 20, ends[0]);
+    TEST_ASSERT_EQUAL_STRING("motion", result.detections[1].label);
+    TEST_ASSERT_EQUAL_INT64(now - 120, starts[1]);
+    TEST_ASSERT_EQUAL_INT64(now - 10, ends[1]);
+}
+
 void test_missing_setup_settings_mean_incomplete(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM system_settings WHERE key IN "
         "('setup_complete', 'setup_completed_at');", NULL, NULL, NULL);
@@ -187,6 +255,9 @@ int main(void) {
     RUN_TEST(test_inventory_reads_do_not_wait_for_busy_writer_connection);
     RUN_TEST(test_setup_get_does_not_wait_for_busy_writer_connection);
     RUN_TEST(test_private_readers_only_see_committed_settings_and_inventory);
+    RUN_TEST(test_legacy_authorization_does_not_wait_for_busy_writer);
+    RUN_TEST(test_detection_snapshot_does_not_wait_for_busy_writer);
+    RUN_TEST(test_detection_snapshot_only_sees_committed_rows_and_preserves_event_ranges);
     RUN_TEST(test_missing_setup_settings_mean_incomplete);
     RUN_TEST(test_setup_database_error_is_not_reported_as_incomplete);
     int result = UNITY_END();

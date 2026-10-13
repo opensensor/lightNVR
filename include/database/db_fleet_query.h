@@ -14,6 +14,8 @@ int db_fleet_camera_load_readonly(fleet_camera_t **cameras, int *count);
  * 0 when found, 1 when no such stream exists, and -1 on a query error. */
 int db_fleet_camera_find_by_name(const char *stream_name,
                                  fleet_camera_t *camera);
+int db_fleet_camera_find_by_name_readonly(const char *stream_name,
+                                         fleet_camera_t *camera);
 
 /* Add the current in-process health snapshot to a loaded inventory. Cameras
  * without an active metrics slot remain unknown; disabled cameras stay disabled. */

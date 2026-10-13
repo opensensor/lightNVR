@@ -26,6 +26,7 @@ const {
   boundedRecentSamples,
   formatHealthValue,
   groupHealthObservations,
+  healthCoverageMessage,
   observationGroup,
   remediationKey,
 } = loadJsx('js/components/preact/system/SystemHealth.jsx');
@@ -33,6 +34,36 @@ const { buildIncidentHistoryUrl } = loadJsx('js/components/preact/system/HealthI
 const { boundedPercent, metricKnown } = loadJsx('js/components/preact/system/MemoryStorage.jsx');
 
 describe('System Health operator view helpers', () => {
+  test('reports missing samples before claiming limited container coverage', () => {
+    const health = {
+      snapshot: { available: false },
+      visibility: { effective_scope: 'unknown', host_hardware_visible: false },
+    };
+    expect(healthCoverageMessage(health).message).toBe('system.health.coverageUnknown');
+    expect(healthCoverageMessage(health).title).toBe('system.health.coverage');
+    expect(healthCoverageMessage(undefined).message).toBe('system.health.coverageUnknown');
+    health.snapshot.available = true;
+    expect(healthCoverageMessage(health).title).toBe('system.health.containerCoverage');
+  });
+
+  test('distinguishes runtime-disabled monitoring and a pending restart', () => {
+    const monitoring = { configured_enabled: false, initialized: true, enabled: false, restart_required: false };
+    expect(healthCoverageMessage({ monitoring }).message).toBe('system.health.monitoringDisabledHelp');
+    monitoring.configured_enabled = true;
+    monitoring.restart_required = true;
+    expect(healthCoverageMessage({ monitoring }).message).toBe('system.health.monitoringRestartRequired');
+    expect(healthCoverageMessage({ monitoring }).title).toBe('system.health.monitoringDisabled');
+  });
+
+  test('does not report disabled monitoring while initialization is pending', () => {
+    expect(healthCoverageMessage({ monitoring: {
+      configured_enabled: true, initialized: false, enabled: false,
+    } }).message).toBe('system.health.coverageUnknown');
+    expect(healthCoverageMessage({ monitoring: {
+      configured_enabled: false, initialized: false, enabled: false,
+    } }).message).toBe('system.health.monitoringDisabledHelp');
+  });
+
   test('groups generic observations without creating unbounded sections', () => {
     expect(observationGroup('host.cpu.busy_ratio')).toBe('resources');
     expect(observationGroup('filesystem.available_bytes')).toBe('storage');

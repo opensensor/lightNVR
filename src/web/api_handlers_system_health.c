@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include "core/event_bus.h"
+#include "core/config.h"
 #include "core/event_router.h"
 #include "core/mqtt_delivery_worker.h"
 #include "core/mqtt_destination_client.h"
@@ -557,6 +558,17 @@ void handle_get_system_health(const http_request_t *req, http_response_t *res) {
 
     cJSON_AddNumberToObject(root, "schema_version",
                             SYSTEM_HEALTH_API_SCHEMA_VERSION);
+    cJSON *monitoring = cJSON_AddObjectToObject(root, "monitoring");
+    if (monitoring) {
+        bool configured_enabled = g_config.health.enabled &&
+            strcmp(g_config.health.profile, "disabled") != 0;
+        cJSON_AddBoolToObject(monitoring, "configured_enabled", configured_enabled);
+        cJSON_AddBoolToObject(monitoring, "initialized", sampler_stats.initialized);
+        cJSON_AddBoolToObject(monitoring, "enabled", sampler_stats.enabled);
+        cJSON_AddNumberToObject(monitoring, "worker_threads", sampler_stats.worker_threads);
+        cJSON_AddBoolToObject(monitoring, "restart_required",
+            sampler_stats.initialized && configured_enabled != sampler_stats.enabled);
+    }
     cJSON_AddStringToObject(root, "overall_state",
         !has_snapshot ? "unknown" :
         overall == SYSTEM_HEALTH_SEVERITY_NONE ? "healthy" :

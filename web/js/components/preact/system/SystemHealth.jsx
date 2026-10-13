@@ -117,24 +117,43 @@ function IncidentCard({ incident, t }) {
   );
 }
 
-function CoverageBanner({ health, t }) {
+export function healthCoverageMessage(health) {
   const visibility = health?.visibility || {};
   const coverage = health?.coverage || {};
+  const monitoring = health?.monitoring;
+  const disabled = monitoring?.initialized === true
+    ? monitoring.enabled === false
+    : monitoring?.configured_enabled === false;
+  if (disabled) {
+    return {
+      title: 'system.health.monitoringDisabled',
+      message: monitoring?.restart_required
+        ? 'system.health.monitoringRestartRequired'
+        : 'system.health.monitoringDisabledHelp',
+      warning: true,
+    };
+  }
+  // No sample is evidence of unknown coverage, not container visibility.
+  if (health?.snapshot?.available !== true) {
+    return { title: 'system.health.coverage', message: 'system.health.coverageUnknown', warning: true };
+  }
   const hostUnavailable = visibility.host_hardware_visible === false;
   const complete = coverage.complete === true;
-  const unknown = health?.snapshot?.available !== true;
-  const message = hostUnavailable
-    ? t('system.health.hostHardwareUnavailable')
-    : unknown
-      ? t('system.health.coverageUnknown')
-      : complete
-        ? t('system.health.coverageComplete')
-        : t('system.health.coveragePartial', { count: coverage.incomplete_count ?? 0 });
+  return {
+    title: hostUnavailable ? 'system.health.containerCoverage' : 'system.health.coverage',
+    message: hostUnavailable ? 'system.health.hostHardwareUnavailable'
+      : complete ? 'system.health.coverageComplete' : 'system.health.coveragePartial',
+    warning: hostUnavailable || !complete,
+  };
+}
+
+function CoverageBanner({ health, t }) {
+  const message = healthCoverageMessage(health);
   return (
-    <div role="status" data-testid="health-coverage-banner" className={`rounded-lg border p-4 ${hostUnavailable || unknown || !complete ? 'border-amber-400/70 bg-amber-50 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100' : 'border-border bg-card'}`}>
-      <p className="font-semibold">{hostUnavailable ? t('system.health.containerCoverage') : t('system.health.coverage')}</p>
-      <p className="mt-1 text-sm">{message}</p>
-      <p className="mt-2 text-xs opacity-80">{t('system.health.effectiveScope')}: {visibility.effective_scope || t('common.unknown')}</p>
+    <div role="status" data-testid="health-coverage-banner" className={`rounded-lg border p-4 ${message.warning ? 'border-amber-400/70 bg-amber-50 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100' : 'border-border bg-card'}`}>
+      <p className="font-semibold">{t(message.title)}</p>
+      <p className="mt-1 text-sm">{t(message.message, { count: health?.coverage?.incomplete_count ?? 0 })}</p>
+      <p className="mt-2 text-xs opacity-80">{t('system.health.effectiveScope')}: {health?.visibility?.effective_scope || t('common.unknown')}</p>
     </div>
   );
 }
