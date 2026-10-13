@@ -486,6 +486,9 @@ target_include_directories(faac_lib PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac"
 )
+if(UNIX)
+    target_link_libraries(faac_lib PUBLIC m)
+endif()
 
 # Bundle ezXML implementation used by ONVIF parsing
 set(EZXML_SOURCES
@@ -829,6 +832,12 @@ option(BUILD_TESTS "Build the test suite" OFF)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+option(BUILD_BENCHMARKS "Build standalone LightNVR benchmarks" OFF)
+if(BUILD_BENCHMARKS)
+    add_executable(record_segment_bench tests/benchmarks/record_segment_bench.c)
+    target_link_libraries(record_segment_bench PRIVATE lightnvr_lib)
 endif()
 
 # Obtain git short commit hash for version stamping

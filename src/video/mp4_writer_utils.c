@@ -38,6 +38,7 @@
 #include "utils/strings.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
+
 #include "video/ffmpeg_utils.h"
 #include "video/faac_encoder.h"
 #include "telemetry/recording_io_metrics.h"
@@ -862,9 +863,9 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
         goto cleanup;
     }
 
-    int profile = (faac_wrapper_get_sample_rate(faac_enc) > (uint32_t)sr)
-        ? FF_PROFILE_AAC_HE
-        : FF_PROFILE_AAC_LOW;
+    int profile = faac_wrapper_get_sample_rate(faac_enc) > (uint32_t)sr
+        ? AV_PROFILE_AAC_HE
+        : AV_PROFILE_AAC_LOW;
 
     (*transcoded_params)->codec_type = AVMEDIA_TYPE_AUDIO;
     (*transcoded_params)->codec_id = AV_CODEC_ID_AAC;
@@ -902,7 +903,6 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
 
 cleanup:
     if (decoder_ctx) avcodec_free_context(&decoder_ctx);
-    if (encoder_ctx) avcodec_free_context(&encoder_ctx);
 
     if (ret < 0 && *transcoded_params) {
         avcodec_parameters_free(transcoded_params);

@@ -366,6 +366,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t last_video_pts = AV_NOPTS_VALUE;
     int64_t last_audio_dts = AV_NOPTS_VALUE;
     int64_t last_audio_pts = AV_NOPTS_VALUE;
+    int64_t next_transcoded_audio_pts = AV_NOPTS_VALUE;
     int audio_packet_count = 0;
     int video_packet_count = 0;
     int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
@@ -808,7 +809,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     }
 
                     out_audio_stream->codecpar->codec_tag = 0;
-                    out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
+                    /* AAC packet timestamps and durations use sample ticks,
+                     * independent of the rounded source PCM packet clock. */
+                    out_audio_stream->time_base = out_audio_stream->codecpar->sample_rate > 0
+                        ? (AVRational){1, out_audio_stream->codecpar->sample_rate}
+                        : input_ctx->streams[audio_stream_idx]->time_base;
                 } else {
                     log_error("Failed to transcode %s audio to AAC: %d — disabling audio", codec_name, transcode_ret);
                     has_audio = 0;
@@ -1679,14 +1684,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     continue;
                 }
 
-                // Carry over timing and stream index from the original packet
-                transcoded_pkt->stream_index = out_audio_stream->index;
-                transcoded_pkt->dts = pkt->dts;
-                transcoded_pkt->pts = pkt->pts;
-                transcoded_pkt->duration = pkt->duration;
+                /* FAAC buffers the encoder delay and timestamps its output
+                 * relative to the PCM packet that releases it. Keep the MP4
+                 * timeline on the AAC sample clock and describe priming with
+                 * a negative first packet PTS for the muxer's edit list. */
+                if (!transcoded_pkt->data || transcoded_pkt->size <= 0) {
+                    av_packet_free(&transcoded_pkt);
+                    av_packet_unref(pkt);
+                    continue;
+                }
 
-                mp4_segment_rescale_packet_ts(
-                    transcoded_pkt, input_ctx->streams[audio_stream_idx], out_audio_stream);
+                transcoded_pkt->stream_index = out_audio_stream->index;
+                if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
+                    next_transcoded_audio_pts = segment_index <= 1
+                        ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
+                }
+                transcoded_pkt->pts = next_transcoded_audio_pts;
+                transcoded_pkt->dts = next_transcoded_audio_pts;
+                transcoded_pkt->duration = out_audio_stream->codecpar->frame_size > 0
+                    ? out_audio_stream->codecpar->frame_size : 1024;
+                transcoded_pkt->time_base = out_audio_stream->time_base;
+                next_transcoded_audio_pts += transcoded_pkt->duration;
 
                 ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
                 av_packet_free(&transcoded_pkt);

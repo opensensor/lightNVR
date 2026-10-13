@@ -48,6 +48,12 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
  */
 bool is_pcm_codec(enum AVCodecID codec_id);
 
+/* Standalone recording benchmark controls. This upstream-FAAC baseline uses
+ * FFmpeg for both decoding and muxing, so these setters intentionally do not
+ * change the production path. */
+void mp4_writer_benchmark_set_native_audio_decoder(bool enabled);
+void mp4_writer_benchmark_set_faam_muxer(bool enabled);
+
 /**
  * Check if an audio codec is compatible with MP4 format
  *
