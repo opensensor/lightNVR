@@ -9,6 +9,8 @@
 #include "database/db_core.h"
 #include "database/db_system_health_incidents.h"
 #include "telemetry/system_health.h"
+#include "telemetry/stream_metrics.h"
+#include "storage/storage_manager.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_health.h"
@@ -17,6 +19,26 @@
 #define TEST_DB_PATH "/tmp/lightnvr_unit_system_health_api.db"
 
 extern config_t g_config;
+
+static int health_snapshot_reads;
+
+int __real_metrics_get_max_streams(void);
+int __wrap_metrics_get_max_streams(void) {
+    health_snapshot_reads++;
+    return __real_metrics_get_max_streams();
+}
+
+int __real_metrics_snapshot_all(stream_metrics_t *snapshots, int maximum);
+int __wrap_metrics_snapshot_all(stream_metrics_t *snapshots, int maximum) {
+    health_snapshot_reads++;
+    return __real_metrics_snapshot_all(snapshots, maximum);
+}
+
+int __real_get_storage_health(storage_health_t *health);
+int __wrap_get_storage_health(storage_health_t *health) {
+    health_snapshot_reads++;
+    return __real_get_storage_health(health);
+}
 
 static cJSON *response_json(const http_response_t *response) {
     TEST_ASSERT_NOT_NULL(response->body);
@@ -263,6 +285,47 @@ void test_operational_data_does_not_change_liveness_status(void) {
     http_response_free(&response);
 }
 
+void test_watchdog_liveness_skips_camera_and_storage_reads(void) {
+    g_config.web_auth_enabled = true;
+    const char *queries[] = { "liveness=true", "liveness=1" };
+    for (size_t i = 0; i < sizeof(queries) / sizeof(queries[0]); i++) {
+        http_request_t request;
+        http_response_t response;
+        http_request_init(&request);
+        http_response_init(&response);
+        safe_strcpy(request.query_string, queries[i], sizeof(request.query_string), 0);
+        health_snapshot_reads = 0;
+        handle_get_health(&request, &response);
+        TEST_ASSERT_EQUAL_INT(0, health_snapshot_reads);
+        TEST_ASSERT_EQUAL_INT(200, response.status_code);
+        cJSON *root = response_json(&response);
+        TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "healthy")));
+        TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "liveness")));
+        TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItemCaseSensitive(root, "uptime")));
+        TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(root, "streams_detail"));
+        TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(root, "storage"));
+        cJSON_Delete(root);
+        http_response_free(&response);
+    }
+}
+
+void test_full_health_still_includes_snapshots_when_liveness_is_false(void) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    safe_strcpy(request.query_string, "liveness=false", sizeof(request.query_string), 0);
+    health_snapshot_reads = 0;
+    handle_get_health(&request, &response);
+    TEST_ASSERT_GREATER_OR_EQUAL(2, health_snapshot_reads);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    cJSON *root = response_json(&response);
+    TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, "streams_detail")));
+    TEST_ASSERT_TRUE(cJSON_IsObject(cJSON_GetObjectItemCaseSensitive(root, "storage")));
+    cJSON_Delete(root);
+    http_response_free(&response);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     load_default_config(&g_config);
@@ -276,6 +339,8 @@ int main(void) {
     RUN_TEST(test_incident_history_is_deterministic_bounded_and_privacy_safe);
     RUN_TEST(test_incident_history_validates_auth_limit_and_cursor);
     RUN_TEST(test_operational_data_does_not_change_liveness_status);
+    RUN_TEST(test_watchdog_liveness_skips_camera_and_storage_reads);
+    RUN_TEST(test_full_health_still_includes_snapshots_when_liveness_is_false);
     int result = UNITY_END();
     system_health_shutdown();
     shutdown_database();

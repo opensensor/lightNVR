@@ -31,6 +31,7 @@
 #include "storage/storage_manager.h"
 #define LOG_COMPONENT "HealthCheck"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "core/config.h"
 #include "utils/interruptible_sleep.h"
 #include "video/unified_detection_thread.h"
@@ -66,7 +67,7 @@ static int g_health_check_interval = 10; // seconds
 // outlive the stop call and must not race a destroy.
 static interruptible_sleep_t g_health_wake;
 static bool g_health_wake_initialized = false;
-static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health";
+static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health?liveness=true";
 
 // Web server thread tracking
 static pthread_t g_web_server_thread_id = 0;
@@ -269,7 +270,28 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
     cJSON_AddStringToObject(health, "timestamp", timestamp);
 
+    /* The HTTP watchdog only needs process liveness. Building camera details
+     * can wait on database, metrics, or detector locks during recovery. */
+    char liveness_param[8] = {0};
+    bool liveness_only = http_request_get_query_param(
+        req, "liveness", liveness_param, sizeof(liveness_param)) > 0 &&
+        (strcmp(liveness_param, "true") == 0 || strcmp(liveness_param, "1") == 0);
+    if (liveness_only) {
+        cJSON_AddBoolToObject(health, "liveness", true);
+        char *body = cJSON_PrintUnformatted(health);
+        cJSON_Delete(health);
+        if (!body) {
+            http_response_set_json_error(res, 500, "Failed to encode liveness JSON");
+            return;
+        }
+        http_response_set_json(res, 200, body);
+        free(body);
+        log_debug("Successfully handled process liveness request");
+        return;
+    }
+
     // Stream health summary
+    api_phase_timer_t phase = api_phase_begin(req, "runtime metrics snapshot");
     int max_streams = metrics_get_max_streams();
     stream_metrics_t *snaps = NULL;
     int count = 0;
@@ -279,7 +301,11 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
             count = metrics_snapshot_all(snaps, max_streams);
         }
     }
-    if (filter_authorized_stream_metrics(req, snaps, &count) != 0) {
+    api_phase_end(&phase);
+    phase = api_phase_begin(req, "camera inventory authorization");
+    int authorization_result = filter_authorized_stream_metrics(req, snaps, &count);
+    api_phase_end(&phase);
+    if (authorization_result != 0) {
         free(snaps);
         cJSON_Delete(health);
         http_response_set_json_error(
@@ -363,12 +389,15 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
 
     // Storage summary
     storage_health_t storage_health;
+    phase = api_phase_begin(req, "storage health snapshot");
     get_storage_health(&storage_health);
+    api_phase_end(&phase);
     cJSON *storage_obj = cJSON_CreateObject();
     cJSON_AddNumberToObject(storage_obj, "used_bytes", (double)storage_health.used_space_bytes);
     cJSON_AddNumberToObject(storage_obj, "available_bytes", (double)storage_health.free_space_bytes);
     cJSON_AddItemToObject(health, "storage", storage_obj);
 
+    phase = api_phase_begin(req, "detector state and stream details");
     // Per-stream detail array
     cJSON *detail_arr = cJSON_CreateArray();
     for (int i = 0; i < count; i++) {
@@ -445,6 +474,7 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToArray(detail_arr, sd);
     }
     cJSON_AddItemToObject(health, "streams_detail", detail_arr);
+    api_phase_end(&phase);
 
     free(snaps);
 
@@ -719,7 +749,7 @@ void init_health_check_system(void) {
     // Get the web port from config
     extern config_t config;
     snprintf(g_health_check_url, sizeof(g_health_check_url),
-             "http://127.0.0.1:%d/api/health", config.web_port);
+             "http://127.0.0.1:%d/api/health?liveness=true", config.web_port);
 
     log_info("Health check system initialized with URL: %s", g_health_check_url);
 }

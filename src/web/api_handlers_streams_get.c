@@ -12,6 +12,7 @@
 #include "web/fleet_health.h"
 #define LOG_COMPONENT "StreamsAPI"
 #include "core/logger.h"
+#include "web/api_timing.h"
 #include "core/config.h"
 #include "core/url_utils.h"
 #include "utils/strings.h"
@@ -428,7 +429,10 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     // shared context so selector grants do not cause one grant load per row.
 	user_t auth_user;
 	memset(&auth_user, 0, sizeof(auth_user));
-    if (!httpd_check_action_access(req, &auth_user)) {
+    api_phase_timer_t phase = api_phase_begin(req, "authentication");
+    bool authenticated = httpd_check_action_access(req, &auth_user);
+    api_phase_end(&phase);
+	if (!authenticated) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -446,7 +450,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         authorization_context_free(authz_context);
         return;
     }
+    phase = api_phase_begin(req, "stream configuration database read");
     int count = get_all_stream_configs(db_streams, g_config.max_streams);
+    api_phase_end(&phase);
 
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
@@ -460,7 +466,10 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     // per stream would otherwise turn this endpoint into N database queries.
     fleet_camera_t *fleet_cameras = NULL;
     int fleet_camera_count = 0;
-    if (db_fleet_camera_load(&fleet_cameras, &fleet_camera_count) != 0) {
+    phase = api_phase_begin(req, "camera inventory database read");
+    int inventory_result = db_fleet_camera_load(&fleet_cameras, &fleet_camera_count);
+    api_phase_end(&phase);
+    if (inventory_result != 0) {
         free(db_streams);
         authorization_context_free(authz_context);
         http_response_set_json_error(res, 500, "Failed to load camera inventory");
@@ -469,8 +478,12 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     /* Build runtime health once for both the summary and compatibility
      * contracts. This is keyed by stream name internally, so the legacy list
      * no longer performs a linear runtime lookup for every camera. */
+    phase = api_phase_begin(req, "runtime metrics snapshot");
     fleet_camera_enrich_runtime_health(fleet_cameras, fleet_camera_count);
+    api_phase_end(&phase);
+    phase = api_phase_begin(req, "go2rtc activity lookup");
     fleet_health_enrich_go2rtc_activity(fleet_cameras, fleet_camera_count);
+    api_phase_end(&phase);
 
     char summary_param[8] = {0};
     bool summary_request =
@@ -479,9 +492,11 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         (strcmp(summary_param, "true") == 0 ||
          strcmp(summary_param, "1") == 0);
     if (summary_request) {
+        phase = api_phase_begin(req, "summary authorization and serialization");
         handle_get_stream_summaries(
             req, res, &auth_user, authz_context, db_streams, count,
             fleet_cameras, fleet_camera_count);
+        api_phase_end(&phase);
         free(fleet_cameras);
         free(db_streams);
         authorization_context_free(authz_context);
@@ -499,6 +514,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    phase = api_phase_begin(req, "legacy stream authorization and details");
     // Add only streams allowed by the centralized live.view evaluator.
     for (int i = 0; i < count; i++) {
         const fleet_camera_t *camera =
@@ -681,6 +697,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToArray(streams_array, stream_obj);
     }
 
+    api_phase_end(&phase);
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(streams_array);
     if (!json_str) {
