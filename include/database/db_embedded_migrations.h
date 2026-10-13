@@ -2041,6 +2041,24 @@ static const char migration_0087_up[] =
 static const char migration_0087_down[] =
     "ALTER TABLE operator_floor_plans DROP COLUMN sketch_json;";
 
+static const char migration_0088_up[] =
+    "CREATE TABLE camera_favorites (\n"
+    "    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,\n"
+    "    camera_uuid TEXT NOT NULL REFERENCES streams(camera_uuid) ON DELETE CASCADE,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "\n"
+    "CREATE UNIQUE INDEX idx_camera_favorites_user_camera\n"
+    "ON camera_favorites(COALESCE(user_id, 0), camera_uuid);\n"
+    "\n"
+    "CREATE INDEX idx_camera_favorites_camera\n"
+    "ON camera_favorites(camera_uuid);";
+
+static const char migration_0088_down[] =
+    "DROP INDEX IF EXISTS idx_camera_favorites_camera;\n"
+    "DROP INDEX IF EXISTS idx_camera_favorites_user_camera;\n"
+    "DROP TABLE IF EXISTS camera_favorites;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2651,8 +2669,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0087_down,
         .is_embedded = true
     },
+    {
+        .version = "0088",
+        .description = "add_camera_favorites",
+        .sql_up = migration_0088_up,
+        .sql_down = migration_0088_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 87
+#define EMBEDDED_MIGRATIONS_COUNT 88
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

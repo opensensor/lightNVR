@@ -1620,3 +1620,46 @@ body.pseudo-native-fullscreen-active {
     font-size: 14px;
     text-align: center;
 }
+
+/* Per-user favorite star on live tiles (see live/cameraFavorites.js) */
+.favorite-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 25;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.favorite-toggle.is-favorite {
+    color: #facc15;
+    opacity: 0.9;
+}
+
+.favorite-toggle:hover,
+.favorite-toggle:focus-visible {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.favorite-toggle:disabled {
+    cursor: wait;
+    opacity: 0.4;
+}
+
+@media (pointer: coarse) {
+    .favorite-toggle {
+        width: 40px;
+        height: 40px;
+        opacity: 0.85;
+    }
+}
