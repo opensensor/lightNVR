@@ -211,6 +211,12 @@ typedef struct {
     uint64_t max_storage_size; // in bytes
     int retention_days;
     bool auto_delete_oldest;
+    // MP4 "faststart": after a segment closes, rewrite it with the moov atom
+    // moved to the front. That re-reads and re-writes the whole segment, which
+    // roughly triples the I/O on network storage (NFS/SMB) or a slow HDD.
+    // Players that use HTTP range requests play either layout, so a site
+    // recording to a NAS may turn it off. Default true (historical behaviour).
+    bool mp4_faststart;
 
     // Capacity-based retention (bounds usage by disk size, not just by time).
     // The cleanup thread keeps at least storage_min_free_pct of the volume free

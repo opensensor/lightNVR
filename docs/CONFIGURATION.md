@@ -246,6 +246,7 @@ mp4_retention_days = 30
   camera was permanently deleted; per-camera overrides still apply, and
   protected recordings are never expired by age.
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
+- `mp4_faststart`: Whether to rewrite each finished MP4 segment with its index (moov) at the front (default `true`). The rewrite re-reads and re-writes the whole segment, which roughly triples I/O on network storage (NFS/SMB) or a slow HDD; players that use HTTP range requests play either layout, so set `false` when recording to a NAS.
 - `record_mp4_directly`: Enable direct MP4 recording (instead of HLS-to-MP4 conversion)
 - `mp4_path`: Directory for direct MP4 recordings
 - `mp4_directory_format`: Recording folder layout: `flat`, `year_month` (`YYYY/MM`), or `year_month_day` (`YYYY/MM/DD`, default)
