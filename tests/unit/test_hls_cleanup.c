@@ -90,6 +90,54 @@ static void *close_writer(void *arg) {
     return NULL;
 }
 
+void test_writer_remaps_input_video_after_audio_to_output_stream_zero(void) {
+    AVFormatContext *fixture = NULL;
+    TEST_ASSERT_EQUAL_INT(0, avformat_open_input(
+        &fixture, TEST_RECORDING_PATH, NULL, NULL));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(fixture, NULL));
+
+    /* RTSP sources can advertise audio before video. The native HLS writer
+     * emits video only, so input stream 1 must become output stream 0. */
+    AVFormatContext *input = avformat_alloc_context();
+    TEST_ASSERT_NOT_NULL(input);
+    AVStream *audio = avformat_new_stream(input, NULL);
+    AVStream *video = avformat_new_stream(input, NULL);
+    TEST_ASSERT_NOT_NULL(audio);
+    TEST_ASSERT_NOT_NULL(video);
+    audio->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+    TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_copy(
+        video->codecpar, fixture->streams[0]->codecpar));
+    video->time_base = fixture->streams[0]->time_base;
+    TEST_ASSERT_EQUAL_INT(1, video->index);
+
+    hls_writer_t *writer = hls_writer_create(test_dir, "audio-first", 2);
+    TEST_ASSERT_NOT_NULL(writer);
+    TEST_ASSERT_EQUAL_INT(0, hls_writer_initialize(writer, video));
+    TEST_ASSERT_EQUAL_INT(1, writer->output_ctx->nb_streams);
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(packet);
+    for (int i = 0; i < 8; ++i) {
+        TEST_ASSERT_EQUAL_INT(0, av_read_frame(fixture, packet));
+        packet->stream_index = video->index;
+        TEST_ASSERT_GREATER_OR_EQUAL(0, hls_writer_write_packet(writer, packet, video));
+        TEST_ASSERT_EQUAL_INT(1, packet->stream_index);
+        av_packet_unref(packet);
+    }
+
+    char playlist[MAX_PATH_LENGTH + 32];
+    snprintf(playlist, sizeof(playlist), "%s/index.m3u8", writer->output_dir);
+    hls_writer_close(writer);
+    AVFormatContext *recorded = NULL;
+    TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&recorded, playlist, NULL, NULL));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(recorded, NULL));
+    TEST_ASSERT_EQUAL_INT(AVMEDIA_TYPE_VIDEO, recorded->streams[0]->codecpar->codec_type);
+    TEST_ASSERT_EQUAL_INT(AV_CODEC_ID_H264, recorded->streams[0]->codecpar->codec_id);
+    avformat_close_input(&recorded);
+    av_packet_free(&packet);
+    avformat_free_context(input);
+    avformat_close_input(&fixture);
+}
+
 void test_parallel_writer_teardown_and_recreation_preserves_signals(void) {
     enum { CAMERAS = 3, CYCLES = 3 };
     for (int cycle = 0; cycle < CYCLES; ++cycle) {
@@ -212,6 +260,7 @@ void test_parallel_unified_stream_shutdown_and_restart(void) {
 int main(void) {
     init_logger();
     UNITY_BEGIN();
+    RUN_TEST(test_writer_remaps_input_video_after_audio_to_output_stream_zero);
     RUN_TEST(test_parallel_writer_teardown_and_recreation_preserves_signals);
     RUN_TEST(test_parallel_unified_stream_shutdown_and_restart);
     RUN_TEST(test_unified_system_cleanup_preserves_signals);

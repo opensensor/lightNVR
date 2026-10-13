@@ -582,6 +582,10 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
+    /* This writer emits video only. RTSP may advertise audio before video,
+     * so the input video index need not match the sole output stream. */
+    out_pkt_ptr->stream_index = writer->output_ctx->streams[0]->index;
+
     // Rescale timestamps to output timebase
     av_packet_rescale_ts(out_pkt_ptr, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
