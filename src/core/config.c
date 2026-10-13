@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <syslog.h>
+#include <pthread.h>
 
 #include "ini.h"
 #include "core/config.h"
@@ -22,6 +23,30 @@
 
 // Global configuration variable
 config_t g_config;
+
+// Also protects whole-config copies from racing with live option updates.
+static pthread_mutex_t mp4_faststart_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+bool config_get_mp4_faststart(const config_t *config) {
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    bool enabled = config->mp4_faststart;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+    return enabled;
+}
+
+void config_set_mp4_faststart(config_t *config, bool enabled) {
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    config->mp4_faststart = enabled;
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+}
+
+void config_copy(config_t *destination, const config_t *source) {
+    pthread_mutex_lock(&mp4_faststart_mutex);
+    if (destination != source) {
+        memcpy(destination, source, sizeof(*destination));
+    }
+    pthread_mutex_unlock(&mp4_faststart_mutex);
+}
 
 bool playback_transport_is_valid(const char *value) {
     if (!value) return false;
@@ -355,7 +380,7 @@ void load_default_config(config_t *config) {
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
-    config->mp4_faststart = true;
+    config_set_mp4_faststart(config, true);
 
     // Capacity-based retention: keep 10% of the volume free by default so the
     // disk is self-bounding even when retention_days exceeds what fits.
@@ -816,7 +841,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
             config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "mp4_faststart") == 0) {
-            config->mp4_faststart = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            config_set_mp4_faststart(config, strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "min_free_pct") == 0) {
             config->storage_min_free_pct = safe_atoi(value, 10);
         } else if (strcmp(name, "pressure_warning_pct") == 0) {
@@ -1807,7 +1832,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "retention_days = %d\n", config->retention_days);
     fprintf(file, "auto_delete_oldest = %s\n", config->auto_delete_oldest ? "true" : "false");
     fprintf(file, "mp4_faststart = %s  ; false avoids the post-segment rewrite (less I/O on NAS/HDD)\n",
-            config->mp4_faststart ? "true" : "false");
+            config_get_mp4_faststart(config) ? "true" : "false");
     fprintf(file, "min_free_pct = %d  ; keep at least this %% of the volume free (0 disables capacity cap)\n",
             config->storage_min_free_pct);
     fprintf(file, "pressure_warning_pct = %.1f\n", config->storage_pressure_warning_pct);
@@ -2017,7 +2042,7 @@ void print_config(const config_t *config) {
     printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
     printf("    Retention Days: %d\n", config->retention_days);
     printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");
-    printf("    MP4 Faststart: %s\n", config->mp4_faststart ? "true" : "false");
+    printf("    MP4 Faststart: %s\n", config_get_mp4_faststart(config) ? "true" : "false");
 
     printf("  Health Settings:\n");
     printf("    Enabled: %s\n", config->health.enabled ? "true" : "false");

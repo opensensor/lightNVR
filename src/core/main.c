@@ -679,7 +679,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Copy to global config
-    memcpy(&g_config, &config, sizeof(config_t));
+    config_copy(&g_config, &config);
 
     if (generate_go2rtc_config_only) {
 #ifdef USE_GO2RTC
@@ -701,7 +701,7 @@ int main(int argc, char *argv[]) {
                 if (load_stream_configs(&config) < 0) {
                     log_warn("Failed to load stream configurations while generating go2rtc config");
                 }
-                memcpy(&g_config, &config, sizeof(config_t));
+                config_copy(&g_config, &config);
             } else {
                 log_warn("Failed to initialize database while generating go2rtc config; DB-backed overrides unavailable");
             }
@@ -820,7 +820,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Copy configuration to global config
-    memcpy(&g_config, &config, sizeof(config_t));
+    config_copy(&g_config, &config);
 
     // Register the legacy recording root as a stable storage target and attach
     // existing rows by relative key. This is metadata-only; no footage moves.

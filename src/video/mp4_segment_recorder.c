@@ -850,7 +850,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     // The + prefix adds to existing flags rather than replacing them.
     // [storage] mp4_faststart = false skips it: the rewrite re-reads and
     // re-writes the whole segment, which triples the I/O on a NAS.
-    if (g_config.mp4_faststart) {
+    if (config_get_mp4_faststart(&g_config)) {
         av_dict_set(&out_opts, "movflags", "+faststart", 0);
     }
 

@@ -1595,7 +1595,7 @@ skip_audio_stream:
 
     // Set options for fast start - EXACTLY match rtsp_recorder.c
     AVDictionary *opts = NULL;
-    if (g_config.mp4_faststart) {  // [storage] mp4_faststart (default true)
+    if (config_get_mp4_faststart(&g_config)) {  // [storage] mp4_faststart (default true)
         av_dict_set(&opts, "movflags", "+faststart", 0);  // This is the ONLY option in rtsp_recorder.c
     }
 

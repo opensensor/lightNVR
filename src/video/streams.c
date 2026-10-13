@@ -72,7 +72,7 @@ config_t* get_streaming_config(void) {
     
     // Use the global configuration instead of loading defaults
     // This ensures we get the latest configuration including the database path
-    memcpy(&db_config, &g_config, sizeof(config_t));
+    config_copy(&db_config, &g_config);
     
     // Load stream configurations from database
     int ms = configured_stream_slots();
