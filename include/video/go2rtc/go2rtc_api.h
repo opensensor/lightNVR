@@ -104,7 +104,8 @@ bool go2rtc_api_parse_stream_activity_json(
 
 /**
  * Fetch one bulk /api/streams snapshot and populate current video activity for
- * every requested stream name.
+ * every requested stream name. This optional inventory read has a 500 ms
+ * timeout; callers retain their existing health data when it fails.
  *
  * @return true when go2rtc returned a valid stream map, false otherwise
  */

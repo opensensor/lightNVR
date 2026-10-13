@@ -140,7 +140,6 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
     const stored = localStorage.getItem('lightnvr-show-detections');
     return stored !== null ? stored === 'true' : true;
   });
-  const [isLoading, setIsLoading] = useState(true);
 
   // State for go2rtc availability (to show MSE View button)
   const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
@@ -276,11 +275,6 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
     }
   }, [refetchStreams, t]);
   const pullToRefresh = usePullToRefresh(refreshLiveGrid, { disabled: isFullscreen });
-
-  // Update loading state based on streams query status
-  useEffect(() => {
-    setIsLoading(isLoadingStreams);
-  }, [isLoadingStreams]);
 
   // Process streams data when it's loaded.
   useEffect(() => {
@@ -909,7 +903,8 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
           className="video-container"
           style={{ '--grid-cols': cols, '--grid-rows': rows }}
         >
-          {isLoadingStreams ? (
+          {/* Keep mounted players while refreshing cached inventory. */}
+          {isLoadingStreams && !streamsData ? (
               <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
                 <div className="flex flex-col items-center justify-center py-8">
                 <div
@@ -917,26 +912,11 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
                 <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
               </div>
             </div>
-          ) : isLoading ? (
-            <div
-                className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
-                style={{
-                  pointerEvents: 'none',
-                  position: 'relative',
-                  zIndex: 1
-                }}
-            >
-              <div className="flex flex-col items-center justify-center py-8">
-                <div
-                  className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
-                <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
-              </div>
-            </div>
-          ) : (streamsError) ? (
+          ) : streamsError && !streamsData ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
               <p className="mb-6 text-muted-foreground text-lg">{t('live.errorLoadingStreams', { message: streamsError.message })}</p>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => refetchStreams()}
                 className="btn-primary"
               >
                 {t('common.retry')}

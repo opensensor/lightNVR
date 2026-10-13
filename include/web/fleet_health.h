@@ -16,7 +16,8 @@ void fleet_health_apply_go2rtc_activity(
 
 /* Promote otherwise-unobserved cameras when go2rtc is currently receiving
  * video for either the main stream or its grid-view substream. This performs
- * one bulk local API request, never one request per camera. */
+ * one bulk local API request with a 500 ms budget, never one request per
+ * camera. If go2rtc is busy, retain the runtime health already observed. */
 void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras,
                                          int camera_count);
 
