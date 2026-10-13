@@ -1,6 +1,7 @@
 import {
   applyFavoriteChange,
   favoriteCameraUuids,
+  favoriteEmptyStateKey,
   filterFavoriteStreams,
   requestFavoriteChange,
 } from '../js/components/preact/live/cameraFavorites.js';
@@ -46,6 +47,15 @@ describe('camera favorites', () => {
 
     expect(applyFavoriteChange(undefined, 'cam-z', { created_at: 1 }).favorites)
       .toEqual([{ camera_uuid: 'cam-z', created_at: 1 }]);
+  });
+
+  test('distinguishes an empty favorite set from favorites excluded by another filter', () => {
+    const favorites = favoriteCameraUuids({ favorites: [{ camera_uuid: 'cam-a' }] });
+    // A selected tag or collection contains only non-favorite cameras.
+    expect(filterFavoriteStreams([streams[1]], favorites)).toEqual([]);
+    expect(favoriteEmptyStateKey(true, favorites)).toBe('live.navigator.noCameras');
+    expect(favoriteEmptyStateKey(true, new Set())).toBe('live.noFavorites');
+    expect(favoriteEmptyStateKey(false, new Set())).toBe('live.navigator.noCameras');
   });
 
   test('sends PUT to add and DELETE to remove with the camera UUID encoded', async () => {

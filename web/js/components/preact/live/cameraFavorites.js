@@ -19,6 +19,12 @@ export function filterFavoriteStreams(streams, favoriteUuids) {
   return (streams || []).filter((stream) => favoriteUuids.has(stream.camera_uuid));
 }
 
+export function favoriteEmptyStateKey(favoritesFilterActive, favoriteUuids) {
+  return favoritesFilterActive && favoriteUuids.size === 0
+    ? 'live.noFavorites'
+    : 'live.navigator.noCameras';
+}
+
 /**
  * Next cached favorites document after a toggle resolves. `record` is the
  * server's row for an add, or null for a removal. Keeps oldest-first order.
@@ -45,6 +51,7 @@ export function useCameraFavorites() {
   const favoriteUuids = useMemo(() => favoriteCameraUuids(query.data), [query.data]);
   const mutation = useMutation({
     mutationFn: ({ cameraUuid, favorite }) => requestFavoriteChange(cameraUuid, favorite),
+    // Update after server confirmation so a failed write leaves the grid intact.
     onSuccess: (result, { cameraUuid, favorite }) => {
       queryClient.setQueryData(CAMERA_FAVORITES_QUERY_KEY,
         (current) => applyFavoriteChange(current, cameraUuid, favorite ? result : null));

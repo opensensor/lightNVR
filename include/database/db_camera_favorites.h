@@ -6,8 +6,8 @@
 
 #include "core/config.h"
 
-/* Upper bound on favorites returned for one user. */
-#define CAMERA_FAVORITES_MAX_LIST 1024
+/* One favorite per stream supported by this build. */
+#define CAMERA_FAVORITES_MAX_LIST MAX_STREAMS
 
 typedef struct {
     char camera_uuid[CAMERA_UUID_STRING_SIZE];

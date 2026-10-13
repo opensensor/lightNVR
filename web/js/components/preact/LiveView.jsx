@@ -15,7 +15,7 @@ import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx
 import { useI18n } from '../../i18n.js';
 import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
-import { useCameraFavorites } from './live/cameraFavorites.js';
+import { favoriteEmptyStateKey, useCameraFavorites } from './live/cameraFavorites.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { LiveDisplayModeToggle } from './LiveDisplayModeToggle.jsx';
@@ -941,7 +941,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             </div>
           ) : orderedStreams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-0 text-muted-foreground text-lg">{favoritesFilterActive ? t('live.noFavorites') : t('live.navigator.noCameras')}</p>
+              <p className="mb-0 text-muted-foreground text-lg">{t(favoriteEmptyStateKey(favoritesFilterActive, favoriteUuids))}</p>
             </div>
           ) : (
             // Render each tile using its persisted playback profile. The active
