@@ -379,6 +379,48 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 // ============================================================================
 
 /**
+ * @brief Reject request paths that carry dot segments.
+ *
+ * A "." or ".." segment gives one request path two different meanings
+ * depending on who interprets it: the router and authorizer compare the
+ * literal string, while libcurl normalizes the path before it forwards it,
+ * and the static-file resolver concatenates the path with web_root for the
+ * filesystem. That disagreement is the root shape of the go2rtc proxy
+ * authorization bypass — the exact-match allow-list closes one instance of
+ * it, but a path that still reaches any of those consumers unreconciled can
+ * drift again.
+ *
+ * Resolving the ambiguity here, before the path is dispatched anywhere,
+ * makes it impossible for two components to disagree. We percent-decode
+ * first so encoded separators (%2e, %2E, %2f, ...) cannot smuggle a dot
+ * segment past a literal scan, then reject any "." or ".." segment.
+ *
+ * @param path The request path (query string already stripped).
+ * @return true when the path contains a dot segment and must be rejected.
+ */
+static bool request_path_has_dot_segment(const char *path) {
+    if (!path) return true;
+
+    char decoded[MAX_PATH_LENGTH];
+    if (url_decode(path, decoded, sizeof(decoded)) != 0) {
+        return true;
+    }
+
+    const char *segment = decoded;
+    while (*segment) {
+        const char *slash = strchr(segment, '/');
+        size_t length = slash ? (size_t)(slash - segment) : strlen(segment);
+        if ((length == 1 && segment[0] == '.') ||
+            (length == 2 && segment[0] == '.' && segment[1] == '.')) {
+            return true;
+        }
+        if (!slash) break;
+        segment = slash + 1;
+    }
+    return false;
+}
+
+/**
  * @brief URL callback - extract path and query string
  */
 static int on_url(llhttp_t *parser, const char *at, size_t length) {
@@ -404,6 +446,15 @@ static int on_url(llhttp_t *parser, const char *at, size_t length) {
         safe_strcpy(conn->request.path, conn->request.uri,
                 sizeof(conn->request.path), 0);
         conn->request.query_string[0] = '\0';
+    }
+
+    // Normalize the one thing that can make the authorizer and libcurl
+    // disagree about what a path means: reject dot segments before the path
+    // reaches routing, authorization, the proxy, or static-file resolution.
+    if (request_path_has_dot_segment(conn->request.path)) {
+        log_debug("on_url: rejecting request path with dot segment: %s",
+                  conn->request.path);
+        return HPE_USER;
     }
 
     // Get method from parser
@@ -795,7 +846,12 @@ static int on_message_complete(llhttp_t *parser) {
     // Go2rtc proxy paths use dedicated detached threads so both authorization
     // (which may access SQLite) and the blocking curl call stay off the event
     // loop and the shared libuv worker pool.
-    if (go2rtc_proxy_path_matches(conn->request.path)) {
+    // Reserve the entire go2rtc namespace independently of method matching.
+    // Invalid paths and unsupported methods must reach the proxy authorizer,
+    // which rejects them before curl, instead of falling back to static files.
+    if (handler == handle_go2rtc_proxy ||
+        strcmp(conn->request.path, "/go2rtc") == 0 ||
+        strncmp(conn->request.path, "/go2rtc/", 8) == 0) {
         uv_read_stop((uv_stream_t *)&conn->handle);
         if (go2rtc_proxy_thread_submit(conn, action) == 0) {
             return HPE_PAUSED;

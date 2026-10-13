@@ -262,6 +262,8 @@ if(YAML_FOUND)
 endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
+    add_layer3_test(test_go2rtc_proxy_routing)
+    set_tests_properties(test_go2rtc_proxy_routing PROPERTIES TIMEOUT 15)
     add_layer2_test_with_curl(test_go2rtc_proxy_thread)
     target_link_options(test_go2rtc_proxy_thread PRIVATE
         "-Wl,--wrap=go2rtc_proxy_authorize_request"
