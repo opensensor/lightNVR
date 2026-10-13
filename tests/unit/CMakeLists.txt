@@ -324,6 +324,9 @@ target_link_options(test_hls_cleanup PRIVATE
     "-Wl,--wrap=alarm" "-Wl,--wrap=sigaction" "-Wl,--wrap=av_read_frame"
 )
 set_tests_properties(test_hls_cleanup PROPERTIES TIMEOUT 30)
+add_layer3_test(test_hls_reconnect_backoff)
+target_link_options(test_hls_reconnect_backoff PRIVATE "-Wl,--wrap=av_usleep")
+set_tests_properties(test_hls_reconnect_backoff PROPERTIES TIMEOUT 10)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries)

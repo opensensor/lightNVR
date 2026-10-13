@@ -596,10 +596,16 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
 static int calculate_reconnect_delay(int attempt) {
     if (attempt <= 0) return BASE_RECONNECT_DELAY_MS;
 
-    // Exponential backoff: delay = base_delay * 2^(attempt-1)
-    // Cap at maximum delay
-    int delay = BASE_RECONNECT_DELAY_MS * (1 << (attempt - 1));
-    return (delay < MAX_RECONNECT_DELAY_MS) ? delay : MAX_RECONNECT_DELAY_MS;
+    // Saturate before multiplying. An unchecked shift/multiply can overflow
+    // for an offline camera and turn a capped wait into zero or a negative
+    // delay, which interruptible_sleep_ms would skip entirely.
+    int delay = BASE_RECONNECT_DELAY_MS;
+    while (attempt > 1 && delay < MAX_RECONNECT_DELAY_MS) {
+        if (delay >= MAX_RECONNECT_DELAY_MS / 2) return MAX_RECONNECT_DELAY_MS;
+        delay *= 2;
+        attempt--;
+    }
+    return delay;
 }
 
 /**
