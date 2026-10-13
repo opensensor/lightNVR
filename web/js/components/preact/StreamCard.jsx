@@ -137,7 +137,7 @@ function buildSnapshotUrl(streamName) {
   if (typeof window === 'undefined' || !streamName) return null;
   // Cache-bust so cards refresh the frame whenever the page mounts.
   const ts = Date.now();
-  return `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${ts}`;
+  return `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&cache=5s&t=${ts}`;
 }
 
 /**
@@ -192,12 +192,13 @@ export function StreamCard({
   t
 }) {
   const [snapshotBroken, setSnapshotBroken] = useState(false);
-  const [snapshotRequested, setSnapshotRequested] = useState(false);
+  const [snapshotUrl, setSnapshotUrl] = useState(null);
   const snapshotContainerRef = useRef(null);
   const snapshotReleaseRef = useRef(null);
 
-  const snapshotSrc = snapshotRequested && !snapshotBroken
-    ? buildSnapshotUrl(stream.name) : null;
+  // Keep the granted URL stable across renders. Generate a new URL only
+  // when a request acquires a slot, including after a camera is re-enabled.
+  const snapshotSrc = snapshotBroken ? null : snapshotUrl;
   const { color: statusColor, label: statusLabel } = statusBadge(stream, t);
   const modes = collectRecordingModes(stream, t);
   const modeText = modes.length > 0 ? modes.join(' + ') : t('streams.notRecording');
@@ -216,6 +217,8 @@ export function StreamCard({
   };
 
   useEffect(() => {
+    setSnapshotUrl(null);
+    setSnapshotBroken(false);
     if (!stream.enabled || !snapshotContainerRef.current ||
         typeof IntersectionObserver === 'undefined') {
       return undefined;
@@ -230,7 +233,7 @@ export function StreamCard({
           return;
         }
         snapshotReleaseRef.current = release;
-        setSnapshotRequested(true);
+        setSnapshotUrl(buildSnapshotUrl(stream.name));
       });
     }, { rootMargin: '300px 0px' });
     observer.observe(snapshotContainerRef.current);

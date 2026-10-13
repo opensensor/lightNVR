@@ -260,6 +260,13 @@ if(YAML_FOUND)
 endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
+    add_layer2_test_with_curl(test_go2rtc_proxy_thread)
+    target_link_options(test_go2rtc_proxy_thread PRIVATE
+        "-Wl,--wrap=go2rtc_proxy_authorize_request"
+        "-Wl,--wrap=libuv_send_response_ex"
+        "-Wl,--wrap=curl_easy_perform"
+    )
+    set_tests_properties(test_go2rtc_proxy_thread PROPERTIES TIMEOUT 25)
     add_layer2_test_with_curl(test_go2rtc_stream_activity)
     add_layer2_test_with_curl(test_go2rtc_publish_async)
     add_executable(fake_go2rtc_server fake_go2rtc_server.c)
