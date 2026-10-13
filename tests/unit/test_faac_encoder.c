@@ -79,7 +79,8 @@ void test_faac_he_aac_v1_uses_full_rate_sample_clock(void) {
     faac_adapter_t *adapter = faac_adapter_open(&config);
     TEST_ASSERT_NOT_NULL(adapter);
 
-    TEST_ASSERT_EQUAL_UINT32(64000, faac_adapter_get_sample_rate(adapter));
+    TEST_ASSERT_EQUAL_UINT32(32000, faac_adapter_get_sample_rate(adapter));
+    TEST_ASSERT_EQUAL_INT(FAAC_OBJ_HE_AAC_V1, faac_adapter_get_object_type(adapter));
     TEST_ASSERT_EQUAL_UINT32(2048, faac_adapter_get_frame_samples(adapter));
     TEST_ASSERT_GREATER_THAN_UINT32(0, faac_adapter_get_encoder_delay(adapter));
 

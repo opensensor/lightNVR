@@ -116,6 +116,10 @@ uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter) {
     return adapter ? adapter->info.sample_rate : 0;
 }
 
+enum faac_object_type faac_adapter_get_object_type(faac_adapter_t *adapter) {
+    return adapter ? adapter->info.object_type : FAAC_OBJ_AUTO;
+}
+
 uint32_t faac_adapter_get_encoder_delay(faac_adapter_t *adapter) {
     return adapter ? adapter->info.encoder_delay : 0;
 }

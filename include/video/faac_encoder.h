@@ -54,6 +54,9 @@ uint32_t faac_adapter_get_max_output_bytes(faac_adapter_t *adapter);
  */
 uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter);
 
+/** Get the resolved AAC object type (AAC-LC or HE-AAC v1). */
+enum faac_object_type faac_adapter_get_object_type(faac_adapter_t *adapter);
+
 /**
  * Get gapless playback encoder delay (priming delay in samples/channel).
  */

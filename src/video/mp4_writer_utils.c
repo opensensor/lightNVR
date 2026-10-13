@@ -1016,14 +1016,14 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
         goto cleanup;
     }
 
-    int profile = faac_adapter_get_sample_rate(faac_enc) > (uint32_t)sr
+    int profile = faac_adapter_get_object_type(faac_enc) == FAAC_OBJ_HE_AAC_V1
         ? AV_PROFILE_AAC_HE
         : AV_PROFILE_AAC_LOW;
 
     (*transcoded_params)->codec_type = AVMEDIA_TYPE_AUDIO;
     (*transcoded_params)->codec_id = AV_CODEC_ID_AAC;
-    /* FAAC reports the coded/output rate. HE-AAC v1 accepts core-rate PCM
-     * but emits access units on the doubled full-rate sample clock. */
+    /* FAAC keeps the configured full output rate while coding HE-AAC's core
+     * at half rate; its access units therefore span 2048 full-rate samples. */
     (*transcoded_params)->sample_rate = (int)faac_adapter_get_sample_rate(faac_enc);
     (*transcoded_params)->bit_rate = faac_cfg.bit_rate_per_channel * nb_ch;
     (*transcoded_params)->profile = profile;
