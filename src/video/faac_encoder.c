@@ -72,15 +72,21 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     const uint8_t *asc_ptr = NULL;
     uint32_t asc_len = 0;
     status = faac_encoder_asc(adapter->enc, &asc_ptr, &asc_len);
-    if (status == FAAC_OK && asc_ptr && asc_len > 0) {
-        adapter->asc_buf = malloc(asc_len);
-        if (adapter->asc_buf) {
-            memcpy(adapter->asc_buf, asc_ptr, asc_len);
-            adapter->asc_size = asc_len;
-        }
-    } else {
-        log_warn("faac_encoder_asc did not return extradata: %s", faac_strerror(status));
+    if (status != FAAC_OK || !asc_ptr || asc_len == 0) {
+        log_error("faac_encoder_asc failed: %s", faac_strerror(status));
+        faac_encoder_close(&adapter->enc);
+        free(adapter);
+        return NULL;
     }
+    adapter->asc_buf = malloc(asc_len);
+    if (!adapter->asc_buf) {
+        log_error("faac_adapter_open: memory allocation failed for AudioSpecificConfig");
+        faac_encoder_close(&adapter->enc);
+        free(adapter);
+        return NULL;
+    }
+    memcpy(adapter->asc_buf, asc_ptr, asc_len);
+    adapter->asc_size = asc_len;
 
     log_info("Opened FAAC encoder: %u Hz, %u ch, bitrate %u bps/ch, frame_samples %u, delay %u, obj_type %d",
              adapter->info.sample_rate, config->num_channels, adapter->info.bit_rate,

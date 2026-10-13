@@ -1669,7 +1669,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                                 ENOMEM);
                     log_error("Failed to allocate packet for transcoded audio");
                     av_packet_unref(pkt);
-                    continue;
+                    ret = AVERROR(ENOMEM);
+                    goto cleanup;
                 }
 
                 // Key the transcoder pool by stream name (writer-scoped lifetime)
@@ -1681,10 +1682,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 int tc_ret = transcode_audio_packet(transcoder_key, pkt, transcoded_pkt,
                                                     input_ctx->streams[audio_stream_idx]);
                 if (tc_ret < 0) {
-                    // Transcoding failed — skip this packet silently
+                    recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                RECORDING_IO_OPERATION_PACKET, tc_ret);
+                    log_error("Failed to transcode audio for %s: %d", transcoder_key, tc_ret);
                     av_packet_free(&transcoded_pkt);
                     av_packet_unref(pkt);
-                    continue;
+                    ret = tc_ret;
+                    goto cleanup;
                 }
 
                 /* FAAC buffers the encoder delay and timestamps its output
@@ -2125,20 +2129,24 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
         // Set the stream index to the audio stream
         if (writer->audio.stream_idx >= 0) {
             out_pkt->stream_index = writer->audio.stream_idx;
+            AVRational packet_time_base = pkt->time_base.num > 0 && pkt->time_base.den > 0
+                ? pkt->time_base : input_stream->time_base;
+            bool transcoded_pcm = is_pcm_codec(input_stream->codecpar->codec_id) &&
+                pkt->time_base.num > 0 && pkt->time_base.den > 0;
 
             // Track first audio DTS for timestamp remapping
-            if (writer->audio.first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
                 writer->audio.first_dts = out_pkt->dts;
                 log_debug("[%s] First audio DTS: %lld (for timestamp remapping)",
                         writer->stream_name, (long long)writer->audio.first_dts);
             }
 
             // Remap audio timestamps relative to first audio packet
-            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
                 out_pkt->dts -= writer->audio.first_dts;
                 if (out_pkt->dts < 0) out_pkt->dts = 0;
             }
-            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
                 out_pkt->pts -= writer->audio.first_dts;
                 if (out_pkt->pts < 0) out_pkt->pts = 0;
             }
@@ -2160,7 +2168,10 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             // Set audio packet duration if not set
             if (out_pkt->duration == 0 || out_pkt->duration == AV_NOPTS_VALUE) {
                 // For audio, use frame_size / sample_rate if available
-                if (input_stream->codecpar->frame_size > 0 && input_stream->codecpar->sample_rate > 0) {
+                if (transcoded_pcm && writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->frame_size > 0 &&
+                    writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->sample_rate > 0) {
+                    out_pkt->duration = writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->frame_size;
+                } else if (input_stream->codecpar->frame_size > 0 && input_stream->codecpar->sample_rate > 0) {
                     out_pkt->duration = av_rescale_q(input_stream->codecpar->frame_size,
                                                     (AVRational){1, input_stream->codecpar->sample_rate},
                                                     input_stream->time_base);
@@ -2172,7 +2183,7 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             // Rescale timestamps from input timebase to output timebase
             AVStream *out_stream = writer->output_ctx->streams[writer->audio.stream_idx];
             if (out_stream) {
-                av_packet_rescale_ts(out_pkt, input_stream->time_base, out_stream->time_base);
+                av_packet_rescale_ts(out_pkt, packet_time_base, out_stream->time_base);
             }
         } else {
             // No audio stream in the output, drop the packet

@@ -170,7 +170,7 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                 log_error("Failed to transcode PCM audio packet for %s (codec_id=%d)",
                          writer->stream_name, input_stream->codecpar->codec_id);
                 av_packet_free(&transcoded_pkt);
-                return 0; // Return success but don't write the packet
+                return ret;
             }
 
             if (transcoded_pkt->size <= 0) {
