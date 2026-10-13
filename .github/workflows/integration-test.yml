@@ -414,6 +414,8 @@ jobs:
             test_yaml_redact \
             test_db_system_settings \
             test_go2rtc_process_detection \
+            test_go2rtc_proxy_thread \
+            test_go2rtc_proxy_routing \
             test_go2rtc_process_config_generation \
             test_go2rtc_binary_detection \
             test_go2rtc_two_config_merge \
@@ -424,7 +426,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -V \
-            -R "test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_process_config_generation|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_ffmpeg_guard"
+            -R "test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_go2rtc_process_config_generation|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_ffmpeg_guard"
 
       - name: Generate coverage report
         if: always()
