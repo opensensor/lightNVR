@@ -173,16 +173,12 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                 return ret;
             }
 
-            if (transcoded_pkt->size <= 0) {
-                // No output packet was generated, this is normal for some frames
-                av_packet_free(&transcoded_pkt);
-                return 0; // Return success but don't write the packet
+            while (ret >= 0 && transcoded_pkt->size > 0) {
+                ret = mp4_segment_recorder_write_packet(writer, transcoded_pkt, input_stream);
+                if (ret < 0) break;
+                ret = transcode_audio_packet(writer->stream_name, NULL,
+                                             transcoded_pkt, input_stream);
             }
-
-            // Write the transcoded packet
-            ret = mp4_segment_recorder_write_packet(writer, transcoded_pkt, input_stream);
-
-            // Free the transcoded packet
             av_packet_free(&transcoded_pkt);
 
             return ret;

@@ -1701,19 +1701,25 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     continue;
                 }
 
-                transcoded_pkt->stream_index = out_audio_stream->index;
-                if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
-                    next_transcoded_audio_pts = segment_index <= 1
-                        ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
-                }
-                transcoded_pkt->pts = next_transcoded_audio_pts;
-                transcoded_pkt->dts = next_transcoded_audio_pts;
-                transcoded_pkt->duration = out_audio_stream->codecpar->frame_size > 0
-                    ? out_audio_stream->codecpar->frame_size : 1024;
-                transcoded_pkt->time_base = out_audio_stream->time_base;
-                next_transcoded_audio_pts += transcoded_pkt->duration;
+                while (transcoded_pkt->size > 0) {
+                    transcoded_pkt->stream_index = out_audio_stream->index;
+                    if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
+                        next_transcoded_audio_pts = segment_index <= 1
+                            ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
+                    }
+                    transcoded_pkt->pts = next_transcoded_audio_pts;
+                    transcoded_pkt->dts = next_transcoded_audio_pts;
+                    transcoded_pkt->duration = out_audio_stream->codecpar->frame_size > 0
+                        ? out_audio_stream->codecpar->frame_size : 1024;
+                    transcoded_pkt->time_base = out_audio_stream->time_base;
+                    next_transcoded_audio_pts += transcoded_pkt->duration;
 
-                ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
+                    ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
+                    if (ret < 0) break;
+                    ret = transcode_audio_packet(transcoder_key, NULL, transcoded_pkt,
+                                                 input_ctx->streams[audio_stream_idx]);
+                    if (ret < 0) break;
+                }
                 av_packet_free(&transcoded_pkt);
             } else {
                 // Write packet directly (compatible codec)

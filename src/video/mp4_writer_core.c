@@ -37,6 +37,38 @@
 
 extern active_recording_t active_recordings[MAX_STREAMS];
 
+/* The packet-fed writer has no record_segment() shutdown path. Drain its
+ * transcoder before the trailer, including recordings shorter than one frame. */
+static void flush_writer_audio(mp4_writer_t *writer)
+{
+    if (writer->audio.stream_idx < 0 ||
+        (unsigned)writer->audio.stream_idx >= writer->output_ctx->nb_streams) return;
+    AVStream *stream = writer->output_ctx->streams[writer->audio.stream_idx];
+    AVPacket **packets = NULL;
+    int count = 0, padding = 0;
+    int ret = transcode_audio_flush(writer->stream_name, &packets, &count, &padding);
+    if (ret >= 0) {
+        for (int i = 0; i < count; i++) {
+            AVPacket *packet = packets[i];
+            packet->stream_index = stream->index;
+            if (i == count - 1 && padding > 0 && padding < packet->duration) {
+                packet->duration -= padding;
+                stream->codecpar->trailing_padding = padding;
+            }
+            av_packet_rescale_ts(packet, packet->time_base, stream->time_base);
+            ret = av_interleaved_write_frame(writer->output_ctx, packet);
+            if (ret < 0) break;
+        }
+    }
+    for (int i = 0; i < count; i++) av_packet_free(&packets[i]);
+    av_free(packets);
+    if (ret < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_PACKET, ret);
+        log_error("Failed to drain AAC audio for %s: %d", writer->stream_name, ret);
+    }
+}
+
 /**
  * Create a new MP4 writer
  */
@@ -67,7 +99,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->audio.stream_idx = -1; // Initialize to -1 to indicate no audio stream
     writer->audio.first_dts = AV_NOPTS_VALUE;
     writer->audio.last_pts = 0;
-    writer->audio.last_dts = 0;
+    writer->audio.last_dts = AV_NOPTS_VALUE;
     writer->audio.initialized = 0;
     writer->audio.time_base.num = 1;
     writer->audio.time_base.den = 48000; // Default to 48kHz
@@ -190,6 +222,7 @@ void mp4_writer_close(mp4_writer_t *writer) {
      * ------------------------------------------------------------------ */
     if (writer->output_ctx) {
         if (writer->is_initialized && writer->output_ctx->pb) {
+            flush_writer_audio(writer);
             int ret = av_write_trailer(writer->output_ctx);
             if (ret < 0) {
                 recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,

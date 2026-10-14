@@ -49,7 +49,6 @@ typedef struct {
     faac_adapter_t *faac_enc;
     SwrContext *swr_ctx;
     AVAudioFifo *fifo;          // Buffer to accumulate samples for the encoder
-    int64_t fifo_pts;           // Running PTS for frames read from the FIFO
     AVFrame *frame;
     AVFrame *resampled_frame;
     AVPacket *in_pkt;
@@ -260,7 +259,6 @@ static int init_audio_transcoder(const char *stream_name,
             goto cleanup;
         }
     }
-    audio_transcoders[slot].fifo_pts = 0;
     audio_transcoders[slot].faac_input_samples = 0;
     audio_transcoders[slot].faac_output_frames = 0;
     audio_transcoders[slot].faac_flushed = false;
@@ -622,6 +620,43 @@ static int encode_faac_and_collect(audio_transcoder_t *transcoder,
     return ret;
 }
 
+/* Produce one access unit, consuming buffered full frames until FAAC emits
+ * output or needs more PCM. A zero-sized output means the caller may stop
+ * draining; it must never leave complete PCM frames waiting behind priming. */
+static int receive_audio_packet(audio_transcoder_t *t, AVPacket *packet)
+{
+    av_packet_unref(packet);
+    if (t->faac_flushed) return AVERROR_EOF;
+    int frame_size = get_encoder_frame_size(t);
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    int channels = t->decoder_ctx->ch_layout.nb_channels;
+#else
+    int channels = t->decoder_ctx->channels;
+#endif
+    if (channels < 1) channels = 1;
+    while (av_audio_fifo_size(t->fifo) >= frame_size) {
+        AVFrame *f = t->resampled_frame;
+        av_frame_unref(f);
+        f->format = AV_SAMPLE_FMT_S16;
+        f->sample_rate = t->decoder_ctx->sample_rate;
+        f->nb_samples = frame_size;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        av_channel_layout_default(&f->ch_layout, channels);
+#else
+        f->channel_layout = av_get_default_channel_layout(channels);
+        f->channels = channels;
+#endif
+        int ret = av_frame_get_buffer(f, 0);
+        if (ret < 0) return ret;
+        ret = av_audio_fifo_read(t->fifo, (void **)f->data, frame_size);
+        if (ret != frame_size) return AVERROR(EINVAL);
+        ret = encode_faac_block(t, f->data[0], (uint32_t)frame_size * channels,
+                               frame_size, packet);
+        if (ret < 0 || packet->size > 0) return ret;
+    }
+    return 0;
+}
+
 /**
  * Transcode an audio packet from PCM (μ-law, A-law, S16LE, etc.) to AAC
  *
@@ -649,6 +684,7 @@ static int transcode_audio_packet_locked(const char *stream_name,
     }
 
     if (transcoder_idx == -1) {
+        if (!in_pkt) return 0;
         // Initialize a new transcoder
         transcoder_idx = init_audio_transcoder(stream_name,
                                              input_stream->codecpar,
@@ -658,6 +694,10 @@ static int transcode_audio_packet_locked(const char *stream_name,
             return -1;
         }
     }
+
+    if (!in_pkt)
+        return receive_audio_packet(&audio_transcoders[transcoder_idx], out_pkt);
+    if (audio_transcoders[transcoder_idx].faac_flushed) return AVERROR_EOF;
 
     // Copy input packet to our internal packet
     av_packet_unref(audio_transcoders[transcoder_idx].in_pkt);
@@ -691,9 +731,7 @@ static int transcode_audio_packet_locked(const char *stream_name,
         return ret;
     }
 
-    // Convert sample format from decoder output (e.g. S16) to encoder input (FLTP),
-    // then buffer through the FIFO so the AAC encoder always receives exactly
-    // frame_size (1024) samples — regardless of how small the incoming PCM packets are.
+    // Convert to interleaved S16 and buffer independently of PCM packet size.
     int sr = audio_transcoders[transcoder_idx].decoder_ctx->sample_rate;
     int nb_ch = 1;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
@@ -707,7 +745,6 @@ static int transcode_audio_packet_locked(const char *stream_name,
 
     enum AVSampleFormat enc_sample_fmt = AV_SAMPLE_FMT_S16;
 
-    AVFrame *enc_frame = NULL;
     if (audio_transcoders[transcoder_idx].swr_ctx) {
         AVFrame *resampled = audio_transcoders[transcoder_idx].resampled_frame;
         av_frame_unref(resampled);
@@ -758,73 +795,18 @@ static int transcode_audio_packet_locked(const char *stream_name,
                 log_error("Failed to write samples to audio FIFO for %s", stream_name);
                 return AVERROR(ENOMEM);
             }
-
-            // The AAC encoder needs exactly frame_size samples per frame.
-            int enc_frame_size = get_encoder_frame_size(&audio_transcoders[transcoder_idx]);
-
-            if (av_audio_fifo_size(audio_transcoders[transcoder_idx].fifo) < enc_frame_size) {
-                // Not enough samples yet — return without producing an output packet.
-                return 0;
-            }
-
-            // Prepare a frame with exactly enc_frame_size samples from the FIFO.
-            av_frame_unref(resampled);
-            resampled->format      = enc_sample_fmt;
-            resampled->nb_samples  = enc_frame_size;
-            resampled->sample_rate = sr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-            av_channel_layout_default(&resampled->ch_layout, nb_ch);
-#else
-            resampled->channel_layout = av_get_default_channel_layout(nb_ch);
-            resampled->channels       = nb_ch;
-#endif
-            ret = av_frame_get_buffer(resampled, 0);
-            if (ret < 0) {
-                log_ffmpeg_error(ret, "Failed to allocate encoder frame buffer");
-                return ret;
-            }
-
-            ret = av_audio_fifo_read(audio_transcoders[transcoder_idx].fifo,
-                                      (void **)resampled->data, enc_frame_size);
-            if (ret < enc_frame_size) {
-                log_error("Failed to read enough samples from audio FIFO for %s", stream_name);
-                return AVERROR(EINVAL);
-            }
-            resampled->nb_samples = ret;
-            resampled->pts        = audio_transcoders[transcoder_idx].fifo_pts;
-            audio_transcoders[transcoder_idx].fifo_pts += ret;
-            enc_frame = resampled;
-        } else {
-            resampled->pts = audio_transcoders[transcoder_idx].frame->pts;
-            enc_frame = resampled;
         }
-    } else {
-        enc_frame = audio_transcoders[transcoder_idx].frame;
     }
-
-    if (audio_transcoders[transcoder_idx].faac_enc) {
-        uint32_t total_samples = (uint32_t)(enc_frame->nb_samples * nb_ch);
-        ret = encode_faac_block(&audio_transcoders[transcoder_idx],
-                                enc_frame->data[0], total_samples,
-                                enc_frame->nb_samples, out_pkt);
-        if (ret < 0) {
-            log_error("FAAC encoding failed for %s", stream_name);
-            return ret;
-        }
-        if (out_pkt->size > 0) {
-            out_pkt->stream_index = in_pkt->stream_index;
-            return 0;
-        }
-        return 0;
-    }
-
-    log_error("No audio encoder available for %s", stream_name);
-    return -1;
+    ret = receive_audio_packet(&audio_transcoders[transcoder_idx], out_pkt);
+    if (ret >= 0 && out_pkt->size > 0) out_pkt->stream_index = in_pkt->stream_index;
+    return ret;
 }
 
 int transcode_audio_packet(const char *stream_name, const AVPacket *in_pkt,
                            AVPacket *out_pkt, const AVStream *input_stream)
 {
+    if (!stream_name || !out_pkt || !input_stream) return AVERROR(EINVAL);
+    av_packet_unref(out_pkt);
     pthread_mutex_lock(&audio_transcoder_mutex);
     int ret = transcode_audio_packet_locked(stream_name, in_pkt, out_pkt, input_stream);
     pthread_mutex_unlock(&audio_transcoder_mutex);
@@ -884,25 +866,27 @@ static int transcode_audio_flush_locked(const char *stream_name, AVPacket ***pac
 #endif
     if (channels < 1) channels = 1;
     int pending = t->fifo ? av_audio_fifo_size(t->fifo) : 0;
-    if (pending > 0) {
+    while (pending > 0) {
+        int block_samples = FFMIN(pending, get_encoder_frame_size(t));
         AVFrame *f = t->resampled_frame;
         av_frame_unref(f);
         f->format = AV_SAMPLE_FMT_S16; f->sample_rate = t->decoder_ctx->sample_rate;
-        f->nb_samples = pending;
+        f->nb_samples = block_samples;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
         av_channel_layout_default(&f->ch_layout, channels);
 #else
         f->channel_layout = av_get_default_channel_layout(channels); f->channels = channels;
 #endif
         int ret = av_frame_get_buffer(f, 0); if (ret < 0) return ret;
-        ret = av_audio_fifo_read(t->fifo, (void **)f->data, pending);
-        if (ret != pending) return AVERROR(EINVAL);
+        ret = av_audio_fifo_read(t->fifo, (void **)f->data, block_samples);
+        if (ret != block_samples) return AVERROR(EINVAL);
         bool produced_packet;
         ret = encode_faac_and_collect(t, f->data[0],
-                                      (uint32_t)pending * channels, pending,
+                                      (uint32_t)block_samples * channels, block_samples,
                                       packets_out, packet_count_out,
                                       &produced_packet);
         if (ret < 0) return ret;
+        pending -= block_samples;
     }
 
     /* FAAC explicitly requires zero-sample calls until it returns no bytes. */
@@ -1707,7 +1691,7 @@ skip_audio_stream:
     if (writer->audio.stream_idx == -1) {
         writer->audio.first_dts = AV_NOPTS_VALUE;
         writer->audio.last_pts = 0;
-        writer->audio.last_dts = 0;
+        writer->audio.last_dts = AV_NOPTS_VALUE;
         writer->audio.initialized = 0; // Explicitly initialize to 0
     }
 
@@ -1922,7 +1906,7 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     // This ensures that these values are set even if stream creation fails
     writer->audio.first_dts = AV_NOPTS_VALUE;  // Initialize to AV_NOPTS_VALUE to match rtsp_recorder.c
     writer->audio.last_pts = 0;
-    writer->audio.last_dts = 0;
+    writer->audio.last_dts = AV_NOPTS_VALUE;
     writer->audio.initialized = 0;  // Don't mark as initialized until we receive the first packet
     writer->audio.time_base = safe_time_base;  // Store the timebase in the audio state
 

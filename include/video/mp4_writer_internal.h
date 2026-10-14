@@ -75,7 +75,9 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
  * Transcode an audio packet from PCM to AAC
  *
  * @param stream_name Name of the stream
- * @param in_pkt Input packet (PCM format)
+ * @param in_pkt Input PCM packet, or NULL to receive remaining buffered AAC.
+ *               After each input, call with NULL until out_pkt->size is zero.
+ *               This does not flush/end the encoder.
  * @param out_pkt Output packet (AAC) - must be allocated by caller
  * @param input_stream Original input stream
  * @return 0 on success, negative on error
