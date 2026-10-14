@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <sqlite3.h>
+#include <stdatomic.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -42,6 +43,33 @@
 static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
+
+/* Instrument private background readers, including instruction budgets and
+ * a deterministic pause while a SELECT is in progress. */
+static int (*reader_progress)(void *);
+static void *reader_progress_context;
+static bool deny_recording_reads;
+static atomic_int private_readers;
+static int reject_recordings(void *unused, int action, const char *table,
+                              const char *column, const char *database,
+                              const char *trigger) {
+    (void)unused; (void)column; (void)database; (void)trigger;
+    return action == SQLITE_READ && table && !strcmp(table, "recordings")
+        ? SQLITE_DENY : SQLITE_OK;
+}
+int __real_db_open_readonly_connection(sqlite3 **);
+int __wrap_db_open_readonly_connection(sqlite3 **db) {
+    int result = __real_db_open_readonly_connection(db);
+    if (result == 0) {
+        private_readers++;
+        if (reader_progress)
+            sqlite3_progress_handler(*db, 1000, reader_progress,
+                                      reader_progress_context);
+        if (deny_recording_reads)
+            sqlite3_set_authorizer(*db, reject_recordings, NULL);
+    }
+    return result;
+}
 
 // Capture only the archive renewal timer to exercise elapsed leases deterministically.
 static bool capture_lease_timers;
@@ -169,6 +197,10 @@ static uint64_t recording(bool protect) {
 }
 
 void setUp(void) {
+    reader_progress = NULL;
+    reader_progress_context = NULL;
+    deny_recording_reads = false;
+    private_readers = 0;
     capture_lease_timers = false;
     captured_timer_count = 0;
     g_config.web_auth_enabled = false;
@@ -177,11 +209,17 @@ void setUp(void) {
     sql("DELETE FROM storage_deletion_objects;DELETE FROM storage_deletions;"
         "DELETE FROM storage_read_leases;DELETE FROM storage_retrieval_jobs;"
         "DELETE FROM storage_migration_jobs;DELETE FROM storage_recording_copies;"
-        "DELETE FROM detections;DELETE FROM recordings;DELETE FROM storage_policies;DELETE FROM storage_targets;DELETE FROM audit_events;");
+        "DELETE FROM detections;DELETE FROM recordings;DELETE FROM storage_policies;DELETE FROM storage_policy_versions;DELETE FROM storage_targets;DELETE FROM audit_events;");
     unlink(source_path);
     TEST_ASSERT_EQUAL_INT(0, db_storage_target_bootstrap_default(root, source_uuid));
 }
-void tearDown(void) { unlink(source_path); }
+void tearDown(void) {
+    reader_progress = NULL;
+    reader_progress_context = NULL;
+    deny_recording_reads = false;
+    sqlite3_progress_handler(get_db_handle(), 0, NULL, NULL);
+    unlink(source_path);
+}
 
 static storage_migration_job_t move_recording(uint64_t id, storage_target_t *target) {
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK, db_storage_target_create(target));
@@ -297,9 +335,12 @@ static void test_lifecycle_scheduler_with_large_migration_backlog(void) {
     TEST_ASSERT_EQUAL_INT(2000, scalar("SELECT count(*) FROM storage_migration_jobs;"));
 
     int callbacks = 0;
-    sqlite3_progress_handler(get_db_handle(), 1000, stop_runaway_lifecycle_query, &callbacks);
+    reader_progress = stop_runaway_lifecycle_query;
+    reader_progress_context = &callbacks;
     int scheduled = db_storage_lifecycle_schedule(16);
-    sqlite3_progress_handler(get_db_handle(), 0, NULL, NULL);
+    reader_progress = NULL;
+    reader_progress_context = NULL;
+    TEST_ASSERT_GREATER_THAN(0, callbacks);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, scheduled,
         "Scheduling must not scan every migration job for each recording");
     // Failed/cancelled transfers remain excluded, just as queued transfers do.
@@ -309,6 +350,193 @@ static void test_lifecycle_scheduler_with_large_migration_backlog(void) {
              (unsigned long long)id);
     TEST_ASSERT_EQUAL_INT(1, scalar(query));
 }
+
+static void populate_recording_history(void) {
+    recording(false);
+    sql("WITH RECURSIVE batch(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM batch WHERE n<50000) "
+        "INSERT INTO recordings(stream_name,file_path,start_time,end_time,size_bytes,is_complete,"
+        "storage_target_uuid,retention_override_days) SELECT stream_name,file_path||'.'||n,"
+        "start_time,end_time,size_bytes,1,storage_target_uuid,-1 FROM recordings,batch WHERE id="
+        "(SELECT min(id) FROM recordings);");
+}
+
+static void test_empty_policy_view_does_not_scan_recording_history(void) {
+    populate_recording_history();
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_policies;"));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_policy_versions;"));
+    int callbacks = 0;
+    sqlite3_progress_handler(get_db_handle(), 1000, stop_runaway_lifecycle_query, &callbacks);
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_recording_policies;"));
+    sqlite3_progress_handler(get_db_handle(), 0, NULL, NULL);
+    TEST_ASSERT_LESS_THAN_MESSAGE(10, callbacks, "Empty policy view must do constant work");
+    deny_recording_reads = true;
+    TEST_ASSERT_EQUAL_INT(0, db_storage_lifecycle_schedule(16));
+    TEST_ASSERT_EQUAL_INT(0, db_storage_lifecycle_expire(32));
+    TEST_ASSERT_EQUAL_INT(0, db_storage_lifecycle_reconcile());
+    deny_recording_reads = false;
+    TEST_ASSERT_EQUAL_INT(3, private_readers);
+}
+
+static void create_history_policy(void) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "INSERT INTO storage_policies(uuid,name,selector_json,primary_target_uuid,enabled,"
+        "required_copy_count,maximum_retention_days) VALUES("
+        "'11111111-1111-4111-8111-111111111111','history','{}','%s',1,1,1);"
+        "UPDATE recordings SET storage_policy_uuid='11111111-1111-4111-8111-111111111111',"
+        "storage_policy_version=1;", source_uuid);
+    sql(query);
+    sql("UPDATE storage_targets SET health_status='healthy';");
+}
+
+static void test_policy_view_preserves_revision_and_legacy_fallback(void) {
+    recording(false);
+    create_history_policy();
+    sql("UPDATE storage_policies SET revision=2,maximum_retention_days=7;");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT maximum_retention_days FROM storage_recording_policies;"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_recording_policies;"));
+    sql("UPDATE recordings SET storage_policy_version=NULL;");
+    TEST_ASSERT_EQUAL_INT(7, scalar("SELECT maximum_retention_days FROM storage_recording_policies;"));
+    sql("UPDATE recordings SET storage_policy_uuid=NULL,placement_reason='policy-primary:11111111-1111-4111-8111-111111111111';");
+    TEST_ASSERT_EQUAL_INT(7, scalar("SELECT maximum_retention_days FROM storage_recording_policies;"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_recording_policies;"));
+}
+
+static void test_historical_policy_survives_current_policy_deletion(void) {
+    recording(false);
+    create_history_policy();
+    sql("DELETE FROM storage_policies;");
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_policies;"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_policy_versions;"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_recording_policies;"));
+    TEST_ASSERT_EQUAL_INT(1, db_storage_lifecycle_expire(16));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM recordings;"));
+}
+
+static pthread_mutex_t scan_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t scan_condition = PTHREAD_COND_INITIALIZER;
+static bool scan_paused, release_scan;
+static int pause_scan(void *unused) {
+    (void)unused;
+    pthread_mutex_lock(&scan_mutex);
+    if (!scan_paused) {
+        scan_paused = true;
+        pthread_cond_broadcast(&scan_condition);
+        while (!release_scan) pthread_cond_wait(&scan_condition, &scan_mutex);
+    }
+    pthread_mutex_unlock(&scan_mutex);
+    return 0;
+}
+
+static void *run_background_lifecycle(void *context) {
+    int *result = context;
+    *result = db_storage_lifecycle_reconcile();
+    return NULL;
+}
+
+static void test_api_responsive_during_lifecycle_scan(void) {
+    populate_recording_history();
+    create_history_policy();
+    scan_paused = false;
+    release_scan = false;
+    reader_progress = pause_scan;
+    reader_progress_context = NULL;
+    int result = -1;
+    pthread_t background;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&background, NULL, run_background_lifecycle, &result));
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 10;
+    pthread_mutex_lock(&scan_mutex);
+    int wait_result = 0;
+    while (!scan_paused && wait_result == 0)
+        wait_result = pthread_cond_timedwait(&scan_condition, &scan_mutex, &deadline);
+    bool paused = scan_paused;
+    pthread_mutex_unlock(&scan_mutex);
+    /* Avoid a deadlocked regression test if maintenance regains the mutex. */
+    int lock_result = pthread_mutex_trylock(get_db_mutex());
+    if (lock_result == 0) pthread_mutex_unlock(get_db_mutex());
+    int status = 0;
+    if (paused && lock_result == 0) {
+        http_request_t request;
+        http_response_t response;
+        http_request_init(&request);
+        http_response_init(&response);
+        request.method = HTTP_METHOD_GET;
+        handle_get_storage_policies(&request, &response);
+        status = response.status_code;
+        http_response_free(&response);
+    }
+    pthread_mutex_lock(&scan_mutex);
+    release_scan = true;
+    pthread_cond_broadcast(&scan_condition);
+    pthread_mutex_unlock(&scan_mutex);
+    pthread_join(background, NULL);
+    reader_progress = NULL;
+    TEST_ASSERT_TRUE_MESSAGE(paused, "Background read must run on a private connection");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, lock_result, "API mutex must remain available during scan");
+    TEST_ASSERT_EQUAL_INT(200, status);
+    TEST_ASSERT_EQUAL_INT(0, result);
+}
+
+static int batch_writes, largest_batch, write_commits;
+static int trace_lifecycle_writes(unsigned event, void *context, void *statement,
+                                  void *sql_text) {
+    (void)event; (void)context; (void)statement;
+    const char *text = sql_text;
+    if (!strncmp(text, "BEGIN", 5)) batch_writes = 0;
+    if (!strncmp(text, "INSERT INTO storage_policy_violations", 37) ||
+        !strncmp(text, "UPDATE storage_policy_violations", 32)) batch_writes++;
+    if (!strncmp(text, "COMMIT", 6)) {
+        write_commits++;
+        if (batch_writes > largest_batch) largest_batch = batch_writes;
+    }
+    return 0;
+}
+
+static void test_reconcile_batches_violation_writes_and_resolutions(void) {
+    recording(false);
+    create_history_policy();
+    sql("WITH RECURSIVE batch(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM batch WHERE n<129) "
+        "INSERT INTO recordings(stream_name,file_path,start_time,end_time,is_complete,"
+        "storage_policy_uuid,storage_policy_version) SELECT stream_name,file_path||'.'||n,"
+        "start_time,end_time,1,storage_policy_uuid,storage_policy_version FROM recordings,batch;"
+        "UPDATE storage_policies SET revision=2,required_copy_count=2;"
+        "UPDATE recordings SET storage_policy_version=2;");
+    batch_writes = largest_batch = write_commits = 0;
+    sqlite3_trace_v2(get_db_handle(), SQLITE_TRACE_STMT, trace_lifecycle_writes, NULL);
+    int active = db_storage_lifecycle_reconcile();
+    sqlite3_trace_v2(get_db_handle(), 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(130, active);
+    TEST_ASSERT_EQUAL_INT(3, write_commits);
+    TEST_ASSERT_EQUAL_INT(64, largest_batch);
+    TEST_ASSERT_EQUAL_INT(130, scalar("SELECT count(*) FROM storage_policy_violations WHERE resolved_at IS NULL;"));
+    sql("UPDATE recordings SET is_complete=0;");
+    batch_writes = largest_batch = write_commits = 0;
+    sqlite3_trace_v2(get_db_handle(), SQLITE_TRACE_STMT, trace_lifecycle_writes, NULL);
+    active = db_storage_lifecycle_reconcile();
+    sqlite3_trace_v2(get_db_handle(), 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(0, active);
+    TEST_ASSERT_EQUAL_INT(3, write_commits);
+    TEST_ASSERT_EQUAL_INT(64, largest_batch);
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_policy_violations WHERE resolved_at IS NULL;"));
+}
+
+static void test_reconcile_read_failure_preserves_violations(void) {
+    recording(false);
+    create_history_policy();
+    sql("INSERT INTO storage_policy_violations(uuid,policy_uuid,scope_key,violation_type) "
+        "VALUES('old','11111111-1111-4111-8111-111111111111','policy','minimum_retention');");
+    deny_recording_reads = true;
+    TEST_ASSERT_EQUAL_INT(-1, db_storage_lifecycle_reconcile());
+    TEST_ASSERT_EQUAL_INT(-1, db_storage_lifecycle_expire(16));
+    TEST_ASSERT_EQUAL_INT(-1, db_storage_lifecycle_schedule(16));
+    deny_recording_reads = false;
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_policy_violations WHERE resolved_at IS NULL;"));
+    TEST_ASSERT_EQUAL_INT(0, db_storage_lifecycle_reconcile());
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_policy_violations WHERE resolved_at IS NULL;"));
+}
+
 
 static void test_failed_delete_retains_inventory_until_retry(void) {
     uint64_t id = recording(false);
@@ -1316,6 +1544,8 @@ static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) 
 }
 
 static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
+    create_history_policy();
+    sql("UPDATE storage_targets SET health_status='unknown';");
     sql("BEGIN IMMEDIATE;INSERT INTO storage_read_leases(recording_id,expires_at) SELECT id,0 FROM recordings;");
     int reconciled = db_storage_lifecycle_reconcile();
     bool reconcile_preserved = !sqlite3_get_autocommit(get_db_handle());
@@ -1451,6 +1681,12 @@ int main(void) {
     RUN_TEST(test_verification_failure_preserves_source);
     RUN_TEST(test_protected_recording_archives_after_ordinary_expiry);
     RUN_TEST(test_lifecycle_scheduler_with_large_migration_backlog);
+    RUN_TEST(test_empty_policy_view_does_not_scan_recording_history);
+    RUN_TEST(test_policy_view_preserves_revision_and_legacy_fallback);
+    RUN_TEST(test_historical_policy_survives_current_policy_deletion);
+    RUN_TEST(test_api_responsive_during_lifecycle_scan);
+    RUN_TEST(test_reconcile_read_failure_preserves_violations);
+    RUN_TEST(test_reconcile_batches_violation_writes_and_resolutions);
     RUN_TEST(test_failed_delete_retains_inventory_until_retry);
     RUN_TEST(test_unsafe_bucket_configuration_rejected);
     RUN_TEST(test_multipart_resume_after_restart);

@@ -282,6 +282,72 @@ must be implemented in that service using this contract.
 
 ## Build and validation
 
+### Background lifecycle maintenance
+
+Migration 0089 makes the recording-policy view start with the policy tables,
+so an installation with no policies does not scan recording history. Lifecycle
+passes also check both current policies and retained policy revisions before
+querying recordings; deleting a current policy does not disable retention for
+recordings that still reference its historical revision.
+
+Expiry selection, scheduling, and violation scans use private read-only WAL
+connections. Reconciliation gathers a consistent snapshot before writing, then
+updates or resolves violations in batches of at most 64 indexed writes under
+the shared database mutex. Read failures preserve the previous violation state;
+a failed write batch rolls back and the next pass retries outstanding work.
+API readers can see completed batches while reconciliation continues.
+
+Each lifecycle task logs its start and elapsed milliseconds at debug level.
+Failures and tasks taking at least one second emit warning-level timing logs.
+The regression suite covers 50,000-row histories, empty policy tables, retained
+revisions, API requests during paused background scans, and bounded writes.
+
+### HLS playback cache maintenance
+
+Recording archive/retention only reclaims catalogued recording files. Native HLS
+segments under `path_hls/hls/<stream>` are a separate playback cache. Interrupted
+sessions or a switch to go2rtc can leave segments behind even when recording
+uploads succeed. Database files and backups also consume local capacity and are
+not uploaded by the recording archive.
+
+The storage controller now prunes this cache at startup and every 60-second
+heartbeat, before refreshing disk/target health. Each pass removes at most 2048
+unreferenced segment or temporary files older than five minutes. It preserves
+all playlists, their segment/partial-segment/map references, initialization MP4s,
+recent files, and unrelated files. Unsupported or unreadable playlists cause
+that stream directory to be skipped; symlinks are never followed. The dedicated
+HLS path is used when configured, otherwise `<storage_path>/hls` is used.
+
+For an older running image, build the same filesystem-only cleaner and install
+the temporary sidecar in `deployment/hls-cache-cleaner.patch.yaml`:
+
+```sh
+cc -std=c11 -Os -static -s -Iinclude tools/hls_cache_prune.c \
+  src/video/hls/hls_cache_cleanup.c -o /tmp/hls-cache-prune
+gzip -c /tmp/hls-cache-prune > /tmp/hls-cache-prune.gz
+kubectl -n INSTANCE_NAMESPACE create configmap hls-cache-cleaner \
+  --from-file=hls-cache-prune.gz=/tmp/hls-cache-prune.gz \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n INSTANCE_NAMESPACE patch deployment INSTANCE_NAME --type=strategic \
+  --patch-file deployment/hls-cache-cleaner.patch.yaml
+```
+
+The static binary must match the pod's CPU architecture. The example assumes
+the `recordings` volume, existing `archive-file-refresh` container, and
+`/var/lib/lightnvr/data/hls/hls` path; adjust those for the deployment. It shares
+the refresh helper's original 50m CPU/32Mi memory limit equally between the two
+helpers to preserve the tenant quota; NVR and WireGuard limits are unchanged.
+The patch restarts the pod. The helper supports `--dry-run`
+and uses the same deletion budget and preservation rules as the built-in
+cleaner. Remove this mitigation after deploying the updated NVR image.
+
+`test_hls_cache_cleanup` covers orphan recovery, playlist references, partial
+segments, age boundaries, work limits, dry runs, unsupported playlists, and
+symlink isolation. Existing HLS lifecycle and storage pressure tests cover the
+integration boundaries.
+
+### Archive validation
+
 S3 support defaults on and needs libcurl 7.75+; `-DENABLE_S3_ARCHIVE=OFF` builds
 filesystem-only variants. `LIGHTNVR_ARCHIVE_ALLOW_HTTP=1` is an explicit local-test
 escape hatch; production deployments require HTTPS.

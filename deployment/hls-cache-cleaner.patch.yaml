@@ -1,0 +1,45 @@
+# Temporary mitigation for images without built-in HLS heartbeat cleanup.
+# Build tools/hls_cache_prune.c statically and create the hls-cache-cleaner
+# ConfigMap with its gzip-compressed binary as hls-cache-prune.gz.
+# Apply to a deployment with a "recordings" PVC and archive-file-refresh.
+# Split the existing refresh helper's 50m/32Mi limit with this small cleaner
+# to keep the total tenant quota unchanged. NVR/WireGuard limits stay intact.
+# Remove the sidecar/volume after deploying an image with built-in cleanup.
+spec:
+  template:
+    spec:
+      containers:
+        - name: hls-cache-cleaner
+          image: busybox:1.37.0
+          command:
+            - sh
+            - -ec
+            - |
+              gzip -dc /opt/hls-cache-cleaner/hls-cache-prune.gz > /tmp/hls-cache-prune
+              chmod 755 /tmp/hls-cache-prune
+              while true; do
+                /tmp/hls-cache-prune /var/lib/lightnvr/data/hls/hls || true
+                sleep 60
+              done
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 25m
+              memory: 16Mi
+          volumeMounts:
+            - name: recordings
+              mountPath: /var/lib/lightnvr/data
+            - name: hls-cache-cleaner
+              mountPath: /opt/hls-cache-cleaner
+              readOnly: true
+        - name: archive-file-refresh
+          resources:
+            limits:
+              cpu: 25m
+              memory: 16Mi
+      volumes:
+        - name: hls-cache-cleaner
+          configMap:
+            name: hls-cache-cleaner

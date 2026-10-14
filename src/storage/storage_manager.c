@@ -27,6 +27,7 @@
 #include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "video/recording_path.h"
+#include "video/hls/hls_directory.h"
 #include "core/config.h"
 #include "core/event_producers.h"
 #include "core/logger.h"
@@ -1741,6 +1742,9 @@ static void* unified_storage_controller_func(void *arg) {
         log_warn("Initial cache refresh failed");
     }
 
+    // Recover cache left by interrupted/native HLS sessions before probing
+    // capacity. Recording retention cannot reclaim files outside its DB rows.
+    cleanup_stale_hls_segments();
     // Initial heartbeat to establish baseline pressure
     heartbeat_check_disk_pressure();
     if (storage_target_refresh_health_and_publish() < 0) {
@@ -1779,6 +1783,8 @@ static void* unified_storage_controller_func(void *arg) {
 
         now = time(NULL);
 
+        // Keep HLS cache bounded even with go2rtc playback or no viewers.
+        cleanup_stale_hls_segments();
         // Always run heartbeat (disk pressure detection)
         heartbeat_check_disk_pressure();
         if (storage_target_refresh_health_and_publish() < 0) {

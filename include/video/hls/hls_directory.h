@@ -9,6 +9,9 @@
  */
 void cleanup_hls_directories(void);
 
+/* Bounded live cache maintenance; preserves playlists and their segments. */
+void cleanup_stale_hls_segments(void);
+
 /**
  * Ensure the HLS output directory exists and is writable
  * 

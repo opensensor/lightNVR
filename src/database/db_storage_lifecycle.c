@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#include "core/logger.h"
 
 #include "database/db_core.h"
 #include "database/db_storage_migrations.h"
@@ -31,6 +34,31 @@ typedef struct {
     bool archive_due;
     char migration_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
 } lifecycle_candidate_t;
+
+/* Both tables matter: deleted policies can still govern captured recordings. */
+static int policies_present(sqlite3 *db) {
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db,
+        "SELECT EXISTS(SELECT 1 FROM storage_policies) OR "
+        "EXISTS(SELECT 1 FROM storage_policy_versions);", -1, &statement, NULL);
+    int present = -1;
+    if (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW)
+        present = sqlite3_column_int(statement, 0);
+    sqlite3_finalize(statement);
+    return present;
+}
+
+/* No fallback to the shared connection: a failed background read must not
+ * turn into an API-blocking scan. */
+static int open_policy_reader(sqlite3 **db) {
+    if (db_open_readonly_connection(db) != 0) return -1;
+    int present = policies_present(*db);
+    if (present <= 0) {
+        db_close_readonly_connection(*db);
+        *db = NULL;
+    }
+    return present;
+}
 
 static void copy_column(char *destination, size_t size,
                         sqlite3_stmt *statement, int column) {
@@ -95,15 +123,14 @@ static bool select_replica_target(const lifecycle_candidate_t *candidate,
     return true;
 }
 
-int db_storage_lifecycle_schedule(int max_jobs) {
+static int lifecycle_schedule(int max_jobs) {
     if (max_jobs < 1) return 0;
     if (max_jobs > LIFECYCLE_CANDIDATE_MAX) max_jobs = LIFECYCLE_CANDIDATE_MAX;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
+    sqlite3 *db = NULL;
+    int present = open_policy_reader(&db);
+    if (present <= 0) return present;
     lifecycle_candidate_t candidates[LIFECYCLE_CANDIDATE_MAX];
     memset(candidates, 0, sizeof(candidates));
-    pthread_mutex_lock(mutex);
     const char *sql =
         "WITH eligible AS (SELECT r.id,COALESCE(r.storage_target_uuid,'') source,p.required_copy_count,"
         "(SELECT count(*) FROM storage_recording_copies c WHERE c.recording_id=r.id) copies,"
@@ -161,7 +188,7 @@ int db_storage_lifecycle_schedule(int max_jobs) {
                     sizeof(candidate->migration_target_uuid), statement, 6);
     }
     if (statement) sqlite3_finalize(statement);
-    pthread_mutex_unlock(mutex);
+    db_close_readonly_connection(db);
     if (result != SQLITE_DONE && result != SQLITE_ROW) return -1;
 
     int scheduled = 0;
@@ -186,15 +213,14 @@ int db_storage_lifecycle_schedule(int max_jobs) {
     return scheduled;
 }
 
-int db_storage_lifecycle_expire(int maximum) {
+static int lifecycle_expire(int maximum) {
     if (maximum < 1) return 0;
     if (maximum > LIFECYCLE_CANDIDATE_MAX) maximum = LIFECYCLE_CANDIDATE_MAX;
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
+    sqlite3 *db = NULL;
+    int present = open_policy_reader(&db);
+    if (present <= 0) return present;
     uint64_t ids[LIFECYCLE_CANDIDATE_MAX];
     int count = 0;
-    pthread_mutex_lock(mutex);
     sqlite3_stmt *stmt = NULL;
     const char *sql = "SELECT r.id FROM recordings r JOIN storage_recording_policies p ON p.recording_id=r.id "
         "WHERE r.is_complete=1 AND r.protected=0 AND r.deletion_pending=0 AND "
@@ -205,12 +231,14 @@ int db_storage_lifecycle_expire(int maximum) {
         "r.start_time<strftime('%s','now')-p.maximum_retention_days*86400)) AND "
         "NOT EXISTS(SELECT 1 FROM storage_migration_jobs j WHERE j.recording_id=r.id "
         "AND j.state IN('copying','verifying','committing')) ORDER BY r.start_time LIMIT ?;";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+    int result = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (result == SQLITE_OK) {
         sqlite3_bind_int(stmt, 1, maximum);
-        while (count < maximum && sqlite3_step(stmt) == SQLITE_ROW) ids[count++] = (uint64_t)sqlite3_column_int64(stmt, 0);
+        while (count < maximum && (result = sqlite3_step(stmt)) == SQLITE_ROW) ids[count++] = (uint64_t)sqlite3_column_int64(stmt, 0);
     }
     if (stmt) sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
+    db_close_readonly_connection(db);
+    if (result != SQLITE_DONE && result != SQLITE_ROW) return -1;
     int accepted = 0;
     for (int i = 0; i < count; i++) if (storage_recording_expire_policy(ids[i]) >= 0) accepted++;
     return accepted;
@@ -224,7 +252,9 @@ static int upsert_violation(sqlite3 *db, const char *policy_uuid,
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db,
         "INSERT INTO storage_policy_violations(uuid,policy_uuid,recording_id,"
-        "scope_key,violation_type,details) VALUES(?,?,NULLIF(?,0),?,?,?) "
+        "scope_key,violation_type,details) SELECT ?1,?2,NULLIF(?3,0),?4,?5,?6 "
+        "WHERE EXISTS(SELECT 1 FROM storage_policies WHERE uuid=?2) "
+        "AND (?3=0 OR EXISTS(SELECT 1 FROM recordings WHERE id=?3)) "
         "ON CONFLICT(policy_uuid,scope_key,violation_type) DO UPDATE SET "
         "details=excluded.details,last_seen_at=strftime('%s','now'),resolved_at=NULL;",
         -1, &statement, NULL);
@@ -241,20 +271,121 @@ static int upsert_violation(sqlite3 *db, const char *policy_uuid,
     return result == SQLITE_DONE ? 0 : -1;
 }
 
-int db_storage_lifecycle_reconcile(void) {
+typedef struct violation {
+    struct violation *next;
+    char policy_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    char resolve_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    uint64_t recording_id;
+    char scope[96];
+    char type[32];
+    char details[STORAGE_MIGRATION_ERROR_MAX];
+} violation_t;
+
+static int collect_violation(violation_t **head, const char *policy_uuid,
+                             uint64_t recording_id, const char *scope,
+                             const char *type, const char *details) {
+    violation_t *item = calloc(1, sizeof(*item));
+    if (!item) return -1;
+    safe_strcpy(item->policy_uuid, policy_uuid, sizeof(item->policy_uuid), 0);
+    item->recording_id = recording_id;
+    safe_strcpy(item->scope, scope, sizeof(item->scope), 0);
+    safe_strcpy(item->type, type, sizeof(item->type), 0);
+    safe_strcpy(item->details, details, sizeof(item->details), 0);
+    item->next = *head;
+    *head = item;
+    return 0;
+}
+
+static int compare_violations(const void *left, const void *right) {
+    const violation_t *a = *(const violation_t *const *)left;
+    const violation_t *b = *(const violation_t *const *)right;
+    int result = strcmp(a->policy_uuid, b->policy_uuid);
+    if (!result) result = strcmp(a->scope, b->scope);
+    if (!result) result = strcmp(a->type, b->type);
+    return result;
+}
+
+/* Diff the old active set on the same read snapshot, so resolving conditions
+ * also uses primary-key writes rather than a table-wide UPDATE under lock. */
+static int collect_resolutions(sqlite3 *db, violation_t *active, int count,
+                               violation_t **resolved) {
+    violation_t **index = count ? calloc((size_t)count, sizeof(*index)) : NULL;
+    if (count && !index) return -1;
+    int i = 0;
+    for (violation_t *item = active; item; item = item->next) index[i++] = item;
+    if (count) qsort(index, (size_t)count, sizeof(*index), compare_violations);
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db,
+        "SELECT uuid,policy_uuid,scope_key,violation_type FROM "
+        "storage_policy_violations WHERE resolved_at IS NULL;",
+        -1, &statement, NULL);
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
+        violation_t key = {0};
+        copy_column(key.policy_uuid, sizeof(key.policy_uuid), statement, 1);
+        copy_column(key.scope, sizeof(key.scope), statement, 2);
+        copy_column(key.type, sizeof(key.type), statement, 3);
+        violation_t *key_pointer = &key;
+        if (count && bsearch(&key_pointer, index, (size_t)count,
+                             sizeof(*index), compare_violations)) continue;
+        violation_t *item = calloc(1, sizeof(*item));
+        if (!item) { result = SQLITE_NOMEM; break; }
+        copy_column(item->resolve_uuid, sizeof(item->resolve_uuid), statement, 0);
+        item->next = *resolved;
+        *resolved = item;
+    }
+    sqlite3_finalize(statement);
+    free(index);
+    return result == SQLITE_DONE ? 0 : -1;
+}
+
+static int write_violations(violation_t *items) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
-    pthread_mutex_lock(mutex);
-    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+    while (items) {
+        pthread_mutex_lock(mutex);
+        if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+            pthread_mutex_unlock(mutex);
+            return -1; /* Never roll back another owner's transaction. */
+        }
+        int result = SQLITE_OK;
+        for (int count = 0; items && count < 64 && result == SQLITE_OK;
+             count++, items = items->next) {
+            if (items->resolve_uuid[0]) {
+                sqlite3_stmt *statement = NULL;
+                result = sqlite3_prepare_v2(db,
+                    "UPDATE storage_policy_violations SET resolved_at=strftime('%s','now') "
+                    "WHERE uuid=? AND resolved_at IS NULL;", -1, &statement, NULL);
+                if (result == SQLITE_OK) {
+                    sqlite3_bind_text(statement, 1, items->resolve_uuid, -1, SQLITE_TRANSIENT);
+                    result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK : SQLITE_ERROR;
+                }
+                sqlite3_finalize(statement);
+            } else if (upsert_violation(db, items->policy_uuid, items->recording_id,
+                                        items->scope, items->type, items->details) != 0) {
+                result = SQLITE_ERROR;
+            }
+        }
+        if (result != SQLITE_OK ||
+            sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) {
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            pthread_mutex_unlock(mutex);
+            return -1;
+        }
         pthread_mutex_unlock(mutex);
-        return -1; // No transaction was acquired; do not roll back another owner.
     }
-    if (sqlite3_exec(db, "UPDATE storage_policy_violations SET "
-            "resolved_at=strftime('%s','now') WHERE resolved_at IS NULL;",
-            NULL, NULL, NULL) != SQLITE_OK) {
-        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
-        pthread_mutex_unlock(mutex);
+    return 0;
+}
+
+static int lifecycle_reconcile(void) {
+    sqlite3 *db = NULL;
+    int present = open_policy_reader(&db);
+    if (present <= 0) return present;
+    violation_t *violations = NULL;
+    violation_t *resolved = NULL;
+    /* All five reads see one committed snapshot. Close it before writing. */
+    if (sqlite3_exec(db, "BEGIN;", NULL, NULL, NULL) != SQLITE_OK) {
+        db_close_readonly_connection(db);
         return -1;
     }
     int active = 0;
@@ -267,7 +398,8 @@ int db_storage_lifecycle_reconcile(void) {
         "WHERE r.is_complete=1 AND p.required_copy_count>1 GROUP BY p.uuid,r.id "
         "HAVING 1+count(c.uuid)<p.required_copy_count;";
     int result = sqlite3_prepare_v2(db, copy_sql, -1, &statement, NULL);
-    while (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
         const char *policy = (const char *)sqlite3_column_text(statement, 0);
         uint64_t recording_id = (uint64_t)sqlite3_column_int64(statement, 1);
         char scope[64];
@@ -277,10 +409,13 @@ int db_storage_lifecycle_reconcile(void) {
         snprintf(details, sizeof(details), "requires %d copies; %d verified",
                  sqlite3_column_int(statement, 2),
                  sqlite3_column_int(statement, 3));
-        if (upsert_violation(db, policy, recording_id, scope,
+        if (collect_violation(&violations, policy, recording_id, scope,
                              "copy_count", details) == 0) active++;
+        else { result = SQLITE_NOMEM; break; }
     }
     if (statement) sqlite3_finalize(statement);
+    statement = NULL;
+    if (result != SQLITE_DONE) goto read_failed;
 
     const char *failed_sql =
         "SELECT p.uuid,r.id,j.uuid,COALESCE(j.last_error,'') FROM "
@@ -292,7 +427,8 @@ int db_storage_lifecycle_reconcile(void) {
         "newer.created_at>=j.created_at);";
     statement = NULL;
     result = sqlite3_prepare_v2(db, failed_sql, -1, &statement, NULL);
-    while (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
         const char *policy = (const char *)sqlite3_column_text(statement, 0);
         uint64_t recording_id = (uint64_t)sqlite3_column_int64(statement, 1);
         const char *job = (const char *)sqlite3_column_text(statement, 2);
@@ -301,10 +437,13 @@ int db_storage_lifecycle_reconcile(void) {
         char details[STORAGE_MIGRATION_ERROR_MAX];
         snprintf(scope, sizeof(scope), "job:%s", job ? job : "unknown");
         snprintf(details, sizeof(details), "%s", error ? error : "Migration failed");
-        if (upsert_violation(db, policy, recording_id, scope,
+        if (collect_violation(&violations, policy, recording_id, scope,
                              "migration_failed", details) == 0) active++;
+        else { result = SQLITE_NOMEM; break; }
     }
     if (statement) sqlite3_finalize(statement);
+    statement = NULL;
+    if (result != SQLITE_DONE) goto read_failed;
 
     const char *target_sql =
         "SELECT p.uuid,t.uuid,t.name,COALESCE(t.health_status,'unknown') "
@@ -313,7 +452,8 @@ int db_storage_lifecycle_reconcile(void) {
         "p.primary_pool_uuid IS NULL AND (t.enabled=0 OR t.health_status<>'healthy');";
     statement = NULL;
     result = sqlite3_prepare_v2(db, target_sql, -1, &statement, NULL);
-    while (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
         const char *policy = (const char *)sqlite3_column_text(statement, 0);
         const char *target = (const char *)sqlite3_column_text(statement, 1);
         const char *name = (const char *)sqlite3_column_text(statement, 2);
@@ -323,10 +463,13 @@ int db_storage_lifecycle_reconcile(void) {
         snprintf(scope, sizeof(scope), "target:%s", target ? target : "unknown");
         snprintf(details, sizeof(details), "%s is %s",
                  name ? name : "Primary target", health ? health : "unavailable");
-        if (upsert_violation(db, policy, 0, scope,
+        if (collect_violation(&violations, policy, 0, scope,
                              "target_unavailable", details) == 0) active++;
+        else { result = SQLITE_NOMEM; break; }
     }
     if (statement) sqlite3_finalize(statement);
+    statement = NULL;
+    if (result != SQLITE_DONE) goto read_failed;
 
     const char *pool_sql =
         "SELECT p.uuid,sp.uuid,sp.name FROM storage_policies p JOIN "
@@ -337,7 +480,8 @@ int db_storage_lifecycle_reconcile(void) {
         "t.available_bytes>t.reserve_bytes));";
     statement = NULL;
     result = sqlite3_prepare_v2(db, pool_sql, -1, &statement, NULL);
-    while (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
         const char *policy = (const char *)sqlite3_column_text(statement, 0);
         const char *pool = (const char *)sqlite3_column_text(statement, 1);
         const char *name = (const char *)sqlite3_column_text(statement, 2);
@@ -346,10 +490,13 @@ int db_storage_lifecycle_reconcile(void) {
         snprintf(scope, sizeof(scope), "pool:%s", pool ? pool : "unknown");
         snprintf(details, sizeof(details), "%s has no healthy member",
                  name ? name : "Primary pool");
-        if (upsert_violation(db, policy, 0, scope,
+        if (collect_violation(&violations, policy, 0, scope,
                              "target_unavailable", details) == 0) active++;
+        else { result = SQLITE_NOMEM; break; }
     }
     if (statement) sqlite3_finalize(statement);
+    statement = NULL;
+    if (result != SQLITE_DONE) goto read_failed;
 
     const char *minimum_sql =
         "SELECT p.uuid,p.minimum_retention_days,"
@@ -372,7 +519,8 @@ int db_storage_lifecycle_reconcile(void) {
         "WHERE p.enabled=1 AND p.minimum_retention_days>0 GROUP BY p.uuid;";
     statement = NULL;
     result = sqlite3_prepare_v2(db, minimum_sql, -1, &statement, NULL);
-    while (result == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
+    while ((result == SQLITE_OK || result == SQLITE_ROW) &&
+           (result = sqlite3_step(statement)) == SQLITE_ROW) {
         const char *policy = (const char *)sqlite3_column_text(statement, 0);
         int minimum_days = sqlite3_column_int(statement, 1);
         long double bytes = (long double)sqlite3_column_int64(statement, 2);
@@ -388,16 +536,83 @@ int db_storage_lifecycle_reconcile(void) {
             snprintf(details, sizeof(details),
                      "%.1Lf forecast days is below %d-day minimum",
                      forecast_days, minimum_days);
-            if (upsert_violation(db, policy, 0, "policy",
+            if (collect_violation(&violations, policy, 0, "policy",
                                  "minimum_retention", details) == 0) active++;
+            else { result = SQLITE_NOMEM; break; }
         }
     }
     if (statement) sqlite3_finalize(statement);
+    statement = NULL;
+    if (result != SQLITE_DONE) goto read_failed;
 
-    if (sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) {
-        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    if (collect_resolutions(db, violations, active, &resolved) != 0) goto read_failed;
+    db_close_readonly_connection(db);
+    /* Each batch holds the shared mutex for at most 64 indexed writes. A
+     * failed read changes nothing; a failed write leaves remaining conditions
+     * for the next pass. Resolve stale entries only after all upserts succeed. */
+    if (write_violations(violations) != 0 || write_violations(resolved) != 0)
         active = -1;
+    goto cleanup;
+
+read_failed:
+    log_error("Storage lifecycle reconciliation read failed: %s", sqlite3_errmsg(db));
+    db_close_readonly_connection(db);
+    active = -1;
+cleanup:
+    while (resolved) {
+        violation_t *next = resolved->next;
+        free(resolved);
+        resolved = next;
     }
-    pthread_mutex_unlock(mutex);
+    while (violations) {
+        violation_t *next = violations->next;
+        free(violations);
+        violations = next;
+    }
     return active;
+}
+
+static void log_lifecycle_duration(const char *task, struct timespec start,
+                                   int result) {
+    struct timespec end;
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed_ms = (end.tv_sec - start.tv_sec) * 1000.0 +
+                        (end.tv_nsec - start.tv_nsec) / 1000000.0;
+    if (result < 0 || elapsed_ms >= 1000.0)
+        log_warn("Storage lifecycle %s: result=%d duration_ms=%.1f",
+                 task, result, elapsed_ms);
+    else
+        log_debug("Storage lifecycle %s: result=%d duration_ms=%.1f",
+                  task, result, elapsed_ms);
+}
+
+int db_storage_lifecycle_schedule(int max_jobs) {
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    log_debug("Storage lifecycle schedule: starting");
+    int result = lifecycle_schedule(max_jobs);
+    log_lifecycle_duration("schedule", start, result);
+    return result;
+}
+
+int db_storage_lifecycle_expire(int maximum) {
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    log_debug("Storage lifecycle expire: starting");
+    int result = lifecycle_expire(maximum);
+    log_lifecycle_duration("expire", start, result);
+    return result;
+}
+
+int db_storage_lifecycle_reconcile(void) {
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    log_debug("Storage lifecycle reconcile: starting");
+    /* Serialize reconciliation passes without blocking ordinary DB callers. */
+    static pthread_mutex_t reconcile_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&reconcile_mutex);
+    int result = lifecycle_reconcile();
+    pthread_mutex_unlock(&reconcile_mutex);
+    log_lifecycle_duration("reconcile", start, result);
+    return result;
 }
