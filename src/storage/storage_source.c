@@ -522,8 +522,11 @@ int storage_source_process_one(void) {
     uint64_t id = 0;
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
+    /* Poll the small retrieval queue first. Without a fixed join order,
+     * SQLite can scan recording history even when the queue is empty,
+     * holding the shared database mutex for the entire scan. */
     if (sqlite3_prepare_v2(db, "SELECT j.recording_id,j.target_uuid,j.object_key,j.checksum,j.size_bytes,j.file_path "
-        "FROM storage_retrieval_jobs j JOIN recordings r ON r.id=j.recording_id WHERE r.deletion_pending=0 "
+        "FROM storage_retrieval_jobs j CROSS JOIN recordings r ON r.id=j.recording_id WHERE r.deletion_pending=0 "
         "AND j.state IN('queued','fetching') ORDER BY j.last_access_at LIMIT 1;", -1, &statement, NULL) == SQLITE_OK &&
         sqlite3_step(statement) == SQLITE_ROW) {
         id = (uint64_t)sqlite3_column_int64(statement, 0);
