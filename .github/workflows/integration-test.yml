@@ -47,6 +47,12 @@ jobs:
         with:
           submodules: false
 
+      - name: Checkout FAAC submodule
+        run: |
+          # Keep optional go2rtc/LiteRT sources out of these builds.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 third_party/faac
+
       - name: Check embedded migration generation
         run: |
           python3 tests/unit/test_embedded_migration_generator.py
@@ -108,6 +114,7 @@ jobs:
             test_httpd_utils \
             test_zone_filter \
             test_onvif_soap_fault \
+            test_faac_encoder \
             test_stream_manager \
             test_stream_state \
             test_packet_buffer \
@@ -122,7 +129,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -V \
-            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_storage_manager_retention|test_storage_target_pressure_cleanup|test_storage_migration|test_storage_archive_s3|test_storage_archive_operator|test_authorization|test_api_handlers_recordings_playback|test_db_storage_targets|test_db_storage_policies|test_api_handlers_storage_targets|test_api_handlers_storage_policies|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_camera_favorites|test_api_handlers_camera_favorites|test_db_backup|test_mp4_failed_open_memory|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_onvif_soap_fault|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_motion_trigger_parse|test_motion_max_area|test_url_utils"
+            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_storage_manager_retention|test_storage_target_pressure_cleanup|test_storage_migration|test_storage_archive_s3|test_storage_archive_operator|test_authorization|test_api_handlers_recordings_playback|test_db_storage_targets|test_db_storage_policies|test_api_handlers_storage_targets|test_api_handlers_storage_policies|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_camera_favorites|test_api_handlers_camera_favorites|test_db_backup|test_mp4_failed_open_memory|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_onvif_soap_fault|test_faac_encoder|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_motion_trigger_parse|test_motion_max_area|test_url_utils"
 
       - name: Generate coverage report
         if: always()
@@ -224,6 +231,12 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: false
+
+      - name: Checkout FAAC submodule
+        run: |
+          # Keep optional go2rtc/LiteRT sources out of these builds.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 third_party/faac
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -506,14 +519,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Checkout go2rtc submodule
-        # LiteRT is disabled for this job and is much larger than go2rtc, so
+      - name: Checkout go2rtc and FAAC submodules
+        # LiteRT is disabled for this job and is much larger than go2rtc and FAAC, so
         # avoid spending several minutes recursively cloning unused sources.
         run: |
           # actions/checkout records safe.directory outside the job container;
           # add it inside the container before invoking Git in a later step.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --depth 1 go2rtc
+          git submodule update --init --depth 1 go2rtc third_party/faac
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

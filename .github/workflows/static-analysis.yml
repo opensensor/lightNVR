@@ -30,6 +30,12 @@ jobs:
         with:
           submodules: false
 
+      - name: Checkout FAAC submodule
+        run: |
+          # Keep optional go2rtc/LiteRT sources out of these builds.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 third_party/faac
+
       - name: Generate compile_commands.json
         run: |
           mkdir -p build && cd build
