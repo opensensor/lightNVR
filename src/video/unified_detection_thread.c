@@ -74,10 +74,6 @@
 #define OPEN_TIMEOUT_US (5LL * AV_TIME_BASE)
 #define READ_TIMEOUT_US ((int64_t)MAX_PACKET_TIMEOUT_SEC * AV_TIME_BASE)
 
-// Detection error codes
-// Returned by detect_objects_api_snapshot when go2rtc snapshot is unavailable
-#define DETECT_SNAPSHOT_UNAVAILABLE -2
-
 // Detection settings
 // Seconds between detection checks; used as a fallback when no valid interval
 // is configured via the application's stream/detection settings (i.e. when
@@ -2837,12 +2833,12 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
 /**
  * Run detection on a keyframe
  *
- * This function handles both API-based detection (like light-object-detect)
- * and embedded model detection (SOD). For API detection, it uses go2rtc
- * snapshots which is more efficient than decoding frames.
+ * Frame-based models, including API detectors, analyze the sampled packet.
+ * Fetching a separate go2rtc snapshot could reuse an old cached image or wait
+ * for a future keyframe while blocking this stream's packet reader.
  *
  * @param ctx The unified detection context
- * @param pkt The video packet containing a keyframe (unused for API detection)
+ * @param pkt The video packet containing the sampled keyframe
  * @return true if detection was triggered, false otherwise
  */
 static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
@@ -2854,51 +2850,6 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
      * DB writes, and MQTT so detections.timestamp records frame time
      * rather than inference-finished time. */
     time_t now = frame_timestamp;
-
-    /* API detection: try the go2rtc snapshot shortcut first.
-     * The snapshot path handles zone filtering, DB storage, and MQTT
-     * internally so we only need to check the threshold on its result.
-     * If the snapshot is unavailable we fall through to the shared
-     * frame-decode path below. */
-    if (ctx->engine_count <= 1 && is_api_detection(ctx->model_path)) {
-        log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
-
-        uint64_t rec_id = detection_link_recording_id(ctx);
-
-        detection_result_t result;
-        memset(&result, 0, sizeof(result));
-        api_detection_options_t api_options;
-        resolve_api_detection_options(ctx, &api_options);
-        int detect_ret = detect_objects_api_snapshot_with_options(
-            ctx->model_path, ctx->stream_name, &result, ctx->detection_threshold,
-            rec_id, frame_timestamp, &api_options);
-
-        if (detect_ret != DETECT_SNAPSHOT_UNAVAILABLE) {
-            if (detect_ret != 0) {
-                log_warn("[%s] API detection failed with error %d", ctx->stream_name, detect_ret);
-                return false;
-            }
-            /* Snapshot succeeded — snapshot handles DB storage internally.
-             * Call report_detections for stats only (no-op for DB on API). */
-            report_detections(ctx, &result, now);
-            for (int i = 0; i < result.count; i++) {
-                if (result.detections[i].confidence >= ctx->detection_threshold) {
-                    log_info("[%s] API Detection: %s (%.1f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                             ctx->stream_name,
-                             result.detections[i].label,
-                             result.detections[i].confidence * 100.0f,
-                             result.detections[i].x, result.detections[i].y,
-                             result.detections[i].width, result.detections[i].height);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        log_info("[%s] go2rtc snapshot unavailable, falling back to frame decode",
-                 ctx->stream_name);
-        /* Fall through to frame-decode path below. */
-    }
 
     /* ONVIF: event-based — no frame needed, just read the async-thread flag.
      *
@@ -2918,16 +2869,31 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
         return triggered;
     }
 
-    /* All other models (motion, SOD/TFLite, API snapshot fallback):
-     * decode packet → detect_on_decoded_frame → report_detections. */
-    if (!pkt || !ctx->decoder_ctx) return false;
+    /* Decode only this sample. Intervening packets are intentionally skipped,
+     * so decoder reference/reorder state must not carry over between samples.
+     * Keep the codec context (and its stream extradata) for reuse. */
+    if (!pkt || !ctx->decoder_ctx || !(pkt->flags & AV_PKT_FLAG_KEY)) return false;
 
-    if (avcodec_send_packet(ctx->decoder_ctx, pkt) < 0) return false;
+    avcodec_flush_buffers(ctx->decoder_ctx);
+    int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to submit detection keyframe");
+        return false;
+    }
 
     AVFrame *frame = av_frame_alloc();
     if (!frame) return false;
 
-    if (avcodec_receive_frame(ctx->decoder_ctx, frame) < 0) {
+    ret = avcodec_receive_frame(ctx->decoder_ctx, frame);
+    if (ret == AVERROR(EAGAIN)) {
+        /* H.264/H.265 reorder buffers and frame threading can delay even an
+         * independently decodable keyframe. Drain this isolated sample now;
+         * waiting for the next interval would label an old image as current. */
+        ret = avcodec_send_packet(ctx->decoder_ctx, NULL);
+        if (ret >= 0) ret = avcodec_receive_frame(ctx->decoder_ctx, frame);
+    }
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to decode detection keyframe");
         av_frame_free(&frame);
         return false;
     }

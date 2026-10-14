@@ -132,9 +132,9 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
 
     // Format the URL for the go2rtc snapshot API
     // go2rtc runs on port 1984 and provides snapshots at: /api/frame.jpeg?src={stream_name}
-    // We add cache=30s to allow go2rtc to return a cached frame if the stream is temporarily
-    // unavailable (e.g., video doorbell in sleep mode). This prevents timeouts when the
-    // producer is reconnecting, as long as a frame was captured within the last 30 seconds.
+    // go2rtc serves any cached image younger than this TTL, even on a healthy stream.
+    // This limits repeated snapshot work for consumers that tolerate stale images.
+    // Packet-driven detection encodes its own sampled frame instead of using this cache.
     snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=30s", encoded_name);
 
     log_debug("Fetching snapshot from go2rtc: %s", url);

@@ -352,6 +352,17 @@ add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body 
 add_layer2_test(test_motion_max_area)            # Layer 2: motion detector max-area sanity cap
 add_layer3_test(test_cross_stream_motion_trigger)
 add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
+add_layer3_test(test_detection_current_frame)
+target_compile_definitions(test_detection_current_frame PRIVATE
+    TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/detection"
+)
+target_link_options(test_detection_current_frame PRIVATE
+    "-Wl,--wrap=detect_objects_api_snapshot_with_options"
+    "-Wl,--wrap=detect_objects_api_with_options"
+    "-Wl,--wrap=filter_detections_by_zones"
+    "-Wl,--wrap=filter_detections_by_stream_objects"
+)
+set_tests_properties(test_detection_current_frame PROPERTIES TIMEOUT 15)
 add_layer3_test(test_detection_io_recovery)
 target_compile_definitions(test_detection_io_recovery PRIVATE
     TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
