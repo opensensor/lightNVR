@@ -12,6 +12,7 @@
 #include "database/db_storage_migrations.h"
 #include "database/db_storage_targets.h"
 #include "storage/storage_migration.h"
+#include "storage/storage_source.h"
 #include "unity.h"
 #include "utils/strings.h"
 
@@ -279,6 +280,71 @@ void test_migration_list_returns_more_than_one_job(void) {
     TEST_ASSERT_EQUAL_INT(2, db_storage_migration_list(jobs, 4));
 }
 
+static void add_retrieval_history(void) {
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL "
+        "SELECT n+1 FROM history WHERE n<20000) "
+        "INSERT INTO recordings(stream_name,file_path,start_time,end_time,"
+        "size_bytes,is_complete) SELECT 'retrieval-history',"
+        "'/tmp/retrieval-history/'||n,100,200,16,1 FROM history;",
+        NULL, NULL, NULL));
+}
+
+static int stop_recording_history_scan(void *context) {
+    int *callbacks = context;
+    return ++*callbacks > 20;
+}
+
+static void assert_idle_retrieval_is_bounded(void) {
+    int callbacks = 0;
+    /* Bound SQLite instructions instead of elapsed time, so this regression
+     * test does not depend on CPU speed or filesystem cache state. */
+    sqlite3_progress_handler(get_db_handle(), 1000,
+                             stop_recording_history_scan, &callbacks);
+    int result = storage_source_process_one();
+    sqlite3_progress_handler(get_db_handle(), 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(0, result);
+    TEST_ASSERT_TRUE_MESSAGE(callbacks <= 20,
+        "Idle retrieval must not scan recording history while holding the writer mutex");
+}
+
+static void add_retrieval_job(uint64_t recording_id, const char *state) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "INSERT INTO storage_retrieval_jobs(recording_id,target_uuid,"
+        "object_key,checksum,size_bytes,file_path,state,last_access_at) "
+        "VALUES(%llu,'%s','camera/clip.mp4','',16,'/tmp/retrieval-cache.mp4','%s',100);",
+        (unsigned long long)recording_id, source_uuid, state);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(get_db_handle(), query, NULL, NULL, NULL));
+}
+
+void test_empty_retrieval_queue_does_not_scan_recordings(void) {
+    add_retrieval_history();
+    assert_idle_retrieval_is_bounded();
+}
+
+void test_ready_retrieval_job_does_not_scan_recordings(void) {
+    uint64_t id = add_complete_recording("cached retrieval");
+    add_retrieval_job(id, "ready");
+    add_retrieval_history();
+    assert_idle_retrieval_is_bounded();
+}
+
+void test_retrieval_skips_recordings_pending_deletion(void) {
+    uint64_t id = add_complete_recording("pending deletion");
+    add_retrieval_job(id, "queued");
+    char query[128];
+    snprintf(query, sizeof(query),
+        "UPDATE recordings SET deletion_pending=1 WHERE id=%llu;",
+        (unsigned long long)id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(get_db_handle(), query, NULL, NULL, NULL));
+    add_retrieval_history();
+    assert_idle_retrieval_is_bounded();
+    TEST_ASSERT_EQUAL_INT(0, access(source_path, R_OK));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(source_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(destination_root));
@@ -298,6 +364,9 @@ int main(void) {
     RUN_TEST(test_verified_copy_retains_source_and_registers_replica);
     RUN_TEST(test_cancelled_job_can_be_manually_retried);
     RUN_TEST(test_migration_list_returns_more_than_one_job);
+    RUN_TEST(test_empty_retrieval_queue_does_not_scan_recordings);
+    RUN_TEST(test_ready_retrieval_job_does_not_scan_recordings);
+    RUN_TEST(test_retrieval_skips_recordings_pending_deletion);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
