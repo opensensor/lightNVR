@@ -366,6 +366,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t last_video_pts = AV_NOPTS_VALUE;
     int64_t last_audio_dts = AV_NOPTS_VALUE;
     int64_t last_audio_pts = AV_NOPTS_VALUE;
+    int64_t next_transcoded_audio_pts = AV_NOPTS_VALUE;
     int audio_packet_count = 0;
     int video_packet_count = 0;
     int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
@@ -808,7 +809,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     }
 
                     out_audio_stream->codecpar->codec_tag = 0;
-                    out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
+                    /* AAC packet timestamps and durations use sample ticks,
+                     * independent of the rounded source PCM packet clock. */
+                    out_audio_stream->time_base = out_audio_stream->codecpar->sample_rate > 0
+                        ? (AVRational){1, out_audio_stream->codecpar->sample_rate}
+                        : input_ctx->streams[audio_stream_idx]->time_base;
                 } else {
                     log_error("Failed to transcode %s audio to AAC: %d — disabling audio", codec_name, transcode_ret);
                     has_audio = 0;
@@ -1082,6 +1087,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				// AVERROR_EXIT means the interrupt callback returned 1.
 				// This happens when shutdown_requested is set (e.g., during
 				// dead-recording cleanup) or during global shutdown.
+				// Treat this as the final segment too, so delayed AAC is drained
+				// before its MP4 trailer is written.
+				shutdown_detected = true;
 				log_warn("RTSP read interrupted (AVERROR_EXIT) for %s — "
 				         "recording thread is being stopped", output_file);
 				break;
@@ -1661,7 +1669,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                                 ENOMEM);
                     log_error("Failed to allocate packet for transcoded audio");
                     av_packet_unref(pkt);
-                    continue;
+                    ret = AVERROR(ENOMEM);
+                    goto cleanup;
                 }
 
                 // Key the transcoder pool by stream name (writer-scoped lifetime)
@@ -1673,20 +1682,36 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 int tc_ret = transcode_audio_packet(transcoder_key, pkt, transcoded_pkt,
                                                     input_ctx->streams[audio_stream_idx]);
                 if (tc_ret < 0) {
-                    // Transcoding failed — skip this packet silently
+                    recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                RECORDING_IO_OPERATION_PACKET, tc_ret);
+                    log_error("Failed to transcode audio for %s: %d", transcoder_key, tc_ret);
+                    av_packet_free(&transcoded_pkt);
+                    av_packet_unref(pkt);
+                    ret = tc_ret;
+                    goto cleanup;
+                }
+
+                /* FAAC buffers the encoder delay and timestamps its output
+                 * relative to the PCM packet that releases it. Keep the MP4
+                 * timeline on the AAC sample clock and describe priming with
+                 * a negative first packet PTS for the muxer's edit list. */
+                if (!transcoded_pkt->data || transcoded_pkt->size <= 0) {
                     av_packet_free(&transcoded_pkt);
                     av_packet_unref(pkt);
                     continue;
                 }
 
-                // Carry over timing and stream index from the original packet
                 transcoded_pkt->stream_index = out_audio_stream->index;
-                transcoded_pkt->dts = pkt->dts;
-                transcoded_pkt->pts = pkt->pts;
-                transcoded_pkt->duration = pkt->duration;
-
-                mp4_segment_rescale_packet_ts(
-                    transcoded_pkt, input_ctx->streams[audio_stream_idx], out_audio_stream);
+                if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
+                    next_transcoded_audio_pts = segment_index <= 1
+                        ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
+                }
+                transcoded_pkt->pts = next_transcoded_audio_pts;
+                transcoded_pkt->dts = next_transcoded_audio_pts;
+                transcoded_pkt->duration = out_audio_stream->codecpar->frame_size > 0
+                    ? out_audio_stream->codecpar->frame_size : 1024;
+                transcoded_pkt->time_base = out_audio_stream->time_base;
+                next_transcoded_audio_pts += transcoded_pkt->duration;
 
                 ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
                 av_packet_free(&transcoded_pkt);
@@ -1769,6 +1794,49 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    /* The transcoder belongs to the writer and spans ordinary segment
+     * rotations. Drain it only for the final shutdown segment, while this
+     * segment's audio stream and MP4 muxer are still open. */
+    int final_audio_error = 0;
+    if (shutdown_detected && needs_audio_transcoding && out_audio_stream && output_ctx) {
+        const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
+            ? segment_info_ptr->stream_name : rtsp_url;
+        AVPacket **flush_packets = NULL;
+        int flush_count = 0, discard_padding = 0;
+        int flush_ret = transcode_audio_flush(transcoder_key, &flush_packets,
+                                               &flush_count, &discard_padding);
+        if (flush_ret < 0) {
+            log_error("Failed to flush AAC transcoder for %s: %d", transcoder_key, flush_ret);
+            final_audio_error = flush_ret;
+        } else {
+            if (next_transcoded_audio_pts == AV_NOPTS_VALUE) {
+                next_transcoded_audio_pts = segment_index <= 1
+                    ? -(int64_t)out_audio_stream->codecpar->initial_padding : 0;
+            }
+            for (int i = 0; i < flush_count; i++) {
+                AVPacket *flush_pkt = flush_packets[i];
+                flush_pkt->stream_index = out_audio_stream->index;
+                flush_pkt->pts = flush_pkt->dts = next_transcoded_audio_pts;
+                flush_pkt->duration = out_audio_stream->codecpar->frame_size > 0
+                    ? out_audio_stream->codecpar->frame_size : 1024;
+                if (i == flush_count - 1 && discard_padding > 0 &&
+                    discard_padding < flush_pkt->duration) {
+                    /* Shorten the final MP4 sample duration. This carries the
+                     * padding trim through MOV muxer versions that predate
+                     * AV_PKT_DATA_SKIP_SAMPLES edit-list support. */
+                    flush_pkt->duration -= discard_padding;
+                    out_audio_stream->codecpar->trailing_padding = discard_padding;
+                }
+                flush_pkt->time_base = out_audio_stream->time_base;
+                next_transcoded_audio_pts += flush_pkt->duration;
+                int write_ret = av_interleaved_write_frame(output_ctx, flush_pkt);
+                if (write_ret < 0) { final_audio_error = write_ret; break; }
+            }
+        }
+        for (int i = 0; i < flush_count; i++) av_packet_free(&flush_packets[i]);
+        av_free(flush_packets);
+    }
+
     // Write trailer
     if (output_ctx && output_ctx->pb) {
         ret = av_write_trailer(output_ctx);
@@ -1780,6 +1848,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             trailer_written = true;
             log_debug("Successfully wrote trailer to output file");
         }
+        if (ret >= 0 && final_audio_error < 0) ret = final_audio_error;
     }
 
     // BUGFIX: Update per-stream segment info for the next segment
@@ -2060,20 +2129,24 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
         // Set the stream index to the audio stream
         if (writer->audio.stream_idx >= 0) {
             out_pkt->stream_index = writer->audio.stream_idx;
+            AVRational packet_time_base = pkt->time_base.num > 0 && pkt->time_base.den > 0
+                ? pkt->time_base : input_stream->time_base;
+            bool transcoded_pcm = is_pcm_codec(input_stream->codecpar->codec_id) &&
+                pkt->time_base.num > 0 && pkt->time_base.den > 0;
 
             // Track first audio DTS for timestamp remapping
-            if (writer->audio.first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
                 writer->audio.first_dts = out_pkt->dts;
                 log_debug("[%s] First audio DTS: %lld (for timestamp remapping)",
                         writer->stream_name, (long long)writer->audio.first_dts);
             }
 
             // Remap audio timestamps relative to first audio packet
-            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
                 out_pkt->dts -= writer->audio.first_dts;
                 if (out_pkt->dts < 0) out_pkt->dts = 0;
             }
-            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            if (!transcoded_pcm && writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
                 out_pkt->pts -= writer->audio.first_dts;
                 if (out_pkt->pts < 0) out_pkt->pts = 0;
             }
@@ -2095,7 +2168,10 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             // Set audio packet duration if not set
             if (out_pkt->duration == 0 || out_pkt->duration == AV_NOPTS_VALUE) {
                 // For audio, use frame_size / sample_rate if available
-                if (input_stream->codecpar->frame_size > 0 && input_stream->codecpar->sample_rate > 0) {
+                if (transcoded_pcm && writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->frame_size > 0 &&
+                    writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->sample_rate > 0) {
+                    out_pkt->duration = writer->output_ctx->streams[writer->audio.stream_idx]->codecpar->frame_size;
+                } else if (input_stream->codecpar->frame_size > 0 && input_stream->codecpar->sample_rate > 0) {
                     out_pkt->duration = av_rescale_q(input_stream->codecpar->frame_size,
                                                     (AVRational){1, input_stream->codecpar->sample_rate},
                                                     input_stream->time_base);
@@ -2107,7 +2183,7 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             // Rescale timestamps from input timebase to output timebase
             AVStream *out_stream = writer->output_ctx->streams[writer->audio.stream_idx];
             if (out_stream) {
-                av_packet_rescale_ts(out_pkt, input_stream->time_base, out_stream->time_base);
+                av_packet_rescale_ts(out_pkt, packet_time_base, out_stream->time_base);
             }
         } else {
             // No audio stream in the output, drop the packet

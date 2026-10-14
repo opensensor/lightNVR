@@ -85,6 +85,10 @@ int transcode_audio_packet(const char *stream_name,
                           AVPacket *out_pkt,
                           const AVStream *input_stream);
 
+/* Drain delayed PCM/AAC data at end of the final recording segment. */
+int transcode_audio_flush(const char *stream_name, AVPacket ***packets_out,
+                          int *packet_count_out, int *discard_padding_out);
+
 /**
  * Clean up the audio transcoder for a stream
  *
