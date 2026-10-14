@@ -12,6 +12,7 @@
 
 #define _GNU_SOURCE
 
+#include "video/go2rtc/go2rtc_api.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -397,14 +398,13 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
     ctx->request.body_len = 0;
     http_response_init(&ctx->auth_response);
 
-    // Forward the full path as-is. go2rtc is configured with base_path: /go2rtc
-    // (see GO2RTC_BASE_PATH), so it serves /go2rtc/api/streams directly.
+    // Translate the fixed public /go2rtc prefix to the active upstream prefix.
     if (req->query_string[0] != '\0') {
-        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s?%s",
-                 port, req->path, req->query_string);
+        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s%s?%s",
+                 port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH), req->query_string);
     } else {
-        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s",
-                 port, req->path);
+        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s%s",
+                 port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH));
     }
 
     safe_strcpy(ctx->method, req->method_str, sizeof(ctx->method), 0);

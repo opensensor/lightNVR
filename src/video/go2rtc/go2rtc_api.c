@@ -183,8 +183,8 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     char encoded_stream_id[MAX_STREAM_NAME * 3];
     simple_url_escape(stream_id, encoded_stream_id, MAX_STREAM_NAME * 3);
 
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&name=%s", // codeql[cpp/non-https-url] - localhost-only internal API
-            g_api_host, g_api_port, encoded_url, encoded_stream_id);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/streams?src=%s&name=%s", // codeql[cpp/non-https-url] - localhost-only internal API
+            g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_url, encoded_stream_id);
 
     log_info("Adding go2rtc stream source for %s", stream_id);
 
@@ -257,8 +257,8 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     }
 
     size_t url_buf_size = (size_t)URL_BUFFER_SIZE * (num_sources + 1);
-    int written = snprintf(url, url_buf_size, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?", // codeql[cpp/non-https-url] - localhost-only internal API
-                           g_api_host, g_api_port);
+    int written = snprintf(url, url_buf_size, "http://%s:%d%s/api/streams?", // codeql[cpp/non-https-url] - localhost-only internal API
+                           g_api_host, g_api_port, go2rtc_api_get_base_path());
     if (written < 0 || (size_t)written >= url_buf_size) {
         log_error("URL buffer overflow building go2rtc request");
         free(url);
@@ -364,7 +364,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     simple_url_escape(stream_id, encoded_id, URL_BUFFER_SIZE * 3);
 
     // Format the URL for the API endpoint with the src parameter
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s", g_api_host, g_api_port, encoded_id); // codeql[cpp/non-https-url] - localhost-only internal API
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/streams?src=%s", g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_id); // codeql[cpp/non-https-url] - localhost-only internal API
 
     // Log the URL for debugging
     log_info("DELETE URL: %s", url);
@@ -420,7 +420,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
             resp.buffer[0] = '\0';
 
             // Format the URL for the old API endpoint (encoded_id already computed above)
-            snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams/%s", g_api_host, g_api_port, encoded_id); // codeql[cpp/non-https-url] - localhost-only internal API
+            snprintf(url, sizeof(url), "http://%s:%d%s/api/streams/%s", g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_id); // codeql[cpp/non-https-url] - localhost-only internal API
 
             log_info("Fallback DELETE URL: %s", url);
 
@@ -494,8 +494,8 @@ bool go2rtc_api_publish_stream(const char *stream_id, const char *destination) {
     simple_url_escape(destination, encoded_dst, URL_BUFFER_SIZE * 3);
 
     // POST /api/streams?src=<name>&dst=<rtmp-url> -> stream.Publish(dst) in go2rtc.
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&dst=%s", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port, encoded_stream_id, encoded_dst);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/streams?src=%s&dst=%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_stream_id, encoded_dst);
 
     // Log the stream name only — the destination URL embeds the stream key.
     log_info("Publishing (restreaming) go2rtc stream %s to configured RTMP destination", stream_id);
@@ -645,8 +645,8 @@ static int stream_listed_in_go2rtc(const char *stream_id) {
     struct MemoryStruct chunk = { .memory = NULL, .size = 0 };
 
     // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path());
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -728,8 +728,8 @@ bool go2rtc_api_delete_preload(const char *stream_id) {
     simple_url_escape(stream_id, encoded_id, sizeof(encoded_id));
 
     char url[URL_BUFFER_SIZE];
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port, encoded_id);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/preload?src=%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_id);
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
@@ -862,8 +862,8 @@ bool go2rtc_api_get_stream_activity(go2rtc_stream_activity_t *streams,
     char url[URL_BUFFER_SIZE];
     struct MemoryStruct response = { .memory = NULL, .size = 0 };
     snprintf(url, sizeof(url),
-             "http://%s:%d" GO2RTC_BASE_PATH "/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port);
+             "http://%s:%d%s/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path());
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
@@ -904,7 +904,7 @@ bool go2rtc_api_get_webrtc_url(const char *stream_id, char *buffer, size_t buffe
     simple_url_escape(stream_id, encoded_stream_id, MAX_STREAM_NAME * 3);
 
     // Format the WebRTC URL
-    snprintf(buffer, buffer_size, "http://%s:%d" GO2RTC_BASE_PATH "/webrtc/%s", g_api_host, g_api_port, encoded_stream_id); // codeql[cpp/non-https-url] - localhost-only internal API
+    snprintf(buffer, buffer_size, "http://%s:%d%s/webrtc/%s", g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_stream_id); // codeql[cpp/non-https-url] - localhost-only internal API
     return true;
 }
 
@@ -928,8 +928,8 @@ bool go2rtc_api_update_config(void) {
     response_buffer_t resp = { .size = 0 };
     resp.buffer[0] = '\0';
 
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/config", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/config", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path());
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
@@ -987,8 +987,8 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
     response_buffer_t resp = { .size = 0 };
     resp.buffer[0] = '\0';
 
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path());
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
@@ -1044,7 +1044,7 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
     resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api", g_api_host, g_api_port); // codeql[cpp/non-https-url] - localhost-only internal API
+    snprintf(url, sizeof(url), "http://%s:%d%s/api", g_api_host, g_api_port, go2rtc_api_get_base_path()); // codeql[cpp/non-https-url] - localhost-only internal API
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -1143,8 +1143,8 @@ static bool preload_attempt(const char *stream_id, const char *query, long timeo
     simple_url_escape(stream_id, encoded_id, URL_BUFFER_SIZE * 3);
 
     char url[URL_BUFFER_SIZE];
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&%s", // codeql[cpp/non-https-url] - localhost-only internal API
-             g_api_host, g_api_port, encoded_id, query);
+    snprintf(url, sizeof(url), "http://%s:%d%s/api/preload?src=%s&%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, go2rtc_api_get_base_path(), encoded_id, query);
 
     log_info("Preloading stream with URL: %s", url);
 

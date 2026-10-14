@@ -19,6 +19,8 @@
 #include "database/db_core.h"
 #include "database/db_system_settings.h"
 #include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_api.h"
+#include "utils/yaml_validate.h"
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -135,6 +137,7 @@ void test_generate_startup_config_writes_db_override_file(void) {
     snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", root_dir);
 
     const char *override_yaml =
+        "api:\n  base_path: /foo\n"
         "log:\n"
         "  level: trace\n";
 
@@ -163,6 +166,20 @@ void test_generate_startup_config_writes_db_override_file(void) {
 
     free(base_contents);
     free(override_contents);
+    if (yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_STRING("/foo", go2rtc_api_get_base_path());
+        TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+            "go2rtc_config_override_disabled_reason", "test quarantine"));
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_process_generate_override_file(override_path));
+        TEST_ASSERT_EQUAL_STRING("/go2rtc", go2rtc_api_get_base_path());
+        TEST_ASSERT_EQUAL_INT(0, db_set_system_setting(
+            "go2rtc_config_override_disabled_reason", ""));
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_process_generate_override_file(override_path));
+        TEST_ASSERT_EQUAL_STRING("/foo", go2rtc_api_get_base_path());
+        TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("go2rtc_config_override", ""));
+        TEST_ASSERT_EQUAL_INT(0, go2rtc_process_generate_override_file(override_path));
+        TEST_ASSERT_EQUAL_STRING("/go2rtc", go2rtc_api_get_base_path());
+    }
     shutdown_database();
     remove_tree(root_dir);
 }

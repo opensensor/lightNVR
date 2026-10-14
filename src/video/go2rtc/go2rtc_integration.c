@@ -521,8 +521,8 @@ static stream_flow_t check_stream_data_flow(const char *stream_name) {
     // stream object on some releases and a keyed map on others; treating it as
     // a map caused healthy streams to be logged as missing and repeatedly
     // reloaded (#457).
-    snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams",
-             api_port_val);
+    snprintf(url, sizeof(url), "http://localhost:%d%s/api/streams",
+             api_port_val, go2rtc_api_get_base_path());
 
     char *response = NULL;
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -2173,8 +2173,8 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *buffer, size_
         api_port = 1984; // Fallback to default port
     }
     snprintf(buffer, buffer_size,
-             "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream.m3u8?src=%s%s",
-             api_port, encoded_name, g_config.audio_disabled ? "&video" : "");
+             "http://localhost:%d%s/api/stream.m3u8?src=%s%s",
+             api_port, go2rtc_api_get_base_path(), encoded_name, g_config.audio_disabled ? "&video" : "");
 
     log_info("Generated go2rtc HLS URL for stream %s: %s", stream_name, buffer);
     return true;

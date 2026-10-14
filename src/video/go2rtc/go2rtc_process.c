@@ -444,7 +444,7 @@ static bool is_go2rtc_running_as_service(int api_port) {
         }
 
         // Format the URL for the API endpoint
-        snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", api_port);
+        snprintf(url, sizeof(url), "http://localhost:%d%s/api/streams", api_port, go2rtc_api_get_base_path());
 
         // Set curl options
         curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -897,6 +897,9 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
     /* Pre-compute service-check diagnostic details (the helper below only
      * returns a boolean).  These feed the structured failure log and do not
      * affect control flow on their own. */
+    if (go2rtc_process_generate_override_file(g_override_path) != 0) {
+        log_warn("Unable to resolve go2rtc override before service discovery");
+    }
     g_discovery_diag.service_port_open = check_tcp_port_open(g_api_port);
     bool service_running = is_go2rtc_running_as_service(g_api_port);
     g_discovery_diag.service_http_ok = service_running;
@@ -1008,7 +1011,7 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     // API configuration
     fprintf(config_file, "api:\n");
     fprintf(config_file, "  listen: :%d\n", api_port);
-	// base_path must match GO2RTC_BASE_PATH in go2rtc_api.h so all C API calls resolve correctly.
+	// The base config uses the default prefix; applying an override updates the client prefix.
 	// IMPORTANT: do not include a trailing slash here. go2rtc registers routes as:
 	//   pattern = base_path + "/" + "api/..."
 	// so a trailing slash would produce double slashes ("/go2rtc//api") and can cause 404s.
@@ -1629,6 +1632,7 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
                       strerror(errno));
             return -1;
         }
+        go2rtc_api_apply_base_path_override(NULL, 0);
         return 0;
     }
 
@@ -1654,6 +1658,7 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
                           strerror(errno));
                 return -1;
             }
+            go2rtc_api_apply_base_path_override(NULL, 0);
             return 0;
         }
         free(reason);
@@ -1723,6 +1728,7 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
             return -1;
         }
         log_debug("go2rtc override file absent (no DB setting)");
+        go2rtc_api_apply_base_path_override(NULL, 0);
         return 0;
     }
 
@@ -1777,7 +1783,12 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
 
     log_debug("Wrote %zu bytes to go2rtc override file %s",
               content_len, override_path);
+    bool prefix_ok = go2rtc_api_apply_base_path_override(content, content_len);
     free(content);
+    if (!prefix_ok) {
+        log_error("Invalid go2rtc api.base_path: use an absolute path without a trailing slash, or an empty string");
+        return -1;
+    }
     return 0;
 }
 
@@ -2488,7 +2499,7 @@ static bool go2rtc_process_start_locked(int api_port) {
             }
 
             // Format the URL for the API endpoint
-            snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", api_port);
+            snprintf(url, sizeof(url), "http://localhost:%d%s/api/streams", api_port, go2rtc_api_get_base_path());
 
             // Set curl options
             curl_easy_setopt(curl, CURLOPT_URL, url);

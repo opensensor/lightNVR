@@ -29,6 +29,7 @@
 #include "video/mp4_recording.h"
 #include "video/recording_path.h"
 #include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_lifecycle.h"
@@ -664,6 +665,7 @@ void handle_get_client_config(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(config, "go2rtc_available", go2rtc_available);
     cJSON_AddNumberToObject(config, "go2rtc_api_port",
                             g_config.go2rtc_api_port);
+    cJSON_AddStringToObject(config, "go2rtc_base_path", go2rtc_api_get_base_path());
     cJSON_AddBoolToObject(config, "webrtc_disabled", g_config.webrtc_disabled);
     cJSON_AddBoolToObject(config, "hls_disabled", g_config.hls_disabled);
     cJSON_AddBoolToObject(config, "mse_disabled", g_config.mse_disabled);
@@ -826,6 +828,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_binary_path", g_config.go2rtc_binary_path);
     cJSON_AddStringToObject(settings, "go2rtc_config_dir", g_config.go2rtc_config_dir);
     cJSON_AddNumberToObject(settings, "go2rtc_api_port", g_config.go2rtc_api_port);
+    cJSON_AddStringToObject(settings, "go2rtc_base_path", go2rtc_api_get_base_path());
     cJSON_AddNumberToObject(settings, "go2rtc_rtsp_port", g_config.go2rtc_rtsp_port);
     cJSON_AddBoolToObject(settings, "go2rtc_webrtc_enabled", g_config.go2rtc_webrtc_enabled);
     cJSON_AddNumberToObject(settings, "go2rtc_webrtc_listen_port", g_config.go2rtc_webrtc_listen_port);

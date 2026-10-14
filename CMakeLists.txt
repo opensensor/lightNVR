@@ -160,7 +160,7 @@ if(YAML_FOUND)
     message(STATUS "Found libyaml: ${YAML_LIBRARIES} (version ${YAML_VERSION})")
     add_compile_definitions(LIGHTNVR_HAVE_LIBYAML=1)
 else()
-    message(WARNING "libyaml (yaml-0.1) not found. YAML validation will be disabled. Install libyaml-dev / yaml-dev to enable.")
+    message(WARNING "libyaml (yaml-0.1) not found. YAML validation and go2rtc override base_path detection will be disabled. Install libyaml-dev / yaml-dev to enable.")
 endif()
 
 # MQTT support (optional, uses libmosquitto)

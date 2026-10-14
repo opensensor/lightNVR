@@ -491,6 +491,24 @@ stun_server = stun.l.google.com:19302
 - `ice_servers`: Custom ICE servers, comma-separated (format: `stun:host:port` or `turn:host:port`)
 - `proxy_max_inflight`: Maximum concurrent HLS/snapshot proxy requests (default: 16, range: 1-128)
 
+To change go2rtc's API prefix, set **Config Override** in the go2rtc settings:
+
+```yaml
+api:
+  base_path: /foo
+```
+
+LightNVR reads the prefix from the applied override and uses it for API calls,
+health checks, and direct browser playback. Use an absolute path without a
+trailing slash; `base_path: ""` serves the API at the root. Clearing or
+quarantining the override restores `/go2rtc`. Automatic prefix detection requires
+libyaml, which is included in the standard builds.
+
+LightNVR's built-in HTTP proxy keeps its public `/go2rtc/*` routes and translates
+requests to the configured upstream prefix. For HTTPS playback through an external
+reverse proxy, configure that proxy to forward the chosen prefix (including
+WebSocket upgrades) to go2rtc.
+
 ### MQTT Settings
 
 ```ini

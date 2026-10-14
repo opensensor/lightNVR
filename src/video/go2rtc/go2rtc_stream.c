@@ -787,7 +787,7 @@ bool go2rtc_stream_is_ready(void) {
     long http_code = 0;
 
     // Format the URL for the API endpoint with safety checks
-    int url_result = snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", g_api_port);
+    int url_result = snprintf(url, sizeof(url), "http://localhost:%d%s/api/streams", g_api_port, go2rtc_api_get_base_path());
     if (url_result < 0 || url_result >= (int)sizeof(url)) {
         log_warn("go2rtc_stream_is_ready: failed to format URL");
         curl_easy_cleanup(curl);
@@ -861,12 +861,12 @@ bool go2rtc_stream_is_ready(void) {
         }
 
         // Prepare HTTP request with safety checks
-        // Use GO2RTC_BASE_PATH to match the base_path in go2rtc config
+        // Use the effective prefix from the applied go2rtc config
         int req_result = snprintf(request, sizeof(request),
-                "GET " GO2RTC_BASE_PATH "/api/streams HTTP/1.1\r\n"
+                "GET %s/api/streams HTTP/1.1\r\n"
                 "Host: localhost:%d\r\n"
                 "Connection: close\r\n"
-                "\r\n", g_api_port);
+                "\r\n", go2rtc_api_get_base_path(), g_api_port);
 
         if (req_result < 0 || req_result >= (int)sizeof(request)) {
             log_warn("go2rtc_stream_is_ready: failed to format HTTP request");

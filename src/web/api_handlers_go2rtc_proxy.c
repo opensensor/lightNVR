@@ -8,6 +8,7 @@
  * - Scoped to HLS/snapshot endpoints only
  */
 
+#include "video/go2rtc/go2rtc_api.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -374,9 +375,9 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     int port = g_config.go2rtc_api_port > 0 ? g_config.go2rtc_api_port : 1984;
 
     if (req->query_string[0] != '\0') {
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s?%s", port, req->path, req->query_string);
+        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s%s?%s", port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH), req->query_string);
     } else {
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s", port, req->path);
+        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s%s", port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH));
     }
 
     log_debug("go2rtc proxy: %s %s -> %s", req->method_str, req->path, url);

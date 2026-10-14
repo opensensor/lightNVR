@@ -12,6 +12,8 @@
 #include <curl/curl.h>
 
 #include "unity.h"
+#include "video/go2rtc/go2rtc_api.h"
+#include "utils/yaml_validate.h"
 #include "core/config.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_go2rtc_proxy.h"
@@ -24,6 +26,7 @@ static bool hold_upstream;
 static bool release_upstream;
 static bool real_authorization;
 static int upstream_requests;
+static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t upstream_ready = PTHREAD_COND_INITIALIZER;
 
@@ -83,6 +86,7 @@ static void init_connection(libuv_connection_t *connection) {
 
 void setUp(void) {
     load_default_config(&g_config);
+    go2rtc_api_apply_base_path_override(NULL, 0);
     completed_responses = 0;
     hold_upstream = false;
     release_upstream = false;
@@ -94,6 +98,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    go2rtc_api_apply_base_path_override(NULL, 0);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
@@ -195,6 +200,10 @@ static void *redirect_peer(void *arg) {
         char request[2048];
         ssize_t received = read(client, request, sizeof(request));
         if (received > 0) {
+            size_t n = (size_t)received < sizeof(upstream_request) - 1
+                ? (size_t)received : sizeof(upstream_request) - 1;
+            memcpy(upstream_request, request, n);
+            upstream_request[n] = '\0';
             upstream_requests++;
             const char *response = upstream_requests == 1
                 ? "HTTP/1.1 302 Found\r\nLocation: /go2rtc/api/config\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -207,6 +216,10 @@ static void *redirect_peer(void *arg) {
 }
 
 void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
+    if (yaml_validate_is_available()) {
+        const char *override = "api: {base_path: /foo}";
+        TEST_ASSERT_TRUE(go2rtc_api_apply_base_path_override(override, strlen(override)));
+    }
     g_config.web_auth_enabled = false;
     real_authorization = true;
     for (int threaded = 0; threaded < 2; threaded++) {
@@ -232,6 +245,8 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
         http_response_free(&connection.response);
         TEST_ASSERT_EQUAL_INT(1, upstream_requests);
         TEST_ASSERT_EQUAL_INT(302, status);
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
+            ? "GET /foo/api/streams HTTP/1.1" : "GET /go2rtc/api/streams HTTP/1.1"));
     }
 }
 

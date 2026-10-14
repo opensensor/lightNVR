@@ -135,7 +135,7 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
     // go2rtc serves any cached image younger than this TTL, even on a healthy stream.
     // This limits repeated snapshot work for consumers that tolerate stale images.
     // Packet-driven detection encodes its own sampled frame instead of using this cache.
-    snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=30s", encoded_name);
+    snprintf(url, sizeof(url), "http://localhost:1984%s/api/frame.jpeg?src=%s&cache=30s", go2rtc_api_get_base_path(), encoded_name);
 
     log_debug("Fetching snapshot from go2rtc: %s", url);
     

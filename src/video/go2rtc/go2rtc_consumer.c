@@ -152,7 +152,7 @@ static bool add_go2rtc_recording_consumer(const char *stream_id, const char *out
     // Format the URL for the API endpoint
     int api_port = go2rtc_stream_get_api_port();
     if (api_port == 0) api_port = 1984;
-    snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream/%s-recording", api_port, encoded_id);
+    snprintf(url, sizeof(url), "http://localhost:%d%s/api/stream/%s-recording", api_port, go2rtc_api_get_base_path(), encoded_id);
 
     log_info("Adding recording consumer for stream %s with URL: %s", stream_id, url);
     log_info("JSON payload: %s", json_payload);
@@ -231,7 +231,7 @@ static bool remove_go2rtc_consumer(const char *stream_id, const char *consumer_t
         // Use the same endpoint format as when we created the stream
         int api_port = go2rtc_stream_get_api_port();
         if (api_port == 0) api_port = 1984;
-        snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream/%s-recording", api_port, stream_id);
+        snprintf(url, sizeof(url), "http://localhost:%d%s/api/stream/%s-recording", api_port, go2rtc_api_get_base_path(), stream_id);
     } else {
         // For HLS, we don't need to remove anything as we're using direct access
         log_info("No need to remove HLS consumer for stream %s", stream_id);

@@ -42,6 +42,8 @@
 #include <curl/curl.h>
 
 #include "unity.h"
+#include "video/go2rtc/go2rtc_api.h"
+#include "utils/yaml_validate.h"
 
 static char s_tmpdir[256];
 static char s_binary_path[512];
@@ -358,6 +360,9 @@ void test_two_config_scalar_override(void)
      * 404 indefinitely and the test would detect it via api_up=false. */
     int api_up = spawn_and_wait(base_path, override_path, override_url, &pid);
 
+    bool client_found_stream = false;
+    bool client_registered_stream = false;
+    bool client_removed_stream = false;
     long base_status = 0, override_status = 0;
     if (api_up) {
         struct curl_buf b1 = {0}, b2 = {0};
@@ -365,8 +370,24 @@ void test_two_config_scalar_override(void)
         base_status     = http_get_status(base_url, &b2);
         free(b1.data);
         free(b2.data);
+        if (yaml_validate_is_available()) {
+            const char *override = "api: {base_path: /override}";
+            if (go2rtc_api_apply_base_path_override(override, strlen(override)) &&
+                go2rtc_api_init("127.0.0.1", port)) {
+                client_found_stream = go2rtc_api_stream_exists("cam_x");
+                client_registered_stream = go2rtc_api_add_stream("issue631", "rtsp://example.invalid/test");
+                client_removed_stream = go2rtc_api_remove_stream("issue631");
+                go2rtc_api_cleanup();
+            }
+            go2rtc_api_apply_base_path_override(NULL, 0);
+        }
     }
     reap_child(pid);
+    if (yaml_validate_is_available()) {
+        TEST_ASSERT_TRUE_MESSAGE(client_found_stream, "LightNVR client must find streams at the overridden prefix");
+        TEST_ASSERT_TRUE_MESSAGE(client_registered_stream, "LightNVR client must register streams at the overridden prefix");
+        TEST_ASSERT_TRUE_MESSAGE(client_removed_stream, "LightNVR client must remove streams at the overridden prefix");
+    }
 
     TEST_ASSERT_TRUE_MESSAGE(api_up,
         "/override/api/streams never came up — override scalar (api.base_path) "

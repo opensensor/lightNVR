@@ -22,11 +22,18 @@ typedef struct {
 /**
  * @brief Base path prefix for go2rtc API endpoints
  *
- * This must match the base_path setting in go2rtc.yaml.
+ * Default prefix used in the generated base configuration.
  * go2rtc registers all its API routes under this prefix when base_path is set.
  * For example, /api/streams becomes /go2rtc/api/streams.
  */
 #define GO2RTC_BASE_PATH "/go2rtc"
+
+/* Effective upstream prefix. The returned thread-local copy is valid until
+ * the next call on the same thread. Public LightNVR proxy routes stay fixed. */
+const char *go2rtc_api_get_base_path(void);
+/* Apply the prefix from the override actually passed to go2rtc. NULL resets
+ * to the generated default. Returns false for an unusable prefix. */
+bool go2rtc_api_apply_base_path_override(const char *yaml, size_t length);
 
 /**
  * @brief Initialize the go2rtc API client
