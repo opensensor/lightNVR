@@ -127,7 +127,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     cJSON *api_model = cJSON_CreateObject();
     if (api_model) {
         cJSON_AddStringToObject(api_model, "id", "api-detection");
-        cJSON_AddStringToObject(api_model, "name", "API Detection (light-object-detect)");
+        cJSON_AddStringToObject(api_model, "name", "API Detection");
         cJSON_AddStringToObject(api_model, "path", "api-detection");
         cJSON_AddStringToObject(api_model, "type", MODEL_TYPE_API);
         cJSON_AddBoolToObject(api_model, "supported", true);

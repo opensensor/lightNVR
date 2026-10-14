@@ -959,7 +959,9 @@ export function StreamConfigModal({
                             <option value="api-detection">
                               {t('streamsConfig.customApiModel')}
                             </option>
-                            {detectionModels.map(model => (
+                            {/* The server also lists api-detection; it is the
+                               option above, so skip it rather than show it twice. */}
+                            {detectionModels.filter(model => model.id !== 'api-detection').map(model => (
                               /* Models this build cannot run are listed but not
                                  selectable, with the reason inline — silently
                                  omitting them made an installed model look
