@@ -2059,6 +2059,31 @@ static const char migration_0088_down[] =
     "DROP INDEX IF EXISTS idx_camera_favorites_user_camera;\n"
     "DROP TABLE IF EXISTS camera_favorites;";
 
+static const char migration_0089_up[] =
+    "CREATE INDEX idx_recordings_storage_policy_revision\n"
+    "    ON recordings(storage_policy_uuid, storage_policy_version);\n"
+    "DROP VIEW storage_recording_policies;\n"
+    "CREATE VIEW storage_recording_policies AS\n"
+    "SELECT r.id AS recording_id,v.* FROM storage_policy_versions v CROSS JOIN recordings r\n"
+    "    ON v.uuid=r.storage_policy_uuid AND v.revision=r.storage_policy_version\n"
+    "UNION ALL\n"
+    "SELECT r.id AS recording_id,p.* FROM storage_policies p CROSS JOIN recordings r\n"
+    "    ON p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1))\n"
+    "    WHERE NOT EXISTS(SELECT 1 FROM storage_policy_versions v WHERE v.uuid=r.storage_policy_uuid\n"
+    "        AND v.revision=r.storage_policy_version);";
+
+static const char migration_0089_down[] =
+    "DROP VIEW storage_recording_policies;\n"
+    "CREATE VIEW storage_recording_policies AS\n"
+    "SELECT r.id AS recording_id,v.* FROM recordings r JOIN storage_policy_versions v\n"
+    "    ON v.uuid=r.storage_policy_uuid AND v.revision=r.storage_policy_version\n"
+    "UNION ALL\n"
+    "SELECT r.id AS recording_id,p.* FROM recordings r JOIN storage_policies p\n"
+    "    ON p.uuid=COALESCE(r.storage_policy_uuid,substr(r.placement_reason,instr(r.placement_reason,':')+1))\n"
+    "    WHERE NOT EXISTS(SELECT 1 FROM storage_policy_versions v WHERE v.uuid=r.storage_policy_uuid\n"
+    "        AND v.revision=r.storage_policy_version);\n"
+    "DROP INDEX idx_recordings_storage_policy_revision;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2676,8 +2701,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0088_down,
         .is_embedded = true
     },
+    {
+        .version = "0089",
+        .description = "optimize_storage_recording_policies",
+        .sql_up = migration_0089_up,
+        .sql_down = migration_0089_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 88
+#define EMBEDDED_MIGRATIONS_COUNT 89
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

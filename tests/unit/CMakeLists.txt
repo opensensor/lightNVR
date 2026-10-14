@@ -58,6 +58,11 @@ macro(add_layer2_test TEST_NAME)
     endif()
 endmacro()
 
+# Filesystem-only regression coverage also builds the standalone helper logic.
+add_layer1_test(test_hls_cache_cleanup)
+target_sources(test_hls_cache_cleanup PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/video/hls/hls_cache_cleanup.c)
+
 # Variant for Layer 2 tests that require CURL
 macro(add_layer2_test_with_curl TEST_NAME)
     add_layer2_test(${TEST_NAME})
@@ -211,7 +216,8 @@ add_layer2_test(test_storage_migration)
 add_layer2_test(test_storage_deletion_ledger)   # Layer 2: deletion ledger scoping, pruning, indexes
 if(ENABLE_S3_ARCHIVE)
     add_layer2_test(test_storage_archive)
-    target_link_options(test_storage_archive PRIVATE "-Wl,--wrap=uv_timer_start")
+    target_link_options(test_storage_archive PRIVATE "-Wl,--wrap=uv_timer_start"
+        "-Wl,--wrap=db_open_readonly_connection")
 endif()
 add_layer2_test(test_db_detections)
 add_layer2_test(test_db_zones)

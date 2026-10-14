@@ -2,12 +2,15 @@
 #define _GNU_SOURCE
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libavformat/avformat.h>
@@ -15,9 +18,11 @@
 #include "unity.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
 #include "video/hls_writer.h"
 #include "video/hls/hls_unified_thread.h"
+#include "video/hls/hls_directory.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 
@@ -88,6 +93,32 @@ static void *close_writer(void *arg) {
     pthread_barrier_wait(&close_barrier);
     hls_writer_close(arg);
     return NULL;
+}
+
+void test_cache_maintenance_uses_dedicated_path_then_default_path(void) {
+    char default_dir[256], dedicated_dir[256], default_file[512], dedicated_file[512];
+    snprintf(default_dir, sizeof(default_dir), "%s/hls/camera", test_dir);
+    snprintf(g_config.storage_path_hls, sizeof(g_config.storage_path_hls),
+             "%s/playback", test_dir);
+    snprintf(dedicated_dir, sizeof(dedicated_dir), "%s/hls/camera", g_config.storage_path_hls);
+    TEST_ASSERT_EQUAL_INT(0, mkdir_recursive(default_dir));
+    TEST_ASSERT_EQUAL_INT(0, mkdir_recursive(dedicated_dir));
+    snprintf(default_file, sizeof(default_file), "%s/old.ts", default_dir);
+    snprintf(dedicated_file, sizeof(dedicated_file), "%s/old.ts", dedicated_dir);
+    struct timespec old[2] = {{time(NULL) - 600, 0}, {time(NULL) - 600, 0}};
+    const char *files[] = {default_file, dedicated_file};
+    for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i) {
+        FILE *file = fopen(files[i], "w");
+        TEST_ASSERT_NOT_NULL(file);
+        TEST_ASSERT_EQUAL_INT(0, fclose(file));
+        TEST_ASSERT_EQUAL_INT(0, utimensat(AT_FDCWD, files[i], old, 0));
+    }
+    cleanup_stale_hls_segments();
+    TEST_ASSERT_EQUAL_INT(0, access(default_file, F_OK));
+    TEST_ASSERT_EQUAL_INT(-1, access(dedicated_file, F_OK));
+    g_config.storage_path_hls[0] = '\0';
+    cleanup_stale_hls_segments();
+    TEST_ASSERT_EQUAL_INT(-1, access(default_file, F_OK));
 }
 
 void test_writer_remaps_input_video_after_audio_to_output_stream_zero(void) {
@@ -260,6 +291,7 @@ void test_parallel_unified_stream_shutdown_and_restart(void) {
 int main(void) {
     init_logger();
     UNITY_BEGIN();
+    RUN_TEST(test_cache_maintenance_uses_dedicated_path_then_default_path);
     RUN_TEST(test_writer_remaps_input_video_after_audio_to_output_stream_zero);
     RUN_TEST(test_parallel_writer_teardown_and_recreation_preserves_signals);
     RUN_TEST(test_parallel_unified_stream_shutdown_and_restart);

@@ -15,6 +15,33 @@
 #include "video/streams.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_context.h"
+#include "video/hls/hls_cache_cleanup.h"
+
+void cleanup_stale_hls_segments(void) {
+    // Only storage paths are needed; avoid refreshing the full camera catalog
+    // from the storage heartbeat or borrowing its shared mutable snapshot.
+    const config_t *config = &g_config;
+    const char *base = config->storage_path_hls[0]
+        ? config->storage_path_hls : config->storage_path;
+    if (!base[0]) return;
+    char root[MAX_PATH_LENGTH];
+    int length = snprintf(root, sizeof(root), "%s/hls", base);
+    if (length < 0 || (size_t)length >= sizeof(root)) {
+        log_error("HLS cache cleanup path exceeds maximum length");
+        return;
+    }
+    hls_cache_cleanup_result_t result = {0};
+    int status = hls_prune_cache(root, time(NULL), HLS_CACHE_MIN_AGE_SECONDS,
+                                HLS_CACHE_MAX_REMOVALS, false, &result);
+    if (result.removed) {
+        log_info("HLS cache cleanup: removed=%u freed=%llu bytes",
+                 result.removed, (unsigned long long)result.bytes);
+    }
+    if (status || result.skipped_directories) {
+        log_warn("HLS cache cleanup incomplete: errors=%u skipped_directories=%u",
+                 result.errors, result.skipped_directories);
+    }
+}
 
 /**
  * Ensure the HLS output directory exists and is writable
