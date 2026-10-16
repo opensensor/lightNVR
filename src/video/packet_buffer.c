@@ -724,9 +724,9 @@ int packet_buffer_set_memory_limit(packet_buffer_t *buffer, size_t limit_mb) {
         return -1;
     }
 
-    // This is a placeholder for future implementation
-    // Currently, memory is managed at the pool level
-    log_info("Memory limit set to %zu MB for buffer: %s", limit_mb, buffer->stream_name);
+    // Per-buffer limits are not enforced; memory is managed at the pool level
+    log_debug("Per-buffer memory limit (%zu MB) requested for %s is not enforced; "
+              "using pool-level limits", limit_mb, buffer->stream_name);
 
     return 0;
 }

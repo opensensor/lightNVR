@@ -1,7 +1,7 @@
 import { getLocalesUrl, useI18n } from '../../../i18n.js';
 
 export default function LanguageSelector({ mobile = false }) {
-  const { locale, setLocalePreference, availableLocales } = useI18n();
+  const { t, locale, localePreference, setLocalePreference, availableLocales } = useI18n();
 
   const renderLocaleContent = (item, menu = false) => (
     <>
@@ -36,6 +36,17 @@ export default function LanguageSelector({ mobile = false }) {
         className="rounded transition-colors dropdown-content menu bg-[hsl(var(--card))]"
         style={{ width: 'max-content', border: '1px solid hsl(var(--primary)/0.8)' }}
       >
+        <li
+          key="auto"
+          style={{ flexFlow: 'row nowrap' }}
+          className={`flex cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
+          onClick={() => {
+            setLocalePreference(null);
+            document.activeElement.blur();
+          }}
+        >
+          <span style={{ whiteSpace: 'nowrap' }} className="ml-3 mr-3">{t('language.browserDefault')}</span>
+        </li>
         {availableLocales.map((item) => (
           <li
             key={item.code}

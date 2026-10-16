@@ -30,12 +30,12 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 #### 📺 Streaming & Playback
 - **WebRTC Streaming**: Ultra-low latency live viewing with automatic NAT/firewall traversal via STUN/ICE
-- **HLS Streaming**: Adaptive bitrate streaming for broad device compatibility
+- **HLS Streaming**: HLS playback for broad device compatibility
 - **Dual Streaming Modes**: Toggle between WebRTC (low latency) and HLS (compatibility) on-the-fly
 - **Detection Overlays**: Real-time bounding boxes and labels on live streams
 
 #### 🎨 Modern User Interface
-- **Customizable Themes**: 7 beautiful color themes (Ocean Blue, Forest Green, Royal Purple, Sunset Rose, Golden Amber, Cool Slate, Default)
+- **Customizable Themes**: 8 beautiful color themes (Ocean Blue, Forest Green, Royal Purple, Sunset Rose, Golden Amber, Cool Slate, Retro 80s, Default)
 - **Dark/Light Mode**: Automatic system preference detection with manual override
 - **Color Intensity Control**: Fine-tune theme brightness and contrast to your preference
 - **Responsive Design**: Built with Tailwind CSS and Preact for smooth, modern UX
@@ -110,7 +110,7 @@ LightNVR is perfect for:
 |---------|----------|-----------------|-----------------|
 | **Memory Footprint** | 256MB minimum | 2GB+ typical | N/A (cloud-based) |
 | **Detection Zones** | ✅ Visual polygon editor | ❌ Usually grid-based or none | ✅ Varies by provider |
-| **Custom Themes** | ✅ 7 themes + intensity control | ❌ Fixed UI | ⚠️ Limited options |
+| **Custom Themes** | ✅ 8 themes + intensity control | ❌ Fixed UI | ⚠️ Limited options |
 | **WebRTC Streaming** | ✅ Sub-second latency | ⚠️ Often RTSP only | ✅ Usually supported |
 | **Object Detection** | ✅ ONNX/TFLite/SOD support | ⚠️ Proprietary or limited | ✅ Usually included |
 | **Privacy** | ✅ 100% local, no cloud | ✅ Local | ❌ Data sent to cloud |
@@ -150,7 +150,7 @@ Define custom detection zones with a visual polygon editor. Perfect for monitori
 
 ### Theme Customization - Your Style, Your Way
 
-Choose from 7 professionally designed color themes and fine-tune the intensity to match your environment and preferences.
+Choose from 8 professionally designed color themes and fine-tune the intensity to match your environment and preferences.
 
 | ![Theme Selector (Light)](docs/images/theme-selector.png) | ![Theme Selector (Dark)](docs/images/theme-selector-dark.png) |
 |:--------------------------------------------------------:|:-----------------------------------------------------------:|
@@ -168,6 +168,7 @@ Choose from 7 professionally designed color themes and fine-tune the intensity t
 - 🌹 Sunset Rose
 - ⚡ Golden Amber
 - 🗿 Cool Slate
+- 🕹️ Retro 80s
 
 Each theme supports both light and dark modes with adjustable color intensity (0-100%).
 

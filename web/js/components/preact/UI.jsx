@@ -225,8 +225,6 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
  * @returns {JSX.Element} VideoModal component
  */
 export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
-  console.log('VideoModal rendered with props:', { isOpen, videoUrl, title });
-
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [timeWindow, setTimeWindow] = useState(2);
   const [detections, setDetections] = useState([]);

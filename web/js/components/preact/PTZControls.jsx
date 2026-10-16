@@ -40,7 +40,7 @@ const ptzApi = {
   },
 
   async gotoPreset(streamName, token) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/preset`, {
+    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/goto-preset`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })

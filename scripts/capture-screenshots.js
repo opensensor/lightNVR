@@ -67,7 +67,7 @@ if (!fs.existsSync(config.outputDir)) {
   fs.mkdirSync(config.outputDir, { recursive: true });
 }
 
-const THEMES = ['default', 'blue', 'emerald', 'purple', 'rose', 'amber', 'slate'];
+const THEMES = ['default', 'blue', 'emerald', 'purple', 'rose', 'amber', 'slate', 'retro80s'];
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

@@ -106,10 +106,7 @@ export function Header({ version = VERSION }) {
     async function checkAuthEnabled() {
       try {
         const settings = await getSettings();
-        console.log('Header: Fetched settings:', settings);
-        console.log('Header: web_auth_enabled value:', settings.web_auth_enabled);
         const isAuthEnabled = settings.web_auth_enabled === true;
-        console.log('Header: Setting authEnabled to:', isAuthEnabled);
         setAuthEnabled(isAuthEnabled);
       } catch (error) {
         console.error('Error fetching auth settings:', error);

@@ -69,10 +69,6 @@ int stream_start_hls(const char *stream_name);
 int stream_stop_hls(const char *stream_name);
 int stream_restart_hls(const char *stream_name);
 
-// WebRTC functions (placeholders)
-void handle_webrtc_offer(const http_request_t *request, http_response_t *response);
-void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
-
 // Recording functions
 void init_recordings_system(void);
 uint64_t start_recording(const char *stream_name, const char *output_path);

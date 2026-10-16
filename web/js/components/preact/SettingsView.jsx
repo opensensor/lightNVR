@@ -861,7 +861,7 @@ export function SettingsView() {
                   type="search"
                   value={searchQuery}
                   onInput={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('settings.searchPlaceholder') !== 'settings.searchPlaceholder' ? t('settings.searchPlaceholder') : 'Search settings…'}
+                  placeholder={t('settings.searchPlaceholder')}
                   class="w-full p-2 pr-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
                   aria-label="Search settings"
                 />

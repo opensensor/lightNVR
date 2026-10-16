@@ -36,6 +36,7 @@ let manifestPromise = null;
 let initPromise = null;
 let currentLocale = DEFAULT_LOCALE;
 let localePreference = null;
+const RTL_LANGUAGES = new Set(['ar', 'he', 'fa', 'ur']);
 let translations = {};
 let languageChangeListenerRegistered = false;
 let translationsCache = new Map();
@@ -158,6 +159,7 @@ async function loadTranslations(locale) {
 function notifyListeners() {
   if (typeof document !== 'undefined') {
     document.documentElement.lang = currentLocale;
+    document.documentElement.dir = RTL_LANGUAGES.has(currentLocale.split('-')[0]) ? 'rtl' : 'ltr';
     document.dispatchEvent?.(new CustomEvent('lightnvr:localechange', { detail: { locale: currentLocale } }));
   }
 
