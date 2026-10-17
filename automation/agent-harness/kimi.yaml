@@ -8,9 +8,6 @@ env:
   HARNESS_INFERENCE_MODEL: kimi-k3
 secrets:
   HARNESS_INFERENCE_API_KEY: ${HARNESS_INFERENCE_API_KEY}
-  GITHUB_TOKEN: ${GITHUB_TOKEN}
+  GIT_DEPLOY_KEY_B64: ${GIT_DEPLOY_KEY_B64}
 permissions:
-  default: ask
-  rules:
-    - tool: file.read
-      action: allow
+  default: allow
