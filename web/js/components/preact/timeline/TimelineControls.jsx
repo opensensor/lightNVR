@@ -274,7 +274,7 @@ export function TimelineControls() {
           id="play-button"
           type="button"
           data-keyboard-nav-preserve
-          className={`w-7 h-7 rounded-full flex items-center justify-center focus:outline-none transition-colors shadow-sm ${
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shadow-sm ${
             isPlaying
               ? 'bg-red-600 hover:bg-red-700'
               : 'bg-green-600 hover:bg-green-700'
@@ -301,7 +301,7 @@ export function TimelineControls() {
         <button
           type="button"
           data-keyboard-nav-preserve
-          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(-1)}
           title={t('timeline.previousRecording')}
           aria-label={t('timeline.previousRecording')}
@@ -320,7 +320,7 @@ export function TimelineControls() {
           <button
             type="button"
             data-keyboard-nav-preserve
-            className={`w-6 h-6 rounded border flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors ${
+            className={`w-6 h-6 rounded border flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors ${
               isProtected
                 ? 'border-yellow-500 bg-yellow-500 text-white hover:bg-yellow-600'
                 : 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -340,7 +340,7 @@ export function TimelineControls() {
             <button
               type="button"
               data-keyboard-nav-preserve
-              className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+              className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
               onClick={() => setShowTagsOverlay(!showTagsOverlay)}
               title={t('recordings.manageTags')}
               aria-label={recordingTags.length > 0 ? t('timeline.manageRecordingTagsCount', { count: recordingTags.length }) : t('recordings.manageTags')}
@@ -364,7 +364,7 @@ export function TimelineControls() {
         <button
           type="button"
           data-keyboard-nav-preserve
-          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(1)}
           title={t('timeline.nextRecording')}
           aria-label={t('timeline.nextRecording')}
@@ -380,7 +380,7 @@ export function TimelineControls() {
         <button
           type="button"
           data-keyboard-nav-preserve
-          className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:ring-1 focus:ring-primary transition-colors"
           onClick={fitToSegments}
           title={t('timeline.fitToRecordings')}
         >
@@ -390,7 +390,7 @@ export function TimelineControls() {
           id="zoom-out-button"
           type="button"
           data-keyboard-nav-preserve
-          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
           title={t('timeline.zoomOut')}
           disabled={!canZoomOut}
@@ -403,7 +403,7 @@ export function TimelineControls() {
           id="zoom-in-button"
           type="button"
           data-keyboard-nav-preserve
-          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
           title={t('timeline.zoomIn')}
           disabled={!canZoomIn}

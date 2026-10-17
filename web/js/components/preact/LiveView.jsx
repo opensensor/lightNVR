@@ -658,7 +658,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               ) : (
                 <a
                   href={buildLiveViewHref('/index.html', window.location.search)}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   {t('live.autoShort')}
                 </a>
@@ -672,7 +672,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               ) : (
                 <a
                   href={buildLiveViewHref('/index.html', window.location.search, 'webrtc')}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   {t('live.webrtcShort')}
                 </a>
@@ -686,7 +686,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               ) : (
                 <a
                   href={buildLiveViewHref('/hls.html', window.location.search)}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   {t('live.hlsShort')}
                 </a>
@@ -700,7 +700,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               ) : (
                 <a
                   href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
                 >
                   {t('live.mseShort')}
                 </a>
@@ -714,7 +714,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             <button
               type="button"
               id="hls-favorites-filter"
-              className={`px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
+              className={`px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
               aria-pressed={favoritesOnly}
               title={t('live.favoritesOnly')}
               onClick={() => { setFavoritesOnly((current) => !current); setCurrentPage(0); }}
@@ -727,7 +727,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               <label htmlFor="hls-collection-filter" className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
               <select
                 id="hls-collection-filter"
-                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={collectionFilter}
                 disabled={isCollectionLoading}
                 onChange={(event) => { setCollectionFilter(event.currentTarget.value); setCurrentPage(0); }}
@@ -744,7 +744,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">{t('recordings.tags')}:</label>
               <select
                 id="tag-filter"
-                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={tagFilter}
                 onChange={(e) => { setTagFilter(e.target.value); setCurrentPage(0); }}
               >
@@ -770,7 +770,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">{t('nav.streams')}:</label>
               <select
                 id="stream-selector"
-                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={selectedStream}
                 onChange={(e) => setSelectedStream(e.target.value)}
               >
@@ -782,7 +782,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
           )}
 
           <button
-            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowLabels(v => !v)}
             title={showLabels ? t('live.hideStreamLabels') : t('live.showStreamLabels')}
           >
@@ -795,7 +795,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
           </button>
 
           <button
-            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowControls(v => !v)}
             title={showControls ? t('live.hideStreamControls') : t('live.showStreamControls')}
           >
@@ -815,7 +815,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
           </button>
 
           <button
-            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowDetections(v => !v)}
             title={showDetections ? t('live.hideAllDetectionOverlays') : t('live.showAllDetectionOverlays')}
           >
@@ -852,7 +852,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
 
           {orderedStreams.length > 1 && (
             <button
-              className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
+              className={`p-2 rounded-full focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
               onClick={toggleReorderMode}
               title={reorderMode ? t('live.exitReorderMode') : t('live.dragToReorderCameras')}
             >
@@ -868,7 +868,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
 
           {reorderMode && (
             <button
-              className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:ring-2 focus:ring-primary"
               onClick={resetOrder}
               title={t('live.resetCameraOrder')}
             >
@@ -883,7 +883,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
 
           <button
             id="fullscreen-btn"
-            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
+            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
             onClick={() => toggleFullscreen()}
             title={t('timeline.fullscreen')}
           >
@@ -1074,7 +1074,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
         {!isSingleStream && orderedStreams.length > maxStreams ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
-              className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to previous page');
                 setCurrentPage(Math.max(0, currentPage - 1));
@@ -1089,7 +1089,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             </span>
 
             <button
-              className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
                 const totalPages = Math.ceil(orderedStreams.length / maxStreams);

@@ -12,6 +12,7 @@
     "build:maps": "BUILD_SOURCEMAPS=true vite build",
     "audit": "npm run build && node ../scripts/audit-touch-targets.mjs",
     "preview": "vite preview",
+    "lint": "eslint js",
     "test": "jest --config=jest.config.cjs",
     "test:e2e": "jest --config=jest.e2e.config.cjs --runInBand"
   },
@@ -39,6 +40,9 @@
     "autoprefixer": "^10.5.4",
     "babel-jest": "^30.4.1",
     "esbuild": "^0.28.2",
+    "eslint": "^9.38.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "jest": "^30.4.2",
     "postcss": "^8.5.26",
     "postcss-import": "^16.2.0",

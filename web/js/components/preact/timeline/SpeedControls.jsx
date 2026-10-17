@@ -54,7 +54,7 @@ export function SpeedControls() {
           className={`px-1.5 py-0.5 text-[11px] rounded ${speed === currentSpeed
             ? 'bg-primary text-primary-foreground'
             : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}
-            font-medium transition-all focus:outline-none`}
+            font-medium transition-all`}
           data-speed={speed}
           data-keyboard-nav-preserve
           onClick={() => setPlaybackSpeed(speed)}
