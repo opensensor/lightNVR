@@ -14,8 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
-      contents: read
+      contents: write
       issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -29,16 +30,35 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           HARNESS_INFERENCE_API_KEY: ${{ secrets.HARNESS_INFERENCE_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.HARNESS_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]
           : "${HARNESS_INFERENCE_API_KEY:?Missing HARNESS_INFERENCE_API_KEY}"
-          : "${GITHUB_TOKEN:?Missing HARNESS_GITHUB_TOKEN}"
+          : "${GITHUB_TOKEN:?Missing GITHUB_TOKEN}"
           session_name="lightnvr-public-issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+          branch="agent/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
           trap 'doctl harness-runtime remove "$session_name" >/dev/null 2>&1 || true' EXIT
           doctl harness-runtime create \
             --spec automation/agent-harness/kimi.yaml \
             --name "$session_name" \
-            --prompt "Read opensensor/lightNVR issue #${ISSUE_NUMBER} and automation/agent-harness/task-prompt.md. Follow that prompt for issue #${ISSUE_NUMBER}. Open a ready-for-review PR, then stop. Never merge or deploy." \
+            --prompt "Read opensensor/lightNVR issue #${ISSUE_NUMBER} and automation/agent-harness/task-prompt.md. Follow that prompt for issue #${ISSUE_NUMBER}. Commit and push branch ${branch} to origin, then stop. The GitHub runner opens the PR. Never merge or deploy." \
             --on-hitl approve --interactive=false
+      - name: Open a ready-for-review PR
+        env:
+          GH_TOKEN: ${{ secrets.HARNESS_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          : "${GH_TOKEN:?Missing HARNESS_GITHUB_TOKEN}"
+          branch="agent/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+          issue_title="$(gh issue view "$ISSUE_NUMBER" --repo opensensor/lightNVR --json title --jq '.title')"
+          gh api "repos/opensensor/lightNVR/git/ref/heads/${branch}" --silent
+          gh api --method POST repos/opensensor/lightNVR/pulls \
+            -f title="Agent: ${issue_title}" \
+            -f head="$branch" \
+            -f base=main \
+            -f body="Closes #${ISSUE_NUMBER}
+
+          Agent-generated change from a maintainer-labeled issue. Review the diff and CI results before merging. Validation details and any remaining risks should be in the branch commits or agent summary." \
+            --jq .html_url
