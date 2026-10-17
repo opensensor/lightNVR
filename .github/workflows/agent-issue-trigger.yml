@@ -1,0 +1,44 @@
+name: Run labeled LightNVR issue agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: lightnvr-agent-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  run-agent:
+    if: ${{ vars.HARNESS_AUTOMATION_ENABLED == 'true' && github.event.label.name == 'agent-candidate' && !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Run the issue agent and remove its session
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          HARNESS_INFERENCE_API_KEY: ${{ secrets.HARNESS_INFERENCE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.HARNESS_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]
+          : "${HARNESS_INFERENCE_API_KEY:?Missing HARNESS_INFERENCE_API_KEY}"
+          : "${GITHUB_TOKEN:?Missing HARNESS_GITHUB_TOKEN}"
+          session_name="lightnvr-public-issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+          trap 'doctl harness-runtime remove "$session_name" >/dev/null 2>&1 || true' EXIT
+          doctl harness-runtime create \
+            --spec automation/agent-harness/kimi.yaml \
+            --name "$session_name" \
+            --prompt "Read opensensor/lightNVR issue #${ISSUE_NUMBER} and automation/agent-harness/task-prompt.md. Follow that prompt for issue #${ISSUE_NUMBER}. Open a ready-for-review PR, then stop. Never merge or deploy." \
+            --on-hitl approve --interactive=false
