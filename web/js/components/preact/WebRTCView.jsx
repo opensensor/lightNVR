@@ -21,6 +21,8 @@ import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 import { LiveDisplayModeToggle } from './LiveDisplayModeToggle.jsx';
 import { useLiveDisplayMode } from './useLiveDisplayMode.js';
+import { LiveSlideshowControl } from './LiveSlideshowControl.jsx';
+import { useLiveSlideshow } from './useLiveSlideshow.js';
 import { usePullToRefresh } from './usePullToRefresh.js';
 import { shouldShowGestureTip } from './mobileLiveGestures.js';
 import { fetchAllStreamSummaries } from '../../utils/stream-summaries.js';
@@ -553,6 +555,20 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
     });
   }, [applyOperatorLayout, setOperatorSurface]);
 
+  // Auto-advance cameras (1x1) or grid pages on a timer. Paused while the
+  // operator is rearranging tiles, has one tile in native fullscreen, or is
+  // looking at the building plan instead of the grid.
+  const slideshow = useLiveSlideshow({
+    paused: reorderMode || !!fullscreenCellStream || operatorSurface !== 'grid',
+    isSingleStream,
+    orderedStreams,
+    selectedStream,
+    setSelectedStream,
+    currentPage,
+    setCurrentPage,
+    maxStreams,
+  });
+
   // Ensure current page is valid when orderedStreams or maxStreams changes
   useEffect(() => {
     if (orderedStreams.length === 0) return;
@@ -851,6 +867,16 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
             <LiveDisplayModeToggle
               mode={displayMode}
               onChange={setDisplayMode}
+            />
+          )}
+
+          {slideshow.canCycle && (
+            <LiveSlideshowControl
+              enabled={slideshow.enabled}
+              interval={slideshow.interval}
+              isSingleStream={isSingleStream}
+              onToggle={slideshow.setEnabled}
+              onIntervalChange={slideshow.setInterval}
             />
           )}
 
