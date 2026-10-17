@@ -23,6 +23,11 @@ import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
 import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
+import {
+  DEFAULT_ICE_GATHERING_TIMEOUT_MS,
+  ICE_GATHER_OUTCOME,
+  waitForIceGathering,
+} from '../../utils/webrtc-ice-gathering.js';
 import { shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.js';
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
@@ -716,32 +721,23 @@ export function WebRTCVideoCell({
 
     pc.oniceconnectionstatechange = handleIceConnectionStateChange;
 
-    // Handle ICE gathering state changes
+    // Handle ICE gathering state changes (debug level: this fires once per
+    // state transition per cell, which is noisy on multi-camera grids).
     pc.onicegatheringstatechange = () => {
-      console.log(`ICE gathering state for stream ${stream.name}: ${pc.iceGatheringState}`);
+      console.debug(`ICE gathering state for stream ${stream.name}: ${pc.iceGatheringState}`);
     };
 
-    // Handle ICE candidates - critical for NAT traversal
+    // Log ICE candidates at debug level. go2rtc's HTTP WebRTC endpoint
+    // (/api/webrtc) has no trickle-ICE channel — there is no server-side
+    // route that accepts candidates, so candidates travel to go2rtc inside
+    // the SDP offer itself (see the bounded gathering wait below). Trickle
+    // would require go2rtc's WebSocket API (/api/ws), which the HTTP-only
+    // /go2rtc/ reverse proxy does not forward.
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`ICE candidate for stream ${stream.name}:`, event.candidate.candidate);
-
-        // Send the ICE candidate to the server
-        // Note: go2rtc typically handles ICE candidates in the SDP exchange,
-        // but we log them here for debugging purposes
-        // If trickle ICE is needed, uncomment the code below:
-        /*
-        fetch(`/api/webrtc/ice?src=${encodeURIComponent(stream.name)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
-          },
-          body: JSON.stringify(event.candidate)
-        }).catch(err => console.warn('Failed to send ICE candidate:', err));
-        */
+        console.debug(`ICE candidate for stream ${stream.name}:`, event.candidate.candidate);
       } else {
-        console.log(`ICE gathering complete for stream ${stream.name}`);
+        console.debug(`ICE gathering complete for stream ${stream.name}`);
       }
     };
 
@@ -790,9 +786,27 @@ export function WebRTCVideoCell({
         return pc.setLocalDescription(offer);
       })
       .then(() => {
-        console.log(`Set local description for stream ${stream.name}, waiting for ICE gathering...`);
+        // ICE gathering runs in the background once the local description is
+        // set. go2rtc's HTTP endpoint has no trickle channel, so any candidate
+        // that is going to reach it must be baked into this offer. Wait for
+        // gathering to complete, bounded so an unreachable STUN/TURN server
+        // can only stall the connect by the timeout, not by the browser's
+        // multi-second gathering timeout.
+        console.log(
+          `Set local description for stream ${stream.name}, waiting for ICE gathering ` +
+          `(up to ${DEFAULT_ICE_GATHERING_TIMEOUT_MS}ms)...`
+        );
+        return waitForIceGathering(pc, DEFAULT_ICE_GATHERING_TIMEOUT_MS, cellAbortSignal);
+      })
+      .then((gatherOutcome) => {
+        if (gatherOutcome === ICE_GATHER_OUTCOME.TIMEOUT) {
+          console.warn(
+            `ICE gathering timed out after ${DEFAULT_ICE_GATHERING_TIMEOUT_MS}ms for stream ` +
+            `${stream.name}, sending offer with partial candidates`
+          );
+        }
 
-        console.log(`Sending offer directly to go2rtc for stream ${stream.name}`);
+        console.log(`Sending offer directly to go2rtc for stream ${stream.name} (ICE gathering: ${gatherOutcome})`);
 
         // Send the offer to go2rtc through the shared connection gate. The
         // gate bounds concurrent offers page-wide and enforces a per-attempt
