@@ -18,6 +18,7 @@
 #include "core/logger.h"
 #include "database/db_core.h"
 #include "database/db_system_settings.h"
+#include "database/db_streams.h"
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_api.h"
 #include "utils/yaml_validate.h"
@@ -285,6 +286,59 @@ void test_override_helpers_are_linkable_stubs(void) {
     TEST_ASSERT_TRUE(path == NULL || path[0] != '\0');
 }
 
+void test_publish_block_emits_each_destination_and_skips_invalid(void) {
+    load_default_config(&g_config);
+    g_config.go2rtc_api_port = 31984;
+
+    char root_template[] = "/tmp/lightnvr-go2rtc-publish-XXXXXX";
+    char *root_dir = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(root_dir);
+
+    char config_dir[256];
+    snprintf(config_dir, sizeof(config_dir), "%s/go2rtc", root_dir);
+    char db_path[256];
+    snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", root_dir);
+    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+
+    stream_config_t multi;
+    memset(&multi, 0, sizeof(multi));
+    snprintf(multi.name, sizeof(multi.name), "porch");
+    snprintf(multi.url, sizeof(multi.url), "rtsp://10.0.0.5/live");
+    multi.enabled = true;
+    snprintf(multi.publish_url, sizeof(multi.publish_url),
+             "rtmp://a.example/live/k1, rtmps://b.example/app/k2");
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&multi));
+
+    /* Written straight to the DB, bypassing API validation. */
+    stream_config_t injected;
+    memset(&injected, 0, sizeof(injected));
+    snprintf(injected.name, sizeof(injected.name), "garage");
+    snprintf(injected.url, sizeof(injected.url), "rtsp://10.0.0.6/live");
+    injected.enabled = true;
+    snprintf(injected.publish_url, sizeof(injected.publish_url),
+             "rtmp://a.example/k\nstreams:\n  evil: exec:id");
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&injected));
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config("/bin/true",
+                                                            config_dir,
+                                                            g_config.go2rtc_api_port));
+
+    char config_path[PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+    char *contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(contents);
+    TEST_ASSERT_NOT_NULL(strstr(contents,
+        "publish:\n  \"porch\":\n"
+        "    - \"rtmp://a.example/live/k1\"\n"
+        "    - \"rtmps://b.example/app/k2\"\n"));
+    TEST_ASSERT_NULL(strstr(contents, "\"garage\":"));
+    TEST_ASSERT_NULL(strstr(contents, "exec:id"));
+
+    free(contents);
+    shutdown_database();
+    remove_tree(root_dir);
+}
+
 int main(void) {
     init_logger();
 
@@ -294,5 +348,6 @@ int main(void) {
     RUN_TEST(test_audio_policy_keeps_db_override_dormant);
     RUN_TEST(test_base_config_has_no_user_override_append_block);
     RUN_TEST(test_override_helpers_are_linkable_stubs);
+    RUN_TEST(test_publish_block_emits_each_destination_and_skips_invalid);
     return UNITY_END();
 }

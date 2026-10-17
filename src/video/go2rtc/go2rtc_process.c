@@ -24,6 +24,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
+#include "core/url_utils.h"
 #include "core/version.h"
 #include "utils/strings.h"
 #include "utils/yaml_validate.h"
@@ -1296,6 +1297,13 @@ static int write_publish_config(FILE *fp) {
         if (!streams[i].enabled) continue;
         if (streams[i].publish_url[0] == '\0') continue;
 
+        // Re-validate: rows written before list validation existed (or edited
+        // directly in the DB) must not be able to inject go2rtc config.
+        if (!publish_url_list_is_valid(streams[i].publish_url)) {
+            log_warn("Skipping invalid publish_url for stream %s", streams[i].name);
+            continue;
+        }
+
         if (written == 0) {
             fprintf(fp, "\npublish:\n");
         }
@@ -1303,11 +1311,14 @@ static int write_publish_config(FILE *fp) {
         char escaped_name[MAX_STREAM_NAME * 2];
         yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
 
-        // Emit as a list so multiple destinations could be supported later.
-        // The URL is written as a plain scalar (RTMP URLs contain no YAML
-        // special characters that require quoting).
         fprintf(fp, "  \"%s\":\n", escaped_name);
-        fprintf(fp, "    - %s\n", streams[i].publish_url);
+        char destination[PUBLISH_URL_MAX_LENGTH];
+        const char *cursor = streams[i].publish_url;
+        while ((cursor = publish_url_next(cursor, destination, sizeof(destination))) != NULL) {
+            char escaped_dest[PUBLISH_URL_MAX_LENGTH * 2];
+            yaml_escape_string(destination, escaped_dest, sizeof(escaped_dest));
+            fprintf(fp, "    - \"%s\"\n", escaped_dest);
+        }
         written++;
     }
 

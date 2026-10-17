@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_URL_UTILS_H
 #define LIGHTNVR_URL_UTILS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /**
@@ -86,5 +87,26 @@ int url_redact_for_logging(const char *url, char *out_url, size_t out_size);
  */
 void simple_url_escape(const char *input, char *output, size_t output_size);
 
+/* Per-destination length limit for restream URLs (matches MAX_URL_LENGTH). */
+#define PUBLISH_URL_MAX_LENGTH 512
+
+/**
+ * Iterate the restream (publish) destinations in a list. Destinations are
+ * separated by commas and/or whitespace.
+ *
+ * @param cursor   Position to scan from (start with the list itself)
+ * @param out      Receives the next destination (truncated to out_size)
+ * @param out_size Size of out
+ * @return Position after the destination to pass back in, or NULL when no
+ *         destinations remain
+ */
+const char *publish_url_next(const char *cursor, char *out, size_t out_size);
+
+/**
+ * Validate a restream (publish) destination list: every destination must use
+ * rtmp:// or rtmps://, fit in MAX_URL_LENGTH-sized buffers and contain only
+ * printable, non-space ASCII. An empty list is valid (restreaming disabled).
+ */
+bool publish_url_list_is_valid(const char *list);
 
 #endif /* LIGHTNVR_URL_UTILS_H */

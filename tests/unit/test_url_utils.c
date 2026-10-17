@@ -130,6 +130,55 @@ void test_simple_url_escape(void) {
     TEST_ASSERT_EQUAL_STRING("%5E.%2A%24%20%2Fcgi-bin%2Fhttpreq.pl", url);
 }
 
+void test_publish_url_next_splits_on_commas_and_whitespace(void) {
+    char dest[PUBLISH_URL_MAX_LENGTH];
+    const char *cursor = " rtmp://a/live/k1,rtmps://b/app/k2\n  rtmp://c/x ,";
+
+    cursor = publish_url_next(cursor, dest, sizeof(dest));
+    TEST_ASSERT_NOT_NULL(cursor);
+    TEST_ASSERT_EQUAL_STRING("rtmp://a/live/k1", dest);
+    cursor = publish_url_next(cursor, dest, sizeof(dest));
+    TEST_ASSERT_NOT_NULL(cursor);
+    TEST_ASSERT_EQUAL_STRING("rtmps://b/app/k2", dest);
+    cursor = publish_url_next(cursor, dest, sizeof(dest));
+    TEST_ASSERT_NOT_NULL(cursor);
+    TEST_ASSERT_EQUAL_STRING("rtmp://c/x", dest);
+    TEST_ASSERT_NULL(publish_url_next(cursor, dest, sizeof(dest)));
+}
+
+void test_publish_url_next_empty_list(void) {
+    char dest[PUBLISH_URL_MAX_LENGTH];
+    TEST_ASSERT_NULL(publish_url_next("", dest, sizeof(dest)));
+    TEST_ASSERT_NULL(publish_url_next(" , ", dest, sizeof(dest)));
+}
+
+void test_publish_url_list_is_valid(void) {
+    TEST_ASSERT_TRUE(publish_url_list_is_valid(""));
+    TEST_ASSERT_TRUE(publish_url_list_is_valid(NULL));
+    TEST_ASSERT_TRUE(publish_url_list_is_valid("rtmp://a.rtmp.youtube.com/live2/abcd-1234"));
+    TEST_ASSERT_TRUE(publish_url_list_is_valid("rtmp://a/live/k1, RTMPS://b/app/k2"));
+
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("rtmp://a/live/k1, file:///etc/passwd"));
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("http://example.com/x"));
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("rtmp://"));
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("rtmp://a/\"k"));
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("rtmp://a/k\x01"));
+}
+
+void test_publish_url_newline_cannot_smuggle_yaml(void) {
+    /* A newline is a separator, so the injected "line" becomes its own
+     * destination and fails the scheme check. */
+    TEST_ASSERT_FALSE(publish_url_list_is_valid("rtmp://a/k\nstreams:\n  x: exec:id"));
+}
+
+void test_publish_url_rejects_overlong_destination(void) {
+    char list[PUBLISH_URL_MAX_LENGTH + 16];
+    memset(list, 'a', sizeof(list) - 1);
+    memcpy(list, "rtmp://", 7);
+    list[sizeof(list) - 1] = '\0';
+    TEST_ASSERT_FALSE(publish_url_list_is_valid(list));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_url_apply_credentials_injects_credentials);
@@ -148,5 +197,10 @@ int main(void) {
     RUN_TEST(test_url_build_onvif_service_url_null_path_returns_base_url);
     RUN_TEST(test_url_build_onvif_service_url_https_source_preserved);
     RUN_TEST(test_simple_url_escape);
+    RUN_TEST(test_publish_url_next_splits_on_commas_and_whitespace);
+    RUN_TEST(test_publish_url_next_empty_list);
+    RUN_TEST(test_publish_url_list_is_valid);
+    RUN_TEST(test_publish_url_newline_cannot_smuggle_yaml);
+    RUN_TEST(test_publish_url_rejects_overlong_destination);
     return UNITY_END();
 }

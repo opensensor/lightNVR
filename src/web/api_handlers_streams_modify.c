@@ -481,12 +481,12 @@ static bool is_allowed_detection_url(const char *u) {
     return false;
 }
 
-/* publish_url is the restream (publish) destination handed to go2rtc's RTMP
- * publisher. Restrict to the RTMP family so it can't be abused to write to
- * arbitrary local URLs. An empty string means "no restreaming". */
+/* publish_url is a list of restream (publish) destinations handed to go2rtc's
+ * RTMP publisher. Every destination must be rtmp/rtmps so it can't be abused
+ * to write to arbitrary local URLs, and must be free of characters that could
+ * break out of go2rtc.yaml. An empty string means "no restreaming". */
 static bool is_allowed_publish_url(const char *u) {
-    if (!u || u[0] == '\0') return true;
-    return strncasecmp(u, "rtmp://", 7) == 0 || strncasecmp(u, "rtmps://", 8) == 0;
+    return publish_url_list_is_valid(u);
 }
 
 static bool eptz_number_in_range(cJSON *root, const char *name,
@@ -1013,9 +1013,9 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     if (publish_url_post && cJSON_IsString(publish_url_post)) {
         const char *pub = publish_url_post->valuestring;
         if (pub[0] != '\0' && !is_allowed_publish_url(pub)) {
-            log_error("Rejected publish_url with disallowed scheme for stream %s", config.name);
+            log_error("Rejected invalid publish_url for stream %s", config.name);
             cJSON_Delete(stream_json);
-            http_response_set_json_error(res, 400, "publish_url must use rtmp or rtmps");
+            http_response_set_json_error(res, 400, "publish_url destinations must be rtmp:// or rtmps:// URLs");
             return;
         }
         if (strlen(pub) >= sizeof(config.publish_url)) {
@@ -1877,9 +1877,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     if (publish_url_put && cJSON_IsString(publish_url_put)) {
         const char *pub = publish_url_put->valuestring;
         if (pub[0] != '\0' && !is_allowed_publish_url(pub)) {
-            log_error("Rejected publish_url with disallowed scheme for stream %s", config.name);
+            log_error("Rejected invalid publish_url for stream %s", config.name);
             cJSON_Delete(stream_json);
-            http_response_set_json_error(res, 400, "publish_url must use rtmp or rtmps");
+            http_response_set_json_error(res, 400, "publish_url destinations must be rtmp:// or rtmps:// URLs");
             return;
         }
         if (strlen(pub) >= sizeof(config.publish_url)) {

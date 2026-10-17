@@ -497,3 +497,70 @@ void simple_url_escape(const char *input, char *output, size_t output_size) {
         output[output_size - 1] = '\0';
     }
 }
+
+static bool is_publish_url_separator(char c) {
+    return c == ',' || isspace((unsigned char)c);
+}
+
+const char *publish_url_next(const char *cursor, char *out, size_t out_size) {
+    if (!cursor || !out || out_size == 0) {
+        return NULL;
+    }
+
+    while (*cursor && is_publish_url_separator(*cursor)) {
+        cursor++;
+    }
+    if (*cursor == '\0') {
+        out[0] = '\0';
+        return NULL;
+    }
+
+    size_t len = 0;
+    while (cursor[len] && !is_publish_url_separator(cursor[len])) {
+        len++;
+    }
+
+    size_t copy = len < out_size - 1 ? len : out_size - 1;
+    memcpy(out, cursor, copy);
+    out[copy] = '\0';
+    return cursor + len;
+}
+
+bool publish_url_list_is_valid(const char *list) {
+    if (!list) {
+        return true;
+    }
+
+    const char *cursor = list;
+    while (*cursor) {
+        while (*cursor && is_publish_url_separator(*cursor)) {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        const char *start = cursor;
+        while (*cursor && !is_publish_url_separator(*cursor)) {
+            unsigned char c = (unsigned char)*cursor;
+            // Reject control characters, DEL, non-ASCII and YAML quoting
+            // characters: destinations are written into go2rtc.yaml.
+            if (c < 0x21 || c > 0x7e || c == '"' || c == '\'' || c == '\\') {
+                return false;
+            }
+            cursor++;
+        }
+
+        size_t len = (size_t)(cursor - start);
+        if (len >= PUBLISH_URL_MAX_LENGTH) {
+            return false;
+        }
+        if (!(len > 7 && strncasecmp(start, "rtmp://", 7) == 0) &&
+            !(len > 8 && strncasecmp(start, "rtmps://", 8) == 0)) {
+            return false;
+        }
+    }
+
+    // A list made only of separators (e.g. "  ,  ") counts as empty.
+    return true;
+}
