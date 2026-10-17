@@ -6,8 +6,8 @@ The workflow is `.github/workflows/agent-issue-trigger.yml`. It runs only when `
 
 - `DIGITALOCEAN_ACCESS_TOKEN`: a token allowed to create and remove Harness Runtime sessions.
 - `HARNESS_INFERENCE_API_KEY`: the DigitalOcean Inference model key.
-- `HARNESS_GITHUB_TOKEN`: a GitHub credential restricted to `opensensor/lightNVR`, with issue read and contents/pull request write access. Use a GitHub App installation token or a fine-grained personal access token. Do not use an account-wide CLI token.
+- `HARNESS_GITHUB_TOKEN`: a GitHub token that can open a PR in `opensensor/lightNVR`. The runner uses it only after the agent finishes. The agent receives the job's short-lived, repository-scoped `GITHUB_TOKEN` to push its branch. Use a repo-scoped credential for long-term operation.
 
-The checked-in manifest uses Kimi K3. The runner resolves secrets and removes the session when it finishes. DigitalOcean may retain the environment config created for each session; periodically delete unused configs in Harness Runtime.
+The checked-in manifest uses Kimi K3. The runner resolves secrets, removes the session when it finishes, and opens the PR from the pushed branch. DigitalOcean may retain the environment config created for each session; periodically delete unused configs in Harness Runtime.
 
 Pull requests run the integration tests, sanitizer build, static analysis, and documentation link checks. The release workflows are triggered only by tags or manual dispatch. There is no merge automation for this repository.
