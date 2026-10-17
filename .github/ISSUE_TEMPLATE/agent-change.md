@@ -24,4 +24,4 @@ title: "[Agent] "
 
 <!-- Compatibility, performance, security, and how to revert the change if needed. -->
 
-<!-- A maintainer applies agent-candidate when the issue is ready. The agent opens a PR; merging is manual. -->
+<!-- A maintainer applies agent-candidate when the issue is ready. The agent uses GLM-5.3 by default; apply agent-kimi first for harder or image-based work. The agent opens a PR; merging is manual. -->
