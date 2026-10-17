@@ -127,6 +127,12 @@
 
 /* Base Styles */
 @layer base {
+  html {
+    /* Keep focused elements clear of the fixed page header so focus is not
+       obscured (WCAG 2.4.11). Roughly the header height plus its margin. */
+    scroll-padding-top: 5rem;
+  }
+
   body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     overflow-y: scroll;
@@ -147,11 +153,13 @@
      focus-visible treatment. Deliberately use an outline so it remains visible
      even when a component clips box shadows. */
   :where(
-    button,
     a[href],
+    button,
     input,
     select,
     textarea,
+    summary,
+    [tabindex],
     [role="button"]
   ):focus-visible {
     outline: 2px solid hsl(var(--ring)) !important;
@@ -178,6 +186,41 @@
       align-items: center;
     }
   }
+}
+
+/* "Skip to main content" link (WCAG 2.4.1): visually hidden until focused. */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link:focus-visible {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  z-index: 9999;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: var(--radius);
+  text-decoration: none;
+  outline: 2px solid hsl(var(--primary-foreground));
+  outline-offset: 2px;
 }
 
 /* Component Styles */

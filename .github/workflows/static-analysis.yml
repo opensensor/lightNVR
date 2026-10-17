@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  web-jsx-a11y:
+    name: Web JSX accessibility lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        run: npm ci --prefix web
+      - name: Report JSX accessibility findings
+        run: |
+          npm run lint --prefix web
+          echo 'The existing WCAG audit findings are warnings. Promote each rule to an error as its finding is fixed.' >> "$GITHUB_STEP_SUMMARY"
+
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest

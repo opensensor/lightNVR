@@ -30,7 +30,7 @@ function TagChip({ tag, onRemove, readOnly = false }) {
       {!readOnly && onRemove && (
         <button
           type="button"
-          class="hover:text-destructive focus:outline-none ml-0.5"
+          class="hover:text-destructive ml-0.5"
           onClick={(e) => { e.stopPropagation(); onRemove(tag); }}
           title={`Remove tag "${tag}"`}
         >
@@ -138,7 +138,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
         <input
           ref={inputRef}
           type="text"
-          class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
           placeholder={t('recordings.addTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
@@ -303,7 +303,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
         <input
           ref={inputRef}
           type="text"
-          class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
           placeholder={t('recordings.addNewTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}

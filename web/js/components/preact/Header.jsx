@@ -312,12 +312,13 @@ export function Header({ version = VERSION }) {
 
   return (
       <>
+      <a href="#main-content" className="skip-link">{t('a11y.skipToMainContent')}</a>
       <header className="app-header py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <a
             href={getLiveViewHref()}
             id="nav-logo"
-            className="logo flex items-center no-underline text-inherit rounded hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:ring-offset-2"
+            className="logo flex items-center no-underline text-inherit rounded hover:opacity-90 focus:ring-2 focus:ring-[hsl(var(--primary))] focus:ring-offset-2"
             style={{ color: 'inherit' }}
             aria-label={t('nav.live')}
             onClick={(e) => {
@@ -354,7 +355,7 @@ export function Header({ version = VERSION }) {
 
           {/* Mobile Menu Button */}
           <button
-              className="xl:hidden p-2 focus:outline-none"
+              className="xl:hidden p-2"
               style={{color: 'hsl(var(--card-foreground))'}}
               onClick={toggleMobileMenu}
               aria-label={t('nav.toggleMenu')}

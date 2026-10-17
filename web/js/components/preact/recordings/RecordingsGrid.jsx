@@ -380,7 +380,7 @@ function RecordingCard({
           {show('actions') && (
             <div class="flex items-center gap-1 pt-1 border-t border-border">
               <button
-                class="p-1 rounded-full focus:outline-none"
+                class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--primary))' }}
                 onClick={() => playRecording(recording)}
                 title={t('recordings.play')}
@@ -390,7 +390,7 @@ function RecordingCard({
                 </svg>
               </button>
               <button
-                class="p-1 rounded-full focus:outline-none"
+                class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--success))' }}
                 onClick={() => downloadRecording(recording)}
                 title={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
@@ -400,7 +400,7 @@ function RecordingCard({
                 </svg>
               </button>
               <a
-                class="p-1 rounded-full focus:outline-none inline-flex"
+                class="p-1 rounded-full inline-flex"
                 style={{ color: 'hsl(var(--info))' }}
                 href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
                 title={t('live.viewInTimeline')}
@@ -410,7 +410,7 @@ function RecordingCard({
                 </svg>
               </a>
               <button
-                class="p-1 rounded-full focus:outline-none"
+                class="p-1 rounded-full"
                 style={{ color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' }}
                 onClick={() => toggleProtection && toggleProtection(recording)}
                 title={recording.protected ? 'Unprotect' : 'Protect'}
@@ -425,7 +425,7 @@ function RecordingCard({
               </button>
               {canDelete && (
                 <button
-                  class="p-1 rounded-full focus:outline-none ml-auto"
+                  class="p-1 rounded-full ml-auto"
                   style={{ color: 'hsl(var(--danger))' }}
                   onClick={() => deleteRecording(recording)}
                   title={t('common.delete')}

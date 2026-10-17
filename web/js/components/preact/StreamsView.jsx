@@ -1422,7 +1422,7 @@ export function StreamsView() {
             <>
               {!selectionMode && (
                 <button
-                  className="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground focus:outline-none"
+                  className="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
                   onClick={() => setSelectionMode(true)}
                   title={t('streams.enterSelectionMode')}
                 >
@@ -1435,14 +1435,14 @@ export function StreamsView() {
               )}
               <button
                   id="discover-onvif-btn"
-                  className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                  className="btn-secondary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={openOnvifModal}
               >
                 {t('streams.discoverOnvifCameras')}
               </button>
               <button
                   id="add-stream-btn"
-                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                  className="btn-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={openAddStreamModal}
               >
                 {t('streams.addStream')}
@@ -1818,7 +1818,7 @@ export function StreamsView() {
                 <h4 className="text-md font-medium">{t('streams.discoveredDevices')}</h4>
                 <button
                     id="discover-btn"
-                    className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="btn-primary focus:ring-2 focus:ring-primary"
                     onClick={startOnvifDiscovery}
                     disabled={isDiscovering}
                     type="button"
@@ -1904,7 +1904,7 @@ export function StreamsView() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
-                              className={alreadyAdded ? 'btn-secondary focus:outline-none' : 'btn-primary focus:outline-none'}
+                              className={alreadyAdded ? 'btn-secondary' : 'btn-primary'}
                               onClick={() => testOnvifConnection(device)}
                               disabled={isConnecting}
                               type="button"
@@ -1941,7 +1941,7 @@ export function StreamsView() {
                         type="text"
                         id="onvif-username"
                         name="username"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
                         placeholder="admin"
                         value={onvifCredentials.username}
                         onChange={handleCredentialChange}
@@ -1953,7 +1953,7 @@ export function StreamsView() {
                         type="password"
                         id="onvif-password"
                         name="password"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
                         placeholder="password"
                         value={onvifCredentials.password}
                         onChange={handleCredentialChange}
@@ -1985,7 +1985,7 @@ export function StreamsView() {
                           <td className="px-6 py-4 whitespace-nowrap">{profile.fps}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                                className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="btn-primary focus:ring-2 focus:ring-primary"
                                 onClick={() => addOnvifDeviceAsStream(profile)}
                                 type="button"
                             >
@@ -2027,7 +2027,7 @@ export function StreamsView() {
                 <input
                     type="text"
                     id="custom-stream-name"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
                     value={customStreamName}
                     onChange={(e) => setCustomStreamName(e.target.value)}
                 />
@@ -2045,7 +2045,7 @@ export function StreamsView() {
                 {t('common.cancel')}
               </button>
               <button
-                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="btn-primary focus:ring-2 focus:ring-primary"
                   onClick={submitOnvifDevice}
                   type="button"
                   disabled={!customStreamName.trim() || isAddingStream}

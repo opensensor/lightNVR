@@ -84,7 +84,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
         <div className="flex space-x-2">
           <select
             id="log-level"
-            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+            className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={logLevel}
             onChange={e => {
               const newLevel = e.target.value;
@@ -99,7 +99,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
           </select>
           <select
             id="log-count"
-            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+            className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={logCount}
             onChange={e => setLogCount(parseInt(e.target.value, 10))}
           >
@@ -110,7 +110,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
           </select>
           <select
             id="polling-interval"
-            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+            className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={pollingInterval}
             onChange={e => {
               const newInterval = parseInt(e.target.value, 10);
@@ -126,14 +126,14 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
           </select>
           <button
             id="refresh-logs-btn"
-            className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            className="btn-primary focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
             onClick={loadLogs}
           >
             {t('common.refresh')}
           </button>
           <button
             id="clear-logs-btn"
-            className="btn-danger focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            className="btn-danger focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
             onClick={clearLogs}
           >
             {t('system.clearLogs')}

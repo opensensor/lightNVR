@@ -23,7 +23,7 @@ export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFil
       {activeFiltersDisplay.map((filter, index) => (
         <div key={index} className="filter-tag">
           <span>{filter.label}</span>
-          <button className="ml-2 text-secondary-foreground hover:text-foreground focus:outline-none"
+          <button className="ml-2 text-secondary-foreground hover:text-foreground"
                   onClick={() => removeFilter(filter.key, filter.value)}>
             ×
           </button>
