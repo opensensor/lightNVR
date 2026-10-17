@@ -209,7 +209,8 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
         return NULL;
     }
     
-    if (!stream_name || buffer_seconds < MIN_BUFFER_SECONDS || buffer_seconds > MAX_BUFFER_SECONDS) {
+    if (!stream_name || buffer_seconds < MIN_BUFFER_SECONDS ||
+        buffer_seconds > MAX_BUFFER_SECONDS + PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS) {
         log_error("Invalid parameters for create_packet_buffer");
         return NULL;
     }
@@ -590,6 +591,44 @@ int packet_buffer_flush(packet_buffer_t *buffer,
     log_info("Flushed %d packets from buffer for stream: %s", flushed_count, buffer->stream_name);
 
     return flushed_count;
+}
+
+/**
+ * Drop packets that precede the newest video keyframe at or before cutoff
+ */
+int packet_buffer_trim_before(packet_buffer_t *buffer, time_t cutoff, int video_stream_index) {
+    if (!buffer || !buffer->active) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&buffer->mutex);
+
+    int start = -1;
+    for (int i = 0; i < buffer->count; i++) {
+        const buffered_packet_t *slot = &buffer->packets[(buffer->tail + i) % buffer->max_packets];
+        if (slot->timestamp > cutoff) break;
+        if (slot->packet && slot->is_keyframe && slot->stream_index == video_stream_index) {
+            start = i;
+        }
+    }
+
+    int dropped = start > 0 ? start : 0;
+    for (int i = 0; i < dropped; i++) {
+        buffered_packet_t *slot = &buffer->packets[buffer->tail];
+        if (slot->packet) {
+            buffer->current_memory_usage -= slot->data_size;
+            av_packet_free(&slot->packet);
+            slot->packet = NULL;
+        }
+        buffer->tail = (buffer->tail + 1) % buffer->max_packets;
+        buffer->count--;
+    }
+    if (buffer->count > 0) {
+        buffer->oldest_packet_time = buffer->packets[buffer->tail].timestamp;
+    }
+
+    pthread_mutex_unlock(&buffer->mutex);
+    return dropped;
 }
 
 /**

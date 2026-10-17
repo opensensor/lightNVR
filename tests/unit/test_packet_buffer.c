@@ -326,6 +326,67 @@ void test_high_packet_rate_fills_whole_window(void) {
     destroy_packet_buffer(b);
 }
 
+/* Feed 20 s at 20 packets/s: video keyframes every 5 s, and every packet
+ * at index 1 of each second is audio (which FFmpeg flags as key). */
+static packet_buffer_t *make_trim_fixture(time_t t0) {
+    packet_buffer_t *b = create_packet_buffer("trim_cam", 30, BUFFER_MODE_MEMORY);
+    TEST_ASSERT_NOT_NULL(b);
+    for (int i = 0; i < 20 * 20; i++) {
+        int second = i / 20, slot = i % 20;
+        AVPacket *p = make_pkt(8, slot <= 1 && (slot == 1 || second % 5 == 0));
+        TEST_ASSERT_NOT_NULL(p);
+        p->stream_index = slot == 1 ? 1 : 0;
+        TEST_ASSERT_EQUAL_INT(0, packet_buffer_add_packet(b, p, t0 + second));
+        av_packet_free(&p);
+    }
+    return b;
+}
+
+void test_trim_before_starts_at_last_video_keyframe_before_cutoff(void) {
+    time_t t0 = 2000000;
+    packet_buffer_t *b = make_trim_fixture(t0);
+
+    /* Newest video keyframe at or before t0+12 is t0+10; the audio "key"
+     * packets at t0+11 and t0+12 must not be chosen. */
+    TEST_ASSERT_EQUAL_INT(10 * 20, packet_buffer_trim_before(b, t0 + 12, 0));
+
+    int count = 0, dur = 0;
+    size_t mem = 0;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_get_stats(b, &count, &mem, &dur));
+    TEST_ASSERT_EQUAL_INT(10 * 20, count);
+    TEST_ASSERT_EQUAL_INT(9, dur);
+
+    AVPacket *out = NULL;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_pop_oldest(b, &out));
+    TEST_ASSERT_TRUE(out->flags & AV_PKT_FLAG_KEY);
+    TEST_ASSERT_EQUAL_INT(0, out->stream_index);
+    av_packet_free(&out);
+    destroy_packet_buffer(b);
+}
+
+void test_trim_before_keeps_everything_when_buffer_is_short(void) {
+    time_t t0 = 2000000;
+    packet_buffer_t *b = make_trim_fixture(t0);
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_trim_before(b, t0 - 5, 0));
+    int count = 0, dur = 0;
+    size_t mem = 0;
+    TEST_ASSERT_EQUAL_INT(0, packet_buffer_get_stats(b, &count, &mem, &dur));
+    TEST_ASSERT_EQUAL_INT(20 * 20, count);
+    TEST_ASSERT_EQUAL_INT(-1, packet_buffer_trim_before(NULL, t0, 0));
+    destroy_packet_buffer(b);
+}
+
+void test_create_buffer_allows_trigger_headroom(void) {
+    packet_buffer_t *b = create_packet_buffer(
+        "headroom_cam", MAX_BUFFER_SECONDS + PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS,
+        BUFFER_MODE_MEMORY);
+    TEST_ASSERT_NOT_NULL(b);
+    destroy_packet_buffer(b);
+    TEST_ASSERT_NULL(create_packet_buffer(
+        "too_long_cam", MAX_BUFFER_SECONDS + PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS + 1,
+        BUFFER_MODE_MEMORY));
+}
+
 void test_slot_growth_stops_at_ceiling(void) {
     const int window_s = 5;
     packet_buffer_t *b = create_packet_buffer("burst_cam", window_s, BUFFER_MODE_MEMORY);
@@ -378,6 +439,9 @@ int main(void) {
     RUN_TEST(test_estimate_packet_count_positive);
     RUN_TEST(test_high_packet_rate_fills_whole_window);
     RUN_TEST(test_slot_growth_stops_at_ceiling);
+    RUN_TEST(test_trim_before_starts_at_last_video_keyframe_before_cutoff);
+    RUN_TEST(test_trim_before_keeps_everything_when_buffer_is_short);
+    RUN_TEST(test_create_buffer_allows_trigger_headroom);
     return UNITY_END();
 }
 

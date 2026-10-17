@@ -148,11 +148,14 @@ typedef struct {
     //   • onvif_thread_running  – writer: UDT teardown; reader: ONVIF thread.
     //   • onvif_motion_detected – writer: ONVIF thread; reader: UDT main loop.
     //   • onvif_motion_timestamp– same as above.
-    //   All three use atomic operations only; no mutex required.
+    //   • onvif_motion_onset    – same as above.
+    //   All of these use atomic operations only; no mutex required.
     pthread_t    onvif_thread;           // handle (valid only when thread was started)
     atomic_int   onvif_thread_running;   // 1 = running, 0 = stop requested
     atomic_int   onvif_motion_detected;  // 1 = motion active, 0 = idle
     atomic_llong onvif_motion_timestamp; // epoch-seconds of last detected motion
+    atomic_llong onvif_motion_onset;     // epoch-seconds the current motion episode began
+    long long    onvif_onset_handled;    // UDT thread only: last onset acted on by the keyframe fast path
 
     // ONVIF connection parameters cached at thread-start time so that the
     // polling thread never needs to call get_stream_config_by_name().

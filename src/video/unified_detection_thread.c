@@ -139,6 +139,9 @@ static void  stop_onvif_detection_thread(unified_detection_ctx_t *ctx);
 static bool  runtime_has_engine_type(const unified_detection_ctx_t *ctx,
                                      const char *engine_type);
 static void  unload_runtime_models(unified_detection_ctx_t *ctx);
+static time_t detection_event_time(unified_detection_ctx_t *ctx, time_t now);
+static void  flush_prebuffer_and_correct_start(unified_detection_ctx_t *ctx,
+                                               time_t now, time_t event_time);
 /**
  * Determine the actual API URL to use for detection based on the configured
  * model path and global configuration.
@@ -706,8 +709,12 @@ static void *onvif_detection_thread_func(void *arg) {
         if (!atomic_load(&ctx->onvif_thread_running)) break;
 
         if (ret == 0 && result.count > 0) {
-            atomic_store(&ctx->onvif_motion_detected, 1);
-            atomic_store(&ctx->onvif_motion_timestamp, (long long)time(NULL));
+            long long seen = (long long)time(NULL);
+            if (atomic_exchange(&ctx->onvif_motion_detected, 1) == 0) {
+                // Start of a motion episode: the pre-roll is anchored here
+                atomic_store(&ctx->onvif_motion_onset, seen);
+            }
+            atomic_store(&ctx->onvif_motion_timestamp, seen);
             log_debug("[%s] ONVIF thread: %d motion event(s) detected",
                       ctx->stream_name, result.count);
 
@@ -800,6 +807,7 @@ static int start_onvif_detection_thread(unified_detection_ctx_t *ctx) {
     atomic_store(&ctx->onvif_thread_running, 1);
     atomic_store(&ctx->onvif_motion_detected, 0);
     atomic_store(&ctx->onvif_motion_timestamp, 0LL);
+    atomic_store(&ctx->onvif_motion_onset, 0LL);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -1274,8 +1282,14 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         return -1;
     }
 
-    // Create circular buffer for pre-detection content
-    ctx->packet_buffer = create_packet_buffer(stream_name, ctx->pre_buffer_seconds, BUFFER_MODE_MEMORY);
+    // Create circular buffer for pre-detection content. Event-driven sources
+    // (ONVIF) are acted on a few seconds after the event, so keep headroom
+    // beyond the pre-roll; the flush trims back to the event time.
+    int buffer_window = ctx->pre_buffer_seconds;
+    if (buffer_window < MIN_BUFFER_SECONDS) buffer_window = MIN_BUFFER_SECONDS;
+    if (buffer_window > MAX_BUFFER_SECONDS) buffer_window = MAX_BUFFER_SECONDS;
+    if (ctx->has_onvif_engine) buffer_window += PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS;
+    ctx->packet_buffer = create_packet_buffer(stream_name, buffer_window, BUFFER_MODE_MEMORY);
     if (!ctx->packet_buffer) {
         log_error("Failed to create pre-detection buffer for stream %s", stream_name);
         pthread_mutex_destroy(&ctx->detection_stream_result_mutex);
@@ -1295,6 +1309,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->onvif_thread_running, 0);
     atomic_store(&ctx->onvif_motion_detected, 0);
     atomic_store(&ctx->onvif_motion_timestamp, 0LL);
+    atomic_store(&ctx->onvif_motion_onset, 0LL);
 
     // Initialize detection stream thread atomics and result slot
     atomic_store(&ctx->detection_stream_thread_running, 0);
@@ -2446,31 +2461,8 @@ stats_done:
                 } else {
                     log_info("[%s] External trigger starting recording", ctx->stream_name);
                     if (udt_start_recording(ctx) == 0) {
-                        // Flush pre-buffer and correct DB start_time to reflect actual start
-                        int pre_dur = 0;
-                        int pre_cnt = 0; size_t pre_mem = 0;
-                        if (ctx->packet_buffer)
-                            packet_buffer_get_stats(ctx->packet_buffer, &pre_cnt, &pre_mem, &pre_dur);
-
-                        flush_prebuffer_to_recording(ctx);
+                        flush_prebuffer_and_correct_start(ctx, now, now);
                         atomic_store(&ctx->state, UDT_STATE_RECORDING);
-
-                        // Correct start_time in DB and writer to the actual first-packet time
-                        if (!ctx->mp4_writer->start_time_corrected && pre_dur > 0 &&
-                            ctx->current_recording_id > 0) {
-                            // Clamp pre_dur to the configured pre_buffer window.
-                            // go2rtc may deliver a ring-buffer of 200+ seconds; using
-                            // the raw value would push start_time so far back that
-                            // elapsed > max_duration immediately, stopping the recording.
-                            int clamped_pre = pre_dur > ctx->pre_buffer_seconds
-                                              ? ctx->pre_buffer_seconds : pre_dur;
-                            time_t corrected = now - (time_t)clamped_pre;
-                            ctx->mp4_writer->creation_time = corrected;
-                            ctx->mp4_writer->start_time_corrected = true;
-                            update_recording_start_time(ctx->current_recording_id, corrected);
-                            log_info("[%s] Corrected recording start_time by -%ds (pre-buffer, clamped from %ds)",
-                                     ctx->stream_name, clamped_pre, pre_dur);
-                        }
                     }
                 }
             } else if (current_state == UDT_STATE_POST_BUFFER &&
@@ -2513,7 +2505,20 @@ stats_done:
                      ctx->model_path, current_state);
         }
 
-        if (time_since_last_check >= ctx->detection_interval) {
+        // ONVIF motion is already decided by its polling thread, so a new
+        // episode can start recording on this keyframe instead of waiting up
+        // to detection_interval for the next sampled check (#494).
+        long long onvif_onset = atomic_load(&ctx->onvif_motion_onset);
+        if (current_state == UDT_STATE_BUFFERING && ctx->engine_count <= 1 &&
+            is_onvif_detection_model(ctx->model_path) &&
+            atomic_load(&ctx->onvif_motion_detected) &&
+            onvif_onset != ctx->onvif_onset_handled &&
+            time_since_last_check < ctx->detection_interval) {
+            ctx->onvif_onset_handled = onvif_onset;
+            bool detected = run_detection_on_frame(ctx, pkt, now);
+            handle_recording_state(ctx, detected, now);
+        } else if (time_since_last_check >= ctx->detection_interval) {
+            ctx->onvif_onset_handled = onvif_onset;
             atomic_store(&ctx->last_detection_check_time, (long long)now);
             log_info("[%s] Running detection (interval=%ds, elapsed=%lds, model=%s)",
                     ctx->stream_name, ctx->detection_interval,
@@ -2828,6 +2833,62 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
     }
 
     return 0;
+}
+
+/**
+ * When the event that triggered a recording actually happened. ONVIF motion
+ * is seen by the polling thread and only acted on at a later keyframe, so the
+ * episode onset is used when it is recent enough for the buffer headroom to
+ * still cover it. Frame-based detections happen at the trigger time.
+ */
+static time_t detection_event_time(unified_detection_ctx_t *ctx, time_t now) {
+    if (ctx->has_onvif_engine) {
+        time_t onset = (time_t)atomic_load(&ctx->onvif_motion_onset);
+        if (onset > 0 && onset <= now &&
+            now - onset <= PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS) {
+            return onset;
+        }
+    }
+    return now;
+}
+
+/**
+ * Write the pre-buffer into a just-started recording so it begins
+ * pre_buffer_seconds before event_time (rounded back to a keyframe), then
+ * move the recording's start_time back to the first written packet.
+ */
+static void flush_prebuffer_and_correct_start(unified_detection_ctx_t *ctx,
+                                              time_t now, time_t event_time) {
+    if (!ctx->packet_buffer) return;
+
+    time_t cutoff = event_time - (time_t)ctx->pre_buffer_seconds;
+    int trimmed = packet_buffer_trim_before(ctx->packet_buffer, cutoff,
+                                            ctx->video_stream_idx);
+    if (trimmed > 0) {
+        log_debug("[%s] Trimmed %d pre-buffer packets older than the pre-roll window",
+                  ctx->stream_name, trimmed);
+    }
+
+    int pre_dur = 0, pre_cnt = 0;
+    size_t pre_mem = 0;
+    packet_buffer_get_stats(ctx->packet_buffer, &pre_cnt, &pre_mem, &pre_dur);
+
+    flush_prebuffer_to_recording(ctx);
+
+    if (!ctx->mp4_writer->start_time_corrected && pre_dur > 0 &&
+        ctx->current_recording_id > 0) {
+        // Clamp to the buffer's window. go2rtc may replay a ring-buffer of
+        // 200+ seconds; using the raw value would push start_time so far back
+        // that elapsed > max_duration immediately, stopping the recording.
+        int max_pre = ctx->packet_buffer->buffer_seconds + 1;
+        int clamped_pre = pre_dur > max_pre ? max_pre : pre_dur;
+        time_t corrected = now - (time_t)clamped_pre;
+        ctx->mp4_writer->creation_time = corrected;
+        ctx->mp4_writer->start_time_corrected = true;
+        update_recording_start_time(ctx->current_recording_id, corrected);
+        log_info("[%s] Corrected recording start_time by -%ds (pre-buffer, event %lds before trigger)",
+                 ctx->stream_name, clamped_pre, (long)(now - event_time));
+    }
 }
 
 /**
@@ -3221,25 +3282,9 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
             log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
 
             if (udt_start_recording(ctx) == 0) {
-                int pre_dur = 0, pre_cnt = 0;
-                size_t pre_mem = 0;
-                if (ctx->packet_buffer)
-                    packet_buffer_get_stats(ctx->packet_buffer, &pre_cnt, &pre_mem, &pre_dur);
-
-                flush_prebuffer_to_recording(ctx);
+                flush_prebuffer_and_correct_start(ctx, now,
+                                                  detection_event_time(ctx, now));
                 atomic_store(&ctx->state, UDT_STATE_RECORDING);
-
-                if (!ctx->mp4_writer->start_time_corrected && pre_dur > 0 &&
-                    ctx->current_recording_id > 0) {
-                    int clamped_pre = pre_dur > ctx->pre_buffer_seconds
-                                      ? ctx->pre_buffer_seconds : pre_dur;
-                    time_t corrected = now - (time_t)clamped_pre;
-                    ctx->mp4_writer->creation_time = corrected;
-                    ctx->mp4_writer->start_time_corrected = true;
-                    update_recording_start_time(ctx->current_recording_id, corrected);
-                    log_info("[%s] Corrected recording start_time by -%ds (pre-buffer, clamped from %ds)",
-                             ctx->stream_name, clamped_pre, pre_dur);
-                }
 
                 /* detection_interval is forced > 0 in start_unified_detection_thread
                  * (zero / negative fall back to DEFAULT_DETECTION_INTERVAL), so the

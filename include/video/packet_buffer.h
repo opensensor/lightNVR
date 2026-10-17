@@ -30,6 +30,11 @@
 #define MIN_BUFFER_SECONDS 5
 #define DEFAULT_BUFFER_SECONDS 5
 
+// Extra seconds a buffer may hold beyond its pre-roll so the pre-roll can be
+// anchored to when an event happened rather than when it was acted on
+// (event sources such as ONVIF are only seen after a poll/keyframe delay).
+#define PACKET_BUFFER_TRIGGER_HEADROOM_SECONDS 5
+
 // Buffer storage modes
 typedef enum {
     BUFFER_MODE_MEMORY = 0,     // Store packets in memory (default)
@@ -188,6 +193,18 @@ int packet_buffer_pop_oldest(packet_buffer_t *buffer, AVPacket **packet);
 int packet_buffer_flush(packet_buffer_t *buffer,
                        int (*callback)(const AVPacket *packet, void *user_data),
                        void *user_data);
+
+/**
+ * Drop packets older than the newest video keyframe captured at or before
+ * cutoff, so a following flush starts that GOP. If no such keyframe exists
+ * (the buffer is shorter than requested) nothing is dropped.
+ *
+ * @param buffer Packet buffer
+ * @param cutoff Wall-clock time the flushed content should start at or before
+ * @param video_stream_index Stream index of the video stream
+ * @return Number of packets dropped, or -1 on error
+ */
+int packet_buffer_trim_before(packet_buffer_t *buffer, time_t cutoff, int video_stream_index);
 
 /**
  * Clear all packets from the buffer
