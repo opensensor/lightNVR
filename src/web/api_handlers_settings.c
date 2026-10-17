@@ -800,7 +800,6 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "default_detection_threshold", g_config.default_detection_threshold);
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
-    cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
     cJSON_AddStringToObject(settings, "default_playback_transport",
                             playback_transport_is_valid(g_config.default_playback_transport)
                                 ? g_config.default_playback_transport : "auto");
@@ -1530,14 +1529,6 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.default_post_detection_buffer = value;
         settings_changed = true;
         log_info("Updated default_post_detection_buffer: %d seconds", g_config.default_post_detection_buffer);
-    }
-
-    // Buffer strategy (default for new streams)
-    cJSON *buffer_strategy = cJSON_GetObjectItem(settings, "buffer_strategy");
-    if (buffer_strategy && cJSON_IsString(buffer_strategy)) {
-        safe_strcpy(g_config.default_buffer_strategy, buffer_strategy->valuestring, sizeof(g_config.default_buffer_strategy), 0);
-        settings_changed = true;
-        log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
     }
 
     // Playback transport profile applied to newly-created streams.

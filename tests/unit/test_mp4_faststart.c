@@ -12,28 +12,12 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "video/ffmpeg_utils.h"
-#include "video/packet_buffer.h"
-#include "video/pre_detection_buffer.h"
 
 static char test_dir[128], ts_path[160], output_path[160];
 static bool saved_faststart;
-static bool capture_header, header_called, header_faststart;
-
-int __real_avformat_write_header(AVFormatContext *context, AVDictionary **options);
-int __wrap_avformat_write_header(AVFormatContext *context, AVDictionary **options) {
-    if (!capture_header) return __real_avformat_write_header(context, options);
-    header_called = true;
-    const AVDictionaryEntry *flags = av_dict_get(
-        options ? *options : NULL, "movflags", NULL, 0);
-    header_faststart = flags && strstr(flags->value, "faststart");
-    // The memory strategy's codec parameters are still a placeholder. Stop
-    // at the FFmpeg boundary so this test isolates its muxer option contract.
-    return AVERROR(EINVAL);
-}
 
 void setUp(void) {
     saved_faststart = config_get_mp4_faststart(&g_config);
-    capture_header = header_called = header_faststart = false;
     strcpy(test_dir, "/tmp/lightnvr_mux_faststart_XXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(test_dir));
     snprintf(ts_path, sizeof(ts_path), "%s/segment.ts", test_dir);
@@ -42,8 +26,6 @@ void setUp(void) {
 
 void tearDown(void) {
     config_set_mp4_faststart(&g_config, saved_faststart);
-    capture_header = false;
-    cleanup_packet_buffer_pool();
     unlink(ts_path);
     unlink(output_path);
     rmdir(test_dir);
@@ -125,41 +107,10 @@ static void check_hls_faststart(bool enabled) {
 void test_hls_conversion_faststart_enabled(void) { check_hls_faststart(true); }
 void test_hls_conversion_faststart_disabled(void) { check_hls_faststart(false); }
 
-static void check_memory_faststart(bool enabled) {
-    const buffer_config_t config = {
-        .buffer_seconds = 10, .memory_limit_bytes = 2 * 1024 * 1024
-    };
-    pre_buffer_strategy_t *strategy = create_buffer_strategy(
-        BUFFER_STRATEGY_MEMORY_PACKET, "faststart-test", &config);
-    TEST_ASSERT_NOT_NULL(strategy);
-    AVPacket *packet = av_packet_alloc();
-    TEST_ASSERT_NOT_NULL(packet);
-    TEST_ASSERT_EQUAL_INT(0, av_new_packet(packet, 8));
-    memset(packet->data, 0, packet->size);
-    packet->flags = AV_PKT_FLAG_KEY;
-    packet->pts = packet->dts = 0;
-    TEST_ASSERT_EQUAL_INT(0, strategy->add_packet(strategy, packet, time(NULL)));
-    av_packet_free(&packet);
-
-    config_set_mp4_faststart(&g_config, enabled);
-    capture_header = true;
-    int ret = strategy->flush_to_file(strategy, output_path);
-    capture_header = false;
-    destroy_buffer_strategy(strategy);
-    TEST_ASSERT_EQUAL_INT(-1, ret);
-    TEST_ASSERT_TRUE(header_called);
-    TEST_ASSERT_EQUAL(enabled, header_faststart);
-}
-
-void test_memory_prebuffer_faststart_enabled(void) { check_memory_faststart(true); }
-void test_memory_prebuffer_faststart_disabled(void) { check_memory_faststart(false); }
-
 int main(void) {
     init_logger();
     UNITY_BEGIN();
     RUN_TEST(test_hls_conversion_faststart_enabled);
     RUN_TEST(test_hls_conversion_faststart_disabled);
-    RUN_TEST(test_memory_prebuffer_faststart_enabled);
-    RUN_TEST(test_memory_prebuffer_faststart_disabled);
     return UNITY_END();
 }

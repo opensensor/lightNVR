@@ -91,7 +91,6 @@ typedef struct {
     char detection_api_url[MAX_URL_LENGTH]; // Per-stream detection API URL override (empty = use global)
     char detection_object_filter[16];  // Filter mode: "include", "exclude", or "none"
     char detection_object_filter_list[256];  // Comma-separated list of object classes (e.g., "person,car,bicycle")
-    char buffer_strategy[32];  // Pre-detection buffer strategy: "auto", "go2rtc", "hls_segment", "memory_packet", "mmap_hybrid"
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
     bool record_audio; // Whether to record audio with video
@@ -254,7 +253,6 @@ typedef struct {
     int default_detection_threshold;       // Default confidence threshold for detection (0-100)
     int default_pre_detection_buffer;      // Default seconds to keep before detection (0-60)
     int default_post_detection_buffer;     // Default seconds to keep after detection (0-300)
-    char default_buffer_strategy[32];      // Default buffer strategy: auto, go2rtc, hls_segment, memory_packet, mmap_hybrid
     char default_playback_transport[PLAYBACK_TRANSPORT_MAX]; // Default for newly-created streams
     int detection_grace_period;            // Seconds after last detection before entering post-buffer (default: 2)
 

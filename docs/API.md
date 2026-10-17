@@ -433,7 +433,6 @@ whether to show privacy controls.
       "onvif_profile": "",
       "ptz_enabled": false,
       "backchannel_enabled": false,
-      "buffer_strategy": "auto",
       "retention_days": -1,
       "detection_retention_days": -1,
       "record_on_schedule": false,

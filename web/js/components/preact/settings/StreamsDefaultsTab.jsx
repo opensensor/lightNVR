@@ -75,28 +75,6 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultPostDetectionBufferHelp')}</span>
           </div>
         </div>
-        <div data-setting-label={t('settings.defaultBufferStrategy')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-buffer-strategy" class="font-medium">{t('settings.defaultBufferStrategy')}</label>
-          <div class="col-span-2">
-            <select
-              id="setting-buffer-strategy"
-              name="bufferStrategy"
-              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.bufferStrategy}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            >
-              <option value="auto">{t('settings.bufferStrategyAuto')}</option>
-              <option value="go2rtc">{t('settings.bufferStrategyGo2rtc')}</option>
-              <option value="hls_segment">{t('settings.bufferStrategyHlsSegment')}</option>
-              <option value="memory_packet">{t('settings.bufferStrategyMemoryPacket')}</option>
-              <option value="mmap_hybrid">{t('settings.bufferStrategyMmapHybrid')}</option>
-            </select>
-            <p class="hint text-sm text-muted-foreground mt-1">
-              {t('settings.defaultBufferStrategyHelp')}
-            </p>
-          </div>
-        </div>
         <div data-setting-label={t('settings.defaultPlaybackTransport')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-default-playback-transport" class="font-medium">
             {t('settings.defaultPlaybackTransport')}

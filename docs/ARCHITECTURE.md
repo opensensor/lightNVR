@@ -171,12 +171,7 @@ Key files:
 - `src/video/onvif_motion_recording.c`: ONVIF motion-triggered recording
 - `src/video/motion_detection.c`: Motion detection processing
 - `src/video/motion_storage_manager.c`: Motion recording storage management
-- `src/video/pre_detection_buffer.c`: Pre-detection circular buffer for capture before events
-- `src/video/packet_buffer.c`: Packet-level ring buffer
-- `src/video/buffer_strategy_go2rtc.c`: go2rtc-based buffer strategy
-- `src/video/buffer_strategy_hls_segment.c`: HLS segment buffer strategy
-- `src/video/buffer_strategy_memory_packet.c`: In-memory packet buffer strategy
-- `src/video/buffer_strategy_mmap.c`: Memory-mapped buffer strategy
+- `src/video/packet_buffer.c`: Pre-detection packet ring buffer, flushed into the recording when a detection starts
 - `src/database/db_detections.c`: Detection storage with optional recording_id linkage
 
 See [SOD_INTEGRATION.md](SOD_INTEGRATION.md) and [ONVIF_DETECTION.md](ONVIF_DETECTION.md) for details.
@@ -394,7 +389,7 @@ CREATE TABLE streams (
     ptz_max_y INTEGER DEFAULT 0,
     ptz_max_z INTEGER DEFAULT 0,
     ptz_has_home INTEGER DEFAULT 0,
-    -- Buffer strategy (migration 0015)
+    -- Buffer strategy (migration 0015; unused)
     buffer_strategy TEXT DEFAULT 'auto',
     -- ONVIF credentials (migration 0016)
     onvif_username TEXT DEFAULT '',

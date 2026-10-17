@@ -417,7 +417,6 @@ void load_default_config(config_t *config) {
     config->default_pre_detection_buffer = 5;   // 5 seconds before detection
     config->default_post_detection_buffer = 10; // 10 seconds after detection
     config->detection_grace_period = 2;         // 2 seconds grace before post-buffer
-    safe_strcpy(config->default_buffer_strategy, "auto", 32, 0); // Auto-select buffer strategy
     safe_strcpy(config->default_playback_transport, "auto",
                 sizeof(config->default_playback_transport), 0);
 
@@ -909,8 +908,6 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             // Clamp to valid range
             if (config->default_post_detection_buffer < 0) config->default_post_detection_buffer = 0;
             if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
-        } else if (strcmp(name, "buffer_strategy") == 0) {
-            safe_strcpy(config->default_buffer_strategy, value, sizeof(config->default_buffer_strategy), 0);
         }
     }
     // In-process LiteRT (TFLite) detection engine settings
@@ -1875,8 +1872,7 @@ int save_config(const config_t *config, const char *path) {
             config->api_detection_detector_name);
     fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
-    fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
-    fprintf(file, "buffer_strategy = %s\n\n", config->default_buffer_strategy);
+    fprintf(file, "post_detection_buffer = %d\n\n", config->default_post_detection_buffer);
 
     // Write in-process LiteRT detection engine settings
     fprintf(file, "[detection_engine]\n");

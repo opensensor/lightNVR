@@ -342,7 +342,6 @@ add_layer3_test(test_mp4_segment_boundaries)
 add_layer3_test(test_mp4_faststart)
 target_compile_definitions(test_mp4_faststart PRIVATE
     RECORDING_FIXTURE="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4")
-target_link_options(test_mp4_faststart PRIVATE "-Wl,--wrap=avformat_write_header")
 add_layer3_test(test_audio_voice_enhancement)
 add_layer3_test(test_timestamp_manager)
 add_layer3_test(test_api_handlers_system)

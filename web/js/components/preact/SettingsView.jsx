@@ -127,7 +127,6 @@ export function SettingsView() {
     defaultDetectionThreshold: 50,
     defaultPreBuffer: 5,
     defaultPostBuffer: 10,
-    bufferStrategy: 'auto',
     detectionGracePeriod: 2,
     // In-process LiteRT detection engine
     detectionEngineEnabled: false,
@@ -372,7 +371,6 @@ export function SettingsView() {
       defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
       defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
       defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
-      bufferStrategy: settingsData.buffer_strategy || 'auto',
       defaultPlaybackTransport: settingsData.default_playback_transport || 'auto',
       detectionGracePeriod: settingsData.detection_grace_period ?? 2,
       detectionEngineEnabled: settingsData.detection_engine_enabled || false,
@@ -512,7 +510,6 @@ export function SettingsView() {
       default_detection_threshold: settings.defaultDetectionThreshold,
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
-      buffer_strategy: settings.bufferStrategy,
       default_playback_transport: settings.defaultPlaybackTransport,
       detection_grace_period: parseInt(settings.detectionGracePeriod, 10),
       detection_engine_enabled: !!settings.detectionEngineEnabled,
