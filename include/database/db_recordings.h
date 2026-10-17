@@ -141,13 +141,21 @@ int get_recording_metadata(time_t start_time, time_t end_time,
  * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
  * @param tag_filter Filter by recording tag as a single value or comma-separated list (NULL for all)
  * @param capture_method_filter Filter by capture method as a single value or comma-separated list (NULL for all)
+ * @param include_in_progress When true, also count segments that are still
+ *        being recorded (is_complete = 0, no end_time yet) while their
+ *        start_time is fresh enough to belong to a live segment — stale
+ *        incomplete rows left behind by a crashed writer self-expire from
+ *        the result (#482). Callers that *mutate* recordings (retention,
+ *        batch delete) must pass false so the active segment is never
+ *        touched mid-write.
  * @return Total count of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
-                       const char *tag_filter, const char *capture_method_filter);
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress);
 
 /**
  * Get paginated recording metadata from the database with sorting.
@@ -170,6 +178,10 @@ int get_recording_count(time_t start_time, time_t end_time,
  * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
  * @param tag_filter Filter by recording tag as a single value or comma-separated list (NULL for all)
  * @param capture_method_filter Filter by capture method as a single value or comma-separated list (NULL for all)
+ * @param include_in_progress When true, also return segments that are still
+ *        being recorded (see get_recording_count). The caller exposes them
+ *        separately (e.g. as an "in progress" flag) since their end_time is
+ *        0 until the segment finishes (#482).
  * @return Number of recordings found, or -1 on error
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
@@ -180,7 +192,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
                                    const char * const *allowed_streams, int allowed_streams_count,
-                                   const char *tag_filter, const char *capture_method_filter);
+                                   const char *tag_filter, const char *capture_method_filter,
+                                   bool include_in_progress);
 
 /**
  * Get recording metadata by ID

@@ -13,10 +13,11 @@ typedef struct {
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char file_path[MAX_PATH_LENGTH];
     time_t start_time;
-    time_t end_time;
+    time_t end_time;      // for in_progress segments: effective end ("now")
     uint64_t size_bytes;
     bool has_detection;
     bool protected;
+    bool in_progress;     // segment is still being recorded (#482)
     char trigger_type[16];
     int schedule_restricted; // -1 = unknown/legacy, 0 = no, 1 = yes
 } timeline_segment_t;

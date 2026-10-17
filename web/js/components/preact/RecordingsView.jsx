@@ -944,6 +944,14 @@ export function RecordingsView() {
   const playRecording = (recording) => {
     console.log('RecordingsView.playRecording called with:', recording);
 
+    // A segment that is still recording has no finalized MP4 index yet, so
+    // playback cannot work (the backend rejects it with HTTP 409). Tell the
+    // user instead of opening a broken video modal (#482).
+    if (recording && recording.in_progress) {
+      showStatusMessage(t('recordings.inProgressToast'), 'info');
+      return;
+    }
+
     // Use the modal context if available, otherwise fall back to the imported function
     if (modalContext && modalContext.showVideoModal) {
       console.log('Using modal context showVideoModal');

@@ -66,6 +66,14 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
         return;
     }
 
+    // A segment that is still being recorded has no finalized moov atom, so
+    // browsers cannot play it. Fail fast with a clear, actionable error
+    // instead of serving an undecodable partial file (#482).
+    if (!recording.is_complete) {
+        http_response_set_json_error(res, 409, "Recording is still in progress");
+        return;
+    }
+
     if (recording_archive_serve(req, res, id, false)) return;
 
     if (!recording_source_for_request(req, res, id, recording.file_path)) return;

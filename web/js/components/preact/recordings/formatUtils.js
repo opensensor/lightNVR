@@ -87,16 +87,32 @@ export const formatUtils = {
    */
   formatDuration: (seconds) => {
     if (seconds == null || seconds < 0) return '00:00:00';
-    
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    
+
     return [
       hours.toString().padStart(2, '0'),
       minutes.toString().padStart(2, '0'),
       secs.toString().padStart(2, '0')
     ].join(':');
+  },
+
+  /**
+   * Elapsed seconds of a still-recording segment (#482), computed at call
+   * time so the badge ticks up on every re-render/poll. Returns 0 for
+   * recordings that are already finished.
+   * @param {Object} recording Recording entry from /api/recordings
+   * @returns {number} Elapsed seconds since start_time
+   */
+  liveRecordingDuration: (recording) => {
+    if (!recording || !recording.in_progress) return 0;
+    const start = typeof recording.start_time_unix === 'number'
+      ? recording.start_time_unix
+      : NaN;
+    if (!Number.isFinite(start)) return 0;
+    return Math.max(0, Math.floor(Date.now() / 1000) - start);
   },
   
   /**

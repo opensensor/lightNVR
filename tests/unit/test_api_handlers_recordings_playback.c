@@ -221,6 +221,20 @@ void test_source_only_preparation_never_probes_or_transcodes_hevc(void) {
     TEST_ASSERT_EQUAL_INT(0, serve_calls);
 }
 
+/* A segment that is still being recorded cannot be played yet: the MP4
+ * index (moov) is only written when the segment is finalized, so playback
+ * must fail fast with a clear HTTP 409 instead of serving an undecodable
+ * partial file (#482). */
+void test_in_progress_recording_is_rejected_with_conflict(void) {
+    bool saved_is_complete = recording.is_complete;
+    recording.is_complete = false;
+    handle_recordings_playback(&request, &response);
+    recording.is_complete = saved_is_complete;
+    TEST_ASSERT_EQUAL_INT(409, response.status_code);
+    TEST_ASSERT_EQUAL_INT(0, serve_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+}
+
 int main(void) {
     if (!mkdtemp(directory)) return 1;
     strcpy(g_config.storage_path, directory);
@@ -229,6 +243,8 @@ int main(void) {
     if (!file) return 1;
     fputs("source video", file);
     fclose(file);
+    /* The fixtures below all represent completed, playable recordings. */
+    recording.is_complete = true;
     UNITY_BEGIN();
     RUN_TEST(test_hevc_preparation_returns_retryable_json_without_serving_media);
     RUN_TEST(test_uncached_media_request_returns_prompt_retry_instead_of_waiting);
@@ -241,6 +257,7 @@ int main(void) {
     RUN_TEST(test_archive_preparation_returns_retry_without_starting_transcode);
     RUN_TEST(test_archive_media_preparation_failure_and_deletion_are_not_served);
     RUN_TEST(test_source_only_preparation_never_probes_or_transcodes_hevc);
+    RUN_TEST(test_in_progress_recording_is_rejected_with_conflict);
     int result = UNITY_END();
     unlink(recording.file_path);
     rmdir(directory);
