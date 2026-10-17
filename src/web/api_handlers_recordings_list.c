@@ -556,11 +556,14 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     if (!count_key ||
         !recordings_count_cache_lookup(count_key, count_now,
                                        recordings_generation, &total_count)) {
+        /* Show segments that are still being recorded too (#482): a stream
+         * with a long segment duration must appear in the overview
+         * immediately, not only after the segment finishes. */
         total_count = get_recording_count(start_time, end_time, stream_filt,
                                           has_detection, label_filter,
                                           protected_filter, streams_filter,
                                           streams_filter_count, tag_filt,
-                                          capture_filt);
+                                          capture_filt, true);
         if (count_key && total_count >= 0) {
             recordings_count_cache_store(count_key, count_now,
                                          recordings_generation, total_count);
@@ -600,7 +603,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                                                  sort_field, sort_order,
                                                  recordings, limit, offset,
                                                  streams_filter, streams_filter_count,
-                                                 tag_filt, capture_filt);
+                                                 tag_filt, capture_filt, true);
 
     if (count < 0) {
         log_error("Failed to get recordings from database");
@@ -659,6 +662,16 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Add pagination object to response
     cJSON_AddItemToObject(response, "pagination", pagination);
 
+    // In-progress segments have no committed end_time yet; use "now" as the
+    // effective end for detection enrichment and display-duration purposes
+    // (#482). The response itself still reports end_time as null.
+    const time_t live_end = time(NULL);
+    for (int i = 0; i < count; i++) {
+        if (!recordings[i].is_complete) {
+            recordings[i].end_time = live_end;
+        }
+    }
+
     // Enrich the whole page in bounded database batches. Historically this
     // loop issued one detection aggregation and one tag query per recording,
     // making the endpoint increasingly sensitive to SQLite mutex contention.
@@ -702,6 +715,10 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
             continue;
         }
 
+        // A segment that is still recording has no real end_time; its end_time
+        // field was prefilled with the effective end ("now") above (#482).
+        const bool in_progress = !recordings[i].is_complete;
+
         // Format timestamps as ISO 8601 UTC (compatible with all browsers including Safari)
         char start_time_formatted[32] = {0};
         char end_time_formatted[32] = {0};
@@ -713,13 +730,17 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
             strftime(start_time_formatted, sizeof(start_time_formatted), "%Y-%m-%dT%H:%M:%SZ", tm_info);
         }
 
-        tm_info = gmtime_r(&recordings[i].end_time, &tm_info_buf);
-        if (tm_info) {
-            strftime(end_time_formatted, sizeof(end_time_formatted), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+        if (!in_progress) {
+            tm_info = gmtime_r(&recordings[i].end_time, &tm_info_buf);
+            if (tm_info) {
+                strftime(end_time_formatted, sizeof(end_time_formatted), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+            }
         }
 
-        // Calculate duration in seconds
+        // Calculate duration in seconds. For an in-progress segment this is
+        // the elapsed recording time so far (snapshot at request time).
         int duration = (int)difftime(recordings[i].end_time, recordings[i].start_time);
+        if (duration < 0) duration = 0;
 
         // Format file size for display (e.g., "1.8 MB")
         char size_str[32] = {0};
@@ -743,9 +764,15 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddStringToObject(recording, "file_path", recordings[i].file_path);
         cJSON_AddStringToObject(recording, "start_time", start_time_formatted);
-        cJSON_AddStringToObject(recording, "end_time", end_time_formatted);
+        if (in_progress) {
+            cJSON_AddNullToObject(recording, "end_time");
+            cJSON_AddNullToObject(recording, "end_time_unix");
+        } else {
+            cJSON_AddStringToObject(recording, "end_time", end_time_formatted);
+            cJSON_AddNumberToObject(recording, "end_time_unix", (double)recordings[i].end_time);
+        }
         cJSON_AddNumberToObject(recording, "start_time_unix", (double)recordings[i].start_time);
-        cJSON_AddNumberToObject(recording, "end_time_unix", (double)recordings[i].end_time);
+        cJSON_AddBoolToObject(recording, "in_progress", in_progress);
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
         cJSON_AddStringToObject(recording, "capture_method",

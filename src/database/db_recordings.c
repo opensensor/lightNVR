@@ -23,6 +23,29 @@
 #define MAX_MULTI_FILTER_VALUE_LEN 128
 
 /*
+ * "Visible" predicate shared by the overview/timeline read paths.
+ *
+ * Complete segments are always visible.  A segment that is still being
+ * recorded (is_complete = 0, end_time not yet set — issue #482) is visible
+ * only while its start_time is fresh enough to belong to a live segment:
+ * an active segment's start_time can age by at most its configured
+ * segment_duration before rotation, so 2x that duration is a safe grace
+ * window.  This also self-expires incomplete "zombie" rows left behind when
+ * a writer thread is killed mid-segment (those keep their fixed, aging
+ * start_time and drop out of the view once the window passes; the startup
+ * reconcile pass in storage_manager.c finalizes them for good).
+ *
+ * When the per-stream config row is missing we fall back to the schema
+ * default of 900 s.  The LEFT JOIN on streams is indexed on streams.name
+ * (UNIQUE), so it is one cache-warm lookup per candidate row.
+ */
+#define RECORDINGS_VISIBLE_PREDICATE \
+    "((r.is_complete = 1 AND r.end_time IS NOT NULL)" \
+    " OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0" \
+    " AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)" \
+    " - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
+
+/*
  * In-process change generation for the recordings table. Every mutation that
  * can alter what the recording list / count queries return bumps it, so
  * short-TTL caches keyed on a filter signature can drop stale totals as soon
@@ -837,7 +860,8 @@ int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
-                       const char *tag_filter, const char *capture_method_filter) {
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -854,7 +878,18 @@ int get_recording_count(time_t start_time, time_t end_time,
     char sql[8192];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
-    safe_strcpy(sql, "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL", sizeof(sql), 0);
+    if (include_in_progress) {
+        safe_strcpy(sql,
+                    "SELECT COUNT(*) FROM recordings r "
+                    "LEFT JOIN streams s ON s.name = r.stream_name "
+                    "WHERE " RECORDINGS_VISIBLE_PREDICATE,
+                    sizeof(sql), 0);
+    } else {
+        safe_strcpy(sql,
+                    "SELECT COUNT(*) FROM recordings r "
+                    "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL",
+                    sizeof(sql), 0);
+    }
 
     if (has_detection == 1) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
@@ -1067,8 +1102,9 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
-                                   const char * const *allowed_streams, int allowed_streams_count,
-                                   const char *tag_filter, const char *capture_method_filter) {
+                                    const char * const *allowed_streams, int allowed_streams_count,
+                                    const char *tag_filter, const char *capture_method_filter,
+                                    bool include_in_progress) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -1115,13 +1151,29 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     // Build query based on filters
     char sql[8192];
 
-    // Use trigger_type and/or detections table to filter detection-based recordings
-    snprintf(sql, sizeof(sql),
-            "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
-            "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
-            "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
-            "r.schedule_restricted, r.camera_uuid "
-            "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
+    // Use trigger_type and/or detections table to filter detection-based recordings.
+    // Built with safe_strcpy (never snprintf): RECORDINGS_VISIBLE_PREDICATE
+    // contains strftime('%s', ...) placeholders that snprintf would misread
+    // as conversion specifiers.
+    if (include_in_progress) {
+        safe_strcpy(sql,
+                "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
+                "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
+                "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
+                "r.schedule_restricted, r.camera_uuid "
+                "FROM recordings r "
+                "LEFT JOIN streams s ON s.name = r.stream_name "
+                "WHERE " RECORDINGS_VISIBLE_PREDICATE,
+                sizeof(sql), 0);
+    } else {
+        safe_strcpy(sql,
+                "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
+                "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
+                "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
+                "r.schedule_restricted, r.camera_uuid "
+                "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL",
+                sizeof(sql), 0);
+    }
 
     if (has_detection == 1) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)

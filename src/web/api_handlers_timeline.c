@@ -71,6 +71,15 @@ static int get_timeline_segments_for_identity(
      * that extends past midnight).
      *
      * Also populate has_detection by checking trigger_type or the detections table.
+     *
+     * Segments that are still being recorded (is_complete = 0, no end_time
+     * yet — issue #482) are included so a stream with a long segment
+     * duration shows its current segment in the timeline immediately.  Their
+     * effective end is "now" (via COALESCE below) and they are only visible
+     * while their start_time is fresh enough to belong to a live segment,
+     * which also self-expires incomplete rows left behind by a killed writer
+     * thread.  The LEFT JOIN on streams reads the per-stream segment
+     * duration; the column is UNIQUE-indexed so it costs one lookup per row.
      */
     const char *stream_sql =
         "SELECT r.id, r.stream_name, r.camera_uuid, r.file_path, "
@@ -84,22 +93,25 @@ static int get_timeline_segments_for_identity(
         "                         AND d.stream_name = r.stream_name)) "
         "                    AND d.source != 'external_motion' "
         "                    AND d.timestamp >= r.start_time "
-        "                    AND d.timestamp <= r.end_time) THEN 1 "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
         "                  WHERE ((r.camera_uuid IS NOT NULL AND d.camera_uuid = r.camera_uuid) "
         "                     OR (r.camera_uuid IS NULL AND d.camera_uuid IS NULL "
         "                         AND d.stream_name = r.stream_name)) "
         "                    AND d.source = 'external_motion' "
-        "                    AND d.timestamp <= r.end_time "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
-        "r.trigger_type, r.schedule_restricted, r.protected "
+        "r.trigger_type, r.schedule_restricted, r.protected, r.is_complete "
         "FROM recordings r "
-        "WHERE r.is_complete = 1 "
-        "  AND r.end_time IS NOT NULL "
+        "LEFT JOIN streams s ON s.name = r.stream_name "
+        "WHERE ((r.is_complete = 1 AND r.end_time IS NOT NULL) "
+        "  OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0 "
+        "      AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)"
+        "          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
         "  AND r.stream_name = ? "
         "  AND r.start_time < ? "
-        "  AND r.end_time   > ? "
+        "  AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? "
         "ORDER BY r.start_time ASC "
         "LIMIT ?;";
 
@@ -113,20 +125,23 @@ static int get_timeline_segments_for_identity(
         "                  WHERE d.camera_uuid = r.camera_uuid "
         "                    AND d.source != 'external_motion' "
         "                    AND d.timestamp >= r.start_time "
-        "                    AND d.timestamp <= r.end_time) THEN 1 "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
         "                  WHERE d.camera_uuid = r.camera_uuid "
         "                    AND d.source = 'external_motion' "
-        "                    AND d.timestamp <= r.end_time "
+        "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
-        "r.trigger_type, r.schedule_restricted, r.protected "
+        "r.trigger_type, r.schedule_restricted, r.protected, r.is_complete "
         "FROM recordings r "
-        "WHERE r.is_complete = 1 "
-        "  AND r.end_time IS NOT NULL "
+        "LEFT JOIN streams s ON s.name = r.stream_name "
+        "WHERE ((r.is_complete = 1 AND r.end_time IS NOT NULL) "
+        "  OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0 "
+        "      AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)"
+        "          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
         "  AND r.camera_uuid = ? "
         "  AND r.start_time < ? "
-        "  AND r.end_time > ? "
+        "  AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? "
         "ORDER BY r.start_time ASC "
         "LIMIT ?;";
 
@@ -146,6 +161,7 @@ static int get_timeline_segments_for_identity(
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
     sqlite3_bind_int(stmt, 4, max_segments);
 
+    const time_t live_now = time(NULL);
     int count = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_segments) {
         memset(&segments[count], 0, sizeof(segments[count]));
@@ -175,6 +191,13 @@ static int get_timeline_segments_for_identity(
             (sqlite3_column_type(stmt, 9) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 9) != 0) : -1;
         segments[count].protected = sqlite3_column_int(stmt, 10) != 0;
+        segments[count].in_progress = sqlite3_column_int(stmt, 11) == 0;
+
+        // A segment that is still recording has no committed end_time; use
+        // "now" as its effective end for display and hit-testing (#482).
+        if (segments[count].in_progress && segments[count].end_time <= 0) {
+            segments[count].end_time = live_now;
+        }
 
         count++;
     }
@@ -242,14 +265,22 @@ int get_timeline_coverage_by_camera_uuid(
         free(buckets);
         return -1;
     }
+    /* Include the segment that is still being recorded (#482) so the
+     * coverage bar extends to "now" instead of showing a false gap.  See
+     * get_timeline_segments for the freshness/self-expiry rationale. */
     const char *sql =
         "SELECT r.id, r.start_time, r.end_time, r.size_bytes, "
         "r.trigger_type = 'detection' OR EXISTS ("
         "  SELECT 1 FROM detections d WHERE d.recording_id = r.id), "
-        "r.protected "
+        "r.protected, r.is_complete "
         "FROM recordings r "
-        "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
-        "AND r.camera_uuid = ? AND r.start_time < ? AND r.end_time > ? "
+        "LEFT JOIN streams s ON s.name = r.stream_name "
+        "WHERE ((r.is_complete = 1 AND r.end_time IS NOT NULL) "
+        "  OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0 "
+        "      AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)"
+        "          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
+        "  AND r.camera_uuid = ? AND r.start_time < ? "
+        "  AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? "
         "ORDER BY r.start_time ASC;";
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -264,6 +295,7 @@ int get_timeline_coverage_by_camera_uuid(
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
 
+    const time_t live_now = time(NULL);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         uint64_t id = (uint64_t)sqlite3_column_int64(stmt, 0);
         time_t segment_start = (time_t)sqlite3_column_int64(stmt, 1);
@@ -271,6 +303,11 @@ int get_timeline_coverage_by_camera_uuid(
         uint64_t bytes = (uint64_t)sqlite3_column_int64(stmt, 3);
         bool has_detection = sqlite3_column_int(stmt, 4) != 0;
         bool is_protected = sqlite3_column_int(stmt, 5) != 0;
+        bool is_complete = sqlite3_column_int(stmt, 6) != 0;
+        if (!is_complete && segment_end <= 0) {
+            // Effective end of a still-recording segment is "now" (#482).
+            segment_end = live_now;
+        }
         (*source_segment_count)++;
 
         time_t clipped_start = segment_start < start_time
@@ -602,6 +639,7 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         cJSON_AddStringToObject(segment, "capture_method",
                                 timeline_segment_capture_method(&segments[i]));
         cJSON_AddBoolToObject(segment, "has_detection", segments[i].has_detection);
+        cJSON_AddBoolToObject(segment, "in_progress", segments[i].in_progress);
         if (segments[i].schedule_restricted < 0) {
             cJSON_AddNullToObject(segment, "schedule_restricted");
         } else {
@@ -1010,19 +1048,25 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         }
         if (replay_evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
 
+        /* A segment that is still recording has no committed end_time; use
+         * "now" as its effective end for display and detection checks (#482). */
+        const bool in_progress = !rec.is_complete;
+        const time_t effective_end =
+            (in_progress && rec.end_time <= 0) ? time(NULL) : rec.end_time;
+
         /* Check for detections */
         bool has_det = false;
         if (rec.trigger_type[0] != '\0' && strcmp(rec.trigger_type, "detection") == 0) {
             has_det = true;
         } else if (has_detections_in_time_range(rec.stream_name,
                                                rec.start_time,
-                                               rec.end_time) > 0) {
+                                               effective_end) > 0) {
             has_det = true;
         }
 
         /* Track overall time range */
         if (overall_start == 0 || rec.start_time < overall_start) overall_start = rec.start_time;
-        if (rec.end_time > overall_end) overall_end = rec.end_time;
+        if (effective_end > overall_end) overall_end = effective_end;
 
         /* Build segment JSON (same format as handle_get_timeline_segments) */
         cJSON *segment = cJSON_CreateObject();
@@ -1033,10 +1077,10 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         char seg_start[32] = {0}, seg_end[32] = {0};
         tm_info = localtime_r(&rec.start_time, &tm_buf);
         if (tm_info) strftime(seg_start, sizeof(seg_start), "%Y-%m-%d %H:%M:%S", tm_info);
-        tm_info = localtime_r(&rec.end_time, &tm_buf);
+        tm_info = localtime_r(&effective_end, &tm_buf);
         if (tm_info) strftime(seg_end, sizeof(seg_end), "%Y-%m-%d %H:%M:%S", tm_info);
 
-        int duration = (int)difftime(rec.end_time, rec.start_time);
+        int duration = (int)difftime(effective_end, rec.start_time);
 
         char size_str[32] = {0};
         if (rec.size_bytes < 1024)
@@ -1062,6 +1106,7 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         cJSON_AddStringToObject(segment, "capture_method",
                                 recording_capture_method(&rec));
         cJSON_AddBoolToObject(segment, "has_detection", has_det);
+        cJSON_AddBoolToObject(segment, "in_progress", in_progress);
         if (rec.schedule_restricted < 0) {
             cJSON_AddNullToObject(segment, "schedule_restricted");
         } else {
@@ -1069,9 +1114,9 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
                                   rec.schedule_restricted != 0);
         }
         cJSON_AddNumberToObject(segment, "start_timestamp", (double)rec.start_time);
-        cJSON_AddNumberToObject(segment, "end_timestamp", (double)rec.end_time);
+        cJSON_AddNumberToObject(segment, "end_timestamp", (double)effective_end);
         cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)rec.start_time);
-        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)rec.end_time);
+        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)effective_end);
 
         cJSON_AddItemToArray(segments_array, segment);
         seg_count++;

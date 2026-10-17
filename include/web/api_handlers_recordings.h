@@ -4,6 +4,7 @@
 #include <sys/types.h>  /* for off_t */
 #include <time.h>       /* for time_t */
 #include <stdint.h>
+#include <stdbool.h>    /* for bool */
 #include "database/database_manager.h"  /* for recording_metadata_t */
 
 /*
@@ -62,13 +63,16 @@ void recordings_count_cache_reset(void);
  * @param detection_only Filter to only include recordings with detection events
  * @param detection_label Filter by specific detection label (NULL for all)
  * @param protected_filter Filter by protection status (-1 for all, 0 for unprotected, 1 for protected)
+ * @param include_in_progress Also count segments that are still being
+ *        recorded while their start_time is fresh enough to be live (#482)
  *
  * @return Total number of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
-                       const char *tag_filter, const char *capture_method_filter);
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress);
 
 /**
  * Get paginated recording metadata from the database with sorting
@@ -87,6 +91,8 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
  * @param offset        Offset for pagination
  * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
  * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
+ * @param include_in_progress Also return segments that are still being
+ *        recorded (the caller exposes them as in-progress) (#482)
  *
  * @return Number of recordings fetched, or -1 on error
  */
@@ -98,7 +104,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
                                    const char * const *allowed_streams, int allowed_streams_count,
-                                   const char *tag_filter, const char *capture_method_filter);
+                                   const char *tag_filter, const char *capture_method_filter,
+                                   bool include_in_progress);
 
 
 /**

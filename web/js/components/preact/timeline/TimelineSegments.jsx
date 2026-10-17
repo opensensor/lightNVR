@@ -242,6 +242,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       // per-period highlighting the timeline is meant to show.
       if (seg.start_timestamp - cur.end_timestamp <= 1 &&
           !!seg.has_detection === !!cur.has_detection &&
+          !!seg.in_progress === !!cur.in_progress &&
           !seg._removing && !cur._removing) {
         // extend current merged segment
         cur.end_timestamp = Math.max(cur.end_timestamp, seg.end_timestamp);
@@ -287,12 +288,12 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       rendered.push(
         <div
           key={`seg-${i}`}
-          className={`timeline-segment ${seg.has_detection && !hasExactInterval ? 'has-detection' : ''} ${seg._removing ? 'removing' : ''}`}
+          className={`timeline-segment ${seg.has_detection && !hasExactInterval ? 'has-detection' : ''} ${seg.in_progress ? 'in-progress' : ''} ${seg._removing ? 'removing' : ''}`}
           style={{
             left: `${leftPct}%`,
             width: `${Math.max(widthPct, 0.15)}%`,   // min width so tiny segments stay visible
           }}
-          title={`${t0} – ${t1}  (${durLabel})${seg.has_detection ? `  • ${t('timeline.detectionEvent')}` : ''}`}
+          title={`${t0} – ${t1}  (${durLabel})${seg.in_progress ? `  • ${t('timeline.recordingInProgress')}` : ''}${seg.has_detection ? `  • ${t('timeline.detectionEvent')}` : ''}`}
         />
       );
     });

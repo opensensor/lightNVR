@@ -1449,6 +1449,12 @@ export function TimelinePage() {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span
+              className="inline-block w-3 h-3 rounded-sm timeline-legend-in-progress"
+            />
+            {t('timeline.legend.inProgress')}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
               className="inline-block w-3 h-3 rounded-sm"
               style={{ backgroundColor: 'hsl(var(--success))' }}
             />
