@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <net/if.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -208,8 +209,18 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(disk,
                                                           "capability"));
     TEST_ASSERT_TRUE(cJSON_IsObject(network));
-    TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(
-        network, "interfaces")));
+    cJSON *interfaces = cJSON_GetObjectItemCaseSensitive(network, "interfaces");
+    TEST_ASSERT_TRUE(cJSON_IsArray(interfaces));
+    /* Names are real kernel interfaces (not hashed health IDs, #643), and
+     * loopback is omitted. */
+    cJSON *iface = NULL;
+    cJSON_ArrayForEach(iface, interfaces) {
+        cJSON *name = cJSON_GetObjectItemCaseSensitive(iface, "name");
+        TEST_ASSERT_TRUE(cJSON_IsString(name));
+        TEST_ASSERT_NOT_EQUAL_UINT(0, if_nametoindex(name->valuestring));
+        TEST_ASSERT_TRUE(strcmp(name->valuestring, "lo") != 0);
+        TEST_ASSERT_TRUE(cJSON_IsBool(cJSON_GetObjectItemCaseSensitive(iface, "up")));
+    }
 
     cJSON_Delete(root);
     http_response_free(&res);

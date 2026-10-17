@@ -16,6 +16,8 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <netinet/in.h>
+#include <netpacket/packet.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -261,6 +263,102 @@ static void format_triplet_version(unsigned version_int, char *buffer, size_t bu
              AV_VERSION_MAJOR(version_int),
              AV_VERSION_MINOR(version_int),
              AV_VERSION_MICRO(version_int));
+}
+
+#define SYSTEM_INFO_MAX_INTERFACES 64
+
+typedef struct {
+    char name[IFNAMSIZ];
+    char ipv4[INET_ADDRSTRLEN];
+    char ipv6[INET6_ADDRSTRLEN];
+    char mac[18];
+    bool ipv6_link_local;
+    unsigned int flags;
+} system_info_interface_t;
+
+static system_info_interface_t *find_or_add_interface(
+    system_info_interface_t *list, size_t *count, const char *name) {
+    for (size_t i = 0; i < *count; ++i) {
+        if (strcmp(list[i].name, name) == 0) return &list[i];
+    }
+    if (*count >= SYSTEM_INFO_MAX_INTERFACES) return NULL;
+    system_info_interface_t *entry = &list[(*count)++];
+    memset(entry, 0, sizeof(*entry));
+    safe_strcpy(entry->name, name, sizeof(entry->name), 0);
+    return entry;
+}
+
+/* Host interface list for the admin-only System page. The health snapshot
+ * only carries hashed interface IDs and carrier state, so read names,
+ * addresses and MACs directly. Loopback is omitted, as are interfaces that
+ * are administratively down with no address (e.g. unused sit0/ip6tnl0). */
+static void add_network_interfaces_json(cJSON *interfaces) {
+    struct ifaddrs *ifaddr = NULL;
+    if (getifaddrs(&ifaddr) != 0) {
+        log_warn("getifaddrs failed: %s", strerror(errno));
+        return;
+    }
+
+    system_info_interface_t list[SYSTEM_INFO_MAX_INTERFACES];
+    size_t count = 0;
+    for (const struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_name || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
+        system_info_interface_t *entry =
+            find_or_add_interface(list, &count, ifa->ifa_name);
+        if (!entry) continue;
+        entry->flags |= ifa->ifa_flags;
+        if (!ifa->ifa_addr) continue;
+
+        int family = ifa->ifa_addr->sa_family;
+        if (family == AF_INET && !entry->ipv4[0]) {
+            const struct sockaddr_in *in = (const struct sockaddr_in *)ifa->ifa_addr;
+            inet_ntop(AF_INET, &in->sin_addr, entry->ipv4, sizeof(entry->ipv4));
+        } else if (family == AF_INET6) {
+            const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)ifa->ifa_addr;
+            bool link_local = IN6_IS_ADDR_LINKLOCAL(&in6->sin6_addr);
+            // Prefer the first routable address over link-local fe80::/10
+            if (!entry->ipv6[0] || (entry->ipv6_link_local && !link_local)) {
+                inet_ntop(AF_INET6, &in6->sin6_addr, entry->ipv6, sizeof(entry->ipv6));
+                entry->ipv6_link_local = link_local;
+            }
+        } else if (family == AF_PACKET) {
+            const struct sockaddr_ll *ll = (const struct sockaddr_ll *)ifa->ifa_addr;
+            bool nonzero = false;
+            for (int i = 0; i < ll->sll_halen && i < 6; ++i) {
+                if (ll->sll_addr[i]) nonzero = true;
+            }
+            if (ll->sll_halen == 6 && nonzero) {
+                snprintf(entry->mac, sizeof(entry->mac),
+                         "%02x:%02x:%02x:%02x:%02x:%02x",
+                         ll->sll_addr[0], ll->sll_addr[1], ll->sll_addr[2],
+                         ll->sll_addr[3], ll->sll_addr[4], ll->sll_addr[5]);
+            }
+        }
+    }
+    freeifaddrs(ifaddr);
+
+    for (size_t i = 0; i < count; ++i) {
+        const system_info_interface_t *entry = &list[i];
+        bool has_ipv6 = entry->ipv6[0] && !entry->ipv6_link_local;
+        const char *address = entry->ipv4[0] ? entry->ipv4
+                            : has_ipv6 ? entry->ipv6 : NULL;
+        if (!(entry->flags & IFF_UP) && !address) continue;
+
+        cJSON *iface = cJSON_CreateObject();
+        if (!iface) continue;
+        cJSON_AddStringToObject(iface, "name", entry->name);
+        if (address)
+            cJSON_AddStringToObject(iface, "address", address);
+        else
+            cJSON_AddNullToObject(iface, "address");
+        if (entry->ipv4[0] && has_ipv6)
+            cJSON_AddStringToObject(iface, "ipv6", entry->ipv6);
+        cJSON_AddStringToObject(iface, "mac", entry->mac[0] ? entry->mac : "Unavailable");
+        // IFF_RUNNING reflects operational state (carrier), not just admin-up
+        cJSON_AddBoolToObject(iface, "up", (entry->flags & IFF_RUNNING) != 0);
+        cJSON_AddStringToObject(iface, "capability", "available");
+        cJSON_AddItemToArray(interfaces, iface);
+    }
 }
 
 static void add_versions_to_json(cJSON *info) {
@@ -916,29 +1014,10 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     // Add runtime software/library versions for vulnerability auditing and support
     add_versions_to_json(info);
 
-    // Preserve the legacy network/interfaces shape while sourcing carrier state
-    // from the privacy-safe logical interface IDs in the health snapshot.
     cJSON *network = cJSON_CreateObject();
     cJSON *interfaces = cJSON_CreateArray();
     if (network && interfaces) {
-        for (size_t index = 0; index < health_snapshot.observation_count;
-             ++index) {
-            const system_health_observation_t *carrier =
-                &health_snapshot.observations[index];
-            if (strcmp(carrier->metric, "network.carrier") != 0) continue;
-            cJSON *iface = cJSON_CreateObject();
-            if (!iface) continue;
-            cJSON_AddStringToObject(iface, "name", carrier->resource_id);
-            cJSON_AddStringToObject(iface, "address", "Unavailable");
-            cJSON_AddStringToObject(iface, "mac", "Unavailable");
-            if (carrier->value_valid)
-                cJSON_AddBoolToObject(iface, "up", carrier->value != 0.0);
-            else
-                cJSON_AddNullToObject(iface, "up");
-            cJSON_AddStringToObject(iface, "capability",
-                                    health_capability(carrier));
-            cJSON_AddItemToArray(interfaces, iface);
-        }
+        add_network_interfaces_json(interfaces);
         cJSON_AddItemToObject(network, "interfaces", interfaces);
         cJSON_AddItemToObject(info, "network", network);
     } else {
