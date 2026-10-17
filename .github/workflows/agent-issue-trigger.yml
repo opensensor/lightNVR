@@ -41,8 +41,16 @@ jobs:
           issue_json="$(gh api "repos/opensensor/lightNVR/issues/${ISSUE_NUMBER}")"
           issue_title="$(jq -r .title <<< "$issue_json")"
           issue_body="$(jq -r '.body // "" | .[0:16000]' <<< "$issue_json")"
+          model="glm-5.3"
+          spec="automation/agent-harness/glm.yaml"
+          if jq -e '.labels | any(.name == "agent-kimi")' <<< "$issue_json" >/dev/null; then
+            model="kimi-k3"
+            spec="automation/agent-harness/kimi.yaml"
+          fi
+          echo "Launching issue #${ISSUE_NUMBER} with ${model}"
+          echo "Issue #${ISSUE_NUMBER}: ${model}" >> "$GITHUB_STEP_SUMMARY"
           session_json="$(doctl harness-runtime create \
-            --spec automation/agent-harness/kimi.yaml \
+            --spec "$spec" \
             --name "$session_name" \
             --interactive=false -o json)"
           session_id="$(jq -r '.session_id // empty' <<< "$session_json")"

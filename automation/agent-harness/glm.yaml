@@ -1,0 +1,13 @@
+name: lightnvr-public-issue-glm
+agent: opencode
+size: mars-2vcpu-4gb
+idle_timeout: 30m
+repos:
+  - opensensor/lightNVR
+env:
+  HARNESS_INFERENCE_MODEL: glm-5.3
+secrets:
+  HARNESS_INFERENCE_API_KEY: ${HARNESS_INFERENCE_API_KEY}
+  GIT_DEPLOY_KEY_B64: ${GIT_DEPLOY_KEY_B64}
+permissions:
+  default: allow
