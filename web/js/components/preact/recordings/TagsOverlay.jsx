@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { recordingsAPI } from './recordingsAPI.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * Tag icon SVG (label/tag shape)
@@ -44,6 +45,7 @@ function TagChip({ tag, onRemove, readOnly = false }) {
  * Single-recording tag overlay
  */
 export function TagsOverlay({ recording, onClose, onTagsChanged }) {
+  const { t } = useI18n();
   const [tags, setTags] = useState(recording.tags || []);
   const [inputValue, setInputValue] = useState('');
   const [allTags, setAllTags] = useState([]);
@@ -137,7 +139,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
           ref={inputRef}
           type="text"
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Add a tag..."
+          placeholder={t('recordings.addTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}
@@ -171,6 +173,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
  *  - unchecked (no selected recordings have the tag)
  */
 export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTagsChanged }) {
+  const { t } = useI18n();
   const [allTags, setAllTags] = useState([]);
   const [tagStates, setTagStates] = useState({}); // tag -> 'all' | 'some' | 'none'
   const [inputValue, setInputValue] = useState('');
@@ -301,7 +304,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
           ref={inputRef}
           type="text"
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Add new tag..."
+          placeholder={t('recordings.addNewTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}

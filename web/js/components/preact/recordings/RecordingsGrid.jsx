@@ -247,7 +247,7 @@ function RecordingCard({
           <div
             class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50 cursor-pointer"
             onClick={(e) => { e.stopPropagation(); loadThumbnail(); }}
-            title="Click to retry"
+            title={t('recordings.clickToRetry')}
           >
             <svg class="w-12 h-12 opacity-40 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -361,7 +361,7 @@ function RecordingCard({
                   ref={tagBtnRef}
                   class="p-0.5 rounded hover:bg-muted/70 transition-colors"
                   onClick={(e) => { e.stopPropagation(); setShowTagsOverlay(!showTagsOverlay); }}
-                  title="Manage tags"
+                  title={t('recordings.manageTags')}
                 >
                   <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
@@ -383,7 +383,7 @@ function RecordingCard({
                 class="p-1 rounded-full focus:outline-none"
                 style={{ color: 'hsl(var(--primary))' }}
                 onClick={() => playRecording(recording)}
-                title="Play"
+                title={t('recordings.play')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -403,7 +403,7 @@ function RecordingCard({
                 class="p-1 rounded-full focus:outline-none inline-flex"
                 style={{ color: 'hsl(var(--info))' }}
                 href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
-                title="View in Timeline"
+                title={t('live.viewInTimeline')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />

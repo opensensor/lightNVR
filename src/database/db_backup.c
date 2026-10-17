@@ -808,55 +808,18 @@ cleanup:
 }
 
 // Check and repair database
+//
+// There is no in-place repair: a corrupt database is recovered at startup by
+// init_database(), which restores from the backup file. This only reports
+// that, rather than re-running a second (slow) integrity_check that would
+// fail the same way.
 int check_and_repair_database(void) {
-    int rc;
-    sqlite3 *db = get_db_handle();
-    
-    log_info("Checking and repairing database");
-    
-    // If we can't restore from backup, try to repair the database
-    log_info("Attempting to repair database with PRAGMA integrity_check");
-    
-    // Try to open the database in read-write mode if it's not already open
-    if (!db) {
-        // We need to get the database path from the core module
-        // For now, we'll assume the database is already open
+    if (!get_db_handle()) {
         log_error("Database not initialized, cannot repair");
         return -1;
     }
-    
-    // Run integrity check using a prepared statement for better error handling
-    sqlite3_stmt *stmt;
-    rc = sqlite3_prepare_v2(db, "PRAGMA integrity_check;", -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare integrity check statement");
-        return -1;
-    }
-    
-    bool integrity_ok = false;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char *result = (const char *)sqlite3_column_text(stmt, 0);
-        if (result && strcmp(result, "ok") == 0) {
-            integrity_ok = true;
-        } else {
-            log_error("Integrity check failed: %s", result ? result : "unknown error");
-        }
-    } else {
-        log_error("Failed to execute integrity check");
-    }
-    
-    sqlite3_finalize(stmt);
-    
-    if (!integrity_ok) {
-        // Try to recover by recreating the database
-        log_warn("Attempting to recover by recreating the database");
-        
-        // This would require knowing the database path, which we don't have here
-        // In a real implementation, we would need to get this from the core module
-        log_error("Cannot recreate database without knowing the path");
-        return -1;
-    }
-    
-    log_info("Database repair completed successfully");
-    return 0;
+
+    log_error("In-place database repair is not supported; restart LightNVR to "
+              "restore from the most recent backup");
+    return -1;
 }

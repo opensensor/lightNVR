@@ -7,6 +7,7 @@ import { createContext } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { useI18n } from '../../i18n.js';
 import { formatUtils } from './recordings/formatUtils.js';
 import { formatFilenameTimestamp, nowMilliseconds } from '../../utils/date-utils.js';
 import dayjs from 'dayjs';
@@ -225,6 +226,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
  * @returns {JSX.Element} VideoModal component
  */
 export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
+  const { t } = useI18n();
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [timeWindow, setTimeWindow] = useState(2);
   const [detections, setDetections] = useState([]);
@@ -702,7 +704,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       } else if (container.msRequestFullscreen) {
         container.msRequestFullscreen();
       } else {
-        showStatusMessage('Fullscreen mode is not supported in this browser.', 'warning');
+        showStatusMessage(t('common.fullscreenUnsupported'), 'warning');
       }
     } catch (error) {
       console.error('Error toggling fullscreen:', error);
@@ -933,7 +935,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               <button
                 className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
                 onClick={handleSnapshot}
-                title="Take Snapshot"
+                title={t('timeline.takeSnapshot')}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -968,7 +970,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <a
                     className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
                     href={timelineUrl}
-                    title="View this stream at this point in time in the Timeline view"
+                    title={t('recordings.viewInTimelineTitle')}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1003,7 +1005,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 <button
                   className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-xs"
                   onClick={() => setShowDeleteConfirm(true)}
-                  title="Delete Recording"
+                  title={t('timeline.deleteRecording')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1018,7 +1020,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               isOpen={showDeleteConfirm}
               onClose={() => setShowDeleteConfirm(false)}
               onConfirm={handleDeleteRecording}
-              title="Delete Recording"
+              title={t('timeline.deleteRecording')}
               message="Are you sure you want to delete this recording? This action cannot be undone."
               confirmLabel="Delete"
             />

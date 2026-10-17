@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import dayjs from 'dayjs';
+import { useI18n } from '../../../i18n.js';
 
 /* ── helpers ────────────────────────────────────────────────── */
 
@@ -40,6 +41,7 @@ function buildGrid(year, month) {
 /* ── component ──────────────────────────────────────────────── */
 
 export function CalendarPicker({ value, onChange }) {
+  const { t } = useI18n();
   const today = dayjs().format('YYYY-MM-DD');
   const selected = value || today;
 
@@ -106,7 +108,7 @@ export function CalendarPicker({ value, onChange }) {
           type="button"
           onClick={prevDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
-          title="Previous day"
+          title={t('timeline.previousDay')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -133,7 +135,7 @@ export function CalendarPicker({ value, onChange }) {
           type="button"
           onClick={nextDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
-          title="Next day"
+          title={t('timeline.nextDay')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -151,7 +153,7 @@ export function CalendarPicker({ value, onChange }) {
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={prevMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
-              title="Previous month"
+              title={t('timeline.previousMonth')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -164,7 +166,7 @@ export function CalendarPicker({ value, onChange }) {
 
             <button type="button" onClick={nextMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
-              title="Next month"
+              title={t('timeline.nextMonth')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

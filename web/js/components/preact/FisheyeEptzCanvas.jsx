@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { parseEptzConfig } from '../../utils/eptz-config.js';
+import { useI18n } from '../../i18n.js';
 
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
@@ -135,6 +136,7 @@ function initialView(config, streamName) {
  * the source video, audio, seeking, and transport health.
  */
 export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
+  const { t } = useI18n();
   const config = useMemo(() => parseEptzConfig(eptzConfig), [eptzConfig]);
   const canvasRef = useRef(null);
   const drawRef = useRef(() => {});
@@ -458,8 +460,8 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
           className="absolute inset-0 outline-none"
           role="application"
           tabIndex="0"
-          aria-label="Fisheye electronic pan, tilt, and zoom view"
-          title="Drag to pan and tilt; wheel or pinch to zoom; Home resets"
+          aria-label={t('live.eptzCanvasLabel')}
+          title={t('live.eptzCanvasHint')}
           style={{ zIndex: 3, touchAction: 'none', cursor: 'grab' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -481,8 +483,8 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
             transform: 'translateX(-50%)',
             background: 'rgba(0, 0, 0, 0.65)',
           }}
-          title="Reset ePTZ view"
-          aria-label="Reset ePTZ view"
+          title={t('live.eptzReset')}
+          aria-label={t('live.eptzReset')}
           onClick={resetView}
         >
           ePTZ {zoom.toFixed(1)}× ↺

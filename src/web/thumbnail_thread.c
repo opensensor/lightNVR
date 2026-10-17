@@ -20,6 +20,7 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
@@ -94,6 +95,7 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *dec_ctx = NULL;
     AVFrame *frame = NULL;
+    AVFrame *sw_frame = NULL;
     AVPacket *pkt = NULL;
     struct SwsContext *sws_ctx = NULL;
     uint8_t *rgb_buf = NULL;
@@ -225,14 +227,25 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     if (out_h < 2) out_h = 2;
     if (out_h & 1) out_h++;
 
+    // Hardware-backed frames can't be fed to swscale directly; download them
+    // to system memory first.
+    if (frame->hw_frames_ctx != NULL) {
+        sw_frame = av_frame_alloc();
+        if (!sw_frame) goto done;
+        av_ret = av_hwframe_transfer_data(sw_frame, frame, 0);
+        if (av_ret < 0) {
+            av_strerror(av_ret, av_errbuf, sizeof(av_errbuf));
+            log_warn("Thumbnail: av_hwframe_transfer_data failed for %s: %s", input_path, av_errbuf);
+            goto done;
+        }
+        av_frame_copy_props(sw_frame, frame);
+        av_frame_unref(frame);
+        av_frame_move_ref(frame, sw_frame);
+    }
+
     enum AVPixelFormat src_pix_fmt = (enum AVPixelFormat)frame->format;
     if (src_pix_fmt == AV_PIX_FMT_NONE) {
         log_warn("Thumbnail: decoded frame has no valid pixel format for %s", input_path);
-        goto done;
-    }
-    if (frame->hw_frames_ctx != NULL) {
-        log_warn("Thumbnail: hardware-backed frames are not supported for thumbnail scaling: %s",
-                 input_path);
         goto done;
     }
 
@@ -276,6 +289,7 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
 done:
     if (rgb_buf) av_free(rgb_buf);
     if (sws_ctx) sws_freeContext(sws_ctx);
+    if (sw_frame) av_frame_free(&sw_frame);
     if (frame) av_frame_free(&frame);
     if (pkt) av_packet_free(&pkt);
     if (dec_ctx) avcodec_free_context(&dec_ctx);

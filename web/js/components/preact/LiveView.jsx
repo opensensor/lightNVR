@@ -637,28 +637,28 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
             {!isAutoDisabled && (
               forcedTransport === null ? (
                 <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  Auto
+                  {t('live.autoShort')}
                 </span>
               ) : (
                 <a
                   href={buildLiveViewHref('/index.html', window.location.search)}
                   className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
                 >
-                  Auto
+                  {t('live.autoShort')}
                 </a>
               )
             )}
             {!isWebRTCDisabled && (
               forcedTransport === 'webrtc' ? (
                 <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  WebRTC
+                  {t('live.webrtcShort')}
                 </span>
               ) : (
                 <a
                   href={buildLiveViewHref('/index.html', window.location.search, 'webrtc')}
                   className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
                 >
-                  WebRTC
+                  {t('live.webrtcShort')}
                 </a>
               )
             )}

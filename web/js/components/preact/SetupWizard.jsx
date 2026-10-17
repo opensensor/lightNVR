@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { useI18n } from '../../i18n.js';
 
 /* ─────────────────────────────────────────────
    Tiny shared sub-components
@@ -50,19 +51,19 @@ function Field({ label, hint, children }) {
 ───────────────────────────────────────────── */
 
 function WelcomeStep() {
+  const { t } = useI18n();
   return (
     <div class="text-center">
       <div class="text-5xl mb-4">🎥</div>
-      <h2 class="text-2xl font-bold mb-3">Welcome to LightNVR</h2>
+      <h2 class="text-2xl font-bold mb-3">{t('setupWizard.welcomeTitle')}</h2>
       <p class="text-muted-foreground mb-6 max-w-sm mx-auto">
-        Let's get your NVR configured in a few quick steps. You can always
-        revisit these settings later from the <strong>Settings</strong> page.
+        {t('setupWizard.welcomeIntro')}
       </p>
       <ul class="text-left inline-block space-y-2 text-sm">
         {[
-          '📁  Storage path & size limits',
-          '⚡  Performance limits for your camera count',
-          '🔒  Secure administrator sign-in',
+          `📁  ${t('setupWizard.welcomeStorage')}`,
+          `⚡  ${t('setupWizard.welcomePerformance')}`,
+          `🔒  ${t('setupWizard.welcomeSecurity')}`,
         ].map(item => (
           <li key={item} class="flex items-center gap-2">{item}</li>
         ))}
@@ -72,13 +73,14 @@ function WelcomeStep() {
 }
 
 function StorageStep({ form, onChange }) {
+  const { t } = useI18n();
   return (
     <div>
-      <h2 class="text-xl font-bold mb-1">Storage &amp; Database</h2>
+      <h2 class="text-xl font-bold mb-1">{t('setupWizard.storageTitle')}</h2>
       <p class="text-sm text-muted-foreground mb-5">
-        Where should recordings and the database be stored?
+        {t('setupWizard.storageIntro')}
       </p>
-      <Field label="Recordings storage path" hint="Absolute path where video files are written.">
+      <Field label={t('setupWizard.storagePath')} hint={t('setupWizard.storagePathHint')}>
         <input
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
@@ -87,7 +89,7 @@ function StorageStep({ form, onChange }) {
           placeholder="/var/lib/lightnvr/recordings"
         />
       </Field>
-      <Field label="Max storage size (GB)" hint="0 = unlimited.">
+      <Field label={t('setupWizard.maxStorage')} hint={t('setupWizard.maxStorageHint')}>
         <input
           type="number"
           min="0"
@@ -96,7 +98,7 @@ function StorageStep({ form, onChange }) {
           onInput={e => onChange('maxStorageSize', e.target.value)}
         />
       </Field>
-      <Field label="Database path" hint="SQLite database file location.">
+      <Field label={t('setupWizard.dbPath')} hint={t('setupWizard.dbPathHint')}>
         <input
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
@@ -112,33 +114,33 @@ function StorageStep({ form, onChange }) {
 
 
 function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
+  const { t } = useI18n();
   const recommended = cpuCores > 0 ? cpuCores * 2 : '?';
   return (
     <div>
-      <h2 class="text-xl font-bold mb-1">Performance</h2>
+      <h2 class="text-xl font-bold mb-1">{t('setupWizard.performanceTitle')}</h2>
       <p class="text-sm text-muted-foreground mb-5">
-        These settings control capacity, not video quality. Most users can keep the defaults.
+        {t('setupWizard.performanceIntro')}
       </p>
       <div class="rounded-lg border border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 p-3 text-sm mb-4 space-y-2">
         <p>
-          <strong>Worker thread pool size</strong> affects background web/server work.
-          The recommended default is usually best unless you are tuning performance.
+          <strong>{t('setupWizard.threadPool')}</strong>{' '}
+          {t('setupWizard.threadPoolInfo')}
         </p>
         <p>
-          <strong>Maximum concurrent streams</strong> is the camera capacity limit for this
-          running instance. Set it to at least the number of cameras you plan to add,
-          plus a little headroom.
+          <strong>{t('setupWizard.maxStreams')}</strong>{' '}
+          {t('setupWizard.maxStreamsInfo')}
         </p>
       </div>
       <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 p-3 text-sm mb-5">
-        ⚠️ <strong>Important:</strong> if you change either setting, the new value is saved
-        now but will <strong>not</strong> be used until LightNVR restarts. For example, if the
-        current stream limit is 1 and you raise it to 32, you must restart before adding more
-        cameras beyond the old limit.
+        ⚠️ <strong>{t('setupWizard.important')}</strong>{' '}
+        {t('setupWizard.restartWarning')}
       </div>
       <Field
-        label="Worker thread pool size"
-        hint={`Recommended: ${recommended} (2× your ${cpuCores > 0 ? cpuCores + '-core' : ''} CPU). This controls libuv background worker threads. Range: 2–128.`}
+        label={t('setupWizard.threadPool')}
+        hint={cpuCores > 0
+          ? t('setupWizard.threadPoolHintCores', { recommended, cores: cpuCores })
+          : t('setupWizard.threadPoolHint', { recommended })}
       >
         <input
           type="number"
@@ -151,8 +153,8 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
         />
       </Field>
       <Field
-        label="Maximum concurrent streams"
-        hint={`How many cameras LightNVR can keep active at once. Default 32, max ${maxStreamsCeiling}. If you expect 8 cameras, choose at least 8. Requires restart to take effect.`}
+        label={t('setupWizard.maxStreams')}
+        hint={t('setupWizard.maxStreamsHint', { max: maxStreamsCeiling })}
       >
         <input
           type="number"
@@ -168,20 +170,20 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
 }
 
 function CompleteStep({ saved, restartRequired }) {
+  const { t } = useI18n();
   return (
     <div class="text-center">
       <div class="text-5xl mb-4">✅</div>
-      <h2 class="text-2xl font-bold mb-3">Setup Complete!</h2>
+      <h2 class="text-2xl font-bold mb-3">{t('setupWizard.completeTitle')}</h2>
       <p class="text-muted-foreground mb-4">
         {saved
-          ? 'Your settings have been saved successfully.'
-          : 'No settings were changed — defaults will be used.'}
+          ? t('setupWizard.saved')
+          : t('setupWizard.notSaved')}
       </p>
       {restartRequired && (
         <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 p-3 text-sm mb-4">
-          ⚠️ <strong>Restart required</strong> — thread pool size and/or max streams
-          changes are saved, but they will not take effect until the service restarts.
-          Restart before adding more cameras or expecting the new capacity limit to apply.
+          ⚠️ <strong>{t('setupWizard.restartRequired')}</strong>{' — '}
+          {t('setupWizard.restartRequiredInfo')}
         </div>
       )}
     </div>
@@ -193,6 +195,7 @@ function CompleteStep({ saved, restartRequired }) {
 ───────────────────────────────────────────── */
 
 export function SetupWizard({ onClose }) {
+  const { t } = useI18n();
   const TOTAL_STEPS = 4;
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -263,7 +266,7 @@ export function SetupWizard({ onClose }) {
       setRestartRequired(!!(payload.web_thread_pool_size || payload.max_streams));
       setSaved(true);
     } catch (err) {
-      showStatusMessage('Failed to save settings: ' + err.message, 'error');
+      showStatusMessage(t('setupWizard.saveFailed', { error: err.message }), 'error');
     } finally {
       setSaving(false);
     }
@@ -299,7 +302,7 @@ export function SetupWizard({ onClose }) {
               onClick={() => setStep(s => s - 1)}
               disabled={saving}
             >
-              Back
+              {t('setupWizard.back')}
             </button>
           )}
           {!isConfirmStep && (
@@ -308,7 +311,7 @@ export function SetupWizard({ onClose }) {
               onClick={handleNext}
               disabled={saving}
             >
-              {saving ? 'Saving…' : isLastDataStep ? 'Save & Continue' : 'Next →'}
+              {saving ? t('setupWizard.saving') : isLastDataStep ? t('setupWizard.saveContinue') : t('setupWizard.next')}
             </button>
           )}
           {isConfirmStep && (
@@ -316,7 +319,7 @@ export function SetupWizard({ onClose }) {
               class="px-6 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               onClick={handleComplete}
             >
-              Go to Dashboard
+              {t('setupWizard.finish')}
             </button>
           )}
         </div>
@@ -327,7 +330,7 @@ export function SetupWizard({ onClose }) {
               await fetch('/api/setup/status', { method: 'POST' }).catch(() => {});
               onClose();
             }}>
-              Skip setup wizard
+              {t('setupWizard.skip')}
             </button>
           </p>
         )}

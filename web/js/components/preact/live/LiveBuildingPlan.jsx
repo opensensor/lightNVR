@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.jsx';
-import { useI18n } from '../../../i18n.js';
+import { t as translate, useI18n } from '../../../i18n.js';
 import {
   clusterFloorPlanCameras,
   coverageWedgePath,
@@ -77,22 +77,23 @@ function loadImageSize(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error('Could not read the image dimensions'));
+      reject(new Error(translate('live.plan.imageDimensionsError')));
     };
     image.src = url;
   });
 }
 
 function PlanCameraPreview({ stream }) {
+  const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   const url = useMemo(() => stream?.availability === 'live'
     ? `/go2rtc/api/frame.jpeg?src=${encodeURIComponent(stream.name)}&cache=5s&t=${Date.now()}`
     : null, [stream?.availability, stream?.name]);
   useEffect(() => setFailed(false), [stream?.camera_uuid]);
   if (!url || failed) {
-    return <div className="live-plan-preview-placeholder">Camera preview unavailable</div>;
+    return <div className="live-plan-preview-placeholder">{t('live.plan.previewUnavailable')}</div>;
   }
-  return <img src={url} alt={`Current view from ${stream.name}`}
+  return <img src={url} alt={t('live.plan.previewAlt', { name: stream.name })}
     onError={() => setFailed(true)} />;
 }
 
@@ -107,6 +108,7 @@ function coverageValueLabel(value) {
 }
 
 function PlanCoverageControl({ id, label, value, minimum, maximum, onChange }) {
+  const { t } = useI18n();
   const normalized = clamp(value, minimum, maximum);
   const [draft, setDraft] = useState(coverageValueLabel(normalized));
 
@@ -140,11 +142,11 @@ function PlanCoverageControl({ id, label, value, minimum, maximum, onChange }) {
         <input id={`${id}-range`} type="range"
           min={minimum} max={maximum} step="1"
           value={normalized}
-          aria-valuetext={`${coverageValueLabel(normalized)} degrees`}
+          aria-valuetext={t('live.plan.degreesValue', { value: coverageValueLabel(normalized) })}
           onInput={(event) => onChange(Number(event.currentTarget.value))} />
         <input id={`${id}-number`} type="number"
           min={minimum} max={maximum} step="1"
-          aria-label={`${label} in degrees`}
+          aria-label={t('live.plan.inDegrees', { label })}
           aria-invalid={!draftValid}
           value={draft}
           onInput={(event) => updateDraft(event.currentTarget.value)}
@@ -304,7 +306,7 @@ export function LiveBuildingPlan({
   }, [plan?.uuid]);
 
   if (plansQuery.isLoading) {
-    return <div className="live-plan-state">Loading building plans…</div>;
+    return <div className="live-plan-state">{t('live.plan.loading')}</div>;
   }
   if (plansQuery.error) {
     return <div className="live-plan-state is-error">{plansQuery.error.message}</div>;
@@ -324,7 +326,7 @@ export function LiveBuildingPlan({
       });
       await queryClient.invalidateQueries({ queryKey: ['operator-floor-plans'] });
       onSelectPlan(created.uuid);
-      showStatusMessage(`Created ${name}`, 'success', 2500);
+      showStatusMessage(t('live.plan.created', { name }), 'success', 2500);
       return true;
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
@@ -353,7 +355,7 @@ export function LiveBuildingPlan({
         retries: 0,
       });
       replacePlanInCache(updated);
-      showStatusMessage(`Renamed to ${updated.name}`, 'success', 2500);
+      showStatusMessage(t('live.plan.renamed', { name: updated.name }), 'success', 2500);
       return true;
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
@@ -380,7 +382,7 @@ export function LiveBuildingPlan({
       setSelectedCameraUuid('');
       onSelectPlan('');
       await queryClient.invalidateQueries({ queryKey: ['operator-floor-plans'] });
-      showStatusMessage(`Deleted ${plan.name}`, 'success', 2500);
+      showStatusMessage(t('live.plan.deleted', { name: plan.name }), 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -391,12 +393,12 @@ export function LiveBuildingPlan({
   const uploadBackground = async (file) => {
     if (!file || busy) return;
     if (!BACKGROUND_TYPES.includes(file.type)) {
-      showStatusMessage('Background must be a PNG or JPEG image', 'error', 5000);
+      showStatusMessage(t('live.plan.backgroundType'), 'error', 5000);
       return;
     }
     if (file.size > BACKGROUND_MAX_BYTES) {
       showStatusMessage(
-        'Background image too large; maximum is 768 KB', 'error', 5000);
+        t('live.plan.backgroundTooLarge'), 'error', 5000);
       return;
     }
     setBusy(true);
@@ -414,14 +416,14 @@ export function LiveBuildingPlan({
       setBackgroundVersion((current) => current + 1);
       if (!canvasSize) {
         showStatusMessage(
-          'Uploaded, but the image aspect ratio does not fit any valid canvas size',
+          t('live.plan.backgroundAspect'),
           'warning', 5000);
         return;
       }
       if (editing) {
         setDraftSize(canvasSize);
         showStatusMessage(
-          `Background updated for ${uploaded.name}; save the layout to apply its canvas size`,
+          t('live.plan.backgroundUpdatedSave', { name: uploaded.name }),
           'success', 3500);
         return;
       }
@@ -439,12 +441,12 @@ export function LiveBuildingPlan({
           replacePlanInCache(resized);
         } catch (resizeError) {
           showStatusMessage(
-            `Background uploaded, but the canvas was not resized: ${resizeError.message}`,
+            t('live.plan.backgroundNotResized', { error: resizeError.message }),
             'warning', 6000);
           return;
         }
       }
-      showStatusMessage(`Background updated for ${uploaded.name}`, 'success', 2500);
+      showStatusMessage(t('live.plan.backgroundUpdated', { name: uploaded.name }), 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -461,7 +463,7 @@ export function LiveBuildingPlan({
         retries: 0,
       });
       replacePlanInCache(updated);
-      showStatusMessage('Background removed', 'success', 2500);
+      showStatusMessage(t('live.plan.backgroundRemoved'), 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -474,11 +476,11 @@ export function LiveBuildingPlan({
       isOpen={createPlanOpen}
       onClose={() => setCreatePlanOpen(false)}
       onSubmit={createPlan}
-      title="Create building plan"
-      description="Give this building or floor a clear name. Draw the layout or upload a floor plan image, then place cameras."
-      inputLabel="Plan name"
-      placeholder="Main building · First floor"
-      confirmLabel="Create plan"
+      title={t('live.plan.createTitle')}
+      description={t('live.plan.createDescription')}
+      inputLabel={t('live.plan.nameLabel')}
+      placeholder={t('live.plan.namePlaceholder')}
+      confirmLabel={t('live.plan.createConfirm')}
       cancelLabel={t('common.cancel')}
     />
   );
@@ -491,7 +493,7 @@ export function LiveBuildingPlan({
         <p>{t('live.plan.emptyDescription')}</p>
         {canModify && (
           <button type="button" className="btn-primary" disabled={busy}
-            onClick={() => setCreatePlanOpen(true)}>Create building plan</button>
+            onClick={() => setCreatePlanOpen(true)}>{t('live.plan.createTitle')}</button>
         )}
       </section>
       {createPlanDialog}
@@ -678,7 +680,7 @@ export function LiveBuildingPlan({
       setSelectedShapeId('');
       setDrawing(null);
       setSketchTool('select');
-      showStatusMessage(`Saved ${updated.name}`, 'success', 2500);
+      showStatusMessage(t('live.plan.saved', { name: updated.name }), 'success', 2500);
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
     } finally {
@@ -786,6 +788,24 @@ export function LiveBuildingPlan({
     event.stopPropagation();
     if (suppressClickRef.current) return;
     selectShape(shapeId);
+  };
+
+  // Double-click selects the shape and jumps to its text field in the
+  // inspector (label text for label shapes, the optional caption otherwise).
+  const handleShapeDblClick = (event, shapeId) => {
+    if (!editing || sketchTool !== 'select' || placementCameraUuid) return;
+    event.stopPropagation();
+    const shape = draftSketch.find((candidate) => candidate.id === shapeId);
+    if (!shape) return;
+    selectShape(shapeId);
+    const fieldId = `${panelUid}-sketch-${shape.type === 'label' ? 'text' : 'label'}`;
+    requestAnimationFrame(() => {
+      const field = document.getElementById(fieldId);
+      if (field) {
+        field.focus();
+        field.select?.();
+      }
+    });
   };
 
   const applyShapeDrag = (interaction, event) => {
@@ -949,57 +969,60 @@ export function LiveBuildingPlan({
       onKeyDown={handleKeyDown}>
       <header className="live-plan-toolbar">
         <div>
-          <span className="live-plan-eyebrow">Building plan</span>
+          <span className="live-plan-eyebrow">{t('live.plan.eyebrow')}</span>
           <h3>{plan.name}</h3>
-          <small>{cameras.length} placed · {cameras.filter((camera) =>
-            streamsByUuid.get(camera.camera_uuid)?.availability === 'live').length} live now</small>
+          <small>{t('live.plan.placedSummary', { 
+            placed: cameras.length,
+            live: cameras.filter((camera) =>
+              streamsByUuid.get(camera.camera_uuid)?.availability === 'live').length,
+           })}</small>
         </div>
         <div className="live-plan-toolbar-actions">
-          <div className="live-plan-zoom" aria-label="Plan zoom and pan">
-            <button type="button" onClick={() => pan(-0.12, 0)} title="Pan left">←</button>
-            <button type="button" onClick={() => pan(0, -0.12)} title="Pan up">↑</button>
-            <button type="button" onClick={() => pan(0, 0.12)} title="Pan down">↓</button>
-            <button type="button" onClick={() => pan(0.12, 0)} title="Pan right">→</button>
+          <div className="live-plan-zoom" aria-label={t('live.plan.zoomAndPan')}>
+            <button type="button" onClick={() => pan(-0.12, 0)} title={t('live.plan.panLeft')}>←</button>
+            <button type="button" onClick={() => pan(0, -0.12)} title={t('live.plan.panUp')}>↑</button>
+            <button type="button" onClick={() => pan(0, 0.12)} title={t('live.plan.panDown')}>↓</button>
+            <button type="button" onClick={() => pan(0.12, 0)} title={t('live.plan.panRight')}>→</button>
             <button type="button" onClick={() => setPlanZoom(zoom - 0.5)}
-              disabled={zoom <= 1} title="Zoom out">−</button>
+              disabled={zoom <= 1} title={t('live.plan.zoomOut')}>−</button>
             <span>{Math.round(zoom * 100)}%</span>
             <button type="button" onClick={() => setPlanZoom(zoom + 0.5)}
-              disabled={zoom >= 4} title="Zoom in">+</button>
+              disabled={zoom >= 4} title={t('live.plan.zoomIn')}>+</button>
             <button type="button" onClick={() => {
               setPlanZoom(1, { x: 0.5, y: 0.5 });
-            }} title="Fit plan">Fit</button>
+            }} title={t('live.plan.fitTitle')}>{t('live.plan.fit')}</button>
           </div>
           {editing ? (
             <>
               {canModify && (
                 <button type="button" onClick={openBackgroundPicker}
-                  disabled={busy}>Background…</button>
+                  disabled={busy}>{t('live.plan.backgroundMenu')}</button>
               )}
-              <button type="button" onClick={cancelEditing} disabled={busy}>Cancel</button>
+              <button type="button" onClick={cancelEditing} disabled={busy}>{t('common.cancel')}</button>
               <button type="button" className="btn-primary" onClick={savePlan}
-                disabled={busy || !canvasSizeValid}>Save plan</button>
+                disabled={busy || !canvasSizeValid}>{t('live.plan.save')}</button>
             </>
           ) : canModify && (
             <>
               <button type="button" onClick={openBackgroundPicker}
                 disabled={busy}
-                title="Upload a PNG or JPEG image as the plan background">
-                {plan.background_mime ? 'Replace background' : 'Upload background'}
+                title={t('live.plan.uploadBackgroundTitle')}>
+                {plan.background_mime ? t('live.plan.replaceBackground') : t('live.plan.uploadBackground')}
               </button>
               {plan.background_mime && (
                 <button type="button" onClick={removeBackground} disabled={busy}>
-                  Remove background
+                  {t('live.plan.removeBackground')}
                 </button>
               )}
               <button type="button" onClick={() => setRenameOpen(true)} disabled={busy}>
-                Rename
+                {t('live.plan.rename')}
               </button>
               <button type="button" onClick={() => setDeleteOpen(true)} disabled={busy}>
-                Delete
+                {t('common.delete')}
               </button>
-              <button type="button" onClick={() => setCreatePlanOpen(true)} disabled={busy}>New plan</button>
+              <button type="button" onClick={() => setCreatePlanOpen(true)} disabled={busy}>{t('live.plan.newPlan')}</button>
               <button type="button" className="btn-primary" onClick={() => startEditing()}
-                disabled={busy}>Edit layout</button>
+                disabled={busy}>{t('live.plan.editLayout')}</button>
             </>
           )}
         </div>
@@ -1016,7 +1039,7 @@ export function LiveBuildingPlan({
       <div className="live-plan-workspace">
         <div className="live-plan-canvas-wrap">
           {editing && placementCameraUuid && (
-            <div className="live-plan-placement-hint">Click the plan to position {streamsByUuid.get(placementCameraUuid)?.name}</div>
+            <div className="live-plan-placement-hint">{t('live.plan.placementHint', { name: streamsByUuid.get(placementCameraUuid)?.name })}</div>
           )}
           {editing && (
             <PlanSketchTools tool={sketchTool} onToolChange={selectTool}
@@ -1107,7 +1130,7 @@ export function LiveBuildingPlan({
               drawingClosable={drawingClosable} t={t}
               onShapePointerDown={handleShapePointerDown}
               onShapeClick={handleShapeClick}
-              onShapeDblClick={() => {}} />
+              onShapeDblClick={handleShapeDblClick} />
 
             {renderedMarkers.map((marker) => {
               const markerX = marker.x * width;
@@ -1116,7 +1139,7 @@ export function LiveBuildingPlan({
                 return (
                   <g key={marker.camera_uuids.join(':')}
                     className="live-plan-cluster" tabIndex="0" role="button"
-                    aria-label={`${marker.count} cameras; zoom in`}
+                    aria-label={t('live.plan.clusterLabel', { count: marker.count })}
                     transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -1135,7 +1158,12 @@ export function LiveBuildingPlan({
                   className={`live-plan-camera is-${stream?.availability || 'never_connected'} ${selected ? 'is-selected' : ''}`}
                   transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                   tabIndex="0" role="button"
-                  aria-label={`${stream?.name || 'Camera'}; ${availabilityLabel(stream, t)}; facing ${coverageValueLabel(coverage.rotation)}° with a ${coverageValueLabel(coverage.fov)}° view`}
+                  aria-label={t('live.plan.markerLabel', { 
+                    name: stream?.name || t('live.plan.cameraFallback'),
+                    availability: availabilityLabel(stream, t),
+                    rotation: coverageValueLabel(coverage.rotation),
+                    fov: coverageValueLabel(coverage.fov),
+                   })}
                   onPointerDown={(event) => handleCameraPointerDown(event, marker.camera_uuid)}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1177,18 +1205,18 @@ export function LiveBuildingPlan({
             </div>
           )}
           <div className="live-plan-legend">
-            <span><i className="is-live" />Live</span>
-            <span><i className="is-offline" />Offline</span>
-            <span><i className="is-never_connected" />Never connected</span>
-            <span><i className="is-disabled" />Disabled</span>
+            <span><i className="is-live" />{t('live.plan.legendLive')}</span>
+            <span><i className="is-offline" />{t('common.offline')}</span>
+            <span><i className="is-never_connected" />{t('availability.neverConnected')}</span>
+            <span><i className="is-disabled" />{t('availability.disabled')}</span>
           </div>
         </div>
 
         <aside className="live-plan-details" aria-live="polite">
           {editing && (
             <div className="live-plan-settings">
-              <div><strong>Plan canvas</strong></div>
-              <label>Width
+              <div><strong>{t('live.plan.canvas')}</strong></div>
+              <label>{t('live.plan.width')}
                 <input type="number" min="400" max="4000" step="10"
                   value={draftWidthValue} aria-invalid={draftWidth === null}
                   onInput={(event) => setDraftSize({
@@ -1196,7 +1224,7 @@ export function LiveBuildingPlan({
                     canvas_height: draftHeightValue,
                   })} />
               </label>
-              <label>Height
+              <label>{t('live.plan.height')}
                 <input type="number" min="300" max="4000" step="10"
                   value={draftHeightValue} aria-invalid={draftHeight === null}
                   onInput={(event) => setDraftSize({
@@ -1206,8 +1234,8 @@ export function LiveBuildingPlan({
               </label>
               <small className={canvasSizeValid ? '' : 'is-error'}>
                 {canvasSizeValid
-                  ? 'Uploading a background image resizes the canvas to match it.'
-                  : 'Width must be 400–4000 and height must be 300–4000.'}
+                  ? t('live.plan.canvasHint')
+                  : t('live.plan.canvasInvalid')}
               </small>
             </div>
           )}
@@ -1228,14 +1256,14 @@ export function LiveBuildingPlan({
               </div>
               {!editing && selectedStream.availability === 'live' && (
                 <button type="button" className="btn-primary"
-                  onClick={() => onOpenCamera(selectedStream)}>Open live camera</button>
+                  onClick={() => onOpenCamera(selectedStream)}>{t('live.plan.openLive')}</button>
               )}
               {editing && selectedCoverage && (
                 <div className="live-plan-placement-controls">
                   <PlanCoverageControl
                     key={`rotation-${selectedCameraUuid}`}
                     id={`${panelUid}-rotation`}
-                    label="Camera direction"
+                    label={t('live.plan.direction')}
                     value={selectedCoverage.rotation}
                     minimum={-180}
                     maximum={180}
@@ -1243,36 +1271,36 @@ export function LiveBuildingPlan({
                   <PlanCoverageControl
                     key={`fov-${selectedCameraUuid}`}
                     id={`${panelUid}-fov`}
-                    label="Field of view"
+                    label={t('live.plan.fov')}
                     value={selectedCoverage.fov}
                     minimum={1}
                     maximum={180}
                     onChange={(fov) => updateSelectedPlacement({ fov })} />
-                  <small>Wedges show direction and angle only; distance on the plan is not calibrated.</small>
+                  <small>{t('live.plan.coverageNote')}</small>
                   <button type="button" className="live-plan-remove-camera"
                     onClick={() => {
                       setDraftCameras((current) => current.filter((camera) =>
                         camera.camera_uuid !== selectedCameraUuid));
                       setSelectedCameraUuid('');
                       setPlacementCameraUuid('');
-                    }}>Remove from plan</button>
+                    }}>{t('live.plan.removeCamera')}</button>
                 </div>
               )}
             </>
           ) : (
             <div className="live-plan-details-empty">
-              <strong>Select a camera</strong>
+              <strong>{t('live.plan.selectCamera')}</strong>
               <span>{editing
-                ? 'Drag placed markers to fine-tune. Inspect status and open one live view on demand.'
-                : 'Inspect status and open one live view on demand.'}</span>
+                ? t('live.plan.selectHintEditing')
+                : t('live.plan.selectHint')}</span>
             </div>
           )}
 
           {!editing && cameras.length > 0 && (
             <div className="live-plan-camera-index">
-              <div><strong>Plan cameras</strong><small>{indexedCameras.length}</small></div>
-              <input type="search" value={cameraSearch} placeholder="Find on this plan…"
-                aria-label="Find a camera on this plan"
+              <div><strong>{t('live.plan.cameras')}</strong><small>{indexedCameras.length}</small></div>
+              <input type="search" value={cameraSearch} placeholder={t('live.plan.findPlaceholder')}
+                aria-label={t('live.plan.findLabel')}
                 onInput={(event) => setCameraSearch(event.currentTarget.value)} />
               <div>
                 {indexedCameras.map(({ placement, stream }) => (
@@ -1292,8 +1320,8 @@ export function LiveBuildingPlan({
 
           {editing && (
             <div className="live-plan-unplaced">
-              <div><strong>Unplaced cameras</strong><small>{unplacedStreams.length}</small></div>
-              <p>Select a camera, then click its position on the plan.</p>
+              <div><strong>{t('live.plan.unplaced')}</strong><small>{unplacedStreams.length}</small></div>
+              <p>{t('live.plan.unplacedHint')}</p>
               <div>
                 {unplacedStreams.map((stream) => (
                   <button key={stream.camera_uuid} type="button" draggable
@@ -1318,21 +1346,21 @@ export function LiveBuildingPlan({
       isOpen={renameOpen}
       onClose={() => setRenameOpen(false)}
       onSubmit={renamePlan}
-      title="Rename plan"
-      description="Plans are shared with every operator on this site."
-      inputLabel="Plan name"
+      title={t('live.plan.renameTitle')}
+      description={t('live.plan.renameDescription')}
+      inputLabel={t('live.plan.nameLabel')}
       initialValue={plan.name}
       maxLength={127}
-      confirmLabel="Rename plan"
+      confirmLabel={t('live.plan.renameTitle')}
       cancelLabel={t('common.cancel')}
     />
     <ConfirmDialog
       isOpen={deleteOpen}
       onClose={() => setDeleteOpen(false)}
       onConfirm={deletePlan}
-      title="Delete plan"
-      message={`Delete “${plan.name}” and its uploaded background? Camera placements on this plan are removed; the cameras themselves are untouched.`}
-      confirmLabel="Delete plan"
+      title={t('live.plan.deleteTitle')}
+      message={t('live.plan.deleteMessage', { name: plan.name })}
+      confirmLabel={t('live.plan.deleteTitle')}
       cancelLabel={t('common.cancel')}
       variant="danger"
     />

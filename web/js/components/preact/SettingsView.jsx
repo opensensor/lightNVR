@@ -863,13 +863,13 @@ export function SettingsView() {
                   onInput={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('settings.searchPlaceholder')}
                   class="w-full p-2 pr-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
-                  aria-label="Search settings"
+                  aria-label={t('settings.searchLabel')}
                 />
                 {searchQuery ? (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
+                    aria-label={t('settings.clearSearch')}
                     class="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground"
                   >
                     ×
