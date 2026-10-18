@@ -96,6 +96,11 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
         return;
     }
 
+    if (!recording.is_complete) {
+        http_response_set_json_error(res, 409, "Recording is still in progress");
+        return;
+    }
+
     if (recording_archive_serve(req, res, id, true)) {
         audit_recording_export(req, &user, &camera, id, res->status_code >= 400 ? "failure" : "success",
                                "archive_export_requested", 0, NULL);

@@ -661,8 +661,17 @@ describe('timelineUtils', () => {
     expect(reconcileTimelineSegments([removed, retained], [incomingRetained, added])).toEqual({
       added: [added],
       removed: [removed],
+      updated: [incomingRetained],
       authoritative: [incomingRetained, added],
     });
+  });
+
+  test('refreshes the same live timeline segment as it grows and finishes', () => {
+    const live = { id: 7, start_timestamp: 100, end_timestamp: 110, in_progress: true };
+    const grown = { ...live, end_timestamp: 120 };
+    const finished = { ...grown, in_progress: false };
+    expect(reconcileTimelineSegments([live], [grown]).updated).toEqual([grown]);
+    expect(reconcileTimelineSegments([grown], [finished]).updated).toEqual([finished]);
   });
 
   test('selects the nearest available scrub preview frame', () => {

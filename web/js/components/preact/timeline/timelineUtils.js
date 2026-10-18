@@ -21,11 +21,18 @@ export function timelineSegmentIdentity(segment) {
 }
 
 export function reconcileTimelineSegments(existing = [], incoming = []) {
-  const existingKeys = new Set(existing.map(timelineSegmentIdentity));
+  const existingByKey = new Map(existing.map((segment) =>
+    [timelineSegmentIdentity(segment), segment]));
   const incomingKeys = new Set(incoming.map(timelineSegmentIdentity));
   return {
-    added: incoming.filter((segment) => !existingKeys.has(timelineSegmentIdentity(segment))),
+    added: incoming.filter((segment) => !existingByKey.has(timelineSegmentIdentity(segment))),
     removed: existing.filter((segment) => !incomingKeys.has(timelineSegmentIdentity(segment))),
+    updated: incoming.filter((segment) => {
+      const previous = existingByKey.get(timelineSegmentIdentity(segment));
+      return previous && (previous.end_timestamp !== segment.end_timestamp ||
+        previous.in_progress !== segment.in_progress ||
+        previous.has_detection !== segment.has_detection);
+    }),
     authoritative: [...incoming],
   };
 }

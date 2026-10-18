@@ -970,6 +970,10 @@ export function RecordingsView() {
 
   // Download recording
   const downloadRecording = (recording) => {
+    if (recording?.in_progress) {
+      showStatusMessage(t('recordings.inProgressToast'), 'info');
+      return;
+    }
     recordingsAPI.downloadRecording(recording);
   };
 

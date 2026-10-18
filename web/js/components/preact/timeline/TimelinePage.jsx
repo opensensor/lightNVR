@@ -1240,10 +1240,11 @@ export function TimelinePage() {
         const {
           added: addedSegs,
           removed: removedSegs,
+          updated: updatedSegs,
           authoritative,
         } = reconcileTimelineSegments(currentSegs, polledSegments);
 
-        if (addedSegs.length === 0 && removedSegs.length === 0) return;
+        if (addedSegs.length === 0 && removedSegs.length === 0 && updatedSegs.length === 0) return;
 
         // Use polled segments as the authoritative list
         const updated = authoritative.sort((a, b) => a.start_timestamp - b.start_timestamp);

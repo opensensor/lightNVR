@@ -206,7 +206,9 @@ export const recordingsAPI = {
           retries: 2,     // Retry twice
           retryDelay: 1000 // 1 second between retries
         },
-        // No special handling needed - we rely on the backend API for detection information
+        // Refresh live rows and discover newly started segments while this
+        // page is open. Query core pauses interval polling in hidden tabs.
+        { refetchInterval: 30000 },
       );
     },
 

@@ -159,7 +159,10 @@ export function TimelinePlayer({
     if (!segment) return;
 
     // Check if we need to load a new segment
-    const segmentChanged = lastSegmentIdRef.current !== segment.id;
+    // A live segment keeps its ID when the recorder finalizes it. Treat that
+    // transition as a new source so playback becomes available after polling.
+    const segmentKey = `${segment.id}:${segment.in_progress ? 'live' : 'complete'}`;
+    const segmentChanged = lastSegmentIdRef.current !== segmentKey;
 
     // IMPORTANT: Only reload if the segment has actually changed
     // This prevents constant reloading
@@ -196,8 +199,8 @@ export function TimelinePlayer({
 
     // Update last segment ID
     if (segmentChanged) {
-      console.log(`Segment changed from ${lastSegmentIdRef.current} to ${segment.id}`);
-      lastSegmentIdRef.current = segment.id;
+      console.log(`Segment changed from ${lastSegmentIdRef.current} to ${segmentKey}`);
+      lastSegmentIdRef.current = segmentKey;
     }
 
     // Handle playback
@@ -263,6 +266,17 @@ export function TimelinePlayer({
   const loadSegment = useCallback((segment, seekTime = 0, autoplay = false) => {
     const video = videoRef.current;
     if (!video) return;
+
+    if (segment.in_progress) {
+      cleanupPlayback();
+      suppressNativePlaybackSync();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      setPlaybackMessage(t('recordings.inProgressToast'));
+      if (timelineState.isPlaying) timelineState.setState({ isPlaying: false });
+      return;
+    }
 
     console.log(`Loading segment ${segment.id} at time ${seekTime}s, autoplay: ${autoplay}`);
     cleanupPlayback();

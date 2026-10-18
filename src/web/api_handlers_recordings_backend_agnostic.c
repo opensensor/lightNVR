@@ -288,7 +288,7 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     if (deletion < 0) {
         audit_recording_delete_operation(req, &user, &camera, id, "error", "deletion_blocked", "unchanged");
         http_response_set_json_error(res, deletion == -2 ? 409 : 500,
-            deletion == -2 ? "Release protection or wait for the active transfer before deleting" : "Failed to queue recording deletion");
+            deletion == -2 ? "Recording is protected, still recording, or has an active transfer" : "Failed to queue recording deletion");
         return;
     }
     const char *file_cleanup = deletion == 0 ? "deleted" : "pending";
