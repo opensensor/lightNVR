@@ -536,6 +536,11 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
             http_response_set_json_error(res, 403, "Forbidden");
             return;
         }
+        if (!recording.is_complete) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 409, "Recording is still in progress");
+            return;
+        }
     }
 
     pthread_mutex_lock(&s_dl_mutex);

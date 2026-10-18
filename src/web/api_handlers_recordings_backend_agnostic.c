@@ -110,6 +110,12 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
     
+    // A segment that is still recording has no committed end_time yet; use
+    // "now" as its effective end for display and detection checks (#482).
+    const bool in_progress = !recording.is_complete;
+    const time_t effective_end =
+        (in_progress && recording.end_time <= 0) ? time(NULL) : recording.end_time;
+
     // Format timestamps as ISO 8601 UTC (compatible with all browsers including Safari)
     char start_time_str[32] = {0};
     char end_time_str[32] = {0};
@@ -121,13 +127,16 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
     }
 
-    tm_info = gmtime_r(&recording.end_time, &tm_info_buf);
-    if (tm_info) {
-        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+    if (!in_progress) {
+        tm_info = gmtime_r(&recording.end_time, &tm_info_buf);
+        if (tm_info) {
+            strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+        }
     }
-    
+
     // Calculate duration in seconds
-    int duration = (int)difftime(recording.end_time, recording.start_time);
+    int duration = (int)difftime(effective_end, recording.start_time);
+    if (duration < 0) duration = 0;
     
     // Format file size for display
     char size_str[32] = {0};
@@ -152,9 +161,15 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     }
     cJSON_AddStringToObject(recording_obj, "file_path", recording.file_path);
     cJSON_AddStringToObject(recording_obj, "start_time", start_time_str);
-    cJSON_AddStringToObject(recording_obj, "end_time", end_time_str);
+    if (in_progress) {
+        cJSON_AddNullToObject(recording_obj, "end_time");
+        cJSON_AddNullToObject(recording_obj, "end_time_unix");
+    } else {
+        cJSON_AddStringToObject(recording_obj, "end_time", end_time_str);
+        cJSON_AddNumberToObject(recording_obj, "end_time_unix", (double)recording.end_time);
+    }
     cJSON_AddNumberToObject(recording_obj, "start_time_unix", (double)recording.start_time);
-    cJSON_AddNumberToObject(recording_obj, "end_time_unix", (double)recording.end_time);
+    cJSON_AddBoolToObject(recording_obj, "in_progress", in_progress);
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
     cJSON_AddStringToObject(recording_obj, "capture_method",
@@ -171,11 +186,11 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     detection_label_summary_t labels[MAX_DETECTION_LABELS];
     int label_count = 0;
 
-    if (recording.start_time > 0 && recording.end_time > 0) {
+    if (recording.start_time > 0 && effective_end > 0) {
         // Get detection labels summary for this recording's time range
         label_count = get_detection_labels_summary(recording.stream_name,
                                                    recording.start_time,
-                                                   recording.end_time,
+                                                   effective_end,
                                                    labels, MAX_DETECTION_LABELS);
         if (label_count > 0) {
             has_detection_flag = true;
@@ -183,7 +198,7 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
             // Fall back to simple check if get_detection_labels_summary returned 0
             int det_result = has_detections_in_time_range(recording.stream_name,
                                                           recording.start_time,
-                                                          recording.end_time);
+                                                          effective_end);
             if (det_result > 0) {
                 has_detection_flag = true;
             }
@@ -273,7 +288,7 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     if (deletion < 0) {
         audit_recording_delete_operation(req, &user, &camera, id, "error", "deletion_blocked", "unchanged");
         http_response_set_json_error(res, deletion == -2 ? 409 : 500,
-            deletion == -2 ? "Release protection or wait for the active transfer before deleting" : "Failed to queue recording deletion");
+            deletion == -2 ? "Recording is protected, still recording, or has an active transfer" : "Failed to queue recording deletion");
         return;
     }
     const char *file_cleanup = deletion == 0 ? "deleted" : "pending";
@@ -553,7 +568,8 @@ static void *batch_delete_worker_thread(void *arg) {
             }
         }
 
-        // Get total count
+        // Get total count.  Batch delete must never match a segment that is
+        // still being written, so in-progress rows are excluded here (#482).
         int total_count = get_recording_count(start_time, end_time,
                                             stream_name[0] != '\0' ? stream_name : NULL,
                                             has_detection,
@@ -564,7 +580,8 @@ static void *batch_delete_worker_thread(void *arg) {
                                                 : NULL,
                                             collection_uuid[0] ? collection_stream_count : 0,
                                             tag_filter[0] != '\0' ? tag_filter : NULL,
-                                            capture_method_filter[0] != '\0' ? capture_method_filter : NULL);
+                                            capture_method_filter[0] != '\0' ? capture_method_filter : NULL,
+                                            false);
 
         if (total_count <= 0) {
             camera_collection_filter_free_stream_names(
@@ -608,7 +625,8 @@ static void *batch_delete_worker_thread(void *arg) {
                                                       : NULL,
                                                   collection_uuid[0] ? collection_stream_count : 0,
                                                   tag_filter[0] != '\0' ? tag_filter : NULL,
-                                                  capture_method_filter[0] != '\0' ? capture_method_filter : NULL);
+                                                  capture_method_filter[0] != '\0' ? capture_method_filter : NULL,
+                                                  false);
 
         if (count <= 0) {
             free(recordings);

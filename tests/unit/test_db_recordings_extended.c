@@ -20,6 +20,7 @@
 #include "database/db_recordings.h"
 #include "video/detection_result.h"
 #include "utils/strings.h"
+#include "web/api_handlers_timeline.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_recordings_ext_test.db"
 
@@ -162,7 +163,7 @@ void test_get_recording_count(void) {
     time_t now = time(NULL);
     recording_metadata_t m = make_rec("cam1", "/rec/cnt.mp4", now);
     add_recording_metadata(&m);
-    int cnt = get_recording_count(0, 0, "cam1", 0, NULL, -1, NULL, 0, NULL, NULL);
+    int cnt = get_recording_count(0, 0, "cam1", 0, NULL, -1, NULL, 0, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(1, cnt);
 }
 
@@ -184,7 +185,7 @@ void test_get_recording_count_supports_multi_value_stream_tag_and_capture_filter
     TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(manual_id, "urgent"));
 
     int cnt = get_recording_count(0, 0, "cam1,cam3", 0, NULL, -1, NULL, 0,
-                                  "important,urgent", "scheduled,manual");
+                                  "important,urgent", "scheduled,manual", false);
     TEST_ASSERT_EQUAL_INT(2, cnt);
 }
 
@@ -275,15 +276,15 @@ void test_capture_filters_distinguish_continuous_from_scheduled(void) {
 
     TEST_ASSERT_EQUAL_INT(1,
         get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0,
-                            NULL, "continuous"));
+                            NULL, "continuous", false));
     TEST_ASSERT_EQUAL_INT(1,
         get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0,
-                            NULL, "scheduled"));
+                            NULL, "scheduled", false));
 
     recording_metadata_t out[2];
     int count = get_recording_metadata_paginated(
         0, 0, NULL, 0, NULL, -1, "id", "asc", out, 2, 0,
-        NULL, 0, NULL, "continuous");
+        NULL, 0, NULL, "continuous", false);
     TEST_ASSERT_EQUAL_INT(1, count);
     TEST_ASSERT_EQUAL_STRING("always_on", out[0].stream_name);
 }
@@ -300,7 +301,7 @@ void test_get_recording_metadata_paginated(void) {
     recording_metadata_t out[10];
     int n = get_recording_metadata_paginated(0, 0, "cam1", 0, NULL, -1,
                                              "start_time", "desc", out, 3, 0,
-                                             NULL, 0, NULL, NULL);
+                                             NULL, 0, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(3, n);
 }
 
@@ -329,7 +330,7 @@ void test_get_recording_metadata_paginated_supports_multi_value_detection_labels
     recording_metadata_t out[10];
     int n = get_recording_metadata_paginated(0, 0, NULL, 1, "person,car", -1,
                                              "id", "asc", out, 10, 0,
-                                             NULL, 0, "alpha,beta", "scheduled");
+                                             NULL, 0, "alpha,beta", "scheduled", false);
 
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_STRING("cam1", out[0].stream_name);
@@ -357,14 +358,14 @@ void test_recording_filters_match_unlinked_points_and_spanning_intervals(void) {
         "cam_interval", now - 10));
 
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(
-        0, 0, "cam_point", 1, "person", -1, NULL, 0, NULL, NULL));
+        0, 0, "cam_point", 1, "person", -1, NULL, 0, NULL, NULL, false));
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(
-        0, 0, "cam_interval", 1, "vehicle", -1, NULL, 0, NULL, NULL));
+        0, 0, "cam_interval", 1, "vehicle", -1, NULL, 0, NULL, NULL, false));
 
     recording_metadata_t out[2];
     int count = get_recording_metadata_paginated(
         0, 0, "cam_interval", 1, "vehicle", -1,
-        "start_time", "desc", out, 2, 0, NULL, 0, NULL, NULL);
+        "start_time", "desc", out, 2, 0, NULL, 0, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(1, count);
     TEST_ASSERT_EQUAL_STRING("cam_interval", out[0].stream_name);
 }
@@ -405,12 +406,12 @@ void test_readonly_list_reads_see_rows_committed_on_shared_handle(void) {
     raw_insert_recording("wal_cam", "/rec/wal-open.mp4", now + 100, 0);
 
     TEST_ASSERT_EQUAL_INT(4, get_recording_count(0, 0, "wal_cam", 0, NULL, -1,
-                                                 NULL, 0, NULL, NULL));
+                                                 NULL, 0, NULL, NULL, false));
 
     recording_metadata_t out[8];
     int n = get_recording_metadata_paginated(0, 0, "wal_cam", 0, NULL, -1,
                                              "start_time", "desc", out, 8, 0,
-                                             NULL, 0, NULL, NULL);
+                                             NULL, 0, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(4, n);
     TEST_ASSERT_EQUAL_STRING("/rec/wal-raw.mp4", out[0].file_path);
     TEST_ASSERT_EQUAL_STRING("/rec/wal-api-0.mp4", out[1].file_path);
@@ -450,23 +451,23 @@ void test_recording_count_matches_paginated_rows_for_combined_filters(void) {
     time_t window_start = now - 480;
     time_t window_end = now - 100;
     int count = get_recording_count(window_start, window_end, "cam_a,cam_b", 0,
-                                    NULL, 0, scope, 2, NULL, NULL);
+                                    NULL, 0, scope, 2, NULL, NULL, false);
     recording_metadata_t out[16];
     int rows = get_recording_metadata_paginated(window_start, window_end,
                                                 "cam_a,cam_b", 0, NULL, 0,
                                                 "start_time", "asc", out, 16, 0,
-                                                scope, 2, NULL, NULL);
+                                                scope, 2, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(1, count);
     TEST_ASSERT_EQUAL_INT(count, rows);
     TEST_ASSERT_EQUAL_STRING("/rec/f-a0.mp4", out[0].file_path);
 
     /* No scope: the explicit predicate alone. */
     count = get_recording_count(window_start, window_end, "cam_a,cam_b", 0,
-                                NULL, -1, NULL, 0, NULL, NULL);
+                                NULL, -1, NULL, 0, NULL, NULL, false);
     rows = get_recording_metadata_paginated(window_start, window_end,
                                             "cam_a,cam_b", 0, NULL, -1,
                                             "start_time", "asc", out, 16, 0,
-                                            NULL, 0, NULL, NULL);
+                                            NULL, 0, NULL, NULL, false);
     TEST_ASSERT_EQUAL_INT(3, count);
     TEST_ASSERT_EQUAL_INT(count, rows);
 }
@@ -486,11 +487,11 @@ void test_readonly_list_reads_do_not_block_on_open_write_transaction(void) {
 
     time_t started = time(NULL);
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "txn_cam", 0, NULL, -1,
-                                                 NULL, 0, NULL, NULL));
+                                                 NULL, 0, NULL, NULL, false));
     recording_metadata_t out[4];
     TEST_ASSERT_EQUAL_INT(1, get_recording_metadata_paginated(
         0, 0, "txn_cam", 0, NULL, -1, "start_time", "desc", out, 4, 0,
-        NULL, 0, NULL, NULL));
+        NULL, 0, NULL, NULL, false));
     TEST_ASSERT_EQUAL_STRING("/rec/txn-1.mp4", out[0].file_path);
     /* busy_timeout on the read-only connection is 10 s; a reader that had
      * queued behind the writer would take at least that long. */
@@ -498,7 +499,7 @@ void test_readonly_list_reads_do_not_block_on_open_write_transaction(void) {
 
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "txn_cam", 0, NULL, -1,
-                                                 NULL, 0, NULL, NULL));
+                                                 NULL, 0, NULL, NULL, false));
 }
 
 /* The generation feeds the list handler's total cache: every mutation that
@@ -534,7 +535,7 @@ void test_recordings_generation_bumps_only_on_list_affecting_mutations(void) {
     recording_metadata_t got;
     TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &got));
     TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "gen_cam", 0, NULL, -1,
-                                                 NULL, 0, NULL, NULL));
+                                                 NULL, 0, NULL, NULL, false));
     TEST_ASSERT_EQUAL_UINT64(after_start, db_recordings_generation());
 }
 
@@ -650,6 +651,149 @@ void test_recent_recording_storage_stats_excludes_stale_archive(void) {
     TEST_ASSERT_EQUAL_INT64(recent2.end_time, newest);
 }
 
+/* Insert/replace a streams config row (only the columns the JOIN reads).
+ * camera_uuid carries a UNIQUE index, so every stream needs a distinct one. */
+static void create_stream_row(const char *name, int segment_duration) {
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "INSERT OR REPLACE INTO streams "
+        "(name, url, enabled, streaming_enabled, width, height, fps, codec, "
+        " priority, record, segment_duration, camera_uuid) "
+        "VALUES (?, 'rtsp://test.stream/live', 1, 1, 1280, 720, 25, 'h264', "
+        " 5, 1, ?, ? || '-uuid');",
+        -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 2, segment_duration);
+    sqlite3_bind_text(stmt, 3, name, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
+/* Issue #482: a segment that is still recording (is_complete = 0, no
+ * end_time yet) must only be returned when the caller explicitly opts in;
+ * completed segments are unaffected either way. */
+void test_in_progress_segment_visible_only_with_opt_in(void) {
+    time_t now = time(NULL);
+
+    /* The currently-recording segment, exactly as the recorder inserts it at
+     * the first keyframe of the segment (end_time NULL, size 0). */
+    recording_metadata_t live = make_rec("prg_cam", "/rec/prg-live.mp4", now - 30);
+    live.end_time    = 0;
+    live.is_complete = false;
+    live.size_bytes  = 0;
+    TEST_ASSERT_TRUE(add_recording_metadata(&live) > 0);
+
+    /* Its already-finished predecessor. */
+    recording_metadata_t done = make_rec("prg_cam", "/rec/prg-done.mp4",
+                                         now - 10 * 60);
+    TEST_ASSERT_TRUE(add_recording_metadata(&done) > 0);
+
+    create_stream_row("prg_cam", 900);
+
+    /* Callers that did not opt in must not see the open segment. */
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "prg_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL, false));
+    /* The overview/timeline readers opt in and now see both. */
+    TEST_ASSERT_EQUAL_INT(2, get_recording_count(0, 0, "prg_cam", 0, NULL, -1,
+                                                 NULL, 0, NULL, NULL, true));
+
+    recording_metadata_t out[4];
+    int n = get_recording_metadata_paginated(0, 0, "prg_cam", 0, NULL, -1,
+                                             "start_time", "desc", out, 4, 0,
+                                             NULL, 0, NULL, NULL, true);
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_STRING("/rec/prg-live.mp4", out[0].file_path);
+    TEST_ASSERT_FALSE(out[0].is_complete);
+    TEST_ASSERT_EQUAL_INT(0, out[0].end_time);
+
+    n = get_recording_metadata_paginated(0, 0, "prg_cam", 0, NULL, -1,
+                                         "start_time", "desc", out, 4, 0,
+                                         NULL, 0, NULL, NULL, false);
+    TEST_ASSERT_EQUAL_INT(1, n);
+    TEST_ASSERT_EQUAL_STRING("/rec/prg-done.mp4", out[0].file_path);
+    TEST_ASSERT_TRUE(out[0].is_complete);
+}
+
+/* Issue #482: the in-progress view trusts a row only while its start_time is
+ * fresh relative to the stream's segment_duration (2x). A zombie row left
+ * behind by a killed writer thread self-expires from the view, while the
+ * user's real use case — a segment that legitimately runs for an hour or
+ * more — stays visible for its whole lifetime. */
+void test_in_progress_stale_segments_self_expire(void) {
+    time_t now = time(NULL);
+
+    create_stream_row("zmb_short_cam", 30);    /* freshness window: 1 min */
+    create_stream_row("zmb_long_cam", 3600);   /* freshness window: 2 h   */
+
+    /* Zombie: incomplete and far older than the stream's short segments. */
+    recording_metadata_t zombie = make_rec("zmb_short_cam", "/rec/zmb-zombie.mp4",
+                                           now - 3600);
+    zombie.end_time    = 0;
+    zombie.is_complete = false;
+    TEST_ASSERT_TRUE(add_recording_metadata(&zombie) > 0);
+
+    /* Fresh live segment on the same short-duration stream. */
+    recording_metadata_t fresh = make_rec("zmb_short_cam", "/rec/zmb-live.mp4",
+                                          now - 29);
+    fresh.end_time    = 0;
+    fresh.is_complete = false;
+    TEST_ASSERT_TRUE(add_recording_metadata(&fresh) > 0);
+
+    /* Long-duration stream (#482 use case): a segment started an hour ago is
+     * exactly what the user wants to see. */
+    recording_metadata_t longlive = make_rec("zmb_long_cam", "/rec/zmb-long.mp4",
+                                             now - 3500);
+    longlive.end_time    = 0;
+    longlive.is_complete = false;
+    TEST_ASSERT_TRUE(add_recording_metadata(&longlive) > 0);
+
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "zmb_short_cam", 0, NULL,
+                                                 -1, NULL, 0, NULL, NULL, true));
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(0, 0, "zmb_long_cam", 0, NULL,
+                                                 -1, NULL, 0, NULL, NULL, true));
+
+    /* A stream whose config row does not exist falls back to the schema
+     * default 900 s (window 1800 s). */
+    recording_metadata_t ghost = make_rec("zmb_ghost_cam", "/rec/zmb-ghost.mp4",
+                                          now - 3000);
+    ghost.end_time    = 0;
+    ghost.is_complete = false;
+    TEST_ASSERT_TRUE(add_recording_metadata(&ghost) > 0);
+    TEST_ASSERT_EQUAL_INT(0, get_recording_count(0, 0, "zmb_ghost_cam", 0, NULL,
+                                                 -1, NULL, 0, NULL, NULL, true));
+}
+
+/* Issue #482: the timeline must surface the segment that is still recording
+ * as an in-progress entry whose effective end is "now", right next to the
+ * completed segments before it. */
+void test_timeline_segments_include_still_recording_segment(void) {
+    time_t now = time(NULL);
+    create_stream_row("tl_cam", 60);
+
+    recording_metadata_t done = make_rec("tl_cam", "/rec/tl-done.mp4", now - 300);
+    TEST_ASSERT_TRUE(add_recording_metadata(&done) > 0);
+
+    recording_metadata_t live = make_rec("tl_cam", "/rec/tl-live.mp4", now - 20);
+    live.end_time    = 0;
+    live.is_complete = false;
+    live.size_bytes  = 0;
+    TEST_ASSERT_TRUE(add_recording_metadata(&live) > 0);
+
+    timeline_segment_t segs[4];
+    int n = get_timeline_segments("tl_cam", now - 600, now + 60, segs, 4);
+    TEST_ASSERT_EQUAL_INT(2, n);
+
+    /* Ordered by start_time: the finished segment first. */
+    TEST_ASSERT_EQUAL_STRING("/rec/tl-done.mp4", segs[0].file_path);
+    TEST_ASSERT_FALSE(segs[0].in_progress);
+
+    TEST_ASSERT_EQUAL_STRING("/rec/tl-live.mp4", segs[1].file_path);
+    TEST_ASSERT_TRUE(segs[1].in_progress);
+    /* The effective end of the live segment tracks "now". */
+    TEST_ASSERT_GREATER_OR_EQUAL(now - 2, segs[1].end_time);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -683,6 +827,9 @@ int main(void) {
     RUN_TEST(test_set_recording_retention_override);
     RUN_TEST(test_get_stream_storage_bytes);
     RUN_TEST(test_recent_recording_storage_stats_excludes_stale_archive);
+    RUN_TEST(test_in_progress_segment_visible_only_with_opt_in);
+    RUN_TEST(test_in_progress_stale_segments_self_expire);
+    RUN_TEST(test_timeline_segments_include_still_recording_segment);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

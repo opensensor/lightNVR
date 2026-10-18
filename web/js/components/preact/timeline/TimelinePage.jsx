@@ -1240,10 +1240,11 @@ export function TimelinePage() {
         const {
           added: addedSegs,
           removed: removedSegs,
+          updated: updatedSegs,
           authoritative,
         } = reconcileTimelineSegments(currentSegs, polledSegments);
 
-        if (addedSegs.length === 0 && removedSegs.length === 0) return;
+        if (addedSegs.length === 0 && removedSegs.length === 0 && updatedSegs.length === 0) return;
 
         // Use polled segments as the authoritative list
         const updated = authoritative.sort((a, b) => a.start_timestamp - b.start_timestamp);
@@ -1446,6 +1447,12 @@ export function TimelinePage() {
               style={{ backgroundColor: 'hsl(var(--primary))' }}
             />
             {t('timeline.legend.recording')}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-sm timeline-legend-in-progress"
+            />
+            {t('timeline.legend.inProgress')}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span

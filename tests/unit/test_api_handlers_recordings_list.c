@@ -331,6 +331,76 @@ void test_handle_get_recordings_serves_cached_total_until_generation_or_ttl_chan
     recordings_count_cache_reset();
 }
 
+/* Issue #482: the overview must list the segment that is still recording,
+ * flagged as in_progress and with a null end_time, alongside completed
+ * segments. */
+void test_handle_get_recordings_includes_still_recording_segment(void) {
+    g_config.web_auth_enabled = false;
+    recordings_count_cache_reset();
+    create_stream("inprog_cam");
+    time_t now = time(NULL);
+
+    /* Exactly what the recorder inserts at a segment's first keyframe. */
+    recording_metadata_t live;
+    memset(&live, 0, sizeof(live));
+    safe_strcpy(live.stream_name, "inprog_cam", sizeof(live.stream_name), 0);
+    safe_strcpy(live.file_path, "/tmp/inprog-live.mp4", sizeof(live.file_path), 0);
+    safe_strcpy(live.codec, "h264", sizeof(live.codec), 0);
+    safe_strcpy(live.trigger_type, "scheduled", sizeof(live.trigger_type), 0);
+    live.start_time = now - 15;
+    live.end_time = 0;
+    live.is_complete = false;
+    live.schedule_restricted = 1;
+    live.disk_pressure_eligible = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&live));
+    create_recording("inprog_cam", "/tmp/inprog-done.mp4", now - 300);
+
+    http_request_t req;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/recordings", sizeof(req.path), 0);
+    safe_strcpy(req.query_string, "stream=inprog_cam&limit=10&sort=start_time&order=desc",
+                sizeof(req.query_string), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+
+    http_response_t res;
+    http_response_init(&res);
+    handle_get_recordings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    TEST_ASSERT_NOT_NULL(res.body);
+
+    cJSON *root = cJSON_Parse((const char *)res.body);
+    TEST_ASSERT_NOT_NULL(root);
+    cJSON *total = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "pagination"), "total");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(total));
+    TEST_ASSERT_EQUAL_INT(2, total->valueint);
+
+    cJSON *items = cJSON_GetObjectItem(root, "recordings");
+    TEST_ASSERT_TRUE(cJSON_IsArray(items));
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(items));
+
+    /* Newest first: the still-recording segment. */
+    cJSON *first = cJSON_GetArrayItem(items, 0);
+    TEST_ASSERT_NOT_NULL(first);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(first, "in_progress")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(first, "end_time")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(first, "end_time_unix")));
+    cJSON *live_duration = cJSON_GetObjectItem(first, "duration");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(live_duration));
+    TEST_ASSERT_GREATER_THAN(0, live_duration->valueint);
+    TEST_ASSERT_EQUAL_STRING("/tmp/inprog-live.mp4",
+        cJSON_GetObjectItem(first, "file_path")->valuestring);
+
+    cJSON *second = cJSON_GetArrayItem(items, 1);
+    TEST_ASSERT_NOT_NULL(second);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(second, "in_progress")));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(second, "end_time")));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    recordings_count_cache_reset();
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -343,6 +413,7 @@ int main(void) {
     RUN_TEST(test_count_cache_invalidates_on_generation_change);
     RUN_TEST(test_count_cache_skips_errors_bounds_entries_and_resets);
     RUN_TEST(test_handle_get_recordings_serves_cached_total_until_generation_or_ttl_changes);
+    RUN_TEST(test_handle_get_recordings_includes_still_recording_segment);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

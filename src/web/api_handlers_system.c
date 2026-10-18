@@ -161,7 +161,7 @@ static void get_cached_recording_aggregates(int *count, int64_t *bytes) {
         now - recording_aggregate_cache.refreshed_at >=
             SYSTEM_RECORDING_AGGREGATE_TTL_SECONDS) {
         int refreshed_count = get_recording_count(
-            0, 0, NULL, 0, NULL, -1, NULL, 0, NULL, NULL);
+            0, 0, NULL, 0, NULL, -1, NULL, 0, NULL, NULL, false);
         int64_t refreshed_bytes = get_stream_storage_bytes(NULL);
         if (refreshed_count >= 0) recording_aggregate_cache.count = refreshed_count;
         if (refreshed_bytes >= 0) recording_aggregate_cache.bytes = refreshed_bytes;

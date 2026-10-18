@@ -364,7 +364,17 @@ export function RecordingsTable({
                 )}
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}</td>
                 {isColumnVisible('duration') && (
-                  <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {recording.in_progress ? (
+                      <span className="inline-flex items-center gap-1.5 text-destructive" title={t('recordings.inProgressToast')}>
+                        <span className="inline-block w-2 h-2 rounded-full bg-destructive animate-pulse" aria-hidden="true" />
+                        {formatUtils.formatDuration(formatUtils.liveRecordingDuration(recording))}
+                        <span className="text-xs font-medium uppercase">{t('recordings.inProgressBadge')}</span>
+                      </span>
+                    ) : (
+                      formatUtils.formatDuration(recording.duration)
+                    )}
+                  </td>
                 )}
                 {isColumnVisible('size') && (
                   <td className="px-6 py-4 whitespace-nowrap">{recording.size || t('common.unknown')}</td>

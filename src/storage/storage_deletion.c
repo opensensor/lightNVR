@@ -372,13 +372,17 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     }
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, "SELECT protected,EXISTS(SELECT 1 FROM storage_migration_jobs "
-        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending FROM recordings WHERE id=?1;",
+        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending,is_complete "
+        "FROM recordings WHERE id=?1;",
         -1, &statement, NULL);
     if (result == SQLITE_OK) {
         sqlite3_bind_int64(statement, 1, (sqlite3_int64)id);
         result = sqlite3_step(statement);
     }
-    bool blocked = result == SQLITE_ROW && (sqlite3_column_int(statement, 0) || sqlite3_column_int(statement, 1));
+    /* Check inside the deletion transaction: an ID selected from the live
+     * recordings list must never remove a file the recorder is writing. */
+    bool blocked = result == SQLITE_ROW && (sqlite3_column_int(statement, 0) ||
+        sqlite3_column_int(statement, 1) || !sqlite3_column_int(statement, 3));
     bool pending = result == SQLITE_ROW && sqlite3_column_int(statement, 2);
     if (statement) sqlite3_finalize(statement);
     if (blocked || pending || result != SQLITE_ROW) {

@@ -151,6 +151,19 @@ static void test_missing_derivatives_create_one_object_row(void) {
     TEST_ASSERT_NOT_EQUAL_INT(0, access(path, F_OK));
 }
 
+static void test_live_recording_cannot_be_deleted_by_id(void) {
+    char path[MAX_PATH_LENGTH], statement[256];
+    uint64_t id = add_recording("live-delete", path);
+    snprintf(statement, sizeof(statement),
+             "UPDATE recordings SET is_complete=0,end_time=NULL WHERE id=%llu;",
+             (unsigned long long)id);
+    sql(statement);
+    TEST_ASSERT_EQUAL_INT(-2, storage_recording_delete(id, "manual deletion", NULL));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_deletions;"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM recordings;"));
+    TEST_ASSERT_EQUAL_INT(0, access(path, F_OK));
+}
+
 static void test_existing_derivatives_are_journaled_and_removed(void) {
     char path[MAX_PATH_LENGTH], thumbnail[MAX_PATH_LENGTH], transcode[MAX_PATH_LENGTH];
     uint64_t id = add_recording("derived", path);
@@ -285,6 +298,7 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_missing_derivatives_create_one_object_row);
+    RUN_TEST(test_live_recording_cannot_be_deleted_by_id);
     RUN_TEST(test_existing_derivatives_are_journaled_and_removed);
     RUN_TEST(test_deletion_finalizes_only_its_own_ledger_entry);
     RUN_TEST(test_prune_completed_removes_old_rows_only);
