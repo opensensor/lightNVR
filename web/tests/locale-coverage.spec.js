@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { parse } from '@babel/parser';
 
 const localeDir = path.resolve(__dirname, '../public/locales');
 const readCatalog = (code) => JSON.parse(fs.readFileSync(path.join(localeDir, `${code}.json`), 'utf8'));
@@ -20,6 +21,36 @@ const shortcutKeys = new Set([
   'timeline.help.panControls',
   'timeline.inlineHint',
 ]);
+
+test('static translation keys used by the web UI exist in English', () => {
+  const sourceRoot = path.resolve(__dirname, '../js');
+  const sourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
+    return entry.isDirectory() ? sourceFiles(file) : /\.jsx?$/.test(entry.name) ? [file] : [];
+  });
+  const missing = [];
+
+  for (const file of sourceFiles(sourceRoot)) {
+    const source = fs.readFileSync(file, 'utf8');
+    const ast = parse(source, { sourceType: 'module', plugins: ['jsx'] });
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (node.type === 'CallExpression' && ['t', 'translate'].includes(node.callee?.name)) {
+        const key = node.arguments?.[0];
+        if (key?.type === 'StringLiteral' && !englishKeySet.has(key.value)) {
+          missing.push(`${path.relative(sourceRoot, file)}: ${key.value}`);
+        }
+      }
+      for (const [property, child] of Object.entries(node)) {
+        if (!['loc', 'start', 'end'].includes(property)) visit(child);
+      }
+    };
+    visit(ast);
+  }
+
+  expect(missing).toEqual([]);
+});
 
 describe('locale catalog coverage', () => {
   for (const { code } of manifest.locales) {

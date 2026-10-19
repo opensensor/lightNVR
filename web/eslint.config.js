@@ -8,6 +8,7 @@
  */
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
+import noLiteralUiString from './eslint-rules/no-literal-ui-string.js';
 
 const recommendedRules = jsxA11y.flatConfigs.recommended.rules;
 
@@ -44,5 +45,12 @@ export default [
       'react-hooks/exhaustive-deps': 'off',
       'react-hooks/rules-of-hooks': 'off',
     },
+  },
+  {
+    files: ['js/components/**/*.js', 'js/components/**/*.jsx'],
+    // Existing technical labels and examples are counted by file in the
+    // baseline. New JSX text or visible-attribute literals fail lint.
+    plugins: { 'lightnvr-i18n': { rules: { 'no-literal-ui-string': noLiteralUiString } } },
+    rules: { 'lightnvr-i18n/no-literal-ui-string': 'error' },
   },
 ];

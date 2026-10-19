@@ -1,0 +1,124 @@
+{
+  "preact/BatchDownloadModal.jsx": {
+    "recordings.zip": 1
+  },
+  "preact/EventRoutingView.jsx": {
+    "· QoS": 1
+  },
+  "preact/FisheyeEptzCanvas.jsx": {
+    "ePTZ": 1
+  },
+  "preact/Footer.jsx": {
+    "LightNVR ©": 1
+  },
+  "preact/HLSVideoCell.jsx": {
+    "go2rtc": 1,
+    "HLS": 2
+  },
+  "preact/Header.jsx": {
+    "LightNVR": 1,
+    "v": 1
+  },
+  "preact/HealthView.jsx": {
+    "ms": 1
+  },
+  "preact/LoginView.jsx": {
+    "LightNVR": 1
+  },
+  "preact/MSEVideoCell.jsx": {
+    "PTZ": 1,
+    "MSE": 1
+  },
+  "preact/SetupWizard.jsx": {
+    "/var/lib/lightnvr/recordings": 1,
+    "/var/lib/lightnvr/lightnvr.db": 1
+  },
+  "preact/StreamCard.jsx": {
+    "ONVIF": 2
+  },
+  "preact/StreamConfigModal.jsx": {
+    "http://192.168.1.100/": 1,
+    "http://": 1,
+    "https://": 1,
+    "outdoor,critical": 1,
+    "admin": 1,
+    "Profile_1": 1,
+    "H.264 (AVC)": 1,
+    "H.265 (HEVC)": 1,
+    "TCP": 1,
+    "UDP": 1,
+    "[api_detection]": 1,
+    "rtmp://a.rtmp.youtube.com/live2/xxxx-xxxx-xxxx-xxxx-xxxx": 1
+  },
+  "preact/StreamsView.jsx": {
+    "admin": 1,
+    "password": 1,
+    "x": 1
+  },
+  "preact/WebRTCVideoCell.jsx": {
+    "WebRTC": 1
+  },
+  "preact/events/EventDestinationEditor.jsx": {
+    "mqtt.example.net": 1,
+    "lightnvr/v1/status/{installation_uuid}/{destination_uuid}": 1,
+    "/etc/lightnvr/certs/broker-ca.pem": 1,
+    "/etc/lightnvr/certs/client.pem": 1,
+    "/etc/lightnvr/certs/client.key": 1
+  },
+  "preact/events/EventRouteEditor.jsx": {
+    "person, vehicle": 1,
+    "entrance, loading-dock": 1,
+    "America/New_York": 1
+  },
+  "preact/fleet/FleetTable.jsx": {
+    "FPS": 1
+  },
+  "preact/fleet/OrganizationManager.jsx": {
+    "#2563eb": 1
+  },
+  "preact/settings/AuthTab.jsx": {
+    "X-Forwarded-For": 1,
+    "X-Real-IP": 1
+  },
+  "preact/settings/DetectionTab.jsx": {
+    "/var/lib/lightnvr/models": 1,
+    "default": 1
+  },
+  "preact/settings/GeneralTab.jsx": {
+    "lightnvr": 1,
+    "LOG_USER": 1,
+    "LOG_DAEMON": 1,
+    "LOG_LOCAL0": 1,
+    "LOG_LOCAL1": 1,
+    "LOG_LOCAL2": 1,
+    "LOG_LOCAL3": 1,
+    "LOG_LOCAL4": 1,
+    "LOG_LOCAL5": 1,
+    "LOG_LOCAL6": 1,
+    "LOG_LOCAL7": 1
+  },
+  "preact/settings/Go2rtcTab.jsx": {
+    "/usr/local/bin/go2rtc": 1,
+    "/etc/lightnvr/go2rtc": 1,
+    "stun.l.google.com:19302": 1,
+    "override.yaml": 1
+  },
+  "preact/settings/MqttTab.jsx": {
+    "localhost": 1,
+    "lightnvr": 2,
+    "homeassistant": 1
+  },
+  "preact/settings/StorageTab.jsx": {
+    ".bak": 1,
+    "/usr/local/bin/lightnvr-post-backup": 1
+  },
+  "preact/users/AddUserModal.jsx": {
+    "(CIDR)": 1
+  },
+  "preact/users/AuditHistoryModal.jsx": {
+    "recordings.export": 1
+  },
+  "preact/users/EditUserModal.jsx": {
+    "(CIDR)": 1
+  }
+}

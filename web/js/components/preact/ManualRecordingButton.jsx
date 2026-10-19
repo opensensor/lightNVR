@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { useI18n } from '../../i18n.js';
 
 export function ManualRecordingButton({ streamName }) {
+  const { t } = useI18n();
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -49,12 +51,12 @@ export function ManualRecordingButton({ streamName }) {
         throw new Error(data.error || data.message || `HTTP ${response.status}`);
       }
       showStatusMessage(
-        action === 'start' ? 'Manual recording started' : 'Manual recording stopped',
+        t(action === 'start' ? 'live.manualRecordingStarted' : 'live.manualRecordingStopped'),
         'success'
       );
       await refresh();
     } catch (error) {
-      showStatusMessage(`Manual recording failed: ${error.message}`, 'error', 5000);
+      showStatusMessage(t('live.manualRecordingFailed', { message: error.message }), 'error', 5000);
     } finally {
       setBusy(false);
     }

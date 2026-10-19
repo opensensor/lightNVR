@@ -220,7 +220,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     if (!segments || segments.length === 0) {
       return (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-          No segments to display
+          {t('timeline.noSegmentsToDisplay')}
         </div>
       );
     }
@@ -328,7 +328,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     <div
       className="timeline-segments relative w-full h-16"
       ref={containerRef}
-      aria-label="Recording timeline"
+      aria-label={t('timeline.recordingTimeline')}
     >
       {renderSegments()}
       {dragPreview && (

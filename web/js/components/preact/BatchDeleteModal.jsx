@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { batchDeleteStatus } from '../../utils/batch-delete-status.js';
 import { useQueryClient } from '../../query-client.js';
+import { t as translate, useI18n } from '../../i18n.js';
 
 /**
  * BatchDeleteModal component
@@ -18,6 +19,7 @@ import { useQueryClient } from '../../query-client.js';
  * @returns {JSX.Element} BatchDeleteModal component
  */
 export function BatchDeleteModal() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   // Modal phase: 'hidden' | 'confirm' | 'progress'
@@ -47,9 +49,9 @@ export function BatchDeleteModal() {
   const getConfirmDescription = () => {
     const params = pendingParamsRef.current;
     if (!params) return '';
-    if (params.ids) return `${params.ids.length} selected recording${params.ids.length !== 1 ? 's' : ''}`;
-    if (params.totalCount) return `${params.totalCount} filtered recording${params.totalCount !== 1 ? 's' : ''}`;
-    return 'all matching recordings';
+    if (params.ids) return t(params.ids.length === 1 ? 'recordings.selectedRecordingOne' : 'recordings.selectedRecordingMany', { count: params.ids.length });
+    if (params.totalCount) return t(params.totalCount === 1 ? 'recordings.filteredRecordingOne' : 'recordings.filteredRecordingMany', { count: params.totalCount });
+    return t('recordings.allMatchingRecordings');
   };
 
   /**
@@ -71,7 +73,7 @@ export function BatchDeleteModal() {
    */
   const cancelConfirm = useCallback(() => {
     closeModal();
-    showStatusMessage('Batch delete cancelled', 'info', 3000);
+    showStatusMessage(t('recordings.batchDeleteCancelled'), 'info', 3000);
   }, [closeModal]);
 
   /**
@@ -231,7 +233,7 @@ export function BatchDeleteModal() {
               });
 
               // Show error message
-              showStatusMessage(`Error: ${error.message || 'Unknown error'}`, 'error', 5000);
+              showStatusMessage(t('recordings.errorMessage', { message: error.message || t('recordings.unknownError') }), 'error', 5000);
 
               reject(error);
             });
@@ -258,7 +260,7 @@ export function BatchDeleteModal() {
         });
 
         // Show error message
-        showStatusMessage(`Error: ${error.message || 'Unknown error'}`, 'error', 5000);
+        showStatusMessage(t('recordings.errorMessage', { message: error.message || t('recordings.unknownError') }), 'error', 5000);
 
         reject(error);
       });
@@ -331,7 +333,7 @@ export function BatchDeleteModal() {
     } else if (progress.complete) {
       return '100%';
     } else {
-      return 'In progress';
+      return t('recordings.inProgress');
     }
   };
 
@@ -351,7 +353,7 @@ export function BatchDeleteModal() {
         {phase === 'confirm' && (
           <>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
-              <h3 className="text-xl font-bold">Confirm Batch Delete</h3>
+              <h3 className="text-xl font-bold">{t('recordings.confirmBatchDelete')}</h3>
               <button
                 className="text-muted-foreground hover:text-foreground text-2xl font-bold"
                 onClick={cancelConfirm}
@@ -365,10 +367,10 @@ export function BatchDeleteModal() {
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
                 <div>
-                  <p className="font-semibold text-red-500 mb-1">This action cannot be undone</p>
+                  <p className="font-semibold text-red-500 mb-1">{t('recordings.actionCannotBeUndone')}</p>
                   <p className="text-sm text-muted-foreground">
-                    You are about to permanently delete <strong>{getConfirmDescription()}</strong>.
-                    Once started, this operation cannot be cancelled or reversed.
+                    {t('recordings.aboutToPermanentlyDelete', { description: getConfirmDescription() })}
+                    {' '}{t('recordings.batchDeleteIrreversible')}
                   </p>
                 </div>
               </div>
@@ -379,13 +381,13 @@ export function BatchDeleteModal() {
                 className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
                 onClick={cancelConfirm}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors font-medium"
                 onClick={proceedWithDelete}
               >
-                Delete {getConfirmDescription()}
+                {t('recordings.deleteDescription', { description: getConfirmDescription() })}
               </button>
             </div>
           </>
@@ -396,7 +398,7 @@ export function BatchDeleteModal() {
           <>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
               <h3 className="text-xl font-bold">
-                {progress.complete ? 'Batch Delete Complete' : 'Deleting Recordings…'}
+                {t(progress.complete ? 'recordings.batchDeleteComplete' : 'recordings.deletingRecordings')}
               </h3>
             </div>
 
@@ -415,27 +417,27 @@ export function BatchDeleteModal() {
 
               <div className="mb-4">
                 <div className="flex justify-between mb-2">
-                  <span className="text-muted-foreground">Succeeded:</span>
+                  <span className="text-muted-foreground">{t('recordings.succeededLabel')}</span>
                   <span className="font-bold text-green-600 dark:text-green-400">{progress.succeeded}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Failed:</span>
+                  <span className="text-muted-foreground">{t('recordings.failedLabel')}</span>
                   <span className="font-bold text-red-600 dark:text-red-400">{progress.failed}</span>
                 </div>
               </div>
 
               {!progress.complete && (
                 <div className="text-xs text-muted-foreground italic mb-4">
-                  This operation cannot be cancelled once started.
+                  {t('recordings.batchDeleteCannotCancel')}
                 </div>
               )}
             </div>
 
             <div className="flex justify-end pt-2 border-t border-border">
               {progress.complete ? (
-                <button className="btn-primary" onClick={closeModal}>Done</button>
+                <button className="btn-primary" onClick={closeModal}>{t('common.done')}</button>
               ) : (
-                <span className="text-sm text-muted-foreground italic">Please wait…</span>
+                <span className="text-sm text-muted-foreground italic">{t('recordings.pleaseWait')}</span>
               )}
             </div>
           </>
@@ -453,7 +455,7 @@ export function BatchDeleteModal() {
  */
 export function batchDeleteRecordings(ids) {
   if (!ids || ids.length === 0) {
-    showStatusMessage('No recordings selected for deletion', 'warning', 5000);
+    showStatusMessage(translate('recordings.noSelectionForDeletion'), 'warning', 5000);
     return;
   }
 
@@ -461,13 +463,13 @@ export function batchDeleteRecordings(ids) {
     window.batchDeleteRecordingsByHttpRequest({ ids })
       .catch(error => {
         console.error('Error in batch delete:', error);
-        showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
+        showStatusMessage(translate('recordings.errorMessage', { message: error.message || translate('recordings.batchDeleteStartFailed') }), 'error', 5000);
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }
       });
   } else {
-    showStatusMessage('Batch delete function not available', 'error', 5000);
+    showStatusMessage(translate('recordings.batchDeleteUnavailable'), 'error', 5000);
   }
 }
 
@@ -478,7 +480,7 @@ export function batchDeleteRecordings(ids) {
  */
 export function batchDeleteRecordingsByFilter(filter) {
   if (!filter) {
-    showStatusMessage('No filter specified for deletion', 'warning', 5000);
+    showStatusMessage(translate('recordings.noFilterForDeletion'), 'warning', 5000);
     return;
   }
 
@@ -486,13 +488,13 @@ export function batchDeleteRecordingsByFilter(filter) {
     window.batchDeleteRecordingsByHttpRequest({ filter })
       .catch(error => {
         console.error('Error in batch delete:', error);
-        showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
+        showStatusMessage(translate('recordings.errorMessage', { message: error.message || translate('recordings.batchDeleteStartFailed') }), 'error', 5000);
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }
       });
   } else {
-    showStatusMessage('Batch delete function not available', 'error', 5000);
+    showStatusMessage(translate('recordings.batchDeleteUnavailable'), 'error', 5000);
   }
 }
 

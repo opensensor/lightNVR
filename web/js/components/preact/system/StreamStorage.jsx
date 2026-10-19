@@ -18,7 +18,7 @@ export function StreamStorage({ systemInfo, formatBytes }) {
   if (!systemInfo.streamStorage || !Array.isArray(systemInfo.streamStorage) || systemInfo.streamStorage.length === 0) {
     return (
       <div className="bg-card text-card-foreground rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Stream Storage</h3>
+        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.streamStorage')}</h3>
         <div className="text-muted-foreground text-center py-4">
           {t('system.noStreamStorageInformationAvailable')}
         </div>

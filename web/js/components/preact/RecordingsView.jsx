@@ -734,7 +734,7 @@ export function RecordingsView() {
       .filter(([_, sel]) => sel)
       .map(([id]) => id);
     if (selectedIds.length === 0) {
-      showStatusMessage('No recordings selected', 'warning');
+      showStatusMessage(t('recordings.noRecordingsSelected'), 'warning');
       return;
     }
     // Store current URL for "Refine Selections" back-link

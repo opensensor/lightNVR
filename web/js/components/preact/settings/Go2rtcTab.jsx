@@ -461,7 +461,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 {settings.go2rtcOverrideDisabledReason ? (
                   <div class="p-3 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded text-sm">
                     <div class="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
-                      Override quarantined
+                      {t('settings.go2rtcOverrideQuarantined')}
                     </div>
                     <div class="text-yellow-900 dark:text-yellow-100 whitespace-pre-wrap font-mono text-xs">
                       {settings.go2rtcOverrideDisabledReason}
@@ -478,7 +478,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                           setOverrideValidation(null);
                         }}
                       >
-                        Restore quarantined version into the editor
+                        {t('settings.go2rtcRestoreQuarantined')}
                       </button>
                     ) : null}
                   </div>
@@ -502,10 +502,10 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 <div class="flex items-center justify-between text-xs text-muted-foreground max-w-md">
                   <span>
                     {formatBytes(utf8ByteLength(settings.go2rtcConfigOverride))} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
-                    {overrideValidating ? ' • validating…' : null}
+                    {overrideValidating ? t('settings.go2rtcValidating') : null}
                   </span>
                   {overrideValidation && overrideValidation.libyaml_available === false ? (
-                    <span class="text-yellow-700 dark:text-yellow-300">libyaml unavailable — server-side validation skipped</span>
+                    <span class="text-yellow-700 dark:text-yellow-300">{t('settings.go2rtcValidationSkipped')}</span>
                   ) : null}
                 </div>
 
@@ -513,7 +513,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                 {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
                   <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200 max-w-md">
                     <div class="font-medium">
-                      Line {overrideValidation.error.line || '?'}, col {overrideValidation.error.column || '?'}
+                      {t('settings.go2rtcErrorPosition', { line: overrideValidation.error.line || '?', column: overrideValidation.error.column || '?' })}
                     </div>
                     <div class="text-xs mt-1 whitespace-pre-wrap">{overrideValidation.error.message}</div>
                   </div>
@@ -536,7 +536,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                     disabled={!canModifySettings}
                     onClick={loadEffectiveConfig}
                   >
-                    Show effective config
+                    {t('settings.go2rtcShowEffectiveConfig')}
                   </button>
                   <select
                     class="px-2 py-1 text-xs border border-input rounded bg-background disabled:opacity-60"
@@ -544,7 +544,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                     disabled={!canModifySettings}
                     onChange={handleInsertPreset}
                   >
-                    <option value="">Load example…</option>
+                    <option value="">{t('settings.go2rtcLoadExample')}</option>
                     {OVERRIDE_PRESETS.map((p, i) => (
                       <option key={i} value={i}>{p.label}</option>
                     ))}
@@ -553,7 +553,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Supported-sections collapsible */}
                 <details class="text-xs text-muted-foreground max-w-md">
-                  <summary class="cursor-pointer hover:text-foreground">Supported go2rtc sections</summary>
+                  <summary class="cursor-pointer hover:text-foreground">{t('settings.go2rtcSupportedSections')}</summary>
                   <ul class="mt-2 space-y-1">
                     {KNOWN_GO2RTC_SECTIONS.map(([k, desc]) => (
                       <li key={k}><code class="font-mono">{k}</code> — {desc}</li>
@@ -568,13 +568,13 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEffectiveConfigOpen(false)}>
                     <div class="bg-card text-card-foreground rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-4" onClick={(e) => e.stopPropagation()}>
                       <div class="flex items-center justify-between mb-3 pb-2 border-b">
-                        <h3 class="font-semibold">go2rtc effective config (redacted)</h3>
-                        <button type="button" class="text-sm underline" onClick={() => setEffectiveConfigOpen(false)}>Close</button>
+                        <h3 class="font-semibold">{t('settings.go2rtcEffectiveConfig')}</h3>
+                        <button type="button" class="text-sm underline" onClick={() => setEffectiveConfigOpen(false)}>{t('common.close')}</button>
                       </div>
                       {effectiveConfigLoading ? (
-                        <div class="text-sm text-muted-foreground">Loading…</div>
+                        <div class="text-sm text-muted-foreground">{t('settings.go2rtcLoading')}</div>
                       ) : effectiveConfig?.error ? (
-                        <div class="text-sm text-red-600">Failed to load: {effectiveConfig.error}</div>
+                        <div class="text-sm text-red-600">{t('settings.go2rtcLoadFailed', { message: effectiveConfig.error })}</div>
                       ) : effectiveConfig ? (
                         <div class="space-y-3">
                           {(() => {
@@ -595,7 +595,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                           })()}
                           {effectiveConfig.redaction_available === false ? (
                             <div class="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-500 rounded text-xs text-yellow-800 dark:text-yellow-200">
-                              libyaml unavailable on the server — secret redaction is SKIPPED. Treat this preview as if it contained your secrets in cleartext.
+                              {t('settings.go2rtcRedactionUnavailable')}
                             </div>
                           ) : null}
                           {Array.isArray(effectiveConfig.warnings) && effectiveConfig.warnings.length > 0 ? (
@@ -605,12 +605,12 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                           ) : null}
                           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                              <div class="text-xs font-medium mb-1">go2rtc.yaml (base)</div>
-                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.base || '(empty)'}</pre>
+                              <div class="text-xs font-medium mb-1">{t('settings.go2rtcBaseConfig')}</div>
+                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.base || t('settings.go2rtcEmpty')}</pre>
                             </div>
                             <div>
                               <div class="text-xs font-medium mb-1">override.yaml</div>
-                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.override || '(none)'}</pre>
+                              <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.override || t('settings.go2rtcNone')}</pre>
                             </div>
                           </div>
                         </div>

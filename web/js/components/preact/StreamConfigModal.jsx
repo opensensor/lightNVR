@@ -347,14 +347,10 @@ export function StreamConfigModal({
           const statusCode = response.status;
           const statusText = response.statusText || '';
           showStatusMessage(
-            t(
-              'streamConfig.zonesLoadFailed',
-              'Failed to load detection zones (HTTP {statusCode}{statusText}). Please try again or contact an administrator.',
-              {
-                statusCode,
-                statusText: statusText ? `: ${statusText}` : '',
-              }
-            ),
+            t('streamsConfig.zonesLoadFailed', {
+              statusCode,
+              statusText: statusText ? `: ${statusText}` : '',
+            }),
             'error'
           );
         }
@@ -362,11 +358,7 @@ export function StreamConfigModal({
         console.error('Error loading zones:', error);
         const errorMessage = (error && error.message) ? error.message : String(error || '');
         showStatusMessage(
-          t(
-            'streamConfig.zonesLoadError',
-            'An error occurred while loading detection zones. Details: {errorMessage}',
-            { errorMessage }
-          ),
+          t('streamsConfig.zonesLoadError', { errorMessage }),
           'error'
         );
       }
@@ -832,13 +824,13 @@ export function StreamConfigModal({
                             📅 {t('streamsConfig.onASchedule')}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            — restrict detection-triggered clips independently
+                            {t('streamsConfig.detectionScheduleHelpShort')}
                           </span>
                         </label>
                         {currentStream.detectionRecordOnSchedule && (
                           <div className="rounded-xl border border-primary/25 bg-background p-3 shadow-sm">
                             <p className="text-xs text-muted-foreground mb-3">
-                              External events are still annotated outside these hours, but they will not start a detection clip.
+                              {t('streamsConfig.detectionScheduleHelp')}
                             </p>
                             <RecordingScheduleGrid
                               schedule={currentStream.detectionRecordingSchedule?.length === HOURS_PER_WEEK
@@ -1226,7 +1218,7 @@ export function StreamConfigModal({
                         onChange={onInputChange}
                       />
                       <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.retentionDaysHelp')}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">-1 = inherit the global setting</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.inheritGlobalSetting')}</p>
                     </div>
                     <div>
                       <label htmlFor="detection-retention-days" className="block text-sm font-medium mb-2">
@@ -1243,7 +1235,7 @@ export function StreamConfigModal({
                         onChange={onInputChange}
                       />
                       <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.detectionRetentionDaysHelp')}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">-1 = inherit the global setting</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.inheritGlobalSetting')}</p>
                     </div>
                     <div>
                       <label htmlFor="max-storage-mb" className="block text-sm font-medium mb-2">
@@ -1375,7 +1367,7 @@ export function StreamConfigModal({
                             />
                             <span className="font-medium">{zone.name}</span>
                             <span className="text-sm text-muted-foreground">
-                              ({zone.polygon.length} points)
+                              {t('streamsConfig.zonePoints', { count: zone.polygon.length })}
                             </span>
                           </div>
                           <span className={`text-sm px-2 py-1 rounded ${zone.enabled ? 'bg-[hsl(var(--success-muted))] text-[hsl(var(--success-muted-foreground))]' : 'bg-muted text-muted-foreground'}`}>

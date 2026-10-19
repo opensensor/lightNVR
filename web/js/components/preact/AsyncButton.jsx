@@ -37,6 +37,7 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useAsyncAction } from '../../hooks/useAsyncAction.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Inline 16x16 spinner icon, rotated via Tailwind's `animate-spin`.
@@ -131,6 +132,7 @@ export function AsyncButton({
   type = 'button',
   ...rest
 }) {
+  const { t } = useI18n();
   const { run, pending, error } = useAsyncAction(onClick || (() => Promise.resolve()));
 
   // Track the brief success flash.
@@ -241,7 +243,7 @@ export function AsyncButton({
     content = (
       <span class="inline-flex items-center justify-center gap-2">
         <SpinnerIcon />
-        <span class="sr-only">Working…</span>
+        <span class="sr-only">{t('recordings.working')}</span>
       </span>
     );
   } else if (showSuccess) {

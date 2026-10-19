@@ -3,13 +3,14 @@
  */
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { t as translate, useI18n } from '../../i18n.js';
 
 /**
  * Sequential download: trigger one download per recording with a small delay.
  * @param {Array} recordings  Full recording objects (must have .id, .stream, .start_time)
  */
 async function downloadSequential(recordings) {
-  showStatusMessage(`Starting ${recordings.length} download${recordings.length !== 1 ? 's' : ''}…`);
+  showStatusMessage(translate(recordings.length === 1 ? 'recordings.startingDownloadOne' : 'recordings.startingDownloadMany', { count: recordings.length }));
   for (let i = 0; i < recordings.length; i++) {
     const r = recordings[i];
     const url = `/api/recordings/download/${r.id}`;
@@ -40,18 +41,18 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, filename }),
     });
-    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    if (!resp.ok) throw new Error(translate('recordings.serverError', { status: resp.status }));
     const { token, total } = await resp.json();
 
     // Poll status
     while (true) {
       await new Promise(r => setTimeout(r, 800));
       const st = await fetch(`/api/recordings/batch-download/status/${token}`);
-      if (!st.ok) throw new Error('Status poll failed');
+      if (!st.ok) throw new Error(translate('recordings.statusPollFailed'));
       const { status, current } = await st.json();
       onProgress(current, total);
       if (status === 'complete') break;
-      if (status === 'error')   throw new Error('ZIP creation failed on server');
+      if (status === 'error')   throw new Error(translate('recordings.zipCreationFailed'));
     }
 
     // Trigger download
@@ -63,7 +64,7 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
     document.body.removeChild(a);
     onComplete();
   } catch (err) {
-    onError(err.message || 'Unknown error');
+    onError(err.message || translate('recordings.unknownError'));
   }
 }
 
@@ -77,6 +78,7 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
  *   selectedIds  {Object}  – map of id → true for selected recordings
  */
 export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedIds = {} }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState('zip');          // 'zip' | 'sequential'
   const [zipName, setZipName] = useState('recordings.zip');
   const [busy, setBusy] = useState(false);
@@ -116,7 +118,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         ids,
         name.endsWith('.zip') ? name : name + '.zip',
         (cur, tot) => setProgress({ current: cur, total: tot }),
-        () => { setBusy(false); onClose(); showStatusMessage('ZIP download started'); },
+        () => { setBusy(false); onClose(); showStatusMessage(t('recordings.zipDownloadStarted')); },
         (msg) => { setBusy(false); setError(msg); }
       );
     }
@@ -129,9 +131,9 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 class="text-lg font-semibold mb-4">Download Selected Recordings</h2>
+        <h2 class="text-lg font-semibold mb-4">{t('recordings.downloadSelectedRecordings')}</h2>
         <p class="text-sm text-muted-foreground mb-4">
-          {selected.length} recording{selected.length !== 1 ? 's' : ''} selected
+          {t(selected.length === 1 ? 'recordings.recordingSelectedOne' : 'recordings.recordingSelectedMany', { count: selected.length })}
         </p>
 
         {/* Mode selector */}
@@ -140,16 +142,16 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             <input type="radio" name="dl-mode" value="zip" checked={mode === 'zip'}
               onChange={() => setMode('zip')} class="mt-0.5" />
             <div>
-              <div class="font-medium text-sm">ZIP archive (recommended)</div>
-              <div class="text-xs text-muted-foreground">All files packaged into a single .zip</div>
+              <div class="font-medium text-sm">{t('recordings.zipArchiveRecommended')}</div>
+              <div class="text-xs text-muted-foreground">{t('recordings.zipArchiveHelp')}</div>
             </div>
           </label>
           <label class="flex items-start gap-3 cursor-pointer">
             <input type="radio" name="dl-mode" value="sequential" checked={mode === 'sequential'}
               onChange={() => setMode('sequential')} class="mt-0.5" />
             <div>
-              <div class="font-medium text-sm">Sequential downloads</div>
-              <div class="text-xs text-muted-foreground">Each file downloaded separately (browser may block multiple tabs)</div>
+              <div class="font-medium text-sm">{t('recordings.sequentialDownloads')}</div>
+              <div class="text-xs text-muted-foreground">{t('recordings.sequentialDownloadsHelp')}</div>
             </div>
           </label>
         </div>
@@ -157,7 +159,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         {/* ZIP filename input */}
         {mode === 'zip' && (
           <div class="mb-5">
-            <label class="block text-sm font-medium mb-1">ZIP filename</label>
+            <label class="block text-sm font-medium mb-1">{t('recordings.zipFilename')}</label>
             <input
               type="text"
               value={zipName}
@@ -174,7 +176,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         {busy && (
           <div class="mb-4">
             <div class="flex justify-between text-xs text-muted-foreground mb-1">
-              <span>{mode === 'zip' ? 'Building ZIP…' : 'Downloading…'}</span>
+              <span>{t(mode === 'zip' ? 'recordings.buildingZip' : 'recordings.downloading')}</span>
               <span>{progress.current} / {progress.total}</span>
             </div>
             <div class="h-2 bg-muted rounded-full overflow-hidden">
@@ -196,14 +198,14 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             onClick={onClose}
             disabled={busy}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             class="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleDownload}
             disabled={busy || selected.length === 0}
           >
-            {busy ? 'Working…' : 'Download'}
+            {t(busy ? 'recordings.working' : 'common.download')}
           </button>
         </div>
       </div>

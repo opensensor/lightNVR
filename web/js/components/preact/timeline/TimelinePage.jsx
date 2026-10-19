@@ -1072,7 +1072,7 @@ export function TimelinePage() {
   useEffect(() => {
     if (streamsError) {
       console.error('TimelinePage: Error loading streams:', streamsError);
-      showStatusMessage('Error loading streams: ' + streamsError.message, 'error');
+      showStatusMessage(t('recordings.errorLoadingStreams', { message: streamsError.message }), 'error');
     }
   }, [streamsError]);
 
@@ -1107,16 +1107,16 @@ export function TimelinePage() {
           const uniqueStreams = [...new Set(segs.map(s => s.stream))];
           setSelectedStream(uniqueStreams.join(', '));
 
-          showStatusMessage(`Loaded ${segs.length} selected recording segments across ${availableDates.length} day${availableDates.length !== 1 ? 's' : ''}`, 'success');
+          showStatusMessage(t(availableDates.length === 1 ? 'timeline.loadedSelectedSegmentsOneDay' : 'timeline.loadedSelectedSegmentsManyDays', { count: segs.length, days: availableDates.length }), 'success');
         } else {
           setIdsTimelineSegments([]);
           loadSegmentsIntoTimeline([], selectedDate);
-          showStatusMessage('No recordings found for the selected IDs', 'info');
+          showStatusMessage(t('timeline.noRecordingsForSelectedIds'), 'info');
         }
       } catch (err) {
         console.error('Error fetching segments by IDs:', err);
         setIdsTimelineSegments([]);
-        showStatusMessage('Error loading selected recordings: ' + err.message, 'error');
+        showStatusMessage(t('timeline.errorLoadingSelectedRecordings', { message: err.message }), 'error');
       } finally {
         setIdsLoading(false);
       }
@@ -1196,7 +1196,7 @@ export function TimelinePage() {
   useEffect(() => {
     if (timelineError) {
       console.error('TimelinePage: Error loading timeline data:', timelineError.message);
-      showStatusMessage('Error loading timeline data: ' + timelineError.message, 'error');
+      showStatusMessage(t('timeline.errorLoadingData', { message: timelineError.message }), 'error');
       setSegments([]);
       setDetectionIntervals([]);
       return;
@@ -1210,7 +1210,7 @@ export function TimelinePage() {
 
     if (timelineSegments.length === 0) {
       loadSegmentsIntoTimeline([], selectedDate);
-      showStatusMessage('No recordings found for the selected date', 'warning');
+      showStatusMessage(t('timeline.noRecordingsForSelectedDate'), 'warning');
       return;
     }
 
@@ -1389,7 +1389,7 @@ export function TimelinePage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           <p className="text-muted-foreground text-lg">
-            {idsMode ? 'No selected recordings are visible for this day' : 'No recordings found for the selected date and stream'}
+            {t(idsMode ? 'timeline.noSelectedRecordingsVisible' : 'timeline.noRecordingsForDateAndStream')}
           </p>
         </div>
       );

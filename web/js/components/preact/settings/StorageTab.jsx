@@ -311,7 +311,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                   <div class="flex flex-wrap items-center gap-2">
                     <h4 class="font-semibold">{target.name}</h4>
                     {target.is_default && <span class="badge-info rounded-full px-2 py-0.5 text-xs font-semibold">{t('settings.storageTargets.default')}</span>}
-                    <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass(health.status)}`}>{health.status || 'unknown'}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass(health.status)}`}>{health.status || t('common.unknown')}</span>
                     {!objectStorage && <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${pressureClass(health.pressure)}`}>{t(`settings.storageTargets.pressure.${health.pressure || 'unavailable'}`)}</span>}
                     <span class="rounded-full bg-muted px-2 py-0.5 text-xs">{target.storage_class}</span>
                   </div>

@@ -4,6 +4,7 @@
 
 import { batchDeleteStatus } from '../../../utils/batch-delete-status.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { t } from '../../../i18n.js';
 import { prepareRecordingPlayback } from '../../../utils/recording-playback.js';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
@@ -234,11 +235,11 @@ export const recordingsAPI = {
         onSuccess: () => {
           // Invalidate recordings queries to refresh the list
           queryClient.invalidateQueries({ queryKey: ['recordings'] });
-          showStatusMessage('Recording deleted successfully');
+          showStatusMessage(t('timeline.recordingDeletedSuccessfully'));
         },
         onError: (error) => {
           console.error('Error deleting recording:', error);
-          showStatusMessage('Error deleting recording: ' + error.message);
+          showStatusMessage(t('recordings.errorDeletingRecording', { message: error.message }));
         }
       });
     },
@@ -268,7 +269,7 @@ export const recordingsAPI = {
         },
         onError: (error) => {
           console.error('Error in batch delete operation:', error);
-          showStatusMessage('Error in batch delete operation: ' + error.message);
+          showStatusMessage(t('recordings.errorBatchDelete', { message: error.message }));
         }
       });
     }
@@ -284,7 +285,7 @@ export const recordingsAPI = {
       return data || [];
     } catch (error) {
       console.error('Error loading streams for filter:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
+      showStatusMessage(t('recordings.errorLoadingStreams', { message: error.message }));
       return [];
     }
   },
@@ -366,7 +367,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error loading recordings:', error);
-      showStatusMessage('Error loading recordings: ' + error.message);
+      showStatusMessage(t('recordings.errorLoadingRecordings', { message: error.message }));
       throw error;
     }
   },
@@ -385,11 +386,11 @@ export const recordingsAPI = {
         retryDelay: 1000 // 1 second between retries
       });
 
-      showStatusMessage('Recording deleted successfully');
+      showStatusMessage(t('timeline.recordingDeletedSuccessfully'));
       return true;
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage('Error deleting recording: ' + error.message);
+      showStatusMessage(t('recordings.errorDeletingRecording', { message: error.message }));
       return false;
     }
   },
@@ -405,7 +406,7 @@ export const recordingsAPI = {
       .map(([id]) => parseInt(id, 10));
 
     if (selectedIds.length === 0) {
-      showStatusMessage('No recordings selected');
+      showStatusMessage(t('recordings.noRecordingsSelected'));
       return { succeeded: 0, failed: 0 };
     }
 
@@ -418,7 +419,7 @@ export const recordingsAPI = {
       return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
     } catch (error) {
       console.error('Error in batch delete operation:', error);
-      showStatusMessage('Error in batch delete operation: ' + error.message);
+      showStatusMessage(t('recordings.errorBatchDelete', { message: error.message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -447,7 +448,7 @@ export const recordingsAPI = {
       return await recordingsAPI.handleBatchDeleteResponse(response);
     } catch (error) {
       console.error('Error in HTTP batch delete operation:', error);
-      showStatusMessage('Error in batch delete operation: ' + error.message);
+      showStatusMessage(t('recordings.errorBatchDelete', { message: error.message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -560,7 +561,7 @@ export const recordingsAPI = {
       return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
     } catch (error) {
       console.error('Error in delete all operation:', error);
-      showStatusMessage('Error in delete all operation: ' + error.message);
+      showStatusMessage(t('recordings.errorDeleteAll', { message: error.message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -603,7 +604,7 @@ export const recordingsAPI = {
       return await recordingsAPI.handleBatchDeleteResponse(deleteResponse);
     } catch (error) {
       console.error('Error in HTTP delete all operation:', error);
-      showStatusMessage('Error in delete all operation: ' + error.message);
+      showStatusMessage(t('recordings.errorDeleteAll', { message: error.message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -681,7 +682,7 @@ export const recordingsAPI = {
     // Check if recording has an id property
     if (!recording.id) {
       console.error('Recording has no id property:', recording);
-      showStatusMessage('Error: Recording has no id property');
+      showStatusMessage(t('recordings.recordingMissingId'));
       return;
     }
 
@@ -783,7 +784,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error setting recording tags:', error);
-      showStatusMessage('Error setting tags: ' + error.message);
+      showStatusMessage(t('recordings.errorSettingTags', { message: error.message }));
       throw error;
     }
   },
@@ -808,7 +809,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error in batch tag update:', error);
-      showStatusMessage('Error updating tags: ' + error.message);
+      showStatusMessage(t('recordings.errorUpdatingTags', { message: error.message }));
       throw error;
     }
   },
@@ -823,7 +824,7 @@ export const recordingsAPI = {
       await prepareRecordingPlayback(downloadUrl, {
         compatibility: false,
         signal: AbortSignal.timeout(60 * 60 * 1000),
-        onWaiting: () => showStatusMessage('Preparing archived recording…'),
+        onWaiting: () => showStatusMessage(t('recordings.preparingArchivedRecording')),
       });
     } catch (error) {
       showStatusMessage(error.message || 'Unable to retrieve recording', 'error');
@@ -844,6 +845,6 @@ export const recordingsAPI = {
     link.click();
     document.body.removeChild(link);
 
-    showStatusMessage('Download started');
+    showStatusMessage(t('recordings.downloadStarted'));
   }
 };

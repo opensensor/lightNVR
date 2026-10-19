@@ -925,7 +925,7 @@ export function SettingsView() {
           >
             <div class="flex items-center justify-end gap-3">
               {isDirty ? (
-                <span class="text-xs text-muted-foreground">{t('settings.unsavedChanges') !== 'settings.unsavedChanges' ? t('settings.unsavedChanges') : 'Unsaved changes'}</span>
+                <span class="text-xs text-muted-foreground">{t('settings.unsavedChanges')}</span>
               ) : null}
               <AsyncButton
                 id="save-settings-btn"

@@ -907,7 +907,7 @@ export function TimelinePlayer({
         }, 0);
       }
 
-      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+      showStatusMessage(t('recordings.snapshotSaved', { fileName }), 'success', 2000);
     }, 'image/jpeg', 0.95);
   }, [segmentRecordingData, t]);
 
