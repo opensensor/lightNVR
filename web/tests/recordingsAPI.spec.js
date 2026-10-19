@@ -4,6 +4,13 @@ jest.mock('../js/components/preact/ToastContainer.jsx', () => ({
   showStatusMessage: jest.fn()
 }));
 
+jest.mock('../js/i18n.js', () => {
+  const english = require('../public/locales/en.json');
+  return {
+    t: (key, params = {}) => (english[key] || key).replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? '')),
+  };
+});
+
 jest.mock('../js/fetch-utils.js', () => ({
   fetchJSON: jest.fn(),
   enhancedFetch: jest.fn()

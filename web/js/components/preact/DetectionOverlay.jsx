@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { t } from '../../i18n.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { displayedVideoBox } from './useLiveDisplayMode.js';
 import { startDetectionPolling } from '../../utils/detection-polling.js';
@@ -266,7 +267,7 @@ export function drawDetectionsOnCanvas(ctx, width, height, detections) {
  */
 export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
   if (!videoRef.current || !canvasRef.current) {
-    showStatusMessage('Cannot take snapshot: Video not available', 'error');
+    showStatusMessage(t('live.snapshotVideoUnavailable'), 'error');
     return null;
   }
 
@@ -279,7 +280,7 @@ export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
 
   // Check if we have valid dimensions
   if (combinedCanvas.width === 0 || combinedCanvas.height === 0) {
-    showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions', 'error');
+    showStatusMessage(t('live.snapshotInvalidDimensions'), 'error');
     return null;
   }
 

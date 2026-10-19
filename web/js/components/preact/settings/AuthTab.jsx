@@ -33,7 +33,7 @@ export function AuthTab({
     <div class="space-y-6">
       {/* Authentication & access */}
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.authentication') || 'Authentication & Access'}</h3>
+        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.authentication')}</h3>
         <div data-setting-label={t('settings.enableAuthentication')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-auth-enabled" class="font-medium">{t('settings.enableAuthentication')}</label>
           <div class="col-span-2">

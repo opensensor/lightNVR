@@ -22,6 +22,7 @@ const HIDEABLE_COLUMNS = [
  * Inline tag cell with overlay toggle
  */
 function TagCell({ recording, onTagsChanged }) {
+  const { t } = useI18n();
   const [showOverlay, setShowOverlay] = useState(false);
   return (
     <td className="px-6 py-4">
@@ -35,7 +36,7 @@ function TagCell({ recording, onTagsChanged }) {
           <button
             className="p-0.5 rounded hover:bg-muted/70 transition-colors"
             onClick={() => setShowOverlay(!showOverlay)}
-            title="Manage tags"
+            title={t('recordings.manageTagsInline')}
           >
             <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
@@ -396,7 +397,7 @@ export function RecordingsTable({
                           <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
                           <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"></path>
                         </svg>
-                        Yes
+                        {t('common.yes')}
                       </span>
                     ) : ''}
                   </td>

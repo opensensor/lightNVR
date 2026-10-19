@@ -26,7 +26,7 @@ export function NetworkInfo({ systemInfo }) {
                 <span>{iface.address || t('system.noIp')}</span>
               </div>
               <div className="text-sm text-muted-foreground">
-                MAC: {iface.mac && iface.mac !== 'Unavailable' ? iface.mac : t('common.unknown')} | {iface.up === true ? t('system.up') : iface.up === false ? t('system.down') : t('common.unknown')}
+                {t('system.macLabel')} {iface.mac && iface.mac !== 'Unavailable' ? iface.mac : t('common.unknown')} | {iface.up === true ? t('system.up') : iface.up === false ? t('system.down') : t('common.unknown')}
                 {iface.capability && iface.capability !== 'available' ? ` · ${iface.capability}` : ''}
               </div>
             </div>

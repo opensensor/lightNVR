@@ -258,7 +258,7 @@ function RecordingCard({
             <svg class="w-12 h-12 opacity-30 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
             </svg>
-            <span class="text-xs mt-2 opacity-50">Loading...</span>
+            <span class="text-xs mt-2 opacity-50">{t('common.loading')}</span>
           </div>
         ) : (
           <div
@@ -269,7 +269,7 @@ function RecordingCard({
             <svg class="w-12 h-12 opacity-40 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <span class="text-xs mt-2 opacity-60">Tap to retry</span>
+            <span class="text-xs mt-2 opacity-60">{t('recordings.tapToRetry')}</span>
           </div>
         )}
 
@@ -348,7 +348,7 @@ function RecordingCard({
             <div class="mb-1">
               <div class="flex items-center justify-between gap-2">
                 <span class="font-medium text-sm truncate" title={recording.stream}>
-                  {recording.stream || 'Unknown'}
+                  {recording.stream || t('common.unknown')}
                 </span>
                 <span class="text-xs text-muted-foreground whitespace-nowrap">
                   {formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}

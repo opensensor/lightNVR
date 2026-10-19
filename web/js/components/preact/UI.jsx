@@ -7,7 +7,7 @@ import { createContext } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { useI18n } from '../../i18n.js';
+import { t as translate, useI18n } from '../../i18n.js';
 import { formatUtils } from './recordings/formatUtils.js';
 import { formatFilenameTimestamp, nowMilliseconds } from '../../utils/date-utils.js';
 import dayjs from 'dayjs';
@@ -54,23 +54,24 @@ export const ModalContext = createContext({
  * @returns {JSX.Element} DeleteConfirmationModal component
  */
 export function DeleteConfirmationModal(props) {
+  const { t } = useI18n();
   const { isOpen, onClose, onConfirm, mode, count, recordingName } = props;
 
   if (!isOpen) return null;
 
   // Determine title and message based on mode
-  let title = 'Confirm Delete';
-  let message = 'Are you sure you want to delete this item?';
+  let title = t('recordings.confirmDelete');
+  let message = t('recordings.confirmDeleteItem');
 
   if (mode === 'single') {
-    title = 'Delete Recording';
-    message = `Are you sure you want to delete this recording from ${recordingName || 'this stream'}? This action cannot be undone.`;
+    title = t('timeline.deleteRecording');
+    message = t('recordings.confirmDeleteFromStream', { stream: recordingName || t('recordings.thisStream') });
   } else if (mode === 'selected') {
-    title = 'Delete Selected Recordings';
-    message = `Are you sure you want to delete ${count} selected recording${count !== 1 ? 's' : ''}?`;
+    title = t('recordings.deleteSelectedRecordings');
+    message = t(count === 1 ? 'recordings.confirmDeleteSelectedOne' : 'recordings.confirmDeleteSelectedMany', { count });
   } else if (mode === 'all') {
-    title = 'Delete All Filtered Recordings';
-    message = 'Are you sure you want to delete all recordings matching the current filters? This action cannot be undone.';
+    title = t('recordings.deleteAllFilteredRecordings');
+    message = t('recordings.confirmDeleteAllFiltered');
   }
 
   // Handle escape key
@@ -105,13 +106,13 @@ export function DeleteConfirmationModal(props) {
             class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
             onClick={onClose}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
             onClick={onConfirm}
           >
-            Delete
+            {t('common.delete')}
           </button>
         </div>
       </div>
@@ -129,6 +130,7 @@ export function DeleteConfirmationModal(props) {
  * @returns {JSX.Element} SnapshotPreviewModal component
  */
 export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, onDownload }) {
+  const { t } = useI18n();
   const modalRef = useRef(null);
 
   useEffect(() => {
@@ -176,11 +178,12 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
       <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style={{ width: '90%' }}>
         <div className="flex justify-between items-center p-4 border-b border-border">
           <h3 id="snapshot-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
-            {streamName ? `Snapshot: ${streamName}` : 'Snapshot'}
+            {streamName ? t('recordings.snapshotOfStream', { stream: streamName }) : t('timeline.snapshot')}
           </h3>
           <button
             className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             onClick={onClose}
+            aria-label={t('common.close')}
           >
             ✕
           </button>
@@ -190,7 +193,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
             id="snapshot-preview-image"
             className="max-w-full max-h-[70vh] mx-auto"
             src={imageData}
-            alt="Snapshot"
+            alt={t('timeline.snapshot')}
           />
         </div>
         <div className="p-4 border-t border-border flex justify-end space-x-2">
@@ -199,14 +202,14 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
             className="btn-primary"
             onClick={onDownload}
           >
-            Download
+            {t('common.download')}
           </button>
           <button
             id="snapshot-close-btn"
             className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
             onClick={onClose}
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
       </div>
@@ -231,7 +234,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const [timeWindow, setTimeWindow] = useState(2);
   const [detections, setDetections] = useState([]);
   const [recordingData, setRecordingData] = useState(null);
-  const [detectionStatus, setDetectionStatus] = useState('No detections loaded');
+  const [detectionStatus, setDetectionStatus] = useState(() => t('recordings.noDetectionsLoaded'));
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
   const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -310,7 +313,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
           if (startTime === 0 || endTime === 0) {
             console.error('Failed to parse recording timestamps:', data.start_time, data.end_time);
-            setDetectionStatus('Error: Invalid recording timestamps');
+            setDetectionStatus(t('recordings.invalidRecordingTimestamps'));
             return;
           }
 
@@ -327,14 +330,14 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
           setDetections(fetchedDetections);
 
           if (fetchedDetections.length > 0) {
-            setDetectionStatus(`${fetchedDetections.length} detection${fetchedDetections.length !== 1 ? 's' : ''} available`);
+            setDetectionStatus(t(fetchedDetections.length === 1 ? 'recordings.detectionAvailableOne' : 'recordings.detectionAvailableMany', { count: fetchedDetections.length }));
           } else {
-            setDetectionStatus('No detections found for this recording');
+            setDetectionStatus(t('recordings.noDetectionsForRecording'));
           }
         }
       } catch (error) {
         console.error('Error fetching data:', error);
-        setDetectionStatus('Error loading detections');
+        setDetectionStatus(t('recordings.errorLoadingDetections'));
       }
     };
 
@@ -366,10 +369,10 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ protected: newState }),
       });
-      if (!response.ok) throw new Error(`Failed to ${newState ? 'protect' : 'unprotect'} recording`);
+      if (!response.ok) throw new Error(t(newState ? 'recordings.protectFailed' : 'recordings.unprotectFailed'));
       setIsProtected(newState);
       showStatusMessage(
-        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
+        t(newState ? 'recordings.recordingProtected' : 'recordings.recordingProtectionRemoved'),
         'success'
       );
 
@@ -379,7 +382,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }));
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
     }
   }, [recordingId, isProtected]);
 
@@ -388,8 +391,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     if (!recordingId) return;
     try {
       const response = await fetch(`/api/recordings/${recordingId}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete recording');
-      showStatusMessage('Recording deleted successfully', 'success');
+      if (!response.ok) throw new Error(t('timeline.failedToDeleteRecording'));
+      showStatusMessage(t('timeline.recordingDeletedSuccessfully'), 'success');
       setShowDeleteConfirm(false);
 
       // Notify RecordingsView to remove the recording locally
@@ -400,7 +403,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       onClose();
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
       setShowDeleteConfirm(false);
     }
   }, [recordingId, onClose]);
@@ -410,7 +413,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     if (!videoRef.current) return;
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) {
-      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      showStatusMessage(t('timeline.cannotTakeSnapshotVideoNotLoaded'), 'error');
       return;
     }
     const canvas = document.createElement('canvas');
@@ -425,7 +428,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
     canvas.toBlob((blob) => {
       if (!blob) {
-        showStatusMessage('Failed to create snapshot', 'error');
+        showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
         return;
       }
       const blobUrl = URL.createObjectURL(blob);
@@ -438,7 +441,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         if (document.body.contains(link)) document.body.removeChild(link);
         URL.revokeObjectURL(blobUrl);
       }, 1000);
-      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+      showStatusMessage(t('recordings.snapshotSaved', { fileName }), 'success', 2000);
     }, 'image/jpeg', 0.95);
   }, [recordingData]);
 
@@ -507,9 +510,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
     // Update status
     if (visibleDetections.length > 0) {
-      setDetectionStatus(`Showing ${visibleDetections.length} detection${visibleDetections.length !== 1 ? 's' : ''} at current time`);
+      setDetectionStatus(t(visibleDetections.length === 1 ? 'recordings.showingDetectionOne' : 'recordings.showingDetectionMany', { count: visibleDetections.length }));
     } else {
-      setDetectionStatus(`No detections at current time (${detections.length} total)`);
+      setDetectionStatus(t('recordings.noDetectionsAtCurrentTime', { count: detections.length }));
     }
 
     // Draw each visible detection using letterbox-aware coordinates
@@ -604,7 +607,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     const video = videoRef.current;
     setPlaybackMessage('');
     return loadRecordingPlayback(video, videoUrl, {
-      onPreparing: () => setPlaybackMessage('Preparing a compatible version for this browser…'),
+      onPreparing: () => setPlaybackMessage(t('recordings.preparingCompatiblePlayback')),
       onReady: () => setPlaybackMessage(''),
       onError: error => setPlaybackMessage(error.message),
     });
@@ -708,7 +711,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }
     } catch (error) {
       console.error('Error toggling fullscreen:', error);
-      showStatusMessage(`Could not toggle fullscreen mode: ${error.message}`, 'error');
+      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
     }
   }, []);
 
@@ -774,11 +777,12 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
         <div className="flex justify-between items-center p-2 sm:p-3 border-b border-border flex-shrink-0">
           <h3 id="video-preview-title" className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
-            {title || 'Video'}
+            {title || t('recordings.video')}
           </h3>
           <button
             className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
             onClick={onClose}
+            aria-label={t('common.close')}
           >
             ✕
           </button>
@@ -827,7 +831,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
           <div id="recordings-controls" className="mx-2 sm:mx-3 mb-2 sm:mb-3 p-2 sm:p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain md:flex-none">
             <h3 className="text-base font-bold text-center mb-2 text-foreground">
-              PLAYBACK CONTROLS
+              {t('recordings.playbackControls')}
             </h3>
 
             <div className="flex justify-center mb-3">
@@ -835,9 +839,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 type="button"
                 className="px-3 py-1.5 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
                 onClick={handleToggleFullscreen}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                title={t(isFullscreen ? 'timeline.exitFullscreen' : 'timeline.enterFullscreen')}
               >
-                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                {t(isFullscreen ? 'timeline.exitFullscreen' : 'timeline.fullscreen')}
               </button>
             </div>
 
@@ -845,7 +849,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               {/* Speed controls section */}
               <div className="border-b border-border pb-3 md:border-b-0 md:border-r md:pr-3 md:pb-0">
                 <h4 className="font-bold text-center mb-2 text-foreground text-sm">
-                  Playback Speed
+                  {t('recordings.playbackSpeed')}
                 </h4>
 
                 <div className="flex flex-wrap justify-center gap-1.5">
@@ -860,20 +864,20 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       data-speed={speed}
                       onClick={() => handleSpeedChange(speed)}
                     >
-                      {speed === 1.0 ? '1× (Normal)' : `${speed}×`}
+                      {speed === 1.0 ? t('recordings.normalSpeed') : `${speed}×`}
                     </button>
                   ))}
                 </div>
 
                 <div id="current-speed-indicator" className="mt-2 text-center font-medium text-green-600 dark:text-green-400 text-xs">
-                  Current Speed: {currentSpeed}× {currentSpeed === 1.0 ? '(Normal)' : ''}
+                  {t('recordings.currentSpeed', { speed: `${currentSpeed}×` })} {currentSpeed === 1.0 ? t('recordings.normalSpeedSuffix') : ''}
                 </div>
               </div>
 
               {/* Detection overlay section */}
               <div className="pt-3 md:pt-0 md:pl-3">
                 <h4 className="font-bold text-center mb-2 text-foreground text-sm">
-                  Detection Overlays
+                  {t('recordings.detectionOverlays')}
                 </h4>
 
                 <div className="flex flex-col items-center gap-1.5">
@@ -890,7 +894,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       htmlFor="detection-overlay-checkbox"
                       className="text-xs font-medium text-foreground"
                     >
-                      Show Detection Overlays
+                      {t('recordings.showDetectionOverlays')}
                     </label>
                   </div>
 
@@ -899,7 +903,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       htmlFor="detection-sensitivity-slider"
                       className="text-xs font-medium text-foreground mb-1"
                     >
-                      Detection Sensitivity
+                      {t('recordings.detectionSensitivity')}
                     </label>
 
                     <input
@@ -914,7 +918,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     />
 
                     <div id="detection-sensitivity-value" className="text-xs text-muted-foreground text-center mb-1">
-                      Time Window: {timeWindow} second{timeWindow !== 1 ? 's' : ''}
+                      {t(timeWindow === 1 ? 'recordings.timeWindowOne' : 'recordings.timeWindowMany', { count: timeWindow })}
                     </div>
                   </div>
 
@@ -941,7 +945,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Snapshot
+                {t('timeline.snapshot')}
               </button>
               {/* Download */}
               {downloadUrl && (
@@ -953,7 +957,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Download
+                  {t('common.download')}
                 </a>
               )}
               {/* View in Timeline */}
@@ -975,7 +979,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Timeline
+                    {t('nav.timeline')}
                   </a>
                 );
               })()}
@@ -988,7 +992,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                   }`}
                   onClick={handleToggleProtection}
-                  title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+                  title={t(isProtected ? 'recordings.unprotect' : 'recordings.protect')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     {isProtected ? (
@@ -997,7 +1001,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
                     )}
                   </svg>
-                  {isProtected ? 'Protected' : 'Protect'}
+                  {t(isProtected ? 'recordings.protected' : 'recordings.protectAction')}
                 </button>
               )}
               {/* Delete */}
@@ -1010,7 +1014,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Delete
+                  {t('common.delete')}
                 </button>
               )}
             </div>
@@ -1021,8 +1025,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               onClose={() => setShowDeleteConfirm(false)}
               onConfirm={handleDeleteRecording}
               title={t('timeline.deleteRecording')}
-              message="Are you sure you want to delete this recording? This action cannot be undone."
-              confirmLabel="Delete"
+              message={t('timeline.deleteRecordingConfirmation')}
+              confirmLabel={t('common.delete')}
             />
           </div>
         </div>
@@ -1037,6 +1041,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
  * Provides modal context and renders modal components
  */
 export function ModalProvider({ children }) {
+  const { t } = useI18n();
   const [snapshotModal, setSnapshotModal] = useState({
     isOpen: false,
     imageData: '',
@@ -1079,7 +1084,7 @@ export function ModalProvider({ children }) {
 
       if (!imageData) {
         console.error('No image data available for download');
-        showStatusMessage('Download failed: No image data available', 'error', 5000);
+        showStatusMessage(t('recordings.snapshotDownloadMissingData'), 'error', 5000);
         return;
       }
 
@@ -1099,10 +1104,10 @@ export function ModalProvider({ children }) {
         }
       }, 100);
 
-      showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
+      showStatusMessage(t('recordings.snapshotDownloaded'), 'success', 3000);
     } catch (error) {
       console.error('Error in snapshot download process:', error);
-      showStatusMessage('Download failed: ' + error.message, 'error', 5000);
+      showStatusMessage(t('recordings.downloadFailed', { message: error.message }), 'error', 5000);
     }
   }, [snapshotModal]);
 
@@ -1201,7 +1206,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     );
   }).catch(err => {
     console.error('Error rendering video modal:', err);
-    showStatusMessage('Error showing video modal: ' + err.message, 'error');
+    showStatusMessage(translate('recordings.errorShowingVideo', { message: err.message }), 'error');
   });
 }
 
@@ -1247,10 +1252,10 @@ export function showSnapshotPreview(imageData, streamName) {
           }
         }, 100);
 
-        showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
+        showStatusMessage(translate('recordings.snapshotDownloaded'), 'success', 3000);
       } catch (error) {
         console.error('Error downloading snapshot:', error);
-        showStatusMessage('Download failed: ' + error.message, 'error', 5000);
+        showStatusMessage(translate('recordings.downloadFailed', { message: error.message }), 'error', 5000);
       }
     };
 
@@ -1269,6 +1274,6 @@ export function showSnapshotPreview(imageData, streamName) {
     );
   }).catch(err => {
     console.error('Error rendering snapshot modal:', err);
-    showStatusMessage('Error showing snapshot preview: ' + err.message, 'error');
+    showStatusMessage(translate('recordings.errorShowingSnapshot', { message: err.message }), 'error');
   });
 }

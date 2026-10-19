@@ -1613,7 +1613,7 @@ export function StreamsView() {
               <option value="disabled">{t('availability.disabled')}</option>
               <option value="all">{t('availability.all')}</option>
             </select>
-            <span className="font-medium">{t('streams.sortBy') || 'Sort by'}:</span>
+            <span className="font-medium">{t('streams.sortBy')}:</span>
             {[
               { key: 'name',       label: t('common.name') },
               { key: 'status',     label: t('common.status') },

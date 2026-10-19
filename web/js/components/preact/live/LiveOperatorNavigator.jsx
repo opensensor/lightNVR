@@ -412,7 +412,7 @@ export function LiveOperatorNavigator({
                     onSurfaceChange('plan');
                   }}>
                   <strong>{plan.name}</strong>
-                  <small>{liveCount}/{(plan.cameras || []).length} live · {(plan.cameras || []).length} placed</small>
+                  <small>{t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length })}</small>
                 </button>
               </div>
             );

@@ -496,7 +496,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
           style={{ zIndex: 8 }}
           title={rendererError}
         >
-          ePTZ unavailable
+          {t('live.eptzUnavailable')}
         </span>
       )}
     </>

@@ -1720,7 +1720,7 @@ export function WebRTCVideoCell({
                 opacity: 0.7
               }}
             >
-              {talkMode === 'ptt' ? 'PTT' : 'TOG'}
+              {t(talkMode === 'ptt' ? 'live.pushToTalkShort' : 'live.toggleTalkShort')}
             </button>
             {/* Main microphone button */}
             <button

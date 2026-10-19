@@ -12,12 +12,6 @@ import { useI18n } from '../../../i18n.js';
 
 /* ── helpers ────────────────────────────────────────────────── */
 
-const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December'
-];
-
 /** Parse YYYY-MM-DD into local Date at midnight */
 function parseLocal(str) {
   return dayjs(str);
@@ -41,7 +35,7 @@ function buildGrid(year, month) {
 /* ── component ──────────────────────────────────────────────── */
 
 export function CalendarPicker({ value, onChange }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const today = dayjs().format('YYYY-MM-DD');
   const selected = value || today;
 
@@ -80,9 +74,9 @@ export function CalendarPicker({ value, onChange }) {
     else setViewMonth(m => m + 1);
   };
   const goToday = () => {
-    const t = dayjs();
-    setViewYear(t.year());
-    setViewMonth(t.month());
+    const currentDate = dayjs();
+    setViewYear(currentDate.year());
+    setViewMonth(currentDate.month());
     pick(today);
   };
 
@@ -98,7 +92,12 @@ export function CalendarPicker({ value, onChange }) {
 
   /* ── display helpers ── */
   const displayDate = parseLocal(selected);
-  const displayStr = `${MONTHS[displayDate.month()]} ${displayDate.date()}, ${displayDate.year()}`;
+  const dateFormatter = new Intl.DateTimeFormat(locale, { dateStyle: 'long' });
+  const monthFormatter = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' });
+  const weekdayFormatter = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+  const displayStr = dateFormatter.format(displayDate.toDate());
+  const weekdays = Array.from({ length: 7 }, (_, day) =>
+    weekdayFormatter.format(new Date(2023, 0, 1 + day)));
 
   return (
     <div className="relative" ref={wrapperRef} data-testid="date-picker">
@@ -161,7 +160,7 @@ export function CalendarPicker({ value, onChange }) {
             </button>
 
             <span className="font-semibold text-sm select-none">
-              {MONTHS[viewMonth]} {viewYear}
+              {monthFormatter.format(new Date(viewYear, viewMonth, 1))}
             </span>
 
             <button type="button" onClick={nextMonth}
@@ -176,7 +175,7 @@ export function CalendarPicker({ value, onChange }) {
 
           {/* Day-of-week headers */}
           <div className="grid grid-cols-7 text-center text-xs text-muted-foreground mb-1">
-            {DAYS.map(d => <span key={d} className="py-1">{d}</span>)}
+            {weekdays.map((day, index) => <span key={index} className="py-1">{day}</span>)}
           </div>
 
           {/* Day cells */}
@@ -214,7 +213,7 @@ export function CalendarPicker({ value, onChange }) {
               onClick={goToday}
               className="text-xs px-3 py-1 rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
             >
-              Today
+              {t('recordings.today')}
             </button>
           </div>
         </div>

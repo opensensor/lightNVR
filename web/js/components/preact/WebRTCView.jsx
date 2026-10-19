@@ -624,7 +624,7 @@ export function WebRTCView({ audioDisabled = false, isAutoDisabled = false, isWe
       console.log('Entering fullscreen mode for video cell');
       requestNativeFullscreen(cellElement).catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
-        showStatusMessage(`Could not enable fullscreen mode: ${err.message}`);
+        showStatusMessage(t('live.couldNotEnableFullscreen', { message: err.message }));
       });
     } else {
       console.log('Exiting fullscreen mode');

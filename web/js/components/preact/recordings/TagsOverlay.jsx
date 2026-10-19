@@ -88,7 +88,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     try {
       await recordingsAPI.setRecordingTags(recording.id, newTags);
       if (onTagsChanged) onTagsChanged(recording.id, newTags);
-      showStatusMessage(`Tag "${trimmed}" added`);
+      showStatusMessage(t('recordings.tagAdded', { tag: trimmed }));
     } catch { /* error shown by API */ }
     setSaving(false);
   }, [tags, recording.id, onTagsChanged]);
@@ -100,7 +100,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     try {
       await recordingsAPI.setRecordingTags(recording.id, newTags);
       if (onTagsChanged) onTagsChanged(recording.id, newTags);
-      showStatusMessage(`Tag "${tag}" removed`);
+      showStatusMessage(t('recordings.tagRemoved', { tag }));
     } catch { /* error shown by API */ }
     setSaving(false);
   }, [tags, recording.id, onTagsChanged]);
@@ -122,14 +122,14 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     >
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium flex items-center gap-1">
-          <TagIcon className="w-3.5 h-3.5" /> Recording Tags
+          <TagIcon className="w-3.5 h-3.5" /> {t('recordings.recordingTags')}
         </span>
         <button class="text-muted-foreground hover:text-foreground text-xs" onClick={onClose}>✕</button>
       </div>
 
       {/* Current tags */}
       <div class="flex flex-wrap gap-1 mb-2 min-h-[24px]">
-        {tags.length === 0 && <span class="text-xs text-muted-foreground italic">No tags</span>}
+        {tags.length === 0 && <span class="text-xs text-muted-foreground italic">{t('recordings.noTags')}</span>}
         {tags.map(tag => <TagChip key={tag} tag={tag} onRemove={removeTag} />)}
       </div>
 
@@ -226,12 +226,12 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
         // Remove from all
         await recordingsAPI.batchUpdateRecordingTags(selectedIds, [], [tag]);
         setTagStates(prev => ({ ...prev, [tag]: 'none' }));
-        showStatusMessage(`Tag "${tag}" removed from ${selectedIds.length} recordings`);
+        showStatusMessage(t('recordings.tagRemovedFromRecordings', { tag, count: selectedIds.length }));
       } else {
         // 'none' or 'some' -> add to all
         await recordingsAPI.batchUpdateRecordingTags(selectedIds, [tag], []);
         setTagStates(prev => ({ ...prev, [tag]: 'all' }));
-        showStatusMessage(`Tag "${tag}" added to ${selectedIds.length} recordings`);
+        showStatusMessage(t('recordings.tagAddedToRecordings', { tag, count: selectedIds.length }));
       }
       if (onTagsChanged) onTagsChanged();
     } catch { /* error shown by API */ }
@@ -248,7 +248,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
       if (!allTags.includes(trimmed)) setAllTags(prev => [...prev, trimmed].sort());
       setInputValue('');
       setShowSuggestions(false);
-      showStatusMessage(`Tag "${trimmed}" added to ${selectedIds.length} recordings`);
+      showStatusMessage(t('recordings.tagAddedToRecordings', { tag: trimmed, count: selectedIds.length }));
       if (onTagsChanged) onTagsChanged();
     } catch { /* error shown by API */ }
     setSaving(false);
@@ -271,14 +271,14 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     >
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium flex items-center gap-1">
-          <TagIcon className="w-3.5 h-3.5" /> Recording Tags ({selectedIds.length} recordings)
+          <TagIcon className="w-3.5 h-3.5" /> {t('recordings.recordingTagsCount', { count: selectedIds.length })}
         </span>
         <button class="text-muted-foreground hover:text-foreground text-xs" onClick={onClose}>✕</button>
       </div>
 
       {/* Tag list with tri-state checkboxes */}
       <div class="max-h-48 overflow-y-auto mb-2 space-y-0.5">
-        {knownTags.length === 0 && <span class="text-xs text-muted-foreground italic">No tags yet</span>}
+        {knownTags.length === 0 && <span class="text-xs text-muted-foreground italic">{t('recordings.noTagsYet')}</span>}
         {knownTags.map(tag => {
           const state = tagStates[tag];
           return (

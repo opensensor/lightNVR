@@ -37,9 +37,9 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
       </div>
 
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.streamsDefaults') || 'Streams Defaults'}</h3>
+        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.streamsDefaults')}</h3>
         <p class="text-sm text-muted-foreground mb-4">
-          {t('settings.streamsDefaultsDescription') || 'Defaults applied to new streams. Per-stream overrides always win.'}
+          {t('settings.streamsDefaultsDescription')}
         </p>
         <div data-setting-label={t('settings.defaultPreDetectionBufferSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-default-pre-buffer" class="font-medium">{t('settings.defaultPreDetectionBufferSeconds')}</label>
