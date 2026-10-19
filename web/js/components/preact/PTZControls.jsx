@@ -6,6 +6,8 @@
 
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useI18n } from '../../i18n.js';
+import { showSuccessToast, showErrorToast } from './ToastContainer.jsx';
+import { getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome } from './ptzActions.js';
 
 /**
  * PTZ API functions
@@ -34,22 +36,12 @@ const ptzApi = {
     return response.json();
   },
 
-  async getPresets(streamName) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/presets`);
-    return response.json();
-  },
-
   async gotoPreset(streamName, token) {
     const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/goto-preset`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })
     });
-    return response.json();
-  },
-
-  async getCapabilities(streamName) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/capabilities`);
     return response.json();
   }
 };
@@ -106,15 +98,74 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
   const [presets, setPresets] = useState([]);
   const [isMoving, setIsMoving] = useState(false);
   const [error, setError] = useState(null);
+  const [capabilities, setCapabilities] = useState(null);
+  const [canManage, setCanManage] = useState(true);
+  const [presetName, setPresetName] = useState('');
+  const [showPresetForm, setShowPresetForm] = useState(false);
+  const [confirmSetHome, setConfirmSetHome] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Load capabilities and presets
   useEffect(() => {
     if (!stream?.name || !stream?.ptz_enabled) return;
 
-    ptzApi.getPresets(stream.name)
-      .then(data => setPresets(data.presets || []))
+    let active = true;
+    setCapabilities(null);
+    setCanManage(true);
+    setPresets([]);
+    setPresetName('');
+    setShowPresetForm(false);
+    setConfirmSetHome(false);
+    getPtzCapabilities(stream.name)
+      .then(data => { if (active) setCapabilities(data); })
+      .catch(err => console.error('Failed to get PTZ capabilities:', err));
+    getPtzPresets(stream.name)
+      .then(data => { if (active) setPresets(data.presets || []); })
       .catch(err => console.error('Failed to get PTZ presets:', err));
+    return () => { active = false; };
   }, [stream?.name, stream?.ptz_enabled]);
+
+  const handleActionFailure = useCallback((err, message) => {
+    if (err.status === 403) {
+      setCanManage(false);
+      setShowPresetForm(false);
+      setConfirmSetHome(false);
+    }
+    showErrorToast(message);
+    console.error(message, err);
+  }, []);
+
+  const handleSavePreset = useCallback(async (event) => {
+    event.preventDefault();
+    const name = presetName.trim();
+    if (!stream?.name || !name || saving) return;
+    setSaving(true);
+    try {
+      await savePtzPreset(stream.name, name, setPresets);
+      setShowPresetForm(false);
+      setPresetName('');
+      showSuccessToast(t('live.ptzPresetSaved'));
+    } catch (err) {
+      handleActionFailure(err, t(err.stage === 'refresh'
+        ? 'live.ptzPresetRefreshFailed' : 'live.ptzPresetSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }, [stream?.name, presetName, saving, t, handleActionFailure]);
+
+  const handleSetHome = useCallback(async () => {
+    if (!stream?.name || saving) return;
+    setSaving(true);
+    try {
+      await setPtzHome(stream.name);
+      setConfirmSetHome(false);
+      showSuccessToast(t('live.ptzHomeSet'));
+    } catch (err) {
+      handleActionFailure(err, t('live.ptzSetHomeFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }, [stream?.name, saving, t, handleActionFailure]);
 
   // Handle continuous move
   const handleMoveStart = useCallback((pan, tilt, zoom) => {
@@ -184,7 +235,9 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
         <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>{t('live.ptzControl')}</span>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t('common.close')}
             style={{
               background: 'none',
               border: 'none',
@@ -216,7 +269,9 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
           onMouseLeave={handleMoveStop}
         />
         <button
+          type="button"
           onClick={handleHome}
+          aria-label={t('live.goToHomePosition')}
           style={{
             width: '40px',
             height: '40px',
@@ -269,6 +324,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
         <span style={{ color: 'white', fontSize: '11px' }}>{t('live.speedLabel')}</span>
         <input
           type="range"
+          aria-label={t('live.speedLabel')}
           min="0.1"
           max="1"
           step="0.1"
@@ -283,6 +339,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       {presets.length > 0 && (
         <div style={{ marginTop: '4px' }}>
           <select
+            aria-label={t('live.goToPreset')}
             onChange={(e) => e.target.value && handlePreset(e.target.value)}
             style={{
               width: '100%',
@@ -303,6 +360,58 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
             ))}
           </select>
         </div>
+      )}
+
+      {canManage && capabilities?.has_presets && (
+        showPresetForm ? (
+          <form onSubmit={handleSavePreset} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label htmlFor="ptz-preset-name" style={{ color: 'white', fontSize: '11px' }}>
+              {t('live.ptzPresetName')}
+              <input
+                id="ptz-preset-name"
+                type="text"
+                aria-label={t('live.ptzPresetName')}
+                value={presetName}
+                onInput={(event) => setPresetName(event.currentTarget.value)}
+                maxLength={64}
+                required
+                style={{ padding: '6px', borderRadius: '4px' }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button type="submit" disabled={saving || !presetName.trim()} aria-label={t('live.ptzSavePreset')}>
+                {t('live.ptzSavePreset')}
+              </button>
+              <button type="button" disabled={saving} onClick={() => setShowPresetForm(false)} aria-label={t('common.cancel')}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" onClick={() => { setConfirmSetHome(false); setShowPresetForm(true); }} aria-label={t('live.ptzSaveCurrentPosition')}>
+            {t('live.ptzSaveCurrentPosition')}
+          </button>
+        )
+      )}
+
+      {canManage && capabilities?.has_home_position && (
+        confirmSetHome ? (
+          <div style={{ color: 'white', fontSize: '11px' }}>
+            <span>{t('live.ptzConfirmSetHome')}</span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button type="button" disabled={saving} onClick={handleSetHome} aria-label={t('live.ptzSetHome')}>
+                {t('live.ptzSetHome')}
+              </button>
+              <button type="button" disabled={saving} onClick={() => setConfirmSetHome(false)} aria-label={t('common.cancel')}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => { setShowPresetForm(false); setConfirmSetHome(true); }} aria-label={t('live.ptzSetCurrentPositionHome')}>
+            {t('live.ptzSetCurrentPositionHome')}
+          </button>
+        )
       )}
 
       {/* Error message */}
