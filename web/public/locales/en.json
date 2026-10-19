@@ -1079,6 +1079,7 @@
   "recordings.tags": "Tags",
   "recordings.downloadSelectedTitle": "Download selected recordings",
   "recordings.manageTagsButton": "Manage Tags",
+  "recordings.manageTagsInline": "Manage tags",
   "recordings.manageTagsTitle": "Manage tags for selected recordings",
   "recordings.columnCaptureMethod": "Capture Method",
   "recordings.columnStartTime": "Start Time",

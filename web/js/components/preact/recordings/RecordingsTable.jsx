@@ -36,7 +36,7 @@ function TagCell({ recording, onTagsChanged }) {
           <button
             className="p-0.5 rounded hover:bg-muted/70 transition-colors"
             onClick={() => setShowOverlay(!showOverlay)}
-            title={t('recordings.manageTagsButton')}
+            title={t('recordings.manageTagsInline')}
           >
             <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
