@@ -107,19 +107,7 @@ No additional configuration is required for basic functionality.
 
 ### WebRTC URLs
 
-WebRTC stream URLs follow this format:
-
-```
-http://[server-address]:[go2rtc-port]/webrtc/[stream-id]
-```
-
-For example, if your server is at `192.168.1.100`, go2rtc is running on port `1984`, and your stream ID is `camera1`, the WebRTC URL would be:
-
-```
-http://192.168.1.100:1984/webrtc/camera1
-```
-
-These URLs can be used in web applications that support WebRTC, including the LightNVR web interface.
+Browser signaling uses the dashboard origin through the authenticated routes documented in [Reverse Proxy & HTTPS](REVERSE_PROXY.md). WebRTC SDP is posted to `/go2rtc/api/webrtc?src=<stream-id>`; MSE connects to `/go2rtc/api/ws?src=<stream-id>`. Keep port 1984 on loopback.
 
 ## Configuration
 
@@ -135,7 +123,7 @@ Example configuration:
 
 ```yaml
 api:
-  listen: :1984
+  listen: 127.0.0.1:1984
 
 webrtc:
   ice_servers:

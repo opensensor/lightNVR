@@ -12,8 +12,7 @@
 
 # Test configuration uses different ports to avoid conflicts with production
 api:
-  listen: :11984
-  origin: "*"
+  listen: 127.0.0.1:11984
   # Note: base_path removed for simpler API access during testing
   # Use base_path: /go2rtc (no trailing slash) when running behind lightNVR's reverse proxy
 

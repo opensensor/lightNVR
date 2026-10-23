@@ -66,7 +66,7 @@ init_config() {
 ; LightNVR Configuration File (INI format)
 
 [general]
-pid_file = /var/run/lightnvr.pid
+pid_file = /var/run/lightnvr/lightnvr.pid
 log_file = /var/log/lightnvr/lightnvr.log
 log_level = 2  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
 syslog_enabled = false
@@ -188,7 +188,7 @@ EOF
     
     # Create go2rtc config directory if it doesn't exist
     mkdir -p /etc/lightnvr/go2rtc
-    chown -R "$(id -u):$(id -g)" /etc/lightnvr/go2rtc
+    # Volume ownership must be prepared by the operator before startup.
     
     # Always regenerate go2rtc.yaml fresh at startup to avoid stale/corrupted
     # configs from prior versions causing stream errors (see issue #165).
@@ -207,8 +207,7 @@ EOF
     cat > /etc/lightnvr/go2rtc/go2rtc.yaml << 'EOF'
 # go2rtc configuration file
 api:
-  listen: :1984
-  origin: "*"
+  listen: 127.0.0.1:1984
   base_path: /go2rtc
 
 rtsp:
@@ -241,48 +240,8 @@ EOF
         log_info "No models to copy, skipping model initialization"
     fi
     
-    # Ensure proper permissions (may fail on NFS, which is okay)
-    # Skip entirely if the user opts out via environment variable
-    if [ "${SKIP_PERMISSIONS_CHECK:-false}" = "true" ]; then
-        log_info "Skipping permissions check (SKIP_PERMISSIONS_CHECK=true)"
-    else
-        log_info "Setting permissions..."
-        CURRENT_UID="$(id -u)"
-        CURRENT_GID="$(id -g)"
-
-        # Recursive chown/chmod on small directories only (config, logs, database, models)
-        for dir in /etc/lightnvr /var/log/lightnvr \
-                   /var/lib/lightnvr/data/database /var/lib/lightnvr/data/models; do
-            [ -d "$dir" ] || continue
-            chown -R "${CURRENT_UID}:${CURRENT_GID}" "$dir" 2>/dev/null || log_warn "Could not set ownership on $dir (may be on NFS)"
-            chmod -R 755 "$dir" 2>/dev/null || log_warn "Could not set permissions on $dir (may be on NFS)"
-        done
-
-        # For data directories that may contain hundreds of thousands of recording
-        # files, only fix the directory itself (non-recursive) to avoid an O(n)
-        # walk that can block startup for hours on large deployments (see #368).
-        for dir in /var/lib/lightnvr /var/lib/lightnvr/data \
-                   /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/recordings/mp4 \
-                   /var/lib/lightnvr/www; do
-            [ -d "$dir" ] || continue
-            chown "${CURRENT_UID}:${CURRENT_GID}" "$dir" 2>/dev/null || true
-            chmod 755 "$dir" 2>/dev/null || true
-        done
-
-        # Per-stream subdirectories (one per camera) — chown one level deep
-        # so a data volume mounted from a host with a different UID still ends
-        # up writable. Bounded by camera count, NOT file count: -mindepth 1
-        # -maxdepth 1 -type d skips the recording files inside. Even a
-        # 100-camera deployment touches at most ~200 entries here.
-        for parent in /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/recordings/mp4; do
-            [ -d "$parent" ] || continue
-            find "$parent" -mindepth 1 -maxdepth 1 -type d \
-                -exec chown "${CURRENT_UID}:${CURRENT_GID}" {} + 2>/dev/null || true
-            find "$parent" -mindepth 1 -maxdepth 1 -type d \
-                -exec chmod 755 {} + 2>/dev/null || true
-        done
-    fi
-
+    # Do not recursively chown or chmod mounted operator files. In particular,
+    # retain 0600 permissions on credentials and go2rtc overrides.
     # Test write permissions on critical directories
     log_info "Testing write permissions..."
     for test_dir in "/var/lib/lightnvr/data" "/etc/lightnvr" "/var/log/lightnvr"; do
@@ -291,7 +250,8 @@ EOF
             rm -f "$test_file" 2>/dev/null
             log_info "Write permission OK: $test_dir"
         else
-            log_error "No write permission: $test_dir - This may cause issues!"
+            log_error "No write permission: $test_dir - prepare volume ownership for UID:GID $(id -u):$(id -g)"
+            exit 1
         fi
     done
 
@@ -329,7 +289,7 @@ generate_go2rtc_config_from_settings() {
 
 # Remove any stale PID file left over from a previous container run.
 # When a container is stopped and restarted (without being recreated) the
-# container filesystem is preserved, so /var/run/lightnvr.pid may still exist
+# container filesystem is preserved, so /var/run/lightnvr/lightnvr.pid may still exist
 # with the PID from the old run.  In the new container the PID namespace
 # restarts from 1, meaning that old PID can be reused by an unrelated process
 # (e.g. go2rtc or a shell).  If LightNVR then finds that PID it would send
@@ -337,8 +297,8 @@ generate_go2rtc_config_from_settings() {
 # Removing the stale file here, before LightNVR starts, prevents that.
 cleanup_stale_pid_file() {
     # Determine the PID file path.  Try to read it from the config; fall back
-    # to the compiled-in default of /var/run/lightnvr.pid.
-    local pid_file="/var/run/lightnvr.pid"
+    # to the container default of /var/run/lightnvr/lightnvr.pid.
+    local pid_file="/var/run/lightnvr/lightnvr.pid"
     if [ -f /etc/lightnvr/lightnvr.ini ]; then
         local cfg_val
         cfg_val=$(grep -E '^\s*pid_file\s*=' /etc/lightnvr/lightnvr.ini \

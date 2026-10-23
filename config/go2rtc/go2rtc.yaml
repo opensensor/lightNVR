@@ -1,7 +1,6 @@
 # go2rtc configuration file
 api:
-  listen: :1984
-  origin: "*"
+  listen: 127.0.0.1:1984
   base_path: /go2rtc
 
 rtsp:

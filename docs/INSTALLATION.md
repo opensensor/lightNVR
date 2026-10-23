@@ -164,9 +164,11 @@ docker run -d \
   --name lightnvr \
   --restart unless-stopped \
   -p 8080:8080 \
-  -p 1984:1984 \
-  -v /path/to/config:/etc/lightnvr \
-  -v /path/to/data:/var/lib/lightnvr/data \
+  --security-opt no-new-privileges --cap-drop ALL \
+  -v lightnvr-config:/etc/lightnvr \
+  -v lightnvr-database:/var/lib/lightnvr/data/database \
+  -v lightnvr-recordings:/var/lib/lightnvr/data/recordings \
+  -v lightnvr-models:/var/lib/lightnvr/data/models \
   ghcr.io/opensensor/lightnvr:latest
 ```
 
@@ -602,9 +604,11 @@ docker run -d \
   --name lightnvr \
   --restart unless-stopped \
   -p 8080:8080 \
-  -p 1984:1984 \
-  -v /path/to/config:/etc/lightnvr \
-  -v /path/to/data:/var/lib/lightnvr/data \
+  --security-opt no-new-privileges --cap-drop ALL \
+  -v lightnvr-config:/etc/lightnvr \
+  -v lightnvr-database:/var/lib/lightnvr/data/database \
+  -v lightnvr-recordings:/var/lib/lightnvr/data/recordings \
+  -v lightnvr-models:/var/lib/lightnvr/data/models \
   ghcr.io/opensensor/lightnvr:latest
 ```
 

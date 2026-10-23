@@ -189,7 +189,7 @@ netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 conne
 New-NetFirewallRule -DisplayName "LightNVR Web UI" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
 ```
 
-Repeat for any other port you need to expose (8554 RTSP, 8555 WebRTC, 1984 go2rtc).
+Repeat for any other port you need to expose (8554 RTSP, 8555 WebRTC).
 With NAT, **ONVIF auto-discovery by multicast will not work** — see
 [Adding cameras](#7-adding-cameras).
 
@@ -207,7 +207,6 @@ podman run -d `
   -p 8554:8554 `
   -p 8555:8555 `
   -p 8555:8555/udp `
-  -p 1984:1984 `
   -v lightnvr-config:/etc/lightnvr `
   -v lightnvr-data:/var/lib/lightnvr/data `
   -e TZ=America/New_York `
@@ -236,7 +235,7 @@ Then open **http://localhost:8080**.
 | Port | Purpose | Needed? |
 |---|---|---|
 | 8080 | Web UI and API | Always |
-| 1984 | go2rtc API | Yes — the UI's live view uses it |
+| 1984 | Internal go2rtc API | No — use authenticated same-origin proxy routes |
 | 8554 | RTSP restream | Only if other apps pull streams from LightNVR |
 | 8555 TCP+UDP | WebRTC | Only for low-latency live view from other devices |
 
@@ -329,7 +328,6 @@ PublishPort=8080:8080
 PublishPort=8554:8554
 PublishPort=8555:8555
 PublishPort=8555:8555/udp
-PublishPort=1984:1984
 Volume=lightnvr-config:/etc/lightnvr
 Volume=lightnvr-data:/var/lib/lightnvr/data
 Environment=TZ=America/New_York
@@ -389,7 +387,6 @@ causes problems.
 | "database is locked", corruption | Database on a `C:\` bind mount | Move to a named volume — [Storage](#storage-decide-this-before-you-start) |
 | Container killed unexpectedly | WSL VM memory too low | Raise `memory=` in `.wslconfig`, `wsl --shutdown`, restart |
 | Everything stops after a reboot | Machine only starts at logon | [Keeping it running](#keeping-it-running) |
-| Live view black, UI otherwise fine | go2rtc port not published | Ensure `-p 1984:1984` |
 
 Container logs are the first place to look:
 

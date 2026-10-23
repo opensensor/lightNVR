@@ -276,9 +276,8 @@ RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Create basic configuration file
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "api:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
-    echo "  listen: :1984" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  listen: 127.0.0.1:1984" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "  base_path: /go2rtc" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
-    echo '  origin: "*"' >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "webrtc:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "  ice_servers:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
@@ -415,12 +414,22 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY docker-start.sh /bin/start.sh
 RUN chmod +x /bin/start.sh
 
+# Run the recorder and its managed go2rtc child without root privileges.
+RUN groupadd --gid 10001 lightnvr && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin lightnvr && \
+    mkdir -p /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/database \
+      /var/lib/lightnvr/data/models /var/log/lightnvr /var/run/lightnvr && \
+    chmod -R go-w /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
+    chown -R 10001:10001 /etc/lightnvr /var/lib/lightnvr/data \
+      /var/log/lightnvr /var/run/lightnvr
+
+USER 10001:10001
+
 # Define volumes for persistent data only
 # Note: Do NOT mount /var/lib/lightnvr directly as it will overwrite web assets
-VOLUME ["/etc/lightnvr", "/var/lib/lightnvr/data"]
+VOLUME ["/etc/lightnvr", "/var/lib/lightnvr/data/database", "/var/lib/lightnvr/data/recordings", "/var/lib/lightnvr/data/models"]
 
 # Expose ports
-EXPOSE 8080 8554 8555 8555/udp 1984
+EXPOSE 8080 8554 8555 8555/udp
 
 # Environment variables for configuration
 ENV GO2RTC_CONFIG_PERSIST=true \
