@@ -15,12 +15,16 @@ services:
       - "8554:8554"     # RTSP
       - "8555:8555"     # WebRTC TCP
       - "8555:8555/udp" # WebRTC UDP
-      - "1984:1984"     # go2rtc API
     volumes:
-      # Only mount what needs persistence
-      # DO NOT mount /var/lib/lightnvr directly - it will overwrite web assets!
-      - ./config:/etc/lightnvr
-      - ./data:/var/lib/lightnvr/data
+      # Named config/database volumes avoid exposing broad host directories.
+      - lightnvr-config:/etc/lightnvr
+      - lightnvr-database:/var/lib/lightnvr/data/database
+      - ./data/recordings:/var/lib/lightnvr/data/recordings
+      - lightnvr-models:/var/lib/lightnvr/data/models
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       # Timezone configuration
       - TZ=UTC  # Change to your timezone (e.g., America/New_York, Europe/London)
@@ -44,3 +48,7 @@ networks:
   lightnvr:
     driver: bridge
 
+volumes:
+  lightnvr-config:
+  lightnvr-database:
+  lightnvr-models:

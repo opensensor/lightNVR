@@ -70,58 +70,19 @@ export async function getGo2rtcApiPort() {
 }
 
 /**
- * Get the go2rtc base URL for HTTP API calls (HLS, WebRTC SDP, etc.)
- *
- * Uses the active api.base_path from the applied go2rtc override.
- * The default prefix is /go2rtc; an empty prefix serves APIs at the root.
- *
- * Over HTTPS: Routes through an external reverse proxy at the configured prefix.
- * The proxy must handle both HTTP and WebSocket connections.
- *
- * Over HTTP (local dev): lightNVR's built-in /go2rtc/* proxy only handles HLS
- * and snapshots (not WebRTC). WebRTC must connect directly to go2rtc's port
- * to avoid the latency and buffering of an extra HTTP proxy hop.
- *
- * @returns {Promise<string>} - go2rtc base URL (e.g., "https://hostname/go2rtc" or "http://hostname:1984/go2rtc")
+ * Media signaling stays on the authenticated site origin. MSE/WebRTC require
+ * the exact reverse-proxy routes described in docs/REVERSE_PROXY.md.
  */
 export async function getGo2rtcBaseUrl() {
   const settings = await getSettings();
-  const basePath = settings.go2rtc_base_path ?? '/go2rtc';
-  // Over HTTPS, use the external reverse proxy (nginx, ingress, etc.)
-  // which must handle HTTP and WebSocket at the configured prefix.
-  if (window.location.protocol === 'https:') {
-    return `${window.location.origin}${basePath}`;
-  }
-
-  // Over HTTP (local dev), connect directly to go2rtc's port
-  // because lightNVR's proxy doesn't handle WebRTC endpoints
-  const port = settings.go2rtc_api_port || 1984;
-  return `http://${window.location.hostname}:${port}${basePath}`;
+  return `${window.location.origin}${settings.go2rtc_base_path ?? '/go2rtc'}`;
 }
 
-/**
- * Get the go2rtc WebSocket URL for MSE streaming.
- *
- * lightNVR's reverse proxy at /go2rtc/* uses curl (HTTP-only) and CANNOT
- * handle WebSocket upgrade requests. MSE streaming requires a WebSocket
- * connection, so it must connect directly to go2rtc, bypassing the proxy.
- *
- * Over HTTP:  ws://hostname:go2rtc_port/go2rtc  (direct to go2rtc)
- * Over HTTPS: wss://hostname/go2rtc              (external reverse proxy handles WS)
- *
- * @returns {Promise<string>} - WebSocket-compatible go2rtc base URL
- */
+/** Get the same-origin WebSocket base URL for MSE streaming. */
 export async function getGo2rtcWebSocketUrl() {
   const settings = await getSettings();
-  const basePath = settings.go2rtc_base_path ?? '/go2rtc';
-  // Over HTTPS, the external reverse proxy (nginx, HA ingress, etc.) handles
-  // WebSocket upgrades natively at the configured prefix.
-  if (window.location.protocol === 'https:') {
-    return `wss://${window.location.host}${basePath}`;
-  }
-  // Over HTTP, connect directly to go2rtc's port (bypass lightNVR's HTTP-only proxy)
-  const port = settings.go2rtc_api_port || 1984;
-  return `ws://${window.location.hostname}:${port}${basePath}`;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${settings.go2rtc_base_path ?? '/go2rtc'}`;
 }
 
 // Default browser-side WebRTC live-view timeouts (milliseconds). These mirror

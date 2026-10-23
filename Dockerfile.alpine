@@ -118,14 +118,27 @@ COPY --from=builder /lib/libsod.so.1 /lib/libsod.so
 # Copy database migrations
 COPY --from=builder /opt/db/migrations/ /usr/share/lightnvr/migrations/
 
+# Use a PID location writable by the runtime user.
+RUN sed -i 's|/var/run/lightnvr.pid|/var/run/lightnvr/lightnvr.pid|g' /etc/lightnvr/lightnvr.ini
+
 # Expose required ports
 EXPOSE 8080
+
+# Run the recorder and its managed go2rtc child without root privileges.
+RUN addgroup -g 10001 -S lightnvr && adduser -u 10001 -S -D -H -G lightnvr lightnvr && \
+    mkdir -p /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/database \
+      /var/lib/lightnvr/data/models /var/log/lightnvr /var/run/lightnvr && \
+    chmod -R go-w /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
+    chown -R 10001:10001 /etc/lightnvr /var/lib/lightnvr/data \
+      /var/log/lightnvr /var/run/lightnvr
+
+USER 10001:10001
 
 # Volume for configuration and data persistence
 # /etc/lightnvr - Configuration files
 # /var/lib/lightnvr/data - Persistent data (database, recordings, models, etc.)
 VOLUME /etc/lightnvr
-VOLUME /var/lib/lightnvr/data
+VOLUME /var/lib/lightnvr/data/database /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/models
 
 # Command to start the service
 CMD ["/bin/lightnvr", "-c", "/etc/lightnvr/lightnvr.ini"]

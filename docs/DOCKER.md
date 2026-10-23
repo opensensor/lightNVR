@@ -1,5 +1,35 @@
 # Docker Deployment Guide
 
+## Security migration: non-root runtime and private go2rtc API
+
+Images run as UID:GID `10001:10001`. Port 1984 is internal and bound to loopback.
+MSE/WebRTC now require the authenticated exact routes in [Reverse Proxy](REVERSE_PROXY.md),
+with the proxy sharing LightNVR's network namespace. HLS and snapshots work through
+LightNVR's authenticated HTTP proxy.
+
+The repository Compose file uses named volumes for config, database, and models,
+and a bind mount only for `./data/recordings`. Before the first start, prepare that
+recordings directory for UID:GID 10001:10001. Existing deployments must retain or
+migrate their config, database, and models before switching volume layouts; otherwise
+Docker creates empty volumes and the recorder appears unconfigured. Stop the recorder
+and back up the data before migrating. You can keep existing mounts during migration,
+provided they contain only LightNVR state and are writable by the runtime UID.
+
+For existing bind mounts, change ownership of the specific LightNVR directories to
+10001:10001 on the host. The entrypoint no longer changes ownership or permissions
+recursively. Preserve restrictive permissions on credentials and `override.yaml`.
+Change an existing `pid_file = /var/run/lightnvr.pid` to
+`pid_file = /var/run/lightnvr/lightnvr.pid` in `lightnvr.ini`.
+Root-owned application binaries and web assets stay outside writable volumes.
+Do not mount host roots, Docker sockets, or unrelated host data into the recorder.
+
+The bundled go2rtc rejects `exec:`, `echo:`, and `expr:` sources, including config-file
+streams and redirect results. FFmpeg sources accept network URLs or registered stream
+names and supported codec/input presets; raw command fragments, local file/device
+inputs, and arbitrary filter/query parameters are rejected. The supported synthetic
+`virtual?video=...` test patterns accept only validated pattern parameters.
+
+
 *Verified against LightNVR 0.37.x.*
 
 This guide provides comprehensive information about deploying LightNVR using Docker.
@@ -39,15 +69,23 @@ services:
       - "8554:8554"     # RTSP
       - "8555:8555"     # WebRTC TCP
       - "8555:8555/udp" # WebRTC UDP
-      - "1984:1984"     # go2rtc API
     volumes:
-      # DO NOT mount /var/lib/lightnvr directly - it will overwrite web assets!
-      - ./config:/etc/lightnvr
-      - ./data:/var/lib/lightnvr/data
+      - lightnvr-config:/etc/lightnvr
+      - lightnvr-database:/var/lib/lightnvr/data/database
+      - lightnvr-recordings:/var/lib/lightnvr/data/recordings
+      - lightnvr-models:/var/lib/lightnvr/data/models
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     environment:
       - TZ=UTC  # Change to your timezone (e.g., America/New_York)
       # ONVIF discovery network for containers, e.g. 192.168.1.0/24
       # - LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
+volumes:
+  lightnvr-config:
+  lightnvr-database:
+  lightnvr-recordings:
+  lightnvr-models:
 ```
 
 Then start it:
@@ -76,9 +114,11 @@ docker run -d \
   -p 8554:8554 \
   -p 8555:8555 \
   -p 8555:8555/udp \
-  -p 1984:1984 \
-  -v ./config:/etc/lightnvr \
-  -v ./data:/var/lib/lightnvr/data \
+  --security-opt no-new-privileges --cap-drop ALL \
+  -v lightnvr-config:/etc/lightnvr \
+  -v lightnvr-database:/var/lib/lightnvr/data/database \
+  -v lightnvr-recordings:/var/lib/lightnvr/data/recordings \
+  -v lightnvr-models:/var/lib/lightnvr/data/models \
   -e TZ=America/New_York \
   ghcr.io/opensensor/lightnvr:latest
 ```
@@ -157,9 +197,7 @@ NFS volumes may have different permission models than local filesystems. If you 
          device: ":/volume1/docker/lightnvr/config"
    ```
 
-2. **UID/GID mapping**: The container runs as root by default. Ensure your NFS export allows root access or map UIDs appropriately:
-   - On Synology NAS: Enable "Map all users to admin" or "Squash" options in NFS permissions
-   - Or use `all_squash,anonuid=1000,anongid=1000` in NFS export options
+2. **UID/GID mapping**: The container runs as UID:GID `10001:10001`. Grant that identity access to the dedicated LightNVR export, or map it to a dedicated NAS service account. Keep root squashing enabled.
 
 3. **Directory pre-creation**: For better reliability with NFS, pre-create the directory structure on your NAS:
    ```bash
@@ -168,7 +206,7 @@ NFS volumes may have different permission models than local filesystems. If you 
    mkdir -p /volume1/docker/lightnvr/data/recordings/mp4
    mkdir -p /volume1/docker/lightnvr/data/database
    mkdir -p /volume1/docker/lightnvr/data/models
-   chmod -R 755 /volume1/docker/lightnvr
+   chown -R 10001:10001 /volume1/docker/lightnvr
    ```
 
 #### Recording Issues on NFS
@@ -227,7 +265,7 @@ copy-on-first-run step. This means:
 | 8080 | TCP | Web UI | Main web interface |
 | 8554 | TCP | RTSP | RTSP streaming server |
 | 8555 | TCP/UDP | WebRTC | WebRTC streaming |
-| 1984 | TCP | go2rtc API | go2rtc REST API |
+| 1984 | TCP | Internal go2rtc API | Loopback only; do not publish |
 
 ### Network Modes
 
@@ -241,7 +279,6 @@ services:
       - "8554:8554"
       - "8555:8555"
       - "8555:8555/udp"
-      - "1984:1984"
 ```
 
 #### Host Mode (For Better Performance)

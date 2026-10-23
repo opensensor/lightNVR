@@ -110,7 +110,7 @@ void test_generate_startup_config_uses_saved_webrtc_settings(void) {
 
     char *contents = read_text_file(config_path);
     TEST_ASSERT_NOT_NULL(contents);
-    TEST_ASSERT_NOT_NULL(strstr(contents, "  listen: :31984"));
+    TEST_ASSERT_NOT_NULL(strstr(contents, "  listen: 127.0.0.1:31984"));
     TEST_ASSERT_NOT_NULL(strstr(contents, "  listen: \":31554\""));
     TEST_ASSERT_NOT_NULL(strstr(contents, "  listen: \":31555\""));
     TEST_ASSERT_NOT_NULL(strstr(contents, "    - \"192.168.50.10:31555\""));

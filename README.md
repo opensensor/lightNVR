@@ -426,16 +426,20 @@ docker run -d \
   -p 8554:8554 \
   -p 8555:8555 \
   -p 8555:8555/udp \
-  -p 1984:1984 \
-  -v ./config:/etc/lightnvr \
-  -v ./data:/var/lib/lightnvr/data \
+  --security-opt no-new-privileges --cap-drop ALL \
+  -v lightnvr-config:/etc/lightnvr \
+  -v lightnvr-database:/var/lib/lightnvr/data/database \
+  -v lightnvr-recordings:/var/lib/lightnvr/data/recordings \
+  -v lightnvr-models:/var/lib/lightnvr/data/models \
   -e TZ=America/New_York \
   ghcr.io/opensensor/lightnvr:latest
 ```
 
 #### Volume Mounts Explained
 
-The container uses two volume mounts for persistence:
+The example uses named volumes for config, database, recordings, and models. Existing bind mounts must be owned by UID:GID `10001:10001`; see the [migration notes](docs/DOCKER.md#security-migration-non-root-runtime-and-private-go2rtc-api) before upgrading. MSE/WebRTC require the authenticated [reverse-proxy routes](docs/REVERSE_PROXY.md).
+
+Persistent paths:
 
 - **`/etc/lightnvr`** - Configuration files
   - `lightnvr.ini` - Main configuration
@@ -453,7 +457,7 @@ The container uses two volume mounts for persistence:
 - **8080** - Web UI (HTTP)
 - **8554** - RTSP streaming
 - **8555** - WebRTC (TCP/UDP)
-- **1984** - go2rtc API
+- **1984** - internal go2rtc API, bound to loopback; do not publish
 
 #### Environment Variables
 
