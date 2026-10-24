@@ -51,12 +51,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Extract version from tag
+      - name: Determine package version
         id: version
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            # Manual branch builds validate fixes without moving release tags.
+            VERSION=$(sed -n 's/^project(LightNVR VERSION \([0-9][0-9.]*\) .*/\1/p' CMakeLists.txt)
+          fi
+          test -n "$VERSION"
+          dpkg --validate-version "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         if: matrix.platform == 'linux/arm/v7'

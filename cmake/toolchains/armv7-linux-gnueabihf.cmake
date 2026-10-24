@@ -31,6 +31,12 @@ set(CMAKE_CXX_FLAGS_INIT "${_LIGHTNVR_ARMV7_FLAGS}")
 # without embedding builder paths in the resulting executable.
 set(_LIGHTNVR_ARMV7_RPATH_LINK
     "-Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/lib/arm-linux-gnueabihf")
+# Trixie's FFmpeg pulls in libsphinxbase, whose BLAS/LAPACK dependencies
+# live in provider subdirectories. The target's ldconfig/alternatives setup
+# does not supply these search paths to the host cross-linker.
+string(APPEND _LIGHTNVR_ARMV7_RPATH_LINK
+    " -Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/usr/lib/arm-linux-gnueabihf/blas"
+    " -Wl,-rpath-link,${LIGHTNVR_ARMV7_SYSROOT}/usr/lib/arm-linux-gnueabihf/lapack")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${_LIGHTNVR_ARMV7_RPATH_LINK}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_LIGHTNVR_ARMV7_RPATH_LINK}")
 
