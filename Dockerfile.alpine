@@ -4,7 +4,7 @@ ARG SQLITE_AUTOCONF_VERSION=3530400
 ARG LIBUV_VERSION=1.52.1
 ARG LLHTTP_VERSION=9.3.1
 
-FROM alpine:latest AS builder
+FROM alpine:3.24 AS builder
 
 ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
@@ -83,7 +83,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     ./scripts/install.sh --prefix=/ --without-systemd --without-ldconfig
 
 # Stage 2: Minimal runtime image
-FROM alpine:latest AS final
+FROM alpine:3.24 AS final
 
 # Install runtime dependencies
 RUN apk update && apk add --no-cache \
@@ -102,6 +102,8 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
 
 # Copy compiled binary and config files from builder stage
+RUN apk add --no-cache brotli-libs=1.2.1-r0
+
 COPY --from=builder /bin/lightnvr /bin/lightnvr
 COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
 COPY --from=builder /usr/lib/libuv.so* /usr/lib/
