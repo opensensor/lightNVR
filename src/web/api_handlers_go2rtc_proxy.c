@@ -2,10 +2,10 @@
  * @file api_handlers_go2rtc_proxy.c
  * @brief Streaming reverse proxy handler for forwarding requests to go2rtc
  *
- * Proxies HLS and snapshot requests to the local go2rtc instance with:
+ * Proxies HLS, snapshots and WebRTC signaling to the local go2rtc instance with:
  * - Streaming pass-through (no buffering)
  * - Concurrency limiting (semaphore-based)
- * - Scoped to HLS/snapshot endpoints only
+ * - Scoped to explicitly authorized endpoints only
  */
 
 #include "video/go2rtc/go2rtc_api.h"
@@ -136,6 +136,7 @@ typedef enum {
     GO2RTC_PROXY_RELOAD,
     GO2RTC_PROXY_MANIFEST,
     GO2RTC_PROXY_SNAPSHOT,
+    GO2RTC_PROXY_WEBRTC,
     GO2RTC_PROXY_HLS
 } go2rtc_proxy_endpoint_t;
 
@@ -145,6 +146,7 @@ static go2rtc_proxy_endpoint_t classify_proxy_path(const char *path) {
     if (strcmp(path, "/go2rtc/api/reload") == 0) return GO2RTC_PROXY_RELOAD;
     if (strcmp(path, "/go2rtc/api/stream.m3u8") == 0) return GO2RTC_PROXY_MANIFEST;
     if (strcmp(path, "/go2rtc/api/frame.jpeg") == 0) return GO2RTC_PROXY_SNAPSHOT;
+    if (strcmp(path, "/go2rtc/api/webrtc") == 0) return GO2RTC_PROXY_WEBRTC;
     // go2rtc uses fixed HLS filenames; session IDs belong in the query string.
     // Exact matches reject dot segments, encoded separators and path suffixes
     // before curl or go2rtc can interpret them as a different API endpoint.
@@ -232,6 +234,31 @@ static bool authorize_hls_session_request(const http_request_t *req,
     return true;
 }
 
+/* Only the browser's playback src parameter is supported. In particular,
+ * never forward publishing (dst), duplicate keys or ambiguous query syntax.
+ * Decode without truncation so policy and go2rtc see the identical name. */
+static bool parse_webrtc_source(const char *query, char *name, size_t capacity) {
+    if (strncmp(query, "src=", 4) != 0 || query[4] == '\0') return false;
+    size_t length = 0;
+    for (const unsigned char *p = (const unsigned char *)query + 4; *p; p++) {
+        unsigned char value = *p;
+        if (value == '&' || value == ';' || value == '#' || isspace(value)) return false;
+        if (value == '%') {
+            if (!p[1] || !p[2] || !isxdigit(p[1]) || !isxdigit(p[2])) return false;
+            unsigned int decoded;
+            if (sscanf((const char *)p + 1, "%2x", &decoded) != 1) return false;
+            value = (unsigned char)decoded;
+            p += 2;
+        } else if (value == '+') {
+            value = ' ';
+        }
+        if (value < 0x20 || value == 0x7f || length + 1 >= capacity) return false;
+        name[length++] = (char)value;
+    }
+    name[length] = '\0';
+    return length > 0;
+}
+
 bool go2rtc_proxy_authorize_request(const http_request_t *req,
                                     http_response_t *res) {
     if (!req || !res) return false;
@@ -240,7 +267,8 @@ bool go2rtc_proxy_authorize_request(const http_request_t *req,
         http_response_set_json_error(res, 404, "Not found");
         return false;
     }
-    const char *allowed_method = endpoint == GO2RTC_PROXY_RELOAD ? "POST" : "GET";
+    const char *allowed_method =
+        endpoint == GO2RTC_PROXY_RELOAD || endpoint == GO2RTC_PROXY_WEBRTC ? "POST" : "GET";
     if (strcmp(req->method_str, allowed_method) != 0) {
         http_response_set_json_error(res, 405, "Method not allowed");
         http_response_add_header(res, "Allow", allowed_method);
@@ -251,6 +279,22 @@ bool go2rtc_proxy_authorize_request(const http_request_t *req,
     }
     char stream_name[MAX_STREAM_NAME] = {0};
     authorization_action_t action = AUTHZ_LIVE_VIEW;
+    if (endpoint == GO2RTC_PROXY_WEBRTC) {
+        if (!parse_webrtc_source(req->query_string, stream_name, sizeof(stream_name))) {
+            http_response_set_json_error(res, 400, "Expected a single src camera");
+            return false;
+        }
+        if (httpd_authorize_media_stream_action(req, res, action, stream_name)) return true;
+        // Managed substreams are registered as <camera>_sub. Only fall back
+        // when that name is absent, never when an existing camera was denied.
+        size_t length = strlen(stream_name);
+        if (res->status_code != 404 || length <= 4 ||
+            strcmp(stream_name + length - 4, "_sub") != 0) return false;
+        stream_name[length - 4] = '\0';
+        http_response_free(res);
+        http_response_init(res);
+        return httpd_authorize_media_stream_action(req, res, action, stream_name) != 0;
+    }
     if (endpoint == GO2RTC_PROXY_SNAPSHOT) {
         action = AUTHZ_SNAPSHOT_CREATE;
         if (http_request_get_query_param(req, "src", stream_name,

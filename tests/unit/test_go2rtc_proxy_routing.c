@@ -98,6 +98,8 @@ void setUp(void) {
         "/go2rtc/api/hls/*", "GET", handle_go2rtc_proxy));
     TEST_ASSERT_EQUAL_INT(0, http_server_register_handler(server,
         "/go2rtc/api/frame.jpeg", "GET", handle_go2rtc_proxy));
+    TEST_ASSERT_EQUAL_INT(0, http_server_register_handler(server,
+        "/go2rtc/api/webrtc", "POST", handle_go2rtc_proxy));
     TEST_ASSERT_EQUAL_INT(0, http_server_start(server));
     int address_size = sizeof(address);
     TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(&((libuv_server_t *)server)->listener,
@@ -235,11 +237,11 @@ void test_raw_go2rtc_requests_enforce_methods_before_static_fallback(void) {
     const char *paths[] = {
         "/go2rtc/api/streams", "/go2rtc/api/reload",
         "/go2rtc/api/stream.m3u8", "/go2rtc/api/frame.jpeg",
-        "/go2rtc/api/hls/segment.ts"
+        "/go2rtc/api/hls/segment.ts", "/go2rtc/api/webrtc"
     };
     const char *methods[] = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"};
     for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
-        const char *allowed = i == 1 ? "POST" : "GET";
+        const char *allowed = i == 1 || i == 5 ? "POST" : "GET";
         for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
             if (strcmp(methods[j], allowed) == 0) continue;
             char response[4096], allow_header[32];
@@ -251,8 +253,15 @@ void test_raw_go2rtc_requests_enforce_methods_before_static_fallback(void) {
     assert_no_upstream_contact();
 }
 
+void test_webrtc_signaling_requires_authentication_before_upstream(void) {
+    char response[4096];
+    TEST_ASSERT_EQUAL_INT(401, raw_request("POST", "/go2rtc/api/webrtc?src=cam_a", response));
+    assert_no_upstream_contact();
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_webrtc_signaling_requires_authentication_before_upstream);
     RUN_TEST(test_normal_static_files_still_work_outside_the_go2rtc_namespace);
     RUN_TEST(test_raw_go2rtc_traversal_never_falls_through_to_static_files);
     RUN_TEST(test_raw_static_file_traversal_is_rejected_outside_go2rtc);

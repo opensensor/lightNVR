@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #include <curl/curl.h>
@@ -15,6 +16,8 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "utils/yaml_validate.h"
 #include "core/config.h"
+#include "database/db_core.h"
+#include "database/db_streams.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/libuv_server.h"
@@ -290,8 +293,95 @@ void test_proxy_rejects_unsafe_requests_before_contacting_upstream(void) {
     TEST_ASSERT_EQUAL_INT(0, contacted);
 }
 
+static const char sdp_offer[] = "v=0\r\ns=browser-offer\r\n";
+static const char sdp_answer[] = "v=0\r\ns=go2rtc-answer\r\n";
+
+static void *webrtc_peer(void *arg) {
+    struct pollfd ready = { .fd = *(int *)arg, .events = POLLIN };
+    if (poll(&ready, 1, 2000) <= 0) return NULL;
+    int client = accept(ready.fd, NULL, NULL);
+    if (client < 0) return NULL;
+    struct timeval timeout = { .tv_sec = 2 };
+    (void)setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    size_t used = 0;
+    while (used < sizeof(upstream_request) - 1) {
+        ssize_t count = recv(client, upstream_request + used,
+                             sizeof(upstream_request) - 1 - used, 0);
+        if (count <= 0) break;
+        used += (size_t)count;
+        upstream_request[used] = '\0';
+        char *body = strstr(upstream_request, "\r\n\r\n");
+        if (body && strlen(body + 4) >= strlen(sdp_offer)) break;
+    }
+    upstream_requests++;
+    char response[512];
+    int length = snprintf(response, sizeof(response),
+        "HTTP/1.1 201 Created\r\nContent-Type: application/sdp\r\n"
+        "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+        strlen(sdp_answer), sdp_answer);
+    (void)send(client, response, (size_t)length, MSG_NOSIGNAL);
+    close(client);
+    return NULL;
+}
+
+void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
+    char db_path[] = "/tmp/lightnvr-webrtc-proxy-XXXXXX";
+    int db_file = mkstemp(db_path);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, db_file);
+    close(db_file);
+    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+    stream_config_t stream = {0};
+    strcpy(stream.name, "Front Gate");
+    strcpy(stream.url, "rtsp://camera/live");
+    stream.enabled = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&stream));
+    g_config.web_auth_enabled = false;
+    real_authorization = true;
+    if (yaml_validate_is_available()) {
+        const char *override = "api: {base_path: /custom}";
+        TEST_ASSERT_TRUE(go2rtc_api_apply_base_path_override(override, strlen(override)));
+    }
+    for (int threaded = 0; threaded < 2; threaded++) {
+        upstream_request[0] = '\0';
+        int server = open_upstream_listener();
+        pthread_t peer;
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
+        libuv_connection_t connection;
+        init_connection(&connection);
+        strcpy(connection.request.path, "/go2rtc/api/webrtc");
+        strcpy(connection.request.method_str, "POST");
+        strcpy(connection.request.query_string, "src=Front%20Gate");
+        strcpy(connection.request.content_type, "application/sdp");
+        connection.request.body = (char *)sdp_offer;
+        connection.request.body_len = strlen(sdp_offer);
+        connection.request.user_data = &connection;
+        if (threaded) {
+            TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+            pump_responses(1, 3000);
+            TEST_ASSERT_EQUAL_INT(1, completed_responses);
+        } else {
+            handle_go2rtc_proxy(&connection.request, &connection.response);
+        }
+        pthread_join(peer, NULL);
+        close(server);
+        TEST_ASSERT_EQUAL_INT(201, connection.response.status_code);
+        TEST_ASSERT_EQUAL_STRING("application/sdp", connection.response.content_type);
+        TEST_ASSERT_EQUAL_UINT(strlen(sdp_answer), connection.response.body_length);
+        TEST_ASSERT_EQUAL_MEMORY(sdp_answer, connection.response.body, strlen(sdp_answer));
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
+            ? "POST /custom/api/webrtc?src=Front%20Gate HTTP/1.1"
+            : "POST /go2rtc/api/webrtc?src=Front%20Gate HTTP/1.1"));
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, "Content-Type: application/sdp\r\n"));
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
+        http_response_free(&connection.response);
+    }
+    shutdown_database();
+    unlink(db_path);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_both_proxy_handlers_forward_authorized_webrtc_sdp);
     RUN_TEST(test_proxy_rejects_overflow_and_recovers_slots_after_completion);
     RUN_TEST(test_slow_snapshot_releases_its_slot_after_ten_seconds);
     RUN_TEST(test_both_proxy_handlers_never_follow_unauthorized_redirects);

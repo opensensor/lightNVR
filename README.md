@@ -438,7 +438,7 @@ docker run -d \
 
 #### Volume Mounts Explained
 
-The example uses named volumes for config, database, recordings, and models. Existing bind mounts must be owned by UID:GID `10001:10001`; see the [migration notes](docs/DOCKER.md#security-migration-non-root-runtime-and-private-go2rtc-api) before upgrading. MSE/WebRTC require the authenticated [reverse-proxy routes](docs/REVERSE_PROXY.md).
+The example uses named volumes for config, database, recordings, and models. Existing bind mounts must be owned by UID:GID `10001:10001`; see the [migration notes](docs/DOCKER.md#security-migration-non-root-runtime-and-private-go2rtc-api) before upgrading. WebRTC uses LightNVR’s authenticated HTTP proxy; MSE requires an authenticated [WebSocket reverse-proxy route](docs/REVERSE_PROXY.md).
 
 Persistent paths:
 

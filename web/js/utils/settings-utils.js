@@ -70,12 +70,11 @@ export async function getGo2rtcApiPort() {
 }
 
 /**
- * Media signaling stays on the authenticated site origin. MSE/WebRTC require
- * the exact reverse-proxy routes described in docs/REVERSE_PROXY.md.
+ * HTTP media signaling uses LightNVR's fixed public proxy prefix. The server
+ * translates this to any overridden upstream go2rtc api.base_path.
  */
 export async function getGo2rtcBaseUrl() {
-  const settings = await getSettings();
-  return `${window.location.origin}${settings.go2rtc_base_path ?? '/go2rtc'}`;
+  return `${window.location.origin}/go2rtc`;
 }
 
 /** Get the same-origin WebSocket base URL for MSE streaming. */

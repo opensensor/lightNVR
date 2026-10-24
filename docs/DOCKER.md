@@ -3,7 +3,7 @@
 ## Security migration: non-root runtime and private go2rtc API
 
 Images run as UID:GID `10001:10001`. Port 1984 is internal and bound to loopback.
-MSE/WebRTC now require the authenticated exact routes in [Reverse Proxy](REVERSE_PROXY.md),
+WebRTC uses LightNVR’s authenticated HTTP proxy. MSE requires the authenticated WebSocket route in [Reverse Proxy](REVERSE_PROXY.md),
 with the proxy sharing LightNVR's network namespace. HLS and snapshots work through
 LightNVR's authenticated HTTP proxy.
 

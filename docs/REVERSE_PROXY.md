@@ -2,23 +2,23 @@
 
 Keep the managed go2rtc API bound to `127.0.0.1:1984`. Do not publish port 1984 or forward its entire `/go2rtc/` prefix. Browser media URLs use the dashboard's origin over both HTTP and HTTPS.
 
-LightNVR's authenticated proxy serves HLS and snapshots. MSE and WebRTC signaling require a reverse proxy that can reach go2rtc on loopback and **authenticates requests before forwarding** these two exact paths:
+LightNVR's authenticated proxy serves HLS, snapshots and WebRTC signaling, including per-camera live-view permissions. WebRTC works directly on port 8080 or through a normal HTTPS proxy to LightNVR. MSE still requires a reverse proxy that can reach go2rtc on loopback and **authenticates requests before forwarding** the exact WebSocket path:
 
 | Public path | Upstream |
 | --- | --- |
 | `/go2rtc/api/ws` | `http://127.0.0.1:1984` (WebSocket upgrade) |
-| `/go2rtc/api/webrtc` | `http://127.0.0.1:1984` (HTTP signaling) |
+| `/go2rtc/api/webrtc` | `http://127.0.0.1:8080` (authorized HTTP signaling) |
 | All other paths | `http://127.0.0.1:8080` (LightNVR's authorization and route allowlist) |
 
-The go2rtc admin UI, config, restart, and exit endpoints are not live-view routes. Do not expose them. If using an overridden `api.base_path`, change both exact media paths in the proxy configuration to match.
+The go2rtc admin UI, config, restart, and exit endpoints are not live-view routes. Do not expose them. If using an overridden `api.base_path`, change the WebSocket path in the proxy configuration to match. Keep the public WebRTC path at `/go2rtc/api/webrtc`; LightNVR translates the upstream prefix.
 
-The examples below add a gateway login for the entire site, so the browser authenticates before opening a WebSocket. Keep LightNVR authentication enabled as well. The gateway credentials authorize access to go2rtc's media endpoints and **do not enforce LightNVR's per-camera permissions**. Only grant them to users permitted to access all streams. Use LightNVR's HLS/snapshot routes when per-camera authorization is required.
+The examples below add a gateway login for the entire site, so the browser authenticates before opening a WebSocket. Keep LightNVR authentication enabled as well. The gateway credentials authorize access to go2rtc's WebSocket endpoint and **do not enforce LightNVR's per-camera permissions**. Only grant them to users permitted to access all streams. Use LightNVR's WebRTC/HLS/snapshot routes when per-camera authorization is required.
 
 ## Network placement
 
 These examples require the proxy and go2rtc to share a network namespace: native services on one host, containers using `network_mode: service:lightnvr`, or containers in the same Kubernetes Pod. A separate Docker bridge container or a proxy on the Docker host cannot reach the container's loopback listener. Place the proxy in the same namespace; do not restore a public API listener to work around this.
 
-When a proxy container shares LightNVR's network namespace, publish the proxy's HTTPS port on the LightNVR service and mount only the proxy's config, certificates, and password file into the proxy container. Port 1984 remains unpublished. Direct access to port 8080 supports HLS and snapshots; MSE/WebRTC require the proxy.
+When a proxy container shares LightNVR's network namespace, publish the proxy's HTTPS port on the LightNVR service and mount only the proxy's config, certificates, and password file into the proxy container. Port 1984 remains unpublished. Direct access to port 8080 supports WebRTC, HLS and snapshots; MSE requires the proxy. WebRTC media still needs reachable ICE candidates (normally port 8555 TCP/UDP).
 
 ## Trusted proxy addresses
 
@@ -33,7 +33,7 @@ Use the actual proxy address range for any other network arrangement. This setti
 
 ## nginx
 
-Create `/etc/nginx/nvr.htpasswd` with `htpasswd`, restrict access to that file, and install your TLS certificate. Both exact media locations inherit the server's authentication requirement.
+Create `/etc/nginx/nvr.htpasswd` with `htpasswd`, restrict access to that file, and install your TLS certificate. The WebSocket location inherits the server's authentication requirement.
 
 ```nginx
 server {
@@ -65,9 +65,6 @@ server {
     location = /go2rtc/api/ws {
         proxy_pass http://127.0.0.1:1984;
     }
-    location = /go2rtc/api/webrtc {
-        proxy_pass http://127.0.0.1:1984;
-    }
     location / {
         proxy_pass http://127.0.0.1:8080;
     }
@@ -85,7 +82,7 @@ nvr.example.com {
         operator REPLACE_WITH_PASSWORD_HASH
     }
 
-    @media path /go2rtc/api/ws /go2rtc/api/webrtc
+    @media path /go2rtc/api/ws
     handle @media {
         reverse_proxy 127.0.0.1:1984
     }
@@ -105,7 +102,7 @@ Use the file provider with Traefik in the same network namespace as LightNVR. Th
 http:
   routers:
     nvr-media:
-      rule: "Host(`nvr.example.com`) && (Path(`/go2rtc/api/ws`) || Path(`/go2rtc/api/webrtc`))"
+      rule: "Host(`nvr.example.com`) && Path(`/go2rtc/api/ws`)"
       priority: 100
       entryPoints: [websecure]
       middlewares: [nvr-auth]
@@ -138,9 +135,9 @@ http:
 
 1. From another host, confirm TCP port 1984 is unreachable. Inside the recorder's network namespace, confirm it listens on `127.0.0.1` only.
 2. Without credentials, requests to both media routes must return `401` or `403`, including WebSocket upgrade requests and WebRTC POSTs.
-3. With gateway credentials, confirm MSE upgrades to `101` and WebRTC negotiates video. Browser network requests must stay on the dashboard origin.
+3. With gateway credentials, confirm MSE upgrades to `101`. With a LightNVR login authorized for the camera, confirm WebRTC negotiates video. Browser network requests must stay on the dashboard origin.
 4. With and without gateway credentials, confirm `/go2rtc/api/config`, `/go2rtc/api/restart`, and `/go2rtc/api/exit` never reach go2rtc through the public proxy. Likewise check path suffixes and traversal variants.
-5. Confirm HLS and snapshots still use LightNVR authorization, and audit logs show the correct client address.
+5. Confirm WebRTC, HLS and snapshots use LightNVR authorization, and audit logs show the correct client address.
 
 ## Existing deployments
 

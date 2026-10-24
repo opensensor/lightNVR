@@ -496,9 +496,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}
     http_server_register_handler(server, "/hls/#/#", "GET", handle_direct_hls_request);
 
-    // go2rtc Streaming Proxy - SCOPED to HLS streaming endpoints only
-    // This provides buffered pass-through with concurrency limiting
-    // WebRTC connects directly to go2rtc for lower latency
+    // Scoped go2rtc proxy. WebRTC SDP uses the authenticated HTTP origin;
+    // the negotiated media connection still goes directly to go2rtc.
+    http_server_register_handler(server, "/go2rtc/api/webrtc", "POST", handle_go2rtc_proxy);
     // Streams list endpoint (for health check)
     http_server_register_handler(server, "/go2rtc/api/streams", "GET", handle_go2rtc_proxy);
     // Stream reload endpoint

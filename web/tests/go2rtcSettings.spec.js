@@ -9,19 +9,19 @@ beforeEach(() => {
   } };
 });
 
-test.each(['/foo', '/nested/go2rtc', '', '/go2rtc'])('HTTP playback stays on the site origin with prefix %j', async (prefix) => {
+test.each(['/foo', '/nested/go2rtc', '', '/go2rtc'])('HTTP playback uses the public proxy with upstream prefix %j', async (prefix) => {
   fetchJSON.mockResolvedValue({ go2rtc_api_port: 31984, go2rtc_base_path: prefix });
   await getSettings(true);
-  expect(await getGo2rtcBaseUrl()).toBe(`http://camera.test:8080${prefix}`);
+  expect(await getGo2rtcBaseUrl()).toBe(`http://camera.test:8080/go2rtc`);
   expect(await getGo2rtcWebSocketUrl()).toBe(`ws://camera.test:8080${prefix}`);
 });
 
-test('HTTPS playback uses the custom external proxy path', async () => {
+test('HTTPS playback uses the public HTTP proxy and custom WebSocket path', async () => {
   window.location.protocol = 'https:';
   window.location.origin = 'https://camera.test:8080';
   fetchJSON.mockResolvedValue({ go2rtc_base_path: '/foo' });
   await getSettings(true);
-  expect(await getGo2rtcBaseUrl()).toBe('https://camera.test:8080/foo');
+  expect(await getGo2rtcBaseUrl()).toBe('https://camera.test:8080/go2rtc');
   expect(await getGo2rtcWebSocketUrl()).toBe('wss://camera.test:8080/foo');
 });
 

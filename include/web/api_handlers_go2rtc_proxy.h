@@ -3,7 +3,7 @@
  * @brief Reverse proxy handler for forwarding requests to go2rtc
  *
  * This handler proxies allowed /go2rtc/ endpoints to the local go2rtc instance
- * on localhost:{go2rtc_api_port}. This allows HLS streaming to work off-network
+ * on localhost:{go2rtc_api_port}. This allows HTTP media signaling and HLS streaming to work off-network
  * by routing through lightNVR's port instead of requiring direct access to go2rtc's port.
  */
 
