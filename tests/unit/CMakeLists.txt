@@ -343,6 +343,15 @@ add_layer3_test(test_mp4_faststart)
 target_compile_definitions(test_mp4_faststart PRIVATE
     RECORDING_FIXTURE="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4")
 add_layer3_test(test_audio_voice_enhancement)
+if(ENABLE_AUDIO_FILTERS)
+    # Fault injection for the voice-enhancement graph (issue #652).
+    add_layer3_test(test_audio_voice_filter_faults)
+    target_link_options(test_audio_voice_filter_faults PRIVATE
+        "-Wl,--wrap=avfilter_inout_alloc" "-Wl,--wrap=av_strdup"
+        "-Wl,--wrap=avfilter_graph_config" "-Wl,--wrap=av_buffersrc_add_frame_flags"
+        "-Wl,--wrap=av_buffersink_get_frame" "-Wl,--wrap=av_audio_fifo_write"
+    )
+endif()
 add_layer3_test(test_timestamp_manager)
 add_layer3_test(test_api_handlers_system)
 add_layer3_test(test_api_read_isolation)
@@ -372,6 +381,11 @@ target_link_options(test_detection_io_recovery PRIVATE
     "-Wl,--wrap=av_read_frame" "-Wl,--wrap=av_gettime_relative"
 )
 set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
+add_layer3_test(test_udt_recording)
+target_compile_definitions(test_udt_recording PRIVATE
+    TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
+)
+set_tests_properties(test_udt_recording PROPERTIES TIMEOUT 60)
 
 # Health tasks register their tests in independent fragments so parallel work
 # never needs to modify this shared list.
