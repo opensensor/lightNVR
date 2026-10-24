@@ -36,6 +36,9 @@ typedef struct {
     // Stream configuration
     int protocol;  // STREAM_PROTOCOL_TCP or STREAM_PROTOCOL_UDP
     int segment_duration;
+    // Effective audio setting (record_audio && !audio_disabled); when 0 no
+    // audio is ever muxed into the HLS output
+    int audio_enabled;
 
     // HLS writer (embedded directly instead of pointer)
     hls_writer_t *writer;

@@ -13,7 +13,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <math.h>
+
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/channel_layout.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -288,11 +292,237 @@ void test_parallel_unified_stream_shutdown_and_restart(void) {
     TEST_ASSERT_EQUAL_INT(0, atomic_load(&disposition_changes));
 }
 
+typedef struct {
+    AVCodecParameters *params;
+    AVRational time_base;
+    AVPacket **packets;
+    int count;
+} audio_fixture_t;
+
+static void audio_fixture_append(audio_fixture_t *fixture, const AVPacket *packet) {
+    fixture->packets = realloc(fixture->packets, sizeof(AVPacket *) * (fixture->count + 1));
+    TEST_ASSERT_NOT_NULL(fixture->packets);
+    fixture->packets[fixture->count] = av_packet_clone(packet);
+    TEST_ASSERT_NOT_NULL(fixture->packets[fixture->count]);
+    fixture->count++;
+}
+
+static void audio_fixture_free(audio_fixture_t *fixture) {
+    for (int i = 0; i < fixture->count; ++i) av_packet_free(&fixture->packets[i]);
+    free(fixture->packets);
+    avcodec_parameters_free(&fixture->params);
+}
+
+/* Encode a sine tone with FFmpeg's native AAC encoder, as an RTSP AAC track
+ * would deliver it: raw access units plus an AudioSpecificConfig. */
+static void make_aac_fixture(audio_fixture_t *fixture, int seconds) {
+    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+    TEST_ASSERT_NOT_NULL(codec);
+    AVCodecContext *encoder = avcodec_alloc_context3(codec);
+    TEST_ASSERT_NOT_NULL(encoder);
+    encoder->sample_rate = 16000;
+    encoder->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    encoder->bit_rate = 32000;
+    encoder->time_base = (AVRational){1, encoder->sample_rate};
+    encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    av_channel_layout_default(&encoder->ch_layout, 1);
+    TEST_ASSERT_EQUAL_INT(0, avcodec_open2(encoder, codec, NULL));
+
+    AVFrame *frame = av_frame_alloc();
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_NOT_NULL(packet);
+    frame->nb_samples = encoder->frame_size;
+    frame->format = encoder->sample_fmt;
+    frame->sample_rate = encoder->sample_rate;
+    TEST_ASSERT_EQUAL_INT(0, av_channel_layout_copy(&frame->ch_layout, &encoder->ch_layout));
+    TEST_ASSERT_EQUAL_INT(0, av_frame_get_buffer(frame, 0));
+
+    for (int64_t pts = 0; ; pts += frame->nb_samples) {
+        AVFrame *input = NULL;
+        if (pts < (int64_t)seconds * encoder->sample_rate) {
+            TEST_ASSERT_EQUAL_INT(0, av_frame_make_writable(frame));
+            float *samples = (float *)frame->data[0];
+            for (int i = 0; i < frame->nb_samples; ++i)
+                samples[i] = 0.5f * sinf(2.0f * (float)M_PI * 440.0f * (float)(pts + i) / 16000.0f);
+            frame->pts = pts;
+            input = frame;
+        }
+        TEST_ASSERT_EQUAL_INT(0, avcodec_send_frame(encoder, input));
+        while (avcodec_receive_packet(encoder, packet) == 0) {
+            audio_fixture_append(fixture, packet);
+            av_packet_unref(packet);
+        }
+        if (!input) break;
+    }
+
+    fixture->params = avcodec_parameters_alloc();
+    TEST_ASSERT_NOT_NULL(fixture->params);
+    TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_from_context(fixture->params, encoder));
+    fixture->time_base = encoder->time_base;
+    av_packet_free(&packet);
+    av_frame_free(&frame);
+    avcodec_free_context(&encoder);
+}
+
+/* G.711 u-law, which the HLS fallback does not transcode */
+static void make_pcmu_fixture(audio_fixture_t *fixture, int seconds) {
+    fixture->params = avcodec_parameters_alloc();
+    TEST_ASSERT_NOT_NULL(fixture->params);
+    fixture->params->codec_type = AVMEDIA_TYPE_AUDIO;
+    fixture->params->codec_id = AV_CODEC_ID_PCM_MULAW;
+    fixture->params->sample_rate = 8000;
+    av_channel_layout_default(&fixture->params->ch_layout, 1);
+    fixture->time_base = (AVRational){1, 8000};
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(packet);
+    for (int64_t pts = 0; pts < (int64_t)seconds * 8000; pts += 160) {
+        TEST_ASSERT_EQUAL_INT(0, av_new_packet(packet, 160));
+        memset(packet->data, 0xff, packet->size);
+        packet->pts = packet->dts = pts;
+        packet->duration = 160;
+        audio_fixture_append(fixture, packet);
+        av_packet_unref(packet);
+    }
+    av_packet_free(&packet);
+}
+
+typedef struct {
+    int video_streams;
+    int audio_streams;
+    int audio_packets;
+    enum AVCodecID audio_codec;
+    double first_video_s;
+    double first_audio_s;
+} hls_output_summary_t;
+
+/* Feed fixture video plus the given audio track (listed before video, as
+ * some RTSP cameras do) through the native HLS writer and summarize the
+ * resulting playlist. mux_audio = 0 mirrors a stream with audio disabled:
+ * the writer gets no audio stream but still receives audio packets. */
+static hls_output_summary_t write_av_hls(const char *name, const audio_fixture_t *audio_fixture,
+                                         int mux_audio) {
+    AVFormatContext *fixture = NULL;
+    TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&fixture, TEST_RECORDING_PATH, NULL, NULL));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(fixture, NULL));
+
+    AVFormatContext *input = avformat_alloc_context();
+    TEST_ASSERT_NOT_NULL(input);
+    AVStream *audio = avformat_new_stream(input, NULL);
+    AVStream *video = avformat_new_stream(input, NULL);
+    TEST_ASSERT_NOT_NULL(audio);
+    TEST_ASSERT_NOT_NULL(video);
+    TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_copy(audio->codecpar, audio_fixture->params));
+    audio->time_base = audio_fixture->time_base;
+    TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_copy(video->codecpar, fixture->streams[0]->codecpar));
+    video->time_base = fixture->streams[0]->time_base;
+
+    hls_writer_t *writer = hls_writer_create(test_dir, name, 1);
+    TEST_ASSERT_NOT_NULL(writer);
+    TEST_ASSERT_EQUAL_INT(0, hls_writer_initialize_av(writer, video, mux_audio ? audio : NULL));
+
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(packet);
+    int next_audio = 0;
+    for (;;) {
+        TEST_ASSERT_EQUAL_INT(0, av_read_frame(fixture, packet));
+        if (av_compare_ts(packet->dts, video->time_base, 3, (AVRational){1, 1}) >= 0) {
+            av_packet_unref(packet);
+            break;
+        }
+        // Interleave audio up to this video packet's timestamp
+        while (next_audio < audio_fixture->count &&
+               av_compare_ts(audio_fixture->packets[next_audio]->dts, audio->time_base,
+                             packet->dts, video->time_base) <= 0) {
+            AVPacket *audio_packet = audio_fixture->packets[next_audio++];
+            audio_packet->stream_index = audio->index;
+            TEST_ASSERT_GREATER_OR_EQUAL(0, hls_writer_write_packet(writer, audio_packet, audio));
+        }
+        packet->stream_index = video->index;
+        TEST_ASSERT_GREATER_OR_EQUAL(0, hls_writer_write_packet(writer, packet, video));
+        av_packet_unref(packet);
+    }
+
+    char playlist[MAX_PATH_LENGTH + 32];
+    snprintf(playlist, sizeof(playlist), "%s/index.m3u8", writer->output_dir);
+    hls_writer_close(writer);
+
+    hls_output_summary_t summary = {0};
+    summary.first_video_s = summary.first_audio_s = -1;
+    AVFormatContext *recorded = NULL;
+    TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&recorded, playlist, NULL, NULL));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(recorded, NULL));
+    for (unsigned int i = 0; i < recorded->nb_streams; ++i) {
+        const AVCodecParameters *par = recorded->streams[i]->codecpar;
+        if (par->codec_type == AVMEDIA_TYPE_VIDEO) summary.video_streams++;
+        if (par->codec_type == AVMEDIA_TYPE_AUDIO) {
+            summary.audio_streams++;
+            summary.audio_codec = par->codec_id;
+        }
+    }
+    while (av_read_frame(recorded, packet) == 0) {
+        const AVStream *stream = recorded->streams[packet->stream_index];
+        double seconds = packet->pts * av_q2d(stream->time_base);
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            summary.audio_packets++;
+            if (summary.first_audio_s < 0) summary.first_audio_s = seconds;
+        } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+                   summary.first_video_s < 0) {
+            summary.first_video_s = seconds;
+        }
+        av_packet_unref(packet);
+    }
+    avformat_close_input(&recorded);
+    av_packet_free(&packet);
+    avformat_free_context(input);
+    avformat_close_input(&fixture);
+    return summary;
+}
+
+void test_writer_muxes_aac_audio_listed_before_video(void) {
+    audio_fixture_t aac = {0};
+    make_aac_fixture(&aac, 4);
+    TEST_ASSERT_TRUE(hls_writer_audio_supported(aac.params));
+
+    hls_output_summary_t summary = write_av_hls("aac-audio", &aac, 1);
+    TEST_ASSERT_EQUAL_INT(1, summary.video_streams);
+    TEST_ASSERT_EQUAL_INT(1, summary.audio_streams);
+    TEST_ASSERT_EQUAL_INT(AV_CODEC_ID_AAC, summary.audio_codec);
+    TEST_ASSERT_GREATER_THAN(0, summary.audio_packets);
+    // Both tracks keep their own timebase origin, so they start together
+    TEST_ASSERT_TRUE(fabs(summary.first_audio_s - summary.first_video_s) < 0.2);
+    audio_fixture_free(&aac);
+}
+
+void test_writer_emits_video_only_when_audio_disabled(void) {
+    audio_fixture_t aac = {0};
+    make_aac_fixture(&aac, 4);
+    hls_output_summary_t summary = write_av_hls("audio-disabled", &aac, 0);
+    TEST_ASSERT_EQUAL_INT(1, summary.video_streams);
+    TEST_ASSERT_EQUAL_INT(0, summary.audio_streams);
+    TEST_ASSERT_EQUAL_INT(0, summary.audio_packets);
+    audio_fixture_free(&aac);
+}
+
+void test_writer_skips_unsupported_audio_codec(void) {
+    audio_fixture_t pcmu = {0};
+    make_pcmu_fixture(&pcmu, 4);
+    TEST_ASSERT_FALSE(hls_writer_audio_supported(pcmu.params));
+    hls_output_summary_t summary = write_av_hls("pcmu-audio", &pcmu, 1);
+    TEST_ASSERT_EQUAL_INT(1, summary.video_streams);
+    TEST_ASSERT_EQUAL_INT(0, summary.audio_streams);
+    TEST_ASSERT_EQUAL_INT(0, summary.audio_packets);
+    audio_fixture_free(&pcmu);
+}
+
 int main(void) {
     init_logger();
     UNITY_BEGIN();
     RUN_TEST(test_cache_maintenance_uses_dedicated_path_then_default_path);
     RUN_TEST(test_writer_remaps_input_video_after_audio_to_output_stream_zero);
+    RUN_TEST(test_writer_muxes_aac_audio_listed_before_video);
+    RUN_TEST(test_writer_emits_video_only_when_audio_disabled);
+    RUN_TEST(test_writer_skips_unsupported_audio_codec);
     RUN_TEST(test_parallel_writer_teardown_and_recreation_preserves_signals);
     RUN_TEST(test_parallel_unified_stream_shutdown_and_restart);
     RUN_TEST(test_unified_system_cleanup_preserves_signals);
