@@ -175,6 +175,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Copy output directory and stream name
     safe_strcpy(writer->output_dir, output_dir, MAX_PATH_LENGTH, 0);
     safe_strcpy(writer->stream_name, stream_name, MAX_STREAM_NAME, 0);
+    writer->video_out_index = -1;
+    writer->audio_out_index = -1;
 
     //  Ensure segment duration is reasonable but allow lower values for lower latency
     if (segment_duration < 1) {
@@ -306,7 +308,20 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     return writer;
 }
 
+int hls_writer_audio_supported(const AVCodecParameters *par) {
+    // Raw AAC from RTSP needs its AudioSpecificConfig so the MPEG-TS muxer can
+    // emit ADTS headers; without it avformat_write_header() would fail and
+    // take the video output down with it.
+    return par && par->codec_type == AVMEDIA_TYPE_AUDIO &&
+           par->codec_id == AV_CODEC_ID_AAC && par->extradata_size > 0;
+}
+
 int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
+    return hls_writer_initialize_av(writer, input_stream, NULL);
+}
+
+int hls_writer_initialize_av(hls_writer_t *writer, const AVStream *input_stream,
+                             const AVStream *audio_stream) {
     if (!writer || !input_stream) {
         log_error("Invalid parameters for hls_writer_initialize");
         return -1;
@@ -315,6 +330,11 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     if (!writer->output_ctx) {
         log_error("Output context is NULL in hls_writer_initialize");
         return -1;
+    }
+
+    // The header is already written; streams cannot be added any more
+    if (writer->initialized) {
+        return 0;
     }
 
     // Create output stream
@@ -337,6 +357,7 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
+    writer->video_out_index = out_stream->index;
 
     //  For HLS streaming, we need to set the correct codec parameters
     // The issue is not with the bitstream filter but with how we're configuring the output
@@ -361,6 +382,35 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
         log_info("Stream %s is not H.264, using default codec parameters", writer->stream_name);
     }
 
+    // Optional audio output: AAC is stream-copied, anything else is skipped
+    writer->audio_out_index = -1;
+    if (audio_stream && hls_writer_audio_supported(audio_stream->codecpar)) {
+        AVStream *audio_out = avformat_new_stream(writer->output_ctx, NULL);
+        if (!audio_out) {
+            log_error("Failed to create HLS audio output stream for %s", writer->stream_name);
+            return -1;
+        }
+        ret = avcodec_parameters_copy(audio_out->codecpar, audio_stream->codecpar);
+        if (ret < 0) {
+            log_error("Failed to copy audio codec parameters for HLS stream %s", writer->stream_name);
+            return ret;
+        }
+        audio_out->codecpar->codec_tag = 0;
+        audio_out->time_base = audio_stream->time_base;
+        writer->audio_out_index = audio_out->index;
+
+        // Audio and video arrive interleaved from RTSP; don't let the muxer
+        // hold back live video for long if the audio track stalls.
+        writer->output_ctx->max_interleave_delta = AV_TIME_BASE;
+
+        log_info("HLS stream %s: muxing AAC audio (%d Hz, %d ch) as output stream %d",
+                 writer->stream_name, audio_stream->codecpar->sample_rate,
+                 audio_stream->codecpar->ch_layout.nb_channels, writer->audio_out_index);
+    } else if (audio_stream) {
+        log_info("HLS stream %s: skipping unsupported audio codec %s (only AAC with codec config is passed through)",
+                 writer->stream_name, avcodec_get_name(audio_stream->codecpar->codec_id));
+    }
+
     // Write the header
     AVDictionary *options = NULL;
     ret = avformat_write_header(writer->output_ctx, &options);
@@ -381,6 +431,13 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     writer->dts_tracker.first_dts = 0;
     writer->dts_tracker.last_dts = 0;
     writer->dts_tracker.time_base = out_stream->time_base;
+    writer->audio_dts_tracker.initialized = 0;
+    writer->audio_dts_tracker.first_dts = 0;
+    writer->audio_dts_tracker.last_dts = 0;
+    if (writer->audio_out_index >= 0) {
+        writer->audio_dts_tracker.time_base =
+            writer->output_ctx->streams[writer->audio_out_index]->time_base;
+    }
     writer->dts_jump_count = 0;
 
     // Let FFmpeg handle manifest file creation
@@ -431,12 +488,25 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         writer->last_cleanup_time = now;
     }
 
-    // Lazy initialization of output stream with additional safety checks
+    const int is_audio = input_stream->codecpar &&
+                         input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+
+    // Lazy initialization of output stream with additional safety checks.
+    // Only a video stream can initialize the writer; callers that want audio
+    // must use hls_writer_initialize_av() before the first packet.
     if (!writer->initialized) {
+        if (is_audio) {
+            return 0;
+        }
         int ret = hls_writer_initialize(writer, input_stream);
         if (ret < 0) {
             return ret;
         }
+    }
+
+    // No audio output (audio disabled, absent or unsupported): drop the packet
+    if (is_audio && writer->audio_out_index < 0) {
+        return 0;
     }
 
     // Double-check if writer has been closed after initialization
@@ -575,20 +645,24 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         out_pkt_ptr->pts = out_pkt_ptr->dts;
     }
 
+    /* RTSP may advertise audio before video, so input indices need not
+     * match the output: route by media type instead. */
+    int out_index = is_audio ? writer->audio_out_index : writer->video_out_index;
+    stream_dts_info_t *dts_tracker = is_audio ? &writer->audio_dts_tracker : &writer->dts_tracker;
+
     // Validate writer context before rescaling
-    if (!writer->output_ctx || !writer->output_ctx->streams || !writer->output_ctx->streams[0]) {
+    if (!writer->output_ctx || !writer->output_ctx->streams || out_index < 0 ||
+        out_index >= (int)writer->output_ctx->nb_streams || !writer->output_ctx->streams[out_index]) {
         log_warn("hls_writer_write_packet: Writer context invalid for stream %s", writer->stream_name);
         av_packet_free(&out_pkt_ptr);
         return -1;
     }
 
-    /* This writer emits video only. RTSP may advertise audio before video,
-     * so the input video index need not match the sole output stream. */
-    out_pkt_ptr->stream_index = writer->output_ctx->streams[0]->index;
+    AVStream *out_stream = writer->output_ctx->streams[out_index];
+    out_pkt_ptr->stream_index = out_stream->index;
 
-    // Rescale timestamps to output timebase
-    av_packet_rescale_ts(out_pkt_ptr, input_stream->time_base,
-                        writer->output_ctx->streams[0]->time_base);
+    // Rescale timestamps from this packet's own input timebase to the output timebase
+    av_packet_rescale_ts(out_pkt_ptr, input_stream->time_base, out_stream->time_base);
 
     // CRITICAL FIX: Ensure PTS >= DTS after rescaling
     if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
@@ -605,22 +679,22 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         }
     }
 
-    // CRITICAL FIX: Enforce monotonically increasing DTS
+    // CRITICAL FIX: Enforce monotonically increasing DTS (per output stream)
     // The HLS muxer requires DTS to be strictly increasing
-    if (!writer->dts_tracker.initialized) {
+    if (!dts_tracker->initialized) {
         // First packet - initialize the tracker
-        writer->dts_tracker.first_dts = out_pkt_ptr->dts;
-        writer->dts_tracker.last_dts = out_pkt_ptr->dts;
-        writer->dts_tracker.time_base = writer->output_ctx->streams[0]->time_base;
-        writer->dts_tracker.initialized = 1;
+        dts_tracker->first_dts = out_pkt_ptr->dts;
+        dts_tracker->last_dts = out_pkt_ptr->dts;
+        dts_tracker->time_base = out_stream->time_base;
+        dts_tracker->initialized = 1;
         log_debug("Initialized DTS tracker for stream %s: first_dts=%lld",
                  writer->stream_name, (long long)out_pkt_ptr->dts);
     } else {
         // Check if DTS is monotonically increasing
-        if (out_pkt_ptr->dts <= writer->dts_tracker.last_dts) {
+        if (out_pkt_ptr->dts <= dts_tracker->last_dts) {
             // DTS is not increasing - fix it
             int64_t old_dts = out_pkt_ptr->dts;
-            out_pkt_ptr->dts = writer->dts_tracker.last_dts + 1;
+            out_pkt_ptr->dts = dts_tracker->last_dts + 1;
 
             // Also adjust PTS to maintain the relationship
             if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
@@ -629,7 +703,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
             log_debug("Fixed non-monotonic DTS for stream %s: old_dts=%lld, new_dts=%lld, last_dts=%lld",
                      writer->stream_name, (long long)old_dts, (long long)out_pkt_ptr->dts,
-                     (long long)writer->dts_tracker.last_dts);
+                     (long long)dts_tracker->last_dts);
 
             writer->dts_jump_count++;
             if (writer->dts_jump_count % 10 == 0) {
@@ -639,11 +713,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         }
 
         // Update last DTS
-        writer->dts_tracker.last_dts = out_pkt_ptr->dts;
+        dts_tracker->last_dts = out_pkt_ptr->dts;
     }
 
     // Log key frames for diagnostics
-    bool is_key_frame = (out_pkt_ptr->flags & AV_PKT_FLAG_KEY) != 0;
+    bool is_key_frame = !is_audio && (out_pkt_ptr->flags & AV_PKT_FLAG_KEY) != 0;
     if (is_key_frame) {
         log_debug("Writing key frame to HLS for stream %s: pts=%lld, dts=%lld, size=%d",
                  writer->stream_name, (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts, out_pkt_ptr->size);
@@ -1085,10 +1159,11 @@ void hls_writer_close(hls_writer_t *writer) {
         writer->bsf_ctx = NULL;
     }
 
-    // Reset DTS tracker
+    // Reset DTS trackers
     writer->dts_tracker.first_dts = 0;
     writer->dts_tracker.last_dts = 0;
     writer->dts_tracker.initialized = 0;
+    writer->audio_dts_tracker.initialized = 0;
 
     // Unregister the writer from global tracking
     unregister_hls_writer(writer);

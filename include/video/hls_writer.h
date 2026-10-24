@@ -32,6 +32,11 @@ typedef struct hls_writer_t {
 
     // Per-stream DTS tracking
     stream_dts_info_t dts_tracker;
+    stream_dts_info_t audio_dts_tracker;
+
+    // Output stream indices; audio_out_index is -1 when the output is video only
+    int video_out_index;
+    int audio_out_index;
 
     // Counter for DTS jumps to detect stream issues
     int dts_jump_count;
@@ -57,7 +62,22 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream);
 
 /**
- * Write packet to HLS stream
+ * Initialize HLS writer with a video stream and an optional audio stream.
+ * Only AAC audio is muxed (stream copy); any other codec, or a NULL
+ * audio_stream, yields video-only output. Callers must pass NULL when audio
+ * is disabled for the stream so no audio reaches the segments.
+ */
+int hls_writer_initialize_av(hls_writer_t *writer, const AVStream *video_stream,
+                             const AVStream *audio_stream);
+
+/**
+ * Whether hls_writer_initialize_av() can mux audio with these parameters (AAC only)
+ */
+int hls_writer_audio_supported(const AVCodecParameters *par);
+
+/**
+ * Write packet to HLS stream. The packet is routed by the input stream's media
+ * type; audio packets are dropped when the writer has no audio output.
  */
 int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream);
 

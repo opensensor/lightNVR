@@ -786,6 +786,7 @@ void *hls_unified_thread_func(void *arg) {
     AVFormatContext *input_ctx = NULL;
     AVPacket *pkt = NULL;
     int video_stream_idx = -1;
+    int audio_stream_idx = -1;
     int ret;
     hls_thread_state_t thread_state = HLS_THREAD_INITIALIZING;
     int reconnect_attempt = 0;
@@ -1111,8 +1112,9 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
-                // Find video stream
+                // Find video stream (and audio, only when audio is enabled for the stream)
                 video_stream_idx = find_video_stream_index(input_ctx);
+                audio_stream_idx = ctx->audio_enabled ? find_audio_stream_index(input_ctx) : -1;
                 if (video_stream_idx == -1) {
                     log_error("No video stream found for stream %s", stream_name);
 
@@ -1168,7 +1170,8 @@ void *hls_unified_thread_func(void *arg) {
                 if (!is_shutdown_initiated() && input_ctx->streams[video_stream_idx]) {
                     // CRITICAL FIX: Check if context is still valid before accessing
                     if (ctx && !is_context_pending_deletion(ctx) && !is_context_already_freed(ctx) && ctx->writer) {
-                        ret = hls_writer_initialize(ctx->writer, input_ctx->streams[video_stream_idx]);
+                        ret = hls_writer_initialize_av(ctx->writer, input_ctx->streams[video_stream_idx],
+                                                       audio_stream_idx >= 0 ? input_ctx->streams[audio_stream_idx] : NULL);
                     } else {
                         log_warn("Context for stream %s is no longer valid or writer is NULL, skipping HLS writer initialization", stream_name);
                         // Set thread state to stopping to exit gracefully
@@ -1284,13 +1287,15 @@ void *hls_unified_thread_func(void *arg) {
                     continue;
                 }
 
-                // Process packets based on stream type
-                if (pkt->stream_index == video_stream_idx) {
+                // Process packets based on stream type. audio_stream_idx is -1
+                // when audio is disabled, so audio packets never reach the writer.
+                const bool is_audio_pkt = audio_stream_idx >= 0 && pkt->stream_index == audio_stream_idx;
+                if (pkt->stream_index == video_stream_idx || is_audio_pkt) {
                     // Record frame for telemetry metrics
-                    metrics_record_frame_from_source(stream_name, pkt->size, true,
-                                                     METRICS_SOURCE_HLS);
-
-                    // This is a video packet - process it
+                    if (!is_audio_pkt) {
+                        metrics_record_frame_from_source(stream_name, pkt->size, true,
+                                                         METRICS_SOURCE_HLS);
+                    }
 
                     // CRITICAL FIX: Check if context is still valid before accessing
                     if (!ctx || is_context_pending_deletion(ctx) || is_context_already_freed(ctx)) {
@@ -1330,10 +1335,17 @@ void *hls_unified_thread_func(void *arg) {
                         continue;
                     }
 
+                    // A writer recreated after reconnection is initialized here so
+                    // that its audio output is set up before the header is written
+                    if (!writer->initialized) {
+                        hls_writer_initialize_av(writer, input_ctx->streams[video_stream_idx],
+                                                 audio_stream_idx >= 0 ? input_ctx->streams[audio_stream_idx] : NULL);
+                    }
+
                     ret = hls_writer_write_packet(writer, pkt, input_stream);
 
                     // Log key frames for debugging
-                    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+                    bool is_key_frame = !is_audio_pkt && (pkt->flags & AV_PKT_FLAG_KEY) != 0;
                     if (is_key_frame && ret >= 0) {
                         log_debug("Processed video key frame for stream %s", stream_name);
                     }
@@ -1342,13 +1354,17 @@ void *hls_unified_thread_func(void *arg) {
                     if (ret < 0) {
                         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                        log_warn("Error writing video packet to HLS for stream %s: %s", stream_name, error_buf);
+                        log_warn("Error writing %s packet to HLS for stream %s: %s",
+                                 is_audio_pkt ? "audio" : "video", stream_name, error_buf);
                     } else {
-                        // Successfully processed a packet
-                        last_packet_time = time(NULL);
-                        atomic_store(&ctx->last_packet_time, (int_fast64_t)last_packet_time);
-                        atomic_store(&ctx->consecutive_failures, 0);
-                        atomic_store(&ctx->connection_valid, 1);
+                        // Successfully processed a packet. Only video refreshes the
+                        // liveness timestamp so flowing audio cannot mask a video stall.
+                        if (!is_audio_pkt) {
+                            last_packet_time = time(NULL);
+                            atomic_store(&ctx->last_packet_time, (int_fast64_t)last_packet_time);
+                            atomic_store(&ctx->consecutive_failures, 0);
+                            atomic_store(&ctx->connection_valid, 1);
+                        }
 
                         // Mark that we've successfully written packets
                         // This is used to determine if we need to recreate the writer on reconnection
@@ -1358,9 +1374,7 @@ void *hls_unified_thread_func(void *arg) {
                     // Unlock the writer mutex
                     pthread_mutex_unlock(&writer->mutex);
                 } else {
-                    // This is a non-video packet (likely audio)
-                    // For now, we'll just log it and skip processing
-                    // This prevents the "Invalid packet stream index" errors
+                    // Non-video packet that is not muxed (audio disabled, extra tracks, data)
                     if (pkt->stream_index >= 0 && pkt->stream_index < input_ctx->nb_streams) {
                         const AVStream *stream = input_ctx->streams[pkt->stream_index];
                         const AVCodecParameters *codecpar = stream->codecpar;
@@ -1515,8 +1529,9 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
-                // Find video stream
+                // Find video stream (and audio, only when audio is enabled for the stream)
                 video_stream_idx = find_video_stream_index(input_ctx);
+                audio_stream_idx = ctx->audio_enabled ? find_audio_stream_index(input_ctx) : -1;
                 if (video_stream_idx == -1) {
                     log_error("No video stream found for stream %s during reconnection",
                               stream_name);
@@ -2213,6 +2228,9 @@ int start_hls_unified_stream(const char *stream_name) {
 
     // Set protocol information in the context
     ctx->protocol = config.protocol;
+
+    // Respect per-stream and instance-wide audio settings
+    ctx->audio_enabled = config.record_audio && !g_config.audio_disabled;
 
     // Set HLS segment duration.
     // config.segment_duration is the MP4/recording segment duration (often 900s = 15 min).
