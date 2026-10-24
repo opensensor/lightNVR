@@ -1023,7 +1023,7 @@
   "streamsConfig.audioSettings": "Mga Setting ng Audio",
   "streamsConfig.recordAudio": "I-record ang Audio",
   "streamsConfig.twoWayAudio": "Two-Way Audio",
-  "streamsConfig.audioSettingsHelp": "Nalalapat ang audio recording sa tuloy-tuloy at detection-based na recording (kailangan ng audio track sa stream). Opsyonal na preview ang Voice Enhancement at wala pang epekto — darating sa susunod na update ang noise-reduction filter para sa G.711 → AAC transcode; para lamang sa recording, hindi magbabago ang live na audio.",
+  "streamsConfig.audioSettingsHelp": "Nalalapat ang audio recording sa tuloy-tuloy at detection-based na recording (kailangan ng audio track sa stream). Binabawasan ng Voice Enhancement ang ugong at ingay sa background ng mga recording kapag G.711/PCM audio ang ipinapadala ng camera, na tina-transcode sa AAC; hindi binabago ang AAC at iba pang pass-through na audio. Hindi apektado ang live na audio.",
   "streamsConfig.aiDetectionSettings": "Mga Setting ng AI Detection",
   "streamsConfig.detectionUrl": "URL ng Detection Stream (opsyonal)",
   "streamsConfig.detectionUrlPlaceholder": "http://192.168.1.100/mjpeg o rtsp://…/substream",

@@ -1214,6 +1214,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
     load_runtime_engine_config(ctx, model_path, threshold, ctx->detection_interval);
     ctx->record_audio = config.record_audio && !(global_cfg && global_cfg->audio_disabled);
+    ctx->audio_voice_enhancement = config.audio_voice_enhancement;
     ctx->annotation_only = annotation_only;
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
 
@@ -2622,6 +2623,9 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
             } else {
                 log_info("[%s] PCM->AAC codec params prepared for MP4 header (eager init)",
                          ctx->stream_name);
+                // The continuous writer thread stages this every segment; do the
+                // same here so detection recordings honour the opt-in too.
+                set_audio_voice_enhancement(ctx->stream_name, ctx->audio_voice_enhancement);
             }
         } else if (is_audio_codec_compatible_with_mp4(ain->codecpar->codec_id, &codec_name)) {
             // Already MP4-compatible (AAC, MP3, AC3, Opus): deep-copy codec params.

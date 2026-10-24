@@ -41,7 +41,7 @@ jobs:
           apt-get update
           apt-get install -y \
             git build-essential cmake pkg-config clang-tidy \
-            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
             libsqlite3-dev libuv1-dev libllhttp-dev libcurl4-openssl-dev \
             libcjson-dev libmbedtls-dev libmosquitto-dev
 

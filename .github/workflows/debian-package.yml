@@ -210,12 +210,12 @@ jobs:
           # ── Suite-specific FFmpeg dependency names ─────────────────────────
           case "${DEBIAN_SUITE}" in
             sid)
-              FFMPEG_DEPS="libavcodec62 | libavcodec-extra, libavformat62, libavutil60, libswscale9"
+              FFMPEG_DEPS="libavcodec62 | libavcodec-extra, libavformat62, libavutil60, libswscale9, libavfilter11"
               LLHTTP_DEP="libllhttp9.3"
               SUITE_NOTE="Note: This package targets Debian sid (unstable)."
               ;;
             trixie)
-              FFMPEG_DEPS="libavcodec61 | libavcodec-extra, libavformat61, libavutil59, libswscale8"
+              FFMPEG_DEPS="libavcodec61 | libavcodec-extra, libavformat61, libavutil59, libswscale8, libavfilter10"
               LLHTTP_DEP="libllhttp9.2"
               SUITE_NOTE="Note: This package targets Debian 13 trixie (stable)."
               ;;

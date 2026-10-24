@@ -3,9 +3,10 @@
  * @brief Layer 3 Unity tests for the voice-enhancement opt-in staging logic in
  *        src/video/mp4_writer_utils.c (discussion #395).
  *
- * The real filter graph is deferred to a follow-up PR; what's exercised here is
- * the lifecycle plumbing that routes a per-stream opt-in to the audio
- * transcoder pool: set_audio_voice_enhancement() (live-flip vs. staged),
+ * The filter graph itself is covered by test_audio_transcoder.c (issue #652);
+ * what's exercised here is the lifecycle plumbing that routes a per-stream
+ * opt-in to the audio transcoder pool: set_audio_voice_enhancement()
+ * (live-flip vs. staged),
  * get_audio_voice_enhancement() (read-back), and cleanup_audio_transcoder()
  * dropping any staged entry.  No transcoder slot is ever initialized here (that
  * needs a real PCM frame), so every code path under test takes the "staged"

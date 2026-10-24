@@ -163,6 +163,24 @@ else()
     message(WARNING "libyaml (yaml-0.1) not found. YAML validation and go2rtc override base_path detection will be disabled. Install libyaml-dev / yaml-dev to enable.")
 endif()
 
+# libavfilter (optional) — per-stream voice-enhancement filter chain applied
+# while transcoding PCM audio to AAC (issue #652).  Without it the opt-in is
+# accepted but logs that it is unavailable.  The afftdn denoiser is the costly
+# stage, so the embedded profile leaves it out by default.
+option(ENABLE_AUDIO_FILTERS "Enable libavfilter audio filters (voice enhancement)" ON)
+option(ENABLE_AUDIO_DENOISE "Include the afftdn denoiser in voice enhancement" ${LIGHTNVR_OPTIONAL_FEATURE_DEFAULT})
+if(ENABLE_AUDIO_FILTERS)
+    pkg_check_modules(AVFILTER QUIET libavfilter>=10)
+    if(AVFILTER_FOUND)
+        message(STATUS "Found libavfilter: ${AVFILTER_VERSION} (denoise: ${ENABLE_AUDIO_DENOISE})")
+        add_compile_definitions(LIGHTNVR_HAVE_AVFILTER=1
+            LIGHTNVR_AUDIO_DENOISE=$<BOOL:${ENABLE_AUDIO_DENOISE}>)
+    else()
+        message(WARNING "libavfilter >= 10 not found. Voice enhancement will be unavailable. Install libavfilter-dev to enable.")
+        set(ENABLE_AUDIO_FILTERS OFF)
+    endif()
+endif()
+
 # MQTT support (optional, uses libmosquitto)
 option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ${LIGHTNVR_OPTIONAL_FEATURE_DEFAULT})
 if(ENABLE_MQTT)
@@ -758,6 +776,15 @@ if(YAML_FOUND)
     endif()
     target_link_libraries(lightnvr_lib PUBLIC ${YAML_LIBRARIES})
     target_link_libraries(lightnvr ${YAML_LIBRARIES})
+endif()
+
+# Link libavfilter if enabled (voice enhancement)
+if(ENABLE_AUDIO_FILTERS AND AVFILTER_FOUND)
+    if(AVFILTER_LIBRARY_DIRS)
+        target_link_directories(lightnvr_lib PUBLIC ${AVFILTER_LIBRARY_DIRS})
+    endif()
+    target_link_libraries(lightnvr_lib PUBLIC ${AVFILTER_LIBRARIES})
+    target_include_directories(lightnvr_lib PUBLIC ${AVFILTER_INCLUDE_DIRS})
 endif()
 
 # Link MQTT library if enabled

@@ -117,6 +117,7 @@ typedef struct {
     
     // Audio recording configuration
     bool record_audio;  // Whether to include audio in recordings
+    bool audio_voice_enhancement;  // Voice-enhancement filter for transcoded PCM audio
 
     // External motion trigger: set to 1 by unified_detection_notify_motion() when
     // an ONVIF-managed master stream propagates its motion event to this UDT-managed

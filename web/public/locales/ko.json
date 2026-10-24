@@ -808,7 +808,7 @@
   "streamsConfig.recordAudio": "오디오 녹음",
   "streamsConfig.twoWayAudio": "양방향 오디오",
   "streamsConfig.audioVoiceEnhancement": "음성 향상 (녹화)",
-  "streamsConfig.audioSettingsHelp": "오디오 녹음은 연속 및 감지 기반 녹화 모두에 적용됩니다 (스트림에 오디오 트랙 필요). 음성 향상은 미리보기 옵션으로 아직 효과가 없습니다. G.711 → AAC 트랜스코드용 노이즈 감소 필터 체인은 향후 업데이트에 포함될 예정입니다. 라이브 오디오에는 영향이 없습니다.",
+  "streamsConfig.audioSettingsHelp": "오디오 녹음은 연속 및 감지 기반 녹화 모두에 적용됩니다 (스트림에 오디오 트랙 필요). 음성 향상은 카메라가 G.711/PCM 오디오를 보낼 때(AAC로 트랜스코딩됨) 녹화의 험 노이즈와 배경 소음을 줄입니다. AAC 등 그대로 전달되는 오디오는 변경 없이 녹음됩니다. 라이브 오디오에는 영향이 없습니다.",
   "streamsConfig.aiDetectionSettings": "AI 감지 설정",
   "streamsConfig.detectionUrl": "감지 스트림 URL (선택 사항)",
   "streamsConfig.detectionUrlPlaceholder": "http://192.168.1.100/mjpeg 또는 rtsp://…/substream",

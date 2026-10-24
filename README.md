@@ -230,7 +230,8 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 
    Prerequisites (in addition to `build-essential`, `cmake`, `pkg-config`):
    - **FFmpeg ≥ 7.1** (`libavcodec ≥ 61`, `libavformat ≥ 61`, `libavutil ≥ 59`,
-     `libswscale ≥ 8`, `libswresample ≥ 5`). Debian 12 (bookworm) and Ubuntu
+     `libswscale ≥ 8`, `libswresample ≥ 5`; optional `libavfilter ≥ 10` for
+     per-stream voice enhancement). Debian 12 (bookworm) and Ubuntu
      22.04 ship FFmpeg 5.x/6.x, which is too old — build FFmpeg from source or
      use a newer distro release (Debian 13 / Ubuntu 24.04+ ship a compatible
      version).
