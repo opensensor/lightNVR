@@ -249,6 +249,7 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libavfilter-dev \
     libuv1-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
@@ -420,6 +421,7 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libavfilter-dev \
     libuv1-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \

@@ -1765,7 +1765,7 @@
   "streamsConfig.recordAudio": "Record Audio",
   "streamsConfig.twoWayAudio": "Two-Way Audio",
   "streamsConfig.audioVoiceEnhancement": "Voice Enhancement (recordings)",
-  "streamsConfig.audioSettingsHelp": "Audio recording applies to both continuous and detection-based recordings (requires audio track in stream). Voice Enhancement is a preview opt-in that has no effect yet — the noise-reduction filter chain for the G.711 → AAC transcode lands in a future update; recordings only, live audio is unchanged.",
+  "streamsConfig.audioSettingsHelp": "Audio recording applies to both continuous and detection-based recordings (requires audio track in stream). Voice Enhancement reduces hum and background noise in recordings when the camera sends G.711/PCM audio, which is transcoded to AAC; AAC and other pass-through audio is recorded unchanged. Live audio is not affected.",
   "streamsConfig.aiDetectionSettings": "AI Detection Settings",
   "streamsConfig.detectionUrl": "Detection Stream URL (optional)",
   "streamsConfig.detectionUrlPlaceholder": "http://192.168.1.100/mjpeg or rtsp://…/substream",

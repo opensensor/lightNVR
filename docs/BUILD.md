@@ -20,6 +20,7 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libavfilter-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
     curl \
@@ -104,6 +105,25 @@ When built without SOD, LightNVR will still function normally but will not have 
 
 For more information about SOD integration, see [SOD Integration](SOD_INTEGRATION.md).
 
+### Voice enhancement (libavfilter)
+
+The per-stream **Voice Enhancement** option filters recorded audio while it is
+transcoded from PCM (G.711 μ-law/A-law, raw PCM) to AAC: two cascaded
+`highpass=f=100` sections for hum and rumble, `lowpass=f=8000` when the source
+rate carries content above 8 kHz, and the `afftdn` adaptive denoiser. It needs
+`libavfilter` (`libavfilter-dev`):
+
+- `ENABLE_AUDIO_FILTERS` (default `ON`) links libavfilter when pkg-config finds
+  it. When it is missing or disabled, the build still succeeds and turning the
+  option on logs that it is unavailable; audio records unfiltered.
+- `ENABLE_AUDIO_DENOISE` (default `ON`, `OFF` in the embedded profile) includes
+  `afftdn`, the CPU-heavy stage. With it off, only the highpass/lowpass run.
+
+Audio that the camera already sends in an MP4-compatible codec (AAC, MP3,
+Opus, AC-3) is passed through to the recording without re-encoding, and is
+**not** filtered. Live audio is never filtered. If the filter graph cannot be
+built, LightNVR logs a warning once and keeps recording unfiltered audio.
+
 ### Embedded build profile
 
 Resource-constrained targets can select the embedded profile without changing
@@ -117,9 +137,10 @@ cmake --build build/embedded -- -j$(nproc)
 ```
 
 The embedded profile caps compile-time stream storage at 16 streams, optimizes
-for size, and defaults SOD, LiteRT, and MQTT off. The individual feature
-switches remain available when an embedded target needs one of them. Full
-builds remain the default and retain the 1024-stream ceiling.
+for size, and defaults SOD, LiteRT, MQTT, and the voice-enhancement denoiser
+(`ENABLE_AUDIO_DENOISE`) off. The individual feature switches remain available
+when an embedded target needs one of them. Full builds remain the default and
+retain the 1024-stream ceiling.
 
 `LIGHTNVR_MAX_STREAMS` can override the full-profile ceiling. Embedded builds
 accept values from 1 through 16 only. The older `EMBEDDED_A1_DEVICE=ON` option

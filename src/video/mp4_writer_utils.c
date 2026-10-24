@@ -30,6 +30,11 @@
 #include <libavutil/opt.h>
 #include <libavutil/time.h>
 #include <libswresample/swresample.h>
+#ifdef LIGHTNVR_HAVE_AVFILTER
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#endif
 #include <pthread.h>
 
 #include "core/config.h"
@@ -59,16 +64,19 @@ typedef struct {
     bool faac_flushed;
     int64_t next_faac_pts;
 
-    // Voice-enhancement filter graph (discussion #395).  filter_graph is NULL
-    // when the feature is disabled or the graph hasn't been constructed yet.
-    // The actual filter chain (afftdn / highpass / lowpass, codec-aware
-    // defaults) is deferred to a follow-up PR — for now this is a stub that
-    // routes the per-stream opt-in through to the transcoder lifecycle so
-    // future filter-graph code has a stable insertion point.
+    // Voice-enhancement filter graph (discussion #395, issue #652).
+    // filter_graph is NULL when the feature is disabled, the graph hasn't
+    // been built yet (it is built lazily from the first decoded frame), or
+    // building it failed.  When the graph is active its S16 output feeds the
+    // FIFO directly and swr_ctx is bypassed.
     bool voice_enhancement_enabled;
-    void *filter_graph;            // AVFilterGraph*; void* to avoid header churn
-    void *filter_buffersrc_ctx;    // AVFilterContext* (buffer source)
-    void *filter_buffersink_ctx;   // AVFilterContext* (buffer sink)
+    bool filter_failed;            // build/run failed (or unsupported); logged once
+#ifdef LIGHTNVR_HAVE_AVFILTER
+    AVFilterGraph *filter_graph;
+    AVFilterContext *filter_buffersrc_ctx;
+    AVFilterContext *filter_buffersink_ctx;
+    int64_t filter_next_pts;       // synthetic input pts, 1/sample_rate units
+#endif
 } audio_transcoder_t;
 
 /**
@@ -110,6 +118,212 @@ typedef struct {
     bool enabled;
 } voice_enhancement_pending_t;
 static voice_enhancement_pending_t voice_enhancement_pending[MAX_STREAMS] = {0};
+
+#ifdef LIGHTNVR_HAVE_AVFILTER
+#ifndef LIGHTNVR_AUDIO_DENOISE
+#define LIGHTNVR_AUDIO_DENOISE 1
+#endif
+
+// Speech-band defaults for the voice-enhancement chain.  The highpass (two
+// cascaded 2-pole sections, 24 dB/octave: roughly -25 dB at 50 Hz and -19 dB at
+// 60 Hz) removes mains hum, wind rumble and handling noise while leaving voice
+// fundamentals mostly intact; the lowpass trims hiss above the
+// speech band and is only added when the source actually carries content up
+// there (narrowband G.711 at 8 kHz already stops at 4 kHz); afftdn lowers the
+// remaining broadband noise floor while tracking it adaptively.  afftdn is the
+// expensive stage, so embedded builds leave it out (LIGHTNVR_AUDIO_DENOISE=0).
+#define VOICE_HIGHPASS_HZ 100
+#define VOICE_LOWPASS_HZ 8000
+#define VOICE_DENOISE_OPTS "nr=12:nf=-40:tn=1"
+
+static void voice_filter_free(audio_transcoder_t *t)
+{
+    avfilter_graph_free(&t->filter_graph);
+    t->filter_buffersrc_ctx = NULL;
+    t->filter_buffersink_ctx = NULL;
+}
+
+/* abuffer -> highpass x2 [-> lowpass] [-> afftdn] -> aformat(s16, rate) -> abuffersink.
+ * The output matches what the FIFO holds (interleaved S16 at the decoder's rate
+ * and channel count), so filtered frames bypass swr_ctx. */
+static int voice_filter_build(audio_transcoder_t *t, const AVFrame *frame,
+                              const char *stream_name)
+{
+    char layout[64];
+    char args[256];
+    char chain[256];
+    AVFilterInOut *outputs = NULL;
+    AVFilterInOut *inputs = NULL;
+    int sr = frame->sample_rate > 0 ? frame->sample_rate : t->decoder_ctx->sample_rate;
+    const char *fmt_name = av_get_sample_fmt_name(frame->format);
+    if (sr <= 0 || !fmt_name) return AVERROR(EINVAL);
+
+    int ret = av_channel_layout_describe(&frame->ch_layout, layout, sizeof(layout));
+    if (ret < 0) return ret;
+
+    t->filter_graph = avfilter_graph_alloc();
+    if (!t->filter_graph) return AVERROR(ENOMEM);
+    // The transcoder already runs on the recording thread; a worker pool for
+    // a mono speech chain costs more than it saves.
+    t->filter_graph->nb_threads = 1;
+
+    snprintf(args, sizeof(args),
+             "time_base=1/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s",
+             sr, sr, fmt_name, layout);
+    ret = avfilter_graph_create_filter(&t->filter_buffersrc_ctx,
+                                       avfilter_get_by_name("abuffer"), "in",
+                                       args, NULL, t->filter_graph);
+    if (ret < 0) goto fail;
+    ret = avfilter_graph_create_filter(&t->filter_buffersink_ctx,
+                                       avfilter_get_by_name("abuffersink"), "out",
+                                       NULL, NULL, t->filter_graph);
+    if (ret < 0) goto fail;
+
+    size_t len = (size_t)snprintf(chain, sizeof(chain), "highpass=f=%d,highpass=f=%d",
+                                  VOICE_HIGHPASS_HZ, VOICE_HIGHPASS_HZ);
+    if (sr / 2 > VOICE_LOWPASS_HZ) {
+        len += (size_t)snprintf(chain + len, sizeof(chain) - len, ",lowpass=f=%d",
+                                VOICE_LOWPASS_HZ);
+    }
+#if LIGHTNVR_AUDIO_DENOISE
+    if (avfilter_get_by_name("afftdn")) {
+        len += (size_t)snprintf(chain + len, sizeof(chain) - len, ",afftdn=%s",
+                                VOICE_DENOISE_OPTS);
+    }
+#endif
+    snprintf(chain + len, sizeof(chain) - len, ",aformat=sample_fmts=s16:sample_rates=%d", sr);
+
+    outputs = avfilter_inout_alloc();
+    inputs = avfilter_inout_alloc();
+    if (!outputs || !inputs) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+    outputs->name = av_strdup("in");
+    outputs->filter_ctx = t->filter_buffersrc_ctx;
+    inputs->name = av_strdup("out");
+    inputs->filter_ctx = t->filter_buffersink_ctx;
+    if (!outputs->name || !inputs->name) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    ret = avfilter_graph_parse_ptr(t->filter_graph, chain, &inputs, &outputs, NULL);
+    if (ret < 0) goto fail;
+    ret = avfilter_graph_config(t->filter_graph, NULL);
+    if (ret < 0) goto fail;
+
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    t->filter_next_pts = 0;
+    log_info("Voice enhancement active for %s (%d Hz, %s): %s",
+             stream_name, sr, layout, chain);
+    return 0;
+
+fail:
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    voice_filter_free(t);
+    return ret;
+}
+
+/* Move every frame the graph has ready into the encoder FIFO. */
+static int voice_filter_drain(audio_transcoder_t *t)
+{
+    AVFrame *out = t->resampled_frame;
+    for (;;) {
+        av_frame_unref(out);
+        int ret = av_buffersink_get_frame(t->filter_buffersink_ctx, out);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) return 0;
+        if (ret < 0) return ret;
+        int nb_samples = out->nb_samples;
+        ret = av_audio_fifo_write(t->fifo, (void **)out->data, nb_samples);
+        av_frame_unref(out);
+        if (ret < nb_samples) {
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_ALLOCATE, ENOMEM);
+            return AVERROR(ENOMEM);
+        }
+    }
+}
+
+/* Signal EOF, drain the samples the filters still hold, and free the graph. */
+static int voice_filter_finish(audio_transcoder_t *t)
+{
+    if (!t->filter_graph) return 0;
+    int ret = av_buffersrc_add_frame_flags(t->filter_buffersrc_ctx, NULL, 0);
+    if (ret >= 0) ret = voice_filter_drain(t);
+    voice_filter_free(t);
+    return ret;
+}
+
+static void voice_filter_disable(audio_transcoder_t *t, const char *stream_name,
+                                 const char *what, int err)
+{
+    char errbuf[AV_ERROR_MAX_STRING_SIZE];
+    av_strerror(err, errbuf, sizeof(errbuf));
+    log_warn("Voice enhancement disabled for %s: %s (%s); recording audio unfiltered",
+             stream_name, what, errbuf);
+    voice_filter_free(t);
+    t->filter_failed = true;
+}
+
+/**
+ * Route the decoded frame in t->frame through the voice-enhancement graph.
+ *
+ * @return true when the frame was consumed (its filtered samples are in the
+ *         FIFO), false when the caller should take the plain swr path.  Never
+ *         fails the recording: a graph that can't be built or run is logged
+ *         once and the stream continues unfiltered.
+ */
+static bool voice_filter_process(audio_transcoder_t *t, const char *stream_name)
+{
+    if (!t->voice_enhancement_enabled) {
+        // Switched off mid-recording: keep the samples the graph still holds.
+        if (t->filter_graph) {
+            int ret = voice_filter_finish(t);
+            if (ret < 0) voice_filter_disable(t, stream_name, "drain failed", ret);
+        }
+        return false;
+    }
+    if (t->filter_failed) return false;
+
+    if (!t->filter_graph) {
+        int ret = voice_filter_build(t, t->frame, stream_name);
+        if (ret < 0) {
+            voice_filter_disable(t, stream_name, "filter graph setup failed", ret);
+            return false;
+        }
+    }
+
+    t->frame->pts = t->filter_next_pts;
+    int ret = av_buffersrc_add_frame_flags(t->filter_buffersrc_ctx, t->frame,
+                                           AV_BUFFERSRC_FLAG_KEEP_REF);
+    if (ret < 0) {
+        voice_filter_disable(t, stream_name, "frame rejected", ret);
+        return false;
+    }
+    t->filter_next_pts += t->frame->nb_samples;
+
+    ret = voice_filter_drain(t);
+    if (ret < 0) voice_filter_disable(t, stream_name, "filtering failed", ret);
+    return true;
+}
+#else
+static void voice_filter_free(audio_transcoder_t *t) { (void)t; }
+static int voice_filter_finish(audio_transcoder_t *t) { (void)t; return 0; }
+
+static bool voice_filter_process(audio_transcoder_t *t, const char *stream_name)
+{
+    if (t->voice_enhancement_enabled && !t->filter_failed) {
+        log_warn("Voice enhancement requested for %s but this build has no "
+                 "libavfilter support (ENABLE_AUDIO_FILTERS=OFF); recording audio unfiltered",
+                 stream_name);
+        t->filter_failed = true;
+    }
+    return false;
+}
+#endif
 
 /**
  * Initialize audio transcoder for a stream
@@ -300,9 +514,8 @@ static int init_audio_transcoder(const char *stream_name,
     }
 
     // Pick up any voice-enhancement opt-in staged before this slot was
-    // allocated.  The actual filter graph is built lazily in
-    // transcode_audio_packet() once the decoder frame format is known
-    // (currently stubbed — discussion #395).
+    // allocated.  The filter graph itself is built lazily in
+    // transcode_audio_packet() once the decoder frame format is known.
     audio_transcoders[slot].voice_enhancement_enabled = false;
     for (int i = 0; i < g_config.max_streams; i++) {
         if (voice_enhancement_pending[i].stream_name[0] != '\0' &&
@@ -312,9 +525,13 @@ static int init_audio_transcoder(const char *stream_name,
             break;
         }
     }
+    audio_transcoders[slot].filter_failed = false;
+#ifdef LIGHTNVR_HAVE_AVFILTER
     audio_transcoders[slot].filter_graph = NULL;
     audio_transcoders[slot].filter_buffersrc_ctx = NULL;
     audio_transcoders[slot].filter_buffersink_ctx = NULL;
+    audio_transcoders[slot].filter_next_pts = 0;
+#endif
 
     // Mark as initialized
     audio_transcoders[slot].initialized = 1;
@@ -424,10 +641,11 @@ void cleanup_audio_transcoder(const char *stream_name) {
                 audio_transcoders[i].out_pkt = NULL;
             }
 
+            voice_filter_free(&audio_transcoders[i]);
+
             audio_transcoders[i].initialized = 0;
             audio_transcoders[i].voice_enhancement_enabled = false;
-            // filter_graph et al. will be freed here once the real filter
-            // chain lands (discussion #395) — currently always NULL.
+            audio_transcoders[i].filter_failed = false;
             audio_transcoder_stream_names[i][0] = '\0';
 
             log_info("Cleaned up audio transcoder for stream %s", stream_name);
@@ -456,14 +674,16 @@ void set_audio_voice_enhancement(const char *stream_name, bool enabled) {
     pthread_mutex_lock(&audio_transcoder_mutex);
 
     // If the transcoder slot already exists, flip the flag in place.  The
-    // future filter-graph code reads this on the next packet and rebuilds
-    // the graph if the state changed.
+    // transcode path reads it on the next packet: it builds the graph when
+    // enabled, or drains and frees it when disabled.
     for (int i = 0; i < g_config.max_streams; i++) {
         if (audio_transcoders[i].initialized &&
             audio_transcoder_stream_names[i][0] != '\0' &&
             strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
             if (audio_transcoders[i].voice_enhancement_enabled != enabled) {
                 audio_transcoders[i].voice_enhancement_enabled = enabled;
+                // A fresh opt-in gets a fresh attempt at building the graph.
+                audio_transcoders[i].filter_failed = false;
                 log_info("Audio voice enhancement %s for stream %s (live)",
                          enabled ? "enabled" : "disabled", stream_name);
             }
@@ -745,7 +965,10 @@ static int transcode_audio_packet_locked(const char *stream_name,
 
     enum AVSampleFormat enc_sample_fmt = AV_SAMPLE_FMT_S16;
 
-    if (audio_transcoders[transcoder_idx].swr_ctx) {
+    // Voice enhancement, when on, filters the frame straight into the FIFO.
+    bool filtered = voice_filter_process(&audio_transcoders[transcoder_idx], stream_name);
+
+    if (!filtered && audio_transcoders[transcoder_idx].swr_ctx) {
         AVFrame *resampled = audio_transcoders[transcoder_idx].resampled_frame;
         av_frame_unref(resampled);
         resampled->format = enc_sample_fmt;
@@ -829,6 +1052,13 @@ static int transcode_audio_flush_locked(const char *stream_name, AVPacket ***pac
         }
     }
     if (!t || !t->faac_enc || t->faac_flushed) return 0;
+
+    /* The voice-enhancement filters hold back samples too (afftdn works in
+       overlapping windows). An error here only costs that tail. */
+    int filter_ret = voice_filter_finish(t);
+    if (filter_ret < 0) {
+        log_warn("Failed to drain voice-enhancement filter for %s: %d", stream_name, filter_ret);
+    }
 
     /* swr may retain samples for filter delay even when input and output rates
        match. Drain those before the FIFO's final partial frame. */

@@ -27,7 +27,7 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       test -n "$GCC_MAJOR" && \
       apt-get install -y --no-install-recommends \
         "libstdc++-${GCC_MAJOR}-dev" \
-        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
         libcurl4-openssl-dev libmbedtls-dev libcjson-dev \
         libmosquitto-dev libyaml-dev && \
       if [ "$DEB_BUILD" = "true" ]; then \
@@ -104,7 +104,7 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       rm /tmp/armv7-toolchain-check; \
     else \
       apt-get install -y --no-install-recommends \
-        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
         libcurl4-openssl-dev libmbedtls-dev libcjson-dev \
         libmosquitto-dev libyaml-dev; \
     fi && \

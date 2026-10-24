@@ -1473,8 +1473,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
     }
 
-    // Voice-enhancement is a runtime toggle — the filter graph is rebuilt on the
-    // next recording session, so flipping it doesn't require a stream restart.
+    // Voice-enhancement is a runtime toggle — the recording thread picks it up
+    // at the next segment and the transcoder builds or drains its filter graph
+    // on the next packet, so flipping it doesn't require a stream restart.
     // (Discussion #395.)
     cJSON *audio_voice_enhancement = cJSON_GetObjectItem(stream_json, "audio_voice_enhancement");
     if (audio_voice_enhancement && cJSON_IsBool(audio_voice_enhancement)) {
