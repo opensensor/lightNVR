@@ -402,6 +402,66 @@ display_startup_info() {
     echo ""
 }
 
+# Optional migration for volumes written by releases before 0.44, which ran
+# as root. The image runs as 10001:10001 and this path is never taken by
+# default: only when the operator explicitly starts the container as root
+# (user: "0:0") does the entrypoint fix volume ownership, then re-run itself
+# as PUID:PGID before doing anything else. LightNVR and go2rtc never run as
+# root. Ownership is changed only where it differs, and modes are kept.
+# shellcheck disable=SC2086 # $mismatch is a deliberate list of find operators
+chown_volumes() {
+    data=/var/lib/lightnvr/data
+    mismatch="( ! -user $1 -o ! -group $2 )"
+
+    mkdir -p /etc/lightnvr/go2rtc "$data/recordings/mp4" "$data/database" \
+        "$data/models" /var/log/lightnvr /var/run/lightnvr &&
+    # Config, logs, database, models and other small state: recursively.
+    find /etc/lightnvr /var/log/lightnvr /var/run/lightnvr $mismatch \
+        -exec chown -h "$1:$2" {} + &&
+    find "$data" -path "$data/recordings" -prune -o $mismatch \
+        -exec chown -h "$1:$2" {} + &&
+    # Recordings: directories only, so startup does not walk every segment
+    # (#368). Old root-owned segments stay readable and, in a writable
+    # directory, deletable by retention.
+    find "$data/recordings" -type d $mismatch -exec chown -h "$1:$2" {} +
+}
+
+migrate_volume_ownership() {
+    log_warn "Started as root: migrating LightNVR volume ownership to UID:GID $1:$2"
+    if ! chown_volumes "$1" "$2"; then
+        log_error "Could not change volume ownership. The migration run needs the CHOWN,"
+        log_error "DAC_OVERRIDE, FOWNER, SETUID and SETGID capabilities (do not use cap_drop: ALL"
+        log_error "for it), and NFS exports with root_squash must be changed on the server instead."
+        exit 1
+    fi
+    log_info "Volume ownership migrated; remove user: \"0:0\" to start without root next time"
+}
+
+if [ "$(id -u)" = "0" ]; then
+    runtime_uid="${PUID:-10001}"
+    runtime_gid="${PGID:-10001}"
+    for id_value in "$runtime_uid" "$runtime_gid"; do
+        case "$id_value" in
+            ''|*[!0-9]*|0)
+                log_error "PUID and PGID must be non-zero numeric IDs; LightNVR does not run as root"
+                exit 1
+                ;;
+        esac
+    done
+
+    migrate_volume_ownership "$runtime_uid" "$runtime_gid"
+
+    # Keep supplementary groups added by the runtime (e.g. group_add for
+    # /dev/dri) but never root's group.
+    extra_groups=$(id -G | tr ' ' '\n' | grep -vx -e 0 -e "$runtime_gid" | paste -sd, -)
+    if [ -n "$extra_groups" ]; then
+        group_opt="--groups=$extra_groups"
+    else
+        group_opt="--clear-groups"
+    fi
+    exec setpriv --reuid="$runtime_uid" --regid="$runtime_gid" "$group_opt" -- "$0" "$@"
+fi
+
 # Handle signals properly for graceful shutdown
 trap 'log_info "Received shutdown signal, stopping services..."; kill -TERM $PID 2>/dev/null || true; exit 0' TERM INT
 
