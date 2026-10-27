@@ -16,8 +16,14 @@ and back up the data before migrating. You can keep existing mounts during migra
 provided they contain only LightNVR state and are writable by the runtime UID.
 
 For existing bind mounts, change ownership of the specific LightNVR directories to
-10001:10001 on the host. The entrypoint no longer changes ownership or permissions
-recursively. Preserve restrictive permissions on credentials and `override.yaml`.
+10001:10001 on the host, recursively (`chown -R 10001:10001 <host directory>`, which
+keeps file modes). Releases before 0.44 ran as root, so subdirectories such as
+`go2rtc/`, the database file, and per-camera recording directories are root-owned too;
+changing only the top-level directory is not enough. Do not delete a bind-mounted
+directory to start over: Docker recreates a missing one owned by root. The entrypoint
+does not change ownership or permissions itself; it checks every path before
+writing anything and lists each one that is not writable, with its current owner.
+Preserve restrictive permissions on credentials and `override.yaml`.
 Change an existing `pid_file = /var/run/lightnvr.pid` to
 `pid_file = /var/run/lightnvr/lightnvr.pid` in `lightnvr.ini`.
 Root-owned application binaries and web assets stay outside writable volumes.
