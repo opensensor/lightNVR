@@ -22,6 +22,84 @@ log_error() {
     echo "${RED}[ERROR]${NC} $1"
 }
 
+report_unwritable() {
+    owner=$(stat -c 'owner %u:%g, mode %a' "$1" 2>/dev/null || echo "missing")
+    log_error "Not writable by UID:GID $(id -u):$(id -g): $1 ($owner)"
+    permission_errors=$((permission_errors + 1))
+}
+
+# Verify every path the entrypoint and LightNVR write to. All problems are
+# collected first so the operator can fix them in one pass. Mounted operator
+# files are never chowned or chmodded here; in particular, 0600 credentials
+# and go2rtc overrides keep their permissions.
+check_volume_permissions() {
+    log_info "Checking volume permissions for UID:GID $(id -u):$(id -g)..."
+    permission_errors=0
+    recordings=/var/lib/lightnvr/data/recordings
+
+    for dir in \
+        "/etc/lightnvr" \
+        "/etc/lightnvr/go2rtc" \
+        "/var/lib/lightnvr/data" \
+        "$recordings" \
+        "$recordings/mp4" \
+        "/var/lib/lightnvr/data/database" \
+        "/var/lib/lightnvr/data/models" \
+        "/var/log/lightnvr"; do
+        test_file="$dir/.write_test_$$"
+        if [ -d "$dir" ] && touch "$test_file" 2>/dev/null; then
+            rm -f "$test_file"
+        else
+            report_unwritable "$dir"
+        fi
+    done
+
+    # SQLite writes the database and its WAL/SHM files in place.
+    for file in \
+        "/var/lib/lightnvr/data/database/lightnvr.db" \
+        "/var/lib/lightnvr/data/database/lightnvr.db-wal" \
+        "/var/lib/lightnvr/data/database/lightnvr.db-shm"; do
+        if [ -e "$file" ] && [ ! -w "$file" ]; then
+            report_unwritable "$file"
+        fi
+    done
+
+    # Per-camera directories created by root-run releases before 0.44 would
+    # let LightNVR start but break new segments and retention later. This is
+    # bounded by camera count, not by recording file count (see #368).
+    for parent in "$recordings" "$recordings/mp4"; do
+        [ -d "$parent" ] || continue
+        unwritable=$(find "$parent" -mindepth 1 -maxdepth 1 -type d \
+            ! -path "$recordings/mp4" ! -writable 2>/dev/null)
+        if [ -n "$unwritable" ]; then
+            count=$(printf '%s\n' "$unwritable" | wc -l)
+            report_unwritable "$(printf '%s\n' "$unwritable" | head -n 1)"
+            if [ "$count" -gt 1 ]; then
+                log_error "...and $((count - 1)) more camera directories under $parent"
+            fi
+        fi
+    done
+
+    # A read-only lightnvr.ini is a valid choice for managed deployments, but
+    # settings saved from the web UI will not persist.
+    if [ -e /etc/lightnvr/lightnvr.ini ] && [ ! -w /etc/lightnvr/lightnvr.ini ]; then
+        log_warn "/etc/lightnvr/lightnvr.ini is read-only; settings saved from the web UI will not persist"
+    fi
+
+    if [ "$permission_errors" -gt 0 ]; then
+        log_error ""
+        log_error "LightNVR runs as UID:GID $(id -u):$(id -g) and cannot change ownership of existing volumes."
+        log_error "Releases before 0.44 ran as root, so their files are usually owned by root."
+        log_error "Stop the container, back up its data, and run on the host for each LightNVR bind mount:"
+        log_error "  chown -R $(id -u):$(id -g) <host directory>"
+        log_error "Deleting the host directory does not help: Docker recreates it owned by root."
+        log_error "See docs/DOCKER.md, 'Security migration: non-root runtime and private go2rtc API':"
+        log_error "  https://github.com/opensensor/lightNVR/blob/main/docs/DOCKER.md#security-migration-non-root-runtime-and-private-go2rtc-api"
+        exit 1
+    fi
+    log_info "Volume permissions OK"
+}
+
 # Function to copy default files if they don't exist
 init_config() {
     log_info "Initializing LightNVR configuration..."
@@ -32,6 +110,7 @@ init_config() {
     # Create directories one by one with error checking
     for dir in \
         "/etc/lightnvr" \
+        "/etc/lightnvr/go2rtc" \
         "/var/lib/lightnvr/data" \
         "/var/lib/lightnvr/data/recordings" \
         "/var/lib/lightnvr/data/recordings/mp4" \
@@ -49,6 +128,10 @@ init_config() {
             log_info "Directory already exists: $dir"
         fi
     done
+
+    # Fail before writing anything, so an ownership problem is reported as
+    # one actionable message instead of a bare shell error (#672).
+    check_volume_permissions
 
     # Verify web assets exist at the expected location; no fallback copy
     log_info "Verifying web assets at /var/lib/lightnvr/www"
@@ -186,10 +269,6 @@ EOF
         log_info "Configuration file already exists at /etc/lightnvr/lightnvr.ini"
     fi
     
-    # Create go2rtc config directory if it doesn't exist
-    mkdir -p /etc/lightnvr/go2rtc
-    # Volume ownership must be prepared by the operator before startup.
-    
     # Always regenerate go2rtc.yaml fresh at startup to avoid stale/corrupted
     # configs from prior versions causing stream errors (see issue #165).
     # The entrypoint will then ask LightNVR to rewrite this file from the saved
@@ -239,21 +318,6 @@ EOF
     else
         log_info "No models to copy, skipping model initialization"
     fi
-    
-    # Do not recursively chown or chmod mounted operator files. In particular,
-    # retain 0600 permissions on credentials and go2rtc overrides.
-    # Test write permissions on critical directories
-    log_info "Testing write permissions..."
-    for test_dir in "/var/lib/lightnvr/data" "/etc/lightnvr" "/var/log/lightnvr"; do
-        test_file="$test_dir/.write_test_$$"
-        if touch "$test_file" 2>/dev/null; then
-            rm -f "$test_file" 2>/dev/null
-            log_info "Write permission OK: $test_dir"
-        else
-            log_error "No write permission: $test_dir - prepare volume ownership for UID:GID $(id -u):$(id -g)"
-            exit 1
-        fi
-    done
 
     log_info "Initialization complete"
 }
@@ -337,6 +401,66 @@ display_startup_info() {
     log_info "=========================================="
     echo ""
 }
+
+# Optional migration for volumes written by releases before 0.44, which ran
+# as root. The image runs as 10001:10001 and this path is never taken by
+# default: only when the operator explicitly starts the container as root
+# (user: "0:0") does the entrypoint fix volume ownership, then re-run itself
+# as PUID:PGID before doing anything else. LightNVR and go2rtc never run as
+# root. Ownership is changed only where it differs, and modes are kept.
+# shellcheck disable=SC2086 # $mismatch is a deliberate list of find operators
+chown_volumes() {
+    data=/var/lib/lightnvr/data
+    mismatch="( ! -user $1 -o ! -group $2 )"
+
+    mkdir -p /etc/lightnvr/go2rtc "$data/recordings/mp4" "$data/database" \
+        "$data/models" /var/log/lightnvr /var/run/lightnvr &&
+    # Config, logs, database, models and other small state: recursively.
+    find /etc/lightnvr /var/log/lightnvr /var/run/lightnvr $mismatch \
+        -exec chown -h "$1:$2" {} + &&
+    find "$data" -path "$data/recordings" -prune -o $mismatch \
+        -exec chown -h "$1:$2" {} + &&
+    # Recordings: directories only, so startup does not walk every segment
+    # (#368). Old root-owned segments stay readable and, in a writable
+    # directory, deletable by retention.
+    find "$data/recordings" -type d $mismatch -exec chown -h "$1:$2" {} +
+}
+
+migrate_volume_ownership() {
+    log_warn "Started as root: migrating LightNVR volume ownership to UID:GID $1:$2"
+    if ! chown_volumes "$1" "$2"; then
+        log_error "Could not change volume ownership. The migration run needs the CHOWN,"
+        log_error "DAC_OVERRIDE, FOWNER, SETUID and SETGID capabilities (do not use cap_drop: ALL"
+        log_error "for it), and NFS exports with root_squash must be changed on the server instead."
+        exit 1
+    fi
+    log_info "Volume ownership migrated; remove user: \"0:0\" to start without root next time"
+}
+
+if [ "$(id -u)" = "0" ]; then
+    runtime_uid="${PUID:-10001}"
+    runtime_gid="${PGID:-10001}"
+    for id_value in "$runtime_uid" "$runtime_gid"; do
+        case "$id_value" in
+            ''|*[!0-9]*|0)
+                log_error "PUID and PGID must be non-zero numeric IDs; LightNVR does not run as root"
+                exit 1
+                ;;
+        esac
+    done
+
+    migrate_volume_ownership "$runtime_uid" "$runtime_gid"
+
+    # Keep supplementary groups added by the runtime (e.g. group_add for
+    # /dev/dri) but never root's group.
+    extra_groups=$(id -G | tr ' ' '\n' | grep -vx -e 0 -e "$runtime_gid" | paste -sd, -)
+    if [ -n "$extra_groups" ]; then
+        group_opt="--groups=$extra_groups"
+    else
+        group_opt="--clear-groups"
+    fi
+    exec setpriv --reuid="$runtime_uid" --regid="$runtime_gid" "$group_opt" -- "$0" "$@"
+fi
 
 # Handle signals properly for graceful shutdown
 trap 'log_info "Received shutdown signal, stopping services..."; kill -TERM $PID 2>/dev/null || true; exit 0' TERM INT

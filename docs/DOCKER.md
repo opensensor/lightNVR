@@ -16,8 +16,28 @@ and back up the data before migrating. You can keep existing mounts during migra
 provided they contain only LightNVR state and are writable by the runtime UID.
 
 For existing bind mounts, change ownership of the specific LightNVR directories to
-10001:10001 on the host. The entrypoint no longer changes ownership or permissions
-recursively. Preserve restrictive permissions on credentials and `override.yaml`.
+10001:10001 on the host, recursively (`chown -R 10001:10001 <host directory>`, which
+keeps file modes). Releases before 0.44 ran as root, so subdirectories such as
+`go2rtc/`, the database file, and per-camera recording directories are root-owned too;
+changing only the top-level directory is not enough. Do not delete a bind-mounted
+directory to start over: Docker recreates a missing one owned by root. The entrypoint
+does not change ownership or permissions itself; it checks every path before
+writing anything and lists each one that is not writable, with its current owner.
+Preserve restrictive permissions on credentials and `override.yaml`.
+
+If you cannot change ownership on the host (for example on Unraid or a NAS UI),
+start the container once as root instead, with `user: "0:0"` in Compose or
+`--user 0:0`. The entrypoint then changes ownership of the LightNVR volumes, only
+where it differs and without changing modes, and drops to the runtime user before
+doing anything else. LightNVR and go2rtc never run as root. Set `PUID`/`PGID` to use
+an ID other than 10001:10001 (Unraid's convention is `PUID=99`, `PGID=100`); they
+take effect only when the container starts as root. In recordings, only directories are
+changed: segments written by root stay root-owned but remain readable and can be
+deleted by retention. This run needs the default `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
+`SETUID` and `SETGID` capabilities, so do not combine it with `cap_drop: ALL`. NFS exports
+with `root_squash` must be fixed on the server. Remove `user: "0:0"` afterwards
+to return to a start without root.
+
 Change an existing `pid_file = /var/run/lightnvr.pid` to
 `pid_file = /var/run/lightnvr/lightnvr.pid` in `lightnvr.ini`.
 Root-owned application binaries and web assets stay outside writable volumes.
