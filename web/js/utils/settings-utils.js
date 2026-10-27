@@ -79,9 +79,8 @@ export async function getGo2rtcBaseUrl() {
 
 /** Get the same-origin WebSocket base URL for MSE streaming. */
 export async function getGo2rtcWebSocketUrl() {
-  const settings = await getSettings();
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}${settings.go2rtc_base_path ?? '/go2rtc'}`;
+  return `${protocol}//${window.location.host}/go2rtc`;
 }
 
 // Default browser-side WebRTC live-view timeouts (milliseconds). These mirror

@@ -15,8 +15,8 @@
 /**
  * @brief Proxy handler for allowed /go2rtc/ endpoints
  *
- * Forwards the request to go2rtc running on localhost, preserving the path,
- * query string, method, headers, and body. The response from go2rtc is
+ * Forwards the request to go2rtc running on localhost, translating the public path
+ * and forwarding a validated, canonical query plus the method and body. The response from go2rtc is
  * forwarded back to the client.
  *
  * @param req HTTP request
@@ -26,6 +26,10 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res);
 
 /* Exact canonical endpoint allow-list, shared by both proxy paths. */
 bool go2rtc_proxy_path_matches(const char *path);
+
+/* Strict, shared playback query parsing and canonical upstream URL building. */
+bool go2rtc_proxy_parse_source(const http_request_t *req, char *name, size_t capacity);
+bool go2rtc_proxy_build_url(const http_request_t *req, char *url, size_t capacity);
 
 /* Shared by the detached libuv proxy worker. HLS session follow-up requests
  * are bound to the credential/camera authorized at manifest creation. */

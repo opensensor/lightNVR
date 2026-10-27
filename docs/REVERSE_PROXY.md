@@ -1,24 +1,22 @@
 # Reverse Proxy & HTTPS
 
-Keep the managed go2rtc API bound to `127.0.0.1:1984`. Do not publish port 1984 or forward its entire `/go2rtc/` prefix. Browser media URLs use the dashboard's origin over both HTTP and HTTPS.
+Keep the managed go2rtc API bound to `127.0.0.1:1984`. Do not publish port 1984 or route browser requests directly to it. All browser media URLs use the dashboard origin.
 
-LightNVR's authenticated proxy serves HLS, snapshots and WebRTC signaling, including per-camera live-view permissions. WebRTC works directly on port 8080 or through a normal HTTPS proxy to LightNVR. MSE still requires a reverse proxy that can reach go2rtc on loopback and **authenticates requests before forwarding** the exact WebSocket path:
+LightNVR's authenticated proxy serves MSE WebSockets, WebRTC signaling, HLS and snapshots, with per-camera permissions. All modes work directly on the dashboard port (normally 8080). An HTTPS gateway forwards every path to LightNVR and preserves WebSocket upgrades:
 
 | Public path | Upstream |
 | --- | --- |
-| `/go2rtc/api/ws` | `http://127.0.0.1:1984` (WebSocket upgrade) |
-| `/go2rtc/api/webrtc` | `http://127.0.0.1:8080` (authorized HTTP signaling) |
-| All other paths | `http://127.0.0.1:8080` (LightNVR's authorization and route allowlist) |
+| `/go2rtc/api/ws` | LightNVR port 8080 (authorized WebSocket upgrade) |
+| `/go2rtc/api/webrtc` | LightNVR port 8080 (authorized HTTP signaling) |
+| All other paths | LightNVR port 8080 |
 
-The go2rtc admin UI, config, restart, and exit endpoints are not live-view routes. Do not expose them. If using an overridden `api.base_path`, change the WebSocket path in the proxy configuration to match. Keep the public WebRTC path at `/go2rtc/api/webrtc`; LightNVR translates the upstream prefix.
-
-The examples below add a gateway login for the entire site, so the browser authenticates before opening a WebSocket. Keep LightNVR authentication enabled as well. The gateway credentials authorize access to go2rtc's WebSocket endpoint and **do not enforce LightNVR's per-camera permissions**. Only grant them to users permitted to access all streams. Use LightNVR's WebRTC/HLS/snapshot routes when per-camera authorization is required.
+The public media prefix is always `/go2rtc`. LightNVR translates it to the configured go2rtc API port and `api.base_path`, including custom or empty base paths. Keep LightNVR authentication enabled. A dashboard session cookie also authenticates the WebSocket handshake; the camera's live-view permission is checked before connecting upstream. Cross-origin WebSocket requests are rejected, so preserve the browser's `Host` header, including any non-default port.
 
 ## Network placement
 
-These examples require the proxy and go2rtc to share a network namespace: native services on one host, containers using `network_mode: service:lightnvr`, or containers in the same Kubernetes Pod. A separate Docker bridge container or a proxy on the Docker host cannot reach the container's loopback listener. Place the proxy in the same namespace; do not restore a public API listener to work around this.
+The HTTPS gateway only needs network access to LightNVR's web port. It can run on the host, in a separate container on the same Docker network, or in the same network namespace. The examples use `127.0.0.1:8080`; use `lightnvr:8080` for a separate gateway container on the same Docker network.
 
-When a proxy container shares LightNVR's network namespace, publish the proxy's HTTPS port on the LightNVR service and mount only the proxy's config, certificates, and password file into the proxy container. Port 1984 remains unpublished. Direct access to port 8080 supports WebRTC, HLS and snapshots; MSE requires the proxy. WebRTC media still needs reachable ICE candidates (normally port 8555 TCP/UDP).
+Port 1984 stays private inside the recorder's network namespace. WebRTC media still needs reachable ICE candidates (normally port 8555 TCP/UDP).
 
 ## Trusted proxy addresses
 
@@ -29,13 +27,18 @@ Configure LightNVR to trust forwarded client addresses only from the proxy:
 trusted_proxy_cidrs = 127.0.0.1/32,::1/128
 ```
 
-Use the actual proxy address range for any other network arrangement. This setting controls forwarded address handling; it does not authenticate media requests.
+Use the actual proxy address range for other network arrangements. This setting controls forwarded address handling; it does not authenticate media requests.
 
 ## nginx
 
-Create `/etc/nginx/nvr.htpasswd` with `htpasswd`, restrict access to that file, and install your TLS certificate. The WebSocket location inherits the server's authentication requirement.
+Install your TLS certificate and use this configuration. Place `map` in the `http` context.
 
 ```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 80;
     server_name nvr.example.com;
@@ -49,98 +52,65 @@ server {
     ssl_certificate_key /etc/ssl/private/nvr.key;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    auth_basic "NVR gateway";
-    auth_basic_user_file /etc/nginx/nvr.htpasswd;
-
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-
-    location = /go2rtc/api/ws {
-        proxy_pass http://127.0.0.1:1984;
-    }
     location / {
         proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 }
 ```
 
 ## Caddy
 
-Generate a password hash with `caddy hash-password`, then replace the placeholder below. See Caddy's [basic_auth documentation](https://caddyserver.com/docs/caddyfile/directives/basic_auth).
-
 ```caddy
 nvr.example.com {
     encode zstd gzip
-    basic_auth {
-        operator REPLACE_WITH_PASSWORD_HASH
-    }
-
-    @media path /go2rtc/api/ws
-    handle @media {
-        reverse_proxy 127.0.0.1:1984
-    }
-    handle {
-        reverse_proxy 127.0.0.1:8080
-    }
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
-Caddy handles WebSocket upgrades automatically. Both handlers inherit the site authentication requirement.
+Caddy preserves the Host header and handles WebSocket upgrades automatically.
 
 ## Traefik
 
-Use the file provider with Traefik in the same network namespace as LightNVR. This dynamic configuration assumes a TLS `websecure` entry point and a `letsencrypt` certificate resolver are already configured. Create the password file inside the **Traefik** container; see [BasicAuth configuration](https://doc.traefik.io/traefik/v2.11/middlewares/http/basicauth/).
+This file-provider configuration assumes a TLS `websecure` entry point and a `letsencrypt` certificate resolver are already configured.
 
 ```yaml
 http:
   routers:
-    nvr-media:
-      rule: "Host(`nvr.example.com`) && Path(`/go2rtc/api/ws`)"
-      priority: 100
-      entryPoints: [websecure]
-      middlewares: [nvr-auth]
-      service: go2rtc-media
-      tls:
-        certResolver: letsencrypt
     nvr:
       rule: "Host(`nvr.example.com`)"
       entryPoints: [websecure]
-      middlewares: [nvr-auth]
       service: lightnvr
       tls:
         certResolver: letsencrypt
-  middlewares:
-    nvr-auth:
-      basicAuth:
-        usersFile: /etc/traefik/nvr.htpasswd
   services:
-    go2rtc-media:
-      loadBalancer:
-        servers:
-          - url: http://127.0.0.1:1984
     lightnvr:
       loadBalancer:
+        passHostHeader: true
         servers:
           - url: http://127.0.0.1:8080
 ```
 
 ## Verify after upgrading
 
-1. From another host, confirm TCP port 1984 is unreachable. Inside the recorder's network namespace, confirm it listens on `127.0.0.1` only.
-2. Without credentials, requests to both media routes must return `401` or `403`, including WebSocket upgrade requests and WebRTC POSTs.
-3. With gateway credentials, confirm MSE upgrades to `101`. With a LightNVR login authorized for the camera, confirm WebRTC negotiates video. Browser network requests must stay on the dashboard origin.
-4. With and without gateway credentials, confirm `/go2rtc/api/config`, `/go2rtc/api/restart`, and `/go2rtc/api/exit` never reach go2rtc through the public proxy. Likewise check path suffixes and traversal variants.
-5. Confirm WebRTC, HLS and snapshots use LightNVR authorization, and audit logs show the correct client address.
+1. From another host, confirm TCP port 1984 is unreachable. Inside the recorder's network namespace, confirm it listens on loopback only.
+2. Without a LightNVR login, media requests must return `401` or `403`, including WebSocket upgrades and WebRTC POSTs.
+3. With a login permitted to view the camera, confirm MSE upgrades to `101`, receives media, and works with several cameras open. Verify HLS grid playback and its subsequent segment requests as well.
+4. With a camera-restricted login, confirm other cameras and their substreams are denied. Browser requests must stay on the dashboard origin even with a custom go2rtc port or base path.
+5. Confirm `/go2rtc/api/config`, `/go2rtc/api/restart`, and `/go2rtc/api/exit` return `404` through LightNVR. Check that audit logs show the correct client address.
 
 ## Existing deployments
 
-Remove any old wildcard proxy route and port-1984 mapping. Review `override.yaml`: an explicit `api.listen` or `api.tls_listen` can override the generated loopback default. `/api/config`, `/api/restart`, and `/api/exit` are disabled without go2rtc credentials; when credentials are configured, authentication is mandatory even on loopback. Manage the subprocess through LightNVR instead of exposing administrative routes.
+Remove any old gateway route to go2rtc, including a dedicated `/go2rtc/api/ws` route, and any port-1984 mapping. Route them through LightNVR instead. Review `override.yaml`: an explicit `api.listen` or `api.tls_listen` can override the generated loopback default. `/api/config`, `/api/restart`, and `/api/exit` are disabled without go2rtc credentials; when credentials are configured, authentication is mandatory even on loopback. Manage the subprocess through LightNVR instead of exposing administrative routes.
+
+In v0.44.0–v0.44.2, the MSE frontend used the dashboard origin but LightNVR lacked a WebSocket relay. Those versions could return `404` on port 8080. Pointing the frontend at port 1984 bypasses LightNVR authorization and is not the fix. The relay now handles that request on the dashboard port. The same update resolves HLS grid authorization for managed `_sub` streams.
 
 See [Docker deployment](DOCKER.md) for runtime user and volume migration, and [go2rtc overrides](GO2RTC_CONFIG_OVERRIDE.md) for configuration ownership.

@@ -20,9 +20,11 @@
 #include <unistd.h>
 #include <strings.h>
 #include <time.h>
+#include <stdatomic.h>
 #include <curl/curl.h>
 
 #include "web/go2rtc_proxy_thread.h"
+#include "web/go2rtc_websocket.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/httpd_utils.h"
 #include "web/libuv_connection.h"
@@ -56,6 +58,7 @@ typedef struct proxy_thread_ctx {
     size_t body_len;
     char content_type[256];
     bool capture_hls_session;
+    bool websocket_request;
     char capture_stream_name[MAX_STREAM_NAME];
     char auth_fingerprint[65];
     write_complete_action_t action;
@@ -84,10 +87,12 @@ static struct {
     uv_loop_t *loop;
     uv_async_t async_handle;
     pthread_mutex_t done_mutex;
+    pthread_cond_t workers_done;
     proxy_thread_ctx_t *done_head;
     proxy_thread_ctx_t *done_tail;
-    volatile int active_count;
-    volatile bool shutting_down;
+    atomic_int active_count;
+    atomic_bool shutting_down;
+    bool close_pending;
     bool initialized;
 } g_proxy_state = {0};
 
@@ -167,6 +172,14 @@ static void free_proxy_context(proxy_thread_ctx_t *ctx) {
 // Worker thread
 // ============================================================================
 
+static int proxy_progress_cb(void *unused, curl_off_t download_total,
+                             curl_off_t downloaded, curl_off_t upload_total,
+                             curl_off_t uploaded) {
+    (void)unused; (void)download_total; (void)downloaded;
+    (void)upload_total; (void)uploaded;
+    return atomic_load(&g_proxy_state.shutting_down) ? 1 : 0;
+}
+
 static void *proxy_worker_thread(void *arg) {
     log_set_thread_context("go2rtcProxy", NULL);
     proxy_thread_ctx_t *ctx = (proxy_thread_ctx_t *)arg;
@@ -189,12 +202,21 @@ static void *proxy_worker_thread(void *arg) {
         log_warn("go2rtc proxy authorization took %ld ms for %s",
                  auth_elapsed_ms, ctx->request.path);
     }
-    if (ctx->authorization_denied) goto done;
+    if (ctx->authorization_denied || atomic_load(&g_proxy_state.shutting_down)) goto done;
+    if (!go2rtc_proxy_build_url(&ctx->request, ctx->url, sizeof(ctx->url))) {
+        http_response_set_json_error(&ctx->auth_response, 400, "Invalid proxy query");
+        ctx->authorization_denied = true;
+        goto done;
+    }
+    if (strcmp(ctx->request.path, "/go2rtc/api/ws") == 0) {
+        ctx->websocket_request = go2rtc_websocket_validate(&ctx->request, &ctx->auth_response);
+        ctx->authorization_denied = !ctx->websocket_request;
+        goto done;
+    }
 
     if (strcmp(ctx->request.path, "/go2rtc/api/stream.m3u8") == 0 &&
-        http_request_get_query_param(&ctx->request, "src",
-                                     ctx->capture_stream_name,
-                                     sizeof(ctx->capture_stream_name)) >= 0 &&
+        go2rtc_proxy_parse_source(&ctx->request, ctx->capture_stream_name,
+                                   sizeof(ctx->capture_stream_name)) &&
         httpd_request_auth_fingerprint(&ctx->request,
                                        ctx->auth_fingerprint) == 0) {
         ctx->capture_hls_session = true;
@@ -224,6 +246,8 @@ static void *proxy_worker_thread(void *arg) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, snapshot_request ? 10L : 30L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, snapshot_request ? 2L : 5L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, proxy_progress_cb);
     // A redirect target has not been authorized. Never follow it internally —
     // this (not PATH_AS_IS) is what closes the traversal-redirect bypass.
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
@@ -262,7 +286,7 @@ static void *proxy_worker_thread(void *arg) {
             log_warn("go2rtc proxy thread: curl failed: %s", curl_easy_strerror(cres));
             ctx->error = true;
         } else {
-            if (ctx->capture_hls_session) {
+            if (ctx->capture_hls_session && ctx->http_code == 200) {
                 go2rtc_proxy_capture_hls_sessions_for(
                     ctx->capture_stream_name, ctx->auth_fingerprint,
                     ctx->response_buffer, ctx->response_size);
@@ -273,7 +297,10 @@ static void *proxy_worker_thread(void *arg) {
 done:
     enqueue_done(ctx);
     uv_async_send(&g_proxy_state.async_handle);
-    __sync_sub_and_fetch(&g_proxy_state.active_count, 1);
+    pthread_mutex_lock(&g_proxy_state.done_mutex);
+    atomic_fetch_sub(&g_proxy_state.active_count, 1);
+    pthread_cond_signal(&g_proxy_state.workers_done);
+    pthread_mutex_unlock(&g_proxy_state.done_mutex);
     return NULL;
 }
 
@@ -291,6 +318,13 @@ static void proxy_async_cb(uv_async_t *handle) {
 
         if (g_proxy_state.shutting_down) {
             // Server shutting down — connection may already be torn down
+            free_proxy_context(ctx);
+            ctx = next;
+            continue;
+        }
+
+        if (ctx->websocket_request) {
+            go2rtc_websocket_start(conn, ctx->url);
             free_proxy_context(ctx);
             ctx = next;
             continue;
@@ -344,6 +378,7 @@ int go2rtc_proxy_thread_init(uv_loop_t *loop) {
         log_error("go2rtc_proxy_thread_init: NULL loop");
         return -1;
     }
+    if (g_proxy_state.close_pending) return -1;
     if (g_proxy_state.initialized) {
         log_warn("go2rtc_proxy_thread_init: Already initialized");
         return 0;
@@ -351,15 +386,23 @@ int go2rtc_proxy_thread_init(uv_loop_t *loop) {
 
     memset(&g_proxy_state, 0, sizeof(g_proxy_state));
     g_proxy_state.loop = loop;
+    atomic_init(&g_proxy_state.active_count, 0);
+    atomic_init(&g_proxy_state.shutting_down, false);
 
     if (pthread_mutex_init(&g_proxy_state.done_mutex, NULL) != 0) {
         log_error("go2rtc_proxy_thread_init: Failed to initialize mutex");
         return -1;
     }
 
+    if (pthread_cond_init(&g_proxy_state.workers_done, NULL) != 0) {
+        pthread_mutex_destroy(&g_proxy_state.done_mutex);
+        return -1;
+    }
+
     if (uv_async_init(loop, &g_proxy_state.async_handle, proxy_async_cb) != 0) {
         log_error("go2rtc_proxy_thread_init: Failed to initialize uv_async");
         pthread_mutex_destroy(&g_proxy_state.done_mutex);
+        pthread_cond_destroy(&g_proxy_state.workers_done);
         return -1;
     }
 
@@ -378,14 +421,13 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
         log_warn("go2rtc_proxy_thread_submit: Rejecting request during shutdown");
         return -1;
     }
-    if (__sync_fetch_and_add(&g_proxy_state.active_count, 0) >= MAX_CONCURRENT_PROXY_THREADS) {
+    if (atomic_load(&g_proxy_state.active_count) >= MAX_CONCURRENT_PROXY_THREADS) {
         log_warn("go2rtc_proxy_thread_submit: Max concurrent proxy threads (%d) reached",
                  MAX_CONCURRENT_PROXY_THREADS);
         return -1;
     }
 
     const http_request_t *req = &conn->request;
-    int port = g_config.go2rtc_api_port > 0 ? g_config.go2rtc_api_port : 1984;
 
     proxy_thread_ctx_t *ctx = safe_calloc(1, sizeof(proxy_thread_ctx_t));
     if (!ctx) {
@@ -397,15 +439,6 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
     ctx->request.body = NULL;
     ctx->request.body_len = 0;
     http_response_init(&ctx->auth_response);
-
-    // Translate the fixed public /go2rtc prefix to the active upstream prefix.
-    if (req->query_string[0] != '\0') {
-        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s%s?%s",
-                 port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH), req->query_string);
-    } else {
-        snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s%s",
-                 port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH));
-    }
 
     safe_strcpy(ctx->method, req->method_str, sizeof(ctx->method), 0);
     safe_strcpy(ctx->content_type, req->content_type, sizeof(ctx->content_type), 0);
@@ -426,7 +459,7 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
     }
 
     conn->async_response_pending = true;
-    __sync_add_and_fetch(&g_proxy_state.active_count, 1);
+    atomic_fetch_add(&g_proxy_state.active_count, 1);
 
     pthread_t thread;
     pthread_attr_t attr;
@@ -436,15 +469,20 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
     if (pthread_create(&thread, &attr, proxy_worker_thread, ctx) != 0) {
         log_error("go2rtc_proxy_thread_submit: pthread_create failed");
         pthread_attr_destroy(&attr);
-        __sync_sub_and_fetch(&g_proxy_state.active_count, 1);
+        atomic_fetch_sub(&g_proxy_state.active_count, 1);
         conn->async_response_pending = false;
         free_proxy_context(ctx);
         return -1;
     }
 
     pthread_attr_destroy(&attr);
-    log_debug("go2rtc_proxy_thread_submit: Submitted %s %s", ctx->method, ctx->url);
+    log_debug("go2rtc_proxy_thread_submit: Submitted %s %s", ctx->method, ctx->request.path);
     return 0;
+}
+
+static void proxy_async_closed(uv_handle_t *handle) {
+    (void)handle;
+    g_proxy_state.close_pending = false;
 }
 
 void go2rtc_proxy_thread_shutdown(void) {
@@ -453,20 +491,17 @@ void go2rtc_proxy_thread_shutdown(void) {
     log_info("go2rtc_proxy_thread_shutdown: Shutting down");
     g_proxy_state.shutting_down = true;
 
-    // Wait up to 10 s for in-flight threads to finish
-    int wait_count = 0;
-    while (__sync_fetch_and_add(&g_proxy_state.active_count, 0) > 0 && wait_count < 100) {
-        usleep(100000);  // 100 ms
-        wait_count++;
-    }
-    if (g_proxy_state.active_count > 0) {
-        log_warn("go2rtc_proxy_thread_shutdown: %d threads still active after timeout",
-                 g_proxy_state.active_count);
-    }
+    // Curl progress callbacks cancel transfers promptly. Authorization may
+    // still be running: wait for every worker's final async send before
+    // destroying its queue/handle, even when that takes longer than 10 s.
+    pthread_mutex_lock(&g_proxy_state.done_mutex);
+    while (atomic_load(&g_proxy_state.active_count) > 0)
+        pthread_cond_wait(&g_proxy_state.workers_done, &g_proxy_state.done_mutex);
+    pthread_mutex_unlock(&g_proxy_state.done_mutex);
 
-    if (!uv_is_closing((uv_handle_t *)&g_proxy_state.async_handle)) {
-        uv_close((uv_handle_t *)&g_proxy_state.async_handle, NULL);
-    }
+    g_proxy_state.close_pending = true;
+    uv_close((uv_handle_t *)&g_proxy_state.async_handle, proxy_async_closed);
+    pthread_cond_destroy(&g_proxy_state.workers_done);
     pthread_mutex_destroy(&g_proxy_state.done_mutex);
 
     // Drain any remaining done-queue items
@@ -477,6 +512,7 @@ void go2rtc_proxy_thread_shutdown(void) {
         ctx = next;
     }
 
+    g_proxy_state.done_head = g_proxy_state.done_tail = NULL;
     g_proxy_state.initialized = false;
     log_info("go2rtc_proxy_thread_shutdown: Shutdown complete");
 }

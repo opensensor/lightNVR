@@ -20,6 +20,7 @@
 #include "web/recording_archive.h"
 #include "web/thumbnail_thread.h"
 #include "web/go2rtc_proxy_thread.h"
+#include "web/go2rtc_websocket.h"
 #include "web/api_handlers_health.h"
 #include "core/config.h"
 #define LOG_COMPONENT "HTTP"
@@ -495,6 +496,11 @@ void libuv_server_stop(http_server_handle_t handle) {
     if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
         uv_close((uv_handle_t *)&server->stop_async, NULL);
     }
+
+    // Drain proxy workers before the generic walk closes their async handle
+    // or their client connections. No worker may outlive the event loop.
+    go2rtc_proxy_thread_shutdown();
+    go2rtc_websocket_shutdown(server->loop);
 
     // Walk all handles and close them
     log_info("libuv_server_stop: Closing all active handles");

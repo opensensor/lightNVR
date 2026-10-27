@@ -19,6 +19,7 @@
 #include "web/libuv_connection.h"
 #include "web/recording_archive.h"
 #include "web/go2rtc_proxy_thread.h"
+#include "web/go2rtc_websocket.h"
 #include "web/api_handlers_health.h"
 #include "web/httpd_utils.h"
 #include "web/audit_log.h"
@@ -33,8 +34,10 @@ extern const char *libuv_get_mime_type(const char *path);
 
 // Forward declarations for llhttp callbacks
 static int on_url(llhttp_t *parser, const char *at, size_t length);
+static int on_url_complete(llhttp_t *parser);
 static int on_header_field(llhttp_t *parser, const char *at, size_t length);
 static int on_header_value(llhttp_t *parser, const char *at, size_t length);
+static int on_header_value_complete(llhttp_t *parser);
 static int on_headers_complete(llhttp_t *parser);
 static int on_body(llhttp_t *parser, const char *at, size_t length);
 static int on_message_complete(llhttp_t *parser);
@@ -174,8 +177,10 @@ libuv_connection_t *libuv_connection_create(libuv_server_t *server) {
     // Initialize llhttp parser
     llhttp_settings_init(&conn->settings);
     conn->settings.on_url = on_url;
+    conn->settings.on_url_complete = on_url_complete;
     conn->settings.on_header_field = on_header_field;
     conn->settings.on_header_value = on_header_value;
+    conn->settings.on_header_value_complete = on_header_value_complete;
     conn->settings.on_headers_complete = on_headers_complete;
     conn->settings.on_body = on_body;
     conn->settings.on_message_complete = on_message_complete;
@@ -202,6 +207,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     safe_strcpy(client_ip, conn->request.client_ip, sizeof(client_ip), 0);
 
     // Free any allocated response body
+    go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&conn->response);
 
@@ -246,6 +252,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
 void libuv_connection_close(libuv_connection_t *conn) {
     if (!conn) return;
 
+    go2rtc_websocket_disconnected(conn);
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
         // Stop reading to prevent callbacks after close starts
         uv_read_stop((uv_stream_t *)&conn->handle);
@@ -259,6 +266,7 @@ void libuv_connection_close(libuv_connection_t *conn) {
 void libuv_connection_destroy(libuv_connection_t *conn) {
     if (!conn) return;
     
+    go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&conn->response);
     
@@ -426,23 +434,28 @@ static bool request_path_has_dot_segment(const char *path) {
 static int on_url(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
-    // Copy full URI
-    size_t uri_len = length < sizeof(conn->request.uri) - 1 ?
-                     length : sizeof(conn->request.uri) - 1;
-    memcpy(conn->request.uri, at, uri_len);
-    conn->request.uri[uri_len] = '\0';
+    // llhttp may split the request target across multiple TCP reads.
+    size_t used = strlen(conn->request.uri);
+    if (length >= sizeof(conn->request.uri) - used) return HPE_USER;
+    memcpy(conn->request.uri + used, at, length);
+    conn->request.uri[used + length] = '\0';
+    return 0;
+}
 
+static int on_url_complete(llhttp_t *parser) {
+    libuv_connection_t *conn = (libuv_connection_t *)parser->data;
     // Split path and query string
     const char *query = strchr(conn->request.uri, '?');
     if (query) {
         size_t path_len = query - conn->request.uri;
-        if (path_len < sizeof(conn->request.path)) {
-            memcpy(conn->request.path, conn->request.uri, path_len);
-            conn->request.path[path_len] = '\0';
-        }
+        if (path_len >= sizeof(conn->request.path) ||
+            strlen(query + 1) >= sizeof(conn->request.query_string)) return HPE_USER;
+        memcpy(conn->request.path, conn->request.uri, path_len);
+        conn->request.path[path_len] = '\0';
         safe_strcpy(conn->request.query_string, query + 1,
                 sizeof(conn->request.query_string), 0);
     } else {
+        if (strlen(conn->request.uri) >= sizeof(conn->request.path)) return HPE_USER;
         safe_strcpy(conn->request.path, conn->request.uri,
                 sizeof(conn->request.path), 0);
         conn->request.query_string[0] = '\0';
@@ -480,11 +493,11 @@ static int on_url(llhttp_t *parser, const char *at, size_t length) {
 static int on_header_field(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
-    size_t len = length < sizeof(conn->current_header_field) - 1 ?
-                 length : sizeof(conn->current_header_field) - 1;
-    memcpy(conn->current_header_field, at, len);
-    conn->current_header_field[len] = '\0';
-    conn->current_header_field_len = len;
+    size_t used = conn->current_header_field_len;
+    if (length >= sizeof(conn->current_header_field) - used) return HPE_USER;
+    memcpy(conn->current_header_field + used, at, length);
+    conn->current_header_field_len += length;
+    conn->current_header_field[conn->current_header_field_len] = '\0';
 
     return 0;
 }
@@ -495,20 +508,21 @@ static int on_header_field(llhttp_t *parser, const char *at, size_t length) {
 static int on_header_value(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
-    if (conn->request.num_headers >= MAX_HEADERS) {
-        return 0;  // Silently ignore extra headers
-    }
+    if (conn->request.num_headers >= MAX_HEADERS) return HPE_USER;
+    char *value = conn->request.headers[conn->request.num_headers].value;
+    size_t used = strlen(value);
+    if (length >= sizeof(conn->request.headers[0].value) - used) return HPE_USER;
+    memcpy(value + used, at, length);
+    value[used + length] = '\0';
+    return 0;
+}
 
-    // Add to headers array
-    int idx = conn->request.num_headers;
+static int on_header_value_complete(llhttp_t *parser) {
+    libuv_connection_t *conn = (libuv_connection_t *)parser->data;
+    if (conn->request.num_headers >= MAX_HEADERS) return HPE_USER;
+    int idx = conn->request.num_headers++;
     safe_strcpy(conn->request.headers[idx].name, conn->current_header_field,
-            sizeof(conn->request.headers[idx].name), 0);
-
-    size_t val_len = length < sizeof(conn->request.headers[idx].value) - 1 ?
-                     length : sizeof(conn->request.headers[idx].value) - 1;
-    memcpy(conn->request.headers[idx].value, at, val_len);
-    conn->request.headers[idx].value[val_len] = '\0';
-    conn->request.num_headers++;
+                sizeof(conn->request.headers[idx].name), 0);
 
     // Handle special headers
     if (strcasecmp(conn->current_header_field, "Content-Type") == 0) {
@@ -531,6 +545,9 @@ static int on_header_value(llhttp_t *parser, const char *at, size_t length) {
                 &conn->request, conn->request.headers[idx].value);
         }
     }
+
+    conn->current_header_field_len = 0;
+    conn->current_header_field[0] = '\0';
 
     return 0;
 }

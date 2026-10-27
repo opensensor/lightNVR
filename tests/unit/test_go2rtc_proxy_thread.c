@@ -27,6 +27,7 @@ static uv_loop_t loop;
 static int completed_responses;
 static bool hold_upstream;
 static bool release_upstream;
+static bool worker_in_curl;
 static bool real_authorization;
 static int upstream_requests;
 static char upstream_request[2048];
@@ -58,6 +59,8 @@ CURLcode __real_curl_easy_perform(CURL *curl);
 CURLcode __wrap_curl_easy_perform(CURL *curl) {
     if (!hold_upstream) return __real_curl_easy_perform(curl);
     pthread_mutex_lock(&upstream_mutex);
+    worker_in_curl = true;
+    pthread_cond_broadcast(&upstream_ready);
     while (!release_upstream) pthread_cond_wait(&upstream_ready, &upstream_mutex);
     pthread_mutex_unlock(&upstream_mutex);
     return CURLE_COULDNT_CONNECT;
@@ -93,6 +96,7 @@ void setUp(void) {
     completed_responses = 0;
     hold_upstream = false;
     release_upstream = false;
+    worker_in_curl = false;
     real_authorization = false;
     upstream_requests = 0;
     TEST_ASSERT_EQUAL_INT(CURLE_OK, curl_global_init(CURL_GLOBAL_ALL));
@@ -379,8 +383,43 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
     unlink(db_path);
 }
 
+static void *release_delayed_worker(void *unused) {
+    (void)unused;
+    struct timespec delay = {.tv_sec = 11};
+    nanosleep(&delay, NULL);
+    pthread_mutex_lock(&upstream_mutex);
+    release_upstream = true;
+    pthread_cond_broadcast(&upstream_ready);
+    pthread_mutex_unlock(&upstream_mutex);
+    return NULL;
+}
+
+void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
+    libuv_connection_t connection;
+    init_connection(&connection);
+    strcpy(connection.request.path, "/go2rtc/api/stream.m3u8");
+    hold_upstream = true;
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+    pthread_mutex_lock(&upstream_mutex);
+    while (!worker_in_curl) pthread_cond_wait(&upstream_ready, &upstream_mutex);
+    pthread_mutex_unlock(&upstream_mutex);
+    pthread_t releaser;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
+    long started = monotonic_ms();
+    go2rtc_proxy_thread_shutdown();
+    long elapsed = monotonic_ms() - started;
+    pthread_join(releaser, NULL);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT64(10500, elapsed);
+    TEST_ASSERT_EQUAL_INT(0, completed_responses);
+    TEST_ASSERT_EQUAL_INT(-1, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+    uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_init(&loop));
+    http_response_free(&connection.response);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout);
     RUN_TEST(test_both_proxy_handlers_forward_authorized_webrtc_sdp);
     RUN_TEST(test_proxy_rejects_overflow_and_recovers_slots_after_completion);
     RUN_TEST(test_slow_snapshot_releases_its_slot_after_ten_seconds);

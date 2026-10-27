@@ -5,7 +5,7 @@
  * Instead of using the shared libuv worker thread pool (which can be
  * exhausted by long-running curl requests), each proxy request spawns
  * a short-lived detached pthread.  The thread performs the blocking
- * curl call, enqueues the result on a lock-free done list, and wakes
+ * curl call, enqueues the result on a mutex-protected done list, and wakes
  * the event loop via uv_async_send so the response is sent from the
  * loop thread (as libuv requires).
  */
@@ -45,9 +45,9 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn,
                                write_complete_action_t action);
 
 /**
- * Shut down: close the uv_async handle.
- * Any in-flight threads will still complete but their results are discarded
- * (the connection will already be torn down by libuv shutdown).
+ * Cancel transfers and wait for all workers before closing the async handle.
+ * Call after stopping the loop thread, before closing connections or the loop.
+ * Pending results are discarded; run the loop to finish the close callback.
  */
 void go2rtc_proxy_thread_shutdown(void);
 

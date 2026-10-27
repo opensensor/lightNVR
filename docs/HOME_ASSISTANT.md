@@ -59,7 +59,7 @@ change `web_port`, browse to `http://<host-ip>:<your-port>/` directly instead.
 **Host networking.** Required, not cosmetic: ONVIF WS-Discovery and mDNS are multicast and
 do not survive a bridge network, and go2rtc's WebRTC candidates need to be directly
 reachable for live view to connect. The consequence is that LightNVR's ports appear on the
-host itself — 7800, 8554 RTSP, and 8555 TCP+UDP WebRTC. The go2rtc API stays on loopback; MSE/WebRTC signaling requires authenticated proxy routes in the same network namespace.
+host itself — 7800, 8554 RTSP, and 8555 TCP+UDP WebRTC. The go2rtc API stays on loopback; MSE and WebRTC signaling use LightNVR’s authenticated web port.
 
 **Recordings live outside backups.** This is the important one:
 

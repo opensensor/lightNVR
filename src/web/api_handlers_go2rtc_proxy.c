@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <curl/curl.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -137,6 +138,7 @@ typedef enum {
     GO2RTC_PROXY_MANIFEST,
     GO2RTC_PROXY_SNAPSHOT,
     GO2RTC_PROXY_WEBRTC,
+    GO2RTC_PROXY_WEBSOCKET,
     GO2RTC_PROXY_HLS
 } go2rtc_proxy_endpoint_t;
 
@@ -147,6 +149,7 @@ static go2rtc_proxy_endpoint_t classify_proxy_path(const char *path) {
     if (strcmp(path, "/go2rtc/api/stream.m3u8") == 0) return GO2RTC_PROXY_MANIFEST;
     if (strcmp(path, "/go2rtc/api/frame.jpeg") == 0) return GO2RTC_PROXY_SNAPSHOT;
     if (strcmp(path, "/go2rtc/api/webrtc") == 0) return GO2RTC_PROXY_WEBRTC;
+    if (strcmp(path, "/go2rtc/api/ws") == 0) return GO2RTC_PROXY_WEBSOCKET;
     // go2rtc uses fixed HLS filenames; session IDs belong in the query string.
     // Exact matches reject dot segments, encoded separators and path suffixes
     // before curl or go2rtc can interpret them as a different API endpoint.
@@ -178,13 +181,156 @@ static void audit_hls_session_denial(const http_request_t *req) {
     cJSON_Delete(details);
 }
 
+/* Decode each value once without truncating encoded bytes. Only playback
+ * options are accepted, and every key is unique. Re-encode the parsed values
+ * for forwarding so authorization, session capture and go2rtc agree. */
+typedef struct {
+    char source[MAX_STREAM_NAME];
+    char session[HLS_SESSION_ID_MAX];
+    char canonical[2048];
+} proxy_query_t;
+
+static bool decode_query_value(const char *begin, const char *end,
+                               char *value, size_t capacity) {
+    size_t length = 0;
+    for (const unsigned char *p = (const unsigned char *)begin;
+         p < (const unsigned char *)end; p++) {
+        unsigned char ch = *p;
+        if (ch == ';' || ch == '#' || isspace(ch)) return false;
+        if (ch == '%') {
+            if ((const char *)p + 2 >= end || !isxdigit(p[1]) || !isxdigit(p[2])) return false;
+            unsigned int decoded;
+            if (sscanf((const char *)p + 1, "%2x", &decoded) != 1) return false;
+            ch = (unsigned char)decoded;
+            p += 2;
+        } else if (ch == '+') {
+            ch = ' ';
+        }
+        if (ch < 0x20 || ch == 0x7f || length + 1 >= capacity) return false;
+        value[length++] = (char)ch;
+    }
+    value[length] = '\0';
+    return true;
+}
+
+static bool query_unreserved(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.' || ch == '~';
+}
+
+static bool parse_proxy_query(const http_request_t *req, proxy_query_t *parsed) {
+    static const char *keys[] = {
+        "src", "id", "mp4", "video", "audio", "cache", "t", "n",
+        "width", "height", "w", "h", "rotate"
+    };
+    go2rtc_proxy_endpoint_t endpoint = classify_proxy_path(req->path);
+    memset(parsed, 0, sizeof(*parsed));
+    if (endpoint == GO2RTC_PROXY_NONE) return false;
+    if (endpoint == GO2RTC_PROXY_RELOAD) return req->query_string[0] == '\0';
+    if (endpoint == GO2RTC_PROXY_STREAMS && req->query_string[0] == '\0') return true;
+    unsigned int seen = 0;
+    size_t used = 0;
+    for (const char *p = req->query_string; *p;) {
+        const char *end = strchr(p, '&');
+        if (!end) end = p + strlen(p);
+        const char *eq = memchr(p, '=', (size_t)(end - p));
+        const char *key_end = eq ? eq : end;
+        int key = -1;
+        for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+            if (strlen(keys[i]) == (size_t)(key_end - p) &&
+                memcmp(p, keys[i], (size_t)(key_end - p)) == 0) key = (int)i;
+        }
+        if (key < 0 || (seen & (1U << key))) return false;
+        bool allowed = false;
+        if (endpoint == GO2RTC_PROXY_HLS) {
+            allowed = key == 1 || key == 7; // id, segment sequence
+        } else {
+            allowed = key == 0;
+            if (endpoint == GO2RTC_PROXY_MANIFEST) allowed |= key >= 2 && key <= 4;
+            if (endpoint == GO2RTC_PROXY_SNAPSHOT) allowed |= key == 5 || key == 6 || key >= 8;
+        }
+        if (!allowed) return false;
+        seen |= 1U << key;
+        char value[MAX_STREAM_NAME];
+        size_t capacity = key == 1 ? sizeof(parsed->session) : sizeof(value);
+        if (!decode_query_value(eq ? eq + 1 : end, end, value, capacity)) return false;
+        if (key == 0) {
+            if (!*value) return false;
+            strcpy(parsed->source, value);
+        } else if (key == 1) {
+            if (!*value) return false;
+            for (const unsigned char *v = (unsigned char *)value; *v; v++)
+                if (!query_unreserved(*v)) return false;
+            strcpy(parsed->session, value);
+        }
+        size_t key_length = strlen(keys[key]);
+        if (used + key_length + 2 >= sizeof(parsed->canonical)) return false;
+        if (used) parsed->canonical[used++] = '&';
+        memcpy(parsed->canonical + used, keys[key], key_length);
+        used += key_length;
+        parsed->canonical[used++] = '=';
+        for (const unsigned char *v = (unsigned char *)value; *v; v++) {
+            size_t needed = query_unreserved(*v) ? 1 : 3;
+            if (used + needed >= sizeof(parsed->canonical)) return false;
+            if (needed == 1) parsed->canonical[used++] = (char)*v;
+            else {
+                snprintf(parsed->canonical + used, 4, "%%%02X", *v);
+                used += 3;
+            }
+        }
+        parsed->canonical[used] = '\0';
+        if (!*end) break;
+        p = end + 1;
+        if (!*p) return false;
+    }
+    return endpoint == GO2RTC_PROXY_HLS ? parsed->session[0] != '\0' : parsed->source[0] != '\0';
+}
+
+bool go2rtc_proxy_parse_source(const http_request_t *req, char *name, size_t capacity) {
+    proxy_query_t query;
+    if (!req || !name || !parse_proxy_query(req, &query) || !query.source[0] ||
+        strlen(query.source) >= capacity) return false;
+    strcpy(name, query.source);
+    return true;
+}
+
+bool go2rtc_proxy_build_url(const http_request_t *req, char *url, size_t capacity) {
+    proxy_query_t query;
+    if (!req || !url || !parse_proxy_query(req, &query)) return false;
+    int port = g_config.go2rtc_api_port > 0 ? g_config.go2rtc_api_port : 1984;
+    int length = snprintf(url, capacity, "http://127.0.0.1:%d%s%s%s%s", port,
+        go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH),
+        query.canonical[0] ? "?" : "", query.canonical);
+    return length >= 0 && (size_t)length < capacity;
+}
+
+static bool authorize_source(const http_request_t *req, http_response_t *res,
+                             authorization_action_t action, const char *source) {
+    if (httpd_authorize_media_stream_action(req, res, action, source)) return true;
+    // Managed substreams inherit the parent camera's policy only when there
+    // is no actual camera with that name. Never turn a denial into a fallback.
+    size_t length = strlen(source);
+    if (res->status_code != 404 || length <= 4 || strcmp(source + length - 4, "_sub") != 0)
+        return false;
+    char parent[MAX_STREAM_NAME];
+    memcpy(parent, source, length - 4);
+    parent[length - 4] = '\0';
+    http_response_free(res);
+    http_response_init(res);
+    return httpd_authorize_media_stream_action(req, res, action, parent) != 0;
+}
+
 static bool authorize_hls_session_request(const http_request_t *req,
                                           http_response_t *res) {
     char session_id[HLS_SESSION_ID_MAX] = {0};
     char fingerprint[65] = {0};
-    if (http_request_get_query_param(req, "id", session_id,
-                                     sizeof(session_id)) < 0 ||
-        httpd_request_auth_fingerprint(req, fingerprint) != 0) {
+    proxy_query_t query;
+    if (!parse_proxy_query(req, &query)) {
+        http_response_set_json_error(res, 400, "Invalid HLS query");
+        return false;
+    }
+    strcpy(session_id, query.session);
+    if (httpd_request_auth_fingerprint(req, fingerprint) != 0) {
         audit_hls_session_denial(req);
         http_response_set_json_error(res, 401, "Unauthorized HLS session");
         return false;
@@ -218,8 +364,7 @@ static bool authorize_hls_session_request(const http_request_t *req,
     // Re-check policy at a bounded interval. This retains long-running HLS
     // sessions while limiting role, selector, token, and session revocation
     // staleness to the media authorization window.
-    if (!httpd_authorize_media_stream_action(req, res, AUTHZ_LIVE_VIEW,
-                                             stream_name)) return false;
+    if (!authorize_source(req, res, AUTHZ_LIVE_VIEW, stream_name)) return false;
     pthread_mutex_lock(&g_hls_sessions_mutex);
     for (int i = 0; i < HLS_SESSION_CACHE_CAPACITY; i++) {
         hls_session_auth_t *entry = &g_hls_sessions[i];
@@ -234,30 +379,6 @@ static bool authorize_hls_session_request(const http_request_t *req,
     return true;
 }
 
-/* Only the browser's playback src parameter is supported. In particular,
- * never forward publishing (dst), duplicate keys or ambiguous query syntax.
- * Decode without truncation so policy and go2rtc see the identical name. */
-static bool parse_webrtc_source(const char *query, char *name, size_t capacity) {
-    if (strncmp(query, "src=", 4) != 0 || query[4] == '\0') return false;
-    size_t length = 0;
-    for (const unsigned char *p = (const unsigned char *)query + 4; *p; p++) {
-        unsigned char value = *p;
-        if (value == '&' || value == ';' || value == '#' || isspace(value)) return false;
-        if (value == '%') {
-            if (!p[1] || !p[2] || !isxdigit(p[1]) || !isxdigit(p[2])) return false;
-            unsigned int decoded;
-            if (sscanf((const char *)p + 1, "%2x", &decoded) != 1) return false;
-            value = (unsigned char)decoded;
-            p += 2;
-        } else if (value == '+') {
-            value = ' ';
-        }
-        if (value < 0x20 || value == 0x7f || length + 1 >= capacity) return false;
-        name[length++] = (char)value;
-    }
-    name[length] = '\0';
-    return length > 0;
-}
 
 bool go2rtc_proxy_authorize_request(const http_request_t *req,
                                     http_response_t *res) {
@@ -277,52 +398,29 @@ bool go2rtc_proxy_authorize_request(const http_request_t *req,
     if (endpoint == GO2RTC_PROXY_STREAMS || endpoint == GO2RTC_PROXY_RELOAD) {
         return httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN) != 0;
     }
+    if (endpoint == GO2RTC_PROXY_HLS) return authorize_hls_session_request(req, res);
     char stream_name[MAX_STREAM_NAME] = {0};
-    authorization_action_t action = AUTHZ_LIVE_VIEW;
-    if (endpoint == GO2RTC_PROXY_WEBRTC) {
-        if (!parse_webrtc_source(req->query_string, stream_name, sizeof(stream_name))) {
-            http_response_set_json_error(res, 400, "Expected a single src camera");
-            return false;
-        }
-        if (httpd_authorize_media_stream_action(req, res, action, stream_name)) return true;
-        // Managed substreams are registered as <camera>_sub. Only fall back
-        // when that name is absent, never when an existing camera was denied.
-        size_t length = strlen(stream_name);
-        if (res->status_code != 404 || length <= 4 ||
-            strcmp(stream_name + length - 4, "_sub") != 0) return false;
-        stream_name[length - 4] = '\0';
-        http_response_free(res);
-        http_response_init(res);
-        return httpd_authorize_media_stream_action(req, res, action, stream_name) != 0;
+    if (!go2rtc_proxy_parse_source(req, stream_name, sizeof(stream_name))) {
+        http_response_set_json_error(res, 400, "Invalid playback query: expected one src camera");
+        return false;
     }
-    if (endpoint == GO2RTC_PROXY_SNAPSHOT) {
-        action = AUTHZ_SNAPSHOT_CREATE;
-        if (http_request_get_query_param(req, "src", stream_name,
-                                         sizeof(stream_name)) < 0) {
-            http_response_set_json_error(res, 400, "Missing src camera");
-            return false;
-        }
-    } else if (endpoint == GO2RTC_PROXY_MANIFEST) {
-        if (http_request_get_query_param(req, "src", stream_name,
-                                         sizeof(stream_name)) < 0) {
-            http_response_set_json_error(res, 400, "Missing src camera");
-            return false;
-        }
-    } else {
-        return authorize_hls_session_request(req, res);
-    }
-    return httpd_authorize_media_stream_action(req, res, action,
-                                               stream_name) != 0;
+    authorization_action_t action = endpoint == GO2RTC_PROXY_SNAPSHOT
+        ? AUTHZ_SNAPSHOT_CREATE : AUTHZ_LIVE_VIEW;
+    return authorize_source(req, res, action, stream_name);
 }
 
 static void cache_hls_session(const char *session_id,
                               const char *fingerprint,
                               const char *stream_name) {
     if (!session_id || !fingerprint || !stream_name ||
-        session_id[0] == '\0' || stream_name[0] == '\0') return;
+        session_id[0] == '\0' || stream_name[0] == '\0' ||
+        strlen(session_id) >= HLS_SESSION_ID_MAX ||
+        strlen(fingerprint) >= sizeof(g_hls_sessions[0].auth_fingerprint) || strlen(stream_name) >= MAX_STREAM_NAME) return;
     time_t now = time(NULL);
     pthread_mutex_lock(&g_hls_sessions_mutex);
-    int selected = 0;
+    int selected = -1;
+    int first_free = -1;
+    int least_recent = 0;
     time_t oldest = g_hls_sessions[0].last_used;
     for (int i = 0; i < HLS_SESSION_CACHE_CAPACITY; i++) {
         hls_session_auth_t *entry = &g_hls_sessions[i];
@@ -333,14 +431,15 @@ static void cache_hls_session(const char *session_id,
             break;
         }
         if (!entry->occupied) {
-            selected = i;
-            break;
+            if (first_free < 0) first_free = i;
+            continue;
         }
-        if (i == 0 || entry->last_used < oldest) {
-            selected = i;
+        if (entry->last_used < oldest) {
+            least_recent = i;
             oldest = entry->last_used;
         }
     }
+    if (selected < 0) selected = first_free >= 0 ? first_free : least_recent;
     hls_session_auth_t *entry = &g_hls_sessions[selected];
     memset(entry, 0, sizeof(*entry));
     entry->occupied = true;
@@ -361,8 +460,7 @@ void go2rtc_proxy_capture_hls_sessions(const http_request_t *req,
         classify_proxy_path(req->path) != GO2RTC_PROXY_MANIFEST) return;
     char stream_name[MAX_STREAM_NAME] = {0};
     char fingerprint[65] = {0};
-    if (http_request_get_query_param(req, "src", stream_name,
-                                     sizeof(stream_name)) < 0 ||
+    if (!go2rtc_proxy_parse_source(req, stream_name, sizeof(stream_name)) ||
         httpd_request_auth_fingerprint(req, fingerprint) != 0) return;
 
     go2rtc_proxy_capture_hls_sessions_for(stream_name, fingerprint, manifest,
@@ -377,18 +475,19 @@ void go2rtc_proxy_capture_hls_sessions_for(const char *stream_name,
         manifest_size == 0) return;
     const unsigned char *bytes = manifest;
     for (size_t i = 0; i + 3 < manifest_size; i++) {
-        if (bytes[i] != 'i' || bytes[i + 1] != 'd' || bytes[i + 2] != '=') {
+        if (i == 0 || (bytes[i - 1] != '?' && bytes[i - 1] != '&') ||
+            bytes[i] != 'i' || bytes[i + 1] != 'd' || bytes[i + 2] != '=') {
             continue;
         }
         char session_id[HLS_SESSION_ID_MAX] = {0};
         size_t written = 0;
-        for (size_t j = i + 3; j < manifest_size &&
-             written + 1 < sizeof(session_id); j++) {
-            unsigned char ch = bytes[j];
-            if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.' ||
-                  ch == '~')) break;
-            session_id[written++] = (char)ch;
+        size_t j = i + 3;
+        while (j < manifest_size && query_unreserved(bytes[j])) {
+            if (written + 1 < sizeof(session_id)) session_id[written++] = (char)bytes[j];
+            j++;
         }
+        // Never bind a prefix of an overlong upstream session identifier.
+        if (j - (i + 3) >= sizeof(session_id)) continue;
         if (written > 0) {
             cache_hls_session(session_id, auth_fingerprint, stream_name);
         }
@@ -416,12 +515,16 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     // Build the target URL
     char url[2048];
-    int port = g_config.go2rtc_api_port > 0 ? g_config.go2rtc_api_port : 1984;
-
-    if (req->query_string[0] != '\0') {
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s%s?%s", port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH), req->query_string);
-    } else {
-        snprintf(url, sizeof(url), "http://127.0.0.1:%d%s%s", port, go2rtc_api_get_base_path(), req->path + strlen(GO2RTC_BASE_PATH));
+    if (!go2rtc_proxy_build_url(req, url, sizeof(url))) {
+        sem_post(g_proxy_semaphore);
+        http_response_set_json_error(res, 400, "Invalid proxy query");
+        return;
+    }
+    // WebSocket upgrades are handled on the event loop, never by buffered curl.
+    if (strcmp(req->path, "/go2rtc/api/ws") == 0) {
+        sem_post(g_proxy_semaphore);
+        http_response_set_json_error(res, 400, "WebSocket upgrade required");
+        return;
     }
 
     log_debug("go2rtc proxy: %s %s -> %s", req->method_str, req->path, url);
@@ -535,7 +638,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     res->body_length = ctx.buffer_size;
     res->body_allocated = true;
 
-    go2rtc_proxy_capture_hls_sessions(req, ctx.buffer, ctx.buffer_size);
+    if (ctx.http_code == 200)
+        go2rtc_proxy_capture_hls_sessions(req, ctx.buffer, ctx.buffer_size);
 
     log_debug("go2rtc proxy: %s %s -> %ld (%zu bytes, type: %s)",
               req->method_str, req->path, ctx.http_code, ctx.buffer_size,

@@ -498,6 +498,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
 
     // Scoped go2rtc proxy. WebRTC SDP uses the authenticated HTTP origin;
     // the negotiated media connection still goes directly to go2rtc.
+    http_server_register_handler(server, "/go2rtc/api/ws", "GET", handle_go2rtc_proxy);
     http_server_register_handler(server, "/go2rtc/api/webrtc", "POST", handle_go2rtc_proxy);
     // Streams list endpoint (for health check)
     http_server_register_handler(server, "/go2rtc/api/streams", "GET", handle_go2rtc_proxy);

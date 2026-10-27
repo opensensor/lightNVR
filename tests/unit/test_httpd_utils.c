@@ -851,7 +851,7 @@ void test_go2rtc_proxy_only_intercepts_supported_http_paths(void) {
 
     TEST_ASSERT_TRUE(
         go2rtc_proxy_path_matches("/go2rtc/api/webrtc"));
-    TEST_ASSERT_FALSE(go2rtc_proxy_path_matches("/go2rtc/api/ws"));
+    TEST_ASSERT_TRUE(go2rtc_proxy_path_matches("/go2rtc/api/ws"));
     TEST_ASSERT_FALSE(
         go2rtc_proxy_path_matches("/go2rtc/api/streams/private"));
     TEST_ASSERT_FALSE(go2rtc_proxy_path_matches("/go2rtc/"));
@@ -901,14 +901,17 @@ void test_go2rtc_proxy_rejects_traversal_with_a_valid_viewer_hls_session(void) {
     const char manifest[] = "#EXTM3U\nhls/playlist.m3u8?id=security-viewer-session\n";
     go2rtc_proxy_capture_hls_sessions(&req, manifest, sizeof(manifest) - 1);
 
-    // A live-view-only grant authorizes SDP for this camera and its managed
-    // substream, while retaining per-camera restrictions.
-    safe_strcpy(req.path, "/go2rtc/api/webrtc", sizeof(req.path), 0);
-    safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
-    TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
-    safe_strcpy(req.query_string, "src=proxy-security-camera_sub", sizeof(req.query_string), 0);
-    TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
-    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    const char *live_paths[] = {"/go2rtc/api/webrtc", "/go2rtc/api/ws", "/go2rtc/api/stream.m3u8"};
+    for (int i = 0; i < 3; i++) {
+        strcpy(req.path, live_paths[i]);
+        strcpy(req.method_str, i == 0 ? "POST" : "GET");
+        strcpy(req.query_string, "src=proxy-security-camera");
+        TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
+        strcpy(req.query_string, i == 2 ? "src=proxy-security-camera_sub&mp4=flac&video"
+                                       : "src=proxy-security-camera_sub");
+        TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
+        TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    }
 
     stream_config_t denied = stream;
     denied.camera_uuid[0] = '\0';
@@ -929,10 +932,14 @@ void test_go2rtc_proxy_rejects_traversal_with_a_valid_viewer_hls_session(void) {
     safe_strcpy(denied.name, "proxy-security-camera_sub", sizeof(denied.name), 0);
     TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&denied));
     safe_strcpy(req.query_string, "src=proxy-security-camera_sub", sizeof(req.query_string), 0);
-    TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
-    TEST_ASSERT_EQUAL_INT(403, res.status_code);
-    http_response_free(&res);
-    http_response_init(&res);
+    for (int i = 0; i < 3; i++) {
+        strcpy(req.path, live_paths[i]);
+        strcpy(req.method_str, i == 0 ? "POST" : "GET");
+        TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
+        TEST_ASSERT_EQUAL_INT(403, res.status_code);
+        http_response_free(&res);
+        http_response_init(&res);
+    }
     TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal("proxy-other-camera", true));
     TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal("proxy-security-camera_sub", true));
     safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
@@ -1036,6 +1043,68 @@ void test_go2rtc_proxy_enforces_registered_methods_even_for_admins(void) {
  * main
  * ================================================================ */
 
+void test_percent_encoded_source_cannot_authorize_a_shorter_camera(void) {
+    stream_config_t camera = {0};
+    memset(camera.name, 'a', 85);
+    strcpy(camera.url, "rtsp://test/live");
+    camera.enabled = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&camera));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(camera.name, &camera));
+    stream_config_t restricted = camera;
+    restricted.camera_uuid[0] = '\0';
+    strcat(restricted.name, "restricted");
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&restricted));
+    int64_t version, next_version, user_id;
+    authorization_role_t role = {0};
+    strcpy(role.name, "Encoded camera regression");
+    role.action_mask = authorization_action_bit(AUTHZ_LIVE_VIEW) |
+                       authorization_action_bit(AUTHZ_SNAPSHOT_CREATE);
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_role_create(&role, version, &next_version));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("encodedviewer", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &user_id));
+    authorization_grant_input_t grant = {0};
+    strcpy(grant.role_uuid, role.uuid);
+    strcpy(grant.scope_type, "selector");
+    snprintf(grant.selector_json, sizeof(grant.selector_json),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\",\"values\":[\"%s\"]}}",
+             camera.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_replace_user_policy(user_id, "policy", &grant, 1,
+                                                                 version, &next_version));
+    char token[64];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(user_id, "192.0.2.40", "TestAgent", 3600,
+                                                   token, sizeof(token)));
+    http_request_t req;
+    http_request_init(&req);
+    strcpy(req.client_ip, "192.0.2.40");
+    add_session_cookie(&req, token);
+    const char *paths[] = {"/go2rtc/api/frame.jpeg", "/go2rtc/api/stream.m3u8",
+                           "/go2rtc/api/ws", "/go2rtc/api/webrtc"};
+    for (int i = 0; i < 4; i++) {
+        strcpy(req.path, paths[i]);
+        strcpy(req.method_str, i == 3 ? "POST" : "GET");
+        strcpy(req.query_string, "src=");
+        for (int j = 0; j < 85; j++) strcat(req.query_string, "%61");
+        http_response_t res;
+        http_response_init(&res);
+        TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&req, &res));
+        // Old code authorized the first 255 encoded bytes (85 decoded 'a's)
+        // while forwarding the complete restricted camera name to go2rtc.
+        strcat(req.query_string, "restricted");
+        TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
+        TEST_ASSERT_EQUAL_INT(403, res.status_code);
+        http_response_free(&res);
+        http_response_init(&res);
+        snprintf(req.query_string, sizeof(req.query_string), "src=%s&src=%s", camera.name, restricted.name);
+        TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
+        TEST_ASSERT_EQUAL_INT(400, res.status_code);
+        http_response_free(&res);
+    }
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal(camera.name, true));
+    TEST_ASSERT_EQUAL_INT(0, delete_stream_config_internal(restricted.name, true));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     TEST_ASSERT_EQUAL_INT(0, init_database(TEST_DB_PATH));
@@ -1085,6 +1154,7 @@ int main(void) {
     RUN_TEST(test_go2rtc_proxy_rejects_traversal_with_a_valid_viewer_hls_session);
     RUN_TEST(test_webrtc_proxy_rejects_publishing_and_ambiguous_sources);
     RUN_TEST(test_go2rtc_proxy_enforces_registered_methods_even_for_admins);
+    RUN_TEST(test_percent_encoded_source_cannot_authorize_a_shorter_camera);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

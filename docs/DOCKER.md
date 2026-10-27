@@ -3,9 +3,9 @@
 ## Security migration: non-root runtime and private go2rtc API
 
 Images run as UID:GID `10001:10001`. Port 1984 is internal and bound to loopback.
-WebRTC uses LightNVR’s authenticated HTTP proxy. MSE requires the authenticated WebSocket route in [Reverse Proxy](REVERSE_PROXY.md),
-with the proxy sharing LightNVR's network namespace. HLS and snapshots work through
-LightNVR's authenticated HTTP proxy.
+WebRTC, MSE, HLS and snapshots use LightNVR’s authenticated proxy on the dashboard port.
+For HTTPS, follow [Reverse Proxy](REVERSE_PROXY.md). The gateway only needs access to
+LightNVR's web port; it does not need to share go2rtc's network namespace.
 
 The repository Compose file uses named volumes for config, database, and models,
 and a bind mount only for `./data/recordings`. Before the first start, prepare that

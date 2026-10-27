@@ -200,7 +200,7 @@ export function MSEVideoCell({
     setError(null);
 
     try {
-      // Use direct WebSocket URL to go2rtc (bypasses lightNVR's HTTP-only proxy)
+      // Use LightNVR's authenticated WebSocket proxy on the dashboard origin.
       const go2rtcWsUrl = await getGo2rtcWebSocketUrl();
       const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
       const wsUrl = `${go2rtcWsUrl}/api/ws?src=${encodeURIComponent(effectiveName)}`;
