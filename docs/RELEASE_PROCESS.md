@@ -28,6 +28,27 @@ This single command will:
 
 ## Detailed Process
 
+### Submodule checkpoint
+
+Before starting either release path, synchronize submodules to the commits recorded
+in the repository:
+
+```bash
+git submodule update --init --recursive
+git diff --submodule=log
+git diff --cached --submodule=log
+```
+
+Commit any intentional dependency updates separately before this step. Do not use
+`--remote`, which follows submodule branches instead of the pinned commits. A stale
+checkout staged with `git add -A` can silently undo a security update, as happened
+in [issue #680](https://github.com/opensensor/lightNVR/issues/680).
+
+Version-bump commits should contain only the tracked version files,
+`CMakeLists.txt` and `web/package.json`. Review the staged diff before committing;
+it should not include submodule changes. The generated version files are ignored
+by git.
+
 ### 1. Version Bumping
 
 The version is managed in the following files:
@@ -96,7 +117,8 @@ The recommended way to create a release is using the automated script:
    - Runs `bump-version.sh` to update all version files
 
 3. **Git operations:**
-   - Commits all changes with message: "Bump version to X.Y.Z"
+   - Stages only `CMakeLists.txt` and `web/package.json` and displays the staged diff
+   - Commits the version changes with message: "Bump version to X.Y.Z"
    - Creates an annotated git tag: "vX.Y.Z"
    - Pushes commits and tags to GitHub
 
@@ -202,10 +224,14 @@ You have uncommitted changes. Either commit them or stash them:
 
 ```bash
 git status
-git add -A && git commit -m "Your changes"
+git diff --submodule=log
+git diff --cached --submodule=log
 # or
 git stash
 ```
+
+If only a submodule checkout is stale, run `git submodule update --init --recursive`
+before staging anything. Stage and commit intentional changes explicitly.
 
 > **Known inconsistency — tag prefix.** `scripts/release.sh` creates annotated tags as
 > `v$VERSION` (`scripts/release.sh:172`), but every release since `0.17` is tagged

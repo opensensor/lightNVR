@@ -6,6 +6,7 @@ Quick reference for creating a new LightNVR release.
 
 - [ ] All changes committed and pushed to main branch
 - [ ] All tests passing
+- [ ] Submodules match the pinned commits (`git submodule update --init --recursive`)
 - [ ] Clean git working directory (`git status` shows no changes)
 - [ ] On the main branch
 
@@ -30,22 +31,31 @@ This will:
 If you need more control:
 
 ```bash
-# 1. Bump version
+# 1. Synchronize pinned submodules before changing or staging files
+git submodule update --init --recursive
+
+# 2. Bump version
 ./scripts/bump-version.sh 0.13.0
 
-# 2. Review changes
-git diff
+# 3. Review changes, including submodule commit summaries
+git diff --submodule=log
 
-# 3. Commit
-git add -A
+# 4. Stage only the tracked version files and review before committing
+git add -- CMakeLists.txt web/package.json
+git diff --cached --submodule=log
+# Stop if the staged diff includes unexpected files or submodule changes.
 git commit -m "Bump version to 0.13.0"
 
-# 4. Tag
+# 5. Tag
 git tag -a v0.13.0 -m "Release v0.13.0"
 
-# 5. Push
+# 6. Push
 git push && git push --tags
 ```
+
+Commit intentional dependency updates separately before synchronizing submodules.
+Avoid `git add -A` for a version bump: it can stage a stale submodule checkout and
+revert a dependency update. Generated version files are ignored by git.
 
 ## Post-Release
 
@@ -59,8 +69,12 @@ git push && git push --tags
 ### "Git working directory is not clean"
 ```bash
 git status  # See what's uncommitted
-git add -A && git commit -m "Your message"
+git diff --submodule=log
+git diff --cached --submodule=log
 ```
+
+Synchronize stale submodule checkouts before staging anything, and stage and
+commit intentional changes explicitly.
 
 ### "Tag already exists"
 ```bash

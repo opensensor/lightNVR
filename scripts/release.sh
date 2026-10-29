@@ -162,7 +162,10 @@ main() {
     
     # Step 2: Commit changes
     print_step "Step 2/4: Committing version changes..."
-    git add -A
+    # Generated version files are ignored. Stage only the tracked version files
+    # so an unrelated change or stale submodule checkout cannot enter the release.
+    git add -- CMakeLists.txt web/package.json
+    git diff --cached --submodule=log
     git commit -m "Bump version to $NEW_VERSION"
     print_info "✓ Changes committed"
     echo
