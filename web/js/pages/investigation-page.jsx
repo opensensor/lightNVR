@@ -1,3 +1,4 @@
+import '../sentry.js';
 import { render } from 'preact';
 
 import { InvestigationView } from '../components/preact/investigation/InvestigationView.jsx';

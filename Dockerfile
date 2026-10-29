@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Stage 1: Build image
 ARG DEBIAN_SUITE=sid
 ARG SQLITE_YEAR=2026
@@ -297,8 +298,14 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
 # Generate version.js before building web assets (it is not checked into git)
 RUN LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" ./scripts/extract_version.sh
 
+# OpenSensor hosted builds opt in; public/default images keep telemetry disabled.
+ARG ENABLE_SENTRY=OFF
+ARG SENTRY_RELEASE
+ARG VITE_SENTRY_DSN
+ENV ENABLE_SENTRY=${ENABLE_SENTRY} SENTRY_RELEASE=${SENTRY_RELEASE} VITE_SENTRY_RELEASE=${SENTRY_RELEASE} VITE_SENTRY_DSN=${VITE_SENTRY_DSN}
+
 # Build web assets using Vite
-RUN echo "Building web assets..." && \
+RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN echo "Building web assets..." && \
     # Verify Node.js and npm are available
     node --version && \
     npm --version && \
@@ -378,7 +385,12 @@ RUN curl -fsSL https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz 
       'Description: Brotli 1.2.1 security runtime' > /package/DEBIAN/control \
  && dpkg-deb --build --root-owner-group /package /brotli-security.deb
 
+FROM scratch AS sentry-debug-files
+COPY --from=builder /bin/lightnvr /lightnvr
+
 FROM debian:${DEBIAN_SUITE}-slim AS runtime
+ARG SENTRY_RELEASE
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 
 ARG DEBIAN_SUITE
 ARG SQLITE_YEAR

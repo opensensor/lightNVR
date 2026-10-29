@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "core/sentry.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -717,6 +718,7 @@ int main(int argc, char *argv[]) {
         if (db_initialized_for_generation) {
             shutdown_database();
         }
+        lightnvr_sentry_shutdown();
         curl_cleanup_global();
         return generated ? EXIT_SUCCESS : EXIT_FAILURE;
 #else
@@ -779,6 +781,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     log_info("libcurl initialized globally");
+    lightnvr_sentry_init();
 
     // Startup safety: if the recordings volume is critically low on free space,
     // reclaim before touching the database. A 100%-full disk both corrupts the
@@ -1783,6 +1786,7 @@ cleanup:
 
         // Clean up libcurl globally (after all curl-using services are shut down)
         log_info("Cleaning up libcurl globally...");
+        lightnvr_sentry_shutdown();
         curl_cleanup_global();
 
         // Kill the watchdog timer since we completed successfully
@@ -1888,6 +1892,7 @@ cleanup:
 
         // Clean up libcurl globally (after all curl-using services are shut down)
         log_info("Cleaning up libcurl globally...");
+        lightnvr_sentry_shutdown();
         curl_cleanup_global();
 
         // Restore signal mask

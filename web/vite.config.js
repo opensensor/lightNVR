@@ -1,3 +1,4 @@
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 // Vite Configuration File
 // Migrated from Snowpack configuration
 
@@ -155,7 +156,7 @@ export default defineConfig({
     outDir: 'dist',
 
     // Enable source maps only if BUILD_SOURCEMAPS env var is set to 'true'
-    sourcemap: process.env.BUILD_SOURCEMAPS === 'true',
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : process.env.BUILD_SOURCEMAPS === 'true',
 
     // Ensure assets are correctly referenced
     assetsDir: 'assets',
@@ -214,6 +215,12 @@ export default defineConfig({
 
   // Configure plugins
   plugins: [
+    ...(process.env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
+      org: 'opensensor-engineering', project: 'lightnvr-web',
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      release: { name: process.env.SENTRY_RELEASE },
+      sourcemaps: { filesToDeleteAfterUpload: ['dist/**/*.map'] },
+    })] : []),
     // Preserve Preact Fast Refresh while Vite/Oxc handles JSX compilation.
     prefresh(),
     // Custom plugin to remove "use client" directives

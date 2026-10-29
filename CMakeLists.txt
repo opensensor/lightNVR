@@ -681,7 +681,29 @@ target_link_libraries(lightnvr_lib PUBLIC
 )
 
 # Define the main executable
+# Hosted builds opt in; ordinary installations do not report telemetry.
+option(ENABLE_SENTRY "Build optional Sentry native crash reporting" OFF)
+if(ENABLE_SENTRY)
+    include(FetchContent)
+    set(SENTRY_BACKEND "inproc" CACHE STRING "Native crash backend" FORCE)
+    set(SENTRY_BUILD_SHARED_LIBS OFF CACHE BOOL "Link Sentry statically" FORCE)
+    set(SENTRY_BUILD_EXAMPLES OFF CACHE BOOL "No SDK examples" FORCE)
+    set(SENTRY_BUILD_TESTS OFF CACHE BOOL "No SDK tests" FORCE)
+    FetchContent_Declare(sentry_native
+        GIT_REPOSITORY https://github.com/getsentry/sentry-native.git
+        GIT_TAG af9e9367913edf07f54e4f2f9655ce96af0c1681 # 0.17.5
+        GIT_SUBMODULES "")
+    FetchContent_MakeAvailable(sentry_native)
+    target_link_libraries(lightnvr_lib PUBLIC sentry::sentry)
+    target_compile_definitions(lightnvr_lib PUBLIC ENABLE_SENTRY=1)
+    target_compile_options(lightnvr_lib PRIVATE -g -fdebug-prefix-map=${CMAKE_SOURCE_DIR}=.)
+endif()
+
 add_executable(lightnvr src/core/main.c)
+if(ENABLE_SENTRY)
+    target_compile_options(lightnvr PRIVATE -g -fdebug-prefix-map=${CMAKE_SOURCE_DIR}=.)
+    target_link_options(lightnvr PRIVATE -Wl,--build-id)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(lightnvr-ffmpeg-guard src/tools/ffmpeg_rss_guard.c)
     set_target_properties(lightnvr-ffmpeg-guard PROPERTIES
