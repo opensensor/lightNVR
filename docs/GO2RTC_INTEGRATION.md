@@ -10,6 +10,33 @@ go2rtc is a lightweight, high-performance WebRTC server that can be used to stre
 - Maintaining existing HLS and MP4 recording functionality
 - Seamless management of go2rtc alongside the main LightNVR application
 
+### High-resolution and HEVC live video
+
+The camera's original stream remains the first source for recording and native
+playback. When a client needs H.264, LightNVR supplies an on-demand compatibility
+producer. Its default software profile fits video within 1920 × 1080, preserves
+the aspect ratio, avoids upscaling, and outputs 8-bit YUV 4:2:0 without B-frames.
+For example, a 7680 × 2160 panoramic camera produces a 1920 × 540 preview while
+its original HEVC stream remains available at 7680 × 2160 for recording.
+
+Decoder, filter and encoder workers are bounded to avoid allocating a frame
+buffer for every host CPU. The existing FFmpeg memory guard remains enabled.
+When hardware acceleration is enabled, known source dimensions also bound the
+hardware preview. A software producer follows it if hardware startup fails.
+Unknown substream dimensions are not inferred from the main stream.
+
+WebRTC and MSE first try the client's advertised codecs. If HEVC negotiation
+succeeds but video cannot play, the player tries H.264 once before its normal
+transport fallback/error handling. Metadata or audio alone no longer counts as
+successful video startup. This retry changes only that viewer's connection.
+
+These defaults can be customized with the existing
+[go2rtc config override](GO2RTC_CONFIG_OVERRIDE.md) (`ffmpeg.h264`, `ffmpeg.rtsp`)
+or a stream source override. Existing custom templates take precedence. A
+separately configured H.264 substream is still the cheapest option for a grid
+with many cameras; conversion of the main stream is available when a camera
+does not provide a usable substream.
+
 ## Architecture
 
 The integration consists of three main components:
@@ -202,6 +229,36 @@ This approach:
 
 - go2rtc logs are stored in `[GO2RTC_CONFIG_DIR]/go2rtc.log`
 - LightNVR logs contain information about go2rtc integration
+
+### Isolating a main-stream playback failure
+
+1. Record the camera model/firmware, browser/OS, hardware acceleration setting,
+   and whether the failure affects WebRTC, MSE, or both. Set the stream's Codec
+   hint to Auto unless the actual codec has been verified. An RTSP URL containing
+   `h264` does not establish the codec returned by the camera.
+2. Use `ffprobe -rtsp_transport tcp -show_streams '<CAMERA_MAIN_RTSP_URL>'`
+   inside the container to check codec, dimensions, profile and frame rate.
+3. Decode the camera directly, then decode its original go2rtc relay. For an HEVC
+   stream, run each command for 30 seconds (substitute the actual URL/name/port):
+
+   ```sh
+   ffmpeg -hide_banner -loglevel warning -threads:v 2 -rtsp_transport tcp -i '<CAMERA_MAIN_RTSP_URL>' -t 30 -map 0:v:0 -an -f null -
+   ffmpeg -hide_banner -loglevel warning -threads:v 2 -rtsp_transport tcp -i 'rtsp://127.0.0.1:8554/<STREAM_NAME>?video=h265' -t 30 -map 0:v:0 -an -f null -
+   ```
+
+   These commands decode video; a successful `-c copy` test alone cannot prove
+   that frames are decodable. Persistent `PPS changed between slices`, missing
+   POC references, or RPS errors on the direct connection require investigation
+   of the camera firmware/stream/network. Errors only through the relay narrow
+   the investigation to go2rtc. Compare more than the initial keyframe interval.
+4. Check `go2rtc.log` for encoder initialization failures or `ffmpeg guard: ...
+   killing transcoder` while opening Live View. Share sanitized logs and the
+   Settings → Show effective config output, along with both decode results.
+
+The compatibility profile cannot repair an undecodable source bitstream. Its
+failure messages distinguish codec mismatch, decode errors, conversion failure,
+and resource exhaustion when that information is returned by go2rtc; full
+decoder diagnostics remain in the server log.
 
 ## References
 

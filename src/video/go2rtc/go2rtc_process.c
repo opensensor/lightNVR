@@ -21,6 +21,7 @@
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_lifecycle.h"
+#include "video/go2rtc/go2rtc_transcode.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
@@ -1129,7 +1130,11 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
             break;
         }
     }
-    fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast\"\n");
+    char escaped_transcode[1024];
+    fprintf(config_file, "  rtsp: \"%s\"\n", yaml_escape_string(
+        GO2RTC_FFMPEG_RTSP_INPUT, escaped_transcode, sizeof(escaped_transcode)));
+    fprintf(config_file, "  h264: \"%s\"\n", yaml_escape_string(
+        GO2RTC_FFMPEG_H264, escaped_transcode, sizeof(escaped_transcode)));
     fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast\"\n");
 
     // Streams section — write overridden streams directly into config,

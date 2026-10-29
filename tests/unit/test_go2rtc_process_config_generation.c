@@ -339,8 +339,19 @@ void test_publish_block_emits_each_destination_and_skips_invalid(void) {
     remove_tree(root_dir);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     init_logger();
+
+    /* The FFmpeg media regression consumes the real generated configuration,
+     * including YAML quoting, rather than copying the production templates. */
+    if (argc == 3 && strcmp(argv[1], "--write-config") == 0) {
+        load_default_config(&g_config);
+        g_config.go2rtc_webrtc_enabled = false;
+        bool generated = go2rtc_process_generate_startup_config("/bin/true", argv[2], 31984);
+        free(g_config.streams);
+        g_config.streams = NULL;
+        return generated ? 0 : 1;
+    }
 
     UNITY_BEGIN();
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);

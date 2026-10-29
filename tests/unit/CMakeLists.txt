@@ -316,6 +316,15 @@ if(ENABLE_GO2RTC)
 endif()
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_process_config_generation)
+    if(TARGET lightnvr-ffmpeg-guard)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME test_go2rtc_live_transcode COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_go2rtc_live_transcode.py"
+            --config-writer "$<TARGET_FILE:test_go2rtc_process_config_generation>"
+            --guard "$<TARGET_FILE:lightnvr-ffmpeg-guard>")
+        set_tests_properties(test_go2rtc_live_transcode PROPERTIES
+            TIMEOUT 180 SKIP_RETURN_CODE 77)
+    endif()
     add_layer2_test_with_curl(test_go2rtc_binary_detection)
     add_layer2_test_with_curl(test_go2rtc_two_config_merge)
 endif()

@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { classifyLiveVideoError, hasDecodedVideo, shouldRetryWithH264 } from '../../utils/live-video-errors.js';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { ManualRecordingButton } from './ManualRecordingButton.jsx';
@@ -104,6 +105,8 @@ export function MSEVideoCell({
   // resolved on first media, rejected on WS error/close/abort so the gate
   // slot always frees.
   const gateSettleRef = useRef(null);
+  const [forceH264, setForceH264] = useState(false);
+  useEffect(() => setForceH264(false), [stream?.name, useSubStream]);
   // Cell-scoped abort: cancels a queued/in-flight gated attempt on unmount
   const cellAbortRef = useRef(null);
   const handleMobileAudioToggle = () => {
@@ -153,9 +156,20 @@ export function MSEVideoCell({
    */
   const getCodecs = (isSupported) => {
     return CODECS
+      .filter(codec => !forceH264 || !codec.startsWith('hvc1.'))
       .filter(codec => !audioDisabled || !['mp4a.', 'flac', 'opus'].some(prefix => codec.startsWith(prefix)))
       .filter(codec => isSupported(`video/mp4; codecs="${codec}"`))
       .join(',');
+  };
+
+  const retryWithH264 = () => {
+    const mediaSource = window.ManagedMediaSource || window.MediaSource;
+    if (!shouldRetryWithH264({ alreadyRetried: forceH264, codec: stream.codec, useSubStream }) ||
+        !mediaSource || !CODECS.some(codec => codec.startsWith('avc1.') &&
+          mediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`))) return false;
+    setForceH264(true);
+    showStatusMessage(t('live.h264CompatibilityRetry'), 'warning', 5000);
+    return true;
   };
 
   useEffect(() => {
@@ -290,9 +304,11 @@ export function MSEVideoCell({
         return;
       }
       if (isGateTimeout(err)) {
-        console.warn(`[MSE ${stream.name}] No media before gate timeout — treating source as unreachable`);
+        const receivedMetadata = !!sourceBufferRef.current;
+        console.warn(`[MSE ${stream.name}] No decoded video before gate timeout`);
         cleanup();
-        setError(t('live.cannotConnectToSource'));
+        if (receivedMetadata && retryWithH264()) return;
+        setError(t(receivedMetadata ? 'live.noDecodableVideo' : 'live.cannotConnectToSource'));
         setIsLoading(false);
         return;
       }
@@ -309,10 +325,11 @@ export function MSEVideoCell({
   const handleMessage = (msg, ms, MediaSourceClass) => {
     if (msg.type !== 'mse') {
       if (msg.type === 'error') {
-        setError(msg.value || t('live.streamError'));
+        const failure = classifyLiveVideoError(msg.value);
+        setError(t(failure.key));
         setIsLoading(false);
         // Free the gate slot; mark handled so initMSE doesn't re-report it
-        const gateErr = new Error(msg.value || 'stream error');
+        const gateErr = new Error(t(failure.key));
         gateErr.handled = true;
         settleGate(gateErr);
       }
@@ -376,14 +393,14 @@ export function MSEVideoCell({
         }
       };
 
-      setIsLoading(false);
-      setIsPlaying(true);
-      // Reset auto-retry counter on successful stream setup
-      autoRetryCountRef.current = 0;
-      // Media path is established — release the connection-gate slot
-      settleGate();
+      // Codec metadata is not a decoded frame. Keep the startup deadline and
+      // loading state until the video element actually plays video.
     } catch (err) {
       console.error(`[MSE ${stream.name}] SourceBuffer error:`, err);
+      if (retryWithH264()) {
+        cleanup();
+        return;
+      }
       setError(t('live.failedToCreateMediaBuffer'));
       setIsLoading(false);
       const gateErr = new Error('SourceBuffer error');
@@ -646,7 +663,7 @@ export function MSEVideoCell({
       }
       cleanup();
     };
-  }, [stream?.name, retryCount, useSubStream, audioDisabled]);
+  }, [stream?.name, retryCount, useSubStream, forceH264, audioDisabled]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -662,28 +679,40 @@ export function MSEVideoCell({
     }
   }, [stream.status, error]);
 
-  // Video element event handlers — go2rtc closes WS on video error to trigger reconnect
+  // Video element events complete startup or select a compatibility retry.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handlePlay = () => {
+      if (!hasDecodedVideo(video)) return;
       setIsPlaying(true);
       setIsLoading(false);
+      autoRetryCountRef.current = 0;
+      settleGate();
     };
 
     const handleError = () => {
-      if (wsRef.current) wsRef.current.close(); // triggers reconnect
+      if (!wsRef.current) return;
+      if (retryWithH264()) {
+        cleanup();
+        return;
+      }
+      setError(t('live.browserVideoDecodeFailed'));
+      setIsLoading(false);
+      // Let transport fallback/auto-retry own recovery instead of silently
+      // reconnecting to the same unsupported video forever.
+      cleanup();
     };
 
-    video.addEventListener('play', handlePlay);
+    video.addEventListener('playing', handlePlay);
     video.addEventListener('error', handleError);
 
     return () => {
-      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('playing', handlePlay);
       video.removeEventListener('error', handleError);
     };
-  }, [stream?.name]);
+  }, [stream?.name, forceH264, useSubStream, t]);
 
   // Player telemetry (TTFF, rebuffer tracking)
   useEffect(() => {

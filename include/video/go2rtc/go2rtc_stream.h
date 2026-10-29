@@ -35,12 +35,11 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  *              May be NULL or empty when unknown. Used to decide whether to add
  *              an `ffmpeg:<id>#video=h264` fallback source (with `#hardware`
  *              appended only when hw_accel_enabled is set) so that
- *              WebRTC clients (which only accept H.264/VP8/VP9/AV1) can consume
+ *              WebRTC clients without native H.265 decoding can consume
  *              H.265 streams via on-demand transcoding. The fallback is added
  *              for anything that isn't explicitly "h264" — unknown codecs are
- *              treated as "might be H.265" to be safe; once the detection
- *              thread learns the real codec it re-registers via
- *              go2rtc_integration_reregister_stream().
+ *              treated as "might be H.265" to be safe. An optional hardware
+ *              producer is followed by the bounded software fallback.
  * @return true if stream was registered successfully, false otherwise
  */
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
