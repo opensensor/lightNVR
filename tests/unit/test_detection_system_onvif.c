@@ -432,13 +432,43 @@ void test_onvif_empty_http_success_is_a_failed_poll(void) {
     check_empty_pull_recovery(false);
 }
 
-/* A camera that drops every connection for longer than the retry budget still
- * fails the poll, but the subscription is retained and the next poll's retries
- * get through as soon as the camera accepts a connection again (#603). */
+/* Exhausting the burst must tell the polling thread to continue at the short
+ * retry interval, retaining the subscription and its queued events (#603). */
 void test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription(void) {
     fake_onvif_server_t server;
     TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
     server.dropped_pulls_remaining = ONVIF_PULL_DROP_MAX_ATTEMPTS + 1;
+    server.pull_body =
+        "<Envelope><Body><PullMessagesResponse><NotificationMessage>"
+        "<Topic>tns1:RuleEngine/CellMotionDetector/Motion</Topic>"
+        "<Message><Message><Data><SimpleItem Name=\"IsMotion\" Value=\"true\"/>"
+        "</Data></Message></Message></NotificationMessage>"
+        "</PullMessagesResponse></Body></Envelope>";
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+    detection_result_t result = {0};
+    int first = detect_motion_onvif(url, "", "", &result, "");
+    int first_count = result.count;
+    int second = detect_motion_onvif(url, "", "", &result, "");
+    shutdown_onvif_and_stop_server(&server);
+    TEST_ASSERT_EQUAL_INT(ONVIF_DETECT_RETRY, first);
+    TEST_ASSERT_EQUAL_INT(0, first_count);
+    TEST_ASSERT_EQUAL_INT(0, second);
+    TEST_ASSERT_EQUAL_INT(1, result.count);
+    TEST_ASSERT_EQUAL_STRING("motion", result.detections[0].label);
+    TEST_ASSERT_EQUAL_INT(1, server.create_count);
+    /* First poll: every attempt in the budget dropped. Second poll: one more
+     * drop, then the camera answers the retry. */
+    TEST_ASSERT_EQUAL_INT(ONVIF_PULL_DROP_MAX_ATTEMPTS + 2, server.pull_count);
+    TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+void test_onvif_http_failure_after_drops_requires_normal_backoff(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.dropped_pulls_remaining = 2;
+    server.pull_failures_remaining = 1;
     TEST_ASSERT_EQUAL_INT(0, init_detection_system());
     char url[64];
     snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
@@ -448,11 +478,21 @@ void test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription(void)
     shutdown_onvif_and_stop_server(&server);
     TEST_ASSERT_EQUAL_INT(-1, first);
     TEST_ASSERT_EQUAL_INT(0, second);
+    TEST_ASSERT_EQUAL_INT(4, server.pull_count);
     TEST_ASSERT_EQUAL_INT(1, server.create_count);
-    /* First poll: every attempt in the budget dropped. Second poll: one more
-     * drop, then the camera answers the retry. */
-    TEST_ASSERT_EQUAL_INT(ONVIF_PULL_DROP_MAX_ATTEMPTS + 2, server.pull_count);
-    TEST_ASSERT_EQUAL_INT(1, server.unsubscribe_count);
+}
+
+void test_onvif_refused_connection_requires_normal_backoff(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+    detection_result_t result = {0};
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+    stop_fake_onvif_server(&server);
+    TEST_ASSERT_EQUAL_INT(-1, detect_motion_onvif(url, "", "", &result, ""));
+    TEST_ASSERT_EQUAL_INT(0, result.count);
 }
 
 typedef struct {
@@ -798,6 +838,8 @@ int main(void) {
     RUN_TEST(test_onvif_dropped_pull_reuses_subscription);
     RUN_TEST(test_onvif_empty_http_success_is_a_failed_poll);
     RUN_TEST(test_onvif_sustained_drops_exhaust_retry_budget_but_keep_subscription);
+    RUN_TEST(test_onvif_http_failure_after_drops_requires_normal_backoff);
+    RUN_TEST(test_onvif_refused_connection_requires_normal_backoff);
     RUN_TEST(test_onvif_slow_camera_does_not_delay_another_camera);
     RUN_TEST(test_onvif_uses_scoped_subscription_address_with_escaped_query);
     RUN_TEST(test_onvif_discovered_endpoint_is_not_retried_as_fallback);
