@@ -407,6 +407,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     if (!*input_ctx_ptr) {
         segment_info_ptr->fps_measurement = (stream_frame_rate_measurement_t){0};
+        // A new encoder has its own priming delay and timestamp origin, even
+        // when the same reader retries without recreating segment_info.
+        segment_info_ptr->segment_index = 0;
+        segment_info_ptr->last_frame_was_key = false;
     }
 
     // BUGFIX: Use per-stream segment info instead of global static variable
@@ -1812,11 +1816,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
-    /* The transcoder belongs to the writer and spans ordinary segment
-     * rotations. Drain it only for the final shutdown segment, while this
+    /* Preserve the transcoder across ordinary rotations. Drain it at the end
+     * of an input session (shutdown, EOF or input failure), while this
      * segment's audio stream and MP4 muxer are still open. */
     int final_audio_error = 0;
-    if (shutdown_detected && needs_audio_transcoding && out_audio_stream && output_ctx) {
+    if ((shutdown_detected || !reuse_input_context) && needs_audio_transcoding &&
+        out_audio_stream && output_ctx) {
         const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
             ? segment_info_ptr->stream_name : rtsp_url;
         AVPacket **flush_packets = NULL;

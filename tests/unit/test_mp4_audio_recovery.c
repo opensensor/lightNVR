@@ -154,7 +154,7 @@ static void open_fixture(enum AVCodecID audio_codec) {
 }
 
 
-static void check_playable_audio(void) {
+static void check_playable_audio(bool new_session) {
     AVFormatContext *recorded = NULL;
     AVPacket *packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
@@ -169,6 +169,10 @@ static void check_playable_audio(void) {
     int decoded_samples = 0, video_packets = 0;
     while (av_read_frame(recorded, packet) >= 0) {
         if (packet->stream_index == index) {
+            if (new_session) {
+                TEST_ASSERT_LESS_THAN_INT64(0, packet->pts);
+                new_session = false;
+            }
             TEST_ASSERT_EQUAL_INT(0, avcodec_send_packet(decoder, packet));
             while (avcodec_receive_frame(decoder, frame) >= 0) {
                 decoded_samples += frame->nb_samples;
@@ -192,7 +196,7 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
         TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 2, 1,
             &input, &segment, NULL, NULL, NULL, NULL));
         TEST_ASSERT_NOT_NULL(input);
-        check_playable_audio();
+        check_playable_audio(n == 0);
     }
     // Ordinary rotations retain the encoder FIFO and voice-filter history.
     TEST_ASSERT_EQUAL_INT(0, audio_resets);
@@ -201,18 +205,20 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
     TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 10, 1,
         &input, &segment, NULL, NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(-1, interrupt_after);
-    check_playable_audio(); // shutdown still flushes the old segment's tail
+    check_playable_audio(false); // shutdown still flushes the old segment's tail
 
     // Match recovery: close the old reader and start another using the same
     // writer/stream name. Before #689's fix this reuses the flushed pool slot.
     avformat_close_input(&input);
     av_packet_free(&segment.pending_video_keyframe);
-    memset(&segment, 0, sizeof(segment));
-    strcpy(segment.stream_name, "audio-recovery");
+    if (interrupt_result == AVERROR_EXIT) {
+        memset(&segment, 0, sizeof(segment));
+        strcpy(segment.stream_name, "audio-recovery");
+    } // EOF/input errors retry within the same reader and keep segment_info.
     set_audio_voice_enhancement("audio-recovery", enhance);
     TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 2, 1,
         &input, &segment, NULL, NULL, NULL, NULL));
-    check_playable_audio();
+    check_playable_audio(true);
     TEST_ASSERT_EQUAL_INT(1, audio_resets);
 }
 
