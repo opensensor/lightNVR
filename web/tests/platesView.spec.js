@@ -631,3 +631,104 @@ describe('PlatesView delete', () => {
     expect(tableRows()).toHaveLength(2);
   });
 });
+
+describe('PlatesView mobile layout', () => {
+  const second = read({
+    id: 'b1a7c0de-0000-4000-8000-000000000002', plate: 'XYZ987', confidence: null, attributes: {},
+  });
+  const cards = () => findAll((n) => n.type === 'li');
+  const cardButton = (card, label) => find((n) => n.type === 'button' && text(n) === label, card);
+
+  async function searchTwoReads() {
+    mount();
+    global.fetch.mockResolvedValueOnce(json(200, { reads: [read(), second] }));
+    await submit();
+  }
+
+  test('renders one card per read below md and keeps the table for wider screens', async () => {
+    await searchTwoReads();
+    const list = find((n) => n.type === 'ul');
+    expect(list.props.className).toContain('md:hidden');
+    expect(list.props['aria-label']).toBe('lpr.resultsCaption:{"count":2}');
+    const table = find((n) => n.type === 'table');
+    const tableWrapper = find((n) => n.type === 'div' && findAll((c) => c === table, n).length > 0
+      && n.props.className?.includes('md:block'));
+    expect(tableWrapper.props.className).toContain('hidden');
+    expect(cards()).toHaveLength(2);
+    expect(tableRows()).toHaveLength(2);
+  });
+
+  test('a card shows the plate, confidence, time and joined details', async () => {
+    await searchTwoReads();
+    const [first, other] = cards();
+    const paragraphs = (card) => findAll((n) => n.type === 'p', card).map(text);
+    expect(paragraphs(first)).toEqual([
+      'ABC1234',
+      'lpr.column.confidence: 97%',
+      expect.stringContaining('2026'),
+      'Driveway · inbound · blue car',
+    ]);
+    // Missing confidence and attributes are left out rather than shown as dashes.
+    expect(paragraphs(other)).toEqual(['XYZ987', expect.stringContaining('2026'), 'Driveway']);
+    const srLabel = find((n) => n.type === 'span' && n.props.className === 'sr-only', first);
+    expect(text(srLabel)).toBe('lpr.column.confidence: ');
+  });
+
+  test('card actions link to the recording and confirm deletes for that read', async () => {
+    await searchTwoReads();
+    const [, other] = cards();
+    const link = find((n) => n.type === 'a', other);
+    expect(link.props.href).toMatch(/^timeline\.html\?stream=Driveway&/);
+    expect(link.props.href).not.toContain('XYZ');
+    expect(link.props['aria-label']).toBe('lpr.viewRecordingFor:{"plate":"XYZ987"}');
+
+    await click(cardButton(other, 'common.delete'));
+    expect(dialog().props.isOpen).toBe(true);
+    expect(dialog().props.message).toBe('lpr.deleteMessage:{"plate":"XYZ987"}');
+    global.fetch.mockResolvedValueOnce(json(200, { deleted: true }));
+    await dialog().props.onConfirm();
+    settle();
+    expect(cards().map((card) => text(findAll((n) => n.type === 'p', card)[0]))).toEqual(['ABC1234']);
+  });
+
+  test('a delete refusal hides Delete on the cards too', async () => {
+    await searchTwoReads();
+    await click(cardButton(cards()[0], 'common.delete'));
+    global.fetch.mockResolvedValueOnce(json(403, {}));
+    await dialog().props.onConfirm();
+    settle();
+    expect(cards().map((card) => cardButton(card, 'common.delete'))).toEqual([undefined, undefined]);
+  });
+
+  test('a card with no recording link and no delete permission has no action row', async () => {
+    mount();
+    const unlinked = read({ observed_at: undefined });
+    global.fetch.mockResolvedValueOnce(json(200, { reads: [unlinked] }));
+    await submit();
+    await click(cardButton(cards()[0], 'common.delete'));
+    global.fetch.mockResolvedValueOnce(json(403, {}));
+    await dialog().props.onConfirm();
+    settle();
+    expect(findAll((n) => n.type === 'a' || n.type === 'button', cards()[0])).toEqual([]);
+  });
+
+  test('no cards render before a search or when nothing matched', async () => {
+    mount();
+    expect(find((n) => n.type === 'ul')).toBeUndefined();
+    global.fetch.mockResolvedValueOnce(json(200, { reads: [] }));
+    await submit();
+    expect(find((n) => n.type === 'ul')).toBeUndefined();
+  });
+
+  test('the view tabs are not a <nav> element, which layout.css styles as header links', () => {
+    mount();
+    expect(find((n) => n.type === 'nav')).toBeUndefined();
+    const tabs = find((n) => n.props?.role === 'navigation');
+    expect(tabs.props['aria-label']).toBe('recordings.views');
+    expect(tabs.props.className).toContain('overflow-x-auto');
+    const links = findAll((n) => n.type === 'a', tabs);
+    expect(links.map((a) => a.props.href)).toEqual(['recordings.html', 'timeline.html', 'investigation.html', 'plates.html']);
+    expect(links.map((a) => a.props['aria-current'])).toEqual([undefined, undefined, undefined, 'page']);
+    links.forEach((a) => expect(a.props.className).toContain('shrink-0'));
+  });
+});
