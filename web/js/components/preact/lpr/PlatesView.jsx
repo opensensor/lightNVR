@@ -23,7 +23,7 @@ import {
 const INPUT_CLASS = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground '
   + 'focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const LABEL_CLASS = 'mb-1 block text-sm font-medium';
-const SUBNAV_LINK_CLASS = 'rounded-t-lg px-4 py-2 text-sm font-medium transition-colors';
+const SUBNAV_LINK_CLASS = 'shrink-0 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors sm:px-4';
 
 function formatObservedAt(milliseconds) {
   if (!Number.isFinite(milliseconds)) return '—';
@@ -31,6 +31,15 @@ function formatObservedAt(milliseconds) {
     dateStyle: 'medium',
     timeStyle: 'medium',
   }).format(new Date(milliseconds));
+}
+
+function readDetails(read) {
+  const attributes = read.attributes || {};
+  return {
+    confidence: formatLprConfidence(read.confidence),
+    direction: attributes.direction || '',
+    vehicle: [attributes.vehicle_color, attributes.vehicle_type].filter(Boolean).join(' '),
+  };
 }
 
 function handleUnauthorized() {
@@ -198,9 +207,14 @@ export function PlatesView() {
 
   return (
     <section className="lpr-page py-4" aria-labelledby="lpr-heading">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-border">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-x-3 border-b border-border">
         <h1 id="lpr-heading" className="pb-2 text-2xl font-bold">{t('lpr.title')}</h1>
-        <nav className="flex flex-wrap" aria-label={t('recordings.views')}>
+        {/* Not a <nav> element: layout.css styles every `nav a` as a header link. */}
+        <div
+          role="navigation"
+          className="flex max-w-full overflow-x-auto whitespace-nowrap sm:overflow-visible"
+          aria-label={t('recordings.views')}
+        >
           <a href="recordings.html" className={`${SUBNAV_LINK_CLASS} text-muted-foreground hover:text-foreground`}>
             {t('nav.recordings')}
           </a>
@@ -217,7 +231,7 @@ export function PlatesView() {
           >
             {t('nav.plates')}
           </a>
-        </nav>
+        </div>
       </div>
 
       <p className="mb-4 text-sm text-muted-foreground">{t('lpr.description')}</p>
@@ -356,11 +370,11 @@ export function PlatesView() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 md:col-span-2 lg:col-span-3">
-          <button type="submit" className="btn-primary" disabled={searching}>
+          <button type="submit" className="btn-primary flex-1 sm:flex-none" disabled={searching}>
             {searching ? t('lpr.searching') : t('lpr.search')}
           </button>
           {exportVisible && (
-            <button type="button" className="btn-secondary" onClick={handleExport} disabled={exporting}>
+            <button type="button" className="btn-secondary flex-1 sm:flex-none" onClick={handleExport} disabled={exporting}>
               {exporting ? t('lpr.exporting') : t('lpr.export')}
             </button>
           )}
@@ -388,7 +402,57 @@ export function PlatesView() {
         )}
 
         {reads !== null && reads.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <ul className="space-y-3 md:hidden" aria-label={t('lpr.resultsCaption', { count: reads.length })}>
+            {reads.map((read) => {
+              const details = readDetails(read);
+              const timelineHref = lprTimelineHref(read, cameras);
+              return (
+                <li key={read.id} className="rounded-lg border border-border bg-card p-4 text-card-foreground">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-mono text-lg font-semibold break-all">{read.plate}</p>
+                    {details.confidence && (
+                      <p className="shrink-0 text-sm text-muted-foreground">
+                        <span className="sr-only">{t('lpr.column.confidence')}: </span>
+                        {details.confidence}
+                      </p>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm">{formatObservedAt(read.observed_at)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {[cameraName(read.camera_uuid) || read.stream_name, details.direction, details.vehicle]
+                      .filter(Boolean).join(' · ')}
+                  </p>
+                  {(timelineHref || actions.canDelete) && (
+                    <div className="mt-3 flex gap-2">
+                      {timelineHref && (
+                        <a
+                          href={timelineHref}
+                          className="btn-secondary flex-1 text-center"
+                          aria-label={t('lpr.viewRecordingFor', { plate: read.plate })}
+                        >
+                          {t('lpr.viewRecording')}
+                        </a>
+                      )}
+                      {actions.canDelete && (
+                        <button
+                          type="button"
+                          className="btn-danger flex-1"
+                          onClick={() => setDeleteCandidate(read)}
+                          aria-label={t('lpr.deleteFor', { plate: read.plate })}
+                        >
+                          {t('common.delete')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {reads !== null && reads.length > 0 && (
+          <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
             <table className="min-w-full divide-y divide-border text-sm">
               <caption className="sr-only">{t('lpr.resultsCaption', { count: reads.length })}</caption>
               <thead className="bg-muted/50 text-left">
@@ -404,17 +468,16 @@ export function PlatesView() {
               </thead>
               <tbody className="divide-y divide-border">
                 {reads.map((read) => {
-                  const attributes = read.attributes || {};
-                  const vehicle = [attributes.vehicle_color, attributes.vehicle_type].filter(Boolean).join(' ');
+                  const details = readDetails(read);
                   const timelineHref = lprTimelineHref(read, cameras);
                   return (
                     <tr key={read.id}>
                       <th scope="row" className="px-3 py-2 font-mono font-semibold">{read.plate}</th>
                       <td className="whitespace-nowrap px-3 py-2">{formatObservedAt(read.observed_at)}</td>
                       <td className="px-3 py-2">{cameraName(read.camera_uuid) || read.stream_name}</td>
-                      <td className="px-3 py-2">{formatLprConfidence(read.confidence) || '—'}</td>
-                      <td className="px-3 py-2">{attributes.direction || '—'}</td>
-                      <td className="px-3 py-2">{vehicle || '—'}</td>
+                      <td className="px-3 py-2">{details.confidence || '—'}</td>
+                      <td className="px-3 py-2">{details.direction || '—'}</td>
+                      <td className="px-3 py-2">{details.vehicle || '—'}</td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex gap-2">
                           {timelineHref && (

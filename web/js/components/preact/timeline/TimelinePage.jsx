@@ -1482,11 +1482,11 @@ export function TimelinePage() {
 
   return (
     <div className="timeline-page">
-      <div className="flex items-center mb-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
         <h1 className="text-2xl font-bold">
           {idsMode ? t('timeline.selectedRecordingsTimeline') : t('timeline.timelinePlayback')}
         </h1>
-        <div className="ml-4 flex">
+        <div className="flex max-w-full overflow-x-auto whitespace-nowrap">
           <a
             href={returnUrl || 'recordings.html'}
             className="px-3 py-1 rounded-l-md text-sm"
