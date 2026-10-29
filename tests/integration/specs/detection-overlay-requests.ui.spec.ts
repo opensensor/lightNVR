@@ -45,11 +45,16 @@ test('slow detection polls do not overlap and stop when overlays close @ui @live
     await page.goto('/index.html?mode=mse&cols=1&rows=1');
     const cell = page.locator('.video-cell[data-stream-name="cam_a"]').first();
     await expect(cell).toBeVisible();
-    // Trigger the video's playback state without requiring a camera source.
+    // Simulate a decoded frame: MSE enables overlays only after `playing`
+    // with current video data and an unpaused media element.
     await cell.locator('video').evaluate(video => {
-      Object.defineProperty(video, 'videoWidth', { value: 640 });
-      Object.defineProperty(video, 'videoHeight', { value: 480 });
-      video.dispatchEvent(new Event('play'));
+      Object.defineProperties(video, {
+        videoWidth: { value: 640 },
+        videoHeight: { value: 480 },
+        readyState: { value: HTMLMediaElement.HAVE_CURRENT_DATA },
+        paused: { value: false },
+      });
+      video.dispatchEvent(new Event('playing'));
     });
     await page.clock.runFor(4000);
     await expect.poll(() => detectionRequests).toBe(1);
