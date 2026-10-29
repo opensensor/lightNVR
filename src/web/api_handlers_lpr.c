@@ -214,8 +214,10 @@ static void handle_lpr_query(const http_request_t *req, http_response_t *res,
     if (valid && query.match_mode != LPR_MATCH_NONE) {
         char canonical[LPR_QUERY_MAX];
         uint8_t digest[LPR_CRYPTO_HMAC_SIZE];
-        if (lpr_canonicalize_plate(query.plate_query, canonical,
-                                   sizeof(canonical)) < 0 ||
+        int canonical_length = lpr_canonicalize_plate(
+            query.plate_query, canonical, sizeof(canonical));
+        if (canonical_length < 0 ||
+            (query.match_mode == LPR_MATCH_PARTIAL && canonical_length < 3) ||
             lpr_crypto_fingerprint(canonical, strlen(canonical), digest) != 0) {
             valid = false;
         } else {

@@ -187,6 +187,7 @@ export default defineConfig({
         system: resolve(__dirname, 'system.html'),
         timeline: resolve(__dirname, 'timeline.html'),
         investigation: resolve(__dirname, 'investigation.html'),
+        plates: resolve(__dirname, 'plates.html'),
         users: resolve(__dirname, 'users.html'),
         hls: resolve(__dirname, 'hls.html'),
       },

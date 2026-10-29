@@ -129,6 +129,15 @@ static void test_search_requires_time_scope_and_available_key(void) {
     cJSON *json = call_search(body, 400);
     cJSON_Delete(json);
 
+    // Partial matching needs three characters; shorter is a bad request,
+    // not a storage failure.
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"match\":\"partial\","
+             "\"plate\":\"A-1\"}", camera.camera_uuid);
+    json = call_search(body, 400);
+    cJSON_Delete(json);
+
     snprintf(body, sizeof(body),
              "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
              "\"end_at\":1787930000000}", camera.camera_uuid);

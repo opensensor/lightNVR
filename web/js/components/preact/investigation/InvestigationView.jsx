@@ -1405,6 +1405,7 @@ export function InvestigationView() {
             <a className="is-active" href="investigation.html" aria-current="page">
               {t('nav.investigation')}
             </a>
+            <a href="plates.html">{t('nav.plates')}</a>
           </nav>
         </div>
       </div>

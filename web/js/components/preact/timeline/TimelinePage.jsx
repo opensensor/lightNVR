@@ -1527,7 +1527,7 @@ export function TimelinePage() {
           </a>
           <a
             href={investigationHref}
-            className="px-3 py-1 rounded-r-md text-sm"
+            className="px-3 py-1 text-sm"
             style={{
               backgroundColor: 'hsl(var(--secondary))',
               color: 'hsl(var(--secondary-foreground))'
@@ -1536,6 +1536,18 @@ export function TimelinePage() {
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
           >
             {t('nav.investigation')}
+          </a>
+          <a
+            href="plates.html"
+            className="px-3 py-1 rounded-r-md text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--secondary))',
+              color: 'hsl(var(--secondary-foreground))'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+          >
+            {t('nav.plates')}
           </a>
         </div>
       </div>

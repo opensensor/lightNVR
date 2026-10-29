@@ -333,7 +333,8 @@ int db_lpr_reads_search(const lpr_read_query_t *query,
     }
 
     int count = 0;
-    while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    while ((rc == SQLITE_OK || rc == SQLITE_ROW) &&
+           (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         lpr_read_t decoded;
         if (decode_row(stmt, &decoded) != 0) {
             memset(&decoded, 0, sizeof(decoded));

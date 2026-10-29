@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>License Plates - LightNVR</title>
+    <!-- Theme initialization script - injected by vite-plugin-theme-inject -->
+    <!-- THEME_INIT_SCRIPT -->
+
+    <link rel="stylesheet" href="./css/main.css">
+    <link rel="stylesheet" href="./css/layout.css">
+    <link rel="icon" href="./img/favicon.svg" type="image/svg+xml">
+    <link rel="alternate icon" href="./img/favicon.ico" type="image/x-icon">
+</head>
+<body class="flex flex-col min-h-screen bg-background text-foreground">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
+    <div id="header-container" data-active-nav="nav-recordings"></div>
+    <main id="main-content" class="flex-grow" tabindex="-1"></main>
+    <div id="footer-container" class="mt-auto"></div>
+</div>
+<div id="status-message-container"></div>
+<script type="module" src="./js/pages/plates-page.jsx"></script>
+</body>
+</html>

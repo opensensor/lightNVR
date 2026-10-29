@@ -95,6 +95,25 @@ static void test_insert_exact_partial_dedupe_and_no_plaintext_column(void) {
     TEST_ASSERT_EQUAL_INT(1, db_lpr_reads_search(&partial, reads, 20));
     TEST_ASSERT_EQUAL_STRING("TEST123", reads[0].read.plate);
 
+    // Every matching row is returned, newest first, not just the first one.
+    input.observed_at_ms += 60000;
+    snprintf(input.plate, sizeof(input.plate), "%s", "test-124");
+    snprintf(input.object_id, sizeof(input.object_id), "%s", "object-2");
+    TEST_ASSERT_EQUAL_INT(0, db_lpr_read_insert(&input, NULL));
+    input.observed_at_ms += 60000;
+    snprintf(input.plate, sizeof(input.plate), "%s", "other-9");
+    snprintf(input.object_id, sizeof(input.object_id), "%s", "object-3");
+    TEST_ASSERT_EQUAL_INT(0, db_lpr_read_insert(&input, NULL));
+
+    lpr_read_query_t all = query(LPR_MATCH_NONE, NULL);
+    TEST_ASSERT_EQUAL_INT(3, db_lpr_reads_search(&all, reads, 20));
+    TEST_ASSERT_EQUAL_STRING("OTHER9", reads[0].read.plate);
+    TEST_ASSERT_EQUAL_STRING("TEST124", reads[1].read.plate);
+    TEST_ASSERT_EQUAL_STRING("TEST123", reads[2].read.plate);
+    TEST_ASSERT_EQUAL_INT(2, db_lpr_reads_search(&partial, reads, 20));
+    all.limit = 2;
+    TEST_ASSERT_EQUAL_INT(2, db_lpr_reads_search(&all, reads, 20));
+
     sqlite3_stmt *stmt = NULL;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
         get_db_handle(),
