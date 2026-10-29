@@ -342,6 +342,9 @@ endif()
 # ====================================================================
 add_layer3_test(test_faac_encoder)
 add_layer3_test(test_audio_transcoder)
+add_layer3_test(test_mp4_audio_recovery)
+target_link_options(test_mp4_audio_recovery PRIVATE
+    "-Wl,--wrap=av_read_frame" "-Wl,--wrap=cleanup_audio_transcoder")
 add_layer3_test(test_stream_manager)
 add_layer3_test(test_stream_state)
 add_layer3_test(test_packet_buffer)

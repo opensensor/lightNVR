@@ -576,7 +576,8 @@ static void *mp4_recording_thread(void *arg) {
             } else {
                 // Thread is healthy — clear the stale-detection counters.
                 if (dead_check_seconds > 0) {
-                    log_info("Stream %s: recording thread recovered after %d dead seconds",
+                    log_info("Stream %s: recording thread responsive after %d dead seconds "
+                             "(packet or retry activity; not confirmation of a completed segment)",
                              stream_name, dead_check_seconds);
                 }
                 dead_check_seconds = 0;

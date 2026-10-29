@@ -251,6 +251,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 avformat_close_input(&thread_ctx->input_ctx);
                 thread_ctx->input_ctx = NULL;
             }
+            cleanup_audio_transcoder(stream_name);
 
             // If we were carrying a keyframe for overlap, it belongs to the old connection.
             if (thread_ctx->segment_info.pending_video_keyframe) {
