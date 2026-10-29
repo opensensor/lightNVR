@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include "core/config.h"
+#include "video/stream_frame_rate.h"
 
 // Forward declaration
 typedef struct mp4_writer mp4_writer_t;
@@ -41,6 +42,7 @@ typedef struct {
 
     // Stream name for telemetry instrumentation
     char stream_name[MAX_STREAM_NAME];
+    stream_frame_rate_measurement_t fps_measurement;
 } segment_info_t;
 
 /**

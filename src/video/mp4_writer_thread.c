@@ -647,26 +647,21 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                     if (vs->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
                         int det_width = vs->codecpar->width;
                         int det_height = vs->codecpar->height;
-                        int det_fps = 0;
                         const char *det_codec = NULL;
-
-                        if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
-                            det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
+                        bool fps_is_provisional;
+                        int det_fps = stream_frame_rate_round(stream_frame_rate_select(
+                            vs->avg_frame_rate, vs->r_frame_rate, &fps_is_provisional));
+                        if (fps_is_provisional && thread_ctx->segment_info.fps_measurement.fps > 0) {
+                            det_fps = thread_ctx->segment_info.fps_measurement.fps;
+                            fps_is_provisional = false;
                         }
-                        // Fallback: older cameras (e.g. Axis M1011) omit avg_frame_rate
-                        // in SDP; use r_frame_rate, then a conservative default.
-                        if (det_fps <= 0 && vs->r_frame_rate.den > 0 && vs->r_frame_rate.num > 0) {
-                            det_fps = (int)(vs->r_frame_rate.num / vs->r_frame_rate.den);
-                            if (det_fps > 0) {
-                                log_debug("[%s] avg_frame_rate unavailable; using r_frame_rate: %d fps",
-                                          stream_name, det_fps);
-                            }
-                        }
-                        if (det_fps <= 0) {
-                            det_fps = 15;
-                            log_debug("[%s] FPS unknown from SDP; defaulting to %d fps",
-                                      stream_name, det_fps);
-                        }
+                        if (det_fps == 0) det_fps = STREAM_FRAME_RATE_DEFAULT;
+                        log_debug("[%s] Recording FPS probe: avg=%d/%d, nominal=%d/%d, "
+                                  "time_base=%d/%d; selected=%d%s",
+                                  stream_name, vs->avg_frame_rate.num, vs->avg_frame_rate.den,
+                                  vs->r_frame_rate.num, vs->r_frame_rate.den,
+                                  vs->time_base.num, vs->time_base.den, det_fps,
+                                  fps_is_provisional ? " (provisional)" : "");
 
                         const AVCodecDescriptor *desc = avcodec_descriptor_get(vs->codecpar->codec_id);
                         if (desc) {
@@ -679,8 +674,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                                      det_codec ? det_codec : "unknown");
                             update_stream_video_params(stream_name, det_width, det_height,
                                                        det_fps, det_codec);
+                            metrics_set_configured_fps(stream_name, det_fps);
                         }
-                        thread_ctx->video_params_detected = true;
+                        // Short segments may finish before the measurement window.
+                        // Revisit provisional rates after the next segment.
+                        thread_ctx->video_params_detected = !fps_is_provisional;
                         break;
                     }
                 }
