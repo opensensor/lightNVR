@@ -48,6 +48,11 @@ int get_external_motion_detection_intervals(const char *stream_name,
                                             detection_interval_t *intervals,
                                             int max_intervals);
 
+/** Return external-motion intervals for an immutable capture-time identity. */
+int get_external_motion_detection_intervals_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    detection_interval_t *intervals, int max_intervals);
+
 /**
  * Get detection results from the database with time range filtering
  * 

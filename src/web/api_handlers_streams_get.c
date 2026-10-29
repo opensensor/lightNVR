@@ -265,9 +265,10 @@ static int handle_get_stream_summaries(
         return -1;
     }
     bool live_surface = strcmp(surface, "live") == 0;
-    if (!live_surface && strcmp(surface, "admin") != 0) {
+    bool lpr_surface = strcmp(surface, "lpr") == 0;
+    if (!live_surface && !lpr_surface && strcmp(surface, "admin") != 0) {
         http_response_set_json_error(res, 400,
-                                     "surface must be admin or live");
+                                     "surface must be admin, live or lpr");
         return -1;
     }
     if (strcmp(availability, "all") != 0 &&
@@ -289,19 +290,25 @@ static int handle_get_stream_summaries(
     for (int i = 0; i < stream_count; i++) {
         const fleet_camera_t *camera = find_loaded_camera(
             fleet_cameras, fleet_camera_count, &db_streams[i]);
-        authorization_evaluation_t live = {0};
+        authorization_evaluation_t visible = {0};
+        authorization_evaluation_t lpr_read = {0};
         authorization_evaluation_t configure = {0};
         if (!camera || authorization_evaluate_in_context(
-                authz_context, user, AUTHZ_LIVE_VIEW, camera, &live) != 0 ||
-            authorization_evaluate_in_context(
+                authz_context, user,
+                lpr_surface ? AUTHZ_LPR_SEARCH : AUTHZ_LIVE_VIEW,
+                camera, &visible) != 0 ||
+            (lpr_surface && authorization_evaluate_in_context(
+                authz_context, user, AUTHZ_LPR_READ, camera, &lpr_read) != 0) ||
+            (!lpr_surface && authorization_evaluate_in_context(
                 authz_context, user, AUTHZ_CAMERA_CONFIGURE, camera,
-                &configure) != 0) {
+                &configure) != 0)) {
             free(rows);
             http_response_set_json_error(
                 res, 500, "Authorization policy evaluation failed");
             return -1;
         }
-        if (live.decision != AUTHZ_DECISION_ALLOW ||
+        if (visible.decision != AUTHZ_DECISION_ALLOW ||
+            (lpr_surface && lpr_read.decision != AUTHZ_DECISION_ALLOW) ||
             !stream_summary_matches(&db_streams[i], camera, search) ||
             (strcmp(availability, "all") != 0 &&
              strcmp(availability, fleet_availability_state_name(
@@ -339,10 +346,15 @@ static int handle_get_stream_summaries(
         cJSON *item = cJSON_CreateObject();
         if (!item) continue;
         cJSON_AddStringToObject(item, "camera_uuid", config->camera_uuid);
+        cJSON_AddStringToObject(item, "name", config->name);
+        // LPR discovery grants access to camera identity, not live/config data.
+        if (lpr_surface) {
+            cJSON_AddItemToArray(items, item);
+            continue;
+        }
         cJSON_AddStringToObject(item, "location_uuid", config->location_uuid);
         cJSON_AddStringToObject(item, "location_name", camera->location_name);
         cJSON_AddStringToObject(item, "location_path", camera->location_path);
-        cJSON_AddStringToObject(item, "name", config->name);
         cJSON_AddBoolToObject(item, "enabled", config->enabled);
         cJSON_AddNumberToObject(item, "width", config->width);
         cJSON_AddNumberToObject(item, "height", config->height);

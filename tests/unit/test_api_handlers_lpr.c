@@ -129,6 +129,15 @@ static void test_search_requires_time_scope_and_available_key(void) {
     cJSON *json = call_search(body, 400);
     cJSON_Delete(json);
 
+    // Partial matching needs three characters; shorter is a bad request,
+    // not a storage failure.
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"match\":\"partial\","
+             "\"plate\":\"A-1\"}", camera.camera_uuid);
+    json = call_search(body, 400);
+    cJSON_Delete(json);
+
     snprintf(body, sizeof(body),
              "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
              "\"end_at\":1787930000000}", camera.camera_uuid);
@@ -178,6 +187,199 @@ static void test_export_and_individual_delete_are_audited(void) {
     sqlite3_finalize(stmt);
 }
 
+static void insert_read(const stream_config_t *camera, const char *plate,
+                        int64_t observed_at_ms, char *uuid_out) {
+    lpr_read_input_t input;
+    memset(&input, 0, sizeof(input));
+    safe_strcpy(input.camera_uuid, camera->camera_uuid, sizeof(input.camera_uuid), 0);
+    safe_strcpy(input.stream_name, camera->name, sizeof(input.stream_name), 0);
+    input.observed_at_ms = observed_at_ms;
+    safe_strcpy(input.source, "onvif_profile_m", sizeof(input.source), 0);
+    safe_strcpy(input.plate, plate, sizeof(input.plate), 0);
+    safe_strcpy(input.object_id, plate, sizeof(input.object_id), 0);
+    TEST_ASSERT_EQUAL_INT(0, db_lpr_read_insert(&input, uuid_out));
+}
+
+static int read_count(const cJSON *json) {
+    return cJSON_GetObjectItemCaseSensitive(json, "count")->valueint;
+}
+
+static const char *read_plate(const cJSON *json, int index) {
+    const cJSON *reads = cJSON_GetObjectItemCaseSensitive(json, "reads");
+    return cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(reads, index), "plate")->valuestring;
+}
+
+static void test_search_rejects_malformed_queries(void) {
+    stream_config_t camera = create_camera();
+    const char *invalid_suffixes[] = {
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,\"limit\":0",
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,\"limit\":101",
+        "\"start_at\":1787930000000,\"end_at\":1787920000000",
+        "\"start_at\":1787920000000,\"end_at\":1819542400001",
+        "\"start_at\":1787920000000.5,\"end_at\":1787930000000",
+        "\"start_at\":\"1787920000000\",\"end_at\":1787930000000",
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,"
+        "\"match\":\"fuzzy\",\"plate\":\"ABC1\"",
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,\"match\":\"exact\"",
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,"
+        "\"match\":\"exact\",\"plate\":\"A\"",
+        "\"start_at\":1787920000000,\"end_at\":1787930000000,"
+        "\"match\":\"exact\",\"plate\":\"\xc3\x84" "B12\"",
+    };
+    char body[512];
+    for (size_t i = 0; i < sizeof(invalid_suffixes) / sizeof(invalid_suffixes[0]); ++i) {
+        snprintf(body, sizeof(body), "{\"camera_uuid\":\"%s\",%s}",
+                 camera.camera_uuid, invalid_suffixes[i]);
+        cJSON *json = call_search(body, 400);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("Invalid LPR search",
+            cJSON_GetObjectItemCaseSensitive(json, "error")->valuestring,
+            invalid_suffixes[i]);
+        cJSON_Delete(json);
+    }
+
+    cJSON *json = call_search("{\"camera_uuid\":\"not-a-uuid\"}", 400);
+    cJSON_Delete(json);
+    json = call_search("not json", 400);
+    cJSON_Delete(json);
+
+    /* Exactly 366 days is accepted; the bound is inclusive. */
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1819542400000}", camera.camera_uuid);
+    json = call_search(body, 200);
+    cJSON_Delete(json);
+}
+
+static void test_search_matching_limit_and_response_shape(void) {
+    stream_config_t camera = create_camera();
+    insert_read(&camera, "ABC1234", 1787920100000LL, NULL);
+    insert_read(&camera, "ABC1239", 1787920200000LL, NULL);
+    insert_read(&camera, "XYZ987", 1787920300000LL, NULL);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000}", camera.camera_uuid);
+    cJSON *json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(3, read_count(json));
+    TEST_ASSERT_EQUAL_STRING("XYZ987", read_plate(json, 0));
+    TEST_ASSERT_EQUAL_STRING("ABC1239", read_plate(json, 1));
+    TEST_ASSERT_EQUAL_STRING("ABC1234", read_plate(json, 2));
+    const cJSON *first = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(json, "reads"), 0);
+    TEST_ASSERT_EQUAL_STRING(camera.camera_uuid,
+        cJSON_GetObjectItemCaseSensitive(first, "camera_uuid")->valuestring);
+    TEST_ASSERT_TRUE(1787920300000LL == (long long)
+        cJSON_GetObjectItemCaseSensitive(first, "observed_at")->valuedouble);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(first, "confidence")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(first, "attributes"), "direction")));
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"limit\":1}", camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(1, read_count(json));
+    TEST_ASSERT_EQUAL_STRING("XYZ987", read_plate(json, 0));
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"match\":\"partial\","
+             "\"plate\":\"abc 123\"}", camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(2, read_count(json));
+    TEST_ASSERT_EQUAL_STRING("ABC1239", read_plate(json, 0));
+    TEST_ASSERT_EQUAL_STRING("ABC1234", read_plate(json, 1));
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"match\":\"exact\","
+             "\"plate\":\"abc-1234\"}", camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(1, read_count(json));
+    TEST_ASSERT_EQUAL_STRING("ABC1234", read_plate(json, 0));
+    cJSON_Delete(json);
+
+    /* The time window is applied before matching. */
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920150000,"
+             "\"end_at\":1787920250000}", camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(1, read_count(json));
+    TEST_ASSERT_EQUAL_STRING("ABC1239", read_plate(json, 0));
+    cJSON_Delete(json);
+}
+
+static void test_export_allows_larger_limit_than_search(void) {
+    stream_config_t camera = create_camera();
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"limit\":1000}", camera.camera_uuid);
+    cJSON *json = call_search(body, 400);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000,\"limit\":1001}", camera.camera_uuid);
+    json = call_handler(handle_post_lpr_export, HTTP_METHOD_POST,
+                        "/api/lpr/export", body, 400, false);
+    cJSON_Delete(json);
+}
+
+static void test_delete_rejects_invalid_and_unknown_ids(void) {
+    cJSON *json = call_handler(handle_delete_lpr_read, HTTP_METHOD_DELETE,
+                               "/api/lpr/reads/not-a-uuid", NULL, 400, false);
+    cJSON_Delete(json);
+    json = call_handler(handle_delete_lpr_read, HTTP_METHOD_DELETE,
+                        "/api/lpr/reads/9c65e103-6f09-49b1-852b-2f5f8b76b922",
+                        NULL, 404, false);
+    cJSON_Delete(json);
+
+    stream_config_t camera = create_camera();
+    char read_uuid[LPR_READ_UUID_SIZE];
+    insert_read(&camera, "GONE123", 1787920100000LL, read_uuid);
+    char path[128];
+    snprintf(path, sizeof(path), "/api/lpr/reads/%s", read_uuid);
+    json = call_handler(handle_delete_lpr_read, HTTP_METHOD_DELETE, path,
+                        NULL, 200, false);
+    cJSON_Delete(json);
+    json = call_handler(handle_delete_lpr_read, HTTP_METHOD_DELETE, path,
+                        NULL, 404, false);
+    cJSON_Delete(json);
+}
+
+static void test_demo_viewer_cannot_search_export_or_delete(void) {
+    stream_config_t camera = create_camera();
+    char read_uuid[LPR_READ_UUID_SIZE];
+    insert_read(&camera, "DEMO123", 1787920100000LL, read_uuid);
+    g_config.web_auth_enabled = true;
+    g_config.demo_mode = true;
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000}", camera.camera_uuid);
+    cJSON *json = call_search(body, 403);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(json, "reads"));
+    cJSON_Delete(json);
+    json = call_handler(handle_post_lpr_export, HTTP_METHOD_POST,
+                        "/api/lpr/export", body, 403, false);
+    cJSON_Delete(json);
+    char path[128];
+    snprintf(path, sizeof(path), "/api/lpr/reads/%s", read_uuid);
+    json = call_handler(handle_delete_lpr_read, HTTP_METHOD_DELETE, path,
+                        NULL, 403, false);
+    cJSON_Delete(json);
+
+    char owner[CAMERA_UUID_STRING_SIZE];
+    TEST_ASSERT_EQUAL_INT(0, db_lpr_read_get_camera_uuid(read_uuid, owner));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     setenv("LIGHTNVR_MIGRATIONS_DIR", "./db/migrations", 1);
@@ -187,6 +389,11 @@ int main(void) {
     RUN_TEST(test_search_returns_protected_read_and_audits_fingerprint_only);
     RUN_TEST(test_search_requires_time_scope_and_available_key);
     RUN_TEST(test_export_and_individual_delete_are_audited);
+    RUN_TEST(test_search_rejects_malformed_queries);
+    RUN_TEST(test_search_matching_limit_and_response_shape);
+    RUN_TEST(test_export_allows_larger_limit_than_search);
+    RUN_TEST(test_delete_rejects_invalid_and_unknown_ids);
+    RUN_TEST(test_demo_viewer_cannot_search_export_or_delete);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

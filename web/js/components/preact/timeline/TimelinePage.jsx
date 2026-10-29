@@ -26,6 +26,7 @@ import {
 } from '../../../utils/date-utils.js';
 import {
   advanceTimelineFling,
+  buildTimelineSegmentsUrl,
   calculateTimelineFlingVelocity,
   countSegmentsForDate,
   findFirstVisibleSegmentIndex,
@@ -168,6 +169,7 @@ function parseUrlParams() {
   const params = new URLSearchParams(window.location.search);
   return {
     stream: params.get('stream') || '',
+    cameraUuid: params.get('camera_uuid') || '',
     date: params.get('date') || currentDateInputValue(),
     time: params.get('time') || '',         // Optional HH:MM:SS to auto-seek on load
     ids: params.get('ids') || '',           // Comma-separated recording IDs for selected-recordings mode
@@ -179,10 +181,13 @@ function parseUrlParams() {
 /**
  * Update URL parameters
  */
-function updateUrlParams(stream, date) {
-  if (!stream) return;
+function updateUrlParams(stream, date, cameraUuid) {
+  if (!stream && !cameraUuid) return;
   const url = new URL(window.location.href);
-  url.searchParams.set('stream', stream);
+  if (stream) url.searchParams.set('stream', stream);
+  else url.searchParams.delete('stream');
+  if (cameraUuid) url.searchParams.set('camera_uuid', cameraUuid);
+  else url.searchParams.delete('camera_uuid');
   url.searchParams.set('date', date);
   url.searchParams.delete('time');        // Remove one-time seek param after initial load
   url.searchParams.delete('fullscreen');  // Remove one-shot fullscreen hint
@@ -240,6 +245,7 @@ export function TimelinePage() {
   // State
   const [streamsList, setStreamsList] = useState([]);
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
+  const [selectedCameraUuid, setSelectedCameraUuid] = useState(urlParams.cameraUuid);
   const [selectedDate, setSelectedDate] = useState(urlParams.date);
   const [segments, setSegments] = useState([]);
   const [detectionIntervals, setDetectionIntervals] = useState([]);
@@ -1054,12 +1060,14 @@ export function TimelinePage() {
       // Update global state for child components
       timelineState.setState({ streams: streamsData });
 
-      // Check if the selected stream from URL exists
-      const streamExists = streamsData.some(s => s.name === selectedStream);
+      // Preserve UUID deep links even when live-view permission hides the camera
+      // from this selector; the playback API authorizes the requested identity.
+      const requestedStream = streamsData.find(s => selectedCameraUuid
+        ? s.camera_uuid === selectedCameraUuid : s.name === selectedStream);
 
-      if (streamExists && selectedStream) {
-        console.log(`TimelinePage: Using stream from URL: ${selectedStream}`);
-      } else if (streamsData.length > 0) {
+      if (requestedStream) {
+        setSelectedStream(requestedStream.name);
+      } else if (!selectedCameraUuid && !idsMode) {
         // Use first stream if URL stream doesn't exist
         const firstStream = streamsData[0].name;
         console.log(`TimelinePage: Using first stream: ${firstStream}`);
@@ -1158,19 +1166,22 @@ export function TimelinePage() {
       return;
     }
 
-    if (selectedStream) {
-      updateUrlParams(selectedStream, selectedDate);
+    if (selectedStream || selectedCameraUuid) {
+      updateUrlParams(selectedStream, selectedDate, selectedCameraUuid);
       timelineState.setState({ selectedStream, selectedDate });
     }
-  }, [idsMode, selectedStream, selectedDate]);
+  }, [idsMode, selectedStream, selectedCameraUuid, selectedDate]);
 
   // Get time range for current date
   const { startTime, endTime } = getTimeRange(selectedDate);
 
   // Construct the URL for the API call
-  const timelineUrl = selectedStream
-    ? `/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}`
-    : null;
+  const timelineUrl = buildTimelineSegmentsUrl({
+    streamName: selectedStream,
+    cameraUuid: selectedCameraUuid,
+    startTime,
+    endTime,
+  });
 
   // Fetch timeline segments using preact-query
   // NOTE: onSuccess/onError were removed in TanStack Query v5 (@preact-signals/query v2.x)
@@ -1180,7 +1191,7 @@ export function TimelinePage() {
     isLoading: isLoadingTimeline,
     error: timelineError,
   } = useQuery(
-    ['timeline-segments', selectedStream, selectedDate],
+    ['timeline-segments', selectedStream, selectedCameraUuid, selectedDate],
     timelineUrl,
     {
       timeout: 30000, // 30 second timeout
@@ -1188,7 +1199,7 @@ export function TimelinePage() {
       retryDelay: 1000 // 1 second between retries
     },
     {
-      enabled: !!selectedStream && !idsMode // Only run query if we have a selected stream (and not in IDs mode)
+      enabled: !!timelineUrl && !idsMode
     }
   );
 
@@ -1221,7 +1232,7 @@ export function TimelinePage() {
 
   // Transparent polling: silently fetch for new recordings every 30 s (normal mode only)
   useEffect(() => {
-    if (idsMode || !selectedStream || !timelineUrl) return;
+    if (idsMode || !timelineUrl) return;
 
     const POLL_INTERVAL_MS = 10000;
     let fadeTimeoutId = null;
@@ -1348,6 +1359,7 @@ export function TimelinePage() {
 
   const handleStreamChange = (e) => {
     setSelectedStream(e.target.value);
+    setSelectedCameraUuid('');
     // Blur the select so it no longer intercepts keyboard events after the
     // selection is made, preserving the current keyboard-nav mode.
     e.target.blur();
@@ -1527,7 +1539,7 @@ export function TimelinePage() {
           </a>
           <a
             href={investigationHref}
-            className="px-3 py-1 rounded-r-md text-sm"
+            className="px-3 py-1 text-sm"
             style={{
               backgroundColor: 'hsl(var(--secondary))',
               color: 'hsl(var(--secondary-foreground))'
@@ -1536,6 +1548,18 @@ export function TimelinePage() {
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
           >
             {t('nav.investigation')}
+          </a>
+          <a
+            href="plates.html"
+            className="px-3 py-1 rounded-r-md text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--secondary))',
+              color: 'hsl(var(--secondary-foreground))'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+          >
+            {t('nav.plates')}
           </a>
         </div>
       </div>

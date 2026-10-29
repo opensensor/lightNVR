@@ -12,6 +12,16 @@ export const TIMELINE_FLING_DECAY_PER_MILLISECOND = 0.005;
 export const TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS = 100;
 export const TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS = 120;
 
+/** Keep UUID deep links independent of historical or reused stream names. */
+export function buildTimelineSegmentsUrl({ streamName, cameraUuid, startTime, endTime }) {
+  if (!cameraUuid && !streamName) return null;
+  const params = new URLSearchParams(cameraUuid
+    ? { camera_uuid: cameraUuid } : { stream: streamName });
+  params.set('start', startTime);
+  params.set('end', endTime);
+  return `/api/timeline/segments?${params.toString()}`;
+}
+
 export function timelineSegmentIdentity(segment) {
   if (segment?.id !== null && segment?.id !== undefined && String(segment.id) !== '') {
     return `id:${String(segment.id)}`;

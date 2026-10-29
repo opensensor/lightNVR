@@ -1078,6 +1078,12 @@ export function RecordingsView() {
           >
             {t('nav.investigation')}
           </a>
+          <a
+            href="plates.html"
+            class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
+          >
+            {t('nav.plates')}
+          </a>
         </div>
       </div>
 

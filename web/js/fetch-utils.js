@@ -7,7 +7,7 @@
  * Clear authentication state and redirect to login
  * @param {string} reason - Reason for redirect (optional)
  */
-function handleAuthenticationFailure(reason = 'Session expired') {
+export function handleAuthenticationFailure(reason = 'Session expired') {
   console.warn(`Authentication failure: ${reason}`);
 
   // Clear all auth-related storage
