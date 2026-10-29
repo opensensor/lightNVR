@@ -404,6 +404,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 		segment_info_ptr->pending_video_keyframe = NULL;
 	}
 
+    if (!*input_ctx_ptr) {
+        segment_info_ptr->fps_measurement = (stream_frame_rate_measurement_t){0};
+    }
+
     // BUGFIX: Use per-stream segment info instead of global static variable
     segment_index = segment_info_ptr->segment_index + 1;
 
@@ -1060,6 +1064,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             }
         }
 
+        bool carried_keyframe = segment_info_ptr->pending_video_keyframe &&
+                                segment_info_ptr->pending_video_keyframe->size > 0;
 		// Read packet (or, if available, consume a carried-over boundary keyframe).
 		// This biases toward overlap vs gaps when segments are aligned on keyframes.
 							if (segment_info_ptr->pending_video_keyframe) {
@@ -1108,6 +1114,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
+            if (!carried_keyframe && pkt->size > 0) {
+                stream_frame_rate_observe(&segment_info_ptr->fps_measurement,
+                                          av_gettime_relative());
+            }
             // Record frame for telemetry metrics
             if (segment_info_ptr->stream_name[0] != '\0') {
                 metrics_record_frame_from_source(segment_info_ptr->stream_name, pkt->size, true,

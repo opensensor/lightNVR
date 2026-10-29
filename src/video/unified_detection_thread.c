@@ -82,13 +82,6 @@
 /* DETECTION_GRACE_PERIOD_SEC is no longer a compile-time constant.
  * Use g_config.detection_grace_period (configured via [detection] grace_period). */
 
-// Video/default FPS settings
-// Conservative low-end fallback for cameras that omit FPS in SDP.
-// Intentionally underestimates typical 25/30 FPS to avoid overestimating
-// duration/bitrate when the actual FPS is unknown.
-#define DEFAULT_FPS_FALLBACK 15
-#define FPS_MEASUREMENT_WINDOW_SEC 5  // Seconds of frame arrivals to measure before refining provisional FPS
-
 // Detection recording settings
 #define DEFAULT_MIN_DETECTION_RECORDING_DURATION 10  // Default minimum total duration (seconds) for detection recordings (pre_buffer + post_buffer)
 #define ONVIF_MOTION_HOLD_SECS 15  // Seconds to hold onvif_motion_detected=1 after last confirmed motion event,
@@ -251,10 +244,33 @@ static bool should_annotate_continuous(unified_detection_ctx_t *ctx) {
     return stream_has_continuous_writer(ctx->stream_name);
 }
 
-/**
- * FFmpeg interrupt callback to allow cancellation of blocking operations
- * Returns 1 to abort, 0 to continue
- */
+/* Preserve the probe result and interruption reason without logging source URLs. */
+static void log_stream_info_failure(const char *stream_name, const char *source,
+                                    const AVFormatContext *format, int ret,
+                                    int64_t deadline_us, bool cancelled) {
+    char error[AV_ERROR_MAX_STRING_SIZE];
+    if (ret < 0) av_strerror(ret, error, sizeof(error));
+    else safe_strcpy(error, "probe completed but was interrupted", sizeof(error), 0);
+    bool timed_out = deadline_us > 0 && av_gettime_relative() >= deadline_us;
+    log_error("[%s] %s: Failed to find stream info: %s (ret=%d, timeout=%s, "
+              "cancelled=%s, streams=%u)",
+              stream_name, source, error, ret, timed_out ? "yes" : "no",
+              cancelled ? "yes" : "no", format ? format->nb_streams : 0);
+    if (!format) return;
+    for (unsigned int i = 0; i < format->nb_streams; i++) {
+        const AVStream *stream = format->streams[i];
+        if (stream->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) continue;
+        log_debug("[%s] %s probe video: codec=%d, size=%dx%d, avg=%d/%d, "
+                  "nominal=%d/%d, time_base=%d/%d",
+                  stream_name, source, stream->codecpar->codec_id,
+                  stream->codecpar->width, stream->codecpar->height,
+                  stream->avg_frame_rate.num, stream->avg_frame_rate.den,
+                  stream->r_frame_rate.num, stream->r_frame_rate.den,
+                  stream->time_base.num, stream->time_base.den);
+    }
+}
+
+/** FFmpeg I/O cancellation callback: return 1 to abort, 0 to continue. */
 static int ffmpeg_interrupt_callback(void *opaque) {
     unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)opaque;
     if (!ctx) return 1;  // Abort if no context
@@ -964,9 +980,12 @@ static void *detection_stream_thread_func(void *arg) {
         }
 
         ctx->detection_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
-        if (avformat_find_stream_info(fmt_ctx, NULL) < 0 ||
-            detection_stream_interrupt_cb(ctx)) {
-            log_warn("[%s] Detection stream thread: could not read stream info", ctx->stream_name);
+        ret = avformat_find_stream_info(fmt_ctx, NULL);
+        if (ret < 0 || detection_stream_interrupt_cb(ctx)) {
+            log_stream_info_failure(ctx->stream_name, "Detection stream", fmt_ctx, ret,
+                                    ctx->detection_io_deadline_us,
+                                    !atomic_load(&ctx->detection_stream_thread_running) ||
+                                    !atomic_load(&ctx->running) || is_shutdown_initiated());
             avformat_close_input(&fmt_ctx);
             detection_stream_backoff(ctx, &reconnect_delay_ms);
             continue;
@@ -1672,7 +1691,9 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
     ctx->input_io_deadline_us = av_gettime_relative() + READ_TIMEOUT_US;
     ret = avformat_find_stream_info(ctx->input_ctx, NULL);
     if (ret < 0 || ffmpeg_interrupt_callback(ctx)) {
-        log_error("[%s] Failed to find stream info", ctx->stream_name);
+        log_stream_info_failure(ctx->stream_name, "Main stream", ctx->input_ctx, ret,
+                                ctx->input_io_deadline_us,
+                                !atomic_load(&ctx->running) || is_shutdown_initiated());
         avformat_close_input(&ctx->input_ctx);
         return -1;
     }
@@ -1738,30 +1759,17 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         AVCodecParameters *cp = vs->codecpar;
         int det_width = cp->width;
         int det_height = cp->height;
-        int det_fps = 0;
         const char *det_codec = NULL;
-        bool fps_is_provisional = false;
-
-        if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
-            det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
-        }
-        // avg_frame_rate is 0 for many older cameras (e.g. Axis M1011); fall back
-        // to the container's r_frame_rate, then to a safe default so the stored
-        // value is always meaningful.
-        if (det_fps <= 0 && vs->r_frame_rate.den > 0 && vs->r_frame_rate.num > 0) {
-            det_fps = (int)(vs->r_frame_rate.num / vs->r_frame_rate.den);
-            if (det_fps > 0) {
-                log_debug("[%s] avg_frame_rate unavailable; using r_frame_rate: %d fps",
-                          ctx->stream_name, det_fps);
-            }
-        }
-        if (det_fps <= 0) {
-            det_fps = DEFAULT_FPS_FALLBACK; // conservative default for cameras that omit FPS in SDP
-            fps_is_provisional = true;
-            log_debug("[%s] FPS unknown from SDP; defaulting provisionally to %d fps; "
-                      "runtime frame arrival will be used to refine this value",
-                      ctx->stream_name, det_fps);
-        }
+        bool fps_is_provisional;
+        int det_fps = stream_frame_rate_round(stream_frame_rate_select(
+            vs->avg_frame_rate, vs->r_frame_rate, &fps_is_provisional));
+        if (det_fps == 0) det_fps = STREAM_FRAME_RATE_DEFAULT;
+        log_debug("[%s] FPS probe: avg=%d/%d, nominal=%d/%d, time_base=%d/%d; "
+                  "selected=%d%s",
+                  ctx->stream_name, vs->avg_frame_rate.num, vs->avg_frame_rate.den,
+                  vs->r_frame_rate.num, vs->r_frame_rate.den,
+                  vs->time_base.num, vs->time_base.den, det_fps,
+                  fps_is_provisional ? " (provisional; measuring arrivals)" : "");
 
         const AVCodecDescriptor *desc = avcodec_descriptor_get(cp->codec_id);
         if (desc) {
@@ -1800,12 +1808,7 @@ static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
     pthread_mutex_lock(&ctx->mutex);
     atomic_store(&ctx->fps_is_provisional, fps_is_provisional);
     if (fps_is_provisional) {
-        // Reset measurement counters so process_packet() can start measuring
-        atomic_store(&ctx->fps_measurement_frame_count, 0);
-        struct timespec ts_tmp;
-        clock_gettime(CLOCK_MONOTONIC, &ts_tmp);
-        atomic_store(&ctx->fps_measurement_start_ns,
-                     (long long)ts_tmp.tv_sec * 1000000000LL + ts_tmp.tv_nsec);
+        ctx->fps_measurement = (stream_frame_rate_measurement_t){0};
     }
     pthread_mutex_unlock(&ctx->mutex);
 
@@ -2239,50 +2242,21 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
     pthread_mutex_lock(&ctx->mutex);
     ctx->total_packets_processed++;
 
-    // Runtime FPS refinement: count video frames over a measurement window
-    // and update the stored FPS once we have enough data.
-    if (is_video && atomic_load(&ctx->fps_is_provisional)) {
-        int frame_count = atomic_fetch_add(&ctx->fps_measurement_frame_count, 1) + 1;
-
-        struct timespec ts_now;
-        clock_gettime(CLOCK_MONOTONIC, &ts_now);
-        long long now_ns = (long long)ts_now.tv_sec * 1000000000LL + ts_now.tv_nsec;
-        long long start_ns = atomic_load(&ctx->fps_measurement_start_ns);
-        double elapsed = (now_ns - start_ns) / 1e9;
-
-        if (elapsed >= FPS_MEASUREMENT_WINDOW_SEC && frame_count > 1) {
-            int measured_fps = (int)(frame_count / elapsed + 0.5);
-            if (measured_fps > 0) {
-                log_info("[%s] Runtime FPS measurement: %d fps (measured %d frames over %.1fs); "
-                         "updating stored value from provisional %d fps",
-                         ctx->stream_name, measured_fps,
-                         frame_count, elapsed,
-                         DEFAULT_FPS_FALLBACK);
-                atomic_store(&ctx->fps_is_provisional, false);
-
-                // Retrieve current width/height/codec from the stream so we
-                // don't clobber them when updating only FPS.
-                int cur_w = 0, cur_h = 0;
-                const char *cur_codec = NULL;
-                if (ctx->input_ctx && ctx->video_stream_idx >= 0) {
-                    const AVCodecParameters *cp2 =
-                        ctx->input_ctx->streams[ctx->video_stream_idx]->codecpar;
-                    cur_w = cp2->width;
-                    cur_h = cp2->height;
-                    const AVCodecDescriptor *d = avcodec_descriptor_get(cp2->codec_id);
-                    if (d) cur_codec = d->name;
-                }
-
-                // Release mutex before DB call to avoid holding it during I/O
-                pthread_mutex_unlock(&ctx->mutex);
-                udt_update_stream_video_params(ctx, cur_w, cur_h,
-                                               measured_fps, cur_codec, false);
-                goto stats_done;
-            }
-        }
+    // Refine unknown or nominal-only metadata from nonempty video arrivals.
+    int measured_fps = 0;
+    if (is_video && pkt->size > 0 && atomic_load(&ctx->fps_is_provisional)) {
+        measured_fps = stream_frame_rate_observe(&ctx->fps_measurement,
+                                                av_gettime_relative());
     }
     pthread_mutex_unlock(&ctx->mutex);
-stats_done:
+    if (measured_fps > 0) {
+        log_info("[%s] Runtime FPS measurement: %d fps; replacing provisional rate",
+                 ctx->stream_name, measured_fps);
+        const AVCodecParameters *cp = ctx->input_ctx->streams[ctx->video_stream_idx]->codecpar;
+        const AVCodecDescriptor *desc = avcodec_descriptor_get(cp->codec_id);
+        udt_update_stream_video_params(ctx, cp->width, cp->height,
+                                       measured_fps, desc ? desc->name : NULL, false);
+    }
 
     // Always add packets to circular buffer (for pre-detection content)
     // The buffer automatically evicts old packets when full

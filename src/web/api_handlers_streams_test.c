@@ -15,6 +15,7 @@
 #include "core/url_utils.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
+#include "video/stream_frame_rate.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
 #include "video/detection_stream.h"
@@ -107,11 +108,8 @@ static int test_stream_connection(const char *url, int protocol,
     *height = codec_params->height;
     
     // Get framerate
-    if (video_stream->avg_frame_rate.den && video_stream->avg_frame_rate.num) {
-        *fps = (double)video_stream->avg_frame_rate.num / (double)video_stream->avg_frame_rate.den;
-    } else {
-        *fps = 0.0;
-    }
+    *fps = stream_frame_rate_select(video_stream->avg_frame_rate,
+                                    video_stream->r_frame_rate, NULL);
     
     // Success
     ret = 0;

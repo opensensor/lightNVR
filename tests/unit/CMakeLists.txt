@@ -130,6 +130,9 @@ add_layer2_test(test_storage_retention_sqlite)
 # ====================================================================
 add_layer1_test(test_storage_pressure_extended)
 add_layer1_test(test_detection_result_structures)
+add_layer1_test(test_stream_frame_rate)
+target_sources(test_stream_frame_rate PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/video/stream_frame_rate.c)
 
 # ====================================================================
 # Layer 2: lightnvr_lib tests — compiled functions + optional SQLite
@@ -356,6 +359,9 @@ set_tests_properties(test_hls_reconnect_backoff PROPERTIES TIMEOUT 10)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries)
+add_layer3_test(test_recording_video_params)
+target_link_options(test_recording_video_params PRIVATE
+    "-Wl,--wrap=update_stream_video_params")
 add_layer3_test(test_mp4_faststart)
 target_compile_definitions(test_mp4_faststart PRIVATE
     RECORDING_FIXTURE="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4")
@@ -396,6 +402,7 @@ target_compile_definitions(test_detection_io_recovery PRIVATE
 target_link_options(test_detection_io_recovery PRIVATE
     "-Wl,--wrap=avformat_open_input" "-Wl,--wrap=avformat_find_stream_info"
     "-Wl,--wrap=av_read_frame" "-Wl,--wrap=av_gettime_relative"
+    "-Wl,--wrap=_log_message_ctx"
 )
 set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
 add_layer3_test(test_udt_recording)

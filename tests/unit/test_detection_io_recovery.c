@@ -16,6 +16,25 @@ static unified_detection_ctx_t *test_ctx;
 static int opens, reads, interrupted;
 static int64_t clock_offset;
 static int listener = -1;
+static bool override_rates;
+static AVRational test_average, test_nominal;
+static char probe_error[512];
+
+void __real__log_message_ctx(log_level_t level, const char *component,
+                             const char *stream, const char *format, ...);
+
+void __wrap__log_message_ctx(log_level_t level, const char *component,
+                             const char *stream, const char *format, ...) {
+    char message[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    if (strstr(message, "Failed to find stream info")) {
+        safe_strcpy(probe_error, message, sizeof(probe_error), 0);
+    }
+    __real__log_message_ctx(level, component, stream, "%s", message);
+}
 
 int64_t __real_av_gettime_relative(void);
 int __real_avformat_open_input(AVFormatContext **input, const char *url,
@@ -68,7 +87,16 @@ int __wrap_avformat_open_input(AVFormatContext **input, const char *url,
 
 int __wrap_avformat_find_stream_info(AVFormatContext *input, AVDictionary **opts) {
     if (stage == STALL_PROBE) return stall(input);
-    return __real_avformat_find_stream_info(input, opts);
+    int ret = __real_avformat_find_stream_info(input, opts);
+    if (ret >= 0 && override_rates) {
+        for (unsigned i = 0; i < input->nb_streams; i++) {
+            if (input->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                input->streams[i]->avg_frame_rate = test_average;
+                input->streams[i]->r_frame_rate = test_nominal;
+            }
+        }
+    }
+    return ret;
 }
 
 int __wrap_av_read_frame(AVFormatContext *input, AVPacket *pkt) {
@@ -83,6 +111,8 @@ void setUp(void) {
     init_shutdown_coordinator();
     opens = reads = interrupted = 0;
     clock_offset = 0;
+    override_rates = false;
+    probe_error[0] = '\0';
     stage = STALL_OPEN;
     test_ctx = calloc(1, sizeof(*test_ctx));
     TEST_ASSERT_NOT_NULL(test_ctx);
@@ -120,6 +150,12 @@ static void assert_recovers(stall_stage_t stalled_stage, bool secondary) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, opens, "reader must open a fresh connection");
     TEST_ASSERT_NULL(test_ctx->input_ctx);
     if (secondary) TEST_ASSERT_EQUAL_INT(0, atomic_load(&test_ctx->detection_stream_connected));
+    if (stalled_stage == STALL_PROBE) {
+        TEST_ASSERT_NOT_NULL(strstr(probe_error, "timeout=yes"));
+        TEST_ASSERT_NOT_NULL(strstr(probe_error, "cancelled=no"));
+        TEST_ASSERT_NOT_NULL(strstr(probe_error, "ret=-"));
+        TEST_ASSERT_NULL(strstr(probe_error, "rtsp://"));
+    }
 }
 
 static void test_main_open_reconnects(void) { assert_recovers(STALL_OPEN, false); }
@@ -128,6 +164,50 @@ static void test_main_read_reconnects(void) { assert_recovers(STALL_READ, false)
 static void test_secondary_open_reconnects(void) { assert_recovers(STALL_OPEN, true); }
 static void test_secondary_probe_reconnects(void) { assert_recovers(STALL_PROBE, true); }
 static void test_secondary_read_reconnects(void) { assert_recovers(STALL_READ, true); }
+
+static void test_probe_cancellation_is_not_reported_as_success(void) {
+    log_stream_info_failure("test", "Main stream", NULL, 0, 0, true);
+    TEST_ASSERT_NOT_NULL(strstr(probe_error, "interrupted"));
+    TEST_ASSERT_NOT_NULL(strstr(probe_error, "timeout=no"));
+    TEST_ASSERT_NOT_NULL(strstr(probe_error, "cancelled=yes"));
+}
+
+static void check_runtime_fps(AVRational average, AVRational nominal, int initial_fps) {
+    // Open and decode the real fixture, replacing only the demuxer's FPS metadata.
+    stage = STALL_READ;
+    override_rates = true;
+    test_average = average;
+    test_nominal = nominal;
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(2));
+    TEST_ASSERT_EQUAL_INT(0, connect_to_stream(test_ctx));
+    TEST_ASSERT_TRUE(atomic_load(&test_ctx->fps_is_provisional));
+    stream_metrics_t snapshot[2];
+    TEST_ASSERT_EQUAL_INT(1, metrics_snapshot_all(snapshot, 2));
+    TEST_ASSERT_EQUAL_INT(initial_fps, (int)snapshot[0].configured_fps);
+
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_NOT_NULL(packet);
+    TEST_ASSERT_EQUAL_INT(0, av_new_packet(packet, 1));
+    packet->stream_index = test_ctx->video_stream_idx;
+    // No keyframe: this exercises packet arrival measurement without inference.
+    for (int i = 0; i <= 71; i++) {
+        clock_offset = i * 100000LL;
+        TEST_ASSERT_EQUAL_INT(0, process_packet(test_ctx, packet));
+    }
+    TEST_ASSERT_FALSE(atomic_load(&test_ctx->fps_is_provisional));
+    TEST_ASSERT_EQUAL_INT(1, metrics_snapshot_all(snapshot, 2));
+    TEST_ASSERT_EQUAL_INT(10, (int)snapshot[0].configured_fps);
+    av_packet_free(&packet);
+    metrics_shutdown();
+}
+
+static void test_clock_fps_is_replaced_in_health_metrics(void) {
+    check_runtime_fps((AVRational){90000, 1}, (AVRational){90000, 1}, 15);
+}
+
+static void test_proxy_nominal_fps_is_refined_in_health_metrics(void) {
+    check_runtime_fps((AVRational){0, 0}, (AVRational){6, 1}, 6);
+}
 
 static void test_deadlines_are_independent_and_shutdown_still_interrupts(void) {
     test_ctx->input_io_deadline_us = __wrap_av_gettime_relative() - 1;
@@ -174,6 +254,9 @@ int main(void) {
     RUN_TEST(test_secondary_open_reconnects);
     RUN_TEST(test_secondary_probe_reconnects);
     RUN_TEST(test_secondary_read_reconnects);
+    RUN_TEST(test_probe_cancellation_is_not_reported_as_success);
+    RUN_TEST(test_clock_fps_is_replaced_in_health_metrics);
+    RUN_TEST(test_proxy_nominal_fps_is_refined_in_health_metrics);
     RUN_TEST(test_deadlines_are_independent_and_shutdown_still_interrupts);
     RUN_TEST(test_real_silent_rtsp_peer_times_out);
     return UNITY_END();

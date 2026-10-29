@@ -23,6 +23,7 @@
 
 #include "core/config.h"
 #include "video/packet_buffer.h"
+#include "video/stream_frame_rate.h"
 #include "video/detection_model.h"
 #include "video/detection_result.h"
 #include "video/mp4_writer.h"
@@ -223,13 +224,12 @@ typedef struct {
     uint64_t total_detections;
     uint64_t total_recordings;
 
-    // Runtime FPS measurement (used when SDP omits frame rate). After enough frames
+    // Runtime FPS measurement (used when metadata is missing or unreliable). After enough packets
     // have been observed in the measurement window, the measured FPS is finalized,
     // fps_is_provisional is set to false, and the resulting FPS value is persisted
     // to the database for future use.
     atomic_bool fps_is_provisional;           // true when stored FPS is a fallback guess
-    atomic_int fps_measurement_frame_count;   // video frames counted during measurement window
-    atomic_llong fps_measurement_start_ns;    // start of measurement window, in nanoseconds since an epoch
+    stream_frame_rate_measurement_t fps_measurement; // protected by mutex
 
     // go2rtc replay detection: when the UDT connects, go2rtc replays its ring
     // buffer in real-time before switching to live packets.  We track the wall
