@@ -1036,12 +1036,12 @@ export function RecordingsView() {
 
       {/* Sub-navigation tabs — matches System page style */}
       <div class="mb-4 border-b border-border" role="tablist" aria-label={t('recordings.views')}>
-        <div class="flex gap-2">
+        <div class="flex overflow-x-auto whitespace-nowrap sm:gap-2 sm:overflow-visible">
           <button
             type="button"
             role="tab"
             aria-selected={viewMode === 'table'}
-            class={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+            class={`shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 ${
               viewMode === 'table'
                 ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
                 : 'text-muted-foreground hover:text-foreground'
@@ -1055,7 +1055,7 @@ export function RecordingsView() {
               type="button"
               role="tab"
               aria-selected={viewMode === 'grid'}
-              class={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              class={`shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 ${
                 viewMode === 'grid'
                   ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
                   : 'text-muted-foreground hover:text-foreground'
@@ -1068,19 +1068,19 @@ export function RecordingsView() {
           {/* Timeline is a separate page — styled as a tab link for visual consistency */}
           <a
             href="timeline.html"
-            class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
           >
             {t('nav.timeline')}
           </a>
           <a
             href="investigation.html"
-            class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
           >
             {t('nav.investigation')}
           </a>
           <a
             href="plates.html"
-            class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
           >
             {t('nav.plates')}
           </a>
