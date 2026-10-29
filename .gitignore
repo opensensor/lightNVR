@@ -1,5 +1,6 @@
 # Build directories
 /build/
+/build-*/
 /bin/
 /lib/
 /obj/
@@ -9,6 +10,14 @@ light-object-detect/
 
 # Test Artifacts
 web/screenshots
+/Testing/
+*.gcno
+*.gcda
+*.gcov
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
 
 # Generated files
 cmake-build-debug/

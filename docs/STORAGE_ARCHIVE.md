@@ -238,9 +238,33 @@ Create `lightnvr-archive` with a `credentials.json` key using your secret manage
 The init container copies the projected secret into an ordinary protected file;
 this accommodates Kubernetes' projected-file behavior while retaining the NVR's
 no-symlink credential rule. Restart the pod after rotating that Secret, or have
-a trusted sidecar atomically replace the ordinary file. Match file ownership to
-the NVR UID. The patch assumes root, matching the current container image.
+a trusted sidecar atomically replace the ordinary file. Recorder images run as
+UID/GID `10001`. The patch runs the helper as that same user and sets pod
+`fsGroup: 10001` so it can read the projected Secret and write the shared volume.
+The resulting ordinary files remain owned by `10001:10001` with mode `0600`.
 See [Kubernetes Secret volumes](https://kubernetes.io/docs/concepts/configuration/secret/).
+
+For deployments using an `archive-files` init container and an
+`archive-file-refresh` sidecar, apply the
+[refresh permissions patch](../deployment/archive/kubernetes-refresh-credentials-patch.yaml)
+to its Deployment:
+
+```sh
+kubectl -n YOUR_NAMESPACE patch deployment YOUR_DEPLOYMENT --type=strategic \
+  --patch-file=deployment/archive/kubernetes-refresh-credentials-patch.yaml
+```
+
+Match the container names in the patch to the existing Deployment. This preserves
+the publication commands, mounts, and resource limits and replaces the pod so
+both helpers create files under the recorder's UID. Both `instance`
+and `instance.lifecycle.json` must be ordinary files readable by the recorder.
+`fsGroup` alone does not make root-owned `0600` files readable, and group-readable
+files are rejected by the archive reader. Keep `0600` and align the writer's UID
+instead. If using a custom recorder UID, update both the recorder and helpers.
+Update every writer, including init containers: a root-owned startup file in a
+sticky shared directory also prevents the non-root refresher from replacing it.
+After rollout, verify file ownership/readability, healthy archive probes,
+completed migration jobs, and new recordings once local storage pressure clears.
 
 For Compose, add a read-only bind mount of your ordinary credentials directory to
 `/etc/lightnvr/archive-credentials` and optionally set the cache environment
