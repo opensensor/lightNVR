@@ -2,9 +2,9 @@
 
 **Goal: recover $10,000 in self-funded development and operating costs through GitHub Sponsors.**
 
-**Raised: $100 of $10,000 (1%)**
+**Raised: $132 of $10,000 (1.3%)**
 
-Campaign launched: August 2026
+Campaign launched: August 2026 · Last updated: October 29, 2026
 
 [Become a GitHub Sponsor](https://github.com/sponsors/matteius)
 
