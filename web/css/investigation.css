@@ -319,13 +319,15 @@
 
 .investigation-subnav {
     display: flex;
-    overflow: hidden;
+    max-width: 100%;
+    overflow-x: auto;
     border: 1px solid hsl(var(--border));
     border-radius: 0.5rem;
     white-space: nowrap;
 }
 
 .investigation-subnav a {
+    flex-shrink: 0;
     padding: 0.5rem 0.75rem;
     color: hsl(var(--muted-foreground));
     text-decoration: none;
@@ -1127,7 +1129,9 @@
     }
 
     .investigation-subnav a {
-        flex: 1;
+        flex: 1 0 auto;
+        margin: 0;
+        padding: 0.5rem;
         text-align: center;
     }
 }
