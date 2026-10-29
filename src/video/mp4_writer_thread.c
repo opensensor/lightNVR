@@ -116,6 +116,54 @@ static void on_segment_activity_cb(void *user_ctx) {
 }
 
 
+/* Persist metadata after a successful segment, revisiting provisional rates
+ * until enough arrivals have been measured across one or more segments. */
+static void update_recording_video_params(mp4_writer_thread_t *thread_ctx,
+                                           const char *stream_name) {
+    if (!thread_ctx->video_params_detected && thread_ctx->input_ctx) {
+        for (unsigned int i = 0; i < thread_ctx->input_ctx->nb_streams; i++) {
+            AVStream *vs = thread_ctx->input_ctx->streams[i];
+            if (vs->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                int det_width = vs->codecpar->width;
+                int det_height = vs->codecpar->height;
+                const char *det_codec = NULL;
+                bool fps_is_provisional;
+                int det_fps = stream_frame_rate_round(stream_frame_rate_select(
+                    vs->avg_frame_rate, vs->r_frame_rate, &fps_is_provisional));
+                if (fps_is_provisional && thread_ctx->segment_info.fps_measurement.fps > 0) {
+                    det_fps = thread_ctx->segment_info.fps_measurement.fps;
+                    fps_is_provisional = false;
+                }
+                if (det_fps == 0) det_fps = STREAM_FRAME_RATE_DEFAULT;
+                log_debug("[%s] Recording FPS probe: avg=%d/%d, nominal=%d/%d, "
+                          "time_base=%d/%d; selected=%d%s",
+                          stream_name, vs->avg_frame_rate.num, vs->avg_frame_rate.den,
+                          vs->r_frame_rate.num, vs->r_frame_rate.den,
+                          vs->time_base.num, vs->time_base.den, det_fps,
+                          fps_is_provisional ? " (provisional)" : "");
+
+                const AVCodecDescriptor *desc = avcodec_descriptor_get(vs->codecpar->codec_id);
+                if (desc) {
+                    det_codec = desc->name;
+                }
+
+                if (det_width > 0 && det_height > 0) {
+                    log_info("[%s] Recording thread detected video params: %dx%d @ %d fps, codec=%s",
+                             stream_name, det_width, det_height, det_fps,
+                             det_codec ? det_codec : "unknown");
+                    update_stream_video_params(stream_name, det_width, det_height,
+                                               det_fps, det_codec);
+                    metrics_set_configured_fps(stream_name, det_fps);
+                }
+                // Short segments may finish before the measurement window.
+                // Revisit provisional rates after the next segment.
+                thread_ctx->video_params_detected = !fps_is_provisional;
+                break;
+            }
+        }
+    }
+}
+
 /**
  * RTSP stream reading thread function
  * This function maintains a single RTSP connection across multiple segments
@@ -640,49 +688,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->retry_count = 0;
             }
 
-            // Auto-detect and persist video parameters once after first successful segment
-            if (!thread_ctx->video_params_detected && thread_ctx->input_ctx) {
-                for (unsigned int i = 0; i < thread_ctx->input_ctx->nb_streams; i++) {
-                    AVStream *vs = thread_ctx->input_ctx->streams[i];
-                    if (vs->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-                        int det_width = vs->codecpar->width;
-                        int det_height = vs->codecpar->height;
-                        const char *det_codec = NULL;
-                        bool fps_is_provisional;
-                        int det_fps = stream_frame_rate_round(stream_frame_rate_select(
-                            vs->avg_frame_rate, vs->r_frame_rate, &fps_is_provisional));
-                        if (fps_is_provisional && thread_ctx->segment_info.fps_measurement.fps > 0) {
-                            det_fps = thread_ctx->segment_info.fps_measurement.fps;
-                            fps_is_provisional = false;
-                        }
-                        if (det_fps == 0) det_fps = STREAM_FRAME_RATE_DEFAULT;
-                        log_debug("[%s] Recording FPS probe: avg=%d/%d, nominal=%d/%d, "
-                                  "time_base=%d/%d; selected=%d%s",
-                                  stream_name, vs->avg_frame_rate.num, vs->avg_frame_rate.den,
-                                  vs->r_frame_rate.num, vs->r_frame_rate.den,
-                                  vs->time_base.num, vs->time_base.den, det_fps,
-                                  fps_is_provisional ? " (provisional)" : "");
-
-                        const AVCodecDescriptor *desc = avcodec_descriptor_get(vs->codecpar->codec_id);
-                        if (desc) {
-                            det_codec = desc->name;
-                        }
-
-                        if (det_width > 0 && det_height > 0) {
-                            log_info("[%s] Recording thread detected video params: %dx%d @ %d fps, codec=%s",
-                                     stream_name, det_width, det_height, det_fps,
-                                     det_codec ? det_codec : "unknown");
-                            update_stream_video_params(stream_name, det_width, det_height,
-                                                       det_fps, det_codec);
-                            metrics_set_configured_fps(stream_name, det_fps);
-                        }
-                        // Short segments may finish before the measurement window.
-                        // Revisit provisional rates after the next segment.
-                        thread_ctx->video_params_detected = !fps_is_provisional;
-                        break;
-                    }
-                }
-            }
+            update_recording_video_params(thread_ctx, stream_name);
         }
 
         // Update the last packet time for activity tracking

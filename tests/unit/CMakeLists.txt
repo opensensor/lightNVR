@@ -359,6 +359,9 @@ set_tests_properties(test_hls_reconnect_backoff PROPERTIES TIMEOUT 10)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries)
+add_layer3_test(test_recording_video_params)
+target_link_options(test_recording_video_params PRIVATE
+    "-Wl,--wrap=update_stream_video_params")
 add_layer3_test(test_mp4_faststart)
 target_compile_definitions(test_mp4_faststart PRIVATE
     RECORDING_FIXTURE="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4")
