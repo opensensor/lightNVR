@@ -134,11 +134,49 @@ describe('LPR API calls', () => {
     [400, 'invalid'],
     [401, 'unauthorized'],
     [403, 'forbidden'],
+    [404, 'not_found'],
     [503, 'unavailable'],
     [500, 'error'],
   ])('search maps HTTP %i to %s', async (status, outcome) => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(status, { error: 'nope' }));
     await expect(searchLprReads({}, { fetchImpl })).resolves.toMatchObject({ outcome, message: 'nope' });
+  });
+
+  test('error messages are optional and tolerate non-JSON bodies', async () => {
+    const plain = jest.fn().mockResolvedValue(new Response('Bad Gateway', { status: 502 }));
+    await expect(searchLprReads({}, { fetchImpl: plain }))
+      .resolves.toEqual({ outcome: 'error', status: 502, message: '' });
+    const numeric = jest.fn().mockResolvedValue(jsonResponse(400, { error: 42 }));
+    await expect(searchLprReads({}, { fetchImpl: numeric })).resolves.toEqual({ outcome: 'invalid', message: '' });
+  });
+
+  test('a success body without a reads array is treated as no reads', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { count: 3 }));
+    await expect(searchLprReads({}, { fetchImpl })).resolves.toEqual({ outcome: 'ok', reads: [] });
+  });
+
+  test('search passes the abort signal through', async () => {
+    const controller = new AbortController();
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { reads: [] }));
+    await searchLprReads({}, { fetchImpl, signal: controller.signal });
+    expect(fetchImpl.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  test('calls use the global fetch by default', async () => {
+    const original = global.fetch;
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { reads: [] }))
+      .mockResolvedValueOnce(jsonResponse(503, {}))
+      .mockResolvedValueOnce(jsonResponse(404, {}));
+    try {
+      await expect(searchLprReads({})).resolves.toEqual({ outcome: 'ok', reads: [] });
+      await expect(exportLprReads({})).resolves.toMatchObject({ outcome: 'unavailable' });
+      await expect(deleteLprRead('r1')).resolves.toMatchObject({ outcome: 'not_found' });
+      expect(global.fetch.mock.calls.map(([url]) => url))
+        .toEqual(['/api/lpr/search', '/api/lpr/export', '/api/lpr/reads/r1']);
+    } finally {
+      global.fetch = original;
+    }
   });
 
   test('export returns the downloaded document as a blob', async () => {
@@ -192,9 +230,48 @@ describe('recording deep link', () => {
       .toContain('stream=Driveway');
     expect(lprTimelineHref({ stream_name: 'Driveway' }, [])).toBeNull();
   });
+
+  test('tolerates a missing stream list and needs some stream name', () => {
+    expect(lprTimelineHref({ camera_uuid: CAMERA, stream_name: 'Driveway', observed_at: observedAt }, null))
+      .toContain('stream=Driveway');
+    expect(lprTimelineHref({ camera_uuid: CAMERA, observed_at: observedAt }, [{ name: 'No identity' }])).toBeNull();
+    expect(lprTimelineHref({ camera_uuid: CAMERA, observed_at: String(observedAt), stream_name: 'Driveway' }))
+      .toContain('time=15%3A31%3A07');
+  });
 });
 
 test('confidence renders as a whole percentage', () => {
   expect(formatLprConfidence(0.876)).toBe('88%');
   expect(formatLprConfidence(null)).toBe('');
+  expect(formatLprConfidence(0)).toBe('0%');
+  expect(formatLprConfidence(1)).toBe('100%');
+});
+
+describe('defensive input handling', () => {
+  test('invalid times format as empty and do not parse', () => {
+    expect(toDateTimeLocalValue(NaN)).toBe('');
+    expect(toDateTimeLocalValue(undefined)).toBe('');
+    expect(parseDateTimeLocalValue('2026-10-28 15:00')).toBeNull();
+    expect(parseDateTimeLocalValue(1793200000000)).toBeNull();
+    expect(parseDateTimeLocalValue('2026-10-28T15:00:30')).toBe(new Date(2026, 9, 28, 15, 0, 30).getTime());
+  });
+
+  test('filters default to now', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(new Date(2026, 9, 28, 16, 0).getTime());
+    try {
+      expect(createLprFilters()).toMatchObject({ start: '2026-10-27T16:00', end: '2026-10-28T16:00' });
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  test('missing filters report every required field instead of throwing', () => {
+    expect(validateLprFilters(undefined).map((error) => error.field)).toEqual(['camera', 'start', 'end', 'limit']);
+  });
+
+  test('a missing plate is treated as empty', () => {
+    const body = buildLprSearchBody({ ...filters(), plate: undefined });
+    expect(body).not.toHaveProperty('plate');
+    expect(validateLprFilters({ ...filters(), plate: undefined })).toEqual([]);
+  });
 });
