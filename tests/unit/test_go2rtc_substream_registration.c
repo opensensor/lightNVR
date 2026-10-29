@@ -15,14 +15,15 @@
 
 static char config_dir[128];
 static char registered_name[MAX_STREAM_NAME + 8];
-static char registered_sources[3][2048];
+static char registered_sources[4][2048];
 static int source_count;
 static bool registration_succeeds;
+static stream_config_t camera_config;
 
 /* Capture the API boundary; URL preparation and fallback selection are real. */
 bool __wrap_go2rtc_api_add_stream_multi(const char *name, const char **sources,
                                        int count) {
-    TEST_ASSERT_LESS_OR_EQUAL_INT(3, count);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(4, count);
     snprintf(registered_name, sizeof(registered_name), "%s", name);
     source_count = count;
     for (int i = 0; i < count; i++) {
@@ -36,8 +37,10 @@ bool __wrap_go2rtc_api_add_stream(const char *name, const char *source) {
 }
 
 int __wrap_get_stream_config_by_name(const char *name, stream_config_t *config) {
-    (void)name;
-    (void)config;
+    if (camera_config.name[0] && !strcmp(name, camera_config.name)) {
+        *config = camera_config;
+        return 0;
+    }
     return -1; /* No publish destination. */
 }
 
@@ -45,6 +48,7 @@ void setUp(void) {
     source_count = 0;
     registration_succeeds = true;
     memset(registered_sources, 0, sizeof(registered_sources));
+    memset(&camera_config, 0, sizeof(camera_config));
     load_default_config(&g_config);
     g_config.hw_accel_enabled = false;
     g_config.go2rtc_enabled = true;
@@ -110,9 +114,43 @@ void test_substream_fallback_respects_hardware_opt_in_and_udp(void) {
     g_config.hw_accel_enabled = true;
     TEST_ASSERT_TRUE(go2rtc_stream_register_substream("camera_sub",
         "rtsp://camera/sub", NULL, NULL, STREAM_PROTOCOL_UDP));
-    TEST_ASSERT_EQUAL_INT(2, source_count);
+    TEST_ASSERT_EQUAL_INT(3, source_count);
     TEST_ASSERT_EQUAL_STRING("rtsp://camera/sub#transport=udp", registered_sources[0]);
     TEST_ASSERT_EQUAL_STRING("ffmpeg:camera_sub#video=h264#hardware", registered_sources[1]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera_sub#video=h264", registered_sources[2]);
+}
+
+void test_hardware_preview_keeps_original_and_software_fallback(void) {
+    g_config.hw_accel_enabled = true;
+    snprintf(camera_config.name, sizeof(camera_config.name), "camera");
+    camera_config.width = 7680;
+    camera_config.height = 2160;
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, true, "hevc"));
+    TEST_ASSERT_EQUAL_INT(4, source_count);
+    TEST_ASSERT_EQUAL_STRING("rtsp://camera/main#transport=tcp#timeout=30", registered_sources[0]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#audio=aac#audio=opus", registered_sources[1]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=1920#height=540", registered_sources[2]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264", registered_sources[3]);
+    /* A substream has independent geometry; do not stretch it to the main. */
+    TEST_ASSERT_TRUE(go2rtc_stream_register_substream("camera_sub",
+        "rtsp://camera/sub", NULL, NULL, STREAM_PROTOCOL_TCP));
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera_sub#video=h264#hardware", registered_sources[1]);
+}
+
+void test_hardware_preview_preserves_portrait_and_small_geometry(void) {
+    g_config.hw_accel_enabled = true;
+    snprintf(camera_config.name, sizeof(camera_config.name), "camera");
+    camera_config.width = 2160;
+    camera_config.height = 3840;
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "hevc"));
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=606#height=1080", registered_sources[1]);
+    camera_config.width = 640;
+    camera_config.height = 480;
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "hevc"));
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=640#height=480", registered_sources[1]);
 }
 
 void test_substream_fallback_preserves_instance_audio_policy(void) {
@@ -145,6 +183,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_substream_keeps_video_fallback_after_h264_main_registration);
     RUN_TEST(test_substream_fallback_respects_hardware_opt_in_and_udp);
+    RUN_TEST(test_hardware_preview_keeps_original_and_software_fallback);
+    RUN_TEST(test_hardware_preview_preserves_portrait_and_small_geometry);
     RUN_TEST(test_substream_fallback_preserves_instance_audio_policy);
     RUN_TEST(test_main_stream_audio_and_video_fallbacks_are_preserved);
     RUN_TEST(test_substream_reports_registration_failure);

@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -21,6 +22,7 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_lifecycle.h"
+#include "video/go2rtc/go2rtc_transcode.h"
 #include "video/go2rtc/dns_cleanup.h"
 #include "core/config.h"
 #include "core/logger.h"
@@ -239,8 +241,8 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
     // after registration instead of re-reading the config.
     stream_config_t pub_cfg;
     memset(&pub_cfg, 0, sizeof(pub_cfg));
-    bool publish_enabled = (get_stream_config_by_name(stream_id, &pub_cfg) == 0 &&
-                            pub_cfg.publish_url[0] != '\0');
+    bool have_config = get_stream_config_by_name(stream_id, &pub_cfg) == 0;
+    bool publish_enabled = have_config && pub_cfg.publish_url[0] != '\0';
 
     if (g_config.audio_disabled) {
         backchannel_enabled = false;
@@ -348,14 +350,15 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
      *         any audio — the exact "speaker icon but no sound" symptom. (#429)
      *
      *   - ffmpeg:<id>#video=h264[#hardware]   when the source codec is
-     *     anything other than "h264" (including unknown/empty). Browsers'
-     *     WebRTC stacks don't accept H.265, so go2rtc needs a transcoded
-     *     fallback to negotiate with them — this one only spawns its
+     *     anything other than "h264" (including unknown/empty). Clients
+     *     without native H.265 support need a transcoded fallback — it only spawns its
      *     ffmpeg process when a consumer actually asks for H.264 and the
      *     primary doesn't supply it (H.264 sources leave it idle).
      *     #hardware (VAAPI/NVENC/v4l2m2m) is only appended when
      *     hw_accel_enabled is set; otherwise we force software libx264 so a
-     *     broken host encoder can't crash the producer. (#429)
+     *     broken host encoder can't crash the producer. (#429) Keep a software
+     *     source after the optional hardware source so failed hardware setup
+     *     can fall through to the bounded software compatibility profile.
      *     (Neither #video=copy on the audio source nor transcoding from
      *     the AAC feed — each ffmpeg: entry opens its own producer.)
      *
@@ -363,11 +366,9 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
      * thread only populates stream_config_t.codec once it has read a
      * packet. Treat unknown as "might be H.265" — safer to pay the idle
      * cost of an unused ffmpeg entry than to ship a stream that breaks
-     * WebRTC silently. When the detection thread later learns the real
-     * codec, go2rtc_integration_reregister_stream() re-issues this call
-     * with the corrected value.
+     * WebRTC silently. A later stream reload uses the detected codec.
      */
-    const char *sources[3];
+    const char *sources[4];
     int num_sources = 0;
     sources[num_sources++] = modified_url;
 
@@ -386,6 +387,7 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
 
     bool is_h264 = (codec && codec[0] != '\0' && strcasecmp(codec, "h264") == 0);
     char ffmpeg_h264_source[URL_BUFFER_SIZE];
+    char ffmpeg_hardware_source[URL_BUFFER_SIZE];
     if (!is_h264) {
         // Only ask go2rtc for the #hardware encoder when the operator opted in
         // via hw_accel_enabled. Some hosts (e.g. LXC containers where vainfo
@@ -394,12 +396,32 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
         // producer, leaving go2rtc with a null consumer and a 404 stream.
         // Falling back to software libx264 keeps the WebRTC fallback working. (#429)
         if (g_config.hw_accel_enabled) {
-            snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
+            snprintf(ffmpeg_hardware_source, sizeof(ffmpeg_hardware_source),
                      "ffmpeg:%s#video=h264#hardware", stream_id);
-        } else {
-            snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
-                     "ffmpeg:%s#video=h264", stream_id);
+            /* go2rtc replaces the software codec template for hardware, so
+             * supply resize parameters separately when this source's geometry
+             * is known. Never borrow main-stream dimensions for a substream. */
+            if (have_config && pub_cfg.width > 0 && pub_cfg.height > 0) {
+                int64_t width = pub_cfg.width, height = pub_cfg.height;
+                if (width > GO2RTC_PREVIEW_MAX_WIDTH) {
+                    height = height * GO2RTC_PREVIEW_MAX_WIDTH / width;
+                    width = GO2RTC_PREVIEW_MAX_WIDTH;
+                }
+                if (height > GO2RTC_PREVIEW_MAX_HEIGHT) {
+                    width = width * GO2RTC_PREVIEW_MAX_HEIGHT / height;
+                    height = GO2RTC_PREVIEW_MAX_HEIGHT;
+                }
+                width = width < 2 ? 2 : width & ~1LL;
+                height = height < 2 ? 2 : height & ~1LL;
+                size_t used = strlen(ffmpeg_hardware_source);
+                snprintf(ffmpeg_hardware_source + used,
+                         sizeof(ffmpeg_hardware_source) - used,
+                         "#width=%d#height=%d", (int)width, (int)height);
+            }
+            sources[num_sources++] = ffmpeg_hardware_source;
         }
+        snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
+                 "ffmpeg:%s#video=h264", stream_id);
         sources[num_sources++] = ffmpeg_h264_source;
         log_info("Stream %s codec=%s; adding ffmpeg H.264 fallback source for WebRTC (hw_accel=%s)",
                  stream_id, (codec && codec[0]) ? codec : "unknown",

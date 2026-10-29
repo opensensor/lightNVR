@@ -38,6 +38,7 @@ import {
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.jsx';
 import { isEptzEnabled } from '../../utils/eptz-config.js';
+import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../../utils/live-video-errors.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -135,6 +136,8 @@ export function WebRTCVideoCell({
   // carry it.
   const [subStreamFallback, setSubStreamFallback] = useState(false);
   const effectiveUseSubStream = useSubStream || subStreamFallback;
+  const [forceH264, setForceH264] = useState(false);
+  useEffect(() => setForceH264(false), [stream?.name, effectiveUseSubStream]);
 
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
@@ -371,6 +374,19 @@ export function WebRTCVideoCell({
       }
 
       // Set up event handlers
+      let videoTransceiver;
+      let compatibilityRetryRequested = forceH264;
+      const h264Codecs = h264ReceiverCodecs(globalThis.RTCRtpReceiver?.getCapabilities?.('video'));
+      const retryWithH264 = () => {
+        if (cellAbortSignal.aborted || !h264Codecs.length || !videoTransceiver?.setCodecPreferences || !shouldRetryWithH264({
+          alreadyRetried: compatibilityRetryRequested, codec: stream.codec, useSubStream: effectiveUseSubStream,
+        })) return false;
+        compatibilityRetryRequested = true;
+        setForceH264(true);
+        showStatusMessage(t('live.h264CompatibilityRetry'), 'warning', 5000);
+        return true;
+      };
+
       pc.ontrack = (event) => {
       console.log(`Track received for stream ${stream.name}: ${event.track.kind}`, event);
       console.log(`Track muted: ${event.track.muted}, enabled: ${event.track.enabled}, readyState: ${event.track.readyState}`);
@@ -459,8 +475,8 @@ export function WebRTCVideoCell({
           videoDataTimeout = setTimeout(() => {
             videoDataCheckCount++;
 
-            // Video is playing or has dimensions — nothing to do
-            if (videoElement && videoElement.videoWidth > 0 && !videoElement.paused) {
+            // Require playable video; metadata dimensions alone are insufficient.
+            if (hasDecodedVideo(videoElement)) {
               return;
             }
 
@@ -528,6 +544,12 @@ export function WebRTCVideoCell({
               if (
                 videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
                 (iceState === 'connected' || iceState === 'completed') &&
+                retryWithH264()
+              ) return;
+
+              if (
+                videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
+                (iceState === 'connected' || iceState === 'completed') &&
                 !connectionRefreshRequestedRef.current &&
                 noDataReconnectAttemptsRef.current < MAX_NO_DATA_RECONNECT_ATTEMPTS
               ) {
@@ -544,9 +566,9 @@ export function WebRTCVideoCell({
 
               scheduleVideoDataCheck();
             } else {
-              // Exceeded 90 seconds — give up and show error
+              // The video startup deadline expired — show an actionable error.
               console.error(`Stream ${stream.name} connected but no video data after ${MAX_VIDEO_DATA_CHECKS * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s`);
-              setError(t('live.streamConnectedNoVideoDataRetry'));
+              setError(t('live.noDecodableVideo'));
               setIsLoading(false);
             }
           }, VIDEO_DATA_CHECK_INTERVAL_MS);
@@ -557,11 +579,8 @@ export function WebRTCVideoCell({
         // Add event handlers
         videoElement.onloadedmetadata = () => {
           console.log(`Video metadata loaded for stream ${stream.name}`);
-          // Clear the video data timeout since we got metadata
-          if (videoDataTimeout) {
-            clearTimeout(videoDataTimeout);
-            videoDataTimeout = null;
-          }
+          // Metadata (including an audio track) does not prove that a video
+          // frame can be decoded. Keep the first-frame deadline until playing.
         };
 
         videoElement.onloadeddata = () => {
@@ -569,6 +588,7 @@ export function WebRTCVideoCell({
         };
 
         videoElement.onplaying = () => {
+          if (!hasDecodedVideo(videoElement)) return;
           console.log(`Video playing for stream ${stream.name}`);
           setIsLoading(false);
           setIsPlaying(true);
@@ -614,11 +634,12 @@ export function WebRTCVideoCell({
         };
 
         videoElement.onerror = (event) => {
+          if (retryWithH264()) return;
           console.error(`Error loading video for stream ${stream.name}:`, event);
           if (videoElement.error) {
             console.error(`Video error code: ${videoElement.error.code}, message: ${videoElement.error.message}`);
           }
-          setError(t('live.failedToLoadVideo'));
+          setError(t('live.browserVideoDecodeFailed'));
           setIsLoading(false);
           // Clear retry timeout on error
           if (playRetryTimeout) {
@@ -742,7 +763,10 @@ export function WebRTCVideoCell({
     };
 
     // Add video transceiver
-    pc.addTransceiver('video', {direction: 'recvonly'});
+    videoTransceiver = pc.addTransceiver('video', {direction: 'recvonly'});
+    if (forceH264 && h264Codecs.length && videoTransceiver.setCodecPreferences) {
+      videoTransceiver.setCodecPreferences(h264Codecs);
+    }
 
     // Under the instance compliance policy, do not advertise audio at all.
     if (audioDisabled) {
@@ -845,18 +869,15 @@ export function WebRTCVideoCell({
             // are much more actionable than a generic "500 Internal Server Error".
             // An unreachable source won't recover within the retry window, so
             // fail fast and let the auto-retry backoff handle it.
-            const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(bodyText);
-            if (!isSourceUnreachable && (response.status === 404 || response.status === 500) && attempt < MAX_OFFER_RETRIES) {
+            const failure = classifyLiveVideoError(bodyText);
+            if (failure.retryable && (response.status === 404 || response.status === 500) && attempt < MAX_OFFER_RETRIES) {
               const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
               console.warn(`go2rtc returned ${response.status} for stream ${stream.name} (attempt ${attempt + 1}/${MAX_OFFER_RETRIES + 1}), retrying in ${delay}ms...`);
               await new Promise(resolve => setTimeout(resolve, delay));
               return sendOfferWithRetry(attempt + 1);
             }
-            console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
-            if (isSourceUnreachable) {
-              throw new Error(t('live.cannotConnectToSource'));
-            }
-            throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+            console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, category=${failure.key}`);
+            throw new Error(t(failure.key));
           }
           return bodyText;
         };
@@ -1068,7 +1089,7 @@ export function WebRTCVideoCell({
     // /api/streams status refetch doesn't tear down healthy connections when
     // it produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, effectiveUseSubStream, audioDisabled, t, applyAudioPlaybackState]);
+  }, [stream?.name, retryCount, effectiveUseSubStream, forceH264, audioDisabled, t, applyAudioPlaybackState]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
