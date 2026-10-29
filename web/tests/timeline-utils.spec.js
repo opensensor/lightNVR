@@ -4,6 +4,7 @@ import timezone from 'dayjs/plugin/timezone';
 
 import {
   advanceTimelineFling,
+  buildTimelineSegmentsUrl,
   calculateTimelineFlingVelocity,
   countSegmentsForDate,
   findFirstVisibleSegmentIndex,
@@ -35,6 +36,29 @@ import {
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+
+describe('timeline request identity', () => {
+  const range = { startTime: '2026-10-28T00:00:00Z', endTime: '2026-10-29T00:00:00Z' };
+
+  test('a UUID is authoritative over a stale or reused stream name', () => {
+    const url = new URL(buildTimelineSegmentsUrl({
+      ...range, cameraUuid: 'original-camera', streamName: 'Reused name',
+    }), 'http://localhost');
+    expect(url.searchParams.get('camera_uuid')).toBe('original-camera');
+    expect(url.searchParams.has('stream')).toBe(false);
+    expect(url.searchParams.get('start')).toBe(range.startTime);
+    expect(url.searchParams.get('end')).toBe(range.endTime);
+  });
+
+  test('changing the selected camera can clear the deep-link identity', () => {
+    const url = new URL(buildTimelineSegmentsUrl({
+      ...range, cameraUuid: '', streamName: 'New selection',
+    }), 'http://localhost');
+    expect(url.searchParams.has('camera_uuid')).toBe(false);
+    expect(url.searchParams.get('stream')).toBe('New selection');
+    expect(buildTimelineSegmentsUrl({ ...range })).toBeNull();
+  });
+});
 
 // JavaScript Date months are 0-indexed, so month index 2 represents March.
 const MARCH = 2;

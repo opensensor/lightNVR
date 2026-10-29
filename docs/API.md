@@ -401,6 +401,13 @@ credentials are stripped from `url`. `has_sub_stream` preserves the boolean
 capability without revealing that URL, and `can_control_privacy` tells clients
 whether to show privacy controls.
 
+For the plate-search camera picker, use
+`GET /api/streams?summary=true&surface=lpr&page=1&page_size=100`.
+This paginated response includes only `name` and `camera_uuid` for cameras
+where the caller has both `lpr.read` and `lpr.search`; it does not require
+`live.view` or return live/configuration details. Pagination uses `total`,
+`page`, `page_size`, and `total_pages`, with a maximum page size of 100.
+
 **Response:**
 ```json
 {
@@ -992,7 +999,11 @@ Synchronizes the recordings database with files on disk.
 GET /api/timeline/segments
 ```
 
-Returns recording segments for the timeline view. Supports query parameters for stream name and date range.
+Returns recording segments for the timeline view. Supply `stream` (name) or
+`camera_uuid`, with optional `start` and `end` ISO 8601 timestamps. When present,
+`camera_uuid` takes precedence over `stream` and selects recordings and motion
+intervals by capture-time identity, including footage recorded before a rename.
+The caller must have `recordings.replay` permission for that camera.
 
 #### Get Timeline Manifest
 

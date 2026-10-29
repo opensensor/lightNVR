@@ -28,9 +28,11 @@
 #include "core/path_utils.h"
 #include "core/url_utils.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 #include "database/database_manager.h"
 #include "database/db_core.h"
 #include "database/db_recordings.h"
+#include "database/db_streams.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
 
@@ -452,17 +454,36 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
 
     // Extract parameters
     char stream_name[MAX_STREAM_NAME] = {0};
+    // Leave room to detect an overlong UUID instead of accepting a valid prefix.
+    char camera_uuid[CAMERA_UUID_STRING_SIZE * 3] = {0};
     char start_time_str[64] = {0};
     char end_time_str[64] = {0};
 
-    // Extract stream parameter
-    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
-        log_error("Missing required parameter: stream");
-        http_response_set_json_error(res, 400, "Missing required parameter: stream");
-        return;
+    // An explicit UUID is authoritative even if a stale display name is sent.
+    bool by_camera_uuid = http_request_get_query_param(
+        req, "camera_uuid", camera_uuid, sizeof(camera_uuid)) >= 0;
+    if (by_camera_uuid) {
+        if (!lightnvr_uuid_is_valid(camera_uuid)) {
+            http_response_set_json_error(res, 400, "Invalid camera_uuid");
+            return;
+        }
+        user_t user;
+        fleet_camera_t camera;
+        authorization_evaluation_t evaluation;
+        if (!httpd_authorize_camera_identity_action_with_context(
+                req, res, AUTHZ_RECORDINGS_REPLAY, camera_uuid, NULL,
+                &user, &camera, &evaluation)) return;
+        safe_strcpy(stream_name, camera.name, sizeof(stream_name), 0);
+    } else {
+        if (http_request_get_query_param(req, "stream", stream_name,
+                                         sizeof(stream_name)) < 0) {
+            http_response_set_json_error(res, 400,
+                                         "stream or camera_uuid is required");
+            return;
+        }
+        if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
+                                           stream_name)) return;
     }
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
-                                       stream_name)) return;
 
     // Extract start and end parameters (optional)
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -504,7 +525,11 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         return;
     }
     
-    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+    int count = by_camera_uuid
+        ? get_timeline_segments_by_camera_uuid(
+              camera_uuid, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS)
+        : get_timeline_segments(
+              stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
 
     if (count < 0) {
         log_error("Failed to get timeline segments");
@@ -543,11 +568,16 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         cJSON_AddItemToObject(response, "detection_intervals", intervals_array);
         detection_interval_t *intervals = calloc(MAX_TIMELINE_SEGMENTS,
                                                   sizeof(*intervals));
-        int interval_count = intervals
-            ? get_external_motion_detection_intervals(
-                  stream_name, start_time, end_time, intervals,
-                  MAX_TIMELINE_SEGMENTS)
-            : -1;
+        int interval_count = -1;
+        if (intervals) {
+            interval_count = by_camera_uuid
+                ? get_external_motion_detection_intervals_by_camera_uuid(
+                      camera_uuid, start_time, end_time, intervals,
+                      MAX_TIMELINE_SEGMENTS)
+                : get_external_motion_detection_intervals(
+                      stream_name, start_time, end_time, intervals,
+                      MAX_TIMELINE_SEGMENTS);
+        }
         if (interval_count > 0) {
             for (int i = 0; i < interval_count; i++) {
                 cJSON *interval = cJSON_CreateObject();
@@ -1037,9 +1067,18 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
             log_warn("Recording ID %llu not found, skipping", (unsigned long long)ids[i]);
             continue;
         }
+        // Authorize against capture identity, not a historical name that may
+        // have been renamed or reassigned to a different camera.
+        const char *authorization_name = rec.stream_name;
+        stream_config_t recorded_camera;
+        if (rec.camera_uuid[0] != '\0') {
+            if (get_stream_config_by_uuid(rec.camera_uuid, &recorded_camera) != 0)
+                continue;
+            authorization_name = recorded_camera.name;
+        }
         authorization_evaluation_t replay_evaluation;
         if (httpd_evaluate_stream_action(&user, AUTHZ_RECORDINGS_REPLAY,
-                                         rec.stream_name,
+                                         authorization_name,
                                          &replay_evaluation) != 0) {
             cJSON_Delete(response);
             http_response_set_json_error(

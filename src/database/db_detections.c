@@ -231,30 +231,30 @@ int close_external_motion_detections(const char *stream_name, time_t end_time) {
     return changed;
 }
 
-int get_external_motion_detection_intervals(const char *stream_name,
-                                            time_t start_time,
-                                            time_t end_time,
-                                            detection_interval_t *intervals,
-                                            int max_intervals) {
-    if (!stream_name || !intervals || max_intervals <= 0) return -1;
+static int get_external_motion_intervals_for_identity(
+    const char *identity, bool by_camera_uuid, time_t start_time,
+    time_t end_time, detection_interval_t *intervals, int max_intervals) {
+    if (!identity || !intervals || max_intervals <= 0) return -1;
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
     if (!db) return -1;
 
     pthread_mutex_lock(db_mutex);
-    const char *sql =
-        "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) "
-        "FROM detections WHERE stream_name = ? "
+    char sql[512];
+    snprintf(sql, sizeof(sql),
+        "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) "
+        "FROM detections WHERE %s = ? "
         "AND source = 'external_motion' AND timestamp <= ? "
-        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? "
-        "GROUP BY timestamp, event_end_time ORDER BY timestamp ASC LIMIT ?;";
+        "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
+        "GROUP BY timestamp, event_end_time ORDER BY timestamp ASC LIMIT ?;",
+        by_camera_uuid ? "camera_uuid" : "stream_name");
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, identity, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
     sqlite3_bind_int(stmt, 4, max_intervals);
@@ -268,6 +268,22 @@ int get_external_motion_detection_intervals(const char *stream_name,
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     return count;
+}
+
+int get_external_motion_detection_intervals(const char *stream_name,
+                                            time_t start_time,
+                                            time_t end_time,
+                                            detection_interval_t *intervals,
+                                            int max_intervals) {
+    return get_external_motion_intervals_for_identity(
+        stream_name, false, start_time, end_time, intervals, max_intervals);
+}
+
+int get_external_motion_detection_intervals_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    detection_interval_t *intervals, int max_intervals) {
+    return get_external_motion_intervals_for_identity(
+        camera_uuid, true, start_time, end_time, intervals, max_intervals);
 }
 
 /**

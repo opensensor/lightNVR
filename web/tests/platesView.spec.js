@@ -62,6 +62,8 @@ const hooksShim = {
 };
 
 const query = { data: undefined, isLoading: false, error: null };
+const useQuery = jest.fn(() => query);
+const fetchAllStreamSummaries = jest.fn();
 const handleAuthenticationFailure = jest.fn();
 const showStatusMessage = jest.fn();
 function ConfirmDialog() { return null; }
@@ -89,12 +91,12 @@ function loadPlatesView() {
   }).outputFiles[0].text;
   const stubs = {
     'preact/hooks': hooksShim,
-    'query-client.js': { useQuery: () => query },
+    'query-client.js': { useQuery },
     'i18n.js': {
       useI18n: () => ({ t: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key) }),
     },
     'fetch-utils.js': { handleAuthenticationFailure },
-    'stream-summaries.js': { fetchAllStreamSummaries: jest.fn() },
+    'stream-summaries.js': { fetchAllStreamSummaries },
     'ModalDialog.jsx': { ConfirmDialog },
     'ToastContainer.jsx': { showStatusMessage },
   };
@@ -222,6 +224,8 @@ beforeEach(() => {
   global.window = {};
   handleAuthenticationFailure.mockClear();
   showStatusMessage.mockClear();
+  useQuery.mockClear();
+  fetchAllStreamSummaries.mockReset();
 });
 
 afterEach(() => {
@@ -233,6 +237,16 @@ afterEach(() => {
 /* ---------- tests ---------- */
 
 describe('PlatesView filters', () => {
+  test('discovers cameras with LPR permissions instead of live-view permissions', async () => {
+    mount();
+    const options = useQuery.mock.calls[0][0];
+    const controller = new AbortController();
+    await options.queryFn({ signal: controller.signal });
+    expect(fetchAllStreamSummaries).toHaveBeenCalledWith({
+      surface: 'lpr', signal: controller.signal,
+    });
+  });
+
   test('selects the first camera once streams load and prompts for a search', () => {
     harness.slots = [];
     harness.pendingEffects = [];
@@ -329,7 +343,7 @@ describe('PlatesView search results', () => {
     expect(cells(rows[1]).slice(2, 6)).toEqual(['Driveway', '—', '—', '—']);
 
     const link = find((n) => n.type === 'a' && n.props.href?.startsWith('timeline.html'), rows[0]);
-    expect(link.props.href).toBe('timeline.html?stream=Driveway&date=2026-10-29&time=09%3A05%3A07');
+    expect(link.props.href).toBe(`timeline.html?camera_uuid=${CAMERA}&stream=Driveway&date=2026-10-29&time=09%3A05%3A07`);
     expect(link.props.href).not.toContain('ABC');
     expect(link.props['aria-label']).toBe('lpr.viewRecordingFor:{"plate":"ABC1234"}');
     expect(find((n) => n.type === 'caption')).toBeDefined();
@@ -342,6 +356,14 @@ describe('PlatesView search results', () => {
     await submit();
     const cells = findAll((n) => n.type === 'td', tableRows()[0]).map(text);
     expect(cells[1]).toBe('Driveway (old name)');
+  });
+
+  test('renders an associated recording link independently of a camera rename', async () => {
+    mount();
+    global.fetch.mockResolvedValue(json(200, { reads: [read({ recording_id: 42 })] }));
+    await submit();
+    const link = find((n) => n.type === 'a' && n.props.href?.startsWith('timeline.html'), tableRows()[0]);
+    expect(link.props.href).toBe('timeline.html?ids=42&date=2026-10-29&time=09%3A05%3A07');
   });
 
   test('shows the empty state when nothing matched', async () => {

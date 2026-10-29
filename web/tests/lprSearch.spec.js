@@ -14,6 +14,7 @@ import {
   toDateTimeLocalValue,
   validateLprFilters,
 } from '../js/components/preact/lpr/lprSearch.js';
+import { buildTimelineSegmentsUrl } from '../js/components/preact/timeline/timelineUtils.js';
 
 const CAMERA = 'ad1d3d70-36ee-4f0c-9225-3b88373f42cb';
 
@@ -218,11 +219,48 @@ describe('permission-driven actions', () => {
 describe('recording deep link', () => {
   const observedAt = new Date(2026, 9, 28, 15, 31, 7).getTime();
 
-  test('links to the timeline at the read time using the current stream name', () => {
+  test('links unassociated reads by camera UUID despite a renamed stream', () => {
     const read = { camera_uuid: CAMERA, stream_name: 'Old name', observed_at: observedAt, plate: 'SECRET1' };
     const href = lprTimelineHref(read, [{ camera_uuid: CAMERA, name: 'Driveway' }]);
-    expect(href).toBe('timeline.html?stream=Driveway&date=2026-10-28&time=15%3A31%3A07');
+    expect(href).toBe(`timeline.html?camera_uuid=${CAMERA}&stream=Driveway&date=2026-10-28&time=15%3A31%3A07`);
     expect(href).not.toContain('SECRET1');
+
+    const params = new URL(href, 'http://localhost').searchParams;
+    const apiUrl = buildTimelineSegmentsUrl({
+      cameraUuid: params.get('camera_uuid'),
+      streamName: params.get('stream'),
+      startTime: '2026-10-28T00:00:00Z',
+      endTime: '2026-10-29T00:00:00Z',
+    });
+    expect(new URL(apiUrl, 'http://localhost').searchParams.get('camera_uuid')).toBe(CAMERA);
+    expect(new URL(apiUrl, 'http://localhost').searchParams.has('stream')).toBe(false);
+  });
+
+  test.each([42, '42'])('prefers recording ID %p over renamed camera names', (recordingId) => {
+    const href = lprTimelineHref({
+      recording_id: recordingId,
+      camera_uuid: CAMERA,
+      stream_name: 'Old name',
+      observed_at: observedAt,
+      plate: 'SECRET1',
+    }, [{ camera_uuid: CAMERA, name: 'Renamed camera' }]);
+    expect(href).toBe('timeline.html?ids=42&date=2026-10-28&time=15%3A31%3A07');
+    expect(href).not.toContain('SECRET1');
+  });
+
+  test.each([null, 0, -1, 'invalid', Number.MAX_SAFE_INTEGER + 1])(
+    'falls back to the camera UUID for unusable recording ID %p', (recordingId) => {
+      const href = lprTimelineHref({
+        recording_id: recordingId, camera_uuid: CAMERA, observed_at: observedAt,
+      });
+      expect(new URL(href, 'http://localhost').searchParams.get('camera_uuid')).toBe(CAMERA);
+      expect(href).not.toContain('ids=');
+    },
+  );
+
+  test('supports an associated recording with no camera or stream name', () => {
+    expect(lprTimelineHref({ recording_id: 42, observed_at: observedAt }))
+      .toBe('timeline.html?ids=42&date=2026-10-28&time=15%3A31%3A07');
   });
 
   test('falls back to the recorded stream name and rejects reads without a time', () => {
@@ -231,10 +269,14 @@ describe('recording deep link', () => {
     expect(lprTimelineHref({ stream_name: 'Driveway' }, [])).toBeNull();
   });
 
-  test('tolerates a missing stream list and needs some stream name', () => {
+  test('supports UUID-only reads and retains the legacy name fallback', () => {
     expect(lprTimelineHref({ camera_uuid: CAMERA, stream_name: 'Driveway', observed_at: observedAt }, null))
       .toContain('stream=Driveway');
-    expect(lprTimelineHref({ camera_uuid: CAMERA, observed_at: observedAt }, [{ name: 'No identity' }])).toBeNull();
+    expect(lprTimelineHref({ camera_uuid: CAMERA, observed_at: observedAt }, [{ name: 'No identity' }]))
+      .toBe(`timeline.html?camera_uuid=${CAMERA}&date=2026-10-28&time=15%3A31%3A07`);
+    expect(lprTimelineHref({ observed_at: observedAt })).toBeNull();
+    expect(lprTimelineHref({ stream_name: 'Legacy camera', observed_at: observedAt }))
+      .toBe('timeline.html?stream=Legacy+camera&date=2026-10-28&time=15%3A31%3A07');
     expect(lprTimelineHref({ camera_uuid: CAMERA, observed_at: String(observedAt), stream_name: 'Driveway' }))
       .toContain('time=15%3A31%3A07');
   });

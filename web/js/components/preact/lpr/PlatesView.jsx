@@ -71,8 +71,8 @@ export function PlatesView() {
   const searchController = useRef(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } = useQuery({
-    queryKey: ['lpr-streams', 'summary', 'live'],
-    queryFn: ({ signal }) => fetchAllStreamSummaries({ surface: 'live', signal }),
+    queryKey: ['lpr-streams', 'summary', 'lpr'],
+    queryFn: ({ signal }) => fetchAllStreamSummaries({ surface: 'lpr', signal }),
     staleTime: 30000,
   });
   const cameras = useMemo(() => (Array.isArray(streamData) ? streamData : [])

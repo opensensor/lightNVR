@@ -212,8 +212,9 @@ export function denyLprAction(deniedActions, cameraUuid, action) {
 }
 
 /**
- * Timeline deep link for a read. Uses the current stream name for the camera
- * (names can change after capture) and the read time in the browser zone.
+ * Timeline deep link for a read. Recording IDs and camera UUIDs preserve
+ * capture identity across camera renames. Names are only a display hint or a
+ * compatibility fallback for reads without either identity.
  * The plate itself is never part of the link.
  */
 export function lprTimelineHref(read, streams = []) {
@@ -223,13 +224,19 @@ export function lprTimelineHref(read, streams = []) {
     ? streams.find((stream) => stream?.camera_uuid && stream.camera_uuid === read.camera_uuid)
     : null;
   const streamName = current?.name || read?.stream_name;
-  if (!streamName) return null;
+  const recordingId = Number(read?.recording_id);
+  const hasRecordingId = Number.isSafeInteger(recordingId) && recordingId > 0;
+  if (!hasRecordingId && !read?.camera_uuid && !streamName) return null;
   const date = new Date(observedAt);
-  const params = new URLSearchParams({
-    stream: streamName,
-    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
-    time: `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
-  });
+  const params = new URLSearchParams();
+  if (hasRecordingId) {
+    params.set('ids', String(recordingId));
+  } else {
+    if (read?.camera_uuid) params.set('camera_uuid', read.camera_uuid);
+    if (streamName) params.set('stream', streamName);
+  }
+  params.set('date', `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`);
+  params.set('time', `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`);
   return `timeline.html?${params.toString()}`;
 }
 

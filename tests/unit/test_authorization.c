@@ -25,6 +25,7 @@
 #include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
+#include "database/db_detections.h"
 #include "database/db_fleet_query.h"
 #include "database/db_locations.h"
 #include "database/db_recordings.h"
@@ -36,6 +37,7 @@
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_investigations.h"
 #include "web/api_handlers_locations.h"
+#include "web/api_handlers_lpr.h"
 #include "web/api_handlers_metrics.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_recordings.h"
@@ -43,6 +45,7 @@
 #include "web/api_handlers_recordings_download.h"
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_totp.h"
+#include "web/api_handlers_timeline.h"
 #include "web/batch_delete_progress.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
@@ -2605,6 +2608,190 @@ void test_scoped_location_read_filters_direct_child_count(void) {
     g_config.web_auth_enabled = false;
 }
 
+static authorization_role_t create_camera_action_user(
+    const char *username, const char *camera_uuid, uint64_t action_mask,
+    char api_key[128]) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        username, "password123", NULL, USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(user_id, "policy"));
+    authorization_role_t role = {0};
+    safe_strcpy(role.name, username, sizeof(role.name), 0);
+    role.action_mask = action_mask;
+    int64_t version = 0, next_version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&role, version, &next_version));
+    char selector[256], grant_uuid[CAMERA_UUID_STRING_SIZE];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}", camera_uuid);
+    create_grant(user_id, role.uuid, "selector", selector, grant_uuid);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(user_id, api_key, 128));
+    return role;
+}
+
+void test_lpr_camera_summary_uses_lpr_permissions_and_scope(void) {
+    stream_config_t camera = create_camera("LPR_allowed", "");
+    create_camera("LPR_hidden", "");
+    char api_key[128] = {0};
+    authorization_role_t role = create_camera_action_user(
+        "lpr_picker_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_LPR_READ) |
+            authorization_action_bit(AUTHZ_LPR_SEARCH), api_key);
+    int previous_max_streams = g_config.max_streams;
+    g_config.max_streams = 16;
+    g_config.web_auth_enabled = true;
+    setenv("LIGHTNVR_LPR_MASTER_KEY_HEX",
+           "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", 1);
+
+    // A valid LPR search must not require a grant to watch live video.
+    char body[256];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuid\":\"%s\",\"start_at\":1787920000000,"
+             "\"end_at\":1787930000000}", camera.camera_uuid);
+    cJSON *json = call_handler_path(handle_post_lpr_search, HTTP_METHOD_POST,
+                                    "/api/lpr/search", body, api_key, 200);
+    cJSON_Delete(json);
+    json = call_handler_path(handle_get_streams, HTTP_METHOD_GET,
+        "/api/streams?summary=true&surface=live", NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(json, "streams")));
+    cJSON_Delete(json);
+
+    const char *path = "/api/streams?summary=true&surface=lpr&page_size=1"
+                       "&include_admin_url=true";
+    json = call_handler_path(handle_get_streams, HTTP_METHOD_GET,
+                             path, NULL, api_key, 200);
+    const cJSON *streams = cJSON_GetObjectItemCaseSensitive(json, "streams");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(streams));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(json, "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(json, "total_pages")->valueint);
+    const cJSON *item = cJSON_GetArrayItem(streams, 0);
+    TEST_ASSERT_EQUAL_STRING(camera.camera_uuid,
+        cJSON_GetObjectItemCaseSensitive(item, "camera_uuid")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(camera.name,
+        cJSON_GetObjectItemCaseSensitive(item, "name")->valuestring);
+    // The LPR picker returns identity only, regardless of requested fields.
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(item));
+    cJSON_Delete(json);
+
+    // Read and search are both required; a live-only grant is insufficient.
+    authorization_action_t insufficient[] = {
+        AUTHZ_LPR_READ, AUTHZ_LPR_SEARCH, AUTHZ_LIVE_VIEW
+    };
+    for (size_t i = 0; i < sizeof(insufficient) / sizeof(insufficient[0]); ++i) {
+        int64_t version = 0, next_version = 0;
+        role.action_mask = authorization_action_bit(insufficient[i]);
+        TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+        TEST_ASSERT_EQUAL_INT(DB_AUTHORIZATION_OK,
+            db_authorization_role_update(&role, version, &next_version));
+        json = call_handler_path(handle_get_streams, HTTP_METHOD_GET,
+                                 path, NULL, api_key, 200);
+        TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(
+            cJSON_GetObjectItemCaseSensitive(json, "streams")));
+        TEST_ASSERT_EQUAL_INT(0,
+            cJSON_GetObjectItemCaseSensitive(json, "total")->valueint);
+        cJSON_Delete(json);
+    }
+    g_config.max_streams = previous_max_streams;
+    unsetenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+}
+
+void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
+    stream_config_t camera = create_camera("old_lpr_camera", "");
+    recording_metadata_t recording = {0};
+    safe_strcpy(recording.stream_name, camera.name, sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, camera.camera_uuid, sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/lpr-rename-test.mp4", sizeof(recording.file_path), 0);
+    recording.start_time = 1787920000;
+    recording.end_time = 1787920600;
+    recording.is_complete = true;
+    uint64_t recording_id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL(0, recording_id);
+
+    detection_result_t detection = {0};
+    detection.count = 1;
+    safe_strcpy(detection.detections[0].label, "vehicle",
+                sizeof(detection.detections[0].label), 0);
+    detection.detections[0].confidence = 1.0f;
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
+        camera.name, &detection, 1787920100, recording_id));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(camera.name, 1787920200));
+    safe_strcpy(camera.name, "new_lpr_camera", sizeof(camera.name), 0);
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("old_lpr_camera", &camera));
+
+    // Reuse the historical name for a different camera and recording.
+    stream_config_t other = create_camera("old_lpr_camera", "");
+    safe_strcpy(recording.camera_uuid, other.camera_uuid, sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/lpr-other-test.mp4", sizeof(recording.file_path), 0);
+    uint64_t other_id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL(0, other_id);
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
+        other.name, &detection, 1787920300, other_id));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(other.name, 1787920400));
+
+    char api_key[128] = {0};
+    create_camera_action_user("timeline_uuid_user", camera.camera_uuid,
+        authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), api_key);
+    g_config.web_auth_enabled = true;
+    char path[512];
+    snprintf(path, sizeof(path),
+             "/api/timeline/segments?camera_uuid=%s&stream=old_lpr_camera"
+             "&start=2026-08-28T00:00:00Z&end=2026-08-29T00:00:00Z",
+             camera.camera_uuid);
+    cJSON *json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                                    path, NULL, api_key, 200);
+    const cJSON *segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(segments));
+    TEST_ASSERT_EQUAL_UINT64(recording_id, (uint64_t)cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(segments, 0), "id")->valuedouble);
+    const cJSON *intervals = cJSON_GetObjectItemCaseSensitive(json, "detection_intervals");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(intervals));
+    TEST_ASSERT_EQUAL_INT64(1787920100, (int64_t)cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(intervals, 0), "start_timestamp")->valuedouble);
+    TEST_ASSERT_EQUAL_STRING(camera.name,
+        cJSON_GetObjectItemCaseSensitive(json, "stream")->valuestring);
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu",
+             (unsigned long long)recording_id);
+    json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                             path, NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(json, "segments")));
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu",
+             (unsigned long long)other_id);
+    json = call_handler_path(handle_get_timeline_segments_by_ids, HTTP_METHOD_GET,
+                             path, NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(json, "segments")));
+    cJSON_Delete(json);
+
+    // A permitted display name must not override a denied UUID.
+    snprintf(path, sizeof(path),
+             "/api/timeline/segments?camera_uuid=%s&stream=new_lpr_camera",
+             other.camera_uuid);
+    json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                             path, NULL, api_key, 403);
+    cJSON_Delete(json);
+    snprintf(path, sizeof(path),
+             "/api/timeline/segments?camera_uuid=%s-extra&stream=new_lpr_camera",
+             camera.camera_uuid);
+    json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+                             path, NULL, api_key, 400);
+    cJSON_Delete(json);
+    json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+        "/api/timeline/segments?camera_uuid=&stream=new_lpr_camera", NULL, api_key, 400);
+    cJSON_Delete(json);
+    // Name-only callers keep their existing lookup and authorization semantics.
+    json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+        "/api/timeline/segments?stream=old_lpr_camera", NULL, api_key, 403);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -2625,6 +2812,8 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_action_catalog_is_stable_and_complete);
+    RUN_TEST(test_lpr_camera_summary_uses_lpr_permissions_and_scope);
+    RUN_TEST(test_timeline_uuid_link_survives_rename_and_enforces_replay_scope);
     RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
     RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
     RUN_TEST(test_policy_mode_defaults_deny_and_matches_selector_grant);
