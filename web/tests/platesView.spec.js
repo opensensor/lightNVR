@@ -700,7 +700,10 @@ describe('PlatesView mobile layout', () => {
     await searchTwoReads();
     const [, other] = cards();
     const link = find((n) => n.type === 'a', other);
-    expect(link.props.href).toMatch(/^timeline\.html\?stream=Driveway&/);
+    const target = new URL(link.props.href, 'http://localhost');
+    expect(target.pathname).toBe('/timeline.html');
+    expect(target.searchParams.get('camera_uuid')).toBe(CAMERA);
+    expect(target.searchParams.get('stream')).toBe('Driveway');
     expect(link.props.href).not.toContain('XYZ');
     expect(link.props['aria-label']).toBe('lpr.viewRecordingFor:{"plate":"XYZ987"}');
 
