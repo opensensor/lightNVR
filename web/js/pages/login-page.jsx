@@ -1,3 +1,4 @@
+import '../sentry.js';
 /**
  * LightNVR Web Interface Login Page
  * Entry point for the login page

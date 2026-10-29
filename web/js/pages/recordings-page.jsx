@@ -1,3 +1,4 @@
+import '../sentry.js';
 /**
  * LightNVR Web Interface Streams Page
  * Entry point for the streams page

@@ -21,6 +21,7 @@
   "dependencies": {
     "@preact-signals/query": "^2.1.2",
     "@preact/compat": "^18.3.2",
+    "@sentry/browser": "^11.9.0",
     "@tailwindcss/postcss": "^4.3.3",
     "daisyui": "^5.7.20",
     "dayjs": "^1.11.23",
@@ -36,6 +37,7 @@
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
     "@prefresh/vite": "^3.0.1",
+    "@sentry/vite-plugin": "^11.10.0",
     "@vitejs/plugin-legacy": "^8.2.3",
     "autoprefixer": "^10.5.4",
     "babel-jest": "^30.4.1",
