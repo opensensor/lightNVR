@@ -227,10 +227,12 @@ main() {
     print_info "  - web/js/version.js"
     echo
     print_info "Next steps:"
-    print_info "  1. Review the changes: git diff"
-    print_info "  2. Commit the changes: git add -A && git commit -m 'Bump version to $new_version'"
-    print_info "  3. Create a tag: git tag -a v$new_version -m 'Release v$new_version'"
-    print_info "  4. Push changes: git push && git push --tags"
+    print_info "  1. Review the changes: git diff --submodule=log"
+    print_info "  2. Stage version files: git add -- CMakeLists.txt web/package.json"
+    print_info "  3. Review staged changes: git diff --cached --submodule=log"
+    print_info "  4. Commit the changes: git commit -m 'Bump version to $new_version'"
+    print_info "  5. Create a tag: git tag -a v$new_version -m 'Release v$new_version'"
+    print_info "  6. Push changes: git push && git push --tags"
     echo
     print_info "Or use the release script: ./scripts/release.sh $new_version"
 }
