@@ -68,8 +68,9 @@
  * same subscription a few times per second instead of backing off or
  * resubscribing, and enough of those retries get through. The budget
  * (ONVIF_PULL_DROP_MAX_ATTEMPTS x ONVIF_PULL_DROP_RETRY_DELAY_MS, declared in
- * onvif_detection.h) keeps a camera that drops every connection from stalling a
- * poll for more than about two seconds. */
+ * onvif_detection.h) bounds each burst. If it is exhausted, the polling thread
+ * continues after the same short delay instead of the normal five-second
+ * error backoff, which can miss the camera's next accepting window. */
 
 /* External UUID generator (used for wsa:MessageID). */
 extern void generate_uuid(char *uuid, size_t size);
@@ -611,10 +612,14 @@ static bool is_transport_drop(const onvif_request_status_t *status) {
  * Transport drops are retried on the same subscription
  * (ONVIF_PULL_DROP_MAX_ATTEMPTS); the slot lock stays held for the whole burst
  * so the retries land inside the short window in which these cameras accept
- * a connection again. Other cameras are not affected. */
+ * a connection again. Other cameras are not affected. If transport_dropped is
+ * provided, report a final drop to the polling thread so it can continue at
+ * the retry interval even after this burst is exhausted. */
 static char *send_subscription_request(onvif_subscription_t *subscription,
                                        const char *request_body,
-                                       const char *action) {
+                                       const char *action,
+                                       bool *transport_dropped) {
+    if (transport_dropped) *transport_dropped = false;
     if (!subscription || !request_body || !action) return NULL;
 
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
@@ -653,14 +658,20 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
         }
         pthread_mutex_unlock(lock);
 
+        if (transport_dropped) {
+            *transport_dropped = !response && is_transport_drop(&status);
+        }
+
         /* HTTP-level failures (faults, non-200) were already reported by the
-         * core; only curl-level failures are left for us to report. */
+         * core. Polling continues on transport drops; note_pull_failure()
+         * warns once if they persist, avoiding error spam every burst. */
         if (!response && status.curl_code != CURLE_OK) {
-            log_error("ONVIF request %s failed after %d attempt%s (last attempt: curl=%d, "
-                      "HTTP=%ld, elapsed=%.3fs, new connections=%ld): %s",
-                      action, attempts, attempts == 1 ? "" : "s",
-                      (int)status.curl_code, status.http_code, status.elapsed,
-                      status.new_connections, curl_easy_strerror(status.curl_code));
+            log_message(transport_dropped && *transport_dropped ? LOG_LEVEL_DEBUG : LOG_LEVEL_ERROR,
+                        "ONVIF request %s failed after %d attempt%s (last attempt: curl=%d, "
+                        "HTTP=%ld, elapsed=%.3fs, new connections=%ld): %s",
+                        action, attempts, attempts == 1 ? "" : "s",
+                        (int)status.curl_code, status.http_code, status.elapsed,
+                        status.new_connections, curl_easy_strerror(status.curl_code));
         }
         return response;
     }
@@ -681,7 +692,7 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
         "</Renew>";
 
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_ACTION_RENEW);
+                                               ONVIF_ACTION_RENEW, NULL);
     if (!response) return false;
 
     int lease_seconds = subscription_lease_seconds(response);
@@ -702,7 +713,7 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
     const char *request_body =
         "<Unsubscribe xmlns=\"http://docs.oasis-open.org/wsn/b-2\"/>";
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_ACTION_UNSUBSCRIBE);
+                                               ONVIF_ACTION_UNSUBSCRIBE, NULL);
     if (response) {
         free(response);
         log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
@@ -1454,11 +1465,13 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     // failed poll (#603).  Fall back to the legacy path-extraction approach only when
     // the stored address is not an absolute HTTP URL.
     char *response = NULL;
+    bool transport_dropped = false;
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
         log_debug("ONVIF Detection: Sending PullMessages to %s", subscription->subscription_address);
         response = send_subscription_request(subscription, request_body,
-                                             ONVIF_ACTION_PULL_MESSAGES);
+                                             ONVIF_ACTION_PULL_MESSAGES,
+                                             &transport_dropped);
     } else {
         // Legacy fallback: extract last path component and re-append under /onvif/
         log_warn("ONVIF Detection: subscription_address is not a full URL ('%s'), using legacy path extraction",
@@ -1476,9 +1489,9 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     }
 
     if (!response) {
-        log_error("Failed to pull messages from subscription");
+        if (!transport_dropped) log_error("Failed to pull messages from subscription");
         note_pull_failure(onvif_url);
-        return -1;
+        return transport_dropped ? ONVIF_DETECT_RETRY : -1;
     }
 
     note_pull_success(onvif_url);

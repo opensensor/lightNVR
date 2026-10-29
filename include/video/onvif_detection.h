@@ -12,6 +12,11 @@
 #define ONVIF_PULL_DROP_MAX_ATTEMPTS 6
 #define ONVIF_PULL_DROP_RETRY_DELAY_MS 250
 
+/* The camera accepted and dropped every request in this poll's retry burst.
+ * Keep polling the same subscription after ONVIF_PULL_DROP_RETRY_DELAY_MS;
+ * other failures still require the normal error backoff. */
+#define ONVIF_DETECT_RETRY (-2)
+
 /**
  * Initialize the ONVIF detection system
  * 
@@ -32,7 +37,8 @@ void shutdown_onvif_detection_system(void);
  * @param password The password for authentication
  * @param result Pointer to a detection_result_t structure to store the results
  * @param stream_name The name of the stream (for database storage)
- * @return 0 on success, non-zero on failure
+ * @return 0 on success, ONVIF_DETECT_RETRY after camera-side transport drops,
+ *         -1 on other failures
  */
 int detect_motion_onvif(const char *onvif_url, const char *username, const char *password,
                        detection_result_t *result, const char *stream_name);

@@ -148,6 +148,11 @@ add_layer2_test(test_go2rtc_lifecycle)
 add_layer2_test(test_detection_config)
 add_layer2_test_with_curl(test_detection_model_motion)
 add_layer2_test_with_curl(test_detection_system_onvif)
+add_layer3_test(test_onvif_poll_recovery)
+target_link_options(test_onvif_poll_recovery PRIVATE
+    "-Wl,--wrap=detect_motion_onvif" "-Wl,--wrap=av_usleep"
+)
+set_tests_properties(test_onvif_poll_recovery PROPERTIES TIMEOUT 15)
 add_layer2_test(test_onvif_lpr_event)
 target_compile_definitions(test_onvif_lpr_event PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"

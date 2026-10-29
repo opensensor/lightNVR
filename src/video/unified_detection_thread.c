@@ -664,9 +664,9 @@ static int find_empty_slot(void) {
  * between polls (ONVIF_MIN_POLL_INTERVAL_MS) instead of relying on the
  * camera to block (issue #450).
  *
- * On ONVIF error the motion flag is cleared and we back off ~5 s before
- * retrying; the ONVIF subscription is renewed automatically inside
- * detect_motion_onvif() itself.
+ * Camera-side connection drops keep the short retry cadence across bursts;
+ * other errors back off ~5 s. The motion flag follows the hold window below,
+ * and detect_motion_onvif() manages subscription renewal.
  *
  * SOD and API detection paths are completely unaffected by this change.
  * Only the is_onvif_detection_model() branch in run_detection_on_frame()
@@ -758,7 +758,19 @@ static void *onvif_detection_thread_func(void *arg) {
             }
             /* else: hold the flag until the window expires */
 
-            if (ret != 0) {
+            if (ret == ONVIF_DETECT_RETRY) {
+                /* Tapo may drop connections for longer than one bounded
+                 * retry burst. Keep trying the same PullPoint at 250 ms
+                 * intervals across bursts instead of adding a blind 5 s
+                 * gap (#603). Preserve a delay to avoid a busy loop, and
+                 * check the stop flag at least every 100 ms. */
+                for (int remaining_ms = ONVIF_PULL_DROP_RETRY_DELAY_MS;
+                     remaining_ms > 0 && atomic_load(&ctx->onvif_thread_running);) {
+                    int sleep_ms = remaining_ms < 100 ? remaining_ms : 100;
+                    av_usleep(sleep_ms * 1000);
+                    remaining_ms -= sleep_ms;
+                }
+            } else if (ret != 0) {
                 log_warn("[%s] ONVIF thread: detect_motion_onvif error %d – "
                          "backing off 5 s before retry", ctx->stream_name, ret);
                 /* 50 × 100 ms = 5 s, checking stop flag on each iteration. */
