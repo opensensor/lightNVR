@@ -342,6 +342,17 @@ endif()
 # ====================================================================
 add_layer3_test(test_faac_encoder)
 add_layer3_test(test_audio_transcoder)
+add_layer3_test(test_mp4_forced_reconnect)
+target_link_options(test_mp4_forced_reconnect PRIVATE
+    "-Wl,--wrap=record_segment" "-Wl,--wrap=av_usleep"
+    "-Wl,--wrap=get_stream_config_by_name" "-Wl,--wrap=storage_should_pause_recording"
+    "-Wl,--wrap=prepare_placed_mp4_recording_path")
+add_layer3_test(test_mp4_recovery_watchdog)
+target_link_options(test_mp4_recovery_watchdog PRIVATE
+    "-Wl,--wrap=sleep" "-Wl,--wrap=mp4_writer_start_recording_thread"
+    "-Wl,--wrap=mp4_writer_stop_recording_thread" "-Wl,--wrap=mp4_writer_is_recording"
+    "-Wl,--wrap=go2rtc_integration_is_using_go2rtc_for_recording" "-Wl,--wrap=_log_message_ctx")
+set_tests_properties(test_mp4_forced_reconnect test_mp4_recovery_watchdog PROPERTIES TIMEOUT 10)
 add_layer3_test(test_mp4_audio_recovery)
 target_link_options(test_mp4_audio_recovery PRIVATE
     "-Wl,--wrap=av_read_frame" "-Wl,--wrap=cleanup_audio_transcoder")

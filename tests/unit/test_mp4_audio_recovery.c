@@ -205,11 +205,12 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
     TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 10, 1,
         &input, &segment, NULL, NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(-1, interrupt_after);
+    TEST_ASSERT_NULL(input);
+    TEST_ASSERT_EQUAL_INT(1, audio_resets);
     check_playable_audio(false); // shutdown still flushes the old segment's tail
 
-    // Match recovery: close the old reader and start another using the same
-    // writer/stream name. Before #689's fix this reuses the flushed pool slot.
-    avformat_close_input(&input);
+    // Start another reader using the same writer/stream name after production
+    // cleanup closed the input. Before #689's fix this reuses the flushed slot.
     av_packet_free(&segment.pending_video_keyframe);
     if (interrupt_result == AVERROR_EXIT) {
         memset(&segment, 0, sizeof(segment));
