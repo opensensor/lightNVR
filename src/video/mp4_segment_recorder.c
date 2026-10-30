@@ -354,6 +354,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int audio_stream_idx = -1;
     bool needs_audio_transcoding = false;
     bool reuse_input_context = true;
+    bool shutdown_detected = false;
     int recording_cache_fd = -1;
     off_t recording_cache_released_through = 0;
     AVStream *out_video_stream = NULL;
@@ -406,6 +407,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     if (!*input_ctx_ptr) {
         segment_info_ptr->fps_measurement = (stream_frame_rate_measurement_t){0};
+        // A new encoder has its own priming delay and timestamp origin, even
+        // when the same reader retries without recreating segment_info.
+        segment_info_ptr->segment_index = 0;
+        segment_info_ptr->last_frame_was_key = false;
     }
 
     // BUGFIX: Use per-stream segment info instead of global static variable
@@ -1031,8 +1036,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     bool found_first_keyframe = false;
     // Flag to track if we're waiting for the final key frame
     bool waiting_for_final_keyframe = false;
-    // Flag to track if shutdown was detected
-    bool shutdown_detected = false;
 
     // CRITICAL FIX: Ensure input_ctx is valid before entering the main loop
     if (!input_ctx) {
@@ -1087,6 +1090,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
 		if (ret < 0) {
 			if (ret == AVERROR_EOF) {
+				reuse_input_context = false;
 				log_info("End of stream reached for %s", output_file);
 				break;
 			} else if (ret == AVERROR_EXIT) {
@@ -1096,10 +1100,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				// Treat this as the final segment too, so delayed AAC is drained
 				// before its MP4 trailer is written.
 				shutdown_detected = true;
+				reuse_input_context = false;
 				log_warn("RTSP read interrupted (AVERROR_EXIT) for %s — "
 				         "recording thread is being stopped", output_file);
 				break;
 			} else if (ret != AVERROR(EAGAIN)) {
+				reuse_input_context = false;
 				char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
 				av_strerror(ret, err_buf, sizeof(err_buf));
 				log_error("Error reading frame for %s: %d (%s)",
@@ -1810,11 +1816,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
-    /* The transcoder belongs to the writer and spans ordinary segment
-     * rotations. Drain it only for the final shutdown segment, while this
+    /* Preserve the transcoder across ordinary rotations. Drain it at the end
+     * of an input session (shutdown, EOF or input failure), while this
      * segment's audio stream and MP4 muxer are still open. */
     int final_audio_error = 0;
-    if (shutdown_detected && needs_audio_transcoding && out_audio_stream && output_ctx) {
+    if ((shutdown_detected || !reuse_input_context) && needs_audio_transcoding &&
+        out_audio_stream && output_ctx) {
         const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
             ? segment_info_ptr->stream_name : rtsp_url;
         AVPacket **flush_packets = NULL;
@@ -1875,11 +1882,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             segment_index, has_audio && audio_stream_idx >= 0, segment_info_ptr->last_frame_was_key);
 
 cleanup:
-    // Audio transcoder lifetime is now writer-scoped, not segment-scoped:
-    // mp4_writer_close() → cleanup_audio_transcoder(writer->stream_name) frees
-    // the slot when the whole recording session ends.  Tearing it down here
-    // every segment was forcing afftdn (and any future filter graph) to
-    // re-profile the noise floor on every rotation — discussion #395.
+    // Keep audio state across ordinary rotations, but release it below when
+    // this input session ends. A drained FAAC encoder cannot accept more PCM.
 
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
     log_debug("Starting aggressive cleanup of FFmpeg resources");
@@ -1950,7 +1954,7 @@ cleanup:
     log_debug("Handling input context cleanup");
 
     // BUGFIX: Store the input context in the per-stream variable for reuse if recording was successful
-    if (ret >= 0 && reuse_input_context) {
+    if (ret >= 0 && reuse_input_context && !shutdown_detected) {
         // Store the input context for reuse in the next segment
         // We can't directly access internal FFmpeg structures
         // Just store the context as is and rely on FFmpeg's internal reference counting
@@ -1978,6 +1982,15 @@ cleanup:
             log_debug("Input context is NULL, nothing to clean up");
         }
         log_debug("Closed input context due to error");
+
+        // A reader restart reuses the writer and its stream name. Leaving a
+        // flushed encoder in that pool slot makes every new segment fail with
+        // AVERROR_EOF (#689). Release decoder, encoder, FIFO and filter state
+        // only after the old session has finished muxing its delayed audio.
+        // The next segment stages the voice-filter preference again from DB.
+        const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
+            ? segment_info_ptr->stream_name : rtsp_url;
+        cleanup_audio_transcoder(transcoder_key);
     }
 
     // Return the error code
