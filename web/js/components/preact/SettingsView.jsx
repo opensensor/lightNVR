@@ -879,7 +879,7 @@ export function SettingsView() {
                 Desktop: vertical pill list. */}
             <div
               role="tablist"
-              aria-label={t('settings.tabsLabel') !== 'settings.tabsLabel' ? t('settings.tabsLabel') : 'Settings sections'}
+              aria-label={t('settings.tabsLabel')}
               class="flex overflow-x-auto snap-x snap-mandatory gap-2 border-b border-border pb-2 sm:flex-col sm:border-b-0 sm:overflow-x-visible sm:snap-none sm:gap-1"
             >
               {tabs.map((tab) => {

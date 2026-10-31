@@ -495,7 +495,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onBlur={handleOverrideBlur}
                   disabled={!canModifySettings}
                   maxLength={GO2RTC_OVERRIDE_MAX_BYTES}
-                  placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
+                  placeholder={t('settings.go2rtcOverridePlaceholder')}
                 />
 
                 {/* Size indicator */}

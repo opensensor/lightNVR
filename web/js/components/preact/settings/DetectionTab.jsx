@@ -66,7 +66,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
               value={settings.apiDetectionUrl}
               onChange={handleInputChange}
               disabled={!canModifySettings}
-              placeholder={isDoods2 ? 'http://localhost:8080/detect' : 'http://localhost:8000/api/v1/detect'}
+              placeholder={t(isDoods2 ? 'settings.apiDetectionDoodsPlaceholder' : 'settings.apiDetectionOnnxPlaceholder')}
             />
             <span class="hint text-sm text-muted-foreground block mt-1">
               {isDoods2 ? t('settings.apiDetectionUrlHelpDoods2') : t('settings.apiDetectionUrlHelp')}

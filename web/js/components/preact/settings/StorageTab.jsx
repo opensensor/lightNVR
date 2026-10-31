@@ -141,7 +141,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
         </label>
         <label class="text-sm font-medium md:col-span-2">
           <span class="block mb-1">{t('settings.storageTargets.root')}</span>
-          <input class="w-full p-2 border border-input rounded bg-background font-mono text-sm disabled:opacity-60" value={value.root_path} onInput={(event) => set('root_path', event.currentTarget.value)} disabled={busy || rootLocked} placeholder={objectTarget ? `s3://${value.bucket || 'bucket'}/instance` : '/mnt/nvr-hot-01'} />
+          <input class="w-full p-2 border border-input rounded bg-background font-mono text-sm disabled:opacity-60" value={value.root_path} onInput={(event) => set('root_path', event.currentTarget.value)} disabled={busy || rootLocked} placeholder={objectTarget ? t('settings.storageTargets.objectRootPlaceholder', { bucket: value.bucket || t('settings.storageTargets.bucketPlaceholder') }) : t('settings.storageTargets.localRootPlaceholder')} />
           {rootLocked && <span class="block mt-1 text-xs text-muted-foreground">{t('settings.storageTargets.rootLocked')}</span>}
         </label>
         <label class="text-sm font-medium">
