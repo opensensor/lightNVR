@@ -1109,7 +1109,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Partial \u2014 existing fixes verified; trigger-token review pending",
+      "status": "Completed",
       "ownership": [
         "src/database/sqlite_migrate.c",
         "tests/unit/test_t7_23.c",
@@ -1153,7 +1153,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "Original producer87e55150 established four failures; expanded parser RED13/8 then tracking RED15/3. Final15focused+7policy+9storage=31/31ASan/UBSan pass in native-1d7663de61fb. Whole-input validation now respects quoted identifiers/comments; all four tracking SQL constructors quote names without truncation. Actual raw routes and separate local API boundary documented; full scanner reconciliation remains T33."
+      "log": "Parser, identifier and trigger-token corrections verified; final37/37ASan/UBSan. See T7.23.1/.2/.3 and exact retained RED/green artifacts. Full scanner/profile reconciliation remains T33."
     },
     {
       "id": "T7.24",
@@ -9813,11 +9813,12 @@
         "T7",
         "T10",
         "T7.161",
-        "T7.162"
+        "T7.162",
+        "T7.168.2"
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Partial \u2014 names complete; Zone Editor event-order correction pending",
       "ownership": [
         "web/js/components/preact/StreamsView.jsx",
         "web/js/components/preact/ThemeCustomizer.jsx",
