@@ -10686,7 +10686,9 @@
         "web/js/components/preact/fleet/CollectionManager.jsx",
         "web/js/components/preact/fleet/StaticCollectionMembers.jsx",
         "web/tests/remediation/t7_177.spec.jsx",
-        "quality/evidence/T7.177.md"
+        "quality/evidence/T7.177.md",
+        "web/tests/remediation/t7_167.spec.jsx",
+        "web/tests/e2e/pages/StreamsPage.js"
       ],
       "source_paths": [
         "web/js/components/preact/BatchDownloadModal.jsx",
