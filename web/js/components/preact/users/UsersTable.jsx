@@ -182,8 +182,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                     className="p-1 rounded transition-colors text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)_/_0.1)] hover:text-[hsl(var(--primary)_/_0.7)]"
                     onClick={(e) => handleAccess(user, e)}
                     title={t('access.policy.manage')}
+                    aria-label={t('access.policy.manage')}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3l7 4v5c0 4.4-2.8 7.9-7 9-4.2-1.1-7-4.6-7-9V7l7-4zm-2 9l1.5 1.5L15 10" />
                     </svg>
                   </button>
@@ -191,8 +192,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                     className="p-1 rounded transition-colors text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)_/_0.1)] hover:text-[hsl(var(--primary)_/_0.7)]"
                     onClick={(e) => handleEdit(user, e)}
                     title={t('users.editUser')}
+                    aria-label={t('users.editUser')}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </button>
@@ -200,8 +202,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                     className="p-1 rounded transition-colors text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)_/_0.1)] hover:text-[hsl(var(--danger)_/_0.7)]"
                     onClick={(e) => handleDelete(user, e)}
                     title={t('users.deleteUser')}
+                    aria-label={t('users.deleteUser')}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
@@ -209,8 +212,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                     className="p-1 rounded transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--muted-foreground)_/_0.8)] hover:bg-[hsl(var(--muted)_/_0.5)]"
                     onClick={(e) => handleApiKey(user, e)}
                     title={t('tokens.manage')}
+                    aria-label={t('tokens.manage')}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                   </button>
@@ -218,8 +222,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                     className="p-1 rounded transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--muted-foreground)_/_0.8)] hover:bg-[hsl(var(--muted)_/_0.5)]"
                     onClick={(e) => handleMfa(user, e)}
                     title={t('users.manageMfa')}
+                    aria-label={t('users.manageMfa')}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </button>

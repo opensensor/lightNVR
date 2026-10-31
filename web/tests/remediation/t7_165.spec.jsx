@@ -4,6 +4,7 @@ jest.mock('preact/hooks', () => ({
   useState: (initial) => [typeof initial === 'function' ? initial() : initial, jest.fn()],
   useEffect: jest.fn(), useCallback: (callback) => callback,
   useMemo: (factory) => factory(), useRef: (current) => ({ current }),
+  useId: () => 'fixture-id',
 }));
 jest.mock('../../js/query-client.js', () => ({ fetchJSON: jest.fn() }));
 jest.mock('../../js/i18n.js', () => ({ useI18n: () => ({ t: (key) => `translated:${key}` }) }));

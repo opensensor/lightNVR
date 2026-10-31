@@ -2,7 +2,7 @@
  * TOTP MFA Setup Modal Component
  */
 
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useId } from 'preact/hooks';
 import QRCode from 'qrcode';
 import { useI18n } from '../../../i18n.js';
 import { AsyncButton } from '../AsyncButton.jsx';
@@ -17,6 +17,7 @@ import { AsyncButton } from '../AsyncButton.jsx';
  * @returns {JSX.Element} TOTP setup modal
  */
 export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
+  const verifyInputId = useId();
   const [step, setStep] = useState('loading'); // 'loading', 'status', 'setup', 'verify', 'enabled'
   const [otpauthUri, setOtpauthUri] = useState('');
   const [secret, setSecret] = useState('');
@@ -177,8 +178,8 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
             <p className="mb-3 text-sm">
               {t('users.scanQrCode')}
             </p>
-            <div className="flex justify-center mb-3 bg-white p-2 rounded">
-              <canvas ref={canvasRef}></canvas>
+            <div className="flex justify-center mb-3 bg-white p-2 rounded" role="img" aria-label={t('users.scanQrCode')}>
+              <canvas ref={canvasRef} aria-hidden="true"></canvas>
             </div>
             <div className="mb-4">
               <p className="text-xs text-muted-foreground mb-1">{t('users.enterKeyManually')}</p>
@@ -193,8 +194,10 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 same call. The button's own handleClick preventDefaults
                 while pending so a second Enter press is dropped. */}
             <form onSubmit={handleVerify}>
-              <label className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</label>
+              <label id={`${verifyInputId}-label`} htmlFor={verifyInputId} className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</label>
               <input
+                id={verifyInputId}
+                aria-labelledby={`${verifyInputId}-label`}
                 type="text"
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
                 placeholder="000000"

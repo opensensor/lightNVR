@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState, useId } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
@@ -23,6 +23,7 @@ function roleToDraft(role) {
 
 export function RoleManagerModal({ onClose, getAuthHeaders }) {
   const { t } = useI18n();
+  const fieldId = useId();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -175,8 +176,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
                 {draft.uuid && <button type="button" className="btn-secondary" onClick={() => startNew(draft)}>{t('access.roles.clone')}</button>}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium">{t('common.name')}<input className={`${fieldClasses} mt-1`} value={draft.name} maxLength="127" disabled={draft.builtin} onInput={(event) => setDraft({ ...draft, name: event.currentTarget.value })} required /></label>
-                <label className="text-sm font-medium sm:col-span-2">{t('common.description')}<textarea className={`${fieldClasses} mt-1`} rows="2" maxLength="255" disabled={draft.builtin} value={draft.description} onInput={(event) => setDraft({ ...draft, description: event.currentTarget.value })}></textarea></label>
+                <label htmlFor={`${fieldId}-name`} className="text-sm font-medium"><span id={`${fieldId}-name-label`}>{t('common.name')}</span><input id={`${fieldId}-name`} aria-labelledby={`${fieldId}-name-label`} className={`${fieldClasses} mt-1`} value={draft.name} maxLength="127" disabled={draft.builtin} onInput={(event) => setDraft({ ...draft, name: event.currentTarget.value })} required /></label>
+                <label htmlFor={`${fieldId}-description`} className="text-sm font-medium sm:col-span-2"><span id={`${fieldId}-description-label`}>{t('common.description')}</span><textarea id={`${fieldId}-description`} aria-labelledby={`${fieldId}-description-label`} className={`${fieldClasses} mt-1`} rows="2" maxLength="255" disabled={draft.builtin} value={draft.description} onInput={(event) => setDraft({ ...draft, description: event.currentTarget.value })}></textarea></label>
               </div>
 
               <div className="mt-5 space-y-5">
@@ -186,10 +187,11 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
                     <div className="grid gap-2 lg:grid-cols-2">
                       {group.actions.map((action) => {
                         const checked = draft.actions.includes(action.key);
+                        const actionId = `${fieldId}-action-${encodeURIComponent(action.key)}`;
                         return (
-                          <label key={action.key} className={`touch-target flex gap-3 rounded-md border p-3 ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)]' : 'border-border'} ${draft.builtin ? 'cursor-default' : 'cursor-pointer'}`}>
-                            <input type="checkbox" className="mt-1 h-4 w-4" checked={checked} disabled={draft.builtin} onChange={() => toggleAction(action.key)} />
-                            <span><span className="block text-sm font-medium">{action.key}</span><span className="mt-0.5 block text-xs text-muted-foreground">{action.description}</span>{action.destructive && <span className="mt-1 block text-xs font-medium text-[hsl(var(--danger))]">{t('access.roles.destructive')}</span>}{!actionIsEnforced(action) && <span className="mt-1 block text-xs font-medium text-[hsl(var(--warning))]">{t('access.roles.notEnforced')}</span>}</span>
+                          <label key={action.key} htmlFor={actionId} className={`touch-target flex gap-3 rounded-md border p-3 ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)]' : 'border-border'} ${draft.builtin ? 'cursor-default' : 'cursor-pointer'}`}>
+                            <input id={actionId} aria-labelledby={`${actionId}-label`} aria-describedby={`${actionId}-details`} type="checkbox" className="mt-1 h-4 w-4" checked={checked} disabled={draft.builtin} onChange={() => toggleAction(action.key)} />
+                            <span><span id={`${actionId}-label`} className="block text-sm font-medium">{action.key}</span><span id={`${actionId}-details`}><span className="mt-0.5 block text-xs text-muted-foreground">{action.description}</span>{action.destructive && <span className="mt-1 block text-xs font-medium text-[hsl(var(--danger))]">{t('access.roles.destructive')}</span>}{!actionIsEnforced(action) && <span className="mt-1 block text-xs font-medium text-[hsl(var(--warning))]">{t('access.roles.notEnforced')}</span>}</span></span>
                           </label>
                         );
                       })}
