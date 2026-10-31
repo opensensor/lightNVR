@@ -1,0 +1,482 @@
+{
+  "schema_version": 1,
+  "producer": "T1",
+  "generated_at": "2026-10-31",
+  "repository": "opensensor/lightNVR",
+  "report_root": "build/eng-artifacts/<task> (gitignored); T1 raw reports in build/eng-artifacts/T1/",
+  "access_status_values": {
+    "accessible": "report retrieved and parsed",
+    "accessible-log-only": "results only in job log text; no artifact",
+    "not-configured": "expected scanner has no workflow/setup; absence is NOT a clean result",
+    "disabled": "feature disabled for repository; API returns 404",
+    "missing": "expected report absent/expired/crashed for the revision (record http_status/reason)"
+  },
+  "policy_notes_for_T6": [
+    "A scanner with access_status other than accessible/accessible-log-only, or with no report at the expected path for the evaluated revision, is a failed check, never an empty pass.",
+    "A valid empty result requires the report file to exist and parse with the expected tool/run metadata (e.g. Trivy SARIF with runs[0].results == [] and tool version present).",
+    "Exit codes: clang-tidy/cppcheck/trivy are forced to 0 and npm audit exits 1 on findings; decide success from report contents, not exit codes.",
+    "Revisions differ per scanner (see last_observed.revision); compare fingerprints, not line numbers."
+  ],
+  "fingerprint_schemes": {
+    "codeql": "codeql:<ruleId>:<path>:<SARIF partialFingerprints.primaryLocationLineHash>; fallback codeql-alert:<alert number> when the instance is not in the current analysis. Line-number independent.",
+    "code-quality": "code-quality:<rule>:<path>:sha256(digit-normalized message)[:16]",
+    "line-tool": "<tool>:<rule>:<repo-relative path>:sha256('<rule>|<path>|<message with \\d+ -> N>|<occurrence index within that triple, ordered by line>')[:16]. Line numbers are excluded so header/SPDX shifts do not churn identity; runner prefix /__w/lightNVR/lightNVR/ is stripped.",
+    "bucket": "<tool>-bucket:<rule>:<path> with an integer count; policy compares counts (increase = new finding, decrease = progress requiring baseline edit).",
+    "sca": "<scanner>:<manifest or image>:<package>:<GHSA|CVE>",
+    "secret": "secret:<rule>:<path>:<commit> (never the secret value)",
+    "advisory": "repo-advisory:sha256(GHSA id)[:16] so private advisory IDs are not disclosed"
+  },
+  "scanners": [
+    {
+      "id": "codeql-cpp",
+      "tool": "CodeQL",
+      "tool_version": "2.27.3",
+      "kind": "sast",
+      "workflow": ".github/workflows/codeql-analysis.yml",
+      "job": "analyze (matrix language=c-cpp)",
+      "triggers": [
+        "push:main",
+        "schedule:weekly Mon 06:00 UTC",
+        "workflow_dispatch"
+      ],
+      "runs_on_pull_request": false,
+      "report_format": "sarif-2.1.0",
+      "retrieval": "gh api -H 'Accept: application/sarif+json' repos/opensensor/lightNVR/code-scanning/analyses/<analysis_id>; alert states via code-scanning/alerts?state=open|dismissed|fixed",
+      "scope": {
+        "languages": [
+          "c-cpp"
+        ],
+        "query_suite": "security-extended",
+        "category": "/language:c-cpp",
+        "build": "cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SOD=OFF -DENABLE_GO2RTC=OFF -DBUILD_TESTS=OFF (full profile defaults otherwise)",
+        "excluded": [
+          "go2rtc integration sources (ENABLE_GO2RTC=OFF)",
+          "src/sod (ENABLE_SOD=OFF)",
+          "LiteRT (submodule not initialized)",
+          "Sentry (ENABLE_SENTRY default OFF)",
+          "SSL backends (ENABLE_SSL default OFF)",
+          "tests/"
+        ],
+        "included_third_party": [
+          "third_party/faac"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "8927bc8a",
+        "analysis_id": 2067529268,
+        "results": 35,
+        "rules": 95,
+        "open_alerts": 34,
+        "dismissed_alerts": 11,
+        "fixed_alerts_total": 300,
+        "cross_check": "analysis 2067474950 @1b8d4332 has identical 35 (rule,path,lineHash) keys"
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/github/codeql-<sha8>.sarif",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "codeql"
+    },
+    {
+      "id": "codeql-javascript-typescript",
+      "tool": "CodeQL",
+      "kind": "sast",
+      "workflow": null,
+      "job": null,
+      "triggers": [],
+      "report_format": "sarif-2.1.0",
+      "scope": {
+        "languages": [
+          "javascript-typescript"
+        ],
+        "paths": [
+          "web/js/**",
+          "tests/**/*.ts",
+          "playwright.config.ts"
+        ]
+      },
+      "access_status": "not-configured",
+      "http_status": null,
+      "reason": "No workflow analyzes JS/TS for security; code-scanning default-setup state=not-configured. Expected scanner to be added by T14.",
+      "last_observed": null,
+      "report_path_convention": "build/eng-artifacts/<task>/github/codeql-js-<sha8>.sarif",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "codeql"
+    },
+    {
+      "id": "github-code-quality",
+      "tool": "GitHub Code Quality (CodeQL quality queries)",
+      "kind": "quality",
+      "workflow": "dynamic GitHub-managed workflow 'CodeQL - Code Quality'",
+      "job": null,
+      "triggers": [
+        "push:main (GitHub-managed)"
+      ],
+      "report_format": "json (REST repos/{repo}/code-quality/findings)",
+      "retrieval": "gh api 'repos/opensensor/lightNVR/code-quality/findings?per_page=100' --paginate",
+      "scope": {
+        "languages": [
+          "as configured by GitHub (observed: javascript)"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "8927bc8a (run 41178210527)",
+        "open_findings": 1
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/github/code-quality-findings.json",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "code-quality"
+    },
+    {
+      "id": "clang-tidy",
+      "tool": "clang-tidy",
+      "tool_version": "Debian LLVM 21.1.8 (debian:sid-slim container)",
+      "kind": "sast/lint",
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job": "clang-tidy",
+      "triggers": [
+        "push:main",
+        "pull_request:main",
+        "workflow_dispatch"
+      ],
+      "report_format": "clang-diagnostic-text (path:line:col: severity: message [check])",
+      "retrieval": "gh run download <run_id> -R opensensor/lightNVR -n clang-tidy-report (30-day retention)",
+      "config": ".clang-tidy (WarningsAsErrors empty; HeaderFilterRegex include/.*\\.h$)",
+      "scope": {
+        "files": "find src/ -name '*.c' excluding */sod/* and */ezxml/*",
+        "compile_db": "cmake Release ENABLE_SOD=OFF ENABLE_GO2RTC=OFF BUILD_TESTS=OFF",
+        "notes": "258 source files scanned; go2rtc integration files are passed even though ENABLE_GO2RTC=OFF omits them from compile_commands (analyzed with inferred flags)"
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "1b8d4332",
+        "workflow_run": 41176542849,
+        "artifact_id": 13033827361,
+        "diagnostics": 296,
+        "errors": 0,
+        "artifact_expires": "2026-11-30"
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/clang-tidy-report/clang-tidy-report.txt",
+      "exit_semantics": "report-only: set +e around clang-tidy; job always succeeds; a crashed clang-tidy yields an empty/short report that must be treated as missing",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "line-tool"
+    },
+    {
+      "id": "cppcheck",
+      "tool": "cppcheck",
+      "tool_version": "2.13.0",
+      "kind": "sast/lint",
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job": "cppcheck",
+      "triggers": [
+        "push:main",
+        "pull_request:main",
+        "workflow_dispatch"
+      ],
+      "report_format": "cppcheck-xml-v2 (+ text template)",
+      "retrieval": "gh run download <run_id> -R opensensor/lightNVR -n cppcheck-reports",
+      "scope": {
+        "paths": [
+          "src/ (including third-party src/sod, src/ezxml)"
+        ],
+        "includes": [
+          "include/"
+        ],
+        "options": "--enable=all --suppress=missingIncludeSystem --suppress=unusedFunction --inline-suppr",
+        "compile_db": null
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "1b8d4332",
+        "workflow_run": 41176542849,
+        "artifact_id": 13033507116,
+        "results": 605,
+        "by_severity": {
+          "error": 17,
+          "warning": 13,
+          "portability": 2,
+          "style": 547,
+          "information": 26
+        }
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/cppcheck-reports/cppcheck-report.xml",
+      "exit_semantics": "report-only: --error-exitcode=0",
+      "blocking": false,
+      "inventory_mode": "itemized for error/warning/portability; bucketed (rule,path,count) for style/information",
+      "fingerprint_scheme": "line-tool / bucket"
+    },
+    {
+      "id": "eslint-web",
+      "tool": "eslint + eslint-plugin-jsx-a11y (recommended, all warn) + lightnvr-i18n/no-literal-ui-string (error)",
+      "kind": "lint/a11y",
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job": "web-jsx-a11y (npm run lint --prefix web)",
+      "triggers": [
+        "push:main",
+        "pull_request:main",
+        "workflow_dispatch"
+      ],
+      "report_format": "eslint stylish text in job log only (no artifact)",
+      "retrieval": "gh run view -R opensensor/lightNVR --job <job_id> --log",
+      "config": "web/eslint.config.js",
+      "scope": {
+        "paths": [
+          "web/js/**/*.js",
+          "web/js/**/*.jsx"
+        ]
+      },
+      "access_status": "accessible-log-only",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "1b8d4332",
+        "workflow_run": 41176542849,
+        "job_id": 124465163606,
+        "warnings": 897,
+        "errors": 0
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/web-jsx-a11y.log (T14 target: eslint -f json artifact)",
+      "exit_semantics": "warnings never fail; only the i18n rule is an error",
+      "blocking": "partial (i18n rule only)",
+      "inventory_mode": "bucketed (rule,path,count)",
+      "fingerprint_scheme": "bucket"
+    },
+    {
+      "id": "trivy-container",
+      "tool": "Trivy",
+      "tool_version": "0.76.1 (apt repo latest at run time; vuln DB version not recorded)",
+      "kind": "container/sca",
+      "workflow": ".github/workflows/container-scan.yml",
+      "job": "trivy",
+      "triggers": [
+        "push:main",
+        "push:tags *.*.*",
+        "workflow_dispatch"
+      ],
+      "runs_on_pull_request": false,
+      "report_format": "sarif-2.1.0",
+      "retrieval": "artifact trivy-scan-results, or code-scanning analyses (category container-scanning)",
+      "scope": {
+        "image": "lightnvr:scan built from ./Dockerfile",
+        "platforms": [
+          "linux/amd64"
+        ],
+        "severities": [
+          "CRITICAL",
+          "HIGH",
+          "MEDIUM"
+        ],
+        "not_scanned": [
+          "linux/arm64 and linux/arm/v7 images from docker-publish.yml",
+          "Dockerfile.alpine",
+          "opensensor-sentry-image.yml image",
+          ".devcontainer/Dockerfile"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "1b8d4332",
+        "workflow_run": 41176542798,
+        "analysis_id": 2067494754,
+        "results": 0,
+        "history": "7 go2rtc Go-module CVEs (golang.org/x/crypto, golang.org/x/net) reported through b38e91c3 were fixed 2026-10-29"
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/actions/container-scan-<run_id>/trivy-results.sarif",
+      "exit_semantics": "report-only: --exit-code 0; SARIF/artifact upload skipped when the scan step fails (missing report must fail policy)",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "sca"
+    },
+    {
+      "id": "dependabot",
+      "tool": "GitHub Dependabot alerts",
+      "kind": "sca",
+      "workflow": null,
+      "job": null,
+      "triggers": [
+        "GitHub-managed on dependency graph change / advisory publication"
+      ],
+      "report_format": "json (REST repos/{repo}/dependabot/alerts)",
+      "retrieval": "gh api 'repos/opensensor/lightNVR/dependabot/alerts?per_page=100&state=open' --paginate",
+      "scope": {
+        "manifests": [
+          "package.json",
+          "package-lock.json",
+          "web/package-lock.json"
+        ],
+        "config_file": null,
+        "not_covered": [
+          "GitHub Actions",
+          "go2rtc Go modules (submodule)",
+          "Docker base images",
+          "C system libraries"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "date": "2026-10-31",
+        "open": 1,
+        "fixed": 87,
+        "total": 88
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/github/dependabot-open.json",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "sca"
+    },
+    {
+      "id": "npm-audit-root",
+      "tool": "npm audit",
+      "tool_version": "npm 11.19.1 / node 24.22.1",
+      "kind": "sca",
+      "workflow": null,
+      "job": null,
+      "triggers": [
+        "manual (T1); T14 to add CI job"
+      ],
+      "report_format": "npm-audit-json (auditReportVersion 2)",
+      "retrieval": "npm audit --package-lock-only --json [--omit=dev]",
+      "scope": {
+        "lockfile": "package-lock.json",
+        "variants": [
+          "all",
+          "prod (--omit=dev)"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "date": "2026-10-31",
+        "all_total": 0,
+        "prod_total": 0,
+        "dependencies": 36,
+        "note": "valid empty result (dev-only Playwright/sharp tree)"
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/npm/root-audit-{all,prod}.json",
+      "blocking": false,
+      "inventory_mode": "itemized",
+      "fingerprint_scheme": "sca"
+    },
+    {
+      "id": "npm-audit-web",
+      "tool": "npm audit",
+      "tool_version": "npm 11.19.1 / node 24.22.1",
+      "kind": "sca",
+      "workflow": null,
+      "job": null,
+      "triggers": [
+        "manual (T1); T14 to add CI job"
+      ],
+      "report_format": "npm-audit-json (auditReportVersion 2)",
+      "retrieval": "cd web && npm audit --package-lock-only --json [--omit=dev]",
+      "scope": {
+        "lockfile": "web/package-lock.json",
+        "variants": [
+          "all",
+          "prod (--omit=dev)"
+        ]
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "date": "2026-10-31",
+        "all_total_packages": 26,
+        "all_by_severity": {
+          "low": 1,
+          "moderate": 25
+        },
+        "root_advisories": 3,
+        "prod_total": 0,
+        "dependencies": 1145
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/npm/web-audit-{all,prod}.json",
+      "exit_semantics": "npm audit exits 1 when vulnerabilities exist; exit status is not scan failure \u2014 parse JSON 'error' key for failures",
+      "blocking": false,
+      "inventory_mode": "itemized per (package, advisory) root cause; propagated parents not itemized",
+      "fingerprint_scheme": "sca"
+    },
+    {
+      "id": "secret-scanning",
+      "tool": "GitHub secret scanning",
+      "kind": "secrets",
+      "workflow": null,
+      "job": null,
+      "triggers": [],
+      "report_format": "json (REST repos/{repo}/secret-scanning/alerts)",
+      "scope": {
+        "repository": "all branches/history once enabled"
+      },
+      "access_status": "disabled",
+      "http_status": 404,
+      "reason": "API: 'Secret scanning is disabled on this repository.' security_and_analysis: secret_scanning, push_protection, non_provider_patterns, validity_checks all disabled. No local secret scanner (gitleaks/trufflehog) is installed or in CI.",
+      "last_observed": null,
+      "report_path_convention": "build/eng-artifacts/<task>/github/secret-scanning-alerts.json",
+      "blocking": false,
+      "inventory_mode": "itemized (rule id + location only; never secret values)",
+      "fingerprint_scheme": "secret"
+    },
+    {
+      "id": "repo-security-advisories",
+      "tool": "GitHub repository security advisories",
+      "kind": "advisories",
+      "workflow": null,
+      "job": null,
+      "triggers": [
+        "maintainer/PVR reports"
+      ],
+      "report_format": "json (REST repos/{repo}/security-advisories)",
+      "scope": {
+        "private_vulnerability_reporting": "enabled"
+      },
+      "access_status": "accessible (admin)",
+      "http_status": 200,
+      "last_observed": {
+        "date": "2026-10-31",
+        "published": 3,
+        "draft": 2,
+        "closed": 1
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/github/repo-security-advisories.json (gitignored; contains private drafts)",
+      "blocking": false,
+      "inventory_mode": "itemized; non-published records use sanitized IDs",
+      "fingerprint_scheme": "advisory"
+    },
+    {
+      "id": "sanitizer-asan-ubsan",
+      "tool": "GCC ASan+UBSan via ctest",
+      "kind": "dynamic/gate",
+      "workflow": ".github/workflows/sanitizer.yml",
+      "job": "asan-ubsan",
+      "triggers": [
+        "push:main",
+        "pull_request:main",
+        "workflow_dispatch"
+      ],
+      "report_format": "job conclusion + ctest log (no artifact)",
+      "scope": {
+        "tests": "explicit ctest -R allow-list of 42 unit tests + 15 s startup smoke",
+        "build": "Debug BUILD_TESTS=ON ENABLE_SOD=OFF ENABLE_GO2RTC=OFF ENABLE_MQTT=OFF"
+      },
+      "access_status": "accessible",
+      "http_status": 200,
+      "last_observed": {
+        "revision": "1b8d4332 and 8927bc8a",
+        "conclusion": "success",
+        "findings": 0
+      },
+      "report_path_convention": "build/eng-artifacts/<task>/actions/sanitizer-<run_id>.log",
+      "blocking": "fails job on sanitizer error but not a required check",
+      "inventory_mode": "pass/fail gate (no finding records)",
+      "fingerprint_scheme": null
+    }
+  ]
+}
