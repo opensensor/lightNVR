@@ -139,6 +139,8 @@ target_sources(test_stream_frame_rate PRIVATE
 # ====================================================================
 add_layer2_test(test_config)
 add_layer2_test(test_db_core_initialization)
+add_layer2_test(test_sqlite_migration_boundaries)
+set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
 add_layer2_test(test_logger)
 add_layer2_test(test_strings)
 add_layer2_test(test_interruptible_sleep)
