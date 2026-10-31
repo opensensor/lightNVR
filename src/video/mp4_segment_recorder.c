@@ -1384,9 +1384,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // Write packet
                     ret = av_interleaved_write_frame(output_ctx, pkt);
                     if (ret < 0) {
+                        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                    RECORDING_IO_OPERATION_PACKET, ret);
                         log_error("Error writing final video frame: %d", ret);
-                        if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                            log_error("Non-recoverable write error on final frame (disk full or I/O error), stopping segment");
+                        if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO) || ret == AVERROR(EROFS)) {
+                            log_error("Terminal storage write error on final frame, stopping segment");
                             av_packet_unref(pkt);
                             goto cleanup;
                         }
@@ -1493,8 +1495,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 log_error("Error writing video frame: %d (%s)", ret, error_buf);
 
                 // Non-recoverable I/O error — stop the segment immediately
-                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                    log_error("Non-recoverable video write error (disk full or I/O error), stopping segment");
+                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO) || ret == AVERROR(EROFS)) {
+                    log_error("Terminal video storage write error, stopping segment");
                     goto cleanup;
                 }
 
@@ -1758,8 +1760,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 log_error("Error writing audio frame: %d (%s)", ret, error_buf);
 
                 // Non-recoverable I/O error — stop the segment immediately
-                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                    log_error("Non-recoverable audio write error (disk full or I/O error), stopping segment");
+                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO) || ret == AVERROR(EROFS)) {
+                    log_error("Terminal audio storage write error, stopping segment");
                     goto cleanup;
                 }
 

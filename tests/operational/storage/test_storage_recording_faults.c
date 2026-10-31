@@ -23,6 +23,7 @@ static AVFormatContext *input;
 static segment_info_t segment;
 static bool saved_faststart;
 static int injected_error, open_error, packet_calls, failed_packets, close_calls;
+static int failure_packet;
 static AVIOContext *observed_output;
 
 int __real_av_interleaved_write_frame(AVFormatContext *, AVPacket *);
@@ -30,7 +31,7 @@ int __wrap_av_interleaved_write_frame(AVFormatContext *ctx, AVPacket *pkt) {
     if (ctx->url && strcmp(ctx->url, output_path) == 0) {
         observed_output = ctx->pb;
         packet_calls++;
-        if (injected_error && packet_calls >= 4) {
+        if (injected_error && packet_calls >= failure_packet) {
             failed_packets++;
             return AVERROR(injected_error);
         }
@@ -58,6 +59,7 @@ void setUp(void) {
     memset(&segment, 0, sizeof(segment));
     input = NULL;
     injected_error = open_error = packet_calls = failed_packets = close_calls = 0;
+    failure_packet = 4;
     observed_output = NULL;
 }
 
@@ -188,15 +190,20 @@ static void assert_recovered_segment_playable(void) {
 
 static void check_packet_failure(int error) {
     open_fixture(1);
+    recording_io_metrics_snapshot_t before;
+    recording_io_metrics_snapshot(&before);
     injected_error = error;
     TEST_ASSERT_EQUAL_INT(AVERROR(error), record_segment(source_path, output_path, 1, 0,
         &input, &segment, NULL, NULL, NULL, NULL));
-    TEST_ASSERT_EQUAL_INT(4, packet_calls);
+    TEST_ASSERT_EQUAL_INT(failure_packet, packet_calls);
     TEST_ASSERT_EQUAL_INT(1, failed_packets);
     TEST_ASSERT_EQUAL_INT(1, close_calls);
     TEST_ASSERT_NULL(input);
     recording_io_metrics_snapshot_t snapshot;
     recording_io_metrics_snapshot(&snapshot);
+    recording_io_reason_t reason = recording_io_reason_from_error(AVERROR(error));
+    TEST_ASSERT_EQUAL_UINT64(before.reason_totals[RECORDING_IO_RESOURCE_RECORDING][reason] + 1,
+        snapshot.reason_totals[RECORDING_IO_RESOURCE_RECORDING][reason]);
     TEST_ASSERT_EQUAL_INT(RECORDING_IO_OPERATION_PACKET, snapshot.last_error.operation);
     TEST_ASSERT_EQUAL_INT(recording_io_reason_from_error(AVERROR(error)), snapshot.last_error.reason);
     assert_recovered_segment_playable();
@@ -204,6 +211,10 @@ static void check_packet_failure(int error) {
 void test_enospc_stops_segment_closes_output_and_recovers(void) { check_packet_failure(ENOSPC); }
 void test_eio_stops_segment_closes_output_and_recovers(void) { check_packet_failure(EIO); }
 void test_erofs_stops_segment_closes_output_and_recovers(void) { check_packet_failure(EROFS); }
+void test_erofs_on_final_keyframe_is_not_overwritten_by_trailer(void) {
+    failure_packet = 25; /* 24 frames plus the closing keyframe at one second. */
+    check_packet_failure(EROFS);
+}
 void test_readonly_open_rejected_then_recovers(void) {
     open_fixture(1);
     open_error = EROFS;
@@ -219,6 +230,7 @@ int main(void) {
     RUN_TEST(test_enospc_stops_segment_closes_output_and_recovers);
     RUN_TEST(test_eio_stops_segment_closes_output_and_recovers);
     RUN_TEST(test_erofs_stops_segment_closes_output_and_recovers);
+    RUN_TEST(test_erofs_on_final_keyframe_is_not_overwritten_by_trailer);
     RUN_TEST(test_readonly_open_rejected_then_recovers);
     return UNITY_END();
 }
