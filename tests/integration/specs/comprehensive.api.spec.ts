@@ -67,13 +67,49 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
   test.describe('Streams API', () => {
     const testStreamName = `api_test_stream_${Date.now()}`;
 
-    // Ensure cleanup even if DELETE test fails
+    const deletionFixtureNames = new Set<string>();
+    const readStreams = async (): Promise<Array<{ name: string; enabled: boolean }>> => {
+      const response = await request.get('/api/streams');
+      expect(response.status()).toBe(200);
+      const streams = await response.json();
+      expect(Array.isArray(streams)).toBe(true);
+      return streams;
+    };
+    const waitForRemoval = async (name: string) => {
+      await expect.poll(async () => (await readStreams()).some(stream => stream.name === name), {
+        timeout: 10000,
+        intervals: [50, 100, 250, 500],
+      }).toBe(false);
+      expect((await request.get(`/api/streams/${name}`)).status()).toBe(404);
+    };
+    const removePermanently = async (name: string) => {
+      if (!(await readStreams()).some(stream => stream.name === name)) return;
+      const response = await request.delete(`/api/streams/${name}?permanent=true`);
+      expect(response.status()).toBe(202);
+      expect(await response.json()).toEqual({ success: true, permanent: true, status: 'accepted' });
+      await waitForRemoval(name);
+    };
+    const createEnabledDeletionFixture = async (name: string) => {
+      deletionFixtureNames.add(name);
+      const response = await request.post('/api/streams', { data: {
+        name,
+        url: 'rtsp://localhost:18554/test_pattern',
+        enabled: true,
+        streaming_enabled: true,
+        width: 1280,
+        height: 720,
+        fps: 15,
+        codec: 'h264',
+        priority: 5,
+        record: false,
+      } });
+      expect(response.status()).toBe(201);
+      expect((await readStreams()).find(stream => stream.name === name)?.enabled).toBe(true);
+    };
+
     test.afterAll(async () => {
-      try {
-        await request.delete(`/api/streams/${testStreamName}`);
-        console.log(`Cleaned up test stream: ${testStreamName}`);
-      } catch (e) {
-        // Ignore cleanup errors
+      for (const name of [...deletionFixtureNames, testStreamName]) {
+        await removePermanently(name);
       }
     });
 
@@ -132,10 +168,36 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
       }
     });
 
-    test('DELETE /api/streams/{name} deletes stream', async () => {
-      const response = await request.delete(`/api/streams/${testStreamName}`);
-      expect([200, 204, 404].includes(response.status())).toBeTruthy();
-      console.log(`Delete stream response: ${response.status()}`);
+    test('DELETE /api/streams/{name} accepts and completes stream disable', async () => {
+      const name = `${testStreamName}_soft`;
+      await createEnabledDeletionFixture(name);
+      try {
+        const response = await request.delete(`/api/streams/${name}`);
+        expect(response.status()).toBe(202);
+        expect(await response.json()).toEqual({ success: true, permanent: false, status: 'accepted' });
+        // The list reads persisted configuration, including disabled rows.
+        // A missing row must not satisfy a soft-delete completion assertion.
+        await expect.poll(async () => (await readStreams()).find(stream => stream.name === name)?.enabled, {
+          timeout: 10000,
+          intervals: [50, 100, 250, 500],
+        }).toBe(false);
+      } finally {
+        await removePermanently(name);
+      }
+    });
+
+    test('DELETE /api/streams/{name}?permanent=true accepts and completes removal', async () => {
+      const name = `${testStreamName}_permanent`;
+      await createEnabledDeletionFixture(name);
+      try {
+        const response = await request.delete(`/api/streams/${name}?permanent=true`);
+        expect(response.status()).toBe(202);
+        expect(await response.json()).toEqual({ success: true, permanent: true, status: 'accepted' });
+        // Runtime disappearance alone is insufficient: require database removal too.
+        await waitForRemoval(name);
+      } finally {
+        await removePermanently(name);
+      }
     });
 
     test('POST /api/streams/test tests stream connection', async () => {
