@@ -620,7 +620,7 @@ records and gate dependencies must be added by the named producer.
   - `python3 scripts/quality/run-native.py --task T27 --regex '^test_mp4_(audio_recovery|recovery_watchdog|writer_watchdog|segment_boundaries|segment_timestamps)$'`
   - Run each new real-media scenario using its documented synthetic source and ffprobe assertions; record output diagnostics.
 - **status**: Not Completed
-- **log**:
+- **log**: Clarified T3 contract permits declared boundary tolerance: preserve intentionally retained one-keyframe overlap (a1830689), require no gaps or additional duplicates beyond one frame with identity/cadence evidence. Initial48vs49 strict-zero-overlap oracle was an incorrect assumption, not a demonstrated product defect.
 - **files edited/created**:
 
 ### T28: Close storage and retention failure gaps
@@ -633,8 +633,8 @@ records and gate dependencies must be added by the named producer.
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T28 --regex '^test_storage_(retention_sqlite|pressure|pressure_extended|manager_retention)$'`
   - Run isolated storage fault scenarios and inspect database integrity plus retained-file assertions.
-- **status**: Not Completed
-- **log**: Test implementation materialized as T28.0; two demonstrated production defects require bounded T28.1/T28.2 fixes before original acceptance can close.
+- **status**: Completed — declared isolated storage scenarios (commits `0eb7e5aa`, `6d254658`, `e56fc168`, `4deb2b4e`)
+- **log**: Final six-target ASan/UBSan run passes73/73 cases: real SQLite FULL/READONLY, retention modes/protected files, unavailable-root/retry recovery, real segment ENOSPC/EIO/EROFS and decodable recovery, bounded writer pause/resume. Missing-root guard cannot detect an unmounted filesystem whose underlying directory remains; target mount guards unchanged. Broader real-media/health/physical qualification remains separately scoped.
 - **files edited/created**:
 
 ### T29: Test shutdown, restart, and upgrade continuity
@@ -7196,8 +7196,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Fix the T28 unavailable-root regression: legacy deletion interprets ENOENT beneath an unavailable recordings root as authoritative file absence and finalizes metadata deletion. Keep deletion pending/retryable while root availability cannot be established; after restoration reclaim eligible expired files normally. Preserve registered-target mount guards, protected media and legitimate missing-file cleanup. Document the exact legacy-root identity rule, avoiding a new persistence or storage redesign.
 - **acceptance_criteria**: Original unavailable-root regression reaches GREEN with metadata/file retained until restoration; ordinary existing-file and legitimately absent-file deletions still complete. Protected/open files and fault retry controls remain intact. No pretend successful deletion while root is unavailable.
 - **validation**: `python3 scripts/quality/run-native.py --task T28.1 --regex '^test_storage_(manager_retention|retention_sqlite|deletion.*)$'`; exact owned-root rename/restore regression under ASan/UBSan.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `6d254658`)
+- **log**: Tests-first legacy root guard preserves metadata on unavailable/unknown roots.39/39 sanitizer cases pass, including healthy-root absent-file cleanup and owned-root fixture correction. No storage-schema change; configured-directory check is not persisted mount-identity proof.
 - **files edited/created**:
 
 ### T28.2: Stop MP4 segments on terminal read-only write failures
@@ -7207,8 +7207,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Fix the T28 EROFS regression: an actual segment packet mux failure repeats and a later successful trailer overwrites it with success. Treat read-only storage write failure as terminal alongside disk-full/I/O failure across the existing packet paths, preserve its negative result through cleanup and keep timestamp recovery behavior distinct. Use the existing recording I/O diagnostics and close owned resources without new dependencies.
 - **acceptance_criteria**: Injected EROFS stops on the first affected packet with negative result, existing ENOSPC/EIO controls pass, no sanitizer issue, and removing the fault produces decodable media. Existing timestamp/audio watchdog behavior remains unchanged.
 - **validation**: Run T28 real segment fault target and existing segment/timestamp/audio recovery selections under the isolated sanitizer runner; record exact selections and decoding assertions.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `e56fc168`)
+- **log**: Terminal EROFS handling added to existing final-video/video/audio paths; first failed packet retains negative status and cleanup. Five real mux fault controls pass, including final keyframe, plus existing timestamp/audio/watchdog controls. T28 full integration73/73 passes. T27 initially over-strict zero-overlap oracle is being corrected to its declared tolerance; no boundary behavior changed.
 - **files edited/created**:
 
 ## Expanded shutdown observation tasks (T29)
