@@ -52,11 +52,15 @@
       "id": "T7.2",
       "title": "Verify disposition and regression evidence for ADVISORY-GHSA-cv53-mq7p-6jp2",
       "depends_on": [
-        "T7"
+        "T7",
+        "T7.2.1",
+        "T7.2.2",
+        "T7.2.3",
+        "T7.2.4"
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "In progress \u2014 exact regression coverage pending",
       "ownership": [
         "quality/reviews/advisory-ghsa-cv53-mq7p-6jp2.json",
         "quality/evidence/T7.2.md"
@@ -75,7 +79,8 @@
       "finding_ids": [
         "ADVISORY-GHSA-cv53-mq7p-6jp2"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Ancestor fixes reviewed; bounded tests-only child tasks T7.2.1\u2013T7.2.4 materialized and fenced by T33. No source fix or closure claimed."
     },
     {
       "id": "T7.3",
