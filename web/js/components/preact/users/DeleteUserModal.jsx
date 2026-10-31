@@ -25,14 +25,12 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
     return Promise.resolve(handleDeleteUser());
   };
 
-  // Stop click propagation on modal content
-  const stopPropagation = (e) => {
-    e.stopPropagation();
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="presentation" onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full">
         <h2 className="text-xl font-bold mb-4">{t('users.deleteUser')}</h2>
 
         <p className="mb-6">

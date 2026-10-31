@@ -219,8 +219,11 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
   const hasNext = bounds.end < bounds.total;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-3" onClick={() => !savingRetention && !exporting && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="audit-history-title" className="flex max-h-[96vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-3" role="presentation" onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget && !savingRetention && !exporting) onClose();
+    }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="audit-history-title" className="flex max-h-[96vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl">
         <header className="flex items-start justify-between gap-4 border-b border-border p-4 sm:p-5">
           <div><h2 id="audit-history-title" className="text-xl font-bold">{t('audit.title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('audit.description')}</p></div>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={savingRetention || exporting}>{t('common.close')}</button>

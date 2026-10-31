@@ -271,8 +271,11 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
 
   const closeAllowed = !revealed && !creating && !legacyGenerating;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={() => closeAllowed && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="api-access-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" role="presentation" onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget && closeAllowed) onClose();
+    }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="api-access-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl">
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div><h2 id="api-access-title" className="text-xl font-bold">{t('tokens.title', { username: currentUser.username })}</h2><p className="mt-1 text-sm text-muted-foreground">{t('tokens.description')}</p></div>
           {!revealed && <button type="button" className="btn-secondary" onClick={onClose} disabled={!closeAllowed}>{t('common.close')}</button>}

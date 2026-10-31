@@ -107,6 +107,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
       onMouseDown={handleBackdropMouseDown}
       onClick={handleBackdropClick}

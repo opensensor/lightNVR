@@ -261,8 +261,11 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={() => !saving && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="access-policy-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" role="presentation" onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget && !saving) onClose();
+    }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="access-policy-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl">
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div><h2 id="access-policy-title" className="text-xl font-bold">{t('access.policy.title', { username: user.username })}</h2><p className="mt-1 text-sm text-muted-foreground">{t('access.policy.description')}</p></div>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.close')}</button>
