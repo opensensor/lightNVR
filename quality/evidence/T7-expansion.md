@@ -47,7 +47,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-ghsa-cv53-mq7p-6jp2.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.3: Verify disposition and regression evidence for ADVISORY-repo-advisory-draft-1
@@ -64,7 +64,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-draft-1.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.4: Verify disposition and regression evidence for ADVISORY-repo-advisory-closed-1
@@ -81,7 +81,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-closed-1.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.5: Verify disposition and regression evidence for ADVISORY-repo-advisory-draft-2
@@ -98,7 +98,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-draft-2.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.6: Verify disposition and regression evidence for ADVISORY-GHSA-rqj3-pch5-rq4f
@@ -115,7 +115,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-ghsa-rqj3-pch5-rq4f.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.7: Verify disposition and regression evidence for ADVISORY-GHSA-pvw7-7j8c-qx96
@@ -132,7 +132,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-ghsa-pvw7-7j8c-qx96.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.8: Remediate glob dependency advisory GHSA-3g3m-2fjr-6pw4
@@ -153,7 +153,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `npm --prefix web run build`
   - `LIGHTNVR_WEB_LEGACY=false npm --prefix web run build`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.9: Remediate minimatch dependency advisory GHSA-g3hv-75wg-m249
@@ -178,7 +178,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `npm audit --json`
   - `npm audit --omit=dev --json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.10: Remediate deepmerge dependency advisory GHSA-gcqx-w48m-w2h4
@@ -199,7 +199,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `npm --prefix web run build`
   - `LIGHTNVR_WEB_LEGACY=false npm --prefix web run build`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.11: cpp/cleartext-storage-database in db_event_destinations.c
@@ -217,7 +217,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.11 --regex '^test_t7_11$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.11`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.12: cpp/cleartext-storage-database in db_streams.c
@@ -235,7 +235,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.12 --regex '^test_t7_12$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.12`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.13: cpp/cleartext-storage-file in config.c
@@ -253,7 +253,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.13 --regex '^test_t7_13$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.13`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.14: cpp/cleartext-transmission in hls_unified_thread.c
@@ -271,7 +271,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.14 --regex '^test_t7_14$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.14`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.15: cpp/cleartext-transmission in stream_protocol.c
@@ -289,7 +289,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.15 --regex '^test_t7_15$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.15`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.16: cpp/integer-multiplication-cast-to-long in mp4_writer_utils.c
@@ -307,7 +307,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.16 --regex '^test_t7_16$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.16`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.17: cpp/non-https-url in go2rtc_api.c
@@ -325,7 +325,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.17 --regex '^test_t7_17$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.17`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.18: cpp/non-https-url in onvif_detection.c
@@ -343,7 +343,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.18 --regex '^test_t7_18$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.18`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.19: cpp/non-https-url in onvif_discovery.c
@@ -361,7 +361,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.19 --regex '^test_t7_19$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.19`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.20: cpp/non-https-url in api_handlers_ptz.c
@@ -379,7 +379,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.20 --regex '^test_t7_20$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.20`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.21: cpp/path-injection in storage_s3.c
@@ -397,7 +397,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.21 --regex '^test_t7_21$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.21`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.22: cpp/path-injection in linux_cgroup.c, linux_network.c
@@ -415,7 +415,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.22 --regex '^test_t7_22$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.22`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.23: cpp/sql-injection in sqlite_migrate.c
@@ -433,7 +433,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.23 --regex '^test_t7_23$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.23`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.24: cpp/suspicious-pointer-scaling in frame.c
@@ -451,7 +451,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_24-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.24`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.25: cpp/toctou-race-condition in db_core.c
@@ -469,7 +469,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.25 --regex '^test_t7_25$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.25`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.26: cpp/toctou-race-condition in storage_migration.c
@@ -487,7 +487,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.26`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.27: cpp/toctou-race-condition in api_handlers_operator_floor_plans.c
@@ -505,7 +505,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.27 --regex '^test_t7_27$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.27`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.28: cpp/uncontrolled-allocation-size in event_router.c
@@ -523,7 +523,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.28 --regex '^test_t7_28$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.28`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.29: cpp/world-writable-file-creation in mqtt_client.c
@@ -541,7 +541,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.29 --regex '^test_t7_29$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.29`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.30: arrayIndexOutOfBounds in stream_protocol.c
@@ -559,7 +559,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.30 --regex '^test_t7_30$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.30`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.31: clang-analyzer-core.CallAndMessage in system_health_policy.c
@@ -577,7 +577,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.31 --regex '^test_t7_31$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.31`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.32: clang-analyzer-core.DivideZero in db_storage_pools.c
@@ -595,7 +595,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.32 --regex '^test_t7_32$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.32`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.33: clang-analyzer-core.NonNullParamChecker in camera_collection_filter.c
@@ -613,7 +613,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.33 --regex '^test_t7_33$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.33`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.34: clang-analyzer-core.NonNullParamChecker in db_storage_policies.c
@@ -631,7 +631,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.34 --regex '^test_t7_34$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.34`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.35: clang-analyzer-core.NonNullParamChecker in storage_s3.c
@@ -649,7 +649,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.35 --regex '^test_t7_35$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.35`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.36: clang-analyzer-core.NullDereference in event_envelope.c
@@ -667,7 +667,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.36 --regex '^test_t7_36$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.36`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.37: clang-analyzer-core.NullDereference in db_live_saved_layouts.c
@@ -685,7 +685,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.37 --regex '^test_t7_37$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.37`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.38: clang-analyzer-core.NullDereference in db_storage_policies.c
@@ -703,7 +703,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.38 --regex '^test_t7_38$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.38`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.39: clang-analyzer-core.NullDereference in smartctl_provider.c
@@ -721,7 +721,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.39 --regex '^test_t7_39$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.39`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.40: clang-analyzer-core.NullDereference in go2rtc_api.c
@@ -739,7 +739,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.40 --regex '^test_t7_40$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.40`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.41: clang-analyzer-core.NullDereference in hls_writer.c
@@ -757,7 +757,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.41 --regex '^test_t7_41$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.41`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.42: clang-analyzer-core.NullDereference in api_handlers_authorization.c
@@ -775,7 +775,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.42 --regex '^test_t7_42$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.42`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.43: clang-analyzer-core.NullDereference in api_handlers_fleet.c
@@ -793,7 +793,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.43 --regex '^test_t7_43$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.43`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.44: clang-analyzer-core.NullDereference in api_handlers_health.c
@@ -811,7 +811,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.44 --regex '^test_t7_44$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.44`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.45: clang-analyzer-core.NullDereference in api_handlers_lpr.c
@@ -829,7 +829,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.45 --regex '^test_t7_45$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.45`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.46: clang-analyzer-core.NullDereference in api_handlers_recording_control.c
@@ -847,7 +847,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.46 --regex '^test_t7_46$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.46`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.47: clang-analyzer-core.NullDereference in api_handlers_retention.c
@@ -865,7 +865,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.47 --regex '^test_t7_47$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.47`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.48: clang-analyzer-core.NullDereference in api_handlers_storage_migrations.c
@@ -883,7 +883,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.48 --regex '^test_t7_48$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.48`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.49: clang-analyzer-core.NullDereference in api_handlers_streams_get.c
@@ -901,7 +901,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.49 --regex '^test_t7_49$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.49`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.50: clang-analyzer-core.NullDereference in api_handlers_streams_modify.c
@@ -919,7 +919,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.50 --regex '^test_t7_50$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.50`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.51: clang-analyzer-core.NullDereference in api_handlers_system_health.c
@@ -937,7 +937,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.51 --regex '^test_t7_51$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.51`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.52: clang-analyzer-core.UndefinedBinaryOperatorResult in path_utils.c
@@ -955,7 +955,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.52 --regex '^test_t7_52$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.52`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.53: clang-analyzer-security.ArrayBound in authorization.c
@@ -973,7 +973,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.53 --regex '^test_t7_53$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.53`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.54: clang-analyzer-security.ArrayBound in logger_json.c
@@ -991,7 +991,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.54 --regex '^test_t7_54$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.54`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.55: clang-analyzer-security.ArrayBound in main.c
@@ -1009,7 +1009,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.55 --regex '^test_t7_55$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.55`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.56: clang-analyzer-security.ArrayBound in sqlite_migrate.c
@@ -1027,7 +1027,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.56 --regex '^test_t7_56$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.56`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.57: clang-analyzer-security.ArrayBound in linux_network.c, linux_process.c, linux_restart.c, linux_thermal.c
@@ -1045,7 +1045,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.57 --regex '^test_t7_57$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.57`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.58: clang-analyzer-security.ArrayBound in linux_hardware.c
@@ -1063,7 +1063,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.58 --regex '^test_t7_58$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.58`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.59: clang-analyzer-security.ArrayBound in system_health.c
@@ -1081,7 +1081,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.59 --regex '^test_t7_59$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.59`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.60: clang-analyzer-security.ArrayBound in go2rtc_process.c
@@ -1099,7 +1099,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.60 --regex '^test_t7_60$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.60`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.61: clang-analyzer-security.ArrayBound in hls_cache_cleanup.c
@@ -1117,7 +1117,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.61 --regex '^test_t7_61$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.61`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.62: clang-analyzer-security.ArrayBound in stream_manager.c
@@ -1135,7 +1135,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.62 --regex '^test_t7_62$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.62`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.63: clang-analyzer-security.ArrayBound in api_handlers_fleet.c
@@ -1153,7 +1153,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.63 --regex '^test_t7_63$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.63`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.64: clang-analyzer-security.ArrayBound in api_handlers_streams_get.c
@@ -1171,7 +1171,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.64 --regex '^test_t7_64$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.64`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.65: clang-analyzer-security.ArrayBound in api_handlers_system.c
@@ -1189,7 +1189,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.65 --regex '^test_t7_65$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.65`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.66: clang-analyzer-security.insecureAPI.strcpy in recording_transcode.c
@@ -1207,7 +1207,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.66 --regex '^test_t7_66$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.66`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.67: clang-analyzer-security.insecureAPI.strcpy in api_handlers_go2rtc_proxy.c
@@ -1225,7 +1225,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.67 --regex '^test_t7_67$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.67`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.68: clang-analyzer-unix.BlockInCriticalSection in health_helper_runner.c
@@ -1243,7 +1243,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.68 --regex '^test_t7_68$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.68`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.69: clang-analyzer-unix.BlockInCriticalSection in hls_unified_thread.c
@@ -1261,7 +1261,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.69 --regex '^test_t7_69$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.69`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.70: clang-analyzer-unix.Errno in storage_migration.c
@@ -1279,7 +1279,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.70 --regex '^test_t7_70$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.70`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.71: clang-analyzer-unix.StdCLibraryFunctions in hls_cache_cleanup.c
@@ -1297,7 +1297,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.71 --regex '^test_t7_71$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.71`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.72: clang-analyzer-unix.Stream in linux_network.c
@@ -1315,7 +1315,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.72 --regex '^test_t7_72$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.72`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.73: integerOverflow in config.c
@@ -1333,7 +1333,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.73 --regex '^test_t7_73$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.73`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.74: memleak in sod_img_writer.h
@@ -1351,7 +1351,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_74-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.74`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.75: memleak in sod.c
@@ -1369,7 +1369,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_75-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.75`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.76: preprocessorErrorDirective in nvme_provider.c
@@ -1387,7 +1387,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.76 --regex '^test_t7_76$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.76`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.77: preprocessorErrorDirective in mp4_writer_utils.c
@@ -1405,7 +1405,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.77 --regex '^test_t7_77$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.77`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.78: arrayIndexOutOfBoundsCond in stream_protocol.c
@@ -1423,7 +1423,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.78 --regex '^test_t7_78$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.78`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.79: bugprone-assignment-in-if-condition in db_system_health_incidents.c
@@ -1441,7 +1441,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.79 --regex '^test_t7_79$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.79`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.80: bugprone-assignment-in-if-condition in api_detection.c
@@ -1459,7 +1459,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.80 --regex '^test_t7_80$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.80`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.81: bugprone-assignment-in-if-condition in api_handlers_metrics.c
@@ -1477,7 +1477,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.81 --regex '^test_t7_81$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.81`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.82: bugprone-assignment-in-if-condition in go2rtc_websocket.c
@@ -1495,7 +1495,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.82 --regex '^test_t7_82$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.82`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.83: bugprone-branch-clone in linux_cgroup.c
@@ -1513,7 +1513,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.83 --regex '^test_t7_83$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.83`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.84: bugprone-branch-clone in api_handlers_authorization.c
@@ -1531,7 +1531,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.84 --regex '^test_t7_84$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.84`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.85: bugprone-branch-clone in api_handlers_timeline.c
@@ -1549,7 +1549,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.85 --regex '^test_t7_85$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.85`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.86: bugprone-branch-clone in audit_log.c
@@ -1567,7 +1567,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.86 --regex '^test_t7_86$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.86`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.87: bugprone-branch-clone in thumbnail_thread.c
@@ -1585,7 +1585,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.87 --regex '^test_t7_87$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.87`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.88: bugprone-implicit-widening-of-multiplication-result in event_bus.c
@@ -1603,7 +1603,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.88 --regex '^test_t7_88$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.88`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.89: bugprone-implicit-widening-of-multiplication-result in event_envelope.c
@@ -1621,7 +1621,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.89 --regex '^test_t7_89$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.89`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.90: bugprone-implicit-widening-of-multiplication-result in event_router.c
@@ -1639,7 +1639,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.90 --regex '^test_t7_90$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.90`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.91: bugprone-implicit-widening-of-multiplication-result in mqtt_delivery_worker.c
@@ -1657,7 +1657,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.91 --regex '^test_t7_91$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.91`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.92: bugprone-implicit-widening-of-multiplication-result in db_operator_floor_plans.c
@@ -1675,7 +1675,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.92 --regex '^test_t7_92$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.92`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.93: bugprone-implicit-widening-of-multiplication-result in storage_migration.c
@@ -1693,7 +1693,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.93 --regex '^test_t7_93$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.93`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.94: bugprone-implicit-widening-of-multiplication-result in storage_s3.c
@@ -1711,7 +1711,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.94 --regex '^test_t7_94$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.94`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.95: bugprone-implicit-widening-of-multiplication-result in linux_network.c, linux_process.c, linux_thermal.c
@@ -1729,7 +1729,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.95 --regex '^test_t7_95$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.95`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.96: bugprone-implicit-widening-of-multiplication-result in ffmpeg_rss_guard.c
@@ -1747,7 +1747,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.96 --regex '^test_t7_96$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.96`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.97: bugprone-implicit-widening-of-multiplication-result in lpr_crypto.c
@@ -1765,7 +1765,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.97 --regex '^test_t7_97$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.97`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.98: bugprone-implicit-widening-of-multiplication-result in go2rtc_api.c, go2rtc_consumer.c, go2rtc_integration.c, go2rtc_snapshot.c, go2rtc_stream.c
@@ -1783,7 +1783,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.98 --regex '^test_t7_98$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.98`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.99: bugprone-implicit-widening-of-multiplication-result in mp4_writer_utils.c
@@ -1801,7 +1801,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.99 --regex '^test_t7_99$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.99`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.100: bugprone-implicit-widening-of-multiplication-result in onvif_detection.c
@@ -1819,7 +1819,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.100 --regex '^test_t7_100$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.100`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.101: bugprone-implicit-widening-of-multiplication-result in onvif_event.c
@@ -1837,7 +1837,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.101 --regex '^test_t7_101$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.101`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.102: bugprone-implicit-widening-of-multiplication-result in api_handlers_investigations.c
@@ -1855,7 +1855,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.102 --regex '^test_t7_102$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.102`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.103: bugprone-implicit-widening-of-multiplication-result in api_handlers_lpr.c
@@ -1873,7 +1873,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.103 --regex '^test_t7_103$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.103`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.104: bugprone-implicit-widening-of-multiplication-result in api_handlers_operator_floor_plans.c
@@ -1891,7 +1891,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.104 --regex '^test_t7_104$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.104`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.105: bugprone-implicit-widening-of-multiplication-result in api_handlers_storage.c
@@ -1909,7 +1909,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.105 --regex '^test_t7_105$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.105`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.106: bugprone-implicit-widening-of-multiplication-result in api_handlers_system_go2rtc.c
@@ -1927,7 +1927,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.106 --regex '^test_t7_106$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.106`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.107: bugprone-implicit-widening-of-multiplication-result in api_handlers_timeline.c
@@ -1945,7 +1945,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.107 --regex '^test_t7_107$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.107`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.108: bugprone-implicit-widening-of-multiplication-result in go2rtc_websocket.c
@@ -1963,7 +1963,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.108 --regex '^test_t7_108$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.108`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.109: bugprone-implicit-widening-of-multiplication-result in recording_archive.c
@@ -1981,7 +1981,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.109 --regex '^test_t7_109$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.109`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.110: bugprone-inc-dec-in-conditions in storage_source.c
@@ -1999,7 +1999,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.110 --regex '^test_t7_110$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.110`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.111: bugprone-macro-parentheses in cJSON.h
@@ -2017,7 +2017,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_111-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.111`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.112: bugprone-macro-parentheses in api_detection.c
@@ -2035,7 +2035,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.112 --regex '^test_t7_112$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.112`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.113: bugprone-misplaced-widening-cast in db_fleet_query.c
@@ -2053,7 +2053,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.113 --regex '^test_t7_113$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.113`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.114: bugprone-multi-level-implicit-pointer-conversion in authorization.c
@@ -2071,7 +2071,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.114 --regex '^test_t7_114$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.114`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.115: bugprone-multi-level-implicit-pointer-conversion in camera_collection_filter.c
@@ -2089,7 +2089,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.115 --regex '^test_t7_115$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.115`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.116: bugprone-multi-level-implicit-pointer-conversion in camera_selector.c
@@ -2107,7 +2107,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.116 --regex '^test_t7_116$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.116`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.117: bugprone-multi-level-implicit-pointer-conversion in db_storage_lifecycle.c
@@ -2125,7 +2125,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.117 --regex '^test_t7_117$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.117`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.118: bugprone-multi-level-implicit-pointer-conversion in hls_cache_cleanup.c
@@ -2143,7 +2143,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.118 --regex '^test_t7_118$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.118`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.119: bugprone-multi-level-implicit-pointer-conversion in mp4_segment_recorder.c
@@ -2161,7 +2161,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.119 --regex '^test_t7_119$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.119`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.120: bugprone-multi-level-implicit-pointer-conversion in mp4_writer_core.c
@@ -2179,7 +2179,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.120 --regex '^test_t7_120$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.120`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.121: bugprone-multi-level-implicit-pointer-conversion in mp4_writer_utils.c
@@ -2197,7 +2197,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.121 --regex '^test_t7_121$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.121`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.122: bugprone-multi-level-implicit-pointer-conversion in unified_detection_thread.c
@@ -2215,7 +2215,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.122 --regex '^test_t7_122$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.122`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.123: bugprone-multi-level-implicit-pointer-conversion in api_handlers_camera_collections.c
@@ -2233,7 +2233,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.123 --regex '^test_t7_123$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.123`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.124: bugprone-multi-level-implicit-pointer-conversion in api_handlers_fleet.c
@@ -2251,7 +2251,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.124 --regex '^test_t7_124$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.124`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.125: bugprone-multi-level-implicit-pointer-conversion in api_handlers_retention.c
@@ -2269,7 +2269,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.125 --regex '^test_t7_125$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.125`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.126: bugprone-multi-level-implicit-pointer-conversion in api_handlers_storage_policies.c
@@ -2287,7 +2287,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.126 --regex '^test_t7_126$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.126`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.127: bugprone-narrowing-conversions in api_timing.h
@@ -2305,7 +2305,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.127 --regex '^test_t7_127$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.127`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.128: bugprone-narrowing-conversions in path_utils.c
@@ -2323,7 +2323,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.128 --regex '^test_t7_128$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.128`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.129: bugprone-narrowing-conversions in db_storage_lifecycle.c
@@ -2341,7 +2341,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.129 --regex '^test_t7_129$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.129`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.130: bugprone-narrowing-conversions in mp4_writer_utils.c
@@ -2359,7 +2359,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.130 --regex '^test_t7_130$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.130`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.131: bugprone-narrowing-conversions in stream_frame_rate.c
@@ -2377,7 +2377,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.131 --regex '^test_t7_131$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.131`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.132: bugprone-narrowing-conversions in api_handlers_storage_compliance.c
@@ -2395,7 +2395,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.132 --regex '^test_t7_132$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.132`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.133: bugprone-narrowing-conversions in httpd_utils.c
@@ -2413,7 +2413,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.133 --regex '^test_t7_133$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.133`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.134: bugprone-not-null-terminated-result in mqtt_destination_client.c
@@ -2431,7 +2431,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.134 --regex '^test_t7_134$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.134`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.135: bugprone-not-null-terminated-result in linux_hardware.c
@@ -2449,7 +2449,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.135 --regex '^test_t7_135$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.135`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.136: bugprone-suspicious-string-compare in db_storage_targets.c
@@ -2467,7 +2467,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.136 --regex '^test_t7_136$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.136`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.137: bugprone-suspicious-string-compare in storage_deletion.c
@@ -2485,7 +2485,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.137 --regex '^test_t7_137$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.137`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.138: bugprone-suspicious-string-compare in storage_migration.c
@@ -2503,7 +2503,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.138 --regex '^test_t7_138$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.138`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.139: bugprone-suspicious-string-compare in storage_s3.c
@@ -2521,7 +2521,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.139 --regex '^test_t7_139$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.139`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.140: bugprone-suspicious-string-compare in storage_source.c
@@ -2539,7 +2539,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.140 --regex '^test_t7_140$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.140`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.141: bugprone-suspicious-string-compare in recording_archive.c
@@ -2557,7 +2557,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.141 --regex '^test_t7_141$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.141`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.142: bugprone-unsafe-functions,cert-msc24-c,cert-msc33-c in storage_s3.c
@@ -2575,7 +2575,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.142 --regex '^test_t7_142$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.142`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.143: cert-err34-c in linux_device_map.c, linux_hardware.c
@@ -2593,7 +2593,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.143 --regex '^test_t7_143$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.143`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.144: cert-err34-c in ffmpeg_rss_guard.c
@@ -2611,7 +2611,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.144 --regex '^test_t7_144$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.144`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.145: cert-err34-c in go2rtc_integration.c, go2rtc_process.c
@@ -2629,7 +2629,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.145 --regex '^test_t7_145$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.145`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.146: cert-err34-c in onvif_detection.c
@@ -2647,7 +2647,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.146 --regex '^test_t7_146$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.146`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.147: cert-err34-c in api_handlers_go2rtc_proxy.c
@@ -2665,7 +2665,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.147 --regex '^test_t7_147$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.147`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.148: cert-err34-c in api_handlers_investigations.c
@@ -2683,7 +2683,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.148 --regex '^test_t7_148$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.148`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.149: cert-err34-c in api_handlers_system_logs.c
@@ -2701,7 +2701,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.149 --regex '^test_t7_149$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.149`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.150: cert-err34-c in go2rtc_websocket.c
@@ -2719,7 +2719,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.150 --regex '^test_t7_150$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.150`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.151: cert-int09-c in authorization.h
@@ -2737,7 +2737,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.151 --regex '^test_t7_151$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.151`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.152: cert-int09-c in faac.h
@@ -2755,7 +2755,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_152-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.152`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.153: clang-analyzer-deadcode.DeadStores in db_system_health_incidents.c
@@ -2773,7 +2773,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.153 --regex '^test_t7_153$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.153`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.154: clang-analyzer-deadcode.DeadStores in go2rtc_integration.c
@@ -2791,7 +2791,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.154 --regex '^test_t7_154$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.154`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.155: clang-analyzer-deadcode.DeadStores in mp4_segment_recorder.c
@@ -2809,7 +2809,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.155 --regex '^test_t7_155$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.155`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.156: clang-analyzer-deadcode.DeadStores in onvif_ptz.c
@@ -2827,7 +2827,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.156 --regex '^test_t7_156$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.156`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.157: clang-analyzer-deadcode.DeadStores in recording_path.c
@@ -2845,7 +2845,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.157 --regex '^test_t7_157$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.157`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.158: clang-analyzer-deadcode.DeadStores in api_handlers_health.c
@@ -2863,7 +2863,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.158 --regex '^test_t7_158$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.158`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.159: invalidPointerCast in sod.c
@@ -2881,7 +2881,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_159-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.159`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.160: jsx-a11y/anchor-is-valid in Header.jsx
@@ -2902,7 +2902,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.160/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/anchor-is-valid'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.160`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.161: jsx-a11y/click-events-have-key-events in GridPicker.jsx, HLSVideoCell.jsx, HealthView.jsx, MSEVideoCell.jsx, StreamCard.jsx, StreamsView.jsx
@@ -2923,7 +2923,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.161/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.161`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.162: jsx-a11y/click-events-have-key-events in ToastContainer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx, LanguageSelector.jsx, ModalDialog.jsx
@@ -2944,7 +2944,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.162/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.162`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.163: jsx-a11y/click-events-have-key-events in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx
@@ -2965,7 +2965,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.163/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.163`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.164: jsx-a11y/click-events-have-key-events in AccessPolicyModal.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, DeleteUserModal.jsx, EditUserModal.jsx
@@ -2986,7 +2986,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.164/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.164`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.165: jsx-a11y/click-events-have-key-events in RoleManagerModal.jsx, TotpSetupModal.jsx
@@ -3007,7 +3007,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.165/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.165`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.166: jsx-a11y/control-has-associated-label in AuthGate.jsx, BatchDownloadModal.jsx, DetectionOverlay.jsx, FleetView.jsx, FullscreenManager.jsx, HLSVideoCell.jsx
@@ -3028,7 +3028,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.166/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.166`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.167: jsx-a11y/control-has-associated-label in LiveView.jsx, LoginView.jsx, MSEVideoCell.jsx, SetupWizard.jsx, SnapshotManager.jsx, StreamConfigModal.jsx
@@ -3049,7 +3049,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.167/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.167`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.168: jsx-a11y/control-has-associated-label in StreamsView.jsx, ThemeCustomizer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx, ModalDialog.jsx
@@ -3070,7 +3070,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.168/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.168`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.169: jsx-a11y/control-has-associated-label in EventDestinationEditor.jsx, EventRouteEditor.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, CollectionSelectorBuilder.jsx, FleetFilters.jsx
@@ -3091,7 +3091,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.169/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.169`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.170: jsx-a11y/control-has-associated-label in OrganizationManager.jsx, SavedViewsBar.jsx, StaticCollectionMembers.jsx, InvestigationActions.jsx, InvestigationBookmarks.jsx, InvestigationView.jsx
@@ -3112,7 +3112,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.170/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.170`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.171: jsx-a11y/control-has-associated-label in LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx, PlanSketchControls.jsx, FiltersSidebar.jsx, RecordingsGrid.jsx, RecordingsTable.jsx
@@ -3133,7 +3133,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.171/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.171`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.172: jsx-a11y/control-has-associated-label in TagsOverlay.jsx, AdvancedTab.jsx, AuthTab.jsx, DetectionTab.jsx, GeneralTab.jsx, Go2rtcTab.jsx
@@ -3154,7 +3154,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.172/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.172`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.173: jsx-a11y/control-has-associated-label in HealthTab.jsx, MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, StreamStorage.jsx, CalendarPicker.jsx
@@ -3175,7 +3175,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.173/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.173`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.174: jsx-a11y/control-has-associated-label in TimelineControls.jsx, TimelinePlayer.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, EditUserModal.jsx
@@ -3196,7 +3196,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.174/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.174`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.175: jsx-a11y/control-has-associated-label in RoleManagerModal.jsx, TotpSetupModal.jsx, UsersTable.jsx
@@ -3217,7 +3217,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.175/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.175`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.176: jsx-a11y/interactive-supports-focus in MobileTileGestures.jsx
@@ -3238,7 +3238,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.176/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/interactive-supports-focus'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.176`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.177: jsx-a11y/label-has-associated-control in BatchDownloadModal.jsx, StreamConfigModal.jsx, EventDestinationEditor.jsx, EventRouteEditor.jsx, CollectionManager.jsx, StaticCollectionMembers.jsx
@@ -3259,7 +3259,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
@@ -3280,7 +3280,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.178/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.178`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.179: jsx-a11y/label-has-for in AuthGate.jsx, BatchDownloadModal.jsx, FleetView.jsx, LiveView.jsx, LoginView.jsx, SetupWizard.jsx
@@ -3301,7 +3301,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.179/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.179`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.180: jsx-a11y/label-has-for in StreamCard.jsx, StreamConfigModal.jsx, StreamsView.jsx, UI.jsx, ZoneEditor.jsx, ModalDialog.jsx
@@ -3322,7 +3322,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.180/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.180`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.181: jsx-a11y/label-has-for in EventDestinationEditor.jsx, EventRouteEditor.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, CollectionSelectorBuilder.jsx, FleetTable.jsx
@@ -3343,7 +3343,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.181/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.181`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.182: jsx-a11y/label-has-for in OrganizationManager.jsx, SavedViewsBar.jsx, StaticCollectionMembers.jsx, InvestigationActions.jsx, InvestigationBookmarks.jsx, InvestigationView.jsx
@@ -3364,7 +3364,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.182/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.182`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.183: jsx-a11y/label-has-for in LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx, FiltersSidebar.jsx, RecordingsGrid.jsx, RecordingsTable.jsx, TagsOverlay.jsx
@@ -3385,7 +3385,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.183/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.183`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.184: jsx-a11y/label-has-for in AdvancedTab.jsx, AuthTab.jsx, DetectionTab.jsx, GeneralTab.jsx, Go2rtcTab.jsx, HealthTab.jsx
@@ -3406,7 +3406,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.184/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.184`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.185: jsx-a11y/label-has-for in MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, WorkspacesTab.jsx, TimelinePage.jsx, TimelinePlayer.jsx
@@ -3427,7 +3427,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.185/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.185`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.186: jsx-a11y/label-has-for in AccessPolicyModal.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditDecisionModes.jsx, AuditHistoryModal.jsx, EditUserModal.jsx
@@ -3448,7 +3448,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.186/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.186`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.187: jsx-a11y/label-has-for in RoleManagerModal.jsx, TotpSetupModal.jsx
@@ -3469,7 +3469,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.187/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.187`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.188: jsx-a11y/media-has-caption in HLSVideoCell.jsx, MSEVideoCell.jsx, UI.jsx, WebRTCVideoCell.jsx, InvestigationView.jsx, TimelinePlayer.jsx
@@ -3490,7 +3490,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.188/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/media-has-caption'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.188`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.189: jsx-a11y/mouse-events-have-key-events in DayNightControl.jsx, HLSVideoCell.jsx, SnapshotManager.jsx, StreamCard.jsx, StreamsView.jsx, Toast.jsx
@@ -3511,7 +3511,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.189/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/mouse-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.189`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.190: jsx-a11y/mouse-events-have-key-events in WebRTCVideoCell.jsx, RecordingsTable.jsx, TimelinePage.jsx
@@ -3532,7 +3532,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.190/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/mouse-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.190`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.191: jsx-a11y/no-autofocus in AuthGate.jsx, LoginView.jsx, EventDestinationEditor.jsx, EventRouteEditor.jsx, CollectionManager.jsx, OrganizationManager.jsx
@@ -3553,7 +3553,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.191/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-autofocus'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.191`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.192: jsx-a11y/no-autofocus in InvestigationBookmarks.jsx, TotpSetupModal.jsx
@@ -3574,7 +3574,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.192/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-autofocus'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.192`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.193: jsx-a11y/no-noninteractive-element-interactions in FisheyeEptzCanvas.jsx, StreamCard.jsx, ZoneEditor.jsx, LanguageSelector.jsx, InvestigationView.jsx, LiveBuildingPlan.jsx
@@ -3595,7 +3595,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.193/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.193`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.194: jsx-a11y/no-noninteractive-element-interactions in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, TimelineCursor.jsx, TimelineSegments.jsx, AccessPolicyModal.jsx, AddUserModal.jsx
@@ -3616,7 +3616,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.194/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.194`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.195: jsx-a11y/no-noninteractive-element-interactions in ApiKeyModal.jsx, AuditHistoryModal.jsx, EditUserModal.jsx, RoleManagerModal.jsx
@@ -3637,7 +3637,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.195/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.195`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.196: jsx-a11y/no-noninteractive-tabindex in FisheyeEptzCanvas.jsx, LanguageSelector.jsx
@@ -3658,7 +3658,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.196/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-tabindex'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.196`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.197: jsx-a11y/no-static-element-interactions in GridPicker.jsx, HLSVideoCell.jsx, HealthView.jsx, LiveView.jsx, MSEVideoCell.jsx, StreamCard.jsx
@@ -3679,7 +3679,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.197/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.197`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.198: jsx-a11y/no-static-element-interactions in StreamConfigModal.jsx, StreamsView.jsx, ToastContainer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx
@@ -3700,7 +3700,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.198/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.198`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.199: jsx-a11y/no-static-element-interactions in ModalDialog.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, OrganizationManager.jsx, LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx
@@ -3721,7 +3721,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.199/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.199`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.200: jsx-a11y/no-static-element-interactions in RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx, AccessPolicyModal.jsx
@@ -3742,7 +3742,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.200/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.200`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.201: jsx-a11y/no-static-element-interactions in AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, DeleteUserModal.jsx, EditUserModal.jsx, RoleManagerModal.jsx
@@ -3763,7 +3763,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.201/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.201`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.202: jsx-a11y/no-static-element-interactions in TotpSetupModal.jsx
@@ -3784,7 +3784,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.202/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.202`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.203: nullPointerArithmeticRedundantCheck in sod_img_writer.h
@@ -3802,7 +3802,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_203-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.203`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.204: nullPointerRedundantCheck in sod_img_writer.h
@@ -3820,7 +3820,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_204-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.204`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.205: wrongPrintfScanfArgNum in linux_thermal.c
@@ -3838,7 +3838,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.205 --regex '^test_t7_205$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.205`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.206: zerodivcond in sod_img_reader.h
@@ -3856,7 +3856,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_206-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.206`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.207: arrayIndexThenCheck in sod_img_writer.h
@@ -3874,7 +3874,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_207-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.207`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.208: constParameter in linux_network.c
@@ -3892,7 +3892,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.208 --regex '^test_t7_208$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.208`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.209: constParameter in api_handlers_investigations.c
@@ -3910,7 +3910,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.209 --regex '^test_t7_209$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.209`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.210: constParameterCallback in sod_img_reader.h, sod_img_writer.h
@@ -3928,7 +3928,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_210-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.210`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.211: constParameterCallback in storage_migration.c
@@ -3946,7 +3946,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.211 --regex '^test_t7_211$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.211`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.212: constParameterCallback in yaml_redact.c
@@ -3964,7 +3964,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.212 --regex '^test_t7_212$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.212`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.213: constParameterCallback in api_detection.c
@@ -3982,7 +3982,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.213 --regex '^test_t7_213$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.213`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.214: constParameterCallback in go2rtc_api.c, go2rtc_integration.c, go2rtc_snapshot.c
@@ -4000,7 +4000,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.214 --regex '^test_t7_214$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.214`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.215: constParameterCallback in onvif_detection.c
@@ -4018,7 +4018,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.215 --regex '^test_t7_215$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.215`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.216: constParameterCallback in onvif_device_management.c
@@ -4036,7 +4036,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.216 --regex '^test_t7_216$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.216`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.217: constParameterCallback in onvif_imaging.c
@@ -4054,7 +4054,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.217 --regex '^test_t7_217$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.217`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.218: constParameterCallback in onvif_ptz.c
@@ -4072,7 +4072,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.218 --regex '^test_t7_218$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.218`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.219: constParameterCallback in api_handlers_go2rtc_proxy.c
@@ -4090,7 +4090,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.219 --regex '^test_t7_219$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.219`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.220: constParameterCallback in api_handlers_health.c
@@ -4108,7 +4108,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.220 --regex '^test_t7_220$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.220`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.221: constParameterCallback in go2rtc_proxy_thread.c
@@ -4126,7 +4126,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.221 --regex '^test_t7_221$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.221`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.222: constParameterPointer in sod_img_reader.h, sod_img_writer.h
@@ -4144,7 +4144,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_222-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.222`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.223: constParameterPointer in authorization.c
@@ -4162,7 +4162,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.223 --regex '^test_t7_223$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.223`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.224: constParameterPointer in mqtt_destination_client.c
@@ -4180,7 +4180,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.224 --regex '^test_t7_224$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.224`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.225: constParameterPointer in db_camera_collections.c
@@ -4198,7 +4198,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.225 --regex '^test_t7_225$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.225`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.226: constParameterPointer in ezxml.c
@@ -4216,7 +4216,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_226-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.226`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.227: constParameterPointer in sod.c
@@ -4234,7 +4234,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_227-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.227`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.228: constParameterPointer in linux_cgroup.c
@@ -4252,7 +4252,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.228 --regex '^test_t7_228$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.228`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.229: constParameterPointer in nvme_provider.c
@@ -4270,7 +4270,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.229 --regex '^test_t7_229$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.229`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.230: constParameterPointer in system_health_evaluator.c
@@ -4288,7 +4288,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.230 --regex '^test_t7_230$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.230`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.231: constParameterPointer in go2rtc_base_path.c
@@ -4306,7 +4306,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.231 --regex '^test_t7_231$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.231`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.232: constParameterPointer in strings.c
@@ -4324,7 +4324,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.232 --regex '^test_t7_232$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.232`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.233: constParameterPointer in faac_encoder.c
@@ -4342,7 +4342,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.233 --regex '^test_t7_233$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.233`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.234: constParameterPointer in hls_unified_thread.c
@@ -4360,7 +4360,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.234 --regex '^test_t7_234$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.234`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.235: constParameterPointer in unified_detection_thread.c
@@ -4378,7 +4378,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.235 --regex '^test_t7_235$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.235`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.236: constParameterPointer in go2rtc_websocket.c
@@ -4396,7 +4396,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.236 --regex '^test_t7_236$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.236`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.237: constParameterPointer in recording_archive.c
@@ -4414,7 +4414,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.237 --regex '^test_t7_237$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.237`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.238: constVariable in sod_img_reader.h, sod_img_writer.h
@@ -4432,7 +4432,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_238-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.238`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.239: constVariable in mqtt_delivery_worker.c
@@ -4450,7 +4450,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.239 --regex '^test_t7_239$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.239`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.240: constVariable in sod.c
@@ -4468,7 +4468,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_240-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.240`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.241: constVariable in sod_ingenic_mxu.c
@@ -4486,7 +4486,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_241-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.241`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.242: constVariablePointer in sod_img_reader.h, sod_img_writer.h
@@ -4504,7 +4504,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_242-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.242`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.243: constVariablePointer in path_utils.c
@@ -4522,7 +4522,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.243 --regex '^test_t7_243$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.243`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.244: constVariablePointer in db_auth.c
@@ -4540,7 +4540,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.244 --regex '^test_t7_244$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.244`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.245: constVariablePointer in db_authorization.c
@@ -4558,7 +4558,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.245 --regex '^test_t7_245$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.245`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.246: constVariablePointer in db_camera_tags.c
@@ -4576,7 +4576,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.246 --regex '^test_t7_246$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.246`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.247: constVariablePointer in db_core.c
@@ -4594,7 +4594,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.247 --regex '^test_t7_247$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.247`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.248: constVariablePointer in db_fleet_query.c
@@ -4612,7 +4612,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.248 --regex '^test_t7_248$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.248`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.249: constVariablePointer in db_storage_lifecycle.c
@@ -4630,7 +4630,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.249 --regex '^test_t7_249$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.249`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.250: constVariablePointer in ezxml.c
@@ -4648,7 +4648,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_250-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.250`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.251: constVariablePointer in sod.c
@@ -4666,7 +4666,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_251-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.251`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.252: constVariablePointer in storage_deletion.c
@@ -4684,7 +4684,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.252 --regex '^test_t7_252$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.252`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.253: constVariablePointer in storage_source.c
@@ -4702,7 +4702,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.253 --regex '^test_t7_253$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.253`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.254: constVariablePointer in linux_network.c, linux_process.c, linux_thermal.c
@@ -4720,7 +4720,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.254 --regex '^test_t7_254$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.254`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.255: constVariablePointer in linux_device_map.c, linux_hardware.c, nvme_provider.c
@@ -4738,7 +4738,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.255 --regex '^test_t7_255$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.255`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.256: constVariablePointer in system_health.c
@@ -4756,7 +4756,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.256 --regex '^test_t7_256$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.256`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.257: constVariablePointer in system_health_evaluator.c
@@ -4774,7 +4774,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.257 --regex '^test_t7_257$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.257`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.258: constVariablePointer in go2rtc_base_path.c
@@ -4792,7 +4792,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.258 --regex '^test_t7_258$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.258`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.259: constVariablePointer in detection_model.c
@@ -4810,7 +4810,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.259 --regex '^test_t7_259$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.259`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.260: constVariablePointer in go2rtc_integration.c, go2rtc_process.c
@@ -4828,7 +4828,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.260 --regex '^test_t7_260$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.260`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.261: constVariablePointer in mp4_recording_core.c
@@ -4846,7 +4846,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.261 --regex '^test_t7_261$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.261`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.262: constVariablePointer in mp4_recording_writer.c
@@ -4864,7 +4864,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.262 --regex '^test_t7_262$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.262`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.263: constVariablePointer in stream_state_adapter.c
@@ -4882,7 +4882,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.263 --regex '^test_t7_263$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.263`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.264: constVariablePointer in api_handlers_go2rtc_proxy.c
@@ -4900,7 +4900,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.264 --regex '^test_t7_264$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.264`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.265: constVariablePointer in api_handlers_recordings_list.c
@@ -4918,7 +4918,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.265 --regex '^test_t7_265$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.265`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.266: constVariablePointer in api_handlers_recordings_thumbnail.c
@@ -4936,7 +4936,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.266 --regex '^test_t7_266$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.266`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.267: constVariablePointer in api_handlers_system_logs.c
@@ -4954,7 +4954,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.267 --regex '^test_t7_267$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.267`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.268: constVariablePointer in api_handlers_timeline.c
@@ -4972,7 +4972,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.268 --regex '^test_t7_268$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.268`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.269: constVariablePointer in api_handlers_users_backend_agnostic.c
@@ -4990,7 +4990,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.269 --regex '^test_t7_269$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.269`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.270: constVariablePointer in httpd_utils.c
@@ -5008,7 +5008,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.270 --regex '^test_t7_270$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.270`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.271: duplicateAssignExpression in sod.c
@@ -5026,7 +5026,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_271-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.271`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.272: duplicateCondition in motion_detection.c
@@ -5044,7 +5044,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.272 --regex '^test_t7_272$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.272`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.273: js/unused-local-variable in LanguageSelector.jsx
@@ -5065,7 +5065,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.273/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'js/unused-local-variable'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.273`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.274: knownConditionTrueFalse in sod_img_reader.h
@@ -5083,7 +5083,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_274-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.274`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.275: knownConditionTrueFalse in event_router.c
@@ -5101,7 +5101,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.275 --regex '^test_t7_275$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.275`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.276: knownConditionTrueFalse in mqtt_event_adapter.c
@@ -5119,7 +5119,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.276 --regex '^test_t7_276$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.276`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.277: knownConditionTrueFalse in db_storage_targets.c
@@ -5137,7 +5137,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.277 --regex '^test_t7_277$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.277`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.278: knownConditionTrueFalse in ezxml.c
@@ -5155,7 +5155,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_278-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.278`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.279: knownConditionTrueFalse in sod.c
@@ -5173,7 +5173,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_279-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.279`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.280: knownConditionTrueFalse in linux_process.c
@@ -5191,7 +5191,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.280 --regex '^test_t7_280$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.280`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.281: knownConditionTrueFalse in health_helper_runner.c
@@ -5209,7 +5209,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.281 --regex '^test_t7_281$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.281`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.282: knownConditionTrueFalse in api_handlers_imaging.c
@@ -5227,7 +5227,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.282 --regex '^test_t7_282$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.282`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.283: redundantCondition in sod_img_reader.h
@@ -5245,7 +5245,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_283-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.283`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.284: redundantInitialization in sod_img_reader.h
@@ -5263,7 +5263,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_284-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.284`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.285: redundantInitialization in db_authorization.c
@@ -5281,7 +5281,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.285 --regex '^test_t7_285$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.285`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.286: redundantInitialization in recording_path.c
@@ -5299,7 +5299,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.286 --regex '^test_t7_286$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.286`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.287: redundantPointerOp in sod.c
@@ -5317,7 +5317,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_287-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.287`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.288: shadowFunction in db_storage_targets.c
@@ -5335,7 +5335,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.288 --regex '^test_t7_288$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.288`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.289: shadowFunction in stream_manager.c
@@ -5353,7 +5353,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.289 --regex '^test_t7_289$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.289`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.290: shadowVariable in config.h
@@ -5371,7 +5371,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.290 --regex '^test_t7_290$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.290`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.291: unpreciseMathCall in sod.c
@@ -5389,7 +5389,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_291-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.291`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.292: unreadVariable in sod_img_reader.h
@@ -5407,7 +5407,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_292-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.292`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.293: unreadVariable in mqtt_client.c
@@ -5425,7 +5425,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.293 --regex '^test_t7_293$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.293`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.294: unreadVariable in sod.c
@@ -5443,7 +5443,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_294-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.294`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.295: unreadVariable in onvif_ptz.c
@@ -5461,7 +5461,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.295 --regex '^test_t7_295$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.295`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.296: unsignedLessThanZero in sod.c
@@ -5479,7 +5479,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_296-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.296`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.297: unusedStructMember in mqtt_destination_client.c
@@ -5497,7 +5497,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.297 --regex '^test_t7_297$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.297`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.298: unusedStructMember in sod.c
@@ -5515,7 +5515,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_298-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.298`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.299: unusedStructMember in sod_detection.c
@@ -5533,7 +5533,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.299 --regex '^test_t7_299$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.299`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.300: uselessAssignmentArg in sod.c
@@ -5551,7 +5551,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_300-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.300`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.301: variableScope in sod_img_reader.h, sod_img_writer.h
@@ -5569,7 +5569,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_301-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.301`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.302: variableScope in db_detection_engines.c
@@ -5587,7 +5587,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.302 --regex '^test_t7_302$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.302`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.303: variableScope in db_lpr_reads.c
@@ -5605,7 +5605,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.303 --regex '^test_t7_303$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.303`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.304: variableScope in db_recordings.c
@@ -5623,7 +5623,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.304 --regex '^test_t7_304$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.304`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.305: variableScope in ezxml.c
@@ -5641,7 +5641,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_305-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.305`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.306: variableScope in sod.c
@@ -5659,7 +5659,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -m json.tool quality/reviews/t7_306-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.306`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.307: variableScope in storage_deletion.c
@@ -5677,7 +5677,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.307 --regex '^test_t7_307$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.307`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.308: variableScope in storage_migration.c
@@ -5695,7 +5695,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.308 --regex '^test_t7_308$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.308`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.309: variableScope in storage_placement.c
@@ -5713,7 +5713,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.309 --regex '^test_t7_309$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.309`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.310: variableScope in storage_s3.c
@@ -5731,7 +5731,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.310 --regex '^test_t7_310$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.310`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.311: variableScope in linux_cgroup.c, linux_thermal.c
@@ -5749,7 +5749,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.311 --regex '^test_t7_311$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.311`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.312: variableScope in stream_metrics.c
@@ -5767,7 +5767,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.312 --regex '^test_t7_312$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.312`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.313: variableScope in api_detection.c
@@ -5785,7 +5785,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.313 --regex '^test_t7_313$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.313`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.314: variableScope in hls_directory.c
@@ -5803,7 +5803,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.314 --regex '^test_t7_314$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.314`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.315: variableScope in recording_transcode.c
@@ -5821,7 +5821,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.315 --regex '^test_t7_315$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.315`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.316: variableScope in unified_detection_thread.c
@@ -5839,7 +5839,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 scripts/quality/run-native.py --task T7.316 --regex '^test_t7_316$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.316`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.317: Authenticate before exposing stream existence
@@ -5856,7 +5856,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.317 --project api --grep @t7_317`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.318: Correct documented Streams wire examples
@@ -5872,7 +5872,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/check_docs_links.py`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.319: Remove query credentials from viewer URLs
@@ -5889,7 +5889,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.319 --project api --grep @t7_319`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.320: Reject non-object stream updates
@@ -5906,7 +5906,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.320 --project api --grep @t7_320`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.321: Reject wrong-typed stream fields
@@ -5923,7 +5923,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.321 --project api --grep @t7_321`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.322: Validate bounded stream numeric fields
@@ -5940,7 +5940,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.322 --project api --grep @t7_322`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.323: Validate complete boolean schedules
@@ -5957,7 +5957,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.323 --project api --grep @t7_323`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.324: Address encoded slash names without aliasing
@@ -5974,7 +5974,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.324 --project api --grep @t7_324`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.325: Enforce decoded stream name limits consistently
@@ -5991,7 +5991,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.325 --project api --grep @t7_325`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.326: Handle missing fleet inventory rows consistently
@@ -6008,7 +6008,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.326 --project api --grep @t7_326`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.327: Preserve omitted ONVIF update state
@@ -6025,7 +6025,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.327 --project api --grep @t7_327`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.328: Make privacy mutations atomic and report failure
@@ -6042,7 +6042,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.328 --project api --grep @t7_328`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.329: Expose demo mode for authenticated users
@@ -6059,7 +6059,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.329 --project api --grep @t7_329`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.330: Reject overlong stream strings without truncation
@@ -6076,7 +6076,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.330 --project api --grep @t7_330`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.331: Bound ONVIF edit validation latency
@@ -6093,7 +6093,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.331 --project api --grep @t7_331`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.332: Preserve detection threshold round trips
@@ -6110,7 +6110,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.332 --project api --grep @t7_332`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.333: Specify password omission and explicit clear semantics
@@ -6127,7 +6127,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node scripts/quality/run-integration.mjs --task T7.333 --project api --grep @t7_333`
   - `npm run typecheck:tests`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.334: Reconcile Streams contracts after behavioral fixes
@@ -6146,7 +6146,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `node --test tests/quality/contracts.test.mjs`
   - `npm --prefix web run typecheck`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
 
 ### T7.335: Resolve proposed ownership and exception review records
@@ -6162,5 +6162,5 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/exception-ownership.json`
 - **status**: Not Completed
-- **log**: 
+- **log**:
 - **files edited/created**:
