@@ -2865,5 +2865,19 @@
   "lpr.error.searchForbidden": "You do not have permission to search plates for this camera.",
   "lpr.error.cameras": "Could not load cameras.",
   "lpr.error.deleteFailed": "Could not delete the plate read.",
-  "lpr.error.generic": "The plate search failed. Try again."
+  "lpr.error.generic": "The plate search failed. Try again.",
+  "streamsConfig.go2rtcSourcePlaceholder": "rtsp://admin:pass@camera/stream#transport=tcp\n\nOr multi-source:\n- rtsp://admin:pass@camera/main#transport=tcp\n- ffmpeg:camera1#video=h264#hardware",
+  "settings.apiDetectionDoodsPlaceholder": "http://localhost:8080/detect",
+  "settings.apiDetectionOnnxPlaceholder": "http://localhost:8000/api/v1/detect",
+  "settings.go2rtcOverridePlaceholder": "ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace",
+  "settings.storageTargets.objectRootPlaceholder": "s3://{bucket}/instance",
+  "settings.storageTargets.localRootPlaceholder": "/mnt/nvr-hot-01",
+  "settings.storageTargets.bucketPlaceholder": "bucket",
+  "live.plan.canvasLabel": "{name} camera plan",
+  "live.plan.sketch.undoShortcut": "Undo drawing (Ctrl+Z)",
+  "live.plan.sketch.redoShortcut": "Redo drawing (Ctrl+Shift+Z)",
+  "recordings.thumbnailAlt": "{stream} recording",
+  "recordings.detectionCountOne": "{count} detection",
+  "recordings.detectionCountMany": "{count} detections",
+  "recordings.removeTagTitle": "Remove tag \"{tag}\""
 }
