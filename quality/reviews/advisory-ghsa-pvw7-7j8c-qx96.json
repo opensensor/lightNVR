@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "task": "T7.7",
+  "finding": "ADVISORY-GHSA-pvw7-7j8c-qx96",
+  "reviewed_on": "2026-10-31",
+  "reviewer": "Codex automated source and regression review",
+  "source": {
+    "visibility": "public",
+    "url": "https://github.com/opensensor/lightNVR/security/advisories/GHSA-pvw7-7j8c-qx96",
+    "state": "published",
+    "affected_versions": "<= 0.44.1",
+    "patched_versions_as_published": "None"
+  },
+  "current_source": {
+    "version": "0.45.1 (CMakeLists.txt)",
+    "reviewed_revision": "525f4d66272d137a42cdb4931d169dc9dede11c3",
+    "fix_commit": "507bce1c0715acad2012db7fdb5214738e68e43f",
+    "fix_is_ancestor": true
+  },
+  "status": "fixed-current-source-regression-verified",
+  "source_checks": [
+    {
+      "issue": "Decoded source identity must match authorization and upstream forwarding",
+      "paths": [
+        "src/web/api_handlers_go2rtc_proxy.c",
+        "src/web/go2rtc_proxy_thread.c"
+      ],
+      "evidence": "Shared parser decodes with capacity checking, rejects duplicate/alias keys and builds a canonical upstream query; capture uses same parser."
+    },
+    {
+      "issue": "Existing HLS session identity must be updated before choosing an empty cache slot",
+      "paths": [
+        "src/web/api_handlers_go2rtc_proxy.c"
+      ],
+      "evidence": "cache_hls_session searches existing identity while retaining first_free separately; exact earlier-hole regression exists."
+    },
+    {
+      "issue": "Workers must complete their final queue/handle access before shutdown destroys resources",
+      "paths": [
+        "src/web/go2rtc_proxy_thread.c"
+      ],
+      "evidence": "Worker sends async notification before decrementing active_count under done_mutex and signaling workers_done; shutdown waits for zero before closing handle/destroying synchronization."
+    }
+  ],
+  "regression": {
+    "command": "python3 scripts/quality/run-native.py --task T7.7 --profile integration --sanitizer asan-ubsan --regex '^test_go2rtc_proxy_(query|thread|routing)$' --jobs 4",
+    "status": "passed",
+    "artifacts": "build/eng-artifacts/T7.7/native-0d36764846fe",
+    "recorded_revision": "525f4d66272d137a42cdb4931d169dc9dede11c3",
+    "ctest_targets": 3,
+    "unity_tests": 18,
+    "failed": 0,
+    "ignored": 0,
+    "elapsed_seconds": 25.76
+  },
+  "limits": [
+    "No publication, advisory metadata update, human risk acceptance or baseline change.",
+    "Published patched-version field remains None; local source evidence is distinct from a published release statement.",
+    "Native focused regressions do not qualify every deployment or physical target."
+  ]
+}
