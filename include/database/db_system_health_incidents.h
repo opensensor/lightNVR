@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file db_system_health_incidents.h Durable host-health episode repository. */
 
 #ifndef LIGHTNVR_DB_SYSTEM_HEALTH_INCIDENTS_H

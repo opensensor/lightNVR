@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /* Authenticated, same-origin WebSocket transport for go2rtc playback.
  * Only a single authorized src reaches upstream. No credentials, arbitrary
  * request headers, publishing parameters or administrative routes are relayed.

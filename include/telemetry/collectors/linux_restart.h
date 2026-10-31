@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file linux_restart.h Bounded boot/process identity evidence. */
 
 #ifndef LIGHTNVR_LINUX_RESTART_HEALTH_H

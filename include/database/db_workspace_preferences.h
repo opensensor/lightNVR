@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 #ifndef LIGHTNVR_DB_WORKSPACE_PREFERENCES_H
 #define LIGHTNVR_DB_WORKSPACE_PREFERENCES_H
 

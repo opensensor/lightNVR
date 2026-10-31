@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file nvme_provider.h Read-only bounded NVMe health-log provider. */
 
 #ifndef LIGHTNVR_TELEMETRY_PROVIDERS_NVME_PROVIDER_H

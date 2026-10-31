@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /* Authenticated, bounded S3 range proxy. Each next read starts only after the
  * previous socket write completes. No archive request consumes PVC space. */
 #ifdef HTTP_BACKEND_LIBUV

@@ -1,4 +1,11 @@
 /*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
+/*
  * Ingenic MXU acceleration for SOD's non-transposed GEMM hot path.
  *
  * This file is part of Symisc SOD - Open Source Release (GPLv3).

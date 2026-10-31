@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file api_handlers_system_health.h Operational host-health API handlers. */
 
 #ifndef LIGHTNVR_API_HANDLERS_SYSTEM_HEALTH_H

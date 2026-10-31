@@ -1,4 +1,11 @@
 /*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
+/*
  * _XOPEN_SOURCE 700 implies _POSIX_C_SOURCE 200809L and additionally exposes
  * realpath(), which POSIX alone does not declare on either glibc or musl.
  */

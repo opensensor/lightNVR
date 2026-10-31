@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /* Limit the resident memory of go2rtc's ffmpeg children without constraining
  * FFmpeg's much larger virtual address reservations (notably libx264 stacks).
  * The guard remains the direct child of go2rtc so it can reap and signal the
