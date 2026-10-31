@@ -2375,7 +2375,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     safe_strcpy(task->stream_id, stream_id, sizeof(task->stream_id), 0);
     task->permanent_delete = permanent_delete;
 
-    // Send 202 Accepted response immediately so we don't block the event loop
+    // Prepare the accepted response; the backend sends it after this handler returns.
     cJSON *response_json = cJSON_CreateObject();
     if (!response_json) {
         log_error("Failed to create response JSON object");
@@ -2411,7 +2411,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     if (pthread_create(&thread_id, &attr, (void *(*)(void *))delete_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for DELETE stream");
         free(task);
-        // Response already sent, just log the error
+        http_response_set_json_error(res, 500, "Failed to start delete task");
     } else {
         log_info("DELETE stream task started in worker thread for: %s", stream_id);
     }
