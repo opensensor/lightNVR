@@ -156,7 +156,7 @@ async function openBrowser() {
       if(kind==='single') return h(TagsOverlay,{recording:{id:1,tags:['all']},onClose:()=>window.calls.close++,onTagsChanged:(...args)=>window.calls.updated.push(args)});
       if(kind==='bulk') return h(BulkTagsOverlay,{recordings:records,selectedRecordings:{1:true,2:true,3:false},onClose:()=>window.calls.close++,onTagsChanged:()=>{
         window.calls.updated.push([]);
-        // Model delivered post-save recording data. The opt-in reproducer withholds it,
+        // The bulk regression always withholds post-save recording data,
         // matching the real parent's pending query invalidation rather than claiming
         // this fixture exercises the parent/query integration.
         if(!options.staleRecords){const [ids,added,removed]=window.calls.tags.at(-1);setRecords(prev=>prev.map(record=>ids.includes(record.id)?{...record,tags:[...new Set([...record.tags.filter(tag=>!removed.includes(tag)),...added])]}:record));}
@@ -225,7 +225,7 @@ browserTest('single tags keep focused named input, Enter save, disabled pending 
 },30000);
 browserTest('bulk tags retain mixed state, selected IDs, one keyboard update, remove and new-tag save',async()=>{
  const {browser,page}=await openBrowser();try{
-  await page.evaluate(staleRecords=>window.mount('bulk',{staleRecords}),process.env.T7_172_STALE_REPRO==='1');const partial=page.getByRole('checkbox',{name:'partial',exact:true});await partial.waitFor();expect(await partial.evaluate(el=>el.indeterminate)).toBe(true);
+  await page.evaluate(()=>window.mount('bulk',{staleRecords:true}));const partial=page.getByRole('checkbox',{name:'partial',exact:true});await partial.waitFor();expect(await partial.evaluate(el=>el.indeterminate)).toBe(true);
   await partial.focus();await page.keyboard.press('Space');expect(await partial.isDisabled()).toBe(true);expect(await page.getByRole('textbox',{name:t('recordings.addNewTagPlaceholder'),exact:true}).isDisabled()).toBe(true);expect(await page.evaluate(()=>window.calls.tags)).toEqual([[[1,2],['partial'],[]]]);
   await page.evaluate(()=>window.finish());await page.waitForFunction(()=>window.calls.updated.length===1);expect(await partial.isChecked()).toBe(true);expect(await partial.evaluate(el=>el.indeterminate)).toBe(false);
   await partial.focus();await page.keyboard.press('Space');await page.evaluate(()=>window.finish());await page.waitForFunction(()=>window.calls.updated.length===2);expect(await partial.isChecked()).toBe(false);
