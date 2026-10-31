@@ -26,8 +26,6 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
   const canvasRef = useRef(null);
   const { t } = useI18n();
 
-  const stopPropagation = (e) => e.stopPropagation();
-
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/auth/users/${user.id}/totp/status`, {
@@ -132,8 +130,11 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="presentation" onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full">
         <h2 className="text-xl font-bold mb-4">{t('users.mfaSetupNamed', { username: user.username })}</h2>
 
         {error && (
