@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2025-2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /**
  * @file go2rtc_consumer.h
  * @brief Module for using go2rtc as a consumer for recording and HLS streaming

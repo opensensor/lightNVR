@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /**
  * @file go2rtc_proxy_thread.c
  * @brief Detached-pthread proxy for go2rtc reverse-proxy requests

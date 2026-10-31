@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2025-2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /**
  * @file batch_delete_progress.c
  * @brief Progress tracking for batch delete operations

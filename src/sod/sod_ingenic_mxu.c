@@ -1,4 +1,6 @@
 /*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Ingenic XBurst MXU2/MXU3 acceleration for SOD.
  *
  * Copyright (C) 2026 LightNVR contributors

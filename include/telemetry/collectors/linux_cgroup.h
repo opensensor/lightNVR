@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file linux_cgroup.h Linux cgroup v1/v2 health collector. */
 
 #ifndef LIGHTNVR_TELEMETRY_COLLECTORS_LINUX_CGROUP_H

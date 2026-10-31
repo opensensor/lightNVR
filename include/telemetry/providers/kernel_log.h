@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file kernel_log.h Optional nonblocking, privacy-safe kernel log provider. */
 
 #ifndef LIGHTNVR_TELEMETRY_PROVIDERS_KERNEL_LOG_H

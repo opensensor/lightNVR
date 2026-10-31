@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file system_health_collector.h Bounded portable collector contract. */
 
 #ifndef LIGHTNVR_SYSTEM_HEALTH_COLLECTOR_H

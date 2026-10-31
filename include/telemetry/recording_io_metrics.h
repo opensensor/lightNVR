@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file recording_io_metrics.h Lock-free recording write-failure evidence. */
 
 #ifndef LIGHTNVR_RECORDING_IO_METRICS_H

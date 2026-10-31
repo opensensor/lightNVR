@@ -1,3 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 OpenSensor Engineering and LightNVR contributors
+ *
+ * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
+ */
+
 /** @file smartctl_provider.h Optional bounded smartctl JSON provider. */
 
 #ifndef LIGHTNVR_TELEMETRY_PROVIDERS_SMARTCTL_PROVIDER_H
