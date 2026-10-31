@@ -1083,8 +1083,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.16 --regex '^test_t7_16$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.16`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `60bc1b68`)
+- **log**: Widen AAC bitrate operand before multiplication;16tests (3expected unsigned-wrap RED cases) nowGREEN, plus related media controls36/36 ASan/UBSan. Huge-channel cases use explicit seams; actual FAAC support/invalid-input controls remain unchanged. Fresh CodeQL remains T33.
 - **files edited/created**:
 
 ### T7.17: cpp/non-https-url in go2rtc_api.c
@@ -7181,10 +7181,10 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity build/CTest selection only, `tests/quality/native-ci.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery.
-- **acceptance_criteria**: All twelve added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All fourteen added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
-- **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Verified pressure-reconnect registration adds one more RED-to-GREEN check; final13/13 pass plus actionlint. Hosted execution unverified.
+- **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Verified pressure-reconnect registration adds one more RED-to-GREEN check; 13/13 pass plus actionlint. Verified AAC arithmetic and migration policy targets bring final checks to15/15, after2newRED omissions. Hosted execution unverified.
 - **files edited/created**:
 
 ## Expanded media recovery tasks (T27)

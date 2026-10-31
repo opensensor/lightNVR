@@ -634,7 +634,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Completed (commit `60bc1b68`)",
       "ownership": [
         "src/video/mp4_writer_utils.c",
         "tests/unit/test_t7_16.c",
@@ -668,7 +668,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Pre-multiply int64_t widening fixes exact CODEQL-329 expression. Three unsigned-wrap RED cases nowGREEN;16focused/36total native cases pass. Huge counts seam-only, actual FAAC controls preserved; fresh scanner remains T33."
     },
     {
       "id": "T7.17",
