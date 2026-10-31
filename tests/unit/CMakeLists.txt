@@ -139,6 +139,18 @@ target_sources(test_stream_frame_rate PRIVATE
 # ====================================================================
 add_layer2_test(test_config)
 add_layer2_test(test_db_core_initialization)
+add_layer2_test(test_db_backup_cleanup)
+target_link_options(test_db_backup_cleanup PRIVATE -Wl,--wrap=lstat -Wl,--wrap=fstatat
+    -Wl,--wrap=openat -Wl,--wrap=close -Wl,--wrap=fstat -Wl,--wrap=mkdirat
+    -Wl,--wrap=syscall -Wl,--wrap=unlinkat
+    -Wl,--wrap=readdir -Wl,--wrap=lightnvr_uuid_generate_v4)
+set_tests_properties(test_db_backup_cleanup PROPERTIES TIMEOUT 30)
+add_layer3_test(test_db_backup_retention_identity)
+target_link_options(test_db_backup_retention_identity PRIVATE -Wl,--wrap=stat -Wl,--wrap=fstat
+    -Wl,--wrap=openat -Wl,--wrap=close -Wl,--wrap=opendir -Wl,--wrap=closedir
+    -Wl,--wrap=readdir -Wl,--wrap=realloc -Wl,--wrap=strdup
+    -Wl,--wrap=syscall -Wl,--wrap=unlinkat)
+set_tests_properties(test_db_backup_retention_identity PROPERTIES TIMEOUT 30)
 add_layer2_test(test_logger)
 add_layer2_test(test_strings)
 add_layer2_test(test_interruptible_sleep)
