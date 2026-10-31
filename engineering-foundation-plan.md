@@ -1749,8 +1749,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.53 --regex '^test_t7_53$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.53`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Partial — arithmetic fix verified; raw diagnostic disposition pending
+- **log**: d9f30f1e guards signed capacity doubling and size multiplication after2genuine seam-only RED cases. Full44authorization/cache tests now pass after separate fixture repair230c6767. Opaque-context negative-index scanner path was not reproduced through public inputs; no approved false-positive or fresh scanner absence claimed.
 - **files edited/created**:
 
 ### T7.54: clang-analyzer-security.ArrayBound in logger_json.c
@@ -7181,7 +7181,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity and go2rtc build/CTest selections only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery. Follow-up includes verified stale-prune native controls and real historical migration guard/generator tests in the existing Foundation tooling job, with read-only generated-header drift check.
-- **acceptance_criteria**: All nineteen added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All twenty added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
 - **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Verified pressure-reconnect registration adds one more RED-to-GREEN check; 13/13 pass plus actionlint. Verified AAC arithmetic and migration policy targets bring final checks to15/15, after2newRED omissions. Stale-prune and durable migration/generator checks are integrated too: final24workflow checks,8Python migration/generator tests, read-only header check and both actionlint workflows pass. Advisory buffer/filesystem/settings targets also registered in go2rtc-enabled lane:27workflow checks and actionlint pass. Hosted execution unverified.
@@ -7441,8 +7441,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: The existing sensitive-handler test uses fixed /tmp recording paths while its configured legacy root is unavailable/unknown, so the durable deletion guard correctly queues work and returns202 instead of expected immediate200. Establish an owned available root and move only synthetic recording paths below it, restore configuration and remove fixture on success/failure. Keep expected200 and deleted metadata for the healthy-root case, denied403 and retained metadata for unauthorized requests. Free HTTP response on status assertion failure. Confirm source reason before edits; if another real product issue appears preserve RED and split it.
 - **acceptance_criteria**: Original34authorization cases pass with precise existing status/metadata/deny assertions intact; no200-or202 shortcut or weakened root protection. Private fixtures clean up and no leak remains on the formerly failing assertion path. Production code unchanged.
 - **validation**: Existing test_authorization plus T7.53 dedicated cache regressions under ASan/UBSan. Prior failure reproduced with pre-change authorization.c at native-2d47cc11c188; do not attribute fixture repair to the arithmetic guard.
-- **status**: Not Completed
-- **log**: Baseline33/34 fails because expected200 receives202; aborted assertion leaves83-byte response. Scope materialized before edits.
+- **status**: Completed (commit `230c6767`)
+- **log**: Owned available legacy root and synthetic paths preserve exact200/403/202 plus metadata assertions. Response cleanup precedes failing assertion;34authorization and10focused cases pass ASan/UBSan, no ignored/leaks; private root removed and config restored.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

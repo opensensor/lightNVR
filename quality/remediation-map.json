@@ -2610,7 +2610,7 @@
       ],
       "kind": "native-fix",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Partial \u2014 arithmetic fix verified; raw diagnostic disposition pending",
       "ownership": [
         "src/core/authorization.c",
         "tests/unit/test_t7_53.c",
@@ -2653,7 +2653,8 @@
           "scanner": "clang-tidy"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "d9f30f1e guards signed capacity doubling and size multiplication after2genuine seam-only RED cases. Full44authorization/cache tests now pass after separate fixture repair230c6767. Opaque-context negative-index scanner path was not reproduced through public inputs; no approved false-positive or fresh scanner absence claimed."
     },
     {
       "id": "T7.54",
