@@ -550,9 +550,51 @@ void test_unavailable_root_preserves_expired_metadata_until_restored(void) {
     TEST_ASSERT_EQUAL_INT(2, count);
     assert_recording_kept(expired);
     assert_recording_kept(protected_path);
-    TEST_ASSERT_EQUAL_INT(1, apply_retention_policy());
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE storage_deletion_objects SET next_attempt_at=0 WHERE state='retry_wait'", NULL, NULL, NULL));
+    TEST_ASSERT_GREATER_THAN_INT(0, storage_deletion_process_one());
     assert_recording_deleted(expired);
     assert_recording_kept(protected_path);
+    assert_database_integrity();
+}
+
+void test_healthy_root_missing_file_cleanup_is_idempotent(void) {
+    char missing[PATH_MAX];
+    create_mp4_dir();
+    add_stream_with_retention("missing", true, 1, 1);
+    uint64_t id = add_recording_aged("missing", "missing.mp4", 3 * 86400,
+        missing, sizeof(missing));
+    TEST_ASSERT_EQUAL_INT(0, unlink(missing));
+    uint64_t removed = 99;
+    TEST_ASSERT_EQUAL_INT(0, storage_recording_delete(id, "missing-file control", &removed));
+    TEST_ASSERT_EQUAL_UINT64(0, removed);
+    assert_recording_deleted(missing);
+    TEST_ASSERT_EQUAL_INT(0, storage_recording_delete(id, "idempotent control", &removed));
+    TEST_ASSERT_EQUAL_UINT64(0, removed);
+    assert_database_integrity();
+}
+
+void test_unknown_legacy_root_preserves_missing_metadata(void) {
+    char missing[PATH_MAX], configured[PATH_MAX];
+    create_mp4_dir();
+    snprintf(missing, sizeof(missing), "%s/unattributed.mp4", g_storage_root);
+    snprintf(configured, sizeof(configured), "%s/mp4", g_storage_root);
+    recording_metadata_t rec = make_recording("unknown", missing, time(NULL) - 86400, 1024);
+    uint64_t id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    /* Both directories are owned, but the legacy row is outside the configured
+     * root: the root's health cannot establish this object's absence. */
+    safe_strcpy(g_config.storage_path, configured, sizeof(g_config.storage_path), 0);
+    uint64_t removed = 99;
+    int result = storage_recording_delete(id, "unknown-root control", &removed);
+    safe_strcpy(g_config.storage_path, g_storage_root, sizeof(g_config.storage_path), 0);
+    TEST_ASSERT_EQUAL_INT(1, result);
+    TEST_ASSERT_EQUAL_UINT64(0, removed);
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &rec));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE storage_deletion_objects SET next_attempt_at=0 WHERE state='retry_wait'", NULL, NULL, NULL));
+    TEST_ASSERT_GREATER_THAN_INT(0, storage_deletion_process_one());
+    assert_recording_deleted(missing);
     assert_database_integrity();
 }
 
@@ -577,6 +619,8 @@ int main(void) {
     RUN_TEST(test_readonly_cleanup_preserves_metadata_and_recovers);
     RUN_TEST(test_io_failure_cleanup_preserves_metadata_and_recovers);
     RUN_TEST(test_unavailable_root_preserves_expired_metadata_until_restored);
+    RUN_TEST(test_healthy_root_missing_file_cleanup_is_idempotent);
+    RUN_TEST(test_unknown_legacy_root_preserves_missing_metadata);
     int result = UNITY_END();
 
     shutdown_database();

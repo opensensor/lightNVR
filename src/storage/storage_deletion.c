@@ -60,6 +60,27 @@ static int execute_id(sqlite3 *db, const char *sql, uint64_t id, const char *uui
     return result == SQLITE_DONE ? 0 : -1;
 }
 
+/* An unattributed legacy path has no persisted mount identity. ENOENT is
+ * authoritative only below the configured root while that root is available.
+ * Unknown roots remain retryable rather than discarding their metadata. This
+ * cannot detect an unmounted filesystem whose mount-point directory remains;
+ * attributed targets continue to use their existing mount guard below. */
+static bool legacy_missing_path_is_authoritative(const char *path) {
+    const char *root = g_config.storage_path;
+    size_t length = strlen(root);
+    while (length > 1 && root[length - 1] == '/') length--;
+    if (!length || strncmp(path, root, length) != 0 ||
+        (!(length == 1 && root[0] == '/') && path[length] != '/')) return false;
+    /* A lexical parent traversal must not borrow an unrelated root's health. */
+    const char *component = path + length;
+    while ((component = strstr(component, "/..")) != NULL) {
+        if (component[3] == '/' || component[3] == '\0') return false;
+        component += 3;
+    }
+    struct stat info;
+    return stat(root, &info) == 0 && S_ISDIR(info.st_mode);
+}
+
 static int process_item(const deletion_item_t *item, bool local_only, uint64_t *removed) {
     storage_target_t target;
     char path[MAX_PATH_LENGTH] = {0}, error[STORAGE_TARGET_ERROR_MAX] = {0};
@@ -87,7 +108,10 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
         if (lstat(path, &info) == 0 && !S_ISREG(info.st_mode)) {
             safe_strcpy(error, "Deletion object is not a regular file", sizeof(error), 0);
         } else if (unlink(path) == 0) success = file_removed = true;
-        else if (errno == ENOENT) success = true;
+        else if (errno == ENOENT) {
+            if (item->target[0] || legacy_missing_path_is_authoritative(path)) success = true;
+            else safe_strcpy(error, "Legacy deletion root is unavailable or unknown", sizeof(error), 0);
+        }
         else safe_strcpy(error, "Cannot remove recording file", sizeof(error), 0);
     }
     sqlite3 *db = get_db_handle();

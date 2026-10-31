@@ -24,6 +24,7 @@
 #include <sqlite3.h>
 
 #include "unity.h"
+#include "core/config.h"
 #include "utils/strings.h"
 #include "database/db_core.h"
 #include "database/db_recordings.h"
@@ -440,7 +441,9 @@ void test_pressure_cleanup_is_scoped_to_storage_target(void) {
 
 void test_delete_recording_removes_it(void) {
     time_t now = time(NULL);
-    recording_metadata_t m = make_recording("cam1", "/rec/del.mp4",
+    char missing_path[sizeof(test_db_path)];
+    snprintf(missing_path, sizeof(missing_path), "%s/deleted.mp4", test_db_dir);
+    recording_metadata_t m = make_recording("cam1", missing_path,
                                             now - 10 * 86400,
                                             "scheduled", false);
     uint64_t id = add_recording_metadata(&m);
@@ -534,6 +537,7 @@ void test_sqlite_full_rejects_new_recording_without_corruption_then_recovers(voi
 
 int main(void) {
     if (!mkdtemp(test_db_dir)) return 1;
+    safe_strcpy(g_config.storage_path, test_db_dir, sizeof(g_config.storage_path), 0);
     snprintf(test_db_path, sizeof(test_db_path), "%s/metadata.db", test_db_dir);
     /* Remove stale test DB from a previous run */
     unlink(TEST_DB_PATH);
