@@ -648,8 +648,8 @@ records and gate dependencies must be added by the named producer.
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T29 --regex '^test_shutdown_coordinator$'`
   - Execute the recorded lifecycle/upgrade commands against isolated old-version fixtures; verify deadline and persistence assertions independently of process exit.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (fixes `922bb288`/`cef412d7`, evidence `25278303`)
+- **log**: Original coordinator deadline and real upgrade/restart/crash checks all closed through bounded T29.1/.2/.3/.5 fixes. Actual13/13 passes against schema90 while immutable historical89fixture remains preserved; normal shutdown3843/4446ms, no forced cleanup or lingering owned processes. Host functional evidence only; physical-resource qualification remains deferred.
 - **files edited/created**:
 
 ### T30: Define and run repeated lifecycle/resource scenarios
@@ -7310,8 +7310,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Add tests-first coverage and narrow stale-recovery transaction for aged missing/zero-byte recordings on confirmed available storage. Recheck stale/incomplete identity, protection and migration safeguards within the transaction; prove no live writer owns the candidate. Preserve ordinary API rejection of incomplete recordings and retain rows when availability/ownership cannot be established. Age or failed stat alone is insufficient authorization to prune. Persist explicit expected missing/empty identity guards through T29.5 so delayed/restarted deletion refuses replacement or newly nonempty files. Conservatively require persisted disabled stream and no live continuous/MP4 writer; retain enabled or unknown stream candidates. Support legacy paths and explicitly attributed filesystem targets only: snapshot full target UUID/object key, require actual mount_guard_active/access checks and canonical existing root, resolve key to the exact stored path, compare target/key inside the claim transaction and again during queued processing. No sentinel guarantee is invented; nonfilesystem/unknown targets remain retained.
 - **acceptance_criteria**: RED reproduces phantom rows; GREEN removes only confirmed stale missing/empty metadata with consistent deletion bookkeeping. Recent/live, protected, migrating, unavailable-root and changed-since-selection candidates remain intact; general active-writer deletion tests stayGREEN. Attributed empty/missing positive controls and wrong-key, unavailable/mismatched mount/root, changed-target/key and re-enabled/live-after-queue negative controls pass. Corrected full T29 lifecycle passes13/13.
 - **validation**: `python3 scripts/quality/run-native.py --task T29.3 --regex '^test_(stale_recording_prune|storage_deletion_ledger)$' --jobs 4`; existing T28 retention controls and rebuilt T29 process scenario.
-- **status**: Not Completed
-- **log**: F-T29-02 is an interaction with the correct general active-writer guard, not permission to relax it.
+- **status**: Completed (fixes `922bb288`/`cef412d7`, evidence `25278303`)
+- **log**: Tests-first delayed/reopened file and ownership guards plus attributed filesystem identity controls pass75/75 across5 ASan/UBSan targets; final focused36/36. Actual T29 now13/13, including automatic filesystem attribution, two confirmed phantom removals, retained corrupt control, schema90 and graceful shutdown. No S3/unknown relaxation; non-atomic external-writer and legacy mount limits documented.
 - **files edited/created**:
 
 ### T29.5: Persist stale-deletion identity guards across restart
