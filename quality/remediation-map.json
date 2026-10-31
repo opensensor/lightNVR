@@ -1105,11 +1105,11 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.23.2"
+        "T7.23.3"
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Completed",
+      "status": "Partial \u2014 existing fixes verified; trigger-token review pending",
       "ownership": [
         "src/database/sqlite_migrate.c",
         "tests/unit/test_t7_23.c",
