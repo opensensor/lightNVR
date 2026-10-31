@@ -26,6 +26,9 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 
 #include "database/db_core.h"
 #include "database/db_schema.h"
@@ -37,6 +40,7 @@
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 
 // Database handle
 static sqlite3 *db = NULL;
@@ -218,49 +222,173 @@ static bool is_temporary_backup_artifact(const char *name) {
  * initialized, so startup is the safe point to remove artifacts left by a
  * previous process.
  */
+typedef struct {
+    int fd;
+    char name[64];
+    struct stat identity;
+    bool identity_known;
+} backup_cleanup_quarantine_t;
+
+static bool same_backup_inode(const struct stat *left, const struct stat *right) {
+    return left->st_dev == right->st_dev && left->st_ino == right->st_ino;
+}
+
+static bool private_backup_directory(const struct stat *info) {
+    return S_ISDIR(info->st_mode) && info->st_uid == geteuid() &&
+           (info->st_mode & 0777) == 0700;
+}
+
+static void report_backup_quarantine(const char *backup_dir,
+                                     const backup_cleanup_quarantine_t *quarantine,
+                                     const char *name) {
+    char actual[PATH_MAX], descriptor[64];
+    ssize_t length = -1;
+    if (quarantine->fd >= 0) {
+        snprintf(descriptor, sizeof(descriptor), "/proc/self/fd/%d", quarantine->fd);
+        length = readlink(descriptor, actual, sizeof(actual) - 1);
+    }
+    if (length >= 0) {
+        actual[length] = '\0';
+        log_warn("Retained backup cleanup quarantine: %s/%s", actual, name);
+    } else {
+        log_warn("Retained backup cleanup quarantine: %s/%s/%s "
+                 "(parent may have moved; directory device=%ju inode=%ju)",
+                 backup_dir, quarantine->name, name,
+                 (uintmax_t)quarantine->identity.st_dev,
+                 (uintmax_t)quarantine->identity.st_ino);
+    }
+}
+
+/* Best-effort identity check before nonrecursive empty-directory removal.
+ * A mutable parent can still replace the name between this check and rmdir;
+ * AT_REMOVEDIR cannot delete files/nonempty directories. File deletion below
+ * instead uses the held private directory. Never recurse into crash leftovers. */
+static int finish_backup_quarantine(int parent, const char *backup_dir,
+                                    backup_cleanup_quarantine_t *quarantine,
+                                    bool retained, const char *name) {
+    int result = 0;
+    if (quarantine->name[0]) {
+        struct stat current;
+        if (retained || !quarantine->identity_known ||
+            fstatat(parent, quarantine->name, &current, AT_SYMLINK_NOFOLLOW) != 0 ||
+            !same_backup_inode(&current, &quarantine->identity) ||
+            !private_backup_directory(&current) ||
+            unlinkat(parent, quarantine->name, AT_REMOVEDIR) != 0) {
+            report_backup_quarantine(backup_dir, quarantine, name);
+            result = -1;
+        }
+    }
+    if (quarantine->fd >= 0) close(quarantine->fd);
+    quarantine->fd = -1;
+    return result;
+}
+
+static int create_backup_quarantine(int parent,
+                                    backup_cleanup_quarantine_t *quarantine) {
+    memset(quarantine, 0, sizeof(*quarantine));
+    quarantine->fd = -1;
+    for (unsigned attempt = 0; attempt < 4; attempt++) {
+        char uuid[LIGHTNVR_UUID_STRING_SIZE];
+        if (lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+        snprintf(quarantine->name, sizeof(quarantine->name), ".cleanup-%s", uuid);
+        if (mkdirat(parent, quarantine->name, 0700) == 0) break;
+        quarantine->name[0] = '\0';
+        if (errno != EEXIST || attempt == 3) return -1;
+    }
+    if (fstatat(parent, quarantine->name, &quarantine->identity,
+                AT_SYMLINK_NOFOLLOW) != 0) return -1;
+    quarantine->identity_known = true;
+    if (!private_backup_directory(&quarantine->identity)) return -1;
+    quarantine->fd = openat(parent, quarantine->name,
+                            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (quarantine->fd < 0) return -1;
+    struct stat opened;
+    if (fstat(quarantine->fd, &opened) != 0 ||
+        !private_backup_directory(&opened) ||
+        !same_backup_inode(&opened, &quarantine->identity)) return -1;
+    return 0;
+}
+
+static int move_backup_noreplace(int from, int to, const char *name) {
+#if defined(__linux__) && defined(SYS_renameat2)
+    /* Linux UAPI RENAME_NOREPLACE = 1. Use the syscall directly: older libc
+     * headers/libraries may not export renameat2 even when the kernel does. */
+    return (int)syscall(SYS_renameat2, from, name, to, name, 1U);
+#else
+    (void)from; (void)to; (void)name;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+static int cleanup_stale_backup_entry(int parent, const char *backup_dir,
+                                      const char *name) {
+#ifndef O_PATH
+    (void)parent;
+    log_warn("Cannot safely pin stale backup %s/%s on this platform", backup_dir, name);
+    return -1;
+#else
+    /* O_PATH pins even an unreadable regular inode without following a symlink
+     * or opening a FIFO/device. Keep it open until removal/restore completes. */
+    int candidate = openat(parent, name, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+    if (candidate < 0) return errno == ENOENT ? 0 : -1;
+    struct stat inspected;
+    if (fstat(candidate, &inspected) != 0) { close(candidate); return -1; }
+    if (!S_ISREG(inspected.st_mode)) { close(candidate); return 0; }
+
+    backup_cleanup_quarantine_t quarantine;
+    if (create_backup_quarantine(parent, &quarantine) != 0) {
+        (void)finish_backup_quarantine(parent, backup_dir, &quarantine, false, name);
+        close(candidate);
+        return -1;
+    }
+    int result = 0;
+    bool retained = false;
+    if (move_backup_noreplace(parent, quarantine.fd, name) != 0) {
+        result = errno == ENOENT ? 0 : -1;
+    } else {
+        struct stat moved;
+        bool unchanged = fstatat(quarantine.fd, name, &moved, AT_SYMLINK_NOFOLLOW) == 0 &&
+            S_ISREG(moved.st_mode) && same_backup_inode(&inspected, &moved) &&
+            inspected.st_size == moved.st_size &&
+            inspected.st_mtim.tv_sec == moved.st_mtim.tv_sec &&
+            inspected.st_mtim.tv_nsec == moved.st_mtim.tv_nsec;
+        /* Only this process's UID can enter the verified private directory.
+         * This does not serialize writers that already hold the file open. */
+        if (unchanged && unlinkat(quarantine.fd, name, 0) == 0) {
+            log_info("Removed stale temporary database backup: %s/%s", backup_dir, name);
+        } else {
+            result = -1;
+            log_warn("Stale backup changed or could not be removed; restoring %s/%s", backup_dir, name);
+            if (move_backup_noreplace(quarantine.fd, parent, name) != 0) {
+                retained = true;
+                log_warn("Cannot restore quarantined backup without overwriting: %s", strerror(errno));
+            }
+        }
+    }
+    if (finish_backup_quarantine(parent, backup_dir, &quarantine, retained, name) != 0) result = -1;
+    close(candidate);
+    return result;
+#endif
+}
+
 static int cleanup_stale_backup_artifacts(const char *backup_dir) {
     DIR *dir = opendir(backup_dir);
-    if (!dir) {
-        return errno == ENOENT ? 0 : -1;
-    }
-
+    if (!dir) return errno == ENOENT ? 0 : -1;
     int result = 0;
+    int parent = dirfd(dir);
+    if (parent < 0) { closedir(dir); return -1; }
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (!is_temporary_backup_artifact(entry->d_name)) {
-            continue;
-        }
-
-        char full_path[PATH_MAX];
-        if (snprintf(full_path, sizeof(full_path), "%s/%s", backup_dir,
-                     entry->d_name) >= (int)sizeof(full_path)) {
-            log_warn("Skipping overlong temporary backup path in %s", backup_dir);
+        if (is_temporary_backup_artifact(entry->d_name) &&
+            cleanup_stale_backup_entry(parent, backup_dir, entry->d_name) != 0) {
+            log_warn("Incomplete stale backup cleanup: %s/%s", backup_dir, entry->d_name);
             result = -1;
-            continue;
-        }
-
-        struct stat st;
-        if (lstat(full_path, &st) != 0) {
-            if (errno != ENOENT) {
-                log_warn("Failed to inspect temporary backup %s: %s",
-                         full_path, strerror(errno));
-                result = -1;
-            }
-            continue;
-        }
-        if (!S_ISREG(st.st_mode)) {
-            continue;
-        }
-
-        if (unlink(full_path) != 0) {
-            log_warn("Failed to remove stale temporary backup %s: %s",
-                     full_path, strerror(errno));
-            result = -1;
-        } else {
-            log_info("Removed stale temporary database backup: %s", full_path);
+            /* A mismatch may have restored this name. Directory iteration
+             * after mutation can revisit it; never delete it in this pass. */
+            break;
         }
     }
-
     closedir(dir);
     return result;
 }
