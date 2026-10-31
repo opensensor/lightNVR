@@ -139,9 +139,8 @@ target_sources(test_stream_frame_rate PRIVATE
 # ====================================================================
 add_layer2_test(test_config)
 add_layer2_test(test_db_core_initialization)
-add_layer2_test(test_storage_migration_publication)
-target_link_options(test_storage_migration_publication PRIVATE -Wl,--wrap=lstat -Wl,--wrap=syscall -Wl,--wrap=unlink -Wl,--wrap=db_storage_migration_update_progress -Wl,--wrap=db_storage_migration_commit_location)
-set_tests_properties(test_storage_migration_publication PROPERTIES TIMEOUT 30)
+add_layer2_test(test_sqlite_migration_boundaries)
+set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
 add_layer2_test(test_logger)
 add_layer2_test(test_strings)
 add_layer2_test(test_interruptible_sleep)
@@ -224,6 +223,9 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
 add_layer2_test(test_storage_manager_retention)
 add_layer2_test(test_storage_target_pressure_cleanup)
 add_layer2_test(test_storage_migration)
+add_layer2_test(test_storage_migration_publication CI_UNIT CI_SANITIZER)
+target_link_options(test_storage_migration_publication PRIVATE -Wl,--wrap=lstat -Wl,--wrap=syscall -Wl,--wrap=unlink -Wl,--wrap=db_storage_migration_update_progress -Wl,--wrap=db_storage_migration_commit_location)
+set_tests_properties(test_storage_migration_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_storage_deletion_ledger)   # Layer 2: deletion ledger scoping, pruning, indexes
 if(ENABLE_S3_ARCHIVE)
     add_layer2_test(test_storage_archive)
