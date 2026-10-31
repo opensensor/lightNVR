@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCK = ROOT / 'build/eng-artifacts/.runtime-lock'
 SCENARIOS = {'media-video', 'media-aac', 'lifecycle'}
 GROWTH = {'rss_bytes', 'fds', 'threads'}
+LIFECYCLE_CHECKS = ['previous-release database integrity and schema continuity', 'committed historical footage remains playable and byte-identical', 'stale valid media finalized and empty/missing rows pruned', 'truncated stale media is not advertised as complete footage', 'previous browser preferences are applied', 'actual recording is playable before shutdown', 'active recording graceful shutdown meets deadline without fallback', 'restart preserves committed recording and stream configuration', 'browser preference state survives server restart', 'forced-kill restart recovers database and preserves committed media', 'interrupted fresh segment remains honestly incomplete within one-hour grace', 'recording resumes after forced-kill recovery', 'final graceful shutdown meets deadline']
 
 
 def finite(value):
@@ -63,15 +64,29 @@ def distribution(values):
 
 
 def resource_summary(samples, limits):
-    rows, failures = {}, []
+    rows, failures, windows = {}, [], {}
+    unknown=False
+    for point in samples:
+        window=point.get('window')
+        if window is None:
+            if point.get('nvr') is not None:unknown=True
+            continue  # Explicitly outside an observed NVR lifetime, not zero.
+        windows.setdefault(window,[]).append(point.get('nvr'))
     for name, limit in limits.items():
-        values = [s['nvr'][name] for s in samples if isinstance(s.get('nvr'),dict) and finite(s['nvr'].get(name))]
-        observed = max(0, values[-1]-values[0]) if len(values) >= 2 else None
-        status = 'unqualified' if limit is None else 'unavailable' if observed is None else 'failed' if observed > limit else 'passed'
-        rows[name] = {'first':values[0] if values else None, 'last':values[-1] if values else None, 'growth':observed,'limit':limit,'status':status}
-        if status == 'failed': failures.append(name + ' growth exceeded synthetic/supplied limit')
-    return {'passed': bool(rows) and all(r['status']=='passed' for r in rows.values()), 'metrics':rows, 'failures':failures,
-            'method':'Last minus first positive growth within this mixed-phase run; not a leak proof or comparable-phase calibration'}
+        evaluations=[]
+        for window,points in windows.items():
+            values=[point.get(name) if isinstance(point,dict) else None for point in points]
+            complete=len(values)>=2 and all(finite(value) for value in values)
+            growth=max(0,max(values)-values[0]) if complete else None
+            evaluations.append({'window':window,'samples':len(values),'complete':complete,'growth':growth,
+                                'first':values[0] if values else None,'last':values[-1] if values else None})
+        complete=bool(evaluations) and not unknown and all(row['complete'] for row in evaluations)
+        growth=max(row['growth'] for row in evaluations) if complete else None
+        status='unqualified' if limit is None else 'unavailable' if not complete else 'failed' if growth>limit else 'passed'
+        rows[name]={'growth':growth,'limit':limit,'status':status,'windows':evaluations}
+        if status=='failed':failures.append(name+' growth exceeded supplied limit within an NVR lifetime')
+    return {'passed':bool(rows) and all(r['status']=='passed' for r in rows.values()),'metrics':rows,'failures':failures,
+            'method':'Maximum increase from first sample within each NVR process lifetime; missing active-window values invalidate comparison; mixed phases are not a leak proof'}
 
 
 def read_identity(pid):
@@ -109,12 +124,26 @@ def process_table():
     return {int(p.name):i for p in Path('/proc').iterdir() if p.name.isdigit() and (i:=read_identity(int(p.name))) is not None}
 
 
+def ancestry_matches(item, ancestors):
+    chain=[*ancestors,item]
+    for index,saved in enumerate(chain):
+        current=read_identity(saved['pid'])
+        if not same_identity(current,saved):return False
+        if index and current['parent']!=chain[index-1]['pid']:return False
+    return True
+
+
 def owned_snapshot(root):
     table=process_table()
-    if not same_identity(table.get(root['pid']), root): return {}
-    owned={root['pid']:table[root['pid']]}
+    if not same_identity(table.get(root['pid']),root) or not ancestry_matches(root,[]):return {}
+    owned={root['pid']:{**table[root['pid']],'_ancestors':[]}}
     while True:
-        extra={pid:item for pid,item in table.items() if pid not in owned and item['parent'] in owned}
+        extra={}
+        for pid,item in table.items():
+            if pid in owned or item['parent'] not in owned:continue
+            parent=owned[item['parent']]
+            ancestors=[*parent['_ancestors'],{k:v for k,v in parent.items() if k!='_ancestors'}]
+            if ancestry_matches(item,ancestors):extra[pid]={**item,'_ancestors':ancestors}
         if not extra:return owned
         owned.update(extra)
 
@@ -135,9 +164,11 @@ def sanitizer_findings(text):
 
 
 def pin(saved):
+    ancestors=saved.get('_ancestors',[])
+    if not ancestry_matches(saved,ancestors):return None
     try: fd=os.pidfd_open(saved['pid'])
     except ProcessLookupError:return None
-    if not same_identity(read_identity(saved['pid']),saved):os.close(fd);return None
+    if not ancestry_matches(saved,ancestors):os.close(fd);return None
     return fd
 
 
@@ -158,7 +189,7 @@ def stop_pinned(handles):
 
 
 def run_child(command, directory, binary, interval, timeout):
-    directory.mkdir(parents=True,exist_ok=True); samples=[]; failures=[]; handles={}; previous={}; unavailable=[]
+    directory.mkdir(parents=True,exist_ok=True); samples=[]; failures=[]; handles={}; previous={}; unavailable=[];events=[]
     started=time.monotonic();timed_out=False;cleanup=[];last_observed={}
     with (directory/'runner.log').open('w') as log:
         process=subprocess.Popen(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
@@ -178,21 +209,31 @@ def run_child(command, directory, binary, interval, timeout):
                         if key not in handles:
                             fd=pin(item)
                             if fd is not None:handles[key]=(item,fd)
-                        point=sample_process(item);point['role']=assigned
+                        point=sample_process(item) if key in handles else {'status':'ownership_unverified','identity':item}
+                        point['role']=assigned
                         if point['status']=='observed':
                             old=previous.get(key)
                             point['cpu_one_core_percent']=(point['cpu_ticks']-old[1])/os.sysconf('SC_CLK_TCK')/(now-old[0])*100 if old and now>old[0] else None
                             previous[key]=(now,point['cpu_ticks'])
-                        elif assigned!='helper':unavailable.append({'time':now-started,**point})
+                        elif assigned!='helper':
+                            event={'time':now-started,**point}
+                            events.append(event)
+                            if point['status']!='exited':unavailable.append(event)
                         observed.append(point)
                     if not progress:failures.append('Cyclic or incomplete process ancestry');break
                 present={(p['identity']['pid'],p['identity']['start']) for p in observed}
                 for key,old in last_observed.items():
                     if key not in present and old['role']!='helper':
-                        unavailable.append({'time':now-started,'identity':old['identity'],'role':old['role'],
-                            'status':'exited_or_not_in_owned_tree','metrics':None})
+                        handle=handles.get(key)
+                        exited=bool(handle and select.select([handle[1]],[],[],0)[0])
+                        event={'time':now-started,'identity':old['identity'],'role':old['role'],
+                            'status':'exited' if exited else 'unavailable_or_ownership_changed','metrics':None}
+                        events.append(event)
+                        if not exited:unavailable.append(event)
                 last_observed={(p['identity']['pid'],p['identity']['start']):p for p in observed}
-                point={'elapsed_seconds':now-started,'processes':observed}
+                roots=[p['identity'] for p in observed if p['role']=='nvr']
+                window=';'.join(str(r['pid'])+':'+r['start'] for r in roots) if roots else None
+                point={'elapsed_seconds':now-started,'window':window,'processes':observed}
                 for group,member in [('nvr',{'nvr','managed'}),('source',{'source'}),('browser',{'browser'})]:
                     selected=[p for p in observed if p['role'] in member]
                     values=[p for p in selected if p['status']=='observed']
@@ -206,6 +247,11 @@ def run_child(command, directory, binary, interval, timeout):
             # A successful child must not leave previously observed owned descendants.
             survivors=[(item,fd) for item,fd in handles.values() if not select.select([fd],[],[],0)[0]]
             if survivors:failures.append('Runner left owned descendants');cleanup+=stop_pinned(handles)
+            for key,old in last_observed.items():
+                handle=handles.get(key)
+                if old['role']!='helper' and handle and select.select([handle[1]],[],[],0)[0]:
+                    events.append({'time':time.monotonic()-started,'identity':old['identity'],'role':old['role'],
+                                   'status':'exited','metrics':None})
         finally:
             if process.poll() is None:cleanup+=stop_pinned(handles);process.wait(timeout=5)
             for _,fd in handles.values():os.close(fd)
@@ -215,7 +261,7 @@ def run_child(command, directory, binary, interval, timeout):
     if findings:failures.append('Sanitizer findings')
     result={'command':command,'returncode':process.returncode,'elapsed_seconds':time.monotonic()-started,
         'timed_out':timed_out,'passed':not failures,'failures':failures,'samples':samples,'unavailable':unavailable,
-        'observation_complete':not unavailable,'cleanup':cleanup,'sanitizer_findings':findings}
+        'observation_complete':not unavailable,'process_events':events,'cleanup':cleanup,'sanitizer_findings':findings}
     (directory/'samples.json').write_text(json.dumps(samples,indent=2)+'\n')
     return result
 
@@ -223,10 +269,22 @@ def run_child(command, directory, binary, interval, timeout):
 def assess_report(scenario, report):
     failures=[];metrics={}
     if scenario=='lifecycle':
-        if not isinstance(report,list) or len(report)!=13 or any(r.get('passed') is not True for r in report):failures.append('Incomplete or failed lifecycle assertions')
+        valid=isinstance(report,list) and len(report)==len(LIFECYCLE_CHECKS)
+        if valid:
+            names=[row.get('name') for row in report]
+            valid=len(set(names))==len(names) and set(names)==set(LIFECYCLE_CHECKS) and all(row.get('passed') is True for row in report)
+        if not valid:failures.append('Incomplete, duplicate, misnamed or failed lifecycle assertions')
         else:
-            stops=[r['detail']['elapsedMs'] for r in report if isinstance(r.get('detail'),dict) and 'elapsedMs' in r['detail']]
-            if stops:metrics['nvr.shutdown_ms']=max(stops)
+            stops=[]
+            for row in report:
+                if 'graceful shutdown' not in row['name']:continue
+                detail=row.get('detail',{})
+                if (detail.get('graceful') is not True or detail.get('forcedKill') is not False or
+                    detail.get('forcedChildCleanup') is not False or detail.get('lingeringChildren')!=[] or
+                    not finite(detail.get('elapsedMs')) or not 0<=detail['elapsedMs']<60000):
+                    failures.append('Missing or failed required graceful shutdown detail')
+                else:stops.append(detail['elapsedMs'])
+            if len(stops)==2:metrics['nvr.shutdown_ms']=max(stops)
     else:
         outcomes=report.get('results',[]) if isinstance(report,dict) else []
         if len(outcomes)!=1:failures.append('Missing or unexpected media outcome count')
@@ -346,7 +404,7 @@ def main(argv=None):
         'failures':failures,'runs':outcomes,'race_detection':{'status':'not_run','assessment':'tests/operational/soak/README.md'},
         'limitations':['Short repeated host scenarios are not a sustained physical soak or leak proof.',
             'RSS sums may double-count shared pages. CPU uses one core=100%; first observations have no delta.',
-            'Exited/unreadable identities are retained as unavailable, never zero. Idle/recording phase separation and browser performance metrics are not instrumented.',
+            'Normal exit events close lifetime windows; unreadable/reused identities remain incomplete, never zero. Idle/recording phase separation and browser performance metrics are not instrumented.',
             'Media gaps are existing DB segment adjacency controls, excluding intentional outage; no new packet continuity tolerance.',
             'Existing child runners serialize their own runtime lock. Abandoned locks are retained and halt composition.']}
     (directory/'summary.json').write_text(json.dumps(result,indent=2)+'\n')

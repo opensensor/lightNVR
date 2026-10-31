@@ -192,4 +192,17 @@ class Contract(unittest.TestCase):
         with patch.object(soak,'process_table',return_value=table), patch.object(soak,'read_identity',side_effect=current.get):
             self.assertNotIn(102,soak.owned_snapshot(root))
 
+    def test_parent_reuse_during_pin_refuses_cleanup_handle(self):
+        parent=identity(pid=100,parent=1);child={**identity(pid=101,parent=100),'_ancestors':[parent]}
+        reused={**parent,'start':'reused'}
+        calls=iter([parent,child,reused])
+        with patch.object(soak,'read_identity',side_effect=lambda pid:next(calls)), patch.object(soak.os,'pidfd_open',return_value=77), patch.object(soak.os,'close') as close:
+            self.assertIsNone(soak.pin(child));close.assert_called_once_with(77)
+
+    def test_normal_exit_closes_window_without_missing_metric_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result=soak.run_child([sys.executable,'-c','import time;time.sleep(.25)'],Path(directory),str(Path(sys.executable).resolve()),.05,3)
+            self.assertTrue(result['passed']);self.assertTrue(result['observation_complete'])
+            self.assertTrue(any(event['status']=='exited' for event in result['process_events']))
+
 if __name__=='__main__':unittest.main()
