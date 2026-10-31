@@ -10783,7 +10783,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/settings/HealthTab.jsx",
         "web/js/components/preact/settings/StorageTab.jsx",
@@ -10845,7 +10845,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": " T7.174 d5aa9244 resolves ApiKey SecretReveal label bucket cf4b93673820960b 1\u21920; other buckets remain open."
+      "log": "Commit18a881ab verifies all original buckets remain zero and fixes remaining repeated-form associations: 14Storage ID pairs, both conditional selector prefixes, and orphan group heading. Actual7/9RED becomes75/75related browser cases passing; default743pass/102optional skips, types, modern43/default66budgets pass and default restored. Lint441\u2192440warnings/0errors, no increases. Separate Zone Editor browser failure remains open."
     },
     {
       "id": "T7.179",

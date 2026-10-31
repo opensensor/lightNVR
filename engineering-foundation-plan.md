@@ -3847,7 +3847,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.168/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.168`; inspect the raw T1 report and trace the caller.
 - **status**: Partial (names `88a17566`; original Zone Editor regression remains active RED)
-- **log**: T7.162 0080a39f removes related occurrences: WebRTC control-name 9bd9a8994dceced4 3→2. Whole bucket/task remains open.
+- **log**: Names-only88a17566 adds20aria-labels; coordinator AST comparison confirms no other production changes. Original21st WebRTC name reused from0080a39f. Lint461→441warnings/0errors; types and43/66budgets pass. Final focused13pass/1activeZoneEditorRED; parent awaits T7.168.2.
 - **files edited/created**:
 
 ### T7.169: jsx-a11y/control-has-associated-label in EventDestinationEditor.jsx, EventRouteEditor.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, CollectionSelectorBuilder.jsx, FleetFilters.jsx
@@ -4056,8 +4056,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/settings/HealthTab.jsx web/js/components/preact/settings/StorageTab.jsx web/js/components/preact/users/ApiKeyModal.jsx --format json --output-file build/eng-artifacts/T7.178/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.178/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.178`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**: T7.173 dc3199fb resolves related label association Health5e7cfcb56208eaa9 2→0 and Storage e84d458d8fcd3eef 1→0; whole task remains open.  T7.174 resolves ApiKey SecretReveal cf4b93673820960b 1→0; other buckets remain open.
+- **status**: Completed (fix `18a881ab`)
+- **log**: Commit18a881ab verifies all original buckets remain zero and fixes remaining repeated-form associations: 14Storage ID pairs, both conditional selector prefixes, and orphan group heading. Actual7/9RED becomes75/75related browser cases passing; default743pass/102optional skips, types, modern43/default66budgets pass and default restored. Lint441→440warnings/0errors, no increases. Separate Zone Editor browser failure remains open.
 - **files edited/created**:
 
 ### T7.179: jsx-a11y/label-has-for in AuthGate.jsx, BatchDownloadModal.jsx, FleetView.jsx, LiveView.jsx, LoginView.jsx, SetupWizard.jsx
@@ -4204,7 +4204,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.185/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.185`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.178 removes one StorageTab orphan group-heading label-has-for warning; whole task remains open. 
 - **files edited/created**:
 
 ### T7.186: jsx-a11y/label-has-for in AccessPolicyModal.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditDecisionModes.jsx, AuditHistoryModal.jsx, EditUserModal.jsx
