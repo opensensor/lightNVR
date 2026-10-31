@@ -68,7 +68,19 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
     const testStreamName = `api_test_stream_${Date.now()}`;
 
     const deletionFixtureNames = new Set<string>();
-    const readStreams = async (): Promise<Array<{ name: string; enabled: boolean }>> => {
+    type StreamConfiguration = {
+      name: string;
+      enabled: boolean;
+      url: string;
+      width: number;
+      height: number;
+      fps: number;
+      codec: string;
+      priority: number;
+      record: boolean;
+      streaming_enabled: boolean;
+    };
+    const readStreams = async (): Promise<StreamConfiguration[]> => {
       const response = await request.get('/api/streams');
       expect(response.status()).toBe(200);
       const streams = await response.json();
@@ -155,6 +167,15 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
     });
 
     test('PUT /api/streams/{name} updates stream', async () => {
+      const before = (await readStreams()).find(stream => stream.name === testStreamName);
+      expect(before?.enabled).toBe(true);
+      if (!before) throw new Error('Missing enabled update fixture');
+      const preserved = {
+        name: before.name, url: before.url,
+        width: before.width, height: before.height, fps: before.fps,
+        codec: before.codec, priority: before.priority,
+        record: before.record, streaming_enabled: before.streaming_enabled,
+      };
       const updateData = {
         name: testStreamName,
         url: 'rtsp://localhost:18554/test_pattern',
@@ -163,9 +184,15 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
       };
 
       const response = await request.put(`/api/streams/${testStreamName}`, { data: updateData });
-      if (response.ok()) {
-        console.log(`Updated stream: ${testStreamName}`);
-      }
+      expect(response.status()).toBe(202);
+      expect(await response.json()).toEqual({
+        success: true,
+        message: 'Stream update request accepted and processing',
+      });
+      await expect.poll(async () => (await readStreams()).find(stream => stream.name === testStreamName), {
+        timeout: 10000,
+        intervals: [50, 100, 250, 500],
+      }).toMatchObject({ ...preserved, enabled: false });
     });
 
     test('DELETE /api/streams/{name} accepts and completes stream disable', async () => {
