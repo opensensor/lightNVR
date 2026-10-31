@@ -11642,7 +11642,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (implementation `89474721`, full-suite evidence `a02a3cac`)",
       "ownership": [
         "web/js/components/preact/users/RoleManagerModal.jsx",
         "web/js/components/preact/users/TotpSetupModal.jsx",
@@ -11699,7 +11699,8 @@
           "evidence": "quality/evidence/T7.175.md",
           "effect": "3RoleManager label-for occurrences removed; T7.187 acceptance still pending."
         }
-      ]
+      ],
+      "log": "Repeated-instance label focus/activation and dialog heading identity verified17/17 browser-enabled; full web60suites/598tests pass,5optional browser cases unselected by default. Lint873\u2192872, types and bothasset profiles pass."
     },
     {
       "id": "T7.188",

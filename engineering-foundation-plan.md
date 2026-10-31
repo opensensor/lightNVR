@@ -4245,8 +4245,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/users/RoleManagerModal.jsx web/js/components/preact/users/TotpSetupModal.jsx --format json --output-file build/eng-artifacts/T7.187/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.187/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.187`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**: Related T7.175 evidence clears RoleManager bucket ESLINT-BUCKET-2e14d60ae388c180 (3occurrences); remaining TOTP semantics and repeated-instance label activation are verified here before closure.
+- **status**: Completed (implementation `89474721`, full-suite evidence `a02a3cac`)
+- **log**: Tests-first missing TOTP nesting and duplicate repeated dialog-heading IDs reproduced;17/17 combined browser-enabled cases pass. Exact lint873→872 with0errors/no new warnings; types and both43/66asset budgets pass. Full web suite60/60,598passed,5opt-in browser tests unselected; browser supplement executed separately. Default dist restored.
 - **files edited/created**:
 
 ### T7.188: jsx-a11y/media-has-caption in HLSVideoCell.jsx, MSEVideoCell.jsx, UI.jsx, WebRTCVideoCell.jsx, InvestigationView.jsx, TimelinePlayer.jsx
