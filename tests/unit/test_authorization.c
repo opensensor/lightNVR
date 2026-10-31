@@ -54,6 +54,9 @@
 #define OPERATOR_ROLE_UUID "00000000-0000-4000-8000-000000000002"
 #define ADMIN_ROLE_UUID "00000000-0000-4000-8000-000000000001"
 
+static char scoped_storage_root[128];
+static char saved_storage_path[MAX_PATH_LENGTH];
+
 static stream_config_t create_camera(const char *name, const char *tags) {
     stream_config_t stream;
     memset(&stream, 0, sizeof(stream));
@@ -199,10 +202,12 @@ static cJSON *call_handler_path(
         req.num_headers = 1;
     }
     handler(&req, &res);
-    TEST_ASSERT_EQUAL_INT(expected_status, res.status_code);
-    cJSON *json = res.body ? cJSON_Parse((const char *)res.body) : NULL;
-    TEST_ASSERT_NOT_NULL(json);
+    int actual_status = res.status_code;
+    cJSON *json = actual_status == expected_status && res.body
+        ? cJSON_Parse((const char *)res.body) : NULL;
     http_response_free(&res);
+    TEST_ASSERT_EQUAL_INT(expected_status, actual_status);
+    TEST_ASSERT_NOT_NULL(json);
     return json;
 }
 
@@ -257,6 +262,9 @@ static int authorize_stream_with_key(const char *api_key,
 
 void setUp(void) {
     sqlite3 *db = get_db_handle();
+    safe_strcpy(saved_storage_path, g_config.storage_path,
+                sizeof(saved_storage_path), 0);
+    scoped_storage_root[0] = '\0';
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     sqlite3_exec(
@@ -278,6 +286,13 @@ void setUp(void) {
 void tearDown(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    safe_strcpy(g_config.storage_path, saved_storage_path,
+                sizeof(g_config.storage_path), 0);
+    if (scoped_storage_root[0]) {
+        int removed = rmdir(scoped_storage_root);
+        scoped_storage_root[0] = '\0';
+        TEST_ASSERT_EQUAL_INT(0, removed);
+    }
 }
 
 void test_action_catalog_is_stable_and_complete(void) {
@@ -1303,6 +1318,15 @@ void test_users_api_reports_authorization_mode(void) {
 }
 
 void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
+    char root_template[] = "/tmp/lightnvr-authz-storage-XXXXXX";
+    char *created_root = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(created_root);
+    safe_strcpy(scoped_storage_root, created_root,
+                sizeof(scoped_storage_root), 0);
+    safe_strcpy(g_config.storage_path, scoped_storage_root,
+                sizeof(g_config.storage_path), 0);
+    /* An available legacy root makes missing files authoritative for deletion.
+     * Keep files absent: download assertions intentionally require 404/409. */
     stream_config_t allowed = create_camera("Scoped Camera", "Outdoor");
     stream_config_t denied = create_camera("Other Camera", "Indoor");
     allowed.ptz_enabled = true;
@@ -1339,8 +1363,8 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     memset(&allowed_recording, 0, sizeof(allowed_recording));
     safe_strcpy(allowed_recording.stream_name, allowed.name,
                 sizeof(allowed_recording.stream_name), 0);
-    safe_strcpy(allowed_recording.file_path, "/tmp/lightnvr-scoped-recording.mp4",
-                sizeof(allowed_recording.file_path), 0);
+    snprintf(allowed_recording.file_path, sizeof(allowed_recording.file_path),
+             "%s/scoped-recording.mp4", scoped_storage_root);
     allowed_recording.start_time = 100;
     allowed_recording.end_time = 200;
     allowed_recording.is_complete = true;
@@ -1351,8 +1375,8 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     recording_metadata_t denied_recording = allowed_recording;
     safe_strcpy(denied_recording.stream_name, denied.name,
                 sizeof(denied_recording.stream_name), 0);
-    safe_strcpy(denied_recording.file_path, "/tmp/lightnvr-denied-recording.mp4",
-                sizeof(denied_recording.file_path), 0);
+    snprintf(denied_recording.file_path, sizeof(denied_recording.file_path),
+             "%s/denied-recording.mp4", scoped_storage_root);
     uint64_t denied_id = add_recording_metadata(&denied_recording);
     TEST_ASSERT_NOT_EQUAL(0, denied_id);
 
@@ -1497,9 +1521,8 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
         0, get_recording_metadata_by_id(allowed_id, &reloaded));
 
     recording_metadata_t batch_recording = allowed_recording;
-    safe_strcpy(batch_recording.file_path,
-                "/tmp/lightnvr-scoped-batch-recording.mp4",
-                sizeof(batch_recording.file_path), 0);
+    snprintf(batch_recording.file_path, sizeof(batch_recording.file_path),
+             "%s/scoped-batch-recording.mp4", scoped_storage_root);
     uint64_t batch_id = add_recording_metadata(&batch_recording);
     TEST_ASSERT_NOT_EQUAL(0, batch_id);
     snprintf(batch_body, sizeof(batch_body), "{\"ids\":[%llu]}",
