@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { useI18n } from '../../i18n.js';
 import { formatLocalTime } from '../../utils/date-utils.js';
 
 // Global toast state
@@ -67,6 +68,7 @@ export function removeToast(id) {
  * @returns {JSX.Element} Toast Container Component
  */
 export function ToastContainer() {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState(toastQueue);
   const containerRef = useRef(null);
 
@@ -105,9 +107,11 @@ export function ToastContainer() {
         const styles = getToastStyles(toast.type);
 
         return (
-          <div
+          <button
+            type="button"
+            aria-label={`${t('common.close')}: ${toast.message}`}
             key={toast.id}
-            className={styles.baseStyles}
+            className={`${styles.baseStyles} text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-current`}
             style={{
               backgroundColor: styles.bg,
               color: styles.fg,
@@ -116,7 +120,7 @@ export function ToastContainer() {
             onClick={() => removeToast(toast.id)}
           >
             {toast.message}
-          </div>
+          </button>
         );
       })}
     </div>,

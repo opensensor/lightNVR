@@ -172,6 +172,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
     <div
       ref={modalRef}
       id="snapshot-preview-modal"
+      role="presentation"
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
@@ -771,6 +772,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     <div
       ref={modalRef}
       id="video-preview-modal"
+      role="presentation"
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >

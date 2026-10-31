@@ -638,11 +638,17 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
             {zoneList.map((zone, index) => (
               <div
                 key={zone.id}
+                role="presentation"
                 className={`mb-3 p-3 rounded border ${
                   index === selectedZoneIndex ? 'border-primary bg-primary/10' : 'border-border'
                 }`}
                 onClick={() => setSelectedZoneIndex(index)}
               >
+                <button type="button"
+                  className="mb-2 rounded text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  aria-pressed={index === selectedZoneIndex}>
+                  {t('zoneEditor.selectZone')} {zone.name}
+                </button>
                 <input
                   type="text"
                   value={zone.name}
