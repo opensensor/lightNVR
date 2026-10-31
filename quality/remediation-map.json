@@ -85,7 +85,7 @@
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Completed (commit `73fb07ec`)",
       "ownership": [
         "quality/reviews/advisory-repo-advisory-draft-1.json",
         "quality/evidence/T7.3.md"
@@ -104,7 +104,8 @@
       "finding_ids": [
         "ADVISORY-repo-advisory-draft-1"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Private source state refreshed read-only; current ancestor fixes verified by existing behavioral regressions. Sanitized evidence only; no remote or baseline changes."
     },
     {
       "id": "T7.4",
@@ -114,7 +115,7 @@
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Completed (commit `73fb07ec`)",
       "ownership": [
         "quality/reviews/advisory-repo-advisory-closed-1.json",
         "quality/evidence/T7.4.md"
@@ -133,7 +134,8 @@
       "finding_ids": [
         "ADVISORY-repo-advisory-closed-1"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Private source state refreshed read-only; current ancestor fixes verified by existing behavioral regressions. Sanitized evidence only; no remote or baseline changes."
     },
     {
       "id": "T7.5",
@@ -143,7 +145,7 @@
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Completed (commit `73fb07ec`)",
       "ownership": [
         "quality/reviews/advisory-repo-advisory-draft-2.json",
         "quality/evidence/T7.5.md"
@@ -162,7 +164,8 @@
       "finding_ids": [
         "ADVISORY-repo-advisory-draft-2"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Private source state refreshed read-only; current ancestor fixes verified by existing behavioral regressions. Sanitized evidence only; no remote or baseline changes."
     },
     {
       "id": "T7.6",

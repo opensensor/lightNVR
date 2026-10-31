@@ -619,8 +619,8 @@ records and gate dependencies must be added by the named producer.
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T27 --regex '^test_mp4_(audio_recovery|recovery_watchdog|writer_watchdog|segment_boundaries|segment_timestamps)$'`
   - Run each new real-media scenario using its documented synthetic source and ffprobe assertions; record output diagnostics.
-- **status**: Not Completed
-- **log**: Clarified T3 contract permits declared boundary tolerance: preserve intentionally retained one-keyframe overlap (a1830689), require no gaps or additional duplicates beyond one frame with identity/cadence evidence. Initial48vs49 strict-zero-overlap oracle was an incorrect assumption, not a demonstrated product defect.
+- **status**: Completed (commit `586d8d89`)
+- **log**: T27.0 producer plus separate collision/retry identity (3b62c681) and paused-reader reset (586d8d89) close the actual failure cases. Latest native84/84 and both unchanged real-source scenarios pass; declared one-frame overlap preserved. Host functional validation only; no constrained-device claim.
 - **files edited/created**:
 
 ### T28: Close storage and retention failure gaps
@@ -840,8 +840,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - No private advisory text, IDs or credentials in committed evidence.
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-draft-1.json`
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `73fb07ec`)
+- **log**: Authorized read-only source refresh confirms unchanged private report state/body; ancestor fixes verified against actual routing/transport regressions (18Unity cases), plus current real viewer-policy controls for proxy aliases (44Unity cases). No private identifiers/body published, no remote state or baseline changed.
 - **files edited/created**:
 
 ### T7.4: Verify disposition and regression evidence for ADVISORY-repo-advisory-closed-1
@@ -857,8 +857,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - No private advisory text, IDs or credentials in committed evidence.
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-closed-1.json`
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `73fb07ec`)
+- **log**: Authorized read-only source refresh confirms unchanged private report state/body; ancestor fixes verified against actual routing/transport regressions (18Unity cases), plus current real viewer-policy controls for proxy aliases (44Unity cases). No private identifiers/body published, no remote state or baseline changed.
 - **files edited/created**:
 
 ### T7.5: Verify disposition and regression evidence for ADVISORY-repo-advisory-draft-2
@@ -874,8 +874,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - No private advisory text, IDs or credentials in committed evidence.
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-repo-advisory-draft-2.json`
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `73fb07ec`)
+- **log**: Authorized read-only source refresh confirms unchanged private report state/body; ancestor fixes verified against actual routing/transport regressions (18Unity cases), plus current real viewer-policy controls for proxy aliases (44Unity cases). No private identifiers/body published, no remote state or baseline changed.
 - **files edited/created**:
 
 ### T7.6: Verify disposition and regression evidence for ADVISORY-GHSA-rqj3-pch5-rq4f
@@ -7218,8 +7218,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Reproduce retained pre-pause input/pending-keyframe/audio state being flushed after source restart with current wall-clock metadata. Reset/dispose the old reader, pending boundary packet and audio state on entering emergency storage pause, before sleeping, so recovery opens a fresh source. Preserve pressure policy, shutdown deadlines, one-frame normal boundary tolerance and ordinary reconnect semantics.
 - **acceptance_criteria**: Tests first demonstrate stale state survives pause; GREEN disposes/resets it once without resource errors. Actual statvfs-based H264/AAC pressure/source-restart scenario passes unchanged duration/DB timestamp/size/decoded-media oracle, as does video-only recovery. No old packet is carried across the paused-session boundary and normal graceful cleanup remains required.
 - **validation**: Focused pressure-reconnect sanitizer target plus existing watchdog/forced-reconnect/audio/boundary/pressure controls; rebuild actual server and rerun exact two T27 scenarios without relaxing their limits.
-- **status**: Not Completed
-- **log**: Real run media-53126ce87230 proved collision fix preserves both files, but a completed row start=end while buffered H264duration2.4s/AAC2.24s violates the unchanged1.1s metadata tolerance.
+- **status**: Completed (commit `586d8d89`)
+- **log**: Four stale-state controls failed first, then84/84 native cases pass. Both unchanged real scenarios pass:14.700s video-only and12.485s H264/AAC+pressure,12files decode and matchDBsizes/timing/continuity; all owned processes exit normally.
 - **files edited/created**:
 
 ## Expanded storage fault tasks (T28)
