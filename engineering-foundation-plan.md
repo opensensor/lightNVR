@@ -388,7 +388,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T15: Integrate foundation checks and required-status policy
-- **depends_on**: [T4, T7, T9, T10, T12, T13, T14, T7.8, T7.9, T7.10, T9.4, T10.3, T13.2, T15.1]
+- **depends_on**: [T4, T7, T9, T10, T12, T13, T14, T7.8, T7.9, T7.10, T9.4, T10.3, T13.2, T15.1, T15.2]
 - **agent_type**: local
 - **ownership**: shared manifests/lockfiles, `.github/workflows/integration-test.yml`, new engineering workflow if justified, `quality/required-checks.json`, `quality/evidence/T15.md`.
 - **description**: Resolve infrastructure changes, finalize command registrations and dependency pins, and add local/CI type/lint/unit/asset/schema statuses with explicit path-filter behavior. T39 activates real pilot contract CI once T18 exists; never allow an empty future suite to report success. Produce the concrete required-status settings for T38, without making remote administrative access a prerequisite for local development.
@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -1682,7 +1682,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.50: clang-analyzer-core.NullDereference in api_handlers_streams_modify.c
-- **depends_on**: [T7, T13, T13.3]
+- **depends_on**: [T7, T13, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/unit/test_t7_50.c`, `tests/unit/cmake/eng/t7_50.cmake`, `quality/evidence/T7.50.md`.
 - **priority**: medium
@@ -6620,7 +6620,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.317: Authenticate before exposing stream existence
-- **depends_on**: [T7, T11, T13, T7.64, T7.50, T13.3]
+- **depends_on**: [T7, T11, T13, T7.64, T7.50, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_get.c`, `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_317.api.spec.ts`, `quality/evidence/T7.317.md`.
 - **priority**: medium
@@ -6670,7 +6670,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.320: Reject non-object stream updates
-- **depends_on**: [T7, T11, T13, T7.317, T13.3]
+- **depends_on**: [T7, T11, T13, T7.317, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_320.api.spec.ts`, `quality/evidence/T7.320.md`.
 - **priority**: medium
@@ -6687,7 +6687,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.321: Reject wrong-typed stream fields
-- **depends_on**: [T7, T11, T13, T7.320, T13.3]
+- **depends_on**: [T7, T11, T13, T7.320, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_321.api.spec.ts`, `quality/evidence/T7.321.md`.
 - **priority**: medium
@@ -6704,7 +6704,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.322: Validate bounded stream numeric fields
-- **depends_on**: [T7, T11, T13, T7.321, T13.3]
+- **depends_on**: [T7, T11, T13, T7.321, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_322.api.spec.ts`, `quality/evidence/T7.322.md`.
 - **priority**: medium
@@ -6721,7 +6721,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.323: Validate complete boolean schedules
-- **depends_on**: [T7, T11, T13, T7.322, T13.3]
+- **depends_on**: [T7, T11, T13, T7.322, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_323.api.spec.ts`, `quality/evidence/T7.323.md`.
 - **priority**: medium
@@ -6789,7 +6789,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.327: Preserve omitted ONVIF update state
-- **depends_on**: [T7, T11, T13, T7.323, T13.3]
+- **depends_on**: [T7, T11, T13, T7.323, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_327.api.spec.ts`, `quality/evidence/T7.327.md`.
 - **priority**: medium
@@ -6806,7 +6806,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.328: Make privacy mutations atomic and report failure
-- **depends_on**: [T7, T11, T13, T7.327, T13.3]
+- **depends_on**: [T7, T11, T13, T7.327, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_328.api.spec.ts`, `quality/evidence/T7.328.md`.
 - **priority**: medium
@@ -6840,7 +6840,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.330: Reject overlong stream strings without truncation
-- **depends_on**: [T7, T11, T13, T7.328, T13.3]
+- **depends_on**: [T7, T11, T13, T7.328, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_330.api.spec.ts`, `quality/evidence/T7.330.md`.
 - **priority**: medium
@@ -6857,7 +6857,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.331: Bound ONVIF edit validation latency
-- **depends_on**: [T7, T11, T13, T7.330, T13.3]
+- **depends_on**: [T7, T11, T13, T7.330, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_331.api.spec.ts`, `quality/evidence/T7.331.md`.
 - **priority**: medium
@@ -6874,7 +6874,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.332: Preserve detection threshold round trips
-- **depends_on**: [T7, T11, T13, T7.326, T7.331, T13.3]
+- **depends_on**: [T7, T11, T13, T7.326, T7.331, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_get.c`, `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_332.api.spec.ts`, `quality/evidence/T7.332.md`.
 - **priority**: medium
@@ -6891,7 +6891,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.333: Specify password omission and explicit clear semantics
-- **depends_on**: [T7, T11, T13, T7.332, T13.3]
+- **depends_on**: [T7, T11, T13, T7.332, T13.3, T13.4]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/integration/specs/t7_333.api.spec.ts`, `quality/evidence/T7.333.md`.
 - **priority**: medium
@@ -7107,8 +7107,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Correct the existing policy-user role-change expectation to the actual exact 400 rejection (policy metadata validation precedes self-permission checks). Independently assert exact 403 for prohibited self activation/password/CIDR changes. Snapshot relevant user/grant state before/after, preserve working original credentials, and verify no admin access is gained. No production authorization change.
 - **acceptance_criteria**: Tests discriminate invalid role metadata from forbidden mutations, assert unchanged persisted user/grants, and preserve existing coverage; no broad success/error status list is used.
 - **validation**: `npm run typecheck:tests`; `node scripts/quality/run-integration.mjs --task T13.1 --project api --grep 'Users API'`; original RED is retained in T13 full API evidence.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `8f11a3a0`)
+- **log**: Nine Users API tests pass with exact denial statuses and persisted/security invariants; original credentials remain valid and rejected changes confer no admin access. Root types pass.
 - **files edited/created**:
 
 ### T13.2: Verify accepted stream disable and permanent deletion complete
@@ -7118,8 +7118,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Use self-contained enabled fixtures, assert exact 202 accepted responses and permanent:false for default soft deletion, then boundedly poll the DB-backed list for disabled state. Exercise permanent=true separately, require accepted response and poll disappearance/detail404. Preserve mutation assertions and cleanup; never treat a pre-disabled/missing fixture as successful async completion.
 - **acceptance_criteria**: Both soft-disable and permanent-delete behavior are verified through completion with bounded polling; the old broad 200/204/404 list is replaced by the observed contract, not expanded. Full API suite passes or additional actual failures become explicit bounded tasks.
 - **validation**: `npm run typecheck:tests`; `node scripts/quality/run-integration.mjs --task T13.2 --project api --grep @api`.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `486a3a84`)
+- **log**: Full API suite passes 48/48 with no skips. Enabled soft-delete fixture reaches disabled DB-backed state; permanent delete reaches list absence and detail 404. Real go2rtc teardown is graceful without forced cleanup.
 - **files edited/created**:
 
 ### T13.3: Reject stream deletion when its worker cannot start
@@ -7131,6 +7131,17 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **validation**: `python3 scripts/quality/run-native.py --task T13.3 --regex '^test_delete_stream_launch_failure$'`; rerun focused T13.2 deletion API tests against the rebuilt server.
 - **status**: Not Completed
 - **log**: Discovered by source review during T13 baseline correction; this did not cause the original two stale API assertions.
+- **files edited/created**:
+
+### T13.4: Reject stream updates when their worker cannot start
+- **depends_on**: [T13.3]
+- **agent_type**: worker
+- **ownership**: `src/web/api_handlers_streams_modify.c`, `tests/unit/test_put_stream_launch_failure.c`, `tests/unit/cmake/eng/put_stream_launch_failure.cmake`, `quality/evidence/T13.4.md`.
+- **description**: Reproduce the analogous PUT worker-creation failure discovered during T13.3: the handler prepares a 202 response and only logs pthread_create failure. Return a server error after disposing the task. Keep successful asynchronous updates and authorization behavior unchanged; source inspection must distinguish any existing synchronous side effects before claiming state invariance.
+- **acceptance_criteria**: Tests first demonstrate false acceptance under injected launch failure; after fix return 5xx, free owned task resources once and do not execute the worker. Use a simple non-ONVIF update to assert persisted and runtime stream fields unchanged on rejection. Successful update completion and authorization controls retain coverage. Report any prelaunch side effects as separate bounded findings rather than extending this task silently.
+- **validation**: `python3 scripts/quality/run-native.py --task T13.4 --regex '^test_(put|delete)_stream_launch_failure$'`; run focused real API update/deletion checks against a rebuilt server.
+- **status**: Not Completed
+- **log**: Source-inspected sibling defect in PUT; not a scanner-baseline change or exception.
 - **files edited/created**:
 
 ## Independent foundation command integration (T15)
@@ -7150,6 +7161,17 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
   - `npm run typecheck:tests`
   - Run safe discovery for npm API/UI and both workflow shard selections; compare identities to pre-change discovery without starting load or servers.
   - Parse workflow YAML and inspect exact existing job changes; real remote CI remains pending until explicitly run.
+- **status**: Completed (commit `3c15c0d7`)
+- **log**: 22 runner tests and root TS pass; all 213 discovery identities preserved, including health files and UI shards. Existing npm/CI routes use owned runs with retained logs; no native runtime claim or exception approval.
+- **files edited/created**:
+
+### T15.2: Register independent foundation statuses and proposed enforcement settings
+- **depends_on**: [T4, T9.4, T10.3, T12, T14.1, T15.1]
+- **agent_type**: local
+- **ownership**: `.github/workflows/engineering-foundation.yml`, `quality/required-checks.json`, `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.2.md`.
+- **description**: Register separate type/lint/unit/schema/asset and quality-tooling CI statuses using existing commands. Run both asset profiles in isolated jobs and check without updating budgets or generated artifacts. Prepare concrete required-check identities and path behavior for T38; leave the future real-backend contract lane explicitly pending T39. No remote rules mutation and no dependency exception approval.
+- **acceptance_criteria**: PR jobs have no path filters or conditional success bypass; failures propagate and diagnostics upload on failure. Only existing nonempty suites run. Proposed settings do not claim actual enforcement, full scanner coverage or migration completion; T15 acceptance remains gated by its existing dependencies.
+- **validation**: Tests first reject missing workflow/identity mapping, omitted build profile, mutating check commands and skipped required jobs; execute registered local type/lint/unit/schema/tooling checks and both build/asset commands. No remote publication required.
 - **status**: Not Completed
 - **log**:
 - **files edited/created**:
