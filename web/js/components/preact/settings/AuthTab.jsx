@@ -39,7 +39,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-auth-enabled"
+              aria-label={t('settings.enableAuthentication')} id="setting-auth-enabled"
               name="authEnabled"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -54,7 +54,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-demo-mode"
+              aria-label={t('auth.demoMode')} id="setting-demo-mode"
               name="demoMode"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -89,7 +89,7 @@ export function AuthTab({
                   <label key={m.key} for={m.id} class="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      id={m.id}
+                      aria-label={m.label} id={m.id}
                       class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ accentColor: 'hsl(var(--primary))' }}
                       checked={!settings[m.key]}
@@ -116,7 +116,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-auth-timeout"
+              aria-label={t('settings.sessionIdleTimeoutHours')} id="setting-auth-timeout"
               name="authTimeoutHours"
               min="1"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -132,7 +132,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-auth-absolute-timeout"
+              aria-label={t('settings.absoluteSessionLifetimeHours')} id="setting-auth-absolute-timeout"
               name="authAbsoluteTimeoutHours"
               min="1"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -148,7 +148,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-trusted-device-days"
+              aria-label={t('settings.rememberDeviceDays')} id="setting-trusted-device-days"
               name="trustedDeviceDays"
               min="0"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -163,7 +163,7 @@ export function AuthTab({
           <label for="setting-trusted-proxy-cidrs" class="font-medium">{t('settings.trustedProxyCidrs')}</label>
           <div class="col-span-2">
             <textarea
-              id="setting-trusted-proxy-cidrs"
+              aria-label={t('settings.trustedProxyCidrs')} id="setting-trusted-proxy-cidrs"
               name="trustedProxyCidrs"
               rows="3"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
@@ -255,7 +255,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-force-mfa"
+              aria-label={t('settings.forceMfaOnLogin')} id="setting-force-mfa"
               name="forceMfaOnLogin"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -271,7 +271,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-rate-limit-enabled"
+              aria-label={t('settings.loginRateLimiting')} id="setting-rate-limit-enabled"
               name="loginRateLimitEnabled"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -287,7 +287,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-rate-limit-max"
+              aria-label={t('settings.maxLoginAttempts')} id="setting-rate-limit-max"
               name="loginRateLimitMaxAttempts"
               min="1"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -303,7 +303,7 @@ export function AuthTab({
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-rate-limit-window"
+              aria-label={t('settings.rateLimitWindowSeconds')} id="setting-rate-limit-window"
               name="loginRateLimitWindowSeconds"
               min="10"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"

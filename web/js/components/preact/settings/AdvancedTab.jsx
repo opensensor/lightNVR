@@ -16,7 +16,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <label for="setting-buffer-size" class="font-medium">{t('settings.bufferSizeKb')}</label>
           <input
             type="number"
-            id="setting-buffer-size"
+            aria-label={t('settings.bufferSizeKb')} id="setting-buffer-size"
             name="bufferSize"
             min="128"
             class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
@@ -30,7 +30,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-use-swap"
+              aria-label={t('settings.useSwapFile')} id="setting-use-swap"
               name="useSwap"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -44,7 +44,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <label for="setting-swap-size" class="font-medium">{t('settings.swapSizeMb')}</label>
           <input
             type="number"
-            id="setting-swap-size"
+            aria-label={t('settings.swapSizeMb')} id="setting-swap-size"
             name="swapSize"
             min="32"
             class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
@@ -66,7 +66,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-turn-enabled"
+              aria-label={t('settings.enableTurnRelay')} id="setting-turn-enabled"
               name="turnEnabled"
               class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
               checked={settings.turnEnabled}
@@ -81,7 +81,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="text"
-              id="setting-turn-server-url"
+              aria-label={t('settings.turnServerUrl')} id="setting-turn-server-url"
               name="turnServerUrl"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.turnServerUrl}
@@ -99,7 +99,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="text"
-              id="setting-turn-username"
+              aria-label={t('auth.username')} id="setting-turn-username"
               name="turnUsername"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.turnUsername}
@@ -114,7 +114,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="password"
-              id="setting-turn-password"
+              aria-label={t('auth.password')} id="setting-turn-password"
               name="turnPassword"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.turnPassword}
@@ -137,7 +137,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-onvif-discovery-enabled"
+              aria-label={t('settings.enableOnvifDiscovery')} id="setting-onvif-discovery-enabled"
               name="onvifDiscoveryEnabled"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -153,7 +153,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-onvif-discovery-interval"
+              aria-label={t('settings.discoveryIntervalSeconds')} id="setting-onvif-discovery-interval"
               name="onvifDiscoveryInterval"
               min="30"
               max="3600"
@@ -170,7 +170,7 @@ export function AdvancedTab({ settings, handleInputChange, canModifySettings, t 
           <div class="col-span-2">
             <input
               type="text"
-              id="setting-onvif-discovery-network"
+              aria-label={t('settings.discoveryNetwork')} id="setting-onvif-discovery-network"
               name="onvifDiscoveryNetwork"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.onvifDiscoveryNetwork}

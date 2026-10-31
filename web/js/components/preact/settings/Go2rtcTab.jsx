@@ -262,7 +262,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-go2rtc-enabled"
+              aria-label={t('settings.enableGo2rtc')} id="setting-go2rtc-enabled"
               name="go2rtcEnabled"
               class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
               checked={settings.go2rtcEnabled}
@@ -279,7 +279,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="checkbox"
-                  id="setting-go2rtc-force-native-hls"
+                  aria-label={t('settings.forceNativeHls')} id="setting-go2rtc-force-native-hls"
                   name="go2rtcForceNativeHls"
                   class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
                   checked={settings.go2rtcForceNativeHls}
@@ -294,7 +294,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-go2rtc-binary-path"
+                  aria-label={t('settings.binaryPath')} id="setting-go2rtc-binary-path"
                   name="go2rtcBinaryPath"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcBinaryPath}
@@ -310,7 +310,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-go2rtc-config-dir"
+                  aria-label={t('settings.configDirectory')} id="setting-go2rtc-config-dir"
                   name="go2rtcConfigDir"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcConfigDir}
@@ -326,7 +326,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="number"
-                  id="setting-go2rtc-api-port"
+                  aria-label={t('settings.apiPort')} id="setting-go2rtc-api-port"
                   name="go2rtcApiPort"
                   min="1"
                   max="65535"
@@ -343,7 +343,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="number"
-                  id="setting-go2rtc-rtsp-port"
+                  aria-label={t('settings.rtspPort')} id="setting-go2rtc-rtsp-port"
                   name="go2rtcRtspPort"
                   min="1"
                   max="65535"
@@ -360,7 +360,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="checkbox"
-                  id="setting-go2rtc-webrtc-enabled"
+                  aria-label={t('settings.enableWebrtc')} id="setting-go2rtc-webrtc-enabled"
                   name="go2rtcWebrtcEnabled"
                   class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
                   checked={settings.go2rtcWebrtcEnabled}
@@ -375,7 +375,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="number"
-                  id="setting-go2rtc-webrtc-listen-port"
+                  aria-label={t('settings.webrtcListenPort')} id="setting-go2rtc-webrtc-listen-port"
                   name="go2rtcWebrtcListenPort"
                   min="1"
                   max="65535"
@@ -392,7 +392,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="checkbox"
-                  id="setting-go2rtc-stun-enabled"
+                  aria-label={t('settings.enableStun')} id="setting-go2rtc-stun-enabled"
                   name="go2rtcStunEnabled"
                   class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
                   checked={settings.go2rtcStunEnabled}
@@ -407,7 +407,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-go2rtc-stun-server"
+                  aria-label={t('settings.stunServer')} id="setting-go2rtc-stun-server"
                   name="go2rtcStunServer"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcStunServer}
@@ -423,7 +423,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-go2rtc-external-ip"
+                  aria-label={t('settings.externalIp')} id="setting-go2rtc-external-ip"
                   name="go2rtcExternalIp"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcExternalIp}
@@ -439,7 +439,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-go2rtc-ice-servers"
+                  aria-label={t('settings.iceServers')} id="setting-go2rtc-ice-servers"
                   name="go2rtcIceServers"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.go2rtcIceServers}
@@ -486,7 +486,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Editor */}
                 <textarea
-                  id="setting-go2rtc-config-override"
+                  aria-label={t('settings.go2rtcConfigOverride')} id="setting-go2rtc-config-override"
                   name="go2rtcConfigOverride"
                   class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
                   rows="8"

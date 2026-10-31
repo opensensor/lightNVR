@@ -37,7 +37,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-syslog-enabled"
+              aria-label={t('settings.enableSyslog')} id="setting-syslog-enabled"
               name="syslogEnabled"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -55,7 +55,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
               <div class="col-span-2">
                 <input
                   type="text"
-                  id="setting-syslog-ident"
+                  aria-label={t('settings.syslogIdent')} id="setting-syslog-ident"
                   name="syslogIdent"
                   class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.syslogIdent}
@@ -107,7 +107,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
           <label for="setting-web-port" class="font-medium">{t('settings.webPort')}</label>
           <input
             type="number"
-            id="setting-web-port"
+            aria-label={t('settings.webPort')} id="setting-web-port"
             name="webPort"
             min="1"
             max="65535"
@@ -121,7 +121,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
           <label for="setting-web-bind-ip" class="font-medium">{t('settings.webBindIp')}</label>
           <input
             type="text"
-            id="setting-web-bind-ip"
+            aria-label={t('settings.webBindIp')} id="setting-web-bind-ip"
             name="webBindIp"
             class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
             value={settings.webBindIp}
@@ -138,7 +138,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-thread-pool"
+              aria-label={t('settings.threadPoolSize')} id="setting-thread-pool"
               name="webThreadPoolSize"
               min="2"
               max="128"
@@ -161,7 +161,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-max-streams"
+              aria-label={t('settings.maxStreams')} id="setting-max-streams"
               name="maxStreams"
               min="1"
               max={settings.maxStreamsCeiling || 1024}

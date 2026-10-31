@@ -140,7 +140,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
           ref={inputRef}
           type="text"
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
-          placeholder={t('recordings.addTagPlaceholder')}
+          aria-label={t('recordings.addTagPlaceholder')} placeholder={t('recordings.addTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}
@@ -286,6 +286,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
             <label key={tag} class="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
               <input
                 type="checkbox"
+                aria-label={tag}
                 checked={state === 'all'}
                 ref={(el) => { if (el) el.indeterminate = state === 'some'; }}
                 onChange={() => handleTagToggle(tag)}
@@ -305,7 +306,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
           ref={inputRef}
           type="text"
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
-          placeholder={t('recordings.addNewTagPlaceholder')}
+          aria-label={t('recordings.addNewTagPlaceholder')} placeholder={t('recordings.addNewTagPlaceholder')}
           value={inputValue}
           onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}

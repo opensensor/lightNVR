@@ -27,7 +27,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           <div class="col-span-2">
             <input
               type="text"
-              id="setting-detection-models-path"
+              aria-label={t('settings.detectionModelsPath')} id="setting-detection-models-path"
               name="detectionModelsPath"
               placeholder="/var/lib/lightnvr/models"
               class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
@@ -60,7 +60,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           <div class="col-span-2">
             <input
               type="text"
-              id="setting-api-detection-url"
+              aria-label={t('settings.apiDetectionUrl')} id="setting-api-detection-url"
               name="apiDetectionUrl"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.apiDetectionUrl}
@@ -99,7 +99,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
             <div class="col-span-2">
               <input
                 type="text"
-                id="setting-api-detection-detector-name"
+                aria-label={t('settings.apiDetectionDetectorName')} id="setting-api-detection-detector-name"
                 name="apiDetectionDetectorName"
                 class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.apiDetectionDetectorName || ''}
@@ -117,7 +117,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
             <div class="flex items-center">
               <input
                 type="range"
-                id="setting-default-detection-threshold"
+                aria-label={t('settings.defaultDetectionThreshold')} id="setting-default-detection-threshold"
                 name="defaultDetectionThreshold"
                 min="0"
                 max="100"
@@ -137,7 +137,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-detection-grace-period"
+              aria-label={t('settings.detectionGracePeriod')} id="setting-detection-grace-period"
               name="detectionGracePeriod"
               min="0"
               max="60"
@@ -164,7 +164,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           <div class="col-span-2">
             <input
               type="checkbox"
-              id="setting-detection-engine-enabled"
+              aria-label={t('settings.detectionEngineEnabled')} id="setting-detection-engine-enabled"
               name="detectionEngineEnabled"
               class="h-5 w-5 disabled:opacity-60 disabled:cursor-not-allowed"
               checked={!!settings.detectionEngineEnabled}
@@ -178,7 +178,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           <div class="col-span-2">
             <input
               type="number"
-              id="setting-detection-engine-threads"
+              aria-label={t('settings.detectionEngineThreads')} id="setting-detection-engine-threads"
               name="detectionEngineThreads"
               min="1"
               max="16"
