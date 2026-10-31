@@ -278,6 +278,25 @@ static void test_destination_inspection_error_keeps_cleanup_pending(void) {
     destination_stat_error = 0;
     assert_source_location(id); assert_cleanup_pending(&job, "cancelled");
 }
+static void test_preexisting_temporary_is_not_truncated_or_published(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    put_file(temporary_path, "preexisting temporary sentinel");
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_bytes(temporary_path, "preexisting temporary sentinel");
+    assert_source_location(id); TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
+}
+static void test_preexisting_temporary_survives_failed_job_and_later_cleanup(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    put_file(temporary_path, "unowned temporary cleanup sentinel");
+    put_file(destination_path, "unowned final cleanup sentinel");
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_bytes(temporary_path, "unowned temporary cleanup sentinel");
+    assert_source_location(id);
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_bytes(temporary_path, "unowned temporary cleanup sentinel");
+    assert_bytes(destination_path, "unowned final cleanup sentinel");
+    assert_source_location(id); assert_cleanup_pending(&job, "failed");
+}
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-26-XXXXXX"); if (!mkdtemp(root)) return 2;
     snprintf(source_root, sizeof(source_root), "%s/source", root);
@@ -306,6 +325,8 @@ int main(void) {
     RUN_TEST(test_cancelled_job_without_artifacts_completes_cleanup);
     RUN_TEST(test_matching_bytes_do_not_prove_abandoned_destination_ownership);
     RUN_TEST(test_destination_inspection_error_keeps_cleanup_pending);
+    RUN_TEST(test_preexisting_temporary_is_not_truncated_or_published);
+    RUN_TEST(test_preexisting_temporary_survives_failed_job_and_later_cleanup);
     int result = UNITY_END(); shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;
 }
