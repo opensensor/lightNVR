@@ -156,7 +156,7 @@ browserTest('actual dialogs preserve nested controls, saving guards, focus and k
     await page.locator('#root > div').click({ position: { x: 1, y: 1 } });
     expect(await page.evaluate(() => window.calls.close)).toBe(0);
     await page.evaluate(() => window.finishSave());
-    await page.waitForFunction(() => !document.querySelector('#role-manager-title').closest('section').querySelector('header button').disabled);
+    await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-modal="true"] header button').disabled);
     await roleDialog.getByRole('button', { name: 'translated:common.delete', exact: true }).click();
     const cancel = page.getByRole('button', { name: 'translated:common.cancel', exact: true });
     await page.waitForFunction(() => document.activeElement?.textContent === 'translated:common.cancel');

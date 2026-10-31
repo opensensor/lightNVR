@@ -149,9 +149,9 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
       event.stopPropagation();
       if (event.target === event.currentTarget && !saving) onClose();
     }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="role-manager-title" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl">
+      <section role="dialog" aria-modal="true" aria-labelledby={`${fieldId}-title`} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl">
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
-          <div><h2 id="role-manager-title" className="text-xl font-bold">{t('access.roles.title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('access.roles.description')}</p></div>
+          <div><h2 id={`${fieldId}-title`} className="text-xl font-bold">{t('access.roles.title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('access.roles.description')}</p></div>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.close')}</button>
         </header>
 

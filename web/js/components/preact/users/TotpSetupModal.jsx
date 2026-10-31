@@ -194,19 +194,21 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 same call. The button's own handleClick preventDefaults
                 while pending so a second Enter press is dropped. */}
             <form onSubmit={handleVerify}>
-              <label id={`${verifyInputId}-label`} htmlFor={verifyInputId} className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</label>
-              <input
-                id={verifyInputId}
-                aria-labelledby={`${verifyInputId}-label`}
-                type="text"
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
-                placeholder="000000"
-                value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                maxLength="6"
-                autoFocus
-                required
-              />
+              <label htmlFor={verifyInputId} className="block">
+                <span id={`${verifyInputId}-label`} className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</span>
+                <input
+                  id={verifyInputId}
+                  aria-labelledby={`${verifyInputId}-label`}
+                  type="text"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
+                  placeholder="000000"
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  maxLength="6"
+                  autoFocus
+                  required
+                />
+              </label>
               <AsyncButton
                 type="submit"
                 className="btn-primary w-full"
