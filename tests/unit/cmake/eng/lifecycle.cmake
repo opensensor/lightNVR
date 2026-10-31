@@ -1,0 +1,1 @@
+set_tests_properties(test_shutdown_coordinator PROPERTIES TIMEOUT 15)

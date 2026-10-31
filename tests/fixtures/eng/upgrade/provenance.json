@@ -1,0 +1,23 @@
+{
+  "tag": "0.45.0",
+  "revision": "fba2cc52ea37fc61ecb03781e81af2a1e545ed17",
+  "kind": "synthetic source-derived fixture, not an exported user database",
+  "source_files": {
+    "config/lightnvr-health-test.ini": "d29b7d6dbff05bcac7d560b4353d0f640f22ecdd3b4bbddccd39a80e460ff7bf",
+    "web/js/utils/reduceMotion.js": "a9f9c705a46585100e03ecae37363919d267012cbe880445c421c6557897682b",
+    "web/js/utils/theme-init.js": "93c859bad6301b79de02d523de2d8025062e9cf3813d69e26cf007c356e1d0e5",
+    "web/js/components/preact/ThemeCustomizer.jsx": "f4de218046e2b60d16f1f8a1cccaa8ccf2c6ea9fa3c754e6eff2d3c3f50f48c2",
+    "include/database/db_embedded_migrations.h": "05e49190383861c3f59081aa60616b40f171edd0a0d1566d69c0ab35620ac805"
+  },
+  "migration_count": 89,
+  "maximum_migration": "0089",
+  "support_claim": "Previous tagged release compatibility only; no official supported-release matrix found. Current0.45.1 has the same migration set.",
+  "config_transformations": [
+    "isolated /tmp paths",
+    "absolute web root",
+    "disable MQTT",
+    "enable managed loopback go2rtc on reserved integration ports",
+    "short synthetic media segments; no retention deletion"
+  ],
+  "migration_source_note": "87 filesystem migrations plus embedded-only0043 and0044, matching the historical executable migration set"
+}
