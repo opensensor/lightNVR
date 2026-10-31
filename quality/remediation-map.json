@@ -9284,7 +9284,9 @@
       "title": "jsx-a11y/click-events-have-key-events in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx",
       "depends_on": [
         "T7",
-        "T10"
+        "T10",
+        "T10.2",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -9650,7 +9652,8 @@
       "depends_on": [
         "T7",
         "T10",
-        "T7.161"
+        "T7.161",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10061,7 +10064,8 @@
       "depends_on": [
         "T7",
         "T10",
-        "T7.163"
+        "T7.163",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10164,7 +10168,9 @@
       "depends_on": [
         "T7",
         "T10",
-        "T7.163"
+        "T7.163",
+        "T10.2",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10266,7 +10272,8 @@
       "title": "jsx-a11y/control-has-associated-label in HealthTab.jsx, MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, StreamStorage.jsx, CalendarPicker.jsx",
       "depends_on": [
         "T7",
-        "T10"
+        "T10",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10593,7 +10600,8 @@
         "T7.166",
         "T7.167",
         "T7.169",
-        "T7.170"
+        "T7.170",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10697,7 +10705,8 @@
         "T7",
         "T10",
         "T7.173",
-        "T7.174"
+        "T7.174",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -10874,7 +10883,8 @@
         "T10",
         "T7.161",
         "T7.177",
-        "T7.168"
+        "T7.168",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -11186,7 +11196,8 @@
         "T7",
         "T10",
         "T7.171",
-        "T7.172"
+        "T7.172",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -11290,7 +11301,8 @@
         "T7",
         "T10",
         "T7.172",
-        "T7.178"
+        "T7.178",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -11395,7 +11407,8 @@
         "T10",
         "T7.173",
         "T7.178",
-        "T7.174"
+        "T7.174",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -11877,7 +11890,8 @@
         "T10",
         "T7.188",
         "T7.183",
-        "T7.185"
+        "T7.185",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -12116,7 +12130,8 @@
         "T7.180",
         "T7.162",
         "T7.188",
-        "T7.183"
+        "T7.183",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -12220,7 +12235,8 @@
         "T7",
         "T10",
         "T7.183",
-        "T7.186"
+        "T7.186",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -12576,7 +12592,8 @@
         "T7.162",
         "T7.188",
         "T7.190",
-        "T7.193"
+        "T7.193",
+        "T10.2"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -12683,7 +12700,8 @@
         "T7.181",
         "T7.191",
         "T7.193",
-        "T7.194"
+        "T7.194",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -12789,7 +12807,9 @@
         "T7.194",
         "T7.184",
         "T7.163",
-        "T7.188"
+        "T7.188",
+        "T10.2",
+        "T10.3"
       ],
       "kind": "web-fix",
       "priority": "low",
@@ -24243,7 +24263,24 @@
     "generation": "T12 -> T7 contract reconciliation -> T18/T19; resolve exact generated output names after T12 before releasing reconciliation.",
     "migration": "T25 depends on all first-party web fix tasks; T16/T17/T19/T20/T21/T22 get explicit overlapping path predecessors.",
     "policy": "T7.1 follows T6 and precedes T14; T33 integrates dispositions and must reject unresolved proposals.",
-    "c_boundary": "T31 is read-only selection. Each T31.* child must depend on the last remediation writer of its exact selected source paths, using this map; selection cannot release overlapping writes without those edges."
+    "c_boundary": "T31 is read-only selection. Each T31.* child must depend on the last remediation writer of its exact selected source paths, using this map; selection cannot release overlapping writes without those edges.",
+    "T10_localization_predecessors": {
+      "web/public/locales/en.json": "T10.1",
+      "tests/quality/localized-attributes.test.mjs": "T10.1",
+      "quality/evidence/T10.1.md": "T10.1",
+      "web/js/components/preact/SettingsView.jsx": "T10.2",
+      "web/js/components/preact/StreamConfigModal.jsx": "T10.2",
+      "web/js/components/preact/settings/DetectionTab.jsx": "T10.2",
+      "web/js/components/preact/settings/Go2rtcTab.jsx": "T10.2",
+      "web/js/components/preact/settings/StorageTab.jsx": "T10.2",
+      "quality/evidence/T10.2.md": "T10.2",
+      "web/js/components/preact/live/LiveBuildingPlan.jsx": "T10.3",
+      "web/js/components/preact/live/PlanSketchControls.jsx": "T10.3",
+      "web/js/components/preact/recordings/RecordingsGrid.jsx": "T10.3",
+      "web/js/components/preact/recordings/RecordingsTable.jsx": "T10.3",
+      "web/js/components/preact/recordings/TagsOverlay.jsx": "T10.3",
+      "quality/evidence/T10.3.md": "T10.3"
+    }
   },
   "discrepancy_map": {
     "D-01": [

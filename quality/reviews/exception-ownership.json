@@ -7010,5 +7010,6 @@
         "build/eng-artifacts/dependency-review/root-all.json"
       ]
     }
-  ]
+  ],
+  "maintainer_direction": "User explicitly chose: Keep pending; continue independent work (2026-10-31). No dependency exceptions approved."
 }

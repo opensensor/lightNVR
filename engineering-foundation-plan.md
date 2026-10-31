@@ -4,7 +4,7 @@
 **Mode**: Swarm-ready dependency plan
 **Source**: [Engineering foundation PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md)
 **Inspected baseline**: `main`, `1b8d4332` (PR #691's unified Live view)
-**Execution status**: In progress; resumed under user authorization on 2026-10-31. T1–T4 and T6 were committed before resumption. Physical-device measurements in T5/T36 are deferred at the user's request; this is not passing qualification evidence.
+**Execution status**: In progress; resumed under user authorization on 2026-10-31. User explicitly kept development-tool exception proposals pending; continue independent work without approving them. T1–T4 and T6 were committed before resumption. Physical-device measurements in T5/T36 are deferred at the user's request; this is not passing qualification evidence.
 
 ## Overview
 
@@ -303,8 +303,8 @@ records and gate dependencies must be added by the named producer.
   - `npm run typecheck:tests` (script registered by T8)
   - `npx playwright test --list`
   - Review the load CLI's typed configuration/argument flow without sending load; compiler coverage is the acceptance check for that code here.
-- **status**: Expansion recorded; T9.1–T9.4 in progress
-- **log**: Strict test config discovers 38 errors in 12 files; 213 Playwright tests in 28 files before changes. Coordinator accepted four bounded serial repair tasks and added final T9.4 to T13/T15. Initial diagnostics are RED contract; no broad ambient any or removed coverage allowed.
+- **status**: Completed (commit `b0bcf4c2`)
+- **log**: Strict config plus four bounded repair children complete; 38 original diagnostics eliminated across 12 files, all 48 integration/load/config TS files included; 213 test identities unchanged. Three imported browser JS modules explicitly unchecked pending T25/T34.
 - **files edited/created**:
 
 ### T10: Preserve lint, hooks, and i18n across extension changes
@@ -319,8 +319,8 @@ records and gate dependencies must be added by the named producer.
   - `node --test tests/quality/lint-compat.test.mjs`
   - `npm --prefix web run lint`
   - Demonstrate failures for one TSX visible string, invalid hooks use, and representative accessibility violation in a clean enforced scope.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `4f82c1e2`)
+- **log**: Rules and T10.1–T10.3 closure complete: 31 focused checks, 55 suites/571 tests, lint zero errors and unchanged 897 existing warnings. Canonical i18n allowance bytes unchanged; TS hooks/a11y/type escapes and duplicate identity enforced.
 - **files edited/created**:
 
 ### T11: Specify the pilot contract from real behavior
@@ -351,9 +351,9 @@ records and gate dependencies must be added by the named producer.
   - `node scripts/quality/contracts.mjs --check`
   - `node --test tests/quality/contracts.test.mjs`
   - `npm --prefix web run typecheck`
-- **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **status**: Completed (commit `30aecdfc`)
+- **log**: RED missing generator -> GREEN 12 isolated tests and all 91 fixture expectations; deterministic read-only drift checks reject missing/untracked/stale outputs and invalid refs. Enforces embedded JSON and UTF-8 byte limits; types/declarations pass strict checking. Per-schema standalone validators tree-shake (client-config 1.6KB gzip, viewer 7KB, update 5.3KB); full metadata stays in test output. No compiler runtime shipped or package changes.
+- **files edited/created**: `scripts/quality/contracts.mjs`, `web/js/api/generated/`, `tests/contracts/generated/`, `tests/quality/contracts.test.mjs`, `quality/evidence/T12.md`
 
 ### T13: Isolate native, API, and UI validation runs
 - **depends_on**: [T3, T9, T9.4]
@@ -373,7 +373,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T14: Wire analysis reports and blocking policy into CI
-- **depends_on**: [T6, T8, T10, T7.1]
+- **depends_on**: [T6, T8, T10, T7.1, T10.3, T14.1]
 - **agent_type**: local
 - **ownership**: `.github/workflows/static-analysis.yml`, `codeql-analysis.yml`, `container-scan.yml`, `quality/scanners.json` scope extensions, `quality/evidence/T14.md`.
 - **description**: Preserve raw-report artifacts while applying the T6 policy. Add frontend JS/TS security coverage and explicit production/development dependency reports. Record scanner exit/report status independently; ensure changed tool/database versions remain visible. Do not mistake CodeQL upload success for an enforced no-new-alert gate; connect actual finding policy or verified repository code-scanning rules.
@@ -388,7 +388,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T15: Integrate foundation checks and required-status policy
-- **depends_on**: [T4, T7, T9, T10, T12, T13, T14, T7.8, T7.9, T7.10, T9.4]
+- **depends_on**: [T4, T7, T9, T10, T12, T13, T14, T7.8, T7.9, T7.10, T9.4, T10.3]
 - **agent_type**: local
 - **ownership**: shared manifests/lockfiles, `.github/workflows/integration-test.yml`, new engineering workflow if justified, `quality/required-checks.json`, `quality/evidence/T15.md`.
 - **description**: Resolve infrastructure changes, finalize command registrations and dependency pins, and add local/CI type/lint/unit/asset/schema statuses with explicit path-filter behavior. T39 activates real pilot contract CI once T18 exists; never allow an empty future suite to report success. Produce the concrete required-status settings for T38, without making remote administrative access a prerequisite for local development.
@@ -3725,7 +3725,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.163: jsx-a11y/click-events-have-key-events in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx
-- **depends_on**: [T7, T10]
+- **depends_on**: [T7, T10, T10.2, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/live/LiveOperatorNavigator.jsx`, `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/settings/Go2rtcTab.jsx`, `web/js/components/preact/system/ClearLogsModal.jsx`, `web/js/components/preact/system/RestartModal.jsx`, `web/js/components/preact/timeline/TimelinePlayer.jsx`, `web/tests/remediation/t7_163.spec.jsx`, `quality/evidence/T7.163.md`.
 - **priority**: low
@@ -3809,7 +3809,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.167: jsx-a11y/control-has-associated-label in LiveView.jsx, LoginView.jsx, MSEVideoCell.jsx, SetupWizard.jsx, SnapshotManager.jsx, StreamConfigModal.jsx
-- **depends_on**: [T7, T10, T7.161]
+- **depends_on**: [T7, T10, T7.161, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/LiveView.jsx`, `web/js/components/preact/LoginView.jsx`, `web/js/components/preact/MSEVideoCell.jsx`, `web/js/components/preact/SetupWizard.jsx`, `web/js/components/preact/SnapshotManager.jsx`, `web/js/components/preact/StreamConfigModal.jsx`, `web/tests/remediation/t7_167.spec.jsx`, `quality/evidence/T7.167.md`.
 - **priority**: low
@@ -3893,7 +3893,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.171: jsx-a11y/control-has-associated-label in LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx, PlanSketchControls.jsx, FiltersSidebar.jsx, RecordingsGrid.jsx, RecordingsTable.jsx
-- **depends_on**: [T7, T10, T7.163]
+- **depends_on**: [T7, T10, T7.163, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/live/LiveBuildingPlan.jsx`, `web/js/components/preact/live/LiveOperatorNavigator.jsx`, `web/js/components/preact/live/PlanSketchControls.jsx`, `web/js/components/preact/recordings/FiltersSidebar.jsx`, `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/recordings/RecordingsTable.jsx`, `web/tests/remediation/t7_171.spec.jsx`, `quality/evidence/T7.171.md`.
 - **priority**: low
@@ -3914,7 +3914,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.172: jsx-a11y/control-has-associated-label in TagsOverlay.jsx, AdvancedTab.jsx, AuthTab.jsx, DetectionTab.jsx, GeneralTab.jsx, Go2rtcTab.jsx
-- **depends_on**: [T7, T10, T7.163]
+- **depends_on**: [T7, T10, T7.163, T10.2, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/recordings/TagsOverlay.jsx`, `web/js/components/preact/settings/AdvancedTab.jsx`, `web/js/components/preact/settings/AuthTab.jsx`, `web/js/components/preact/settings/DetectionTab.jsx`, `web/js/components/preact/settings/GeneralTab.jsx`, `web/js/components/preact/settings/Go2rtcTab.jsx`, `web/tests/remediation/t7_172.spec.jsx`, `quality/evidence/T7.172.md`.
 - **priority**: low
@@ -3935,7 +3935,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.173: jsx-a11y/control-has-associated-label in HealthTab.jsx, MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, StreamStorage.jsx, CalendarPicker.jsx
-- **depends_on**: [T7, T10]
+- **depends_on**: [T7, T10, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/settings/HealthTab.jsx`, `web/js/components/preact/settings/MqttTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `web/js/components/preact/settings/StreamsDefaultsTab.jsx`, `web/js/components/preact/system/StreamStorage.jsx`, `web/js/components/preact/timeline/CalendarPicker.jsx`, `web/tests/remediation/t7_173.spec.jsx`, `quality/evidence/T7.173.md`.
 - **priority**: low
@@ -4019,7 +4019,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.177: jsx-a11y/label-has-associated-control in BatchDownloadModal.jsx, StreamConfigModal.jsx, EventDestinationEditor.jsx, EventRouteEditor.jsx, CollectionManager.jsx, StaticCollectionMembers.jsx
-- **depends_on**: [T7, T10, T7.166, T7.167, T7.169, T7.170]
+- **depends_on**: [T7, T10, T7.166, T7.167, T7.169, T7.170, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/BatchDownloadModal.jsx`, `web/js/components/preact/StreamConfigModal.jsx`, `web/js/components/preact/events/EventDestinationEditor.jsx`, `web/js/components/preact/events/EventRouteEditor.jsx`, `web/js/components/preact/fleet/CollectionManager.jsx`, `web/js/components/preact/fleet/StaticCollectionMembers.jsx`, `web/tests/remediation/t7_177.spec.jsx`, `quality/evidence/T7.177.md`.
 - **priority**: low
@@ -4040,7 +4040,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
-- **depends_on**: [T7, T10, T7.173, T7.174]
+- **depends_on**: [T7, T10, T7.173, T7.174, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/settings/HealthTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `web/js/components/preact/users/ApiKeyModal.jsx`, `web/tests/remediation/t7_178.spec.jsx`, `quality/evidence/T7.178.md`.
 - **priority**: low
@@ -4082,7 +4082,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.180: jsx-a11y/label-has-for in StreamCard.jsx, StreamConfigModal.jsx, StreamsView.jsx, UI.jsx, ZoneEditor.jsx, ModalDialog.jsx
-- **depends_on**: [T7, T10, T7.161, T7.177, T7.168]
+- **depends_on**: [T7, T10, T7.161, T7.177, T7.168, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/StreamCard.jsx`, `web/js/components/preact/StreamConfigModal.jsx`, `web/js/components/preact/StreamsView.jsx`, `web/js/components/preact/UI.jsx`, `web/js/components/preact/ZoneEditor.jsx`, `web/js/components/preact/common/ModalDialog.jsx`, `web/tests/remediation/t7_180.spec.jsx`, `quality/evidence/T7.180.md`.
 - **priority**: low
@@ -4145,7 +4145,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.183: jsx-a11y/label-has-for in LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx, FiltersSidebar.jsx, RecordingsGrid.jsx, RecordingsTable.jsx, TagsOverlay.jsx
-- **depends_on**: [T7, T10, T7.171, T7.172]
+- **depends_on**: [T7, T10, T7.171, T7.172, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/live/LiveBuildingPlan.jsx`, `web/js/components/preact/live/LiveOperatorNavigator.jsx`, `web/js/components/preact/recordings/FiltersSidebar.jsx`, `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/recordings/RecordingsTable.jsx`, `web/js/components/preact/recordings/TagsOverlay.jsx`, `web/tests/remediation/t7_183.spec.jsx`, `quality/evidence/T7.183.md`.
 - **priority**: low
@@ -4166,7 +4166,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.184: jsx-a11y/label-has-for in AdvancedTab.jsx, AuthTab.jsx, DetectionTab.jsx, GeneralTab.jsx, Go2rtcTab.jsx, HealthTab.jsx
-- **depends_on**: [T7, T10, T7.172, T7.178]
+- **depends_on**: [T7, T10, T7.172, T7.178, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/settings/AdvancedTab.jsx`, `web/js/components/preact/settings/AuthTab.jsx`, `web/js/components/preact/settings/DetectionTab.jsx`, `web/js/components/preact/settings/GeneralTab.jsx`, `web/js/components/preact/settings/Go2rtcTab.jsx`, `web/js/components/preact/settings/HealthTab.jsx`, `web/tests/remediation/t7_184.spec.jsx`, `quality/evidence/T7.184.md`.
 - **priority**: low
@@ -4187,7 +4187,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.185: jsx-a11y/label-has-for in MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, WorkspacesTab.jsx, TimelinePage.jsx, TimelinePlayer.jsx
-- **depends_on**: [T7, T10, T7.173, T7.178, T7.174]
+- **depends_on**: [T7, T10, T7.173, T7.178, T7.174, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/settings/MqttTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `web/js/components/preact/settings/StreamsDefaultsTab.jsx`, `web/js/components/preact/settings/WorkspacesTab.jsx`, `web/js/components/preact/timeline/TimelinePage.jsx`, `web/js/components/preact/timeline/TimelinePlayer.jsx`, `web/tests/remediation/t7_185.spec.jsx`, `quality/evidence/T7.185.md`.
 - **priority**: low
@@ -4292,7 +4292,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.190: jsx-a11y/mouse-events-have-key-events in WebRTCVideoCell.jsx, RecordingsTable.jsx, TimelinePage.jsx
-- **depends_on**: [T7, T10, T7.188, T7.183, T7.185]
+- **depends_on**: [T7, T10, T7.188, T7.183, T7.185, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/WebRTCVideoCell.jsx`, `web/js/components/preact/recordings/RecordingsTable.jsx`, `web/js/components/preact/timeline/TimelinePage.jsx`, `web/tests/remediation/t7_190.spec.jsx`, `quality/evidence/T7.190.md`.
 - **priority**: low
@@ -4355,7 +4355,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.193: jsx-a11y/no-noninteractive-element-interactions in FisheyeEptzCanvas.jsx, StreamCard.jsx, ZoneEditor.jsx, LanguageSelector.jsx, InvestigationView.jsx, LiveBuildingPlan.jsx
-- **depends_on**: [T7, T10, T7.189, T7.180, T7.162, T7.188, T7.183]
+- **depends_on**: [T7, T10, T7.189, T7.180, T7.162, T7.188, T7.183, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/FisheyeEptzCanvas.jsx`, `web/js/components/preact/StreamCard.jsx`, `web/js/components/preact/ZoneEditor.jsx`, `web/js/components/preact/common/LanguageSelector.jsx`, `web/js/components/preact/investigation/InvestigationView.jsx`, `web/js/components/preact/live/LiveBuildingPlan.jsx`, `web/tests/remediation/t7_193.spec.jsx`, `quality/evidence/T7.193.md`.
 - **priority**: low
@@ -4376,7 +4376,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.194: jsx-a11y/no-noninteractive-element-interactions in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, TimelineCursor.jsx, TimelineSegments.jsx, AccessPolicyModal.jsx, AddUserModal.jsx
-- **depends_on**: [T7, T10, T7.183, T7.186]
+- **depends_on**: [T7, T10, T7.183, T7.186, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/live/LiveOperatorNavigator.jsx`, `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/timeline/TimelineCursor.jsx`, `web/js/components/preact/timeline/TimelineSegments.jsx`, `web/js/components/preact/users/AccessPolicyModal.jsx`, `web/js/components/preact/users/AddUserModal.jsx`, `web/tests/remediation/t7_194.spec.jsx`, `quality/evidence/T7.194.md`.
 - **priority**: low
@@ -4460,7 +4460,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.198: jsx-a11y/no-static-element-interactions in StreamConfigModal.jsx, StreamsView.jsx, ToastContainer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx
-- **depends_on**: [T7, T10, T7.180, T7.189, T7.162, T7.188, T7.190, T7.193]
+- **depends_on**: [T7, T10, T7.180, T7.189, T7.162, T7.188, T7.190, T7.193, T10.2]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/StreamConfigModal.jsx`, `web/js/components/preact/StreamsView.jsx`, `web/js/components/preact/ToastContainer.jsx`, `web/js/components/preact/UI.jsx`, `web/js/components/preact/WebRTCVideoCell.jsx`, `web/js/components/preact/ZoneEditor.jsx`, `web/tests/remediation/t7_198.spec.jsx`, `quality/evidence/T7.198.md`.
 - **priority**: low
@@ -4481,7 +4481,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.199: jsx-a11y/no-static-element-interactions in ModalDialog.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, OrganizationManager.jsx, LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx
-- **depends_on**: [T7, T10, T7.180, T7.181, T7.191, T7.193, T7.194]
+- **depends_on**: [T7, T10, T7.180, T7.181, T7.191, T7.193, T7.194, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/common/ModalDialog.jsx`, `web/js/components/preact/fleet/BulkOrganizeModal.jsx`, `web/js/components/preact/fleet/CollectionManager.jsx`, `web/js/components/preact/fleet/OrganizationManager.jsx`, `web/js/components/preact/live/LiveBuildingPlan.jsx`, `web/js/components/preact/live/LiveOperatorNavigator.jsx`, `web/tests/remediation/t7_199.spec.jsx`, `quality/evidence/T7.199.md`.
 - **priority**: low
@@ -4502,7 +4502,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.200: jsx-a11y/no-static-element-interactions in RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx, AccessPolicyModal.jsx
-- **depends_on**: [T7, T10, T7.194, T7.184, T7.163, T7.188]
+- **depends_on**: [T7, T10, T7.194, T7.184, T7.163, T7.188, T10.2, T10.3]
 - **agent_type**: worker
 - **ownership**: `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/settings/Go2rtcTab.jsx`, `web/js/components/preact/system/ClearLogsModal.jsx`, `web/js/components/preact/system/RestartModal.jsx`, `web/js/components/preact/timeline/TimelinePlayer.jsx`, `web/js/components/preact/users/AccessPolicyModal.jsx`, `web/tests/remediation/t7_200.spec.jsx`, `quality/evidence/T7.200.md`.
 - **priority**: low
@@ -6951,7 +6951,9 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **description**: Repair three array-index return types, two unknown caught errors, and date extraction. Use checked existence/narrowing, preserve behavior for valid inputs, and reject impossible empty selections explicitly. No load execution or test removal.
 - **acceptance_criteria**: All six initial diagnostics in these five files disappear without broad declarations, ts-ignore, or new `any`; valid CLI/scenario/report/page behavior stays intact.
 - **validation**: `npm run typecheck:tests` (initial 38 diagnostics; this cluster must reach zero while unrelated clusters remain RED); Node assertions for parseArgs valid/missing values and zero-request runLoadTest without network; final whole-config GREEN owned by T9.4.
-- **status**: Not Completed
+- **status**: Completed (commit `d36e4e65`)
+- **log**: Six cluster diagnostics repaired with checked values and narrowed errors; no load traffic.
+
 
 ### T9.2: Type media DOM and mocked routes
 - **depends_on**: [T9.1]
@@ -6960,7 +6962,9 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **description**: Narrow selected video elements to the HTMLVideoElement contract; retain controls/readyState/play/pause assertions. Type mocked route setup parameters as Playwright Page so handlers infer Route. Use fixed ISO date slicing for non-optional date strings. Handle controlsList as a narrow browser capability (DOMTokenList) because it is not part of TypeScript's portable HTMLMediaElement interface.
 - **acceptance_criteria**: All 23 original diagnostics across these four files disappear; all runtime test definitions/assertions remain present; no ambient browser-wide `any` added.
 - **validation**: `npm run typecheck:tests` with zero cluster errors; compare Playwright --list test identities to baseline (ignore moved line numbers); final full GREEN in T9.4.
-- **status**: Not Completed
+- **status**: Completed (commit `90f26a8d`)
+- **log**: 23 media DOM/route diagnostics repaired across four files without changing test identities.
+
 
 ### T9.3: Preserve timeline/snapshot fixture bounds
 - **depends_on**: [T9.2]
@@ -6969,7 +6973,9 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **description**: Validate parsed local date/time components and nonempty segment fixtures; narrow fixed fixture entries and captured URLs through explicit checks or known tuple definitions. Preserve existing route responses and snapshot/timeline assertions, rejecting malformed fixture setup instead of changing tests to pass.
 - **acceptance_criteria**: All eight original diagnostics in these two files disappear without optional-default values hiding missing test data; test identities remain unchanged.
 - **validation**: `npm run typecheck:tests` with zero cluster errors; Playwright --list identities unchanged; final full GREEN in T9.4.
-- **status**: Not Completed
+- **status**: Completed (commit `688eb332`)
+- **log**: Eight timeline/snapshot diagnostics repaired with explicit fixture bounds and tuple types.
+
 
 ### T9.4: Integrate the legacy JS test boundary and verify coverage
 - **depends_on**: [T9.3]
@@ -6978,11 +6984,13 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **description**: Resolve the existing recordings JS import without wildcard-any modules or hiding test files. Keep the exact legacy JS boundary explicit and runtime-checked where values cross into the test. Any incremental allowJs/checkJs setting must inventory the exact imported application files as still unchecked and assign retirement to T34; it is not migration completion. Preserve the four existing URL utility test definitions and assertions. Reconcile compiler coverage and discovery across all clusters.
 - **acceptance_criteria**: Root typecheck is GREEN for all existing integration/load TS and configuration; no unchecked test file/excluded diagnostic; 213 Playwright tests in 28 files remain discovered; no load traffic sent. Legacy application JS remains explicitly accounted for in evidence.
 - **validation**: `npm run typecheck:tests`; `npx playwright test --list --reporter=list`; inspect `tsc --listFilesOnly -p tests/tsconfig.json` against `rg --files tests/integration tests/load`; run the four URL utility tests with a temporary isolated Playwright config disabling global setup/teardown (they need neither browser launch nor server); all results captured under `build/eng-artifacts/T9/`.
-- **status**: Not Completed
+- **status**: Completed (commit `b0bcf4c2`)
 
 Coordinator verified this serial task chain and inserted T9.4 into T13/T15 before child edits. Root type-check lease is held by its worker.
 
 ## Expanded C boundary tasks (T31)
+- **log**: Root strict typecheck GREEN; all 48 TS files included, 213 Playwright identities preserved, four existing URL utility tests pass without server/browser/load. Three legacy JS dependencies explicitly inventoried as unchecked.
+
 
 ### T31.1: Reproduce stream-state mutex disposal imbalance
 - **depends_on**: [T31, T13]
@@ -7013,6 +7021,78 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Rerun the focused disposal/state/manager tests in the isolated native runner and its ASan/UBSan profile; record exact toolchain, revision and flags. Assert repeated-cycle success and no diagnostics. Physical device budgets remain deferred and are not replaced by sanitizer results.
 - **acceptance_criteria**: Functional and ASan/UBSan runs pass with nonzero test discovery, no invalid/double destroy observations, and no sanitizer errors; no runtime performance claim is made.
 - **validation**: `python3 scripts/quality/run-native.py --task T31.3 --regex '^test_stream_(state_disposal|state|manager)$'`; run the same selection with the sanitizer option produced/documented by T13.
+- **status**: Not Completed
+- **log**:
+- **files edited/created**:
+
+## Expanded lint compatibility tasks (T10)
+
+### T10.1: Supply attribute translation keys and regression fixtures
+- **depends_on**: [T10]
+- **agent_type**: worker
+- **ownership**: `web/public/locales/en.json`, `tests/quality/localized-attributes.test.mjs`, `quality/evidence/T10.1.md`.
+- **description**: Add explicit English keys for newly exposed placeholder examples, plan labels/shortcuts, recording thumbnail/count and tag-removal labels. Reuse existing settings.tabsLabel, recordings.download/protect/unprotect keys. Test real i18n interpolation and English fallback for a partial locale; do not translate protocol examples or add fabricated translations to other catalogs.
+- **acceptance_criteria**:
+  - Required source keys exist and interpolate variable values, singular/plural counts, shortcut labels and multiline examples without raw key names or dropped parameters.
+  - Existing English output is preserved except the intentional reuse of the more descriptive existing Protect/Unprotect recording labels.
+  - No i18n literal allowance is increased; non-English partial-catalog fallback follows existing behavior.
+- **validation**:
+  - `node --test tests/quality/localized-attributes.test.mjs`
+  - `npm --prefix web test -- --runInBand --testPathPatterns='i18n|locale-coverage'`
+- **status**: Completed (commit `a69d3bad`, `6591c330`)
+- **log**: Three real interpolation/fallback tests pass after RED; 14 English keys with existing partial-locale fallback, preserving translated Undo/Redo action names.
+- **files edited/created**:
+
+### T10.2: Localize settings and stream editor attributes
+- **depends_on**: [T10.1]
+- **agent_type**: worker
+- **ownership**: `web/js/components/preact/SettingsView.jsx`, `web/js/components/preact/StreamConfigModal.jsx`, `web/js/components/preact/settings/DetectionTab.jsx`, `web/js/components/preact/settings/Go2rtcTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `quality/evidence/T10.2.md`.
+- **description**: Replace the nine newly exposed literals in five settings files with T10.1 keys. Remove redundant English fallback for the existing settings.tabsLabel key. Preserve dynamic bucket interpolation and full multiline URL/config examples, handlers, field values and disabled-state logic.
+- **acceptance_criteria**:
+  - All reported attribute literals in these five files pass the strengthened i18n rule with unchanged baseline counts.
+  - Example URL schemes, credentials-as-examples, protocol options, whitespace/newlines and storage bucket interpolation remain accurate.
+  - No strings are moved to helper constants merely to evade AST inspection.
+- **validation**:
+  - `node --test tests/quality/localized-attributes.test.mjs`
+  - `(cd web && node_modules/.bin/eslint js/components/preact/SettingsView.jsx js/components/preact/StreamConfigModal.jsx js/components/preact/settings/DetectionTab.jsx js/components/preact/settings/Go2rtcTab.jsx js/components/preact/settings/StorageTab.jsx)`
+  - `npm --prefix web test -- --runInBand --testPathPatterns='i18n|locale-coverage|go2rtcSettings'`
+- **status**: Completed (commit `f2b93b68`)
+- **log**: Five settings/editor files localized; scoped lint zero errors, 41 relevant tests pass.
+- **files edited/created**:
+
+### T10.3: Localize live and recording attributes and close lint integration
+- **depends_on**: [T10.2]
+- **agent_type**: worker
+- **ownership**: `web/js/components/preact/live/LiveBuildingPlan.jsx`, `web/js/components/preact/live/PlanSketchControls.jsx`, `web/js/components/preact/recordings/RecordingsGrid.jsx`, `web/js/components/preact/recordings/RecordingsTable.jsx`, `web/js/components/preact/recordings/TagsOverlay.jsx`, `quality/evidence/T10.3.md`.
+- **description**: Replace remaining newly detected attribute literals with T10.1 keys and existing download/protection keys. Obtain i18n in TagChip at component top level, preserve callback and focus behavior, and preserve count/singular/plural and filename/size interpolation. Run final whole-tree lint and compatibility tests after serial source fixes.
+- **acceptance_criteria**:
+  - No new i18n errors remain; the 897 existing accessibility warnings stay explicit rather than being suppressed or rebaselined.
+  - Labels retain the stream/plan/tag/count/size values and shortcut information; existing action handlers remain unchanged.
+  - T10 compatibility tests and relevant localization/live/recording regressions pass; baseline JSON bytes remain unchanged.
+- **validation**:
+  - `node --test tests/quality/lint-compat.test.mjs tests/quality/localized-attributes.test.mjs`
+  - `npm --prefix web run lint`
+  - `npm --prefix web test -- --runInBand --testPathPatterns='i18n|locale-coverage|planSketch|buildingPlan|recording|tag'`
+- **status**: Completed (commit `4f82c1e2`)
+- **log**: Five live/recording files localized; 31 focused tests plus all 571 frontend tests pass, lint zero errors/897 unchanged warnings, baseline byte-identical.
+- **files edited/created**:
+
+## Expanded scanner integration tasks (T14)
+
+### T14.1: Capture scanner provenance and enforce explicit lane scope
+- **depends_on**: [T6, T8, T7.1]
+- **agent_type**: local
+- **ownership**: `scripts/quality/scanner_run.py`, `scripts/quality/findings_lane.py`, manifest validation only in `scripts/quality/findings.py`, `tests/quality/test_scanner_ci.py`, manifest negative cases in `tests/quality/test_findings.py`, `quality/evidence/T14.1.md`.
+- **description**: Capture real subprocess exit/status, tool version, nonempty actual scanned-file evidence, report hashes and revision in a run manifest. Add explicitly scoped per-lane evaluation announcing all omitted scanners; it cannot substitute for the full expected scanner coverage gate. Harden required manifest validation without changing approval policy, baseline-writing authorization, or scanner normalization. T14 switches the required-manifest policy when integrated.
+- **acceptance_criteria**:
+  - Missing, malformed, stale, wrong-revision or tampered required provenance fails closed; crashed commands cannot become clean reports.
+  - Clean/new-finding/scanner-error fixtures exercise the actual subprocess and checker chain. Normal checks leave baseline untouched.
+  - Candidate source inventory is labeled as such and cannot masquerade as actual CodeQL scan evidence; absent evidence remains missing.
+  - Lane results are explicitly partial with omitted expected scanner identities; the global check still requires all expected scanners.
+- **validation**:
+  - `python3 -m unittest discover -s tests/quality -p test_scanner_ci.py`
+  - `python3 -m unittest discover -s tests/quality -p test_findings.py`
+  - Exercise clean/new/error lane commands against isolated scanner fixtures and verify missing-global-scanner failure.
 - **status**: Not Completed
 - **log**:
 - **files edited/created**:
