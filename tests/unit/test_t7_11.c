@@ -1,6 +1,7 @@
 /* T7.11: real private-DB exposure characterization and boundary controls.
  * Plaintext characterization is evidence of an OPEN finding, not remediation. */
 #define _POSIX_C_SOURCE 200809L
+#include <dirent.h>
 #include <fcntl.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -146,5 +147,16 @@ int main(void){
     RUN_TEST(test_omitted_password_preserves_and_explicit_clear_removes_logical_value);
     int result=UNITY_END();shutdown_database();unlink(database);
     char sidecar[280];snprintf(sidecar,sizeof(sidecar),"%s-wal",database);unlink(sidecar);snprintf(sidecar,sizeof(sidecar),"%s-shm",database);unlink(sidecar);
-    rmdir(directory);umask(previous);return result;
+    /* db_auth_init also opens the DB and creates its initial backup. Remove
+     * only regular files inside this exact owned private backup directory. */
+    char backup_dir[280];snprintf(backup_dir,sizeof(backup_dir),"%s.backups",database);
+    DIR *backups=opendir(backup_dir);
+    if(backups){struct dirent *entry;while((entry=readdir(backups))){
+        if(!strcmp(entry->d_name,".")||!strcmp(entry->d_name,".."))continue;
+        char backup[600];snprintf(backup,sizeof(backup),"%s/%s",backup_dir,entry->d_name);
+        struct stat info;if(lstat(backup,&info)||!S_ISREG(info.st_mode)||unlink(backup))result=1;
+    }closedir(backups);if(rmdir(backup_dir))result=1;}
+    snprintf(sidecar,sizeof(sidecar),"%s.bak",database);unlink(sidecar);
+    if(rmdir(directory)){fprintf(stderr,"Owned private fixture cleanup failed: %s\n",directory);result=1;}
+    umask(previous);return result;
 }
