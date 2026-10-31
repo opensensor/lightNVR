@@ -740,6 +740,7 @@ export function MSEVideoCell({
   return (
     <div
       className="video-cell"
+      role="presentation"
       data-stream-name={stream.name}
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
@@ -777,6 +778,15 @@ export function MSEVideoCell({
         touchAction: zoom.touchAction
       }}
     >
+      {/* Pointer fullscreen shortcuts remain available when the toolbar is hidden. */}
+      {!(showControls && isPlaying && !error) && (
+        <button type="button" aria-label={t('live.toggleFullscreen')}
+          className="sr-only focus:not-sr-only focus:absolute focus:bottom-2 focus:right-2 focus:z-50 focus:rounded focus:bg-black focus:p-2 focus:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          onClick={(event) => onToggleFullscreen(stream.name, event, cellRef.current)}>
+          {t('live.toggleFullscreen')}
+        </button>
+      )}
+
       {/* Video element */}
       <video
         id={`video-${streamId.replace(/\s+/g, '-')}`}
@@ -974,7 +984,7 @@ export function MSEVideoCell({
       {/* Control buttons overlay */}
       {showControls && isPlaying && !error && (
         <div
-          className="video-controls"
+          className="video-controls focus-within:!opacity-100 focus-within:!pointer-events-auto focus-within:!translate-y-0"
           style={{
             position: 'absolute',
             bottom: '8px',
@@ -1112,7 +1122,9 @@ export function MSEVideoCell({
 
           {/* Fullscreen button */}
           <button
-            className="fullscreen-btn"
+            type="button"
+            aria-label={t('live.toggleFullscreen')}
+            className="fullscreen-btn focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
             onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
             style={{
               padding: '8px 12px',

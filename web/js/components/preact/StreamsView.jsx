@@ -1792,7 +1792,7 @@ export function StreamsView() {
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{t('streams.onvifCameraDiscovery')}</h3>
-              <span className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</span>
+              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => setOnvifModalVisible(false)}>×</button>
             </div>
             <div className="p-4">
               <div className="mb-4 p-3 bg-muted/50 rounded-lg">
@@ -2019,7 +2019,7 @@ export function StreamsView() {
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{t('streams.streamName')}</h3>
-              <span className="text-2xl cursor-pointer" onClick={() => setShowCustomNameInput(false)}>×</span>
+              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => setShowCustomNameInput(false)}>×</button>
             </div>
             <div className="p-4">
               <div className="mb-4">

@@ -726,6 +726,7 @@ export function HLSVideoCell({
   return (
     <div
       className="video-cell"
+      role="presentation"
       data-stream-name={stream.name}
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
@@ -766,6 +767,15 @@ export function HLSVideoCell({
         touchAction: zoom.touchAction
       }}
     >
+      {/* Pointer fullscreen shortcuts remain available when the toolbar is hidden. */}
+      {!showControls && (
+        <button type="button" aria-label={t('live.toggleFullscreen')}
+          className="sr-only focus:not-sr-only focus:absolute focus:bottom-2 focus:right-2 focus:z-50 focus:rounded focus:bg-black focus:p-2 focus:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          onClick={(event) => onToggleFullscreen(stream.name, event, cellRef.current)}>
+          {t('live.toggleFullscreen')}
+        </button>
+      )}
+
       {/* Video element */}
       <video
         id={`video-${streamId.replace(/\s+/g, '-')}`}
@@ -897,7 +907,7 @@ export function HLSVideoCell({
       {/* Stream controls */}
       {showControls && (
       <div
-        className="stream-controls"
+        className="stream-controls focus-within:!opacity-100 focus-within:!pointer-events-auto focus-within:!translate-y-0"
         style={{
           position: 'absolute',
           bottom: '10px',
@@ -1114,7 +1124,9 @@ export function HLSVideoCell({
           />
         )}
         <button
-          className="fullscreen-btn"
+          type="button"
+          aria-label={t('live.toggleFullscreen')}
+          className="fullscreen-btn focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           title={t('live.toggleFullscreen')}
           data-id={streamId}
           data-name={stream.name}
@@ -1242,8 +1254,9 @@ export function HLSVideoCell({
 
       {/* Play button overlay (for browsers that block autoplay) */}
       {!isPlaying && !isLoading && !error && (
-        <div
-          className="play-overlay"
+        <button
+          type="button" aria-label={t('recordings.play')}
+          className="play-overlay focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           style={{
             position: 'absolute',
             top: 0,
@@ -1269,12 +1282,12 @@ export function HLSVideoCell({
             }
           }}
         >
-          <div className="play-button">
+          <span className="play-button">
             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
-          </div>
-        </div>
+          </span>
+        </button>
       )}
       <ConfirmDialog
         isOpen={showRefreshConfirm}

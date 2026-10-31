@@ -114,13 +114,16 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                 const highlighted = !overLimit && r < hover.r && c < hover.c;
                 const isCurrent   = !overLimit && r < rows   && c < cols;
                 return (
-                  <div
+                  <button
+                    type="button"
+                    disabled={overLimit}
+                    aria-label={t('live.gridLayoutAria', { cols: c + 1, rows: r + 1 })}
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
                     title={overLimit
                       ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
                       : `${c + 1}×${r + 1}`}
-                    className={`rounded-sm border transition-colors ${
+                    className={`rounded-sm border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                       overLimit
                         ? 'bg-muted/30 border-border/30 opacity-30 cursor-not-allowed'
                         : highlighted

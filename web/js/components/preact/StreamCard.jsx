@@ -262,7 +262,6 @@ export function StreamCard({
         class={`relative w-full aspect-video bg-muted flex-shrink-0 ${
           selectionMode ? 'cursor-pointer' : ''
         }`}
-        onClick={selectionMode ? (e) => onToggleSelect(e, stream.name) : undefined}
       >
         {snapshotSrc ? (
           <img
@@ -280,6 +279,14 @@ export function StreamCard({
           <SnapshotPlaceholder label={t('streams.snapshotUnavailable')} />
         )}
 
+        {selectionMode && (
+          <button type="button"
+            class="absolute inset-0 z-10 w-full h-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            aria-label={t('streams.selectStream', { name: stream.name })}
+            aria-pressed={!!isSelected}
+            onClick={(event) => onToggleSelect(event, stream.name)} />
+        )}
+
         {/* Enabled/disabled dot overlay, top-left */}
         <span
           class="absolute top-2 left-2 w-3 h-3 rounded-full border border-white/70 shadow"
@@ -289,14 +296,13 @@ export function StreamCard({
 
         {/* Bulk-select checkbox overlay */}
         {canModifyStreams && selectionMode && (
-          <div class="absolute top-2 right-2">
+          <div class="absolute top-2 right-2 z-20">
             <label class="inline-flex cursor-pointer items-center justify-center">
               <input
                 type="checkbox"
                 class="w-5 h-5 rounded cursor-pointer accent-primary"
                 checked={!!isSelected}
                 onChange={(e) => onToggleSelect(e, stream.name)}
-                onClick={(e) => e.stopPropagation()}
                 aria-label={t('streams.selectStream', { name: stream.name })}
               />
             </label>

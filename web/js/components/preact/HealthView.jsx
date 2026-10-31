@@ -76,8 +76,10 @@ function StreamCard({ stream, expanded, onToggle }) {
     const expectedFps = stream.expected_fps ?? stream.configured_fps ?? 30;
 
     return (
-        <div class="bg-card text-card-foreground rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow"
-             onClick={onToggle}>
+        <div class="relative bg-card text-card-foreground rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+            <button type="button" aria-label={stream.name} aria-expanded={expanded}
+                    class="absolute inset-0 z-10 w-full h-full rounded-lg cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                    onClick={onToggle} />
             {/* Header */}
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-semibold truncate mr-2">{stream.name}</h3>
