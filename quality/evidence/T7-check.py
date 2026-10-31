@@ -10,6 +10,7 @@ import re
 parser = argparse.ArgumentParser()
 parser.add_argument('--map', default='quality/remediation-map.json')
 parser.add_argument('--plan', default='engineering-foundation-plan.md')
+parser.add_argument('--require-integrated', action='store_true')
 args = parser.parse_args()
 data = json.loads(pathlib.Path(args.map).read_text())
 invpath = pathlib.Path('quality/findings.json')
@@ -29,6 +30,15 @@ text = pathlib.Path(args.plan).read_text()
 records = re.findall(r'^### (T[\d.]+):[^\n]*\n- \*\*depends_on\*\*: \[([^\]]*)\]', text, re.M)
 assert len(records) == len({r[0] for r in records}), 'duplicate plan IDs'
 graph = {name: [v.strip() for v in deps.split(',') if v.strip()] for name, deps in records}
+integrated = any(name.startswith('T7.') for name in graph)
+if args.require_integrated:
+    assert integrated, 'remediation records not inserted into plan'
+if integrated:
+    assert set(tasks).issubset(graph), 'partially inserted remediation expansion'
+    for name, task in tasks.items():
+        assert set(graph[name]) == set(task['depends_on']), ('plan/map dependency mismatch', name)
+    for name, dependencies in data['gate_dependency_additions'].items():
+        assert set(dependencies).issubset(graph[name]), ('gate additions not inserted', name)
 for task in tasks.values():
     graph[task['id']] = task['depends_on'][:]
     assert len(task['source_paths']) <= 6, (task['id'], 'implementation cluster too large')
