@@ -4231,12 +4231,12 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 ### T7.187: jsx-a11y/label-has-for in RoleManagerModal.jsx, TotpSetupModal.jsx
 - **depends_on**: [T7, T10, T7.175]
 - **agent_type**: worker
-- **ownership**: `web/js/components/preact/users/RoleManagerModal.jsx`, `web/js/components/preact/users/TotpSetupModal.jsx`, `web/tests/remediation/t7_187.spec.jsx`, `quality/evidence/T7.187.md`.
+- **ownership**: `web/js/components/preact/users/RoleManagerModal.jsx`, `web/js/components/preact/users/TotpSetupModal.jsx`, `web/tests/remediation/t7_187.spec.jsx`, `web/tests/remediation/t7_165.spec.jsx` (fixed-heading selector compatibility only; preserve saving-guard assertion), `quality/evidence/T7.187.md`.
 - **priority**: low
 - **description**: Reproduce the listed diagnostics and fix this accessibility/quality cause only in the assigned component cluster. Preserve localization, event callbacks, DOM contracts and extension-sensitive test behavior. Narrow an untestable lint-only case with documented static evidence; behavioral accessibility changes require interaction tests.
 - **findings**: ESLINT-BUCKET-2e14d60ae388c180, ESLINT-BUCKET-9a54a74c58d29d4c
 - **acceptance_criteria**:
-  - Assert each label resolves to its intended input by id/for with unique IDs across repeated components and that clicking it focuses the input.
+  - Assert each label resolves to its intended input by id/for with unique IDs across repeated components and that clicking it focuses the input. Repeated RoleManager dialogs must also resolve their own uniquely identified heading; reuse the existing per-instance ID.
   - Each mapped finding has individual fixed-with-regression evidence or an explicitly approved, current, narrowly scoped exception; unobserved/excluded diagnostics are not fixed.
   - Preserve unrelated baseline diagnostics. Final full-profile fresh reports and optional feature coverage are reconciled in T33.
 - **validation**:

@@ -10509,7 +10509,8 @@
         "web/js/components/preact/users/TotpSetupModal.jsx",
         "web/js/components/preact/users/UsersTable.jsx",
         "web/tests/remediation/t7_175.spec.jsx",
-        "quality/evidence/T7.175.md"
+        "quality/evidence/T7.175.md",
+        "web/tests/remediation/t7_165.spec.jsx"
       ],
       "source_paths": [
         "web/js/components/preact/users/RoleManagerModal.jsx",
@@ -11646,7 +11647,8 @@
         "web/js/components/preact/users/RoleManagerModal.jsx",
         "web/js/components/preact/users/TotpSetupModal.jsx",
         "web/tests/remediation/t7_187.spec.jsx",
-        "quality/evidence/T7.187.md"
+        "quality/evidence/T7.187.md",
+        "web/tests/remediation/t7_165.spec.jsx"
       ],
       "source_paths": [
         "web/js/components/preact/users/RoleManagerModal.jsx",
@@ -11654,7 +11656,7 @@
       ],
       "description": "Reproduce the listed diagnostics and fix this accessibility/quality cause only in the assigned component cluster. Preserve localization, event callbacks, DOM contracts and extension-sensitive test behavior. Narrow an untestable lint-only case with documented static evidence; behavioral accessibility changes require interaction tests.",
       "acceptance_criteria": [
-        "Assert each label resolves to its intended input by id/for with unique IDs across repeated components and that clicking it focuses the input.",
+        "Assert each label resolves to its intended input by id/for with unique IDs across repeated components and that clicking it focuses the input. Repeated RoleManager dialog headings must also have unique IDs and resolve within their own instance; selector compatibility may change without weakening the saving guard.",
         "Each mapped finding has individual fixed-with-regression evidence or an explicitly approved, current, narrowly scoped exception; unobserved/excluded diagnostics are not fixed.",
         "Preserve unrelated baseline diagnostics. Final full-profile fresh reports and optional feature coverage are reconciled in T33."
       ],
