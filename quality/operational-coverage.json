@@ -1,0 +1,3136 @@
+{
+  "schema_version": 1,
+  "task": "T3",
+  "generated": "2026-10-31",
+  "source_prd": "docs/prd/ENG_01_Safety_Contracts_TypeScript.md#44-operational-and-compatibility-regression-coverage",
+  "revisions": {
+    "plan_baseline": "1b8d4332",
+    "built_tree": "7db92e0d37fda1de77ad1eb74c4cdbf6ea315453",
+    "built_tree_source_equivalent_to": "8927bc8a",
+    "difference_from_plan_baseline": "1b8d4332..8927bc8a is PR #692 (SPDX/copyright comment headers, 517 C/H files, +3613/-1; the one deletion is a blank line). 8927bc8a..7db92e0d adds docs/prd/README.md only. No compiled-code, CMake, test or workflow change; built from the working tree rather than a 1b8d4332 worktree. Untracked tests/quality/ (T4) is not part of the native build."
+  },
+  "evidence_kind_legend": {
+    "pure_logic": "Layer 1: header/static-inline or single source file, no I/O",
+    "real_sqlite": "Temp-file SQLite created through shipped embedded migrations",
+    "link-wrap mocks": "-Wl,--wrap replaces named functions; behaviour behind the wrap is NOT exercised",
+    "synthetic_media_inproc": "Media generated in-process by the FFmpeg library encoder (MPEG-4/G.711); no external ffmpeg, camera, or network",
+    "fixture_media": "tests/integration/fixtures/recording.mp4 (64x64 lavfi color, 1 fps)",
+    "fixture_proc": "Captured /proc or /sys snapshots under tests/fixtures/system_health via injected proc_root",
+    "real_server": "bin/lightnvr process started by Playwright/global-setup or a shell gate",
+    "real_go2rtc_synthetic_media": "go2rtc from submodule with ffmpeg:virtual test patterns",
+    "hardware": "No hardware-dependent evidence exists in any lane; no physical device, camera, or constrained target is exercised"
+  },
+  "scenarios": [
+    {
+      "id": "S1-auth-permissions-redaction",
+      "prd_row": "Authentication, permissions, and redaction",
+      "required_lane": "PR contract/API tests",
+      "status": "partial",
+      "executed_evidence": [
+        "C: test_authorization, test_db_auth, test_api_read_isolation, test_yaml_redact (go2rtc job), test_audit_log (unity/sanitizer)",
+        "Playwright ui project: auth.ui.spec.ts, roles.ui.spec.ts, users.ui.spec.ts, api-tokens.ui.spec.ts (real server)"
+      ],
+      "not_executed_in_ci": [
+        "Playwright api project (auth.api.spec.ts, comprehensive.api.spec.ts, lightnvr.api.spec.ts, go2rtc.api.spec.ts): integration-test.yml runs only --project=ui",
+        "test_api_read_isolation is registered but not selected by any CI regex"
+      ],
+      "missing_cases": [
+        "machine-readable contract per role (T11/T12/T18)",
+        "denied mutation leaves DB unchanged, asserted at API level for each role"
+      ],
+      "owner_tasks": [
+        "T11",
+        "T12",
+        "T18",
+        "T39"
+      ]
+    },
+    {
+      "id": "S2-stream-edit-async",
+      "prd_row": "Stream edit and async actions",
+      "required_lane": "PR API/UI tests",
+      "status": "partial",
+      "executed_evidence": [
+        "test_db_streams (unity/sanitizer)",
+        "test_stream_manager",
+        "Playwright streams.ui.spec.ts (real server, real go2rtc)"
+      ],
+      "missing_cases": [
+        "invalid input leaves config intact via API contract",
+        "double-submit/duplicate write",
+        "pending/error UI states"
+      ],
+      "owner_tasks": [
+        "T11",
+        "T18",
+        "T23"
+      ]
+    },
+    {
+      "id": "S3-unified-live-view",
+      "prd_row": "Unified Live view",
+      "required_lane": "PR unit/UI; media smoke tests",
+      "status": "partial",
+      "executed_evidence": [
+        "web Jest incl. liveViewTransportTabs.spec.js (system-health P2P4 job runs npm test)",
+        "Playwright liveview.ui.spec.ts, substream-fullscreen.ui.spec.ts (real go2rtc synthetic media)"
+      ],
+      "not_executed_in_ci": [
+        "go2rtc Playwright project"
+      ],
+      "missing_cases": [
+        "media smoke asserting frames decode in browser for HLS and WebRTC paths"
+      ],
+      "owner_tasks": [
+        "T23"
+      ]
+    },
+    {
+      "id": "S4-disconnect-audio-video-recovery",
+      "prd_row": "Disconnect and audio/video recovery",
+      "required_lane": "Targeted PR tests and scheduled media runs",
+      "status": "partial",
+      "executed_evidence": [
+        "test_mp4_audio_recovery (unity): G.711 A-law/mu-law recovery after interrupted session, input EOF, input error (synthetic_media_inproc + av_read_frame wrap)",
+        "test_mp4_forced_reconnect (unity): old session discarded, audio resumes (mock-heavy)",
+        "test_mp4_recovery_watchdog (unity): brief inactivity vs sustained outage restart decision; failed restart cleanup (mocked writer/sleep)",
+        "test_hls_reconnect_backoff, test_detection_io_recovery, test_onvif_poll_recovery (wrap-based)",
+        "test_go2rtc_unregister_recovery (go2rtc lean regex does not select it; see ci_jobs)"
+      ],
+      "not_executed_in_ci": [
+        "test_mp4_writer_watchdog",
+        "test_mp4_segment_timestamps",
+        "test_hls_reconnect_backoff",
+        "test_onvif_poll_recovery",
+        "test_go2rtc_recovery (tests/CMakeLists.txt)"
+      ],
+      "missing_cases": [
+        "real RTSP/go2rtc source killed and restored, asserting recording resumes within a declared deadline (no lane does this)",
+        "playability (ffprobe/decode) of the segment written AFTER recovery; current recovery tests assert state/flags, not output validity",
+        "timestamp continuity/monotonicity across the reconnect boundary within a declared tolerance",
+        "video-only and video+AAC recovery (only G.711 A-law/mu-law paths are covered)",
+        "recovery while storage paused/near-full (storage_should_pause_recording is wrapped away)",
+        "MAX_SELF_RESTARTS (5) exhaustion -> 300 s cooldown -> retry path; only one restart cycle is exercised",
+        "scheduled media run: none exists (no schedule: trigger in any workflow)"
+      ],
+      "owner_tasks": [
+        "T27",
+        "T30"
+      ]
+    },
+    {
+      "id": "S5-segment-boundaries-retention",
+      "prd_row": "Segment boundaries and retained recordings",
+      "required_lane": "PR C/SQLite tests and scheduled media runs",
+      "status": "partial",
+      "executed_evidence": [
+        "test_mp4_segment_boundaries (unity/sanitizer): keyframe at duration closes segment; non-keyframe waits; faststart snapshot",
+        "test_mp4_faststart (NOT in any CI regex)",
+        "test_storage_retention_sqlite (unity/sanitizer): time/detection retention, protected never returned, quota order, tiered, pressure scoped to target",
+        "test_storage_manager_retention (unity): quota oldest-first, delete failure keeps metadata, disabled-stream inherited/unlimited/finite, deleted-stream expiry, transcode cache removal",
+        "test_storage_deletion_ledger, test_storage_target_pressure_cleanup, test_storage_migration"
+      ],
+      "missing_cases": [
+        "segment duration within tolerance and ordering across N consecutive segments, verified by ffprobe on the written files",
+        "recordings table start/end/size metadata matches the produced file (duration/size) for each segment",
+        "no gap/overlap between consecutive segment timestamps beyond a declared tolerance",
+        "enabled-stream inherited (-1) vs global retention vs unlimited (0) in apply_retention_policy (only disabled-stream variants are asserted end-to-end)",
+        "protected recording survives apply_retention_policy file deletion path end-to-end (protection is asserted at query level only)",
+        "held/locked files (open by playback/export) during cleanup"
+      ],
+      "owner_tasks": [
+        "T27",
+        "T28"
+      ]
+    },
+    {
+      "id": "S6-full-readonly-unavailable-storage",
+      "prd_row": "Full/read-only/unavailable storage",
+      "required_lane": "Isolated fault-injection tests",
+      "status": "mostly_missing",
+      "executed_evidence": [
+        "test_storage_pressure / _extended: threshold classification only (WARNING 20%, CRITICAL 10%, EMERGENCY 5% free)",
+        "test_storage_manager_retention: orphan cleanup skipped when mp4 storage inaccessible; delete failure preserves metadata",
+        "test_db_core_initialization: read-only DB file open cannot write",
+        "test_mp4_segment_timestamps: ENOSPC classified as not requiring input refresh (classification only; not in CI)"
+      ],
+      "missing_cases": [
+        "real ENOSPC during an active MP4 write (mp4_segment_recorder.c ENOSPC/EIO branches) on a disposable size-limited filesystem or write wrap; expected: segment closed, metadata consistent, recorder pauses",
+        "storage_should_pause_recording() pause and resume transition in mp4_writer_thread",
+        "read-only recordings root (EROFS) at startup and mid-run: failure reported via health/API, no metadata deletion",
+        "storage root unmounted/unavailable then restored: recovery without erasing protected recordings",
+        "database on full filesystem (SQLITE_FULL) during recording metadata update",
+        "storage_target_health timeouts (STORAGE_HEALTH_DEFAULT_TIMEOUT_MS 3000) under a hung mount"
+      ],
+      "owner_tasks": [
+        "T28"
+      ]
+    },
+    {
+      "id": "S7-shutdown-forced-termination-restart",
+      "prd_row": "Shutdown, forced termination, and restart",
+      "required_lane": "PR targeted tests and scheduled recovery runs",
+      "status": "mostly_missing",
+      "executed_evidence": [
+        "test_shutdown_coordinator (unity/sanitizer): register/state transitions/wait_for_all_components_stopped timeout semantics (in-process)",
+        "sanitizer smoke: start bin/lightnvr 15 s, kill (SIGTERM), wait; passes on any exit after kill (no deadline or clean-exit assertion)",
+        "test_system_health_restart: restart evidence (boot_id/uptime) parsing from fixture proc_root",
+        "test_storage_migration: interrupted copy reclaimed on restart"
+      ],
+      "missing_cases": [
+        "process-level SIGTERM with active recording: exit within declared deadline, separate from SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS (900) force-kill and main.c 5 s component wait",
+        "SIGKILL mid-segment then restart: storage_reconcile_incomplete_recordings() finalizes/prunes is_complete=0 rows (STALE_WINDOW_SEC 3600, batch 500) - function has NO test",
+        "committed recordings remain playable and DB passes PRAGMA integrity_check after forced kill",
+        "PID-file takeover path in main.c (120 s graceful wait then SIGKILL) untested",
+        "repeated start/stop without fd/thread growth (belongs to T30 soak)"
+      ],
+      "owner_tasks": [
+        "T29",
+        "T30"
+      ]
+    },
+    {
+      "id": "S8-upgrade-persisted-state",
+      "prd_row": "Upgrade and persisted state",
+      "required_lane": "Upgrade fixtures/release qualification",
+      "status": "missing",
+      "executed_evidence": [
+        "All SQLite tests build the schema from scratch through the embedded migrations (0001..0089); embedded migration header is checked for drift in unity job",
+        "test_db_streams: legacy ONVIF embedded-credential row repair; test_db_recordings_extended: history index migration"
+      ],
+      "missing_cases": [
+        "database produced by the previous supported release (0.45.0 / 0.44.x) upgraded in place, with recordings/streams/users/settings asserted after migration",
+        "legacy schema_version table path (db_migrations.c get_legacy_schema_version) from an old DB fixture",
+        "previous-release lightnvr.ini parsed with the current config loader (unknown/renamed keys)",
+        "browser preference/localStorage keys from the previous release still honoured (Live view variant keys etc.)",
+        "newer-schema DB opened by an older binary (downgrade) - must be described as unsupported, not exercised on real state"
+      ],
+      "owner_tasks": [
+        "T29"
+      ]
+    },
+    {
+      "id": "S9-repeated-lifecycle-soak",
+      "prd_row": "Repeated lifecycle activity",
+      "required_lane": "Scheduled soak on declared target/workload",
+      "status": "missing",
+      "executed_evidence": [
+        "ASan/UBSan on selected unit tests (sanitizer job) and Debug unity job",
+        "test_system_health_benchmark heap/CPU budget gate (system-health job; health sampler only)"
+      ],
+      "missing_cases": [
+        "no scheduled workflow exists; no soak or long-running RSS/FD/thread sampling",
+        "no TSan/race-detection lane",
+        "no recording-gap measurement over time"
+      ],
+      "owner_tasks": [
+        "T5",
+        "T30",
+        "T36"
+      ]
+    }
+  ],
+  "seams": {
+    "media_recovery": {
+      "production_files": [
+        "src/video/mp4_recording_core.c",
+        "src/video/mp4_writer_thread.c",
+        "src/video/mp4_segment_recorder.c",
+        "src/video/mp4_writer_utils.c",
+        "src/video/hls/hls_unified_thread.c",
+        "src/video/unified_detection_thread.c"
+      ],
+      "tests": [
+        "test_mp4_audio_recovery",
+        "test_mp4_forced_reconnect",
+        "test_mp4_recovery_watchdog",
+        "test_mp4_writer_watchdog",
+        "test_mp4_segment_boundaries",
+        "test_mp4_segment_timestamps",
+        "test_hls_reconnect_backoff",
+        "test_udt_recording"
+      ],
+      "notes": "Recovery decisions are tested by wrapping sleep/av_read_frame/writer functions; nothing drives a real RTSP disconnect. Liveness is mp4_writer_is_recording(): 60 s initial grace, inactivity_timeout=max(45, segment_duration+15)."
+    },
+    "storage": {
+      "production_files": [
+        "src/storage/storage_manager.c",
+        "src/storage/storage_target_health.c",
+        "src/database/db_recordings.c",
+        "src/storage/storage_migration*.c"
+      ],
+      "tests": [
+        "test_storage_retention_sqlite",
+        "test_storage_manager_retention",
+        "test_storage_pressure",
+        "test_storage_pressure_extended",
+        "test_storage_target_pressure_cleanup",
+        "test_storage_migration",
+        "test_storage_deletion_ledger",
+        "test_db_storage_targets",
+        "test_db_storage_policies"
+      ],
+      "notes": "statvfs() is called directly in storage_manager.c (no injectable seam); storage_target_health.c already takes an ops table with mountinfo_path/proc_root - a ready seam for fault injection."
+    },
+    "shutdown": {
+      "production_files": [
+        "src/core/shutdown_coordinator.c",
+        "src/core/main.c"
+      ],
+      "tests": [
+        "test_shutdown_coordinator"
+      ],
+      "notes": "main.c: SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS 900 (force-kill process group), wait_for_all_components_stopped(5), forked cleanup watchdog; PID takeover waits 120 s then SIGKILL. None asserted at process level."
+    },
+    "upgrade": {
+      "production_files": [
+        "src/database/db_migrations.c",
+        "db/migrations/*.sql (87 files, 0001..0089)",
+        "include/database/db_embedded_migrations.h",
+        "src/core/config.c"
+      ],
+      "tests": [
+        "test_embedded_migration_generator.py (unity job step, not ctest)",
+        "test_db_core_initialization",
+        "test_config"
+      ],
+      "notes": "No previous-release DB/config fixture exists."
+    },
+    "stream_state": {
+      "production_files": [
+        "src/video/stream_state.c",
+        "include/video/stream_state.h",
+        "src/video/stream_manager.c"
+      ],
+      "tests": [
+        "test_stream_state",
+        "test_stream_manager"
+      ],
+      "notes": "6 states (INACTIVE, STARTING, ACTIVE, STOPPING, ERROR, RECONNECTING); test_stream_state references STREAM_STATE_* once (initial INACTIVE). start_stream_with_state, stop_stream_with_state, handle_stream_error, wait_for_stream_stop(timeout_ms) and transition validity are untested."
+    },
+    "proc": {
+      "production_files_injectable": [
+        "src/telemetry/collectors/linux_proc.c",
+        "linux_process.c",
+        "linux_filesystem.c",
+        "linux_network.c",
+        "linux_restart.c",
+        "linux_cgroup.c (proc_root/sys_root via context)",
+        "src/storage/storage_target_health.c"
+      ],
+      "production_files_hardcoded": [
+        "src/web/api_handlers_system.c: /proc scan for light-object-detect (cmdline/status VmRSS) and /sys/fs/cgroup cpu.max / cpu.cfs_* parsing duplicated from linux_cgroup collector",
+        "src/video/go2rtc/go2rtc_process.c: 8 sites (/proc/<pid>/cmdline, /proc scan, /proc/net/tcp{,6} port owner, /proc/<pid>/fd, /proc/<pid>/stat x2, /proc/<pid>/status)",
+        "src/core/main.c: /proc/<pid>/comm, /proc/1/cgroup, /proc/self/exe",
+        "src/tools/ffmpeg_rss_guard.c: /proc/<pid>/statm"
+      ],
+      "tests": [
+        "test_system_health_proc",
+        "test_system_health_process",
+        "test_system_health_cgroup",
+        "test_system_health_filesystem",
+        "test_system_health_network",
+        "test_system_health_restart",
+        "test_ffmpeg_guard (go2rtc job)"
+      ],
+      "notes": "Telemetry collectors are sound and fixture-tested. Hard-coded parsers in api_handlers_system.c and go2rtc_process.c have no tests and duplicate collector logic."
+    }
+  },
+  "calibration_limits": [
+    {
+      "name": "DEAD_RESTART_THRESHOLD_SECS",
+      "value": 5,
+      "unit": "s",
+      "source": "src/video/mp4_recording_core.c:472",
+      "use": "inner RTSP thread dead before restart"
+    },
+    {
+      "name": "MAX_SELF_RESTARTS",
+      "value": 5,
+      "unit": "count",
+      "source": "src/video/mp4_recording_core.c:473"
+    },
+    {
+      "name": "COOLDOWN_SECS",
+      "value": 300,
+      "unit": "s",
+      "source": "src/video/mp4_recording_core.c:478"
+    },
+    {
+      "name": "healthy reset window",
+      "value": 120,
+      "unit": "s",
+      "source": "src/video/mp4_recording_core.c (~line 596)"
+    },
+    {
+      "name": "recording thread join timeout",
+      "value": 15,
+      "unit": "s",
+      "source": "src/video/mp4_recording_core.c pthread_join_with_timeout"
+    },
+    {
+      "name": "mp4 writer inactivity_timeout",
+      "value": "max(45, segment_duration+15)",
+      "unit": "s",
+      "source": "src/video/mp4_writer_thread.c:1011"
+    },
+    {
+      "name": "mp4 writer initial grace",
+      "value": 60,
+      "unit": "s",
+      "source": "src/video/mp4_writer_thread.c (~line 1020)"
+    },
+    {
+      "name": "KEYFRAME_WAIT_TIMEOUT_S / SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S",
+      "value": "5 / 1",
+      "unit": "s",
+      "source": "src/video/mp4_segment_recorder.c:81-82"
+    },
+    {
+      "name": "DIMENSION_PROBE_TIMEOUT_US",
+      "value": 60000000,
+      "unit": "us",
+      "source": "src/video/mp4_segment_recorder.c:74"
+    },
+    {
+      "name": "HLS/UDT reconnect backoff",
+      "value": "500..30000",
+      "unit": "ms",
+      "source": "hls_unified_thread.c:122-125, unified_detection_thread.c:78-79"
+    },
+    {
+      "name": "HLS MAX_PACKET_TIMEOUT / UDT MAX_PACKET_TIMEOUT_SEC",
+      "value": "5 / 10",
+      "unit": "s"
+    },
+    {
+      "name": "HLS watchdog check / restart cooldown",
+      "value": "30 / 300",
+      "unit": "s",
+      "source": "hls_unified_thread.c:159-161"
+    },
+    {
+      "name": "SHUTDOWN_WATCHDOG_TIMEOUT_SECONDS",
+      "value": 900,
+      "unit": "s",
+      "source": "src/core/main.c:224"
+    },
+    {
+      "name": "component stop wait",
+      "value": 5,
+      "unit": "s",
+      "source": "src/core/main.c:1774"
+    },
+    {
+      "name": "PID takeover graceful wait",
+      "value": 120,
+      "unit": "s",
+      "source": "src/core/main.c:432"
+    },
+    {
+      "name": "Disk pressure thresholds (free %)",
+      "value": "20 / 10 / 5",
+      "source": "include/storage/storage_manager.h:55-57"
+    },
+    {
+      "name": "RETENTION_TIME_BUDGET_SEC",
+      "value": 300,
+      "unit": "s",
+      "source": "src/storage/storage_manager.c:61"
+    },
+    {
+      "name": "storage heartbeat / standard / deep",
+      "value": "60 / 900 / 21600",
+      "unit": "s",
+      "source": "src/storage/storage_manager.c:926-928"
+    },
+    {
+      "name": "reconcile STALE_WINDOW_SEC / batch",
+      "value": "3600 / 500",
+      "source": "src/storage/storage_manager.c:2001-2002"
+    },
+    {
+      "name": "STORAGE_HEALTH_DEFAULT_TIMEOUT_MS / STALE_MS",
+      "value": "3000 / 900000",
+      "unit": "ms",
+      "source": "include/storage/storage_target_health.h:20-21"
+    },
+    {
+      "name": "system health benchmark gate",
+      "value": "360 samples, heap <= 524288 B, cpu ratio <= 0.005",
+      "source": ".github/workflows/integration-test.yml"
+    },
+    {
+      "name": "ctest TIMEOUTs",
+      "value": "mp4_forced_reconnect/recovery_watchdog 10 s, hls_reconnect_backoff 10 s, hls_cleanup 30 s, udt_recording 60 s, detection_io_recovery 30 s",
+      "source": "tests/unit/CMakeLists.txt"
+    }
+  ],
+  "calibration_note": "These are production constants, not acceptance limits. A scenario deadline must be derived from them (e.g. recovery deadline >= DEAD_RESTART_THRESHOLD_SECS + reconnect backoff + first keyframe) and measured on the T5 target before it gates. T27-T30 must declare fixture-specific deadlines; real-time values like 300 s cooldown and 900 s shutdown watchdog need clock/sleep injection or a scheduled lane.",
+  "c_improvement_candidates": [
+    {
+      "id": "C1-stream-state-transitions",
+      "boundary": "include/video/stream_state.h / src/video/stream_state.c",
+      "problem": "6-state enum with start/stop/error/reconnect entry points but no explicit transition table and no test of transitions or wait_for_stream_stop timeout",
+      "bounded_change": "extract a pure stream_state_transition(from, event) -> to|invalid function; add precondition tests for each entry point; keep public API",
+      "precondition_tests": "extend test_stream_state (owned by T31.* child); serialize with T29 lifecycle work",
+      "risk": "medium - state is shared by recording, HLS, detection threads; lock order must be documented"
+    },
+    {
+      "id": "C2-proc-parsers-system-api",
+      "boundary": "src/web/api_handlers_system.c get_detector_memory_usage/get_effective_cpu_cores",
+      "problem": "hard-coded /proc and /sys/fs/cgroup parsing duplicates src/telemetry/collectors/linux_cgroup.c and linux_process.c; not fixture-testable",
+      "bounded_change": "route through the existing injectable collectors (proc_root/sys_root) or extract pure parsers with fixture tests",
+      "precondition_tests": "new fixture tests under tests/fixtures/system_health; test_api_handlers_system already exists (Layer 3)",
+      "risk": "low - read-only reporting path; PRD names /proc parsers as candidates"
+    },
+    {
+      "id": "C3-go2rtc-process-proc-probes",
+      "boundary": "src/video/go2rtc/go2rtc_process.c (8 hard-coded /proc sites: pid/port ownership, fd scan, stat, status)",
+      "problem": "port-owner detection via /proc/net/tcp and pid scans untestable without a live system; heavily changed file (32 commits since 2026-04)",
+      "bounded_change": "extract pure parsers for /proc/net/tcp line -> inode/port and /proc/<pid>/stat fields taking a proc_root",
+      "precondition_tests": "fixture tests; requires ENABLE_GO2RTC=ON lane (go2rtc unity job)",
+      "risk": "medium - affects go2rtc takeover/restart"
+    },
+    {
+      "id": "C4-incomplete-recording-reconcile",
+      "boundary": "src/storage/storage_manager.c storage_reconcile_incomplete_recordings()",
+      "problem": "startup reconciliation of is_complete=0 rows after crash has no test; mixes DB query, file stat and deletion",
+      "bounded_change": "separate pure finalize/prune decision (row + file stat -> action) from I/O; test with real SQLite and temp files",
+      "precondition_tests": "T29 forced-kill fixture",
+      "risk": "low-medium - persistence behaviour must stay identical"
+    },
+    {
+      "id": "C5-storage-statvfs-seam",
+      "boundary": "src/storage/storage_manager.c statvfs() calls (3 sites)",
+      "problem": "disk pressure and pause decisions cannot be fault-injected without a real full filesystem",
+      "bounded_change": "inject a statvfs provider (pattern already used by storage_target_health ops) so T28 can drive ENOSPC/pressure transitions",
+      "precondition_tests": "test_storage_pressure*, T28 scenarios",
+      "risk": "low"
+    }
+  ],
+  "ci_jobs": [
+    {
+      "id": "sanitizer/asan-ubsan",
+      "workflow": ".github/workflows/sanitizer.yml",
+      "trigger": "push main, PR to main, manual",
+      "runner": "ubuntu-latest container debian:sid-slim (amd64)",
+      "cmake": "-DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DENABLE_SOD=OFF -DENABLE_GO2RTC=OFF -DENABLE_MQTT=OFF (LiteRT left at default ON but submodule not checked out -> auto-disabled)",
+      "sanitizers": "ASan+UBSan (Debug build type adds -fsanitize=address,undefined); detect_leaks=1",
+      "ctest_regex": "test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_faac_encoder|test_audio_transcoder|test_audio_voice_enhancement|test_audio_voice_filter_faults|test_udt_recording|test_detection_current_frame|test_detection_io_recovery|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_stream_frame_rate|test_recording_video_params|test_mp4_segment_boundaries|test_storage_retention_sqlite|test_audit_log|test_audit_summary",
+      "built": "all",
+      "extra": "15 s start/stop smoke of bin/lightnvr with curl /api/system; no deadline or exit-code assertion on SIGTERM path",
+      "selected_tests": [
+        "test_audio_transcoder",
+        "test_audio_voice_enhancement",
+        "test_audio_voice_filter_faults",
+        "test_audit_log",
+        "test_audit_summary",
+        "test_batch_delete_progress",
+        "test_config",
+        "test_db_auth",
+        "test_db_detections",
+        "test_db_events",
+        "test_db_maintenance",
+        "test_db_query_builder",
+        "test_db_recordings_extended",
+        "test_db_recordings_sync",
+        "test_db_streams",
+        "test_db_transactions",
+        "test_db_zones",
+        "test_detection_config",
+        "test_detection_current_frame",
+        "test_detection_io_recovery",
+        "test_detection_model_motion",
+        "test_detection_result_structures",
+        "test_faac_encoder",
+        "test_httpd_utils",
+        "test_logger",
+        "test_logger_json",
+        "test_memory",
+        "test_mp4_segment_boundaries",
+        "test_packet_buffer",
+        "test_recording_video_params",
+        "test_request_response",
+        "test_shutdown_coordinator",
+        "test_storage_pressure",
+        "test_storage_pressure_extended",
+        "test_storage_retention_sqlite",
+        "test_stream_frame_rate",
+        "test_stream_manager",
+        "test_stream_state",
+        "test_strings",
+        "test_timestamp_manager",
+        "test_udt_recording",
+        "test_zone_filter"
+      ],
+      "selected_count": 42
+    },
+    {
+      "id": "integration-test/unity-tests",
+      "workflow": ".github/workflows/integration-test.yml",
+      "trigger": "push main|feature/**, PR to main, manual",
+      "runner": "ubuntu-latest container debian:sid-slim (amd64)",
+      "cmake": "-DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DENABLE_SOD=OFF -DENABLE_GO2RTC=OFF -DENABLE_MQTT=OFF --coverage",
+      "sanitizers": "ASan+UBSan via Debug",
+      "ctest_regex": "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_stream_frame_rate|test_recording_video_params|test_mp4_segment_boundaries|test_storage_retention_sqlite|test_storage_manager_retention|test_storage_target_pressure_cleanup|test_storage_migration|test_storage_archive_s3|test_storage_archive_operator|test_authorization|test_api_handlers_recordings_playback|test_db_storage_targets|test_db_storage_policies|test_api_handlers_storage_targets|test_api_handlers_storage_policies|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_camera_favorites|test_api_handlers_camera_favorites|test_db_backup|test_mp4_failed_open_memory|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_onvif_soap_fault|test_faac_encoder|test_audio_transcoder|test_mp4_audio_recovery|test_mp4_forced_reconnect|test_mp4_recovery_watchdog|test_audio_voice_enhancement|test_audio_voice_filter_faults|test_udt_recording|test_detection_current_frame|test_detection_io_recovery|test_hls_cleanup|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_motion_trigger_parse|test_motion_max_area|test_url_utils",
+      "built": [
+        "test_api_handlers_camera_favorites",
+        "test_api_handlers_recordings_playback",
+        "test_api_handlers_storage_policies",
+        "test_api_handlers_storage_targets",
+        "test_audio_transcoder",
+        "test_audio_voice_enhancement",
+        "test_audio_voice_filter_faults",
+        "test_authorization",
+        "test_batch_delete_progress",
+        "test_config",
+        "test_db_auth",
+        "test_db_backup",
+        "test_db_camera_favorites",
+        "test_db_detections",
+        "test_db_events",
+        "test_db_maintenance",
+        "test_db_query_builder",
+        "test_db_recordings_extended",
+        "test_db_recordings_sync",
+        "test_db_storage_policies",
+        "test_db_storage_targets",
+        "test_db_streams",
+        "test_db_transactions",
+        "test_db_zones",
+        "test_detection_config",
+        "test_detection_current_frame",
+        "test_detection_io_recovery",
+        "test_detection_model_motion",
+        "test_detection_result_structures",
+        "test_faac_encoder",
+        "test_hls_cleanup",
+        "test_httpd_utils",
+        "test_logger",
+        "test_logger_json",
+        "test_memory",
+        "test_motion_max_area",
+        "test_motion_trigger_parse",
+        "test_mp4_audio_recovery",
+        "test_mp4_failed_open_memory",
+        "test_mp4_forced_reconnect",
+        "test_mp4_recovery_watchdog",
+        "test_mp4_segment_boundaries",
+        "test_onvif_soap_fault",
+        "test_packet_buffer",
+        "test_recording_video_params",
+        "test_request_response",
+        "test_shutdown_coordinator",
+        "test_storage_archive",
+        "test_storage_manager_retention",
+        "test_storage_migration",
+        "test_storage_pressure",
+        "test_storage_pressure_extended",
+        "test_storage_retention_sqlite",
+        "test_storage_target_pressure_cleanup",
+        "test_stream_frame_rate",
+        "test_stream_manager",
+        "test_stream_state",
+        "test_strings",
+        "test_timestamp_manager",
+        "test_udt_recording",
+        "test_url_utils",
+        "test_zone_filter"
+      ],
+      "extra": "embedded migration generator check (python3 tests/unit/test_embedded_migration_generator.py + --check)",
+      "selected_tests": [
+        "test_api_handlers_camera_favorites",
+        "test_api_handlers_recordings_playback",
+        "test_api_handlers_storage_policies",
+        "test_api_handlers_storage_targets",
+        "test_audio_transcoder",
+        "test_audio_voice_enhancement",
+        "test_audio_voice_filter_faults",
+        "test_authorization",
+        "test_batch_delete_progress",
+        "test_config",
+        "test_db_auth",
+        "test_db_backup",
+        "test_db_camera_favorites",
+        "test_db_detections",
+        "test_db_events",
+        "test_db_maintenance",
+        "test_db_query_builder",
+        "test_db_recordings_extended",
+        "test_db_recordings_sync",
+        "test_db_storage_policies",
+        "test_db_storage_targets",
+        "test_db_streams",
+        "test_db_transactions",
+        "test_db_zones",
+        "test_detection_config",
+        "test_detection_current_frame",
+        "test_detection_io_recovery",
+        "test_detection_model_motion",
+        "test_detection_result_structures",
+        "test_faac_encoder",
+        "test_hls_cleanup",
+        "test_httpd_utils",
+        "test_logger",
+        "test_logger_json",
+        "test_memory",
+        "test_motion_max_area",
+        "test_motion_trigger_parse",
+        "test_mp4_audio_recovery",
+        "test_mp4_failed_open_memory",
+        "test_mp4_forced_reconnect",
+        "test_mp4_recovery_watchdog",
+        "test_mp4_segment_boundaries",
+        "test_onvif_soap_fault",
+        "test_packet_buffer",
+        "test_recording_video_params",
+        "test_request_response",
+        "test_shutdown_coordinator",
+        "test_storage_archive_operator",
+        "test_storage_archive_s3",
+        "test_storage_manager_retention",
+        "test_storage_migration",
+        "test_storage_pressure",
+        "test_storage_pressure_extended",
+        "test_storage_retention_sqlite",
+        "test_storage_target_pressure_cleanup",
+        "test_stream_frame_rate",
+        "test_stream_manager",
+        "test_stream_state",
+        "test_strings",
+        "test_timestamp_manager",
+        "test_udt_recording",
+        "test_url_utils",
+        "test_zone_filter"
+      ],
+      "selected_count": 63
+    },
+    {
+      "id": "integration-test/system-health-tests:P0P1",
+      "workflow": ".github/workflows/integration-test.yml",
+      "trigger": "same as unity-tests",
+      "runner": "ubuntu-latest container debian:sid-slim (amd64)",
+      "cmake": "-DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DENABLE_SOD=OFF -DENABLE_LITERT=OFF -DENABLE_MQTT=ON --coverage (go2rtc default ON)",
+      "sanitizers": "none (Release)",
+      "ctest_regex": "test_system_health_(types|proc|cgroup|filesystem|process|thermal|network|clock|policy|sampler|evaluator|storage)$|test_recording_io_metrics$|test_health_helper_runner$",
+      "built": "all",
+      "selected_tests": [
+        "test_health_helper_runner",
+        "test_recording_io_metrics",
+        "test_system_health_cgroup",
+        "test_system_health_clock",
+        "test_system_health_evaluator",
+        "test_system_health_filesystem",
+        "test_system_health_network",
+        "test_system_health_policy",
+        "test_system_health_proc",
+        "test_system_health_process",
+        "test_system_health_sampler",
+        "test_system_health_storage",
+        "test_system_health_thermal",
+        "test_system_health_types"
+      ],
+      "selected_count": 14
+    },
+    {
+      "id": "integration-test/system-health-tests:P2P4",
+      "workflow": ".github/workflows/integration-test.yml",
+      "trigger": "same",
+      "runner": "same",
+      "cmake": "same as P0P1",
+      "sanitizers": "none",
+      "ctest_regex": "test_db_system_health_incidents$|test_mqtt_presence$|test_mqtt_destination_client$|test_api_handlers_(system_health|metrics)$|test_system_health_(self_observability|restart)$",
+      "built": "all",
+      "extra": "web Jest (TZ=America/New_York) + vite build; Playwright system-health api/ui specs with LIGHTNVR_SKIP_GO2RTC=1; test_system_health_benchmark run directly with --samples 360 --heap-limit-bytes 524288 --cpu-ratio-limit 0.005; real mosquitto broker LWT gate",
+      "selected_tests": [
+        "test_api_handlers_metrics",
+        "test_api_handlers_system_health",
+        "test_db_system_health_incidents",
+        "test_mqtt_destination_client",
+        "test_mqtt_presence",
+        "test_system_health_restart",
+        "test_system_health_self_observability"
+      ],
+      "selected_count": 7
+    },
+    {
+      "id": "integration-test/system-health-tests:P3",
+      "workflow": ".github/workflows/integration-test.yml",
+      "trigger": "same",
+      "runner": "same",
+      "cmake": "same as P0P1",
+      "sanitizers": "none",
+      "ctest_regex": "test_system_health_hardware$|test_smartctl_provider$|test_kernel_log_provider$",
+      "built": "all",
+      "selected_tests": [
+        "test_kernel_log_provider",
+        "test_smartctl_provider",
+        "test_system_health_hardware"
+      ],
+      "selected_count": 3
+    },
+    {
+      "id": "integration-test/go2rtc-unity-tests",
+      "workflow": ".github/workflows/integration-test.yml",
+      "trigger": "same",
+      "runner": "ubuntu-latest container (amd64), go2rtc built from submodule",
+      "cmake": "-DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DENABLE_SOD=OFF -DENABLE_GO2RTC=ON -DENABLE_LITERT=OFF -DENABLE_MQTT=OFF --coverage",
+      "sanitizers": "ASan+UBSan via Debug",
+      "ctest_regex": "test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_go2rtc_process_config_generation|test_go2rtc_substream_registration|test_go2rtc_live_transcode|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_ffmpeg_guard",
+      "built": [
+        "test_db_system_settings",
+        "test_ffmpeg_guard",
+        "test_ffmpeg_guard_probe",
+        "test_go2rtc_binary_detection",
+        "test_go2rtc_live_transcode",
+        "test_go2rtc_process_config_generation",
+        "test_go2rtc_process_detection",
+        "test_go2rtc_proxy_routing",
+        "test_go2rtc_proxy_thread",
+        "test_go2rtc_substream_registration",
+        "test_go2rtc_two_config_merge",
+        "test_yaml_redact",
+        "test_yaml_validate"
+      ],
+      "selected_tests": [
+        "test_db_system_settings",
+        "test_ffmpeg_guard",
+        "test_go2rtc_binary_detection",
+        "test_go2rtc_live_transcode",
+        "test_go2rtc_process_config_generation",
+        "test_go2rtc_process_detection",
+        "test_go2rtc_proxy_routing",
+        "test_go2rtc_proxy_thread",
+        "test_go2rtc_substream_registration",
+        "test_go2rtc_two_config_merge",
+        "test_yaml_redact",
+        "test_yaml_validate"
+      ],
+      "selected_count": 12
+    }
+  ],
+  "playwright_lanes": [
+    {
+      "id": "integration-test/playwright-tests",
+      "trigger": "same as unity-tests",
+      "build": "Release, ENABLE_GO2RTC=ON, ENABLE_LITERT=OFF, SOD/MQTT default ON (full profile), real go2rtc from submodule",
+      "projects_run": [
+        "ui (2 shards)"
+      ],
+      "projects_not_run_in_ci": [
+        "api (*.api.spec.ts except system-health)",
+        "go2rtc (*.go2rtc.spec.ts)"
+      ],
+      "media": "go2rtc ffmpeg:virtual test patterns (real server + real go2rtc + synthetic media); tests/integration/fixtures/recording.mp4 (64x64 lavfi color, 1 fps)"
+    }
+  ],
+  "tests": [
+    {
+      "name": "test_annotation_writer_registry",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_detection",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_camera_collections",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_camera_favorites",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_camera_tags",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_detection_engines",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_event_destinations",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_event_routes",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_fleet",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_investigation_bookmarks",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_investigations",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_live_layouts",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_locations",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_lpr",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_metrics",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t20-metrics.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_operator_floor_plans",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_recordings_list",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_recordings_playback",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "mock: wraps storage_source_*, metadata lookup, authorization, transcode, http_serve_file",
+      "link_wraps": [
+        "storage_source_resolve",
+        "storage_source_remote",
+        "get_recording_metadata_by_id",
+        "httpd_authorize_camera_identity_action_with_context",
+        "recording_needs_hevc_transcode",
+        "request_recording_transcode_cache",
+        "http_serve_file"
+      ],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_storage_policies",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_storage_targets",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_system",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_system_health",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t19-api.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used); link-wrap mocks: metrics_get_max_streams,metrics_snapshot_all,get_storage_health",
+      "link_wraps": [
+        "metrics_get_max_streams",
+        "metrics_snapshot_all",
+        "get_storage_health"
+      ],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_handlers_workspaces",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_api_read_isolation",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_audio_transcoder",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_audio_voice_enhancement",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_audio_voice_filter_faults",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: avfilter_inout_alloc,av_strdup,avfilter_graph_config,av_buffersrc_add_frame_flags,av_buffersink_get_frame,av_audio_fifo_write",
+      "link_wraps": [
+        "avfilter_inout_alloc",
+        "av_strdup",
+        "avfilter_graph_config",
+        "av_buffersrc_add_frame_flags",
+        "av_buffersink_get_frame",
+        "av_audio_fifo_write"
+      ],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_audit_log",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_audit_summary",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_authorization",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_batch_delete_progress",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_camera_selector",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_config",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_cross_stream_motion_trigger",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_auth",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_backup",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/CMakeLists.txt",
+      "evidence_kind": "real_sqlite backup/verify",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_camera_collections",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_camera_favorites",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_camera_tags",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_core_initialization",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real_sqlite; read-only DB file (chmod 0400) open path",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_detection_engines",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_detections",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_event_destinations",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_event_routes",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_events",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_investigation_bookmarks",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_live_saved_layouts",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_locations",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_lpr_reads",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_maintenance",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_onvif_discovery_inventory",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_operator_floor_plans",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_query_builder",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_recordings_extended",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_recordings_sync",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_storage_policies",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_storage_targets",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_streams",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_system_health_incidents",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t8-incidents-db.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_system_settings",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_transactions",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_db_zones",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_config",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_current_frame",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: detect_objects_api_snapshot_with_options,detect_objects_api_with_options,filter_detections_by_zones,filter_detections_by_stream_objects",
+      "link_wraps": [
+        "detect_objects_api_snapshot_with_options",
+        "detect_objects_api_with_options",
+        "filter_detections_by_zones",
+        "filter_detections_by_stream_objects"
+      ],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_io_recovery",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "fixture_media + wraps avformat_open_input/find_stream_info/av_read_frame/av_gettime_relative (I/O fault injection)",
+      "link_wraps": [
+        "avformat_open_input",
+        "avformat_find_stream_info",
+        "av_read_frame",
+        "av_gettime_relative",
+        "_log_message_ctx"
+      ],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_model_motion",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_result_structures",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure_logic",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_detection_system_onvif",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_bus",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_detection_adapter",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_envelope",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_outbox",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_route_suppression",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_event_router",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_external_motion_trigger",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure_logic",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_faac_encoder",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_ffmpeg_guard",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_ffmpeg_rgb24_padding",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_go2rtc_base_path",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_go2rtc_binary_detection",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_lifecycle",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_go2rtc_live_transcode",
+      "registered": false,
+      "layer": null,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_process_config_generation",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_process_detection",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_go2rtc_process_lifecycle",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_proxy_query",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_proxy_routing",
+      "registered": false,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_proxy_thread",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used); link-wrap mocks: go2rtc_proxy_authorize_request,libuv_send_response_ex,curl_easy_perform",
+      "link_wraps": [
+        "go2rtc_proxy_authorize_request",
+        "libuv_send_response_ex",
+        "curl_easy_perform"
+      ],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_publish_async",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_recovery",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/CMakeLists.txt",
+      "evidence_kind": "process-level go2rtc recovery harness (tests/test_go2rtc_recovery.c)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_go2rtc_stream_activity",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_substream_registration",
+      "registered": false,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: go2rtc_api_add_stream,go2rtc_api_add_stream_multi,get_stream_config_by_name",
+      "link_wraps": [
+        "go2rtc_api_add_stream",
+        "go2rtc_api_add_stream_multi",
+        "get_stream_config_by_name"
+      ],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_two_config_merge",
+      "registered": false,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_unregister_recovery",
+      "registered": false,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: go2rtc_api_delete_preload,go2rtc_api_remove_stream",
+      "link_wraps": [
+        "go2rtc_api_delete_preload",
+        "go2rtc_api_remove_stream"
+      ],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_go2rtc_websocket",
+      "registered": false,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_GO2RTC=ON"
+    },
+    {
+      "name": "test_health_helper_runner",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t9-sampler.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_hls_cache_cleanup",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure_logic",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_hls_cleanup",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "fixture_media + wraps alarm/sigaction/av_read_frame",
+      "link_wraps": [
+        "alarm",
+        "sigaction",
+        "av_read_frame"
+      ],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_hls_reconnect_backoff",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: av_usleep",
+      "link_wraps": [
+        "av_usleep"
+      ],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_httpd_utils",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_interruptible_sleep",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_kernel_log_provider",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t17-hardware.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P3"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_logger",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_logger_json",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_memory",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_motion_max_area",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_motion_trigger_parse",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_audio_recovery",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "synthetic_media_inproc + link-wrap fault injection (av_read_frame EOF/error, cleanup_audio_transcoder); in-process MPEG-4+G.711 Matroska source, real mp4 writer",
+      "link_wraps": [
+        "av_read_frame",
+        "cleanup_audio_transcoder"
+      ],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_failed_open_memory",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_faststart",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "fixture_media (tests/integration/fixtures/recording.mp4) -> TS -> MP4 faststart",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_forced_reconnect",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "mock-heavy: wraps record_segment/av_usleep/get_stream_config_by_name/storage_should_pause_recording/prepare_placed_mp4_recording_path; real audio transcoder + reconnect signaling",
+      "link_wraps": [
+        "record_segment",
+        "av_usleep",
+        "get_stream_config_by_name",
+        "storage_should_pause_recording",
+        "prepare_placed_mp4_recording_path"
+      ],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_recovery_watchdog",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "mock: wraps sleep, writer start/stop/is_recording, go2rtc check, logging; real mp4_recording_core restart decisions; no media",
+      "link_wraps": [
+        "sleep",
+        "mp4_writer_start_recording_thread",
+        "mp4_writer_stop_recording_thread",
+        "mp4_writer_is_recording",
+        "go2rtc_integration_is_using_go2rtc_for_recording",
+        "_log_message_ctx"
+      ],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_segment_boundaries",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "synthetic_media_inproc: MPEG-4 encoder -> temp file -> real segment recorder; asserts keyframe-aligned rollover",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_segment_timestamps",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "synthetic_media_inproc to dyn buffer; timestamp rescale + AAC cadence + EINVAL/ENOSPC classification",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mp4_writer_watchdog",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure state/timing logic on mp4_writer_t (no media, no wraps); exercises inactivity_timeout = max(45, segment_duration+15)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mqtt_delivery_worker",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_mqtt_destination_client",
+      "registered": false,
+      "layer": null,
+      "source_registration": "tests/unit/cmake/system_health/t16-managed-presence.cmake",
+      "evidence_kind": "custom harness; link-wrap mocks: db_event_destination_validate,db_event_destination_get_password,event_identity_get_source,system_health_evaluator_service_copy_run,system_health_snapshot_copy,system_health_evaluator_service_active_copy,_log_message_ctx,lightnvr_uuid_is_valid,secure_zero_memory,mosquitto_new,mosquitto_destroy,mosquitto_connect_callback_set,mosquitto_disconnect_callback_set,mosquitto_publish_callback_set,mosquitto_log_callback_set,mosquitto_username_pw_set,mosquitto_int_option,mosquitto_tls_set,mosquitto_tls_opts_set,mosquitto_reconnect_delay_set,mosquitto_will_set,mosquitto_connect_async,mosquitto_loop_start,mosquitto_disconnect,mosquitto_loop_stop,mosquitto_publish,mosquitto_connack_string,mosquitto_strerror",
+      "link_wraps": [
+        "db_event_destination_validate",
+        "db_event_destination_get_password",
+        "event_identity_get_source",
+        "system_health_evaluator_service_copy_run",
+        "system_health_snapshot_copy",
+        "system_health_evaluator_service_active_copy",
+        "_log_message_ctx",
+        "lightnvr_uuid_is_valid",
+        "secure_zero_memory",
+        "mosquitto_new",
+        "mosquitto_destroy",
+        "mosquitto_connect_callback_set",
+        "mosquitto_disconnect_callback_set",
+        "mosquitto_publish_callback_set",
+        "mosquitto_log_callback_set",
+        "mosquitto_username_pw_set",
+        "mosquitto_int_option",
+        "mosquitto_tls_set",
+        "mosquitto_tls_opts_set",
+        "mosquitto_reconnect_delay_set",
+        "mosquitto_will_set",
+        "mosquitto_connect_async",
+        "mosquitto_loop_start",
+        "mosquitto_disconnect",
+        "mosquitto_loop_stop",
+        "mosquitto_publish",
+        "mosquitto_connack_string",
+        "mosquitto_strerror"
+      ],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_MQTT=ON (+libmosquitto)"
+    },
+    {
+      "name": "test_mqtt_presence",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t15-mqtt-presence.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_onvif_discovery_response",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_onvif_lpr_event",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_onvif_poll_recovery",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: detect_motion_onvif,av_usleep",
+      "link_wraps": [
+        "detect_motion_onvif",
+        "av_usleep"
+      ],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_onvif_soap_fault",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_packet_buffer",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_path_utils",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_recording_io_metrics",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/unit/cmake/system_health/t12-recording-io.cmake",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_recording_transcode",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_recording_video_params",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process; link-wrap mocks: update_stream_video_params",
+      "link_wraps": [
+        "update_stream_video_params"
+      ],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_request_response",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_shutdown_coordinator",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real coordinator, synthetic components; no process-level signal/deadline",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_smartctl_provider",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t18-smartctl.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P3"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_sod_unified",
+      "registered": false,
+      "layer": null,
+      "source_registration": "tests/CMakeLists.txt",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_SOD=ON"
+    },
+    {
+      "name": "test_sod_voc",
+      "registered": false,
+      "layer": null,
+      "source_registration": "tests/CMakeLists.txt",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "not built (feature omitted)",
+      "baseline_system_ffmpeg": "not built (feature omitted)",
+      "feature_gate": "ENABLE_SOD=ON"
+    },
+    {
+      "name": "test_storage_archive_operator",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_archive_s3",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "python S3 fixture server (local), real curl",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_deletion_ledger",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_manager_retention",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real_sqlite + real temp filesystem files; delete-failure path; inaccessible mp4 root",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_migration",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real_sqlite + temp dirs; interrupted-copy restart reclaim",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_pressure",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure logic (static inline thresholds)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_pressure_extended",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure logic (boundary values)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_retention_sqlite",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real_sqlite (temp file, embedded migrations); query-level only, no files",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_storage_target_pressure_cleanup",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real_sqlite + temp roots; pressure synthesized, no real full disk",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_stream_detection",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/CMakeLists.txt",
+      "evidence_kind": "tests/test_stream_detection.c",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_stream_frame_rate",
+      "registered": true,
+      "layer": 1,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "pure_logic",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_stream_manager",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_stream_metrics",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_stream_state",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "real stream_state manager; lifecycle/refcount/flags only (no start/stop/error/reconnect transitions)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_strings",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_benchmark",
+      "registered": true,
+      "layer": null,
+      "source_registration": "tests/unit/cmake/system_health/t24-benchmark.cmake",
+      "evidence_kind": "custom harness",
+      "link_wraps": [],
+      "ci_jobs": [],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_cgroup",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t2-collectors.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_clock",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t5-clock-restart.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_evaluator",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t10-evaluator.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_filesystem",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t3-resources.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_hardware",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t17-hardware.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P3"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_network",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t4-thermal-network.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_policy",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t6-policy.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_proc",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t2-collectors.cmake",
+      "evidence_kind": "fixture /proc snapshots via injected proc_root (tests/fixtures/system_health/proc)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_process",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t3-resources.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_restart",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t5-clock-restart.cmake",
+      "evidence_kind": "fixture proc_root (boot_id/uptime)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_sampler",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t9-sampler.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_self_observability",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t23-self-observability.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P2P4"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_storage",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t11-storage.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_thermal",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t4-thermal-network.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_system_health_types",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/cmake/system_health/t1-types.cmake",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/system-health-tests:P0P1"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_timestamp_manager",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib + FFmpeg in-process",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_udt_recording",
+      "registered": true,
+      "layer": 3,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "fixture_media (recording.mp4) + synthetic G.711 through real process_packet against temp catalog/SQLite",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Failed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_url_utils",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_yaml_redact",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_yaml_validate",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "integration-test/go2rtc-unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    },
+    {
+      "name": "test_zone_filter",
+      "registered": true,
+      "layer": 2,
+      "source_registration": "tests/unit/CMakeLists.txt",
+      "evidence_kind": "lightnvr_lib (real SQLite where used)",
+      "link_wraps": [],
+      "ci_jobs": [
+        "sanitizer/asan-ubsan",
+        "integration-test/unity-tests"
+      ],
+      "baseline_as_specified": "Passed",
+      "baseline_system_ffmpeg": "Passed"
+    }
+  ],
+  "registered_in_lean_build_but_never_executed_in_ci": [
+    "test_annotation_writer_registry",
+    "test_api_detection",
+    "test_api_handlers_camera_collections",
+    "test_api_handlers_camera_tags",
+    "test_api_handlers_detection_engines",
+    "test_api_handlers_event_destinations",
+    "test_api_handlers_event_routes",
+    "test_api_handlers_fleet",
+    "test_api_handlers_investigation_bookmarks",
+    "test_api_handlers_investigations",
+    "test_api_handlers_live_layouts",
+    "test_api_handlers_locations",
+    "test_api_handlers_lpr",
+    "test_api_handlers_operator_floor_plans",
+    "test_api_handlers_recordings_list",
+    "test_api_handlers_system",
+    "test_api_handlers_workspaces",
+    "test_api_read_isolation",
+    "test_camera_selector",
+    "test_cross_stream_motion_trigger",
+    "test_db_camera_collections",
+    "test_db_camera_tags",
+    "test_db_core_initialization",
+    "test_db_detection_engines",
+    "test_db_event_destinations",
+    "test_db_event_routes",
+    "test_db_investigation_bookmarks",
+    "test_db_live_saved_layouts",
+    "test_db_locations",
+    "test_db_lpr_reads",
+    "test_db_onvif_discovery_inventory",
+    "test_db_operator_floor_plans",
+    "test_detection_system_onvif",
+    "test_event_bus",
+    "test_event_detection_adapter",
+    "test_event_envelope",
+    "test_event_outbox",
+    "test_event_route_suppression",
+    "test_event_router",
+    "test_external_motion_trigger",
+    "test_ffmpeg_rgb24_padding",
+    "test_go2rtc_base_path",
+    "test_go2rtc_lifecycle",
+    "test_go2rtc_recovery",
+    "test_hls_cache_cleanup",
+    "test_hls_reconnect_backoff",
+    "test_interruptible_sleep",
+    "test_mp4_faststart",
+    "test_mp4_segment_timestamps",
+    "test_mp4_writer_watchdog",
+    "test_mqtt_delivery_worker",
+    "test_onvif_discovery_response",
+    "test_onvif_lpr_event",
+    "test_onvif_poll_recovery",
+    "test_path_utils",
+    "test_recording_transcode",
+    "test_storage_deletion_ledger",
+    "test_stream_detection",
+    "test_stream_metrics"
+  ],
+  "feature_gated_tests_never_executed_in_ci": [
+    "test_go2rtc_process_lifecycle",
+    "test_go2rtc_proxy_query",
+    "test_go2rtc_publish_async",
+    "test_go2rtc_stream_activity",
+    "test_go2rtc_unregister_recovery",
+    "test_go2rtc_websocket",
+    "test_sod_unified",
+    "test_sod_voc"
+  ],
+  "ci_selection_note": "ctest -R regexes are unanchored searches; selection computed by re.search over the registered names of each job's configuration. Tests registered but unselected still build in sanitizer/health jobs but never run.",
+  "baseline_summary": {
+    "as_specified": {
+      "total": 153,
+      "passed": 146,
+      "failed": [
+        "test_audio_transcoder",
+        "test_audio_voice_filter_faults",
+        "test_hls_cleanup",
+        "test_mp4_audio_recovery",
+        "test_mp4_forced_reconnect",
+        "test_mp4_segment_boundaries",
+        "test_udt_recording"
+      ]
+    },
+    "system_ffmpeg": {
+      "total": 153,
+      "passed": 153,
+      "failed": []
+    }
+  }
+}
