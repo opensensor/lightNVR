@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState, useId } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../common/ModalDialog.jsx';
@@ -10,6 +10,7 @@ const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
 
 function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
   const collection = spec.collection;
+  const selectorId = useId();
   const [form, setForm] = useState(() => ({
     name: collection?.name || '',
     description: collection?.description || '',
@@ -93,7 +94,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
       {collection && collection.type !== form.type && <p className="rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-xs">{t('collections.typeChangeWarning')}</p>}
       {form.type === 'static'
         ? <StaticCollectionMembers selectedUuids={members} onChange={setMembers} t={t} />
-        : <CollectionSelectorBuilder key={collection?.uuid || 'new-smart'} initialSelector={selector || ALL_SELECTOR} locations={locations} tags={tags} onChange={handleSelectorChange} t={t} />}
+        : <CollectionSelectorBuilder idPrefix={`collection-${selectorId}`} key={collection?.uuid || 'new-smart'} initialSelector={selector || ALL_SELECTOR} locations={locations} tags={tags} onChange={handleSelectorChange} t={t} />}
       {form.type === 'smart' && selectorError && <p className="text-sm text-[hsl(var(--danger))]">{t('collections.selectorError', { message: selectorError })}</p>}
 
       <div className="flex justify-end gap-2 border-t border-border pt-4">

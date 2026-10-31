@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState, useId } from 'preact/hooks';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import {
@@ -98,6 +98,7 @@ function PreviewResult({ preview, t }) {
 
 export function EventRouteEditor({ route, catalog, healthConditions, healthRegistryUnavailable, destinations, locations, tags, onPreview, onSave, onClose, t }) {
   const creating = !route;
+  const selectorId = useId();
   const [draft, setDraft] = useState(() => route ? routeToDraft(route) : { ...EMPTY_ROUTE_DRAFT, eventTypes: [], windows: [] });
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -298,7 +299,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
           <section className="border-t border-border pt-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.cameraScope')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.cameraScopeHelp')}</p></div><select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={draft.scopeType} onChange={(event) => update({ scopeType: event.currentTarget.value })}><option value="all">{t('events.route.allCameras')}</option><option value="selector" disabled={!cameraOnly}>{t('events.route.dynamicScope')}</option></select></div>
             {!cameraOnly && <p className="mt-3 rounded-md border border-border bg-muted/20 p-3 text-sm font-medium">{t('events.route.systemScopeHelp')}</p>}
-            {draft.scopeType === 'selector' && <div className="mt-4"><CollectionSelectorBuilder key={route?.uuid || 'new-route'} initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection idPrefix={`event-route-${route?.uuid || 'new'}`} onChange={handleSelectorChange} t={t} /></div>}
+            {draft.scopeType === 'selector' && <div className="mt-4"><CollectionSelectorBuilder key={route?.uuid || 'new-route'} initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection idPrefix={`event-route-${selectorId}-${route?.uuid || 'new'}`} onChange={handleSelectorChange} t={t} /></div>}
           </section>
 
           <section className="border-t border-border pt-5">

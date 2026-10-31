@@ -1,7 +1,7 @@
 /**
  * BatchDownloadModal – lets the user choose sequential or ZIP batch download.
  */
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useId } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { t as translate, useI18n } from '../../i18n.js';
 
@@ -79,6 +79,7 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
  */
 export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedIds = {} }) {
   const { t } = useI18n();
+  const formId = useId();
   const [mode, setMode] = useState('zip');          // 'zip' | 'sequential'
   const [zipName, setZipName] = useState('recordings.zip');
   const [busy, setBusy] = useState(false);
@@ -139,7 +140,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         {/* Mode selector */}
         <div class="flex flex-col gap-3 mb-5">
           <label class="flex items-start gap-3 cursor-pointer">
-            <input type="radio" name="dl-mode" aria-label={t('recordings.zipArchiveRecommended')} value="zip" checked={mode === 'zip'}
+            <input type="radio" name={`${formId}--dl-mode`} aria-label={t('recordings.zipArchiveRecommended')} value="zip" checked={mode === 'zip'}
               onChange={() => setMode('zip')} class="mt-0.5" />
             <div>
               <div class="font-medium text-sm">{t('recordings.zipArchiveRecommended')}</div>
@@ -147,7 +148,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             </div>
           </label>
           <label class="flex items-start gap-3 cursor-pointer">
-            <input type="radio" name="dl-mode" aria-label={t('recordings.sequentialDownloads')} value="sequential" checked={mode === 'sequential'}
+            <input type="radio" name={`${formId}--dl-mode`} aria-label={t('recordings.sequentialDownloads')} value="sequential" checked={mode === 'sequential'}
               onChange={() => setMode('sequential')} class="mt-0.5" />
             <div>
               <div class="font-medium text-sm">{t('recordings.sequentialDownloads')}</div>
@@ -159,9 +160,10 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         {/* ZIP filename input */}
         {mode === 'zip' && (
           <div class="mb-5">
-            <label class="block text-sm font-medium mb-1">{t('recordings.zipFilename')}</label>
+            <label for={`${formId}--zip-filename`} class="block text-sm font-medium mb-1">{t('recordings.zipFilename')}</label>
             <input
               type="text"
+              id={`${formId}--zip-filename`}
               aria-label={t('recordings.zipFilename')} value={zipName}
               onInput={e => setZipName(e.target.value)}
               placeholder="recordings.zip"

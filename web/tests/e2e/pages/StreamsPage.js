@@ -20,10 +20,10 @@ class StreamsPage {
 
   // Modal selectors
   get streamModal() { return '#stream-modal'; }
-  get streamNameInput() { return '#stream-name'; }
-  get streamUrlInput() { return '#stream-url'; }
-  get streamEnabledCheckbox() { return '#stream-enabled'; }
-  get streamRecordCheckbox() { return '#stream-record'; }
+  get streamNameInput() { return '[id$="--stream-name"]'; }
+  get streamUrlInput() { return '[id$="--stream-url"]'; }
+  get streamEnabledCheckbox() { return '[id$="--stream-enabled"]'; }
+  get streamRecordCheckbox() { return '[id$="--stream-record"]'; }
   get saveButton() { return '#stream-save-btn'; }
   get cancelButton() { return '#stream-cancel-btn'; }
   get testConnectionButton() { return '#stream-test-btn'; }
