@@ -545,14 +545,33 @@ static void cleanup_abandoned(void) {
     char error[256] = {0}, path[MAX_PATH_LENGTH], temporary[MAX_PATH_LENGTH];
     if (db_storage_migration_get(uuid, &job) == DB_STORAGE_MIGRATION_OK &&
         db_storage_target_get(job.destination_target_uuid, &target) == DB_STORAGE_TARGET_OK) {
-        bool retained = destination_retained(&job);
+        int retained = destination_retained(&job);
         if (!strcmp(target.target_type, "s3")) {
             result = storage_s3_probe(&target, false);
             if (!result) result = storage_s3_abort_upload(&target, job.destination_object_key, upload, error);
             if (!result && !retained) result = storage_s3_delete(&target, job.destination_object_key, error);
         } else if (db_storage_target_mount_guard_active(&target) &&
                    !db_storage_target_resolve_path(target.uuid, job.destination_object_key, path)) {
-            result = retained || unlink(path) == 0 || errno == ENOENT ? 0 : -1;
+            struct stat status;
+            if (retained < 0) {
+                safe_strcpy(error, "Cannot establish destination ownership; retained",
+                            sizeof(error), 0);
+                result = -1;
+            } else if (retained > 0) {
+                result = 0;
+            } else if (lstat(path, &status) != 0) {
+                result = errno == ENOENT ? 0 : -1;
+                if (result != 0)
+                    safe_strcpy(error, "Cannot inspect unowned destination; retained",
+                                sizeof(error), 0);
+            } else {
+                /* A failed/cancelled job does not prove it published this
+                 * pathname. Preserve unknown objects, even matching bytes. */
+                safe_strcpy(error, "Final destination retained: migration ownership is not recorded",
+                            sizeof(error), 0);
+                log_warn("Unowned migration destination retained for inspection: %s", path);
+                result = -1;
+            }
             int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s.part", path, uuid);
             if (n > 0 && n < (int)sizeof(temporary) && unlink(temporary) && errno != ENOENT) result = -1;
         }
@@ -563,9 +582,13 @@ static void cleanup_abandoned(void) {
         "UPDATE storage_migration_jobs SET artifacts_cleaned=1,upload_id='',upload_parts='',"
         "state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE state END WHERE uuid=?;" :
         "UPDATE storage_migration_jobs SET next_attempt_at=strftime('%s','now')+60,"
-        "last_error='Unpublished transfer artifacts await cleanup' WHERE uuid=?;";
+        "last_error=? WHERE uuid=?;";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+        int parameter = 1;
+        if (result != 0)
+            sqlite3_bind_text(stmt, parameter++, error[0] ? error :
+                              "Unpublished transfer artifacts await cleanup", -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, parameter, uuid, -1, SQLITE_TRANSIENT);
         sqlite3_step(stmt);
     }
     if (stmt) sqlite3_finalize(stmt);

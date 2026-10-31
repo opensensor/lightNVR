@@ -25,7 +25,7 @@ static char source_path[MAX_PATH_LENGTH], destination_path[MAX_PATH_LENGTH];
 static char temporary_path[MAX_PATH_LENGTH], sentinel[256], verified_part[256];
 static char source_uuid[LIGHTNVR_UUID_STRING_SIZE], destination_uuid[LIGHTNVR_UUID_STRING_SIZE];
 static bool armed, injected;
-static int replacement_kind, publication_error;
+static int replacement_kind, publication_error, destination_stat_error;
 static bool fail_part_unlink;
 int __real_unlink(const char *);
 int __wrap_unlink(const char *path) {
@@ -50,6 +50,7 @@ static void inject_before_publication(void) {
 }
 int __real_lstat(const char *, struct stat *);
 int __wrap_lstat(const char *path, struct stat *info) {
+    if (destination_stat_error && !strcmp(path, destination_path)) { errno = destination_stat_error; return -1; }
     int result = __real_lstat(path, info); int saved = errno;
     if (armed && result != 0 && saved == ENOENT && strcmp(path, destination_path) == 0 &&
             access(temporary_path, F_OK) == 0) inject_before_publication();
@@ -101,7 +102,7 @@ static void configure_targets(void) {
     strcpy(destination_uuid, destination.uuid);
 }
 void setUp(void) {
-    armed = injected = fail_part_unlink = false; replacement_kind = publication_error = 0; temporary_path[0] = '\0';
+    armed = injected = fail_part_unlink = false; replacement_kind = publication_error = destination_stat_error = 0; temporary_path[0] = '\0';
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
         "DELETE FROM storage_migration_jobs;DELETE FROM detections;DELETE FROM recordings;DELETE FROM storage_targets;",
         NULL, NULL, NULL));
@@ -222,6 +223,61 @@ static void test_collision_cleanup_failure_never_overwrites_competing_destinatio
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("failed", job.state);
 }
+static int artifacts_cleaned(const char *uuid) {
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT artifacts_cleaned FROM storage_migration_jobs WHERE uuid=?", -1, &statement, NULL));
+    sqlite3_bind_text(statement, 1, uuid, -1, SQLITE_TRANSIENT);
+    int result = sqlite3_step(statement); int cleaned = result == SQLITE_ROW ? sqlite3_column_int(statement, 0) : -1;
+    sqlite3_finalize(statement); TEST_ASSERT_EQUAL_INT(SQLITE_ROW, result); return cleaned;
+}
+static void assert_cleanup_pending(storage_migration_job_t *job, const char *state) {
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job->uuid, job));
+    TEST_ASSERT_EQUAL_STRING(state, job->state); TEST_ASSERT_EQUAL_INT(0, artifacts_cleaned(job->uuid));
+    TEST_ASSERT_GREATER_THAN_INT64(0, job->next_attempt_at);
+    TEST_ASSERT_TRUE(job->last_error[0] != '\0');
+}
+static void test_abandoned_cleanup_retains_unowned_symlink(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    TEST_ASSERT_EQUAL_INT(0, ensure_path(destination_path));
+    TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, destination_path));
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    struct stat info; TEST_ASSERT_EQUAL_INT(0, lstat(destination_path, &info));
+    TEST_ASSERT_TRUE(S_ISLNK(info.st_mode)); assert_bytes(sentinel, "sentinel unchanged");
+    assert_source_location(id); assert_cleanup_pending(&job, "failed");
+}
+static void test_cancelled_job_retains_unowned_final_destination(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    put_file(destination_path, "unowned cancelled destination");
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_bytes(destination_path, "unowned cancelled destination"); assert_source_location(id);
+    assert_cleanup_pending(&job, "cancelled");
+}
+static void test_cancelled_job_without_artifacts_completes_cleanup(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("cancelled", job.state); TEST_ASSERT_EQUAL_INT(1, artifacts_cleaned(job.uuid));
+    assert_source_location(id);
+}
+static void test_matching_bytes_do_not_prove_abandoned_destination_ownership(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    put_file(destination_path, payload);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_bytes(destination_path, payload); assert_source_location(id); assert_cleanup_pending(&job, "cancelled");
+}
+static void test_destination_inspection_error_keeps_cleanup_pending(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
+    destination_stat_error = EACCES;
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    destination_stat_error = 0;
+    assert_source_location(id); assert_cleanup_pending(&job, "cancelled");
+}
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-26-XXXXXX"); if (!mkdtemp(root)) return 2;
     snprintf(source_root, sizeof(source_root), "%s/source", root);
@@ -245,6 +301,11 @@ int main(void) {
     RUN_TEST(test_unsupported_filesystem_publication_retains_source_and_temporary);
     RUN_TEST(test_publication_io_failure_retains_source_and_temporary);
     RUN_TEST(test_collision_cleanup_failure_never_overwrites_competing_destination);
+    RUN_TEST(test_abandoned_cleanup_retains_unowned_symlink);
+    RUN_TEST(test_cancelled_job_retains_unowned_final_destination);
+    RUN_TEST(test_cancelled_job_without_artifacts_completes_cleanup);
+    RUN_TEST(test_matching_bytes_do_not_prove_abandoned_destination_ownership);
+    RUN_TEST(test_destination_inspection_error_keeps_cleanup_pending);
     int result = UNITY_END(); shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;
 }
