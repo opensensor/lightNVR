@@ -6,7 +6,7 @@ jest.mock('preact/hooks', () => ({
   useState: initial => {
     const index = mockHooks.cursor++; const setter = jest.fn(); mockHooks.setters[index] = setter;
     return [Object.hasOwn(mockHooks.values, index) ? mockHooks.values[index] : typeof initial === 'function' ? initial() : initial, setter];
-  }, useEffect: jest.fn(), useCallback: callback => callback, useMemo: factory => factory(), useRef: current => ({ current }),
+  }, useId: () => 'fixture', useEffect: jest.fn(), useCallback: callback => callback, useMemo: factory => factory(), useRef: current => ({ current }),
 }));
 jest.mock('../../js/i18n.js', () => ({ useI18n: () => ({ t: key => `translated:${key}` }) }));
 jest.mock('../../js/query-client.js', () => ({ fetchJSON: jest.fn() }));
@@ -266,6 +266,7 @@ browserTest('zoom names survive title removal and media detection names match on
     await zoomIn.press('Enter'); await zoomOut.press('Space');
     expect(await page.evaluate(() => window.calls.timeline.filter(change => Object.hasOwn(change, 'timelineStartHour')).length)).toBe(before + 2);
     await page.evaluate(() => window.timelineFixture.setState({ timelineStartHour: 0, timelineEndHour: 24 }));
+    await page.waitForFunction(() => document.getElementById('zoom-out-button')?.disabled === true);
     expect(await zoomOut.isDisabled()).toBe(true);
     const video = page.locator('video');
     // An empty video reports Chromium's media-error name instead of its label.

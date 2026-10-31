@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState, useId } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { formatLocalDateTime } from '../../../utils/date-utils.js';
 import { useI18n } from '../../../i18n.js';
@@ -122,6 +122,7 @@ function TokenCard({ token, collections, revoking, onRevoke, t }) {
 
 export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   const { t } = useI18n();
+  const selectorId = useId();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [tokens, setTokens] = useState([]);
@@ -312,7 +313,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
                     <div>
                       <label className="text-sm font-medium">{t('tokens.scope.label')}<select className={`${fieldClasses} mt-1`} value={draft.scopeType} onChange={(event) => updateDraft({ scopeType: event.currentTarget.value, collectionUuid: '', selector: DEFAULT_TOKEN_SELECTOR, selectorError: '' })}><option value="all">{t('tokens.scope.all')}</option><option value="collection">{t('tokens.scope.collection')}</option><option value="selector">{t('tokens.scope.selector')}</option></select></label>
                       {draft.scopeType === 'collection' && <label className="mt-3 block text-sm font-medium">{t('tokens.scope.chooseCollection')}<select className={`${fieldClasses} mt-1`} value={draft.collectionUuid} onChange={(event) => updateDraft({ collectionUuid: event.currentTarget.value })}><option value="">{t('access.policy.chooseCollection')}</option>{collections.map((collection) => <option key={collection.uuid} value={collection.uuid}>{collection.name} ({collection.effective_count})</option>)}</select></label>}
-                      {draft.scopeType === 'selector' && <div className="mt-3"><CollectionSelectorBuilder key="api-token-selector" idPrefix="api-token-selector" initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection requestHeaders={getAuthHeaders()} onChange={updateSelector} t={t} /></div>}
+                      {draft.scopeType === 'selector' && <div className="mt-3"><CollectionSelectorBuilder key="api-token-selector" idPrefix={`api-token-selector-${selectorId}`} initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection requestHeaders={getAuthHeaders()} onChange={updateSelector} t={t} /></div>}
                     </div>
                     {validationCode && <p className="text-sm text-[hsl(var(--danger))]">{t(`tokens.validation.${validationCode}`)}</p>}
                     <div className="flex justify-end"><button type="button" className="btn-primary" disabled={creating || Boolean(validationCode)} onClick={createToken}>{creating ? t('tokens.creating') : t('tokens.create')}</button></div>

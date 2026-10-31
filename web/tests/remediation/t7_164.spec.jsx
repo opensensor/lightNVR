@@ -7,7 +7,7 @@ jest.mock('preact/hooks', () => ({
     return [Object.hasOwn(mockState.values, index) ? mockState.values[index]
       : typeof initial === 'function' ? initial() : initial, jest.fn()];
   },
-  useEffect: jest.fn(), useCallback: (callback) => callback,
+  useId: () => 'fixture', useEffect: jest.fn(), useCallback: (callback) => callback,
   useMemo: (factory) => factory(), useRef: (current) => ({ current }),
 }));
 jest.mock('../../js/query-client.js', () => ({ fetchJSON: jest.fn() }));

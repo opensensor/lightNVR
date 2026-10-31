@@ -5,7 +5,7 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-import { useCallback, useState } from 'preact/hooks';
+import { useCallback, useState, useId } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { archiveTargetWithoutTrigger, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.js';
@@ -502,6 +502,7 @@ function StorageMigrationJobsPanel({ t }) {
 }
 
 function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
+  const selectorId = useId();
   const set = (key, next) => onChange({ ...value, [key]: next });
   const captureTargets = targets.filter((target) => target.target_type !== 's3');
   const fallbackTargets = captureTargets.filter((target) => target.uuid !== value.primary_target_uuid);
@@ -539,7 +540,7 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
           <p class="text-xs text-muted-foreground md:col-span-2">{t('settings.archive.policyHelp')}</p>
         </div>
       </fieldset>
-      <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${selectorId}-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
       {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}
       {value.preview && <div class={`rounded-md border px-3 py-3 text-sm ${value.preview.conflict_policy_count > 0 ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/20' : 'border-emerald-400/60 bg-emerald-50/70 dark:bg-emerald-950/20'}`}>
         <p class="font-semibold">{t('settings.storagePolicies.previewSummary', { matched: value.preview.matched_camera_count, effective: value.preview.effective_camera_count })}</p>
@@ -690,6 +691,8 @@ function StorageCompliancePanel({ t }) {
 }
 
 export function StorageTab({ settings, handleInputChange, canModifySettings, t }) {
+  const formId = useId();
+  const fieldId = (name) => `${formId}--${name}`;
   return (
     <div class="space-y-6">
       {canModifySettings && <StorageTargetsPanel canModifySettings={canModifySettings} t={t} />}
@@ -701,10 +704,10 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
         <div data-setting-label={t('settings.storagePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-storage-path" class="font-medium">{t('settings.storagePath')}</label>
+          <label for={fieldId('setting-storage-path')} class="font-medium">{t('settings.storagePath')}</label>
           <input aria-label={t('settings.storagePath')}
             type="text"
-            id="setting-storage-path"
+            id={fieldId('setting-storage-path')}
             name="storagePath"
             class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
             value={settings.storagePath}
@@ -713,11 +716,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           />
         </div>
         <div data-setting-label={t('settings.hlsStoragePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-storage-path-hls" class="font-medium">{t('settings.hlsStoragePath')}</label>
+          <label for={fieldId('setting-storage-path-hls')} class="font-medium">{t('settings.hlsStoragePath')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.hlsStoragePath')}
               type="text"
-              id="setting-storage-path-hls"
+              id={fieldId('setting-storage-path-hls')}
               name="storagePathHls"
               class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.storagePathHls}
@@ -728,10 +731,10 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.recordingDirectoryFormat')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-mp4-directory-format" class="font-medium">{t('settings.recordingDirectoryFormat')}</label>
+          <label for={fieldId('setting-mp4-directory-format')} class="font-medium">{t('settings.recordingDirectoryFormat')}</label>
           <div class="col-span-2">
             <select
-              id="setting-mp4-directory-format"
+              id={fieldId('setting-mp4-directory-format')}
               name="mp4DirectoryFormat"
               class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.mp4DirectoryFormat}
@@ -746,11 +749,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.maxStorageGb')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
+          <label for={fieldId('setting-max-storage')} class="font-medium">{t('settings.maxStorageGb')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.maxStorageGb')}
               type="number"
-              id="setting-max-storage"
+              id={fieldId('setting-max-storage')}
               name="maxStorage"
               min="0"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -762,11 +765,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.retentionDays')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-retention" class="font-medium">{t('settings.retentionDays')}</label>
+          <label for={fieldId('setting-retention')} class="font-medium">{t('settings.retentionDays')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.retentionDays')}
               type="number"
-              id="setting-retention"
+              id={fieldId('setting-retention')}
               name="retention"
               min="0"
               max="365"
@@ -779,11 +782,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.autoDeleteOldest')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-auto-delete" class="font-medium">{t('settings.autoDeleteOldest')}</label>
+          <label for={fieldId('setting-auto-delete')} class="font-medium">{t('settings.autoDeleteOldest')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.autoDeleteOldest')}
               type="checkbox"
-              id="setting-auto-delete"
+              id={fieldId('setting-auto-delete')}
               name="autoDelete"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -794,11 +797,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.minFreePct')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-min-free-pct" class="font-medium">{t('settings.minFreePct')}</label>
+          <label for={fieldId('setting-min-free-pct')} class="font-medium">{t('settings.minFreePct')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.minFreePct')}
               type="number"
-              id="setting-min-free-pct"
+              id={fieldId('setting-min-free-pct')}
               name="minFreePct"
               min="0"
               max="90"
@@ -810,8 +813,8 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.minFreePctHelp')}</span>
           </div>
         </div>
-        <div data-setting-label={t('settings.pressureThresholds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-          <label class="font-medium">{t('settings.pressureThresholds')}</label>
+        <div role="group" aria-label={t('settings.pressureThresholds')} data-setting-label={t('settings.pressureThresholds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+          <p class="font-medium">{t('settings.pressureThresholds')}</p>
           <div class="col-span-2">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label class="flex flex-col text-sm gap-1">
@@ -849,11 +852,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.enableGridViewThumbnails')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-generate-thumbnails" class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
+          <label for={fieldId('setting-generate-thumbnails')} class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.enableGridViewThumbnails')}
               type="checkbox"
-              id="setting-generate-thumbnails"
+              id={fieldId('setting-generate-thumbnails')}
               name="generateThumbnails"
               class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ accentColor: 'hsl(var(--primary))' }}
@@ -865,10 +868,10 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.thumbnailsPerRecording')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-thumbnails-per-recording" class="font-medium">{t('settings.thumbnailsPerRecording')}</label>
+          <label for={fieldId('setting-thumbnails-per-recording')} class="font-medium">{t('settings.thumbnailsPerRecording')}</label>
           <div class="col-span-2">
             <select
-              id="setting-thumbnails-per-recording"
+              id={fieldId('setting-thumbnails-per-recording')}
               name="thumbnailsPerRecording"
               class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.thumbnailsPerRecording}
@@ -882,10 +885,10 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.databasePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-db-path" class="font-medium">{t('settings.databasePath')}</label>
+          <label for={fieldId('setting-db-path')} class="font-medium">{t('settings.databasePath')}</label>
           <input aria-label={t('settings.databasePath')}
             type="text"
-            id="setting-db-path"
+            id={fieldId('setting-db-path')}
             name="dbPath"
             class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
             value={settings.dbPath}
@@ -894,11 +897,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           />
         </div>
         <div data-setting-label={t('settings.databaseBackupIntervalMinutes')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-db-backup-interval" class="font-medium">{t('settings.databaseBackupIntervalMinutes')}</label>
+          <label for={fieldId('setting-db-backup-interval')} class="font-medium">{t('settings.databaseBackupIntervalMinutes')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.databaseBackupIntervalMinutes')}
               type="number"
-              id="setting-db-backup-interval"
+              id={fieldId('setting-db-backup-interval')}
               name="dbBackupIntervalMinutes"
               min="0"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -910,11 +913,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.databaseBackupRetentionCopies')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-db-backup-retention" class="font-medium">{t('settings.databaseBackupRetentionCopies')}</label>
+          <label for={fieldId('setting-db-backup-retention')} class="font-medium">{t('settings.databaseBackupRetentionCopies')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.databaseBackupRetentionCopies')}
               type="number"
-              id="setting-db-backup-retention"
+              id={fieldId('setting-db-backup-retention')}
               name="dbBackupRetentionCount"
               min="0"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
@@ -926,10 +929,10 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.databaseBackupVerify')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-db-backup-verify" class="font-medium">{t('settings.databaseBackupVerify')}</label>
+          <label for={fieldId('setting-db-backup-verify')} class="font-medium">{t('settings.databaseBackupVerify')}</label>
           <div class="col-span-2">
             <select
-              id="setting-db-backup-verify"
+              id={fieldId('setting-db-backup-verify')}
               name="dbBackupVerify"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.dbBackupVerify}
@@ -944,11 +947,11 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
           </div>
         </div>
         <div data-setting-label={t('settings.postBackupScript')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-          <label for="setting-db-post-backup-script" class="font-medium">{t('settings.postBackupScript')}</label>
+          <label for={fieldId('setting-db-post-backup-script')} class="font-medium">{t('settings.postBackupScript')}</label>
           <div class="col-span-2">
             <input aria-label={t('settings.postBackupScript')}
               type="text"
-              id="setting-db-post-backup-script"
+              id={fieldId('setting-db-post-backup-script')}
               name="dbPostBackupScript"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.dbPostBackupScript}
