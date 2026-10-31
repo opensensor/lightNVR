@@ -3888,8 +3888,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/fleet/OrganizationManager.jsx web/js/components/preact/fleet/SavedViewsBar.jsx web/js/components/preact/fleet/StaticCollectionMembers.jsx web/js/components/preact/investigation/InvestigationActions.jsx web/js/components/preact/investigation/InvestigationBookmarks.jsx web/js/components/preact/investigation/InvestigationView.jsx --format json --output-file build/eng-artifacts/T7.170/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.170/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.170`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed
+- **log**: e29ab093 resolves24 control-name warnings with existing localized names/camera labels, retaining callbacks and page-owned media controls. Eight suites85/85pass including15focused/7Chromium; types and modern43/default66 budgets/freshness pass. Lint690→665with0errors; one related label occurrence logged separately.
 - **files edited/created**:
 
 ### T7.171: jsx-a11y/control-has-associated-label in LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx, PlanSketchControls.jsx, FiltersSidebar.jsx, RecordingsGrid.jsx, RecordingsTable.jsx
@@ -4036,7 +4036,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open.
+- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open.
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
@@ -7549,8 +7549,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Commit the separately observed preexisting-part RED producer, then prevent truncation and later cleanup deletion of temporary names without ownership proof. Creation must be exclusive or use a fresh owned namespace; pathname derived from a job UUID alone is not persistent proof of ownership. Preserve unknown regular files/symlinks and report cleanup debt conservatively. This is separate from final publication overwrite and verified temporary substitution.
 - **acceptance_criteria**: Preexisting temporary sentinel bytes survive both the first attempt and later abandoned cleanup; symlink targets survive. Preserve normal move/copy and explicit cancellation/failure behavior. A failed attempt must not silently claim cleanup success. Document retry handling for retained artifacts; avoid permanently wedging ordinary transient-failure retries by assuming unknown existing bytes are owned. Never delete unknown artifacts merely to resume. No schema/storage policy redesign or unrelated S3 change.
 - **validation**: Preserve native-87375c6a8757 producer18cases/3RED (two new causes and known .3). Tests-first focused and related migration tests under ASan/UBSan; exact source hashes/full logs, private disposable storage only. .3 remains RED until its later implementation.
-- **status**: Not Completed
-- **log**: Materialized before production correction from explicit producer: preexisting .part truncation/publication and second-pass unowned deletion. Ordered before .3 to establish temporary ownership.
+- **status**: Completed (`d829c053`; RED producer `787c33e7`)
+- **log**: Preexisting temporary bytes are preserved using bounded exclusive fresh-attempt creation; retries progress without reclaiming old unknown bytes. Conservative abandoned-prefix inspection records unresolved legacy/randomized cleanup debt. Twenty-nine cases pass and only separate .3 substitution remains RED; no sanitizer diagnostics. Exact new-producer success-via-distinct-artifact contract recorded before implementation.
 - **files edited/created**:
 
 ### T7.26.3: Preserve verified migration temporary identity through publication

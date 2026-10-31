@@ -10013,7 +10013,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/fleet/OrganizationManager.jsx",
         "web/js/components/preact/fleet/SavedViewsBar.jsx",
@@ -10104,7 +10104,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "e29ab093 resolves24 control-name warnings with existing localized names/camera labels, retaining callbacks and page-owned media controls. Eight suites85/85pass including15focused/7Chromium; types and modern43/default66 budgets/freshness pass. Lint690\u2192665with0errors; one related label occurrence logged separately.",
+      "commit": "e29ab093"
     },
     {
       "id": "T7.171",
@@ -10751,7 +10753,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open."
+      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open."
     },
     {
       "id": "T7.178",
