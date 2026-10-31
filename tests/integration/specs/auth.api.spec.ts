@@ -235,10 +235,65 @@ test.describe('Users API @api @users', () => {
       });
 
       try {
-        const forbiddenResponse = await renamedRequest.put(`/api/auth/users/${selfUpdateUserId}`, {
-          data: { role: 0 },
+        const readAccountState = async () => {
+          const profileResponse = await request.get(`/api/auth/users/${selfUpdateUserId}`);
+          const policyResponse = await request.get(`/api/authorization/users/${selfUpdateUserId}`);
+          expect(profileResponse.status()).toBe(200);
+          expect(policyResponse.status()).toBe(200);
+          // Successful Basic authentication legitimately updates last_login.
+          // Every other persisted profile field and the exact grants must stay unchanged.
+          const { last_login: _lastLogin, ...profile } = await profileResponse.json();
+          return { profile, policy: await policyResponse.json() };
+        };
+        const before = await readAccountState();
+        expect(before.profile.authorization_mode).toBe('policy');
+        expect(before.profile.role).toBe(1);
+        expect(before.policy.mode).toBe('policy');
+
+        const rejectedPassword = 'NeverApplyThis123!';
+        const deniedChanges = [
+          {
+            data: { role: 0 },
+            status: 400,
+            error: 'role is compatibility metadata for policy users; update authorization grants instead',
+          },
+          {
+            data: { is_active: false },
+            status: 403,
+            error: 'You can only update your own username and email',
+          },
+          {
+            data: { password: rejectedPassword },
+            status: 403,
+            error: 'You can only update your own username and email',
+          },
+          {
+            data: { allowed_login_cidrs: '192.0.2.1/32' },
+            status: 403,
+            error: 'You can only update your own username and email',
+          },
+        ];
+        for (const denied of deniedChanges) {
+          const deniedResponse = await renamedRequest.put(`/api/auth/users/${selfUpdateUserId}`, {
+            data: {
+              // Mixing permitted fields with a forbidden one must not partially save them.
+              username: 'unauthorized_profile_change',
+              email: 'unauthorized-change@example.invalid',
+              ...denied.data,
+            },
+          });
+          expect(deniedResponse.status()).toBe(denied.status);
+          expect(await deniedResponse.json()).toEqual({ error: denied.error });
+          expect(await readAccountState()).toEqual(before);
+          expect((await renamedRequest.get('/api/auth/verify')).status()).toBe(200);
+          expect((await renamedRequest.get('/api/auth/users')).status()).toBe(403);
+        }
+        const rejectedCredentials = await request.get('/api/auth/verify', {
+          headers: { Authorization: getAuthHeader({ username: selfUpdatedUsername, password: rejectedPassword }) },
         });
-        expect(forbiddenResponse.status()).toBe(403);
+        expect(rejectedCredentials.status()).toBe(401);
+        expect((await renamedRequest.get('/api/auth/verify')).status()).toBe(200);
+        expect(await readAccountState()).toEqual(before);
       } finally {
         await renamedRequest.dispose();
       }
