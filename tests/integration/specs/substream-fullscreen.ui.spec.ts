@@ -8,7 +8,7 @@
  * Entering native fullscreen swaps a multi-cell tile to the main stream.
  *
  * We assert this via the `data-sub-stream` attribute on each `.video-cell`,
- * which mirrors the `useSubStream` prop resolved by LiveView / WebRTCView.
+ * which mirrors the `useSubStream` prop resolved by LiveView.
  * Fullscreen is simulated by overriding `document.fullscreenElement` and
  * dispatching `fullscreenchange` — headless Chromium's real Fullscreen API
  * is gated on user activation and flaky enough in CI that a simulated

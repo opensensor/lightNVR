@@ -7,7 +7,7 @@ import '../sentry.js';
 import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { LiveView } from '../components/preact/LiveView.jsx';
-import { WebRTCView } from '../components/preact/WebRTCView.jsx';
+import { resolveLiveViewVariant } from '../utils/live-view-url.js';
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
@@ -18,8 +18,8 @@ import { AuthGate } from '../components/preact/AuthGate.jsx';
 import { initI18n } from '../i18n.js';
 
 /**
- * Main App component that conditionally renders WebRTCView or LiveView
- * based on whether WebRTC is disabled in settings
+ * Main App component. Renders the LiveView in its WebRTC-first variant unless
+ * WebRTC is disabled in settings.
  */
 function App() {
     const [viewFlags, setViewFlags] = useState({
@@ -80,30 +80,21 @@ function App() {
         return <div className="loading">Loading...</div>;
     }
 
-    // Choose the initial view: prefer WebRTC, fall back to whichever of
-    // HLS / MSE remain. The LiveView component itself handles HLS↔MSE
-    // tab switching and will hide tabs for disabled methods. #397
-    const useWebRTC = !viewFlags.webrtcDisabled;
+    // Prefer the WebRTC-first variant, fall back to the HLS one. LiveView
+    // hides the tabs for disabled methods. #397
     document.title = 'Live View - LightNVR';
 
     return (
         <>
             {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
-            {useWebRTC
-                ? <WebRTCView 
-                    audioDisabled={viewFlags.audioDisabled}
-                    isAutoDisabled={viewFlags.autoDisabled}
-                    isWebRTCDisabled={viewFlags.webrtcDisabled}
-                    isHlsDisabled={viewFlags.hlsDisabled}
-                    isMseDisabled={viewFlags.mseDisabled}
-                  />
-                : <LiveView
-                    audioDisabled={viewFlags.audioDisabled}
-                    isAutoDisabled={viewFlags.autoDisabled}
-                    isWebRTCDisabled={viewFlags.webrtcDisabled}
-                    isHlsDisabled={viewFlags.hlsDisabled}
-                    isMseDisabled={viewFlags.mseDisabled}
-                  />}
+            <LiveView
+                variant={resolveLiveViewVariant(viewFlags)}
+                audioDisabled={viewFlags.audioDisabled}
+                isAutoDisabled={viewFlags.autoDisabled}
+                isWebRTCDisabled={viewFlags.webrtcDisabled}
+                isHlsDisabled={viewFlags.hlsDisabled}
+                isMseDisabled={viewFlags.mseDisabled}
+            />
         </>
     );
 }

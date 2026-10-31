@@ -59,7 +59,7 @@ function applyOrder(streams, orderMap) {
 }
 
 /**
- * @param {Array}  streams  - the filtered streams array from LiveView / WebRTCView
+ * @param {Array}  streams  - the filtered streams array from LiveView
  * @param {string} _viewType - ignored (kept for API compatibility); all views share one key
  */
 export function useCameraOrder(streams, _viewType) {
