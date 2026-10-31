@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1, T7.24.2, T7.24.3, T7.25.2, T7.26.1, T7.26.2, T7.26.3, T7.25.3, T7.26.4]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1, T7.24.2, T7.24.3, T7.25.2, T7.26.1, T7.26.2, T7.26.3, T7.25.3, T7.26.4, T7.27.1, T7.27.2, T7.27.3]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -1268,7 +1268,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.27: cpp/toctou-race-condition in api_handlers_operator_floor_plans.c
-- **depends_on**: [T7, T13]
+- **depends_on**: [T7, T13, T7.27.3]
 - **agent_type**: worker
 - **ownership**: `src/web/api_handlers_operator_floor_plans.c`, `tests/unit/test_t7_27.c`, `tests/unit/cmake/eng/t7_27.cmake`, `quality/evidence/T7.27.md`.
 - **priority**: high
@@ -1281,8 +1281,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.27 --regex '^test_t7_27$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.27`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Partial — five RED ownership failures committed
+- **log**: 183bdafe producer: twelve passing and five failing cases overall, no sanitizer diagnostics. Three mapped race sites and separate unknown-backup deletion reproduced; ordered children T7.27.1–T7.27.3 own correction.
 - **files edited/created**:
 
 ### T7.28: cpp/uncontrolled-allocation-size in event_router.c
@@ -7514,8 +7514,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve the three committed retention replacement failures. Hold the inspected directory and selected regular-file identities from collection through deletion. Reuse bounded private quarantine/no-overwrite restore where appropriate, without repinning a changed leaf as the original candidate. Preserve newest-first retention count/order and exclusion of incomplete artifacts. No age/config/schema redesign or recursive cleanup of unknown leftovers.
 - **acceptance_criteria**: Original two controls and three race assertions remain; deterministic seams may follow descriptor-relative inspection while asserting injection. Changed regular/symlink entries and target bytes survive; original-directory pruning survives pathname replacement. Unsupported operations and cleanup failures preserve objects and report incomplete pruning. Add failure/descriptor-cleanup controls and preserve all stale-artifact regressions. Document privileged-writer limits.
 - **validation**: Committed tests-first producer877f9e5e; focused retention, stale-artifact and database regressions under ASan/UBSan with full logs and source hashes. Native/source lease follows storage migration corrections; no server build or real backups.
-- **status**: Not Completed
-- **log**: Separately materialized before production edits; parent T7.25 fixes a different stale-artifact cause. T33 directly fences this correction.
+- **status**: Completed (`43339ef0`)
+- **log**: Held selected inodes and original directory through quarantine/removal; actual resource failures preserve all files before deletion. Original12/17 RED plus duplicate-name review RED retained. Final19retention+29stale+2DB+14filesystem=64/64 sanitizer cases pass; hard-linked filename semantics preserved, no fixed count cap.
 - **files edited/created**:
 
 ## Storage migration identity corrections (T7.26)
@@ -7562,6 +7562,42 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **validation**: Tests-first producer `dc571048`; `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$' --jobs 4`, related migration tests under ASan/UBSan, exact source/artifact provenance. Native source/build lease required.
 - **status**: Completed (`eeeb1c5e`)
 - **log**: Held verified descriptor, private quarantine and precommit identity snapshot resolve original and added replacement races; cancellation/commit failure preserve unknown entries. Final28focused+9existing=37/37 pass, sanitizers clean. Documented final filesystem/SQLite window, open-writer and logged-only successful empty-directory debt; source diff reviewed.
+- **files edited/created**:
+
+
+## Floor-plan background ownership corrections (T7.27)
+
+### T7.27.1: Preserve unknown floor-plan backup artifacts
+- **depends_on**: [T7, T13]
+- **agent_type**: worker
+- **ownership**: `src/web/api_handlers_operator_floor_plans.c` background PUT and narrowly related file helpers only, `tests/unit/test_t7_27.c`, `tests/unit/cmake/eng/t7_27.cmake` required seams only, `quality/evidence/T7.27.1.md`.
+- **description**: Remove the assumption that a predictable .bak pathname is owned. Preserve unrelated preexisting files/symlinks and use an exclusively owned backup location for this attempt. Ordinary upload/replacement and existing rollback behavior must continue; no deletion of unknown leftovers to make room.
+- **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
+- **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
+- **status**: Not Completed
+- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
+- **files edited/created**:
+
+### T7.27.2: Bind the inspected old floor-plan background identity
+- **depends_on**: [T7.27.1]
+- **agent_type**: worker
+- **ownership**: `src/web/api_handlers_operator_floor_plans.c` background PUT and narrowly related file helpers only, `tests/unit/test_t7_27.c`, `tests/unit/cmake/eng/t7_27.cmake` required seams only, `quality/evidence/T7.27.2.md`.
+- **description**: Resolve CODEQL-313 using a held old-file identity and validated private backup binding. Regular or symlink substitution after inspection must preserve substituted entries/targets and reject the operation without changing metadata. Hold the inspected directory as appropriate; do not repin a changed name as the original. Preserve legitimate initial upload, same-type replacement and failure recovery.
+- **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
+- **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
+- **status**: Not Completed
+- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
+- **files edited/created**:
+
+### T7.27.3: Restore floor-plan backgrounds without overwriting competitors
+- **depends_on**: [T7.27.2]
+- **agent_type**: worker
+- **ownership**: `src/web/api_handlers_operator_floor_plans.c` background PUT and narrowly related file helpers only, `tests/unit/test_t7_27.c`, `tests/unit/cmake/eng/t7_27.cmake` required seams only, `quality/evidence/T7.27.3.md`.
+- **description**: Resolve CODEQL-314 and CODEQL-315 with no-overwrite restoration and identity-aware removal of this request's published upload on failure. Preserve competing public entries, the original backup and any displaced verified upload. Publication into the vacated public name must also avoid overwriting a new competitor; add a separate tests-first control for that boundary. Restore ordinary failure cases when no conflict exists; retain/report owned backup artifacts on restoration conflict or unsupported operations.
+- **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
+- **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
+- **status**: Not Completed
+- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

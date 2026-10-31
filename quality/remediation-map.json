@@ -1298,11 +1298,12 @@
       "title": "cpp/toctou-race-condition in api_handlers_operator_floor_plans.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.27.3"
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Partial \u2014 five RED ownership failures committed",
       "ownership": [
         "src/web/api_handlers_operator_floor_plans.c",
         "tests/unit/test_t7_27.c",
@@ -1354,7 +1355,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "183bdafe producer: twelve passing and five failing cases overall, no sanitizer diagnostics. Three mapped race sites and separate unknown-backup deletion reproduced; ordered children T7.27.1\u2013T7.27.3 own correction."
     },
     {
       "id": "T7.28",
