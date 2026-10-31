@@ -6,12 +6,15 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include "storage/storage_deletion.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <dirent.h>
 #include "core/config.h"
 #include "video/recording_path.h"
+#include "video/mp4_recording.h"
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -46,7 +49,16 @@ typedef struct {
     char upload_id[1024];
     char path[MAX_PATH_LENGTH];
     uint64_t size;
+    int stale_guard; /* 0 ordinary, 1 expected missing, 2 expected empty, -1 invalid */
+    uint64_t expected_device, expected_inode;
 } deletion_item_t;
+
+typedef struct {
+    const recording_metadata_t *expected;
+    time_t cutoff;
+    int kind;
+    uint64_t device, inode;
+} stale_prune_t;
 
 static int execute_id(sqlite3 *db, const char *sql, uint64_t id, const char *uuid) {
     sqlite3_stmt *statement = NULL;
@@ -81,11 +93,64 @@ static bool legacy_missing_path_is_authoritative(const char *path) {
     return stat(root, &info) == 0 && S_ISDIR(info.st_mode);
 }
 
+/* Legacy storage has no persisted mount identity. Require an available
+ * canonical directory and canonical parent beneath it; unknown or symlinked
+ * path spelling is retained. Attributed targets are not inferred from paths. */
+static bool stale_path_is_authoritative(const char *path) {
+    char root[PATH_MAX], parent[PATH_MAX], copy[MAX_PATH_LENGTH], canonical[PATH_MAX];
+    struct stat info;
+    if (!path || path[0] != '/' || strlen(path) >= sizeof(copy) ||
+        !realpath(g_config.storage_path, root) || stat(root, &info) != 0 || !S_ISDIR(info.st_mode)) return false;
+    safe_strcpy(copy, path, sizeof(copy), 0);
+    char *name = strrchr(copy, '/');
+    if (!name || !name[1] || strcmp(name + 1, ".") == 0 || strcmp(name + 1, "..") == 0) return false;
+    *name++ = '\0';
+    if (!realpath(copy[0] ? copy : "/", parent)) return false;
+    size_t length = strlen(root);
+    if (strcmp(parent, root) != 0 &&
+        (strncmp(parent, root, length) != 0 || (length != 1 && parent[length] != '/'))) return false;
+    int written = snprintf(canonical, sizeof(canonical), "%s%s%s", parent,
+                           strcmp(parent, "/") == 0 ? "" : "/", name);
+    return written > 0 && written < (int)sizeof(canonical) && strcmp(canonical, path) == 0;
+}
+
+/* Recheck delayed guarded work after restart. This is conservative per-stream
+ * ownership, not a lock against arbitrary external filesystem writers. */
+static bool stale_owner_is_quiescent(const deletion_item_t *item) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return false;
+    char stream[MAX_STREAM_NAME] = {0};
+    sqlite3_stmt *statement = NULL;
+    pthread_mutex_lock(mutex);
+    const char *query = "SELECT r.stream_name FROM recordings r "
+        "JOIN storage_deletions d ON d.recording_id=r.id "
+        "JOIN streams s ON s.name=r.stream_name WHERE d.uuid=?1 AND r.file_path=?2 "
+        "AND s.enabled=0 AND r.deletion_pending=1 AND r.is_complete=0 AND r.protected=0 "
+        "AND r.size_bytes=0 AND COALESCE(r.end_time,0)=0 AND r.storage_target_uuid IS NULL "
+        "AND NOT EXISTS(SELECT 1 FROM storage_migration_jobs WHERE recording_id=r.id) "
+        "AND NOT EXISTS(SELECT 1 FROM storage_recording_copies WHERE recording_id=r.id) "
+        "AND NOT EXISTS(SELECT 1 FROM storage_retrieval_jobs WHERE recording_id=r.id)";
+    if (sqlite3_prepare_v2(db, query, -1, &statement, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1, item->deletion, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, item->path, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(statement) == SQLITE_ROW)
+            safe_strcpy(stream, (const char *)sqlite3_column_text(statement, 0), sizeof(stream), 0);
+    }
+    sqlite3_finalize(statement);
+    pthread_mutex_unlock(mutex);
+    return stream[0] && !stream_has_continuous_writer(stream) && !mp4_recording_thread_alive(stream);
+}
+
 static int process_item(const deletion_item_t *item, bool local_only, uint64_t *removed) {
     storage_target_t target;
     char path[MAX_PATH_LENGTH] = {0}, error[STORAGE_TARGET_ERROR_MAX] = {0};
     bool success = false, file_removed = false;
-    if (item->target[0]) {
+    if (item->stale_guard < 0 || (item->stale_guard && item->target[0])) {
+        safe_strcpy(error, "Invalid or unsupported stale deletion guard", sizeof(error), 0);
+    } else if (item->stale_guard && !stale_owner_is_quiescent(item)) {
+        safe_strcpy(error, "Guarded deletion ownership changed or is active; retained", sizeof(error), 0);
+    } else if (item->target[0]) {
         if (db_storage_target_get(item->target, &target) != DB_STORAGE_TARGET_OK) {
             safe_strcpy(error, "Deletion target is unavailable", sizeof(error), 0);
         } else if (strcmp(target.target_type, "s3") == 0) {
@@ -105,7 +170,19 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
     } else safe_strcpy(path, item->path, sizeof(path), 0);
     if (path[0]) {
         struct stat info;
-        if (lstat(path, &info) == 0 && !S_ISREG(info.st_mode)) {
+        int status = lstat(path, &info);
+        bool missing = status != 0 && errno == ENOENT;
+        if (item->stale_guard && !stale_path_is_authoritative(path)) {
+            safe_strcpy(error, "Guarded deletion storage is unavailable or unknown", sizeof(error), 0);
+        } else if (item->stale_guard == 1) {
+            if (missing) success = true;
+            else safe_strcpy(error, "Stale missing path appeared or cannot be verified; retained", sizeof(error), 0);
+        } else if (item->stale_guard == 2 && missing) {
+            success = true;
+        } else if (item->stale_guard == 2 && (status != 0 || !S_ISREG(info.st_mode) || info.st_size != 0 ||
+                   (uint64_t)info.st_dev != item->expected_device || (uint64_t)info.st_ino != item->expected_inode)) {
+            safe_strcpy(error, "Stale empty file identity or contents changed; retained", sizeof(error), 0);
+        } else if (status == 0 && !S_ISREG(info.st_mode)) {
             safe_strcpy(error, "Deletion object is not a regular file", sizeof(error), 0);
         } else if (unlink(path) == 0) success = file_removed = true;
         else if (errno == ENOENT) {
@@ -182,7 +259,7 @@ static int finalize_deletions_locked(sqlite3 *db, const char *uuid) {
 }
 
 #define DELETION_DUE_SELECT \
-    "SELECT o.id,o.deletion_uuid,COALESCE(o.target_uuid,''),o.object_key,o.file_path,o.size_bytes,o.upload_id " \
+    "SELECT o.id,o.deletion_uuid,COALESCE(o.target_uuid,''),o.object_key,o.file_path,o.size_bytes,o.upload_id,o.stale_guard_kind,o.stale_guard_dev,o.stale_guard_ino " \
     "FROM storage_deletion_objects o LEFT JOIN storage_targets t ON t.uuid=o.target_uuid WHERE "
 #define DELETION_DUE_FILTER \
     " AND (?2=0 OR COALESCE(t.target_type,'filesystem')='filesystem') " \
@@ -224,6 +301,15 @@ static int process_due(const char *deletion_uuid, bool local_only, uint64_t *rem
             safe_strcpy(item->path, (const char *)sqlite3_column_text(statement, 4), sizeof(item->path), 0);
             item->size = (uint64_t)sqlite3_column_int64(statement, 5);
             safe_strcpy(item->upload_id, (const char *)sqlite3_column_text(statement, 6), sizeof(item->upload_id), 0);
+            const char *kind = (const char *)sqlite3_column_text(statement, 7);
+            bool has_device = sqlite3_column_type(statement, 8) != SQLITE_NULL;
+            bool has_inode = sqlite3_column_type(statement, 9) != SQLITE_NULL;
+            int64_t device = sqlite3_column_int64(statement, 8), inode = sqlite3_column_int64(statement, 9);
+            if (!kind && !has_device && !has_inode) item->stale_guard = 0;
+            else if (kind && strcmp(kind, "missing") == 0 && !has_device && !has_inode) item->stale_guard = 1;
+            else if (kind && strcmp(kind, "empty") == 0 && has_device && has_inode && device >= 0 && inode > 0) {
+                item->stale_guard = 2; item->expected_device = (uint64_t)device; item->expected_inode = (uint64_t)inode;
+            } else item->stale_guard = -1;
         }
     }
     if (statement) sqlite3_finalize(statement);
@@ -386,7 +472,7 @@ static int inventory_derivatives(sqlite3 *db, const char *uuid, const derivative
 }
 
 static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
-                            bool require_policy_expiry, int64_t age_cutoff) {
+                            bool require_policy_expiry, int64_t age_cutoff, const stale_prune_t *stale) {
     if (recovery_read_only()) return -1;
     if (removed) *removed = 0;
     sqlite3 *db = get_db_handle();
@@ -396,6 +482,7 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     if (lightnvr_uuid_generate_v4(uuid)) return -1;
     derivative_paths_t derivatives;
     if (collect_derivatives(id, &derivatives) != 0) return -1;
+    if (stale && derivatives.count) return -2;
     pthread_mutex_lock(mutex);
     if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
         pthread_mutex_unlock(mutex);
@@ -403,8 +490,13 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     }
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, "SELECT protected,EXISTS(SELECT 1 FROM storage_migration_jobs "
-        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending,is_complete "
-        "FROM recordings WHERE id=?1;",
+        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending,is_complete,"
+        "file_path,stream_name,start_time,COALESCE(end_time,0),size_bytes,COALESCE(storage_target_uuid,''),"
+        "EXISTS(SELECT 1 FROM streams s WHERE s.name=r.stream_name AND s.enabled=0),"
+        "EXISTS(SELECT 1 FROM storage_recording_copies WHERE recording_id=r.id),"
+        "EXISTS(SELECT 1 FROM storage_migration_jobs WHERE recording_id=r.id),"
+        "EXISTS(SELECT 1 FROM storage_retrieval_jobs WHERE recording_id=r.id) "
+        "FROM recordings r WHERE id=?1;",
         -1, &statement, NULL);
     if (result == SQLITE_OK) {
         sqlite3_bind_int64(statement, 1, (sqlite3_int64)id);
@@ -412,8 +504,22 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     }
     /* Check inside the deletion transaction: an ID selected from the live
      * recordings list must never remove a file the recorder is writing. */
+    bool stale_matches = false;
+    if (stale && result == SQLITE_ROW) {
+        const recording_metadata_t *expected = stale->expected;
+        const char *path = (const char *)sqlite3_column_text(statement, 4);
+        const char *stream = (const char *)sqlite3_column_text(statement, 5);
+        const char *target = (const char *)sqlite3_column_text(statement, 9);
+        stale_matches = !sqlite3_column_int(statement, 3) && path && stream && target && !target[0] &&
+            strcmp(path, expected->file_path) == 0 && strcmp(stream, expected->stream_name) == 0 &&
+            sqlite3_column_int64(statement, 6) == expected->start_time && expected->start_time < stale->cutoff &&
+            sqlite3_column_int64(statement, 7) == expected->end_time && expected->end_time == 0 &&
+            sqlite3_column_int64(statement, 8) == (sqlite3_int64)expected->size_bytes && expected->size_bytes == 0 &&
+            sqlite3_column_int(statement, 10) && !sqlite3_column_int(statement, 11) &&
+            !sqlite3_column_int(statement, 12) && !sqlite3_column_int(statement, 13);
+    }
     bool blocked = result == SQLITE_ROW && (sqlite3_column_int(statement, 0) ||
-        sqlite3_column_int(statement, 1) || !sqlite3_column_int(statement, 3));
+        sqlite3_column_int(statement, 1) || (stale ? !stale_matches : !sqlite3_column_int(statement, 3)));
     bool pending = result == SQLITE_ROW && sqlite3_column_int(statement, 2);
     if (statement) sqlite3_finalize(statement);
     if (blocked || pending || result != SQLITE_ROW) {
@@ -493,6 +599,20 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     for (size_t i = 0; result == SQLITE_DONE && i < sizeof(inventory) / sizeof(inventory[0]); i++)
         if (execute_id(db, inventory[i], id, i < 5 ? uuid : NULL)) result = SQLITE_ERROR;
     if (result == SQLITE_DONE && inventory_derivatives(db, uuid, &derivatives)) result = SQLITE_ERROR;
+    if (result == SQLITE_DONE && stale) {
+        statement = NULL;
+        result = sqlite3_prepare_v2(db, "UPDATE storage_deletion_objects SET stale_guard_kind=?,stale_guard_dev=?,stale_guard_ino=? WHERE deletion_uuid=?", -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            sqlite3_bind_text(statement, 1, stale->kind == 1 ? "missing" : "empty", -1, SQLITE_STATIC);
+            if (stale->kind == 2) {
+                sqlite3_bind_int64(statement, 2, (sqlite3_int64)stale->device);
+                sqlite3_bind_int64(statement, 3, (sqlite3_int64)stale->inode);
+            } else { sqlite3_bind_null(statement, 2); sqlite3_bind_null(statement, 3); }
+            sqlite3_bind_text(statement, 4, uuid, -1, SQLITE_TRANSIENT);
+            result = sqlite3_step(statement);
+        }
+        sqlite3_finalize(statement);
+    }
     bool committed = result == SQLITE_DONE && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK;
     if (!committed) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
     pthread_mutex_unlock(mutex);
@@ -514,14 +634,33 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
 }
 
 int storage_recording_delete(uint64_t id, const char *reason, uint64_t *removed) {
-    return recording_delete(id, reason, removed, false, 0);
+    return recording_delete(id, reason, removed, false, 0, NULL);
 }
 
 int storage_recording_expire_policy(uint64_t id) {
-    return recording_delete(id, "policy expiry", NULL, true, 0);
+    return recording_delete(id, "policy expiry", NULL, true, 0, NULL);
 }
 
 int storage_recording_expire_age(uint64_t id, int64_t cutoff) {
     if (!cutoff) return -2;
-    return recording_delete(id, "legacy age retention", NULL, false, cutoff);
+    return recording_delete(id, "legacy age retention", NULL, false, cutoff, NULL);
+}
+
+int storage_recording_prune_stale(const recording_metadata_t *expected,
+                                   time_t cutoff, const struct stat *expected_empty) {
+    if (!expected || !expected->id || expected->is_complete || expected->size_bytes || expected->end_time ||
+        !expected->stream_name[0] || expected->start_time >= cutoff || cutoff > time(NULL) - 3600 ||
+        !stale_path_is_authoritative(expected->file_path) ||
+        stream_has_continuous_writer(expected->stream_name) || mp4_recording_thread_alive(expected->stream_name)) return -2;
+    stale_prune_t guard = { .expected = expected, .cutoff = cutoff, .kind = expected_empty ? 2 : 1 };
+    struct stat current;
+    int status = lstat(expected->file_path, &current);
+    if (expected_empty) {
+        if (status != 0 || !S_ISREG(expected_empty->st_mode) || expected_empty->st_size ||
+            !S_ISREG(current.st_mode) || current.st_size || current.st_dev != expected_empty->st_dev ||
+            current.st_ino != expected_empty->st_ino || (uint64_t)current.st_dev > INT64_MAX ||
+            (uint64_t)current.st_ino > INT64_MAX || !current.st_ino) return -2;
+        guard.device = (uint64_t)current.st_dev; guard.inode = (uint64_t)current.st_ino;
+    } else if (status == 0 || errno != ENOENT) return -2;
+    return recording_delete(expected->id, "confirmed stale incomplete recording", NULL, false, 0, &guard);
 }

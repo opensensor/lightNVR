@@ -8,11 +8,21 @@
 #ifndef LIGHTNVR_STORAGE_DELETION_H
 #define LIGHTNVR_STORAGE_DELETION_H
 #include <stdint.h>
+#include <sys/stat.h>
+#include "database/db_recordings.h"
 
 /* Atomically claim logical deletion and journal every physical copy. Protected
  * recordings and actively transferring recordings return -2 without mutation. */
 int storage_recording_delete(uint64_t recording_id, const char *reason,
                              uint64_t *local_bytes_removed);
+/* Internal startup recovery only: selected stale incomplete row on a disabled
+ * stream, with no live writer and available canonical legacy storage. Pass the
+ * observed empty regular-file identity, or NULL after confirmed ENOENT. Exact
+ * row/identity guards are rechecked and persisted before any physical deletion.
+ * Unknown/attributed storage, copies/derivatives or ownership retain the row. */
+int storage_recording_prune_stale(const recording_metadata_t *expected,
+                                   time_t cutoff, const struct stat *expected_empty);
+
 /* Recheck the applied policy/override inside the deletion transaction. Returns
  * -2 if a previously selected recording is no longer eligible for expiry. */
 int storage_recording_expire_policy(uint64_t recording_id);

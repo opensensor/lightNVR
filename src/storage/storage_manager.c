@@ -2104,8 +2104,9 @@ int storage_reconcile_incomplete_recordings(void) {
             if (stream_has_continuous_writer(batch[i].stream_name) ||
                 mp4_recording_thread_alive(batch[i].stream_name)) continue;
             struct stat st;
-            bool have_file = (batch[i].file_path[0] != '\0' &&
-                              stat(batch[i].file_path, &st) == 0 && S_ISREG(st.st_mode));
+            int file_status = batch[i].file_path[0] ? lstat(batch[i].file_path, &st) : -1;
+            bool missing = batch[i].file_path[0] && file_status != 0 && errno == ENOENT;
+            bool have_file = file_status == 0 && S_ISREG(st.st_mode);
 
             if (have_file && st.st_size > 0) {
                 if (!incomplete_media_has_video_sample(batch[i].file_path)) continue;
@@ -2116,14 +2117,11 @@ int storage_reconcile_incomplete_recordings(void) {
                     finalized++;
                     reconciled++;
                 }
-            } else {
-                // No usable file (missing or empty): drop the phantom row and
-                // any zero-byte leftover so it stops wasting an inode.
-                if (have_file && st.st_size == 0) {
-                    unlink(batch[i].file_path);
-                }
-                delete_recording_thumbnails(batch[i].id);
-                if (delete_recording_metadata(batch[i].id) == 0) {
+            } else if (missing || (have_file && st.st_size == 0)) {
+                // A separate guarded transaction verifies stale ownership and
+                // storage, then journals the observed absence/empty identity.
+                // Never unlink before its protection/changed-row checks.
+                if (storage_recording_prune_stale(&batch[i], cutoff, have_file ? &st : NULL) == 0) {
                     pruned++;
                     reconciled++;
                 }
