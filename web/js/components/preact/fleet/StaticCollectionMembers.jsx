@@ -61,16 +61,16 @@ export function StaticCollectionMembers({ selectedUuids, onChange, t }) {
           <h3 className="font-semibold">{t('collections.members.title')}</h3>
           <p className="text-xs text-muted-foreground">{t('collections.members.selected', { count: selected.size })}</p>
         </div>
-        <input type="search" className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={search} placeholder={t('collections.members.search')} onInput={(event) => { setSearch(event.currentTarget.value); setPage(1); }} />
+        <input type="search" className="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label={t('collections.members.search')} value={search} placeholder={t('collections.members.search')} onInput={(event) => { setSearch(event.currentTarget.value); setPage(1); }} />
       </div>
       <div className="max-h-72 overflow-y-auto rounded-md border border-border">
         <label className="touch-target sticky top-0 z-[1] flex cursor-pointer items-center gap-2 border-b border-border bg-muted px-3 py-2 text-sm font-medium">
-          <input type="checkbox" className="h-4 w-4" checked={allOnPage} ref={(element) => { if (element) element.indeterminate = selectedOnPage > 0 && !allOnPage; }} onChange={(event) => togglePage(event.currentTarget.checked)} />
+          <input type="checkbox" className="h-4 w-4" aria-label={t('collections.members.selectPage')} checked={allOnPage} ref={(element) => { if (element) element.indeterminate = selectedOnPage > 0 && !allOnPage; }} onChange={(event) => togglePage(event.currentTarget.checked)} />
           {t('collections.members.selectPage')}
         </label>
         {cameras.map((camera) => (
           <label key={camera.camera_uuid} className="flex cursor-pointer items-start gap-3 border-b border-border px-3 py-2 last:border-b-0 hover:bg-muted/30">
-            <input type="checkbox" className="mt-1 h-4 w-4 flex-none" checked={selected.has(camera.camera_uuid)} onChange={(event) => toggleCamera(camera.camera_uuid, event.currentTarget.checked)} />
+            <input type="checkbox" className="mt-1 h-4 w-4 flex-none" aria-label={camera.name} checked={selected.has(camera.camera_uuid)} onChange={(event) => toggleCamera(camera.camera_uuid, event.currentTarget.checked)} />
             <span className="min-w-0"><span className="block truncate text-sm font-medium">{camera.name}</span><span className="block truncate text-xs text-muted-foreground">{camera.location?.path || t('fleet.unassigned')}</span></span>
           </label>
         ))}

@@ -168,7 +168,7 @@ export function InvestigationBookmarks({
                     type="text"
                     maxLength="127"
                     required
-                    value={title}
+                    aria-label={t('investigation.bookmarks.title')} value={title}
                     onInput={(event) => setTitle(event.target.value)}
                   />
                 </label>
@@ -177,7 +177,7 @@ export function InvestigationBookmarks({
                   <textarea
                     rows="4"
                     maxLength="2047"
-                    value={note}
+                    aria-label={t('investigation.bookmarks.note')} value={note}
                     onInput={(event) => setNote(event.target.value)}
                   />
                 </label>

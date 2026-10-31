@@ -356,7 +356,7 @@ function InvestigationPlayer({
               bar, so the recording is not shown with two sets (#568). */}
           {segment ? (
             <video
-              ref={videoRef}
+              aria-label={`${track.name} ${t('timeline.timelinePlayback')}`} ref={videoRef}
               muted={!primary}
               playsInline
               preload="metadata"
@@ -495,7 +495,7 @@ function InvestigationTrack({
     <div className={`investigation-track ${active ? 'is-active' : ''}`}>
       <div className="investigation-track-label">
         <label className="touch-target cursor-pointer">
-          <input type="checkbox" checked={active} onChange={onToggleActive} />
+          <input type="checkbox" aria-label={track.name} checked={active} onChange={onToggleActive} />
           <span>{track.name}</span>
         </label>
         <small>
@@ -1427,7 +1427,7 @@ export function InvestigationView() {
               <label key={stream.camera_uuid} className="touch-target cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={selectedCameraUuids.includes(stream.camera_uuid)}
+                  aria-label={stream.name} checked={selectedCameraUuids.includes(stream.camera_uuid)}
                   disabled={!selectedCameraUuids.includes(stream.camera_uuid) &&
                     selectedCameraUuids.length >= MAX_INVESTIGATION_CAMERAS}
                   onChange={() => toggleSelectedCamera(stream.camera_uuid)}
@@ -1441,7 +1441,7 @@ export function InvestigationView() {
               <span>{t('investigation.start')}</span>
               <input
                 type="datetime-local"
-                value={formatDateTimeLocal(startTime)}
+                aria-label={t('investigation.start')} value={formatDateTimeLocal(startTime)}
                 onInput={(event) => {
                   const value = parseDateTimeLocal(event.target.value);
                   if (value !== null) setStartTime(value);
@@ -1452,7 +1452,7 @@ export function InvestigationView() {
               <span>{t('investigation.end')}</span>
               <input
                 type="datetime-local"
-                value={formatDateTimeLocal(endTime)}
+                aria-label={t('investigation.end')} value={formatDateTimeLocal(endTime)}
                 onInput={(event) => {
                   const value = parseDateTimeLocal(event.target.value);
                   if (value !== null) setEndTime(value);
@@ -1585,7 +1585,7 @@ export function InvestigationView() {
               max="1"
               step="0.05"
               placeholder="0.00"
-              value={searchFilters.minConfidence}
+              aria-label={t('investigation.minimumConfidence')} value={searchFilters.minConfidence}
               onInput={(event) => setSearchFilter('minConfidence', event.target.value)}
             />
           </label>
@@ -1629,7 +1629,7 @@ export function InvestigationView() {
                       min={minimum}
                       max={maximum}
                       step="0.1"
-                      value={Math.round(searchFilters.region[name] * 1000) / 10}
+                      aria-label={t(label)} value={Math.round(searchFilters.region[name] * 1000) / 10}
                       onInput={(event) => setRegionCoordinate(name, event.target.value)}
                     />
                   </label>
@@ -1658,7 +1658,7 @@ export function InvestigationView() {
                       min="1"
                       max="100"
                       step="1"
-                      value={Math.round(searchFilters.region.minIntersection * 100)}
+                      aria-label={t('investigation.regionMinimumOverlap')} value={Math.round(searchFilters.region.minIntersection * 100)}
                       onInput={(event) => {
                         const value = Number(event.target.value);
                         if (Number.isFinite(value) && value >= 1 && value <= 100) {

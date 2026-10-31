@@ -245,7 +245,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                     type="radio"
                     name="investigation-action-scope"
                     value="result"
-                    checked={scope === 'result'}
+                    aria-label={t('investigation.actions.selectedResult')} checked={scope === 'result'}
                     disabled={!selectedResult?.camera_uuid || Boolean(busyAction)}
                     onChange={() => applyScope('result')}
                   />
@@ -256,7 +256,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                     type="radio"
                     name="investigation-action-scope"
                     value="investigation"
-                    checked={scope === 'investigation'}
+                    aria-label={t('investigation.actions.fullWindow')} checked={scope === 'investigation'}
                     disabled={Boolean(busyAction)}
                     onChange={() => applyScope('investigation')}
                   />
@@ -271,7 +271,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                     step="1"
                     min={formatDateTimeLocal(timeline.start_time, true)}
                     max={formatDateTimeLocal(timeline.end_time, true)}
-                    value={startInput}
+                    aria-label={t('investigation.start')} value={startInput}
                     disabled={Boolean(busyAction)}
                     onInput={(event) => {
                       setStartInput(event.target.value);
@@ -287,7 +287,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                     step="1"
                     min={formatDateTimeLocal(timeline.start_time, true)}
                     max={formatDateTimeLocal(timeline.end_time, true)}
-                    value={endInput}
+                    aria-label={t('investigation.end')} value={endInput}
                     disabled={Boolean(busyAction)}
                     onInput={(event) => {
                       setEndInput(event.target.value);

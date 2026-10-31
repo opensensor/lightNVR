@@ -98,7 +98,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
             <span className="mb-1 block font-medium">{t('fleet.views.name')}</span>
             <input
               className="w-full rounded-md border border-input bg-background px-3 py-2"
-              value={name}
+              aria-label={t('fleet.views.name')} value={name}
               maxLength="127"
               required
               onInput={(event) => setName(event.currentTarget.value)}
@@ -106,7 +106,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
           </label>
           {data?.can_share && (
             <label className="touch-target flex min-h-11 cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" className="h-4 w-4 rounded" checked={shared} onChange={(event) => setShared(event.currentTarget.checked)} />
+              <input type="checkbox" className="h-4 w-4 rounded" aria-label={t('fleet.views.share')} checked={shared} onChange={(event) => setShared(event.currentTarget.checked)} />
               {t('fleet.views.share')}
             </label>
           )}

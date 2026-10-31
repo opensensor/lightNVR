@@ -49,7 +49,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">
           {t('common.name')}
-          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
+          <input className={`${fieldClasses} mt-1`} aria-label={t('common.name')} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
         </label>
         <label className="text-sm font-medium">
           {t('fleet.organization.type')}
@@ -68,7 +68,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
         </label>
         <label className="text-sm font-medium">
           {t('fleet.organization.sortOrder')}
-          <input className={`${fieldClasses} mt-1`} type="number" value={form.sort_order} onInput={(event) => setForm({ ...form, sort_order: event.currentTarget.value })} />
+          <input className={`${fieldClasses} mt-1`} type="number" aria-label={t('fleet.organization.sortOrder')} value={form.sort_order} onInput={(event) => setForm({ ...form, sort_order: event.currentTarget.value })} />
         </label>
       </div>
       <div className="mt-4 flex justify-end gap-2">
@@ -205,18 +205,18 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">
             {t('fleet.organization.tagLabel')}
-            <input className={`${fieldClasses} mt-1`} value={form.label} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, label: event.currentTarget.value })} />
+            <input className={`${fieldClasses} mt-1`} aria-label={t('fleet.organization.tagLabel')} value={form.label} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, label: event.currentTarget.value })} />
           </label>
           <label className="text-sm font-medium">
             {t('fleet.organization.color')}
             <div className="mt-1 flex items-center gap-2">
               <span className="h-8 w-8 flex-none rounded-full border border-border" style={{ backgroundColor: /^#[0-9a-f]{6}$/i.test(form.color) ? form.color : 'transparent' }}></span>
-              <input className={fieldClasses} value={form.color} pattern="^#[0-9A-Fa-f]{6}$" placeholder="#2563eb" onInput={(event) => setForm({ ...form, color: event.currentTarget.value })} />
+              <input className={fieldClasses} aria-label={t('fleet.organization.color')} value={form.color} pattern="^#[0-9A-Fa-f]{6}$" placeholder="#2563eb" onInput={(event) => setForm({ ...form, color: event.currentTarget.value })} />
             </div>
           </label>
           <label className="text-sm font-medium sm:col-span-2">
             {t('fleet.organization.tagDescription')}
-            <textarea className={`${fieldClasses} mt-1`} rows="2" value={form.description} maxLength={255} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
+            <textarea className={`${fieldClasses} mt-1`} rows="2" aria-label={t('fleet.organization.tagDescription')} value={form.description} maxLength={255} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
           </label>
         </div>
       )}
