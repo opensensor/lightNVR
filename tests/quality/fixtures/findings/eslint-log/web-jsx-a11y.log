@@ -1,0 +1,11 @@
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:45.0425138Z ##[group]Run npm run lint --prefix web
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:45.1155371Z > lightnvr-web@1.0.0 lint
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:45.1155683Z > eslint js
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000000Z
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000001Z /home/runner/work/lightNVR/lightNVR/web/js/x.jsx
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000002Z    3:1  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener  jsx-a11y/click-events-have-key-events
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000003Z    9:1  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener  jsx-a11y/click-events-have-key-events
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000004Z   12:1  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.1000005Z
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.8727233Z ✖ 3 problems (0 errors, 3 warnings)
+Web JSX accessibility lint	Report JSX accessibility findings	2026-10-31T06:25:46.8727234Z
