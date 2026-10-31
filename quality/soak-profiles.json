@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "scope": "Bounded host functional composition; physical resource qualification remains deferred",
+  "profiles": {
+    "ci": {
+      "repetitions": 2,
+      "sample_interval_seconds": 0.5,
+      "scenario_timeout_seconds": 300,
+      "scenarios": ["media-video", "media-aac", "lifecycle"],
+      "growth_limits": {"rss_bytes": null, "fds": null, "threads": null}
+    }
+  },
+  "rationale": "Two independent runs of each unchanged scenario expose repeatability; 300 seconds is a supervisor containment ceiling, not a calibrated recovery/resource budget. Scenario-specific deadlines/tolerances remain authoritative. Null growth and runtime limits are unqualified/nonpassing.",
+  "runtime_budgets": "quality/runtime-budgets.json",
+  "lock": "Child scenarios acquire their existing runtime lock; supervisor never nests or removes it"
+}

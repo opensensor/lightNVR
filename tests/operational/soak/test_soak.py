@@ -136,6 +136,28 @@ class Contract(unittest.TestCase):
             outcome=soak.run_child([sys.executable,'-c','pass'],Path(directory),'/nonexistent/nvr',.05,3)
             self.assertFalse(outcome['passed']);self.assertIn('No NVR',str(outcome['failures']))
 
+    def test_existing_lock_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lock=Path(directory)/'lock';lock.mkdir();(lock/'owner').write_text('another owner')
+            with self.assertRaises(RuntimeError):soak.ensure_runtime_available(lock)
+            self.assertEqual((lock/'owner').read_text(),'another owner')
+
+    def test_supervisor_never_nests_child_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lock=Path(directory)/'child-lock'
+            code="from pathlib import Path;p=Path("+repr(str(lock))+");p.mkdir();(p/'owner').write_text('child');(p/'owner').unlink();p.rmdir()"
+            outcome=soak.run_child([sys.executable,'-c',code],Path(directory)/'out','/nonexistent/nvr',.05,3)
+            self.assertEqual(outcome['returncode'],0);self.assertFalse(lock.exists())
+
+    def test_abandoned_child_lock_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lock=Path(directory)/'child-lock'
+            code="from pathlib import Path;p=Path("+repr(str(lock))+");p.mkdir();(p/'owner').write_text('child');raise SystemExit(9)"
+            outcome=soak.run_child([sys.executable,'-c',code],Path(directory)/'out','/nonexistent/nvr',.05,3)
+            self.assertEqual(outcome['returncode'],9)
+            with self.assertRaises(RuntimeError):soak.ensure_runtime_available(lock)
+            self.assertEqual((lock/'owner').read_text(),'child')
+
     def test_descendants_cannot_adopt_same_name_unrelated_pid(self):
         root=identity(pid=100,parent=1);child=identity(pid=101,parent=100);unrelated=identity(pid=102,parent=1)
         with patch.object(soak,'process_table',return_value={100:root,101:child,102:unrelated}):
