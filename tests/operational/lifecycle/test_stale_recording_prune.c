@@ -189,6 +189,16 @@ void test_unchanged_missing_guard_completes_after_restart(void) {
     unlink(file); queue_guard("missing"); reopen_and_process();
     TEST_ASSERT_EQUAL_INT(0, scalar("SELECT COUNT(*) FROM recordings"));
 }
+void test_enabled_stream_after_queue_preserves_file(void) {
+    queue_guard("empty"); sql("UPDATE streams SET enabled=1");
+    reopen_and_process(); assert_payload("");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
+}
+void test_live_owner_after_queue_preserves_file(void) {
+    queue_guard("empty"); live_thread = true;
+    reopen_and_process(); assert_payload("");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
+}
 void test_ordinary_null_guard_semantics_unchanged(void) {
     content("ordinary footage"); change("is_complete=1"); queue_guard("ordinary");
     reopen_and_process();
@@ -221,6 +231,8 @@ int main(void) {
     RUN_TEST(test_missing_guard_preserves_later_appearing_file);
     RUN_TEST(test_unchanged_guarded_empty_deletion_completes_after_restart);
     RUN_TEST(test_unchanged_missing_guard_completes_after_restart);
+    RUN_TEST(test_enabled_stream_after_queue_preserves_file);
+    RUN_TEST(test_live_owner_after_queue_preserves_file);
     RUN_TEST(test_ordinary_null_guard_semantics_unchanged);
     int result = UNITY_END(); shutdown_database(); unlink(database); rmdir(directory); return result;
 }
