@@ -1,19 +1,20 @@
 /**
  * LightNVR Web Interface LiveView Component
- * Preact component for the HLS live view page
+ * Preact component for the Live page. Renders a PlaybackTransportCell per
+ * camera for whichever transport is active (Auto, WebRTC, HLS or MSE).
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream, getNativeFullscreenElement, requestNativeFullscreen, exitNativeFullscreen } from './FullscreenManager.jsx';
 import { useQuery } from '../../query-client.js';
-import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
+import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 import { useI18n } from '../../i18n.js';
-import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
+import { getLiveTransportTabs, LIVE_VIEW_VARIANTS, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
 import { favoriteEmptyStateKey, useCameraFavorites } from './live/cameraFavorites.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
@@ -33,23 +34,28 @@ import { filterLiveNavigatorInventory } from './live/liveOperator.js';
  * Convert the old single-string layout value to cols/rows for backward compat.
  * Defined as a function declaration so it hoists safely in the bundle.
  */
-function legacyLayoutToColsRowsHLS(layout) {
+function legacyLayoutToColsRows(layout) {
   switch (layout) {
     case '1':  return [1, 1];
     case '2':  return [2, 1];
     case '6':  return [3, 2];
     case '9':  return [3, 3];
     case '16': return [4, 4];
-    default:   return [2, 2]; // '4' and anything else → 2×2
+    default:   return [2, 2];
   }
 }
 
 /**
  * LiveView component
+ * @param {Object} props
+ * @param {'webrtc'|'hls'} [props.variant] - Page variant (see LIVE_VIEW_VARIANTS):
+ *   storage keys and a few toolbar details differ between them.
  * @returns {JSX.Element} LiveView component
  */
-export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
+export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled = false, isHlsDisabled = false, isMseDisabled = false }) {
   const { t } = useI18n();
+  const profile = LIVE_VIEW_VARIANTS[variant] || LIVE_VIEW_VARIANTS.hls;
+  const prefix = profile.storagePrefix;
   const forcedTransport = resolveForcedLiveTransport(
     window.location.pathname,
     window.location.search,
@@ -66,6 +72,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
   // Fit (letterbox) or Fill (crop) for the grid tiles (#619). A single stream
   // always shows its whole frame, so the preference only applies to grids.
   const [displayMode, setDisplayMode] = useLiveDisplayMode();
+
   // Use the snapshot manager hook
   useSnapshotManager();
 
@@ -105,10 +112,10 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     window.history.replaceState({}, '', url);
   }, []);
 
-  // Tag filter: '' means "All"
+  // Tag filter: '' means "All tags", or a single tag value to filter by
   const [tagFilter, setTagFilter] = useState(() => {
     const p = new URLSearchParams(window.location.search);
-    return p.get('tag') || localStorage.getItem('lightnvr-hls-tag-filter') || '';
+    return p.get('tag') || localStorage.getItem(`lightnvr-${prefix}-tag-filter`) || '';
   });
   const [collectionFilter, setCollectionFilter] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -159,7 +166,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     return stored !== null ? stored === 'true' : true;
   });
 
-  // State for go2rtc availability
+  // State for go2rtc availability (to show MSE View button)
   const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
 
   // Initialize cols/rows from URL params, shared localStorage key, or legacy per-view keys.
@@ -171,8 +178,8 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     const p = new URLSearchParams(window.location.search);
     return p.get('cols') === null
       && localStorage.getItem('lightnvr-live-cols') === null
-      && localStorage.getItem('lightnvr-hls-cols') === null
-      && localStorage.getItem('lightnvr-hls-layout') === null;
+      && localStorage.getItem(`lightnvr-${prefix}-cols`) === null
+      && localStorage.getItem(`lightnvr-${prefix}-layout`) === null;
   });
   const [cols, setCols] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -180,10 +187,10 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     if (cp) return Math.max(1, Math.min(9, parseInt(cp, 10) || 2));
     const shared = localStorage.getItem('lightnvr-live-cols');
     if (shared) return Math.max(1, Math.min(9, parseInt(shared, 10) || 2));
-    const legacy = localStorage.getItem('lightnvr-hls-cols');
+    const legacy = localStorage.getItem(`lightnvr-${prefix}-cols`);
     if (legacy) return Math.max(1, Math.min(9, parseInt(legacy, 10) || 2));
-    const oldLayout = localStorage.getItem('lightnvr-hls-layout');
-    if (oldLayout) return legacyLayoutToColsRowsHLS(oldLayout)[0];
+    const oldLayout = localStorage.getItem(`lightnvr-${prefix}-layout`);
+    if (oldLayout) return legacyLayoutToColsRows(oldLayout)[0];
     return 2; // placeholder until autoGrid resolves
   });
   const [rows, setRows] = useState(() => {
@@ -192,15 +199,15 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     if (rp) return Math.max(1, Math.min(9, parseInt(rp, 10) || 2));
     const shared = localStorage.getItem('lightnvr-live-rows');
     if (shared) return Math.max(1, Math.min(9, parseInt(shared, 10) || 2));
-    const legacy = localStorage.getItem('lightnvr-hls-rows');
+    const legacy = localStorage.getItem(`lightnvr-${prefix}-rows`);
     if (legacy) return Math.max(1, Math.min(9, parseInt(legacy, 10) || 2));
-    const oldLayout = localStorage.getItem('lightnvr-hls-layout');
-    if (oldLayout) return legacyLayoutToColsRowsHLS(oldLayout)[1];
+    const oldLayout = localStorage.getItem(`lightnvr-${prefix}-layout`);
+    if (oldLayout) return legacyLayoutToColsRows(oldLayout)[1];
     return 2; // placeholder until autoGrid resolves
   });
 
-  // Total streams per page — derived immediately so URL-sync useEffect can reference
-  // isSingleStream in its dependency array without TDZ issues.
+  // Total streams per page is simply cols × rows — derived immediately so every
+  // subsequent useEffect that needs it can reference it without TDZ issues.
   const maxStreams = cols * rows;
 
   // Clamp cols×rows to MAX_GRID_CELLS — guards against stale URL params or
@@ -230,7 +237,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       return streamParam;
     }
     // Check sessionStorage as a backup
-    const storedStream = sessionStorage.getItem('hls_selected_stream');
+    const storedStream = sessionStorage.getItem(`${prefix}_selected_stream`);
     return storedStream || '';
   });
 
@@ -243,7 +250,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       return Math.max(0, parseInt(pageParam, 10) - 1);
     }
     // Check sessionStorage as a backup
-    const storedPage = sessionStorage.getItem('hls_current_page');
+    const storedPage = sessionStorage.getItem(`${prefix}_current_page`);
     if (storedPage) {
       // Convert from 1-based (stored) to 0-based (internal)
       return Math.max(0, parseInt(storedPage, 10) - 1);
@@ -251,30 +258,30 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     return 0;
   });
 
-  // Check if go2rtc is enabled (for showing mode toggle)
+  // Check if go2rtc is enabled (for showing MSE View button)
   useEffect(() => {
-    const checkGo2rtcMode = async () => {
+    const checkGo2rtc = async () => {
       try {
-        const go2rtcEnabled = await isGo2rtcEnabled();
-        console.log(`[LiveView] go2rtc enabled: ${go2rtcEnabled}`);
-        setGo2rtcAvailable(go2rtcEnabled);
+        const enabled = await isGo2rtcEnabled();
+        setGo2rtcAvailable(enabled);
       } catch (error) {
         console.error('[LiveView] Error checking go2rtc status:', error);
-        setGo2rtcAvailable(false);
       }
     };
-    checkGo2rtcMode();
+    checkGo2rtc();
   }, []);
 
   // Fetch streams using preact-query, and periodically refresh so stream
-  // status (Running / Reconnecting / Stopped etc.) stays up-to-date.
+  // status (Running / Reconnecting / Stopped etc.) stays up-to-date — the
+  // video cells use status transitions to auto-retry when a camera that was
+  // offline comes back.
   const {
     data: streamsData,
     isLoading: isLoadingStreams,
     error: streamsError,
     refetch: refetchStreams,
   } = useQuery({
-    queryKey: ['streams', 'live-summary'],
+    queryKey: ['streams', profile.queryKey],
     queryFn: ({ signal }) => fetchAllStreamSummaries({
       surface: 'live', signal,
     }),
@@ -294,7 +301,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
   }, [refetchStreams, t]);
   const pullToRefresh = usePullToRefresh(refreshLiveGrid, { disabled: isFullscreen });
 
-  // Process streams data when it's loaded
+  // Process streams data when it's loaded.
   useEffect(() => {
     let cancelled = false;
     if (streamsData && Array.isArray(streamsData)) {
@@ -302,32 +309,12 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       // Process the streams data
       const processStreams = async () => {
         try {
+          // Filter and process the streams
           const candidateStreams = collectionFilter
             ? streamsData.filter((stream) => collectionCameraUuids.has(stream.camera_uuid))
             : streamsData;
-          const detailedStreams = candidateStreams;
+          const filteredStreams = filterPlayableStreams(candidateStreams);
           if (cancelled) return;
-          console.log('Loaded detailed streams for HLS view:', detailedStreams);
-
-          // Filter out streams that are soft deleted, administratively disabled, or not configured for streaming.
-          // Streams in privacy mode (privacy_mode=true) are kept visible with a privacy overlay.
-          const filteredStreams = detailedStreams.filter(stream => {
-            if (stream.is_deleted) {
-              console.log(`Stream ${stream.name} is soft deleted, filtering out`);
-              return false;
-            }
-            if (!stream.enabled) {
-              console.log(`Stream ${stream.name} is administratively disabled, filtering out`);
-              return false;
-            }
-            if (!stream.streaming_enabled) {
-              console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
-              return false;
-            }
-            return true;
-          });
-
-          console.log('Filtered streams for HLS view:', filteredStreams);
 
           if (filteredStreams.length > 0) {
             setStreams(filteredStreams);
@@ -352,7 +339,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               setSelectedStream(filteredStreams[0].name);
             }
           } else {
-            console.warn('No streams available for HLS view after filtering');
+            console.warn(`No streams available for ${variant} view after filtering`);
             setStreams([]);
             setSelectedStream('');
           }
@@ -366,9 +353,10 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       processStreams();
     }
     return () => { cancelled = true; };
-    // selectedStream is read but intentionally omitted from the dependencies.
+    // Note: selectedStream is read to preserve the current selection when valid,
+    // but we still need to populate streams even when a selection already exists.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamsData, collectionFilter, collectionCameraUuids, isCollectionLoading]);
+  }, [streamsData, autoGrid, collectionFilter, collectionCameraUuids, isCollectionLoading]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.
   useEffect(() => {
@@ -397,19 +385,19 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     window.history.replaceState({}, '', url);
 
     // Persist to storage
-    if (currentPage > 0) sessionStorage.setItem('hls_current_page', (currentPage + 1).toString());
-    else sessionStorage.removeItem('hls_current_page');
+    if (currentPage > 0) sessionStorage.setItem(`${prefix}_current_page`, (currentPage + 1).toString());
+    else sessionStorage.removeItem(`${prefix}_current_page`);
     localStorage.setItem('lightnvr-live-cols', String(cols));
     localStorage.setItem('lightnvr-live-rows', String(rows));
     // Clean up old per-view keys so reads don't fall back to stale values
-    localStorage.removeItem('lightnvr-hls-cols');
-    localStorage.removeItem('lightnvr-hls-rows');
-    localStorage.removeItem('lightnvr-hls-layout');
-    if (isSingleStream && selectedStream) sessionStorage.setItem('hls_selected_stream', selectedStream);
-    else sessionStorage.removeItem('hls_selected_stream');
+    localStorage.removeItem(`lightnvr-${prefix}-cols`);
+    localStorage.removeItem(`lightnvr-${prefix}-rows`);
+    localStorage.removeItem(`lightnvr-${prefix}-layout`);
+    if (isSingleStream && selectedStream) sessionStorage.setItem(`${prefix}_selected_stream`, selectedStream);
+    else sessionStorage.removeItem(`${prefix}_selected_stream`);
   }, [currentPage, cols, rows, isSingleStream, selectedStream, streams.length]);
 
-  // Sync UI preference controls (group, labels, controls) to URL and localStorage.
+  // Sync UI preference controls (group, tag, labels, controls) to URL and localStorage.
   // Runs independently of streams-loaded state so the URL is always accurate.
   useEffect(() => {
     const url = new URL(window.location);
@@ -433,8 +421,8 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     window.history.replaceState({}, '', url);
 
     // Persist to localStorage for sessions without URL
-    if (tagFilter) localStorage.setItem('lightnvr-hls-tag-filter', tagFilter);
-    else localStorage.removeItem('lightnvr-hls-tag-filter');
+    if (tagFilter) localStorage.setItem(`lightnvr-${prefix}-tag-filter`, tagFilter);
+    else localStorage.removeItem(`lightnvr-${prefix}-tag-filter`);
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
     localStorage.setItem('lightnvr-show-detections', String(showDetections));
@@ -454,6 +442,33 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     }
   }, [toggleFavorite, t]);
 
+  /**
+   * Drop streams that are soft deleted, administratively disabled, or not
+   * configured for streaming. Streams in privacy mode (privacy_mode=true) are
+   * kept visible with a privacy overlay.
+   * @param {Array} candidates - Array of streams
+   * @returns {Array} Playable streams
+   */
+  const filterPlayableStreams = (candidates) => {
+    const filteredStreams = candidates.filter(stream => {
+      if (stream.is_deleted) {
+        console.log(`Stream ${stream.name} is soft deleted, filtering out`);
+        return false;
+      }
+      if (!stream.enabled) {
+        console.log(`Stream ${stream.name} is administratively disabled, filtering out`);
+        return false;
+      }
+      if (!stream.streaming_enabled) {
+        console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
+        return false;
+      }
+      return true;
+    });
+    console.log(`Filtered streams for ${variant} view:`, filteredStreams);
+    return filteredStreams;
+  };
+
   // The playback grid intentionally excludes administratively disabled
   // cameras, but the Navigator's availability inventory must still include
   // them. Keep its source separate from the playable stream list.
@@ -464,11 +479,13 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       streamsData, collectionFilter ? collectionCameraUuids : null);
   }, [streamsData, streams, collectionFilter, collectionCameraUuids, isCollectionLoading]);
 
-  // Derive unique tags from all streams for the filter dropdown
+  // Derive unique tags from playable streams for the header filter.
   const availableTags = useMemo(() => {
     const tags = new Set();
     streams.forEach(s => {
-      if (s.tags) s.tags.split(',').forEach(t => { const v = t.trim(); if (v) tags.add(v); });
+      if (s.tags) {
+        s.tags.split(',').forEach(t => { const trimmed = t.trim(); if (trimmed) tags.add(trimmed); });
+      }
     });
     return Array.from(tags).sort();
   }, [streams]);
@@ -481,7 +498,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       if (operatorFilter && !operatorFilter.cameraUuids.has(stream.camera_uuid)) return false;
       if (operatorFilter && operatorFilter.availability !== 'all' &&
           stream.availability !== operatorFilter.availability) return false;
-      return !tagFilter || (stream.tags && stream.tags.split(',').map(tag => tag.trim()).includes(tagFilter));
+      return !tagFilter || (stream.tags && stream.tags.split(',').some(tag => tag.trim() === tagFilter));
     });
   }, [streams, tagFilter, collectionFilter, collectionCameraUuids, favoritesFilterActive, favoriteUuids, operatorFilter]);
 
@@ -502,7 +519,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     handleReorderPointerMove,
     handleReorderPointerUp,
     handleReorderPointerCancel,
-  } = useCameraOrder(tagFilteredStreams, 'hls');
+  } = useCameraOrder(tagFilteredStreams, prefix);
 
   const applyOperatorLayout = useCallback((layout) => {
     const nextCols = Math.max(1, Math.min(9, Number(layout.columns) || cols));
@@ -538,16 +555,27 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
     maxStreams,
   });
 
-  // Ensure current page is valid when orderedStreams or layout changes
+  // Ensure current page is valid when orderedStreams or maxStreams changes
   useEffect(() => {
     if (orderedStreams.length === 0) return;
-
     const totalPages = Math.ceil(orderedStreams.length / maxStreams);
-
-    if (currentPage >= totalPages) {
-      setCurrentPage(Math.max(0, totalPages - 1));
-    }
+    if (currentPage >= totalPages) setCurrentPage(Math.max(0, totalPages - 1));
   }, [orderedStreams.length, maxStreams, currentPage]);
+
+  /**
+   * Get streams to show based on layout, selected stream, and pagination
+   * @returns {Array} Streams to show
+   */
+  const getStreamsToShow = useCallback(() => {
+    if (isSingleStream && selectedStream) {
+      return orderedStreams.filter(stream => stream.name === selectedStream);
+    }
+    const totalPages = Math.ceil(orderedStreams.length / maxStreams);
+    if (currentPage >= totalPages && totalPages > 0) return [];
+    const startIdx = currentPage * maxStreams;
+    const endIdx = Math.min(startIdx + maxStreams, orderedStreams.length);
+    return orderedStreams.slice(startIdx, endIdx);
+  }, [orderedStreams, isSingleStream, selectedStream, currentPage, maxStreams]);
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -599,43 +627,32 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
   };
 
   // Memoize the streams to show to prevent unnecessary re-renders
-  const streamsToShow = useMemo(() => {
-    // Filter streams based on layout and selected stream
-    let result;
-    if (isSingleStream && selectedStream) {
-      result = orderedStreams.filter(stream => stream.name === selectedStream);
-    } else {
-      // Apply pagination
-      const totalPages = Math.ceil(orderedStreams.length / maxStreams);
-
-      // Ensure current page is valid
-      if (currentPage >= totalPages && totalPages > 0) {
-        result = []; // Will be handled by the effect that watches currentPage
-      } else {
-        // Get streams for current page
-        const startIdx = currentPage * maxStreams;
-        const endIdx = Math.min(startIdx + maxStreams, orderedStreams.length);
-        result = orderedStreams.slice(startIdx, endIdx);
-      }
-    }
-
-    console.log(`[LiveView] streamsToShow computed: ${result.length} streams`, result.map(s => s.name));
-    console.log(`[LiveView] cols=${cols}, rows=${rows}, currentPage=${currentPage}, totalStreams=${orderedStreams.length}`);
-    return result;
-  }, [orderedStreams, isSingleStream, selectedStream, currentPage, maxStreams, cols, rows]);
+  // Note: getMaxStreamsForLayout is omitted from dependencies because it's memoized from `layout`.
+  const streamsToShow = useMemo(() => getStreamsToShow(), [getStreamsToShow]);
 
   // Arrow-key navigation between streams while one is in native fullscreen.
   useFullscreenGridNav(streamsToShow, cols, rows);
 
+  const transportTabs = getLiveTransportTabs({
+    forcedTransport,
+    currentSearch: window.location.search,
+    autoDisabled: isAutoDisabled,
+    webrtcDisabled: isWebRTCDisabled,
+    hlsDisabled: isHlsDisabled,
+    mseDisabled: isMseDisabled,
+    go2rtcAvailable,
+  });
+
   return (
     <section
       id="live-page"
-      data-testid="hls-view"
+      data-testid={`${prefix}-view`}
       className={`page ${isFullscreen ? 'fullscreen-mode' : ''} ${isSingleStream && !isFullscreen ? 'single-stream' : ''}`}
       data-display-mode={isSingleStream ? 'fit' : displayMode}
     >
       {/* Include the SnapshotManager component */}
       <SnapshotManager />
+
       {/* Include the FullscreenManager component */}
       <FullscreenManager
         isFullscreen={isFullscreen}
@@ -646,74 +663,32 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
-          {/* Auto honors per-stream precedence; explicit modes force every
-              tile. Each transport only renders if enabled in settings
-              (#397). MSE additionally requires go2rtc to be reachable. */}
+          {/* Auto honors per-stream precedence; explicit modes force every tile. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
-            {!isAutoDisabled && (
-              forcedTransport === null ? (
-                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  {t('live.autoShort')}
+            {transportTabs.map((tab) => (
+              tab.active ? (
+                <span key={tab.id} className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  {t(tab.labelKey)}
                 </span>
               ) : (
                 <a
-                  href={buildLiveViewHref('/index.html', window.location.search)}
+                  key={tab.id}
+                  href={tab.href}
                   className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
                 >
-                  {t('live.autoShort')}
+                  {t(tab.labelKey)}
                 </a>
               )
-            )}
-            {!isWebRTCDisabled && (
-              forcedTransport === 'webrtc' ? (
-                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  {t('live.webrtcShort')}
-                </span>
-              ) : (
-                <a
-                  href={buildLiveViewHref('/index.html', window.location.search, 'webrtc')}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
-                >
-                  {t('live.webrtcShort')}
-                </a>
-              )
-            )}
-            {!isHlsDisabled && (
-              forcedTransport === 'hls' ? (
-                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  {t('live.hlsShort')}
-                </span>
-              ) : (
-                <a
-                  href={buildLiveViewHref('/hls.html', window.location.search)}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
-                >
-                  {t('live.hlsShort')}
-                </a>
-              )
-            )}
-            {!isMseDisabled && go2rtcAvailable && (
-              forcedTransport === 'mse' ? (
-                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-                  {t('live.mseShort')}
-                </span>
-              ) : (
-                <a
-                  href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
-                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground"
-                >
-                  {t('live.mseShort')}
-                </a>
-              )
-            )}
+            ))}
           </div>
         </div>
+
         {operatorSurface === 'grid' && (
         <div className="controls flex items-center space-x-2">
           {favoritesAvailable && (
             <button
               type="button"
-              id="hls-favorites-filter"
+              id={`${prefix}-favorites-filter`}
               className={`px-3 py-2 border rounded-md shadow-sm text-sm whitespace-nowrap focus:ring-2 focus:ring-primary ${favoritesOnly ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border'}`}
               aria-pressed={favoritesOnly}
               title={t('live.favoritesOnly')}
@@ -724,9 +699,9 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
           )}
           {collections.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="hls-collection-filter" className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
+              <label htmlFor={`${prefix}-collection-filter`} className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
               <select
-                id="hls-collection-filter"
+                id={`${prefix}-collection-filter`}
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={collectionFilter}
                 disabled={isCollectionLoading}
@@ -739,7 +714,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               </select>
             </div>
           )}
-          {availableTags.length > 0 && (
+          {availableTags.length > 0 && (profile.tagFilterStyle === 'select' ? (
             <div className="flex items-center gap-1.5">
               <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">{t('recordings.tags')}:</label>
               <select
@@ -749,10 +724,30 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
                 onChange={(e) => { setTagFilter(e.target.value); setCurrentPage(0); }}
               >
                 <option value="">{t('live.allTags')}</option>
-                {availableTags.map(t => <option key={t} value={t}>#{t}</option>)}
+                {availableTags.map(tag => <option key={tag} value={tag}>#{tag}</option>)}
               </select>
             </div>
-          )}
+          ) : (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm whitespace-nowrap">{t('live.tags')}:</span>
+              <button
+                className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${!tagFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
+                onClick={() => { setTagFilter(''); setCurrentPage(0); }}
+              >
+                {t('live.allTags')}
+              </button>
+              {availableTags.map(tag => (
+                <button
+                  key={tag}
+                  className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${tagFilter === tag ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
+                  onClick={() => { setTagFilter(tagFilter === tag ? '' : tag); setCurrentPage(0); }}
+                  title={t('live.filterByTag', { tag })}
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          ))}
 
           {/* Grid layout picker */}
           <div className="flex items-center gap-1.5">
@@ -767,7 +762,7 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
 
           {isSingleStream && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">{t('nav.streams')}:</label>
+              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">{t(profile.streamLabelKey)}:</label>
               <select
                 id="stream-selector"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
@@ -883,9 +878,9 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
 
           <button
             id="fullscreen-btn"
-            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:ring-2 focus:ring-primary"
             onClick={() => toggleFullscreen()}
-            title={t('timeline.fullscreen')}
+            title={t(profile.fullscreenTitleKey)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -970,21 +965,13 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
               <p className="mb-0 text-muted-foreground text-lg">{t(favoriteEmptyStateKey(favoritesFilterActive, favoriteUuids))}</p>
             </div>
           ) : (
-            // Render each tile using its persisted playback profile. The active
-            // HLS/MSE tab remains the default for streams set to Auto.
-            //
-            // Connection concurrency is bounded by the shared stream
-            // connection gate (see stream-connection-gate.js), which replaced
-            // the old fixed per-index stagger: at most N connection attempts
-            // run at once page-wide, each with a hard timeout. Healthy
-            // cameras connect as fast as slots free up (no artificial delay,
-            // so go2rtc's 5s HLS session keepalive isn't at risk), and
-            // offline cameras fail fast instead of pinning browser
-            // connections while go2rtc dials their unreachable RTSP source.
+            // Render video cells. Connection concurrency is bounded by the
+            // shared stream connection gate (see stream-connection-gate.js),
+            // which replaced the old fixed per-index stagger: healthy cameras
+            // connect as fast as slots free up, and offline cameras fail fast
+            // instead of pinning browser connections.
             streamsToShow.map((stream, index) => {
-              // Global index in orderedStreams for drag-and-drop (pagination offset)
               const globalIndex = currentPage * maxStreams + index;
-
               return (
                 <div
                   key={`${stream.name}:${refreshGeneration}`}
@@ -1019,7 +1006,6 @@ export function LiveView({audioDisabled = false, isAutoDisabled = false, isWebRT
                         userSelect: 'none',
                       }}
                     >
-                      {/* Drag handle bars icon */}
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>

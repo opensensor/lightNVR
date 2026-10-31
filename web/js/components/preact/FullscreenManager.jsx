@@ -233,7 +233,7 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
 /**
  * Returns the stream name of the video cell currently in native fullscreen,
  * or null. Reads `data-stream-name` from `document.fullscreenElement` and
- * updates on every `fullscreenchange`. LiveView/WebRTCView use it to swap
+ * updates on every `fullscreenchange`. LiveView uses it to swap
  * the fullscreened cell off the sub-stream and onto the main stream (#366).
  *
  * @returns {string|null}

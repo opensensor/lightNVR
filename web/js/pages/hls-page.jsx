@@ -16,8 +16,7 @@ import { initI18n } from '../i18n.js';
 import { AuthGate } from '../components/preact/AuthGate.jsx';
 
 /**
- * Main App component that conditionally renders WebRTCView or LiveView
- * based on whether WebRTC is disabled in settings
+ * Main App component. Always renders the HLS variant of the LiveView.
  */
 function App() {
     const [viewFlags, setViewFlags] = useState({
@@ -68,6 +67,7 @@ function App() {
             <Header />
             <ToastContainer />
             <LiveView
+                variant="hls"
                 audioDisabled={viewFlags.audioDisabled}
                 isAutoDisabled={viewFlags.autoDisabled}
                 isWebRTCDisabled={viewFlags.webrtcDisabled}
