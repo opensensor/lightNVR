@@ -653,7 +653,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T30: Define and run repeated lifecycle/resource scenarios
-- **depends_on**: [T5, T27, T28, T29]
+- **depends_on**: [T5, T27, T28, T29, T30.1]
 - **agent_type**: worker
 - **ownership**: `scripts/quality/soak.py`, `tests/operational/soak/`, `quality/soak-profiles.json`, `quality/evidence/T30.md`.
 - **description**: Compose the tested failure cases into bounded soak profiles with declared duration/load/recovery tolerances; sample RSS/CPU/FD/thread counts and recording gaps. Support unattended artifact collection and clear pass/fail; keep physical calibration under T36. Assess a separate race-detection build without combining TSan with ASan/UBSan or hiding incompatible dependencies.
@@ -7372,6 +7372,20 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **files edited/created**:
 
 
+## Independent soak tooling (T30)
+
+### T30.1: Implement bounded host soak composition and honest resource qualification
+- **depends_on**: [T3, T4, T13, T27, T28, T29]
+- **agent_type**: worker
+- **ownership**: `scripts/quality/soak.py`, `tests/operational/soak/`, `quality/soak-profiles.json`, `quality/evidence/T30.1.md`; existing operational runners and runtime budgets read-only.
+- **description**: Implement independent T30 tooling using the completed T5 protocol/inventory evidence e0544701, while its physical calibration remains explicitly deferred. Compose bounded repeated existing media/lifecycle scenarios, archive exact process/tool/source provenance, sample owned NVR and managed-child RSS/CPU/FD/thread data separately from source generators and browser, and evaluate supplied resource/recovery limits. Use existing T13 ownership and serialized runtime contracts; do not nest conflicting locks or adopt existing processes. Request an exact shared-runner extension before modifying files outside this ownership. Assess a separate race-detection build design/compatibility without combining TSan with ASan/UBSan.
+- **acceptance_criteria**: Controlled resource growth, missed recovery deadline, child failure, sanitizer output, unexpected media gaps and incomplete/unsupported observations cannot produce a green overall summary. Preserve per-scenario functional results separately from resource qualification. Null physical limits from quality/runtime-budgets.json remain unqualified and make aggregate qualification nonpassing; never substitute made-up limits or silently skip them. Existing T27/T29 tests and tolerances are unchanged. Exercise a bounded actual host composition and record its honest functional/qualification results.
+- **validation**: Tests first for profile validation, ownership/sampling identity, aggregation and failure propagation using disposable fixtures; `python3 scripts/quality/soak.py --profile ci --output build/eng-artifacts/T30` after an exclusive native/server/media lease. Tests may supply explicit synthetic thresholds to verify failures, but those thresholds are not physical qualification. Original T30 remains open for T5 physical/resource acceptance.
+- **status**: Not Completed
+- **log**: User deferral blocks physical acceptance, not implementation of the executor/reporting contract. No measured runtime limit is invented.
+- **files edited/created**:
+
+
 ## Parallel Execution Groups
 
 These are dependency frontiers, not permission to exceed three worker slots or
@@ -7384,6 +7398,7 @@ tasks must update this table before their children are scheduled.
 | 1 | T1, T2, T3, T4 | Immediately; batch into available slots; reserve frontend build lease for T4 |
 | 2 | T5, T6, T7, T11; then T8 | Respective inventory/baseline dependencies complete; T7 waits for archived T4 baseline; T8 also waits for T11 |
 | 3 | T9 then T9.1–T9.4, T10, T12; eligible T7.* | T8/T11 prerequisites complete; fix tasks honor concrete ownership edges |
+| Host soak tooling | T30.1 | T27–T29 complete; T5 protocol available, physical qualification stays deferred/nonpassing |
 | 4 | T13, T14, T31 | T9, T6/T10, or T3/T7 respectively; T13 and T14 serialize if shared infra needs overlap |
 | 5 | T15; T27, T28, T29; eligible T31.* | Harness/foundation prerequisites complete; operational writers have disjoint files |
 | 6 | T16, T17, T18; T30, T32, T33 when ready | T15 for pilot; separate operational/fix gates follow their task dependencies |
