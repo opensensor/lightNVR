@@ -2605,7 +2605,8 @@
       "title": "clang-analyzer-security.ArrayBound in authorization.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.53.1"
       ],
       "kind": "native-fix",
       "priority": "medium",
@@ -10411,7 +10412,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/timeline/TimelineControls.jsx",
         "web/js/components/preact/timeline/TimelinePlayer.jsx",
@@ -10502,7 +10503,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "All27assigned control-name warnings plus1related API label occurrence removed; existing translations and callbacks preserved.62/62combined browser-enabled checks, post-default12/12, types, modern43/default66asset checks pass. No baseline/locale changes.",
+      "commit": "d5aa9244"
     },
     {
       "id": "T7.175",
@@ -10801,7 +10804,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": " T7.174 d5aa9244 resolves ApiKey SecretReveal label bucket cf4b93673820960b 1\u21920; other buckets remain open."
     },
     {
       "id": "T7.179",
