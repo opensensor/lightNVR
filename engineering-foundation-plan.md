@@ -1227,8 +1227,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/t7_24-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.24`; inspect the raw T1 report and trace the caller.
-- **status**: In progress — codec tests verified; upstream pointer review pending
-- **log**: b6500e29 traces reportedscaling to documented int16 layout; b82307d8 provides12actualFAAC cases passing. Final-stride/intermediate-pointer language concerns remain open for upstream/reproduciblepatch review; no sourcechange/approval or freshscannerclosure.
+- **status**: Partial — tracked codec correction and local scanner integration complete; CodeQL qualification pending
+- **log**: 9d845904 tracked correction verified36native cases/24pipeline tests;937d4834 provenance integration43tests. Later20unit clang/cppcheck actualscoped scans retain warnings and limits. Required actualCodeQL/fullscanner reconciliation still open.
 - **files edited/created**:
 
 ### T7.25: cpp/toctou-race-condition in db_core.c
@@ -3867,8 +3867,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/events/EventDestinationEditor.jsx web/js/components/preact/events/EventRouteEditor.jsx web/js/components/preact/fleet/BulkOrganizeModal.jsx web/js/components/preact/fleet/CollectionManager.jsx web/js/components/preact/fleet/CollectionSelectorBuilder.jsx web/js/components/preact/fleet/FleetFilters.jsx --format json --output-file build/eng-artifacts/T7.169/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.169/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.169`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed
+- **log**: 836ac0a2 adds45 localized accessible control names without changing handlers/structure. Six suites51/51 pass including19focused/7Chromium; types and modern43/default66 budgets/freshness pass. Full lint742→690with0errors,45assigned+7related removals.
 - **files edited/created**:
 
 ### T7.170: jsx-a11y/control-has-associated-label in OrganizationManager.jsx, SavedViewsBar.jsx, StaticCollectionMembers.jsx, InvestigationActions.jsx, InvestigationBookmarks.jsx, InvestigationView.jsx
@@ -4036,7 +4036,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open.
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
@@ -7538,8 +7538,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve the independent abandoned-cleanup cause: a failed job must never delete an unrelated final destination it did not publish. Without persistent ownership proof, retain/report the object conservatively. Preserve cancellation/job transition behavior; do not invent an ownership assertion or broaden schema/storage policy.
 - **acceptance_criteria**: Preserve committed producer assertions and normal controls; add focused unsupported-operation, identity and cleanup failure cases as appropriate. No real storage/database/process touched, no unrelated schema or policy redesign. Document platform and privileged-writer limits honestly. Fresh scanner reconciliation remains T33.
 - **validation**: Tests-first producer `dc571048`; `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$' --jobs 4`, related migration tests under ASan/UBSan, exact source/artifact provenance. Native source/build lease required.
-- **status**: Not Completed
-- **log**: Materialized from committed seven-case producer before implementation. Sequential ownership prevents overlapping source/test mutations.
+- **status**: Completed (`e3321d58`)
+- **log**: Conservatively retains filesystem final destinations when failed/cancelled jobs lack ownership proof, including matching bytes and inspection errors. Twenty-four pass, only separate verified-temp substitution RED remains; sanitizers clean. Reviewed source diff and persisted explanatory cleanup error; temporary ownership still separate.
 - **files edited/created**:
 
 ### T7.26.3: Preserve verified migration temporary identity through publication

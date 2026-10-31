@@ -1164,7 +1164,7 @@
       ],
       "kind": "upstream-review",
       "priority": "high",
-      "status": "In progress \u2014 codec tests verified; upstream pointer review pending",
+      "status": "Partial \u2014 tracked codec correction and local scanner integration complete; CodeQL qualification pending",
       "ownership": [
         "quality/reviews/t7_24-upstream.json",
         "quality/evidence/T7.24.md"
@@ -1197,7 +1197,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "b6500e29 traces reportedscaling to documented int16 layout; b82307d8 provides12actualFAAC cases passing. Final-stride/intermediate-pointer language concerns remain open for upstream/reproduciblepatch review; no sourcechange/approval or freshscannerclosure."
+      "log": "9d845904 tracked correction verified36native cases/24pipeline tests;937d4834 provenance integration43tests. Later20unit clang/cppcheck actualscoped scans retain warnings and limits. Required actualCodeQL/fullscanner reconciliation still open."
     },
     {
       "id": "T7.25",
@@ -9908,7 +9908,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/events/EventDestinationEditor.jsx",
         "web/js/components/preact/events/EventRouteEditor.jsx",
@@ -9999,7 +9999,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "836ac0a2 adds45 localized accessible control names without changing handlers/structure. Six suites51/51 pass including19focused/7Chromium; types and modern43/default66 budgets/freshness pass. Full lint742\u2192690with0errors,45assigned+7related removals.",
+      "commit": "836ac0a2"
     },
     {
       "id": "T7.170",
@@ -10747,7 +10749,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open."
     },
     {
       "id": "T7.178",
