@@ -223,7 +223,7 @@ export class StreamsPage extends BasePage {
       console.log(`Received response with status: ${response.status()}`);
     } catch (e) {
       // First attempt failed - retry the click once in case it didn't register
-      console.warn(`First save attempt failed for ${config.name}, retrying: ${e.message}`);
+      console.warn(`First save attempt failed for ${config.name}, retrying: ${e instanceof Error ? e.message : String(e)}`);
       try {
         await this.saveButton.scrollIntoViewIfNeeded();
         [response] = await Promise.all([
@@ -245,7 +245,7 @@ export class StreamsPage extends BasePage {
         }).catch(() => 'Unable to capture logs');
         console.log('Browser console logs:', logs);
 
-        throw new Error(`Failed to create stream: ${retryError.message}`);
+        throw new Error(`Failed to create stream: ${retryError instanceof Error ? retryError.message : String(retryError)}`);
       }
     }
 

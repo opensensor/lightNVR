@@ -24,7 +24,9 @@ function pickScenario(scenarios: Scenario[]): Scenario {
     r -= sc.weight ?? 1;
     if (r <= 0) return sc;
   }
-  return scenarios[scenarios.length - 1];
+  const lastScenario = scenarios[scenarios.length - 1];
+  if (!lastScenario) throw new Error('Cannot select from an empty scenario list');
+  return lastScenario;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +80,7 @@ async function executeRequest(
     };
   } catch (err: unknown) {
     const latencyMs = performance.now() - start;
-    const message = err instanceof Error ? `${err.message} [${(err as any).cause ?? ''}]` : String(err);
+    const message = err instanceof Error ? `${err.message} [${err.cause ?? ''}]` : String(err);
     return {
       scenario: scenario.name,
       method: scenario.method,

@@ -205,7 +205,7 @@ export class TimelinePage extends BasePage {
    * Get today's date in YYYY-MM-DD format
    */
   static getTodayDate(): string {
-    return new Date().toISOString().split('T')[0];
+    return new Date().toISOString().slice(0, 10);
   }
 
   /**

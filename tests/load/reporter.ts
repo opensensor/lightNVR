@@ -15,7 +15,9 @@ import type { LoadTestConfig, RequestResult } from './config.ts';
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
+  const value = sorted[Math.max(0, idx)];
+  if (value === undefined) throw new RangeError(`Percentile ${p} is outside the sample range`);
+  return value;
 }
 
 function fmt(ms: number): string {

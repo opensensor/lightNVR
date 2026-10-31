@@ -93,8 +93,10 @@ export function parseArgs(argv: string[]): LoadTestConfig {
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     const next = (): string => {
-      if (i + 1 >= argv.length) throw new Error(`Missing value for ${arg}`);
-      return argv[++i];
+      const value = argv[i + 1];
+      if (value === undefined) throw new Error(`Missing value for ${arg}`);
+      i++;
+      return value;
     };
 
     switch (arg) {
