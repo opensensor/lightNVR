@@ -9598,7 +9598,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/AuthGate.jsx",
         "web/js/components/preact/BatchDownloadModal.jsx",
@@ -9690,7 +9690,8 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": " T7.161 d8552365 removes HLS control-name occurrence aa839344c6e5b30d 3\u21922; remaining bucket stays open."
+      "log": "2a2e603b resolves11 remaining control-name warnings; original HLS autoplay warning already fixed by d8552365. Named graphic wrapper preserves canvas pixels, dimensions, paused-polling zones and pointer pass-through after recorded direct-role lint failure. Sixteen focused cases and full69suites/744tests pass;22other optional browser supplements unselected. Types, modern43/default66 budgets and freshness pass. Lint665\u2192652with0errors/noadditions.",
+      "commit": "2a2e603b"
     },
     {
       "id": "T7.167",
@@ -10754,7 +10755,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open."
+      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2\u21920; remaining buckets stay open."
     },
     {
       "id": "T7.178",

@@ -3804,8 +3804,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/AuthGate.jsx web/js/components/preact/BatchDownloadModal.jsx web/js/components/preact/DetectionOverlay.jsx web/js/components/preact/FleetView.jsx web/js/components/preact/FullscreenManager.jsx web/js/components/preact/HLSVideoCell.jsx --format json --output-file build/eng-artifacts/T7.166/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.166/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.166`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**: T7.161 d8552365 removes HLS control-name occurrence aa839344c6e5b30d 3→2; remaining bucket stays open.
+- **status**: Completed
+- **log**: 2a2e603b resolves11 remaining control-name warnings; original HLS autoplay warning already fixed by d8552365. Named graphic wrapper preserves canvas pixels, dimensions, paused-polling zones and pointer pass-through after recorded direct-role lint failure. Sixteen focused cases and full69suites/744tests pass;22other optional browser supplements unselected. Types, modern43/default66 budgets and freshness pass. Lint665→652with0errors/noadditions.
 - **files edited/created**:
 
 ### T7.167: jsx-a11y/control-has-associated-label in LiveView.jsx, LoginView.jsx, MSEVideoCell.jsx, SetupWizard.jsx, SnapshotManager.jsx, StreamConfigModal.jsx
@@ -4036,7 +4036,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open.
+- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2→0; remaining buckets stay open.
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
