@@ -105,3 +105,12 @@ test('a failing check exits nonzero through diagnostic tee and retains its log',
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('tooling preserves durable migration guards and checks generated schema without rewriting', () => {
+  const c = commands(workflow().jobs.tooling);
+  assert.ok(c.includes('python3 tests/operational/lifecycle/test_stale_guard_migration.py'));
+  assert.ok(c.includes('python3 tests/unit/test_embedded_migration_generator.py'));
+  assert.ok(c.includes('python3 scripts/generate_embedded_migrations.py --check db/migrations include/database/db_embedded_migrations.h'));
+  assert.doesNotMatch(c, /--update/);
+});
