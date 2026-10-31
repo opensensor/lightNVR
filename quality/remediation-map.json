@@ -2555,7 +2555,8 @@
       "title": "clang-analyzer-core.UndefinedBinaryOperatorResult in path_utils.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.2.8"
       ],
       "kind": "native-fix",
       "priority": "medium",
@@ -7300,7 +7301,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.52"
+        "T7.52",
+        "T7.2.8"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -15119,7 +15121,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.128"
+        "T7.128",
+        "T7.2.8"
       ],
       "kind": "native-fix",
       "priority": "info",

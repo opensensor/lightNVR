@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -1718,7 +1718,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.52: clang-analyzer-core.UndefinedBinaryOperatorResult in path_utils.c
-- **depends_on**: [T7, T13]
+- **depends_on**: [T7, T13, T7.2.8]
 - **agent_type**: worker
 - **ownership**: `src/core/path_utils.c`, `tests/unit/test_t7_52.c`, `tests/unit/cmake/eng/t7_52.cmake`, `quality/evidence/T7.52.md`.
 - **priority**: medium
@@ -3086,7 +3086,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.128: bugprone-narrowing-conversions in path_utils.c
-- **depends_on**: [T7, T13, T7.52]
+- **depends_on**: [T7, T13, T7.52, T7.2.8]
 - **agent_type**: worker
 - **ownership**: `src/core/path_utils.c`, `tests/unit/test_t7_128.c`, `tests/unit/cmake/eng/t7_128.cmake`, `quality/evidence/T7.128.md`.
 - **priority**: low
@@ -5285,7 +5285,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.243: constVariablePointer in path_utils.c
-- **depends_on**: [T7, T13, T7.128]
+- **depends_on**: [T7, T13, T7.128, T7.2.8]
 - **agent_type**: worker
 - **ownership**: `src/core/path_utils.c`, `tests/unit/test_t7_243.c`, `tests/unit/cmake/eng/t7_243.cmake`, `quality/evidence/T7.243.md`.
 - **priority**: info
@@ -7179,7 +7179,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 ### T15.3: Register verified native regressions in the existing PR lane
 - **depends_on**: [T3, T13.4, T15.1, T28, T31.3]
 - **agent_type**: local
-- **ownership**: `.github/workflows/integration-test.yml` Unity build/CTest selection only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
+- **ownership**: `.github/workflows/integration-test.yml` Unity and go2rtc build/CTest selections only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery. Follow-up includes verified stale-prune native controls and real historical migration guard/generator tests in the existing Foundation tooling job, with read-only generated-header drift check.
 - **acceptance_criteria**: All fifteen added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
@@ -7345,12 +7345,12 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Exercise current query builder, polygon serialization through public DB calls, and multi-source go2rtc URL construction with synthetic upstream capture. Cover valid boundary sizes and oversized inputs; no external camera/network. Read src/database/db_query_builder.c, src/database/db_zones.c, src/video/go2rtc/go2rtc_api.c and existing tests. No production edits.
 - **acceptance_criteria**: ASan/UBSan controls verify valid outputs and rejection or safe documented truncation without buffer overflow; no HTTP request may silently target a changed source identity.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.2 --profile integration --regex '^test_t7_2_buffers$' --jobs 4`. Existing-fix verification can initially pass; do not fabricate a production RED or modify requirements to hide a failure.
-- **status**: Tests committed `ff7cc356`; acceptance pending three bounded fixes
-- **log**: Actual17case integration ASan/UBSan producer has11PASS/6RED without sanitizer diagnostics: incomplete query construction, out-of-capacity polygon count and four changed go2rtc source/name identities. Exact fix children T7.2.5–T7.2.7 block closure; no production edit or scanner-clean claim.
+- **status**: Completed — original regressions resolved by T7.2.5–T7.2.7
+- **log**: Original17assertions preserved; expanded24/24 buffer cases pass, plus30related cases (54total), with2libyaml-unavailable controls explicitly ignored. Initial6RED retained; no fresh scanner-clean claim.
 - **files edited/created**:
 
 ### T7.2.3: Verify descriptor and filesystem safety at advisory sites
-- **depends_on**: [T7, T13]
+- **depends_on**: [T7, T13, T7.2.8]
 - **agent_type**: worker
 - **ownership**: `tests/unit/test_t7_2_files.c`, `tests/unit/cmake/eng/t7_2_files.cmake`, `quality/evidence/T7.2.3.md`; production read-only.
 - **description**: Trace current successors of advisory daemon/backup/storage/FFmpeg/HLS filesystem sites. Produce bounded disposable-file tests for descriptor chmod and deletion/symlink behavior, reusing existing exact coverage where available. Public API/link wrappers only where necessary; no daemonization, real mounts or production edits. Split distinct discovered gaps before fixes.
@@ -7392,8 +7392,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Validate count against MAX_ZONE_POINTS before reading the fixed polygon array or mutating persisted zones. Preserve valid32-point polygons and transactional rollback on serialization failure. Tests-first producer ff7cc356 is already committed; no broad refactor or unrelated source ownership.
 - **acceptance_criteria**: Existing33-point RED becomesGREEN, negative/zero/oversized counts are rejected consistently with documented valid polygon rules and prior rows survive failure; valid maximum and output-overflow rollback controls pass.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.6 --profile integration --regex '^test_t7_2_buffers$' --jobs 4`; record per-cause outcomes while other explicitly assigned failures remain, then final allGREEN plus relevant existing DB/go2rtc controls.
-- **status**: Not Completed
-- **log**: Exact source cause reproduced by T7.2.2; baseline and advisory metadata remain unchanged.
+- **status**: Completed (commit `5239b965`)
+- **log**: Prevalidate all polygons3..MAX_ZONE_POINTS before transaction; valid32-point and zero-zone-list clearing preserved. Seven zone controls pass, including invalid later batch with no SQLite changes.
 - **files edited/created**:
 
 ### T7.2.7: Preserve complete go2rtc multi-source identities or reject before transport
@@ -7403,10 +7403,21 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Fix checked encoding/URL sizing and error paths in the multi-source request builder only. Reject any source/name or aggregate overflow before curl perform, or allocate complete checked encodings. Preserve valid request semantics and free all allocations. Do not silently drop a source or truncate identity; check arithmetic/count constraints before allocation/iteration. Tests-first producer ff7cc356 is already committed; no broad refactor or unrelated source ownership.
 - **acceptance_criteria**: All four captured identity/overflow RED cases and valid request controls pass; final17-case producer suite is entirelyGREEN with ASan/UBSan. Additional boundary tests may strengthen coverage but original assertions cannot be weakened.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.7 --profile integration --regex '^test_t7_2_buffers$' --jobs 4`; record per-cause outcomes while other explicitly assigned failures remain, then final allGREEN plus relevant existing DB/go2rtc controls.
-- **status**: Not Completed
-- **log**: Exact source cause reproduced by T7.2.2; baseline and advisory metadata remain unchanged.
+- **status**: Completed (commit `e9f4e639`)
+- **log**: Complete checked curl escaping and aggregate sizing reject overflow before transport; preserve more than4sources and clean up allocations.24/24 buffer cases and30related native cases pass ASan/UBSan;2libyaml-unavailable controls ignored explicitly.
 - **files edited/created**:
 
+
+### T7.2.8: Initialize skipped filesystem descriptor ownership
+- **depends_on**: [T7, T13]
+- **agent_type**: worker
+- **ownership**: `src/core/path_utils.c` _chmod_path output descriptor initialization only, `quality/evidence/T7.2.8.md`; preserve T7.2.3 producer assertions.
+- **description**: Initialize a supplied fd_out to -1 before any early return, including the successful ELOOP symlink skip. Preserve successful directory descriptor transfer and regular-file cleanup. No broader traversal rewrite.
+- **acceptance_criteria**: Deterministic permitted-value regression no longer consumes unrelated private fd0; ordinary descriptor-based permission, symlink skip and cleanup controls remain GREEN. Explicitly distinguish test-only zero initialization from production compiler behavior.
+- **validation**: Existing T7.2.3 13-case producer under ASan/UBSan plus related filesystem/backup/HLS/deletion controls. No claim of atomic arbitrary concurrent path traversal or sanitizer detection of uninitialized reads.
+- **status**: Not Completed
+- **log**: T7.2.3 native-5fee1ec7a799 has12PASS/1RED; child exits21 after skipped symlink causes private descriptor closure. Production untouched until this scope was materialized.
+- **files edited/created**:
 
 ## Independent soak tooling (T30)
 
@@ -7417,8 +7428,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Implement independent T30 tooling using the completed T5 protocol/inventory evidence e0544701, while its physical calibration remains explicitly deferred. Compose bounded repeated existing media/lifecycle scenarios, archive exact process/tool/source provenance, sample owned NVR and managed-child RSS/CPU/FD/thread data separately from source generators and browser, and evaluate supplied resource/recovery limits. Use existing T13 ownership and serialized runtime contracts; do not nest conflicting locks or adopt existing processes. Request an exact shared-runner extension before modifying files outside this ownership. Assess a separate race-detection build design/compatibility without combining TSan with ASan/UBSan.
 - **acceptance_criteria**: Controlled resource growth, missed recovery deadline, child failure, sanitizer output, unexpected media gaps and incomplete/unsupported observations cannot produce a green overall summary. Preserve per-scenario functional results separately from resource qualification. Null physical limits from quality/runtime-budgets.json remain unqualified and make aggregate qualification nonpassing; never substitute made-up limits or silently skip them. Existing T27/T29 tests and tolerances are unchanged. Exercise a bounded actual host composition and record its honest functional/qualification results.
 - **validation**: Tests first for profile validation, ownership/sampling identity, aggregation and failure propagation using disposable fixtures; `python3 scripts/quality/soak.py --profile ci --output build/eng-artifacts/T30` after an exclusive native/server/media lease. Tests may supply explicit synthetic thresholds to verify failures, but those thresholds are not physical qualification. Original T30 remains open for T5 physical/resource acceptance.
-- **status**: Not Completed
-- **log**: User deferral blocks physical acceptance, not implementation of the executor/reporting contract. No measured runtime limit is invented.
+- **status**: Completed (evidence `04bca5d4`)
+- **log**: 34executor tests pass after review RED cases. Six actual host scenarios all functionalPASS; aggregate exit2/unqualified with17null runtime limits, null growth limits and5explicit observation gaps. OriginalT30 remains open for physical/resource acceptance.
 - **files edited/created**:
 
 
