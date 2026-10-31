@@ -1839,8 +1839,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.58 --regex '^test_t7_58$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.58`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Pending review — existing hardware bounds verified; no approval recorded
+- **log**: Twelve actual-helper boundary cases plus seven existing hardware cases pass ASan/UBSan initially. Both raw diagnostics persist in fresh scoped clang21 output; source bounds and original helper equivalence documented. No production change, fabricated RED, finding dismissal or baseline approval.
 - **files edited/created**:
 
 ### T7.59: clang-analyzer-security.ArrayBound in system_health.c
@@ -7181,10 +7181,10 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity and go2rtc build/CTest selections only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery. Follow-up includes verified stale-prune native controls and real historical migration guard/generator tests in the existing Foundation tooling job, with read-only generated-header drift check.
-- **acceptance_criteria**: All twenty-six added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All twenty-seven added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
-- **log**: Twenty-six verified native targets added across Unity/go2rtc build and CTest selections; previous targets retained and empty discovery rejected. Each registration had expected missing-target RED before wiring. Latest36 workflow checks and actionlint pass. Foundation also runs real migration/generator checks, generated-header drift checks and34 soak unit checks. Earlier broad quality run89Node+158Python passed; exact artifacts and producer runs are in T15.3.md. Hosted execution and scanner dispositions remain unverified/unapproved.
+- **log**: Twenty-seven verified native targets added across Unity/go2rtc build and CTest selections; previous targets retained and empty discovery rejected. Each registration had expected missing-target RED before wiring. Latest37 workflow checks and actionlint pass. Foundation also runs real migration/generator checks, generated-header drift checks and34 soak unit checks. Earlier broad quality run89Node+158Python passed; exact artifacts and producer runs are in T15.3.md. Hosted execution and scanner dispositions remain unverified/unapproved.
 - **files edited/created**:
 
 ## Expanded media recovery tasks (T27)

@@ -2900,7 +2900,7 @@
       ],
       "kind": "native-fix",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Pending review \u2014 existing hardware bounds verified; no approval recorded",
       "ownership": [
         "src/telemetry/providers/linux_hardware.c",
         "tests/unit/test_t7_58.c",
@@ -2943,7 +2943,9 @@
           "scanner": "clang-tidy"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "commit": "c19a7eb1",
+      "log": "Twelve actual-helper boundary cases plus seven existing hardware cases pass ASan/UBSan initially. Both raw diagnostics persist in fresh scoped clang21 output; source bounds and original helper equivalence documented. No production change, fabricated RED, finding dismissal or baseline approval."
     },
     {
       "id": "T7.59",
