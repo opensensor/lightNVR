@@ -9708,7 +9708,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/LiveView.jsx",
         "web/js/components/preact/LoginView.jsx",
@@ -9799,7 +9799,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "01646f56 adds68 names using existing localization without changing callbacks/structure. Sixteen focused cases (eight Chromium),135 related tests, both typechecks and modern43/default66 budgets pass. Full lint652\u2192582, zero errors/no additions; two related StreamConfig label occurrences logged separately.",
+      "commit": "01646f56"
     },
     {
       "id": "T7.168",
@@ -10232,7 +10234,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Partial \u2014 names committed; bulk-tag behavior correction pending",
       "ownership": [
         "web/js/components/preact/recordings/TagsOverlay.jsx",
         "web/js/components/preact/settings/AdvancedTab.jsx",
@@ -10323,7 +10325,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "661cfb61 resolves all50 assigned names; types/lint and asset profiles pass, warnings582\u2192532. Interaction coverage separately reproduced stale bulk-tag state with the actual delayed-parent contract. T7.172.1 must make that regression actively pass before parent acceptance; immediate-prop fixture success alone does not close it.",
+      "commit": "661cfb61"
     },
     {
       "id": "T7.173",
@@ -10760,7 +10764,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2\u21920; remaining buckets stay open."
+      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2\u21920; remaining buckets stay open. T7.167 01646f56 removes StreamConfigModal label-association81a756fe7228ad5b 2\u21920; remaining buckets stay open."
     },
     {
       "id": "T7.178",

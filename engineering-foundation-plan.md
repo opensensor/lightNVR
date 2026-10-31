@@ -3825,8 +3825,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/LiveView.jsx web/js/components/preact/LoginView.jsx web/js/components/preact/MSEVideoCell.jsx web/js/components/preact/SetupWizard.jsx web/js/components/preact/SnapshotManager.jsx web/js/components/preact/StreamConfigModal.jsx --format json --output-file build/eng-artifacts/T7.167/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.167/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.167`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed
+- **log**: 01646f56 adds68 names using existing localization without changing callbacks/structure. Sixteen focused cases (eight Chromium),135 related tests, both typechecks and modern43/default66 budgets pass. Full lint652→582, zero errors/no additions; two related StreamConfig label occurrences logged separately.
 - **files edited/created**:
 
 ### T7.168: jsx-a11y/control-has-associated-label in StreamsView.jsx, ThemeCustomizer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx, ModalDialog.jsx
@@ -3930,8 +3930,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/recordings/TagsOverlay.jsx web/js/components/preact/settings/AdvancedTab.jsx web/js/components/preact/settings/AuthTab.jsx web/js/components/preact/settings/DetectionTab.jsx web/js/components/preact/settings/GeneralTab.jsx web/js/components/preact/settings/Go2rtcTab.jsx --format json --output-file build/eng-artifacts/T7.172/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.172/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.172`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Partial — names committed; bulk-tag behavior correction pending
+- **log**: 661cfb61 resolves all50 assigned names; types/lint and asset profiles pass, warnings582→532. Interaction coverage separately reproduced stale bulk-tag state with the actual delayed-parent contract. T7.172.1 must make that regression actively pass before parent acceptance; immediate-prop fixture success alone does not close it.
 - **files edited/created**:
 
 ### T7.173: jsx-a11y/control-has-associated-label in HealthTab.jsx, MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, StreamStorage.jsx, CalendarPicker.jsx
@@ -4036,7 +4036,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2→0; remaining buckets stay open.
+- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2→0; remaining buckets stay open. T7.167 01646f56 removes StreamConfigModal label-association81a756fe7228ad5b 2→0; remaining buckets stay open.
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
@@ -7574,8 +7574,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Remove the assumption that a predictable .bak pathname is owned. Preserve unrelated preexisting files/symlinks and use an exclusively owned backup location for this attempt. Ordinary upload/replacement and existing rollback behavior must continue; no deletion of unknown leftovers to make room.
 - **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
 - **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
-- **status**: Not Completed
-- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
+- **status**: Completed (`dc287459`)
+- **log**: Verified private per-attempt backup directory preserves legacy .bak files/symlinks. Creation/validation cleanup fault controls pass; sixteen passing cases and four known later-child RED cases retained, sanitizers clean. Source ownership changes reviewed.
 - **files edited/created**:
 
 ### T7.27.2: Bind the inspected old floor-plan background identity
@@ -7585,8 +7585,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve CODEQL-313 using a held old-file identity and validated private backup binding. Regular or symlink substitution after inspection must preserve substituted entries/targets and reject the operation without changing metadata. Hold the inspected directory as appropriate; do not repin a changed name as the original. Preserve legitimate initial upload, same-type replacement and failure recovery.
 - **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
 - **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
-- **status**: Not Completed
-- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
+- **status**: Completed (`a8ce89a3`)
+- **log**: Held no-follow old-file inspection and atomic private binding reject regular/symlink substitution; failed mismatch restoration preserves entries. Twenty-two cases pass with two separate rollback RED cases; sanitizers clean. Unsupported pinning hardening is included in the following .3 review.
 - **files edited/created**:
 
 ### T7.27.3: Restore floor-plan backgrounds without overwriting competitors
