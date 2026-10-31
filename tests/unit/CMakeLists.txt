@@ -439,4 +439,15 @@ foreach(SYSTEM_HEALTH_TEST_FRAGMENT IN LISTS SYSTEM_HEALTH_TEST_FRAGMENTS)
     include("${SYSTEM_HEALTH_TEST_FRAGMENT}")
 endforeach()
 
+# Engineering tasks own independent fragments; stable order keeps registration deterministic.
+if(CMAKE_VERSION VERSION_LESS "3.12")
+    file(GLOB ENGINEERING_TEST_FRAGMENTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/eng/*.cmake")
+else()
+    file(GLOB ENGINEERING_TEST_FRAGMENTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/eng/*.cmake")
+endif()
+list(SORT ENGINEERING_TEST_FRAGMENTS)
+foreach(ENGINEERING_TEST_FRAGMENT IN LISTS ENGINEERING_TEST_FRAGMENTS)
+    include("${ENGINEERING_TEST_FRAGMENT}")
+endforeach()
+
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")

@@ -5,6 +5,8 @@
 
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { execSync } from 'child_process';
+import path from 'node:path';
+import { readRunContext } from './fixtures/run-ownership';
 
 // GO2RTC_URL may be provided as either an origin (http://host:port) or with a base path
 // (http://host:port/go2rtc). Playwright's request `baseURL` doesn't safely preserve paths
@@ -136,7 +138,7 @@ test.describe('go2rtc API @go2rtc', () => {
     test('can capture a frame from RTSP stream', async () => {
       try {
         // Capture one frame to a temp file
-        const outputFile = '/tmp/lightnvr-test/test_frame.jpg';
+        const outputFile = path.join(readRunContext(process.env, false).dir, 'test_frame.jpg');
         execSync(
           `ffmpeg -nostdin -y -rtsp_transport tcp -i rtsp://localhost:${GO2RTC_RTSP_PORT}/test_pattern ` +
           `-frames:v 1 -update 1 ${outputFile}`,

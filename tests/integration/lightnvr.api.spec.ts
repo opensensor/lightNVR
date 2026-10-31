@@ -76,7 +76,7 @@ test.describe('LightNVR API @api', () => {
     test('POST /api/streams creates a new stream', async () => {
       const streamData = {
         name: 'playwright_test_stream',
-        url: 'rtsp://localhost:8554/test_pattern',
+        url: `rtsp://127.0.0.1:${process.env.GO2RTC_RTSP_PORT || '18554'}/test_pattern`,
         enabled: true,
         width: 1280,
         height: 720,
@@ -105,7 +105,7 @@ test.describe('LightNVR API @api', () => {
       await request.post('/api/streams', {
         data: {
           name: 'playwright_get_test',
-          url: 'rtsp://localhost:8554/test_pattern',
+          url: `rtsp://127.0.0.1:${process.env.GO2RTC_RTSP_PORT || '18554'}/test_pattern`,
           enabled: false,
         },
       });

@@ -52,7 +52,7 @@ export default defineConfig({
   },
 
   // Output directory for test artifacts
-  outputDir: './test-results',
+  outputDir: process.env.LIGHTNVR_TEST_RESULTS_DIR || './test-results',
 
   // Global setup and teardown
   globalSetup: './tests/integration/global-setup.ts',

@@ -9,12 +9,13 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import path from 'path';
+import { readRunContext, recordOwnedProcess, recordOwnedDescendants } from './fixtures/run-ownership';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const TEST_DIR = process.env.LIGHTNVR_TEST_DIR || '/tmp/lightnvr-test';
-const TEST_RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
+const TEST_RESULTS_DIR = process.env.LIGHTNVR_TEST_RESULTS_DIR || path.join(PROJECT_ROOT, 'test-results');
 const LIGHTNVR_BIN = process.env.LIGHTNVR_TEST_BIN ||
   path.join(PROJECT_ROOT, 'build/bin/lightnvr');
 const LIGHTNVR_CONFIG = process.env.LIGHTNVR_TEST_CONFIG ||
@@ -27,7 +28,7 @@ const GO2RTC_RTSP_PORT = 18554;
 // go2rtc API is typically mounted under a base path (see include/video/go2rtc/go2rtc_api.h)
 // In CI/lightNVR-managed mode we default to /go2rtc.
 const GO2RTC_BASE_PATH = (process.env.GO2RTC_BASE_PATH ?? '/go2rtc').replace(/\/+$/, '');
-const GO2RTC_HTTP_BASE = `http://localhost:${GO2RTC_API_PORT}${GO2RTC_BASE_PATH}`;
+const GO2RTC_HTTP_BASE = `http://127.0.0.1:${GO2RTC_API_PORT}${GO2RTC_BASE_PATH}`;
 
 // go2rtc API uses the same basic auth as lightNVR's web config in the test ini.
 // If go2rtc auth is disabled in some environments, providing the header is harmless.
@@ -72,18 +73,8 @@ async function waitForService(url: string, timeoutMs: number = 30000, auth?: str
 async function setupTestDirectories(): Promise<void> {
   console.log('Setting up test directories...');
 
-  const resolvedTestDir = path.resolve(TEST_DIR);
-  if (!resolvedTestDir.startsWith('/tmp/lightnvr-') || resolvedTestDir === '/tmp/lightnvr-') {
-    throw new Error(
-      `LIGHTNVR_TEST_DIR must be a dedicated /tmp/lightnvr-* directory, got ${TEST_DIR}`,
-    );
-  }
-
-  // Clean up any existing test directory to ensure fresh state
-  if (existsSync(TEST_DIR)) {
-    console.log('Cleaning up existing test directory...');
-    rmSync(TEST_DIR, { recursive: true, force: true });
-  }
+  const ctx = readRunContext();
+  if (ctx.dir !== TEST_DIR) throw new Error('Runtime directory mismatch');
 
   // Ensure test-results directory exists for screenshots
   if (!existsSync(TEST_RESULTS_DIR)) {
@@ -147,30 +138,13 @@ async function startLightNVR(): Promise<void> {
     console.log(`  - go2rtc: ${existsSync(TEST_DIR + '/go2rtc')}`);
   }
 
-  // Check if already running
-  try {
-    const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/system`, {
-      headers: { 'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64') }
-    });
-    if (response.ok) {
-      console.log('lightNVR already running');
-      return;
-    }
-  } catch (e) {
-    // Not running, start it
-  }
-
-  // Remove any stale PID file before starting
-  const pidFile = `${TEST_DIR}/lightnvr.pid`;
-  if (existsSync(pidFile)) {
-    rmSync(pidFile);
-  }
-
+  readRunContext();
+  // The runner checked reserved ports. Never adopt another server or PID file.
   // Log the exact command we're running
   console.log(`Starting lightNVR with command: ${LIGHTNVR_BIN} -c ${LIGHTNVR_CONFIG}`);
   console.log(`Working directory: ${PROJECT_ROOT}`);
 
-  // Use 'inherit' for stdio - lightNVR writes to its own log file at /tmp/lightnvr-test/lightnvr.log
+  // Keep output attached to the runner's task-scoped log.
   // Using 'pipe' with unref() causes SIGPIPE issues when parent moves on
   lightnvrProcess = spawn(LIGHTNVR_BIN, ['-c', LIGHTNVR_CONFIG], {
     cwd: PROJECT_ROOT,
@@ -178,8 +152,11 @@ async function startLightNVR(): Promise<void> {
     detached: true,
   });
 
-  // Unref the process so the parent can exit without waiting for this child
-  lightnvrProcess.unref();
+  const child = lightnvrProcess;
+  await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+  if (!child.pid) throw new Error('Spawned server has no PID');
+  try { recordOwnedProcess(child.pid); } catch (error) { child.kill('SIGTERM'); throw error; }
+  child.unref();
 
   // Track if process exited during startup
   let processExitedDuringStartup = false;
@@ -204,8 +181,6 @@ async function startLightNVR(): Promise<void> {
     }
   });
 
-  // Store PID in a separate file for teardown (not the same as lightNVR's PID file)
-  writeFileSync(`${TEST_DIR}/test-lightnvr.pid`, String(lightnvrProcess.pid));
 
   console.log(`lightNVR started with PID: ${lightnvrProcess.pid}`);
 
@@ -232,7 +207,7 @@ async function startLightNVR(): Promise<void> {
   // Wait for lightNVR to be ready (with auth)
   const authHeader = 'Basic ' + Buffer.from('admin:admin').toString('base64');
   const ready = await waitForService(
-    `http://localhost:${LIGHTNVR_PORT}/api/system`,
+    `http://127.0.0.1:${LIGHTNVR_PORT}/api/system`,
     SKIP_GO2RTC ? 30000 : 45000,
     authHeader
   );
@@ -329,7 +304,7 @@ async function registerTestStreamsWithGo2rtc(): Promise<void> {
 async function markSetupComplete(): Promise<void> {
   console.log('Marking setup wizard as complete...');
   try {
-    const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/setup/status`, {
+    const response = await fetch(`http://127.0.0.1:${LIGHTNVR_PORT}/api/setup/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ complete: true }),
@@ -346,7 +321,7 @@ async function markSetupComplete(): Promise<void> {
 
 async function ensureHealthTestViewer(): Promise<void> {
   console.log('Ensuring the health UI viewer fixture exists...');
-  const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/auth/users`, {
+  const response = await fetch(`http://127.0.0.1:${LIGHTNVR_PORT}/api/auth/users`, {
     method: 'POST',
     headers: {
       Authorization: 'Basic ' + Buffer.from('admin:admin').toString('base64'),
@@ -387,7 +362,7 @@ async function addStreamsToLightNVR(): Promise<void> {
         record: false, // Don't record test streams by default
       };
 
-      const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/streams`, {
+      const response = await fetch(`http://127.0.0.1:${LIGHTNVR_PORT}/api/streams`, {
         method: 'POST',
         headers: {
           'Authorization': authHeader,
@@ -416,7 +391,8 @@ async function globalSetup(): Promise<void> {
   console.log('========================================\n');
 
   // Create test-results directory for screenshots
-  const testResultsDir = path.join(PROJECT_ROOT, 'test-results');
+  readRunContext();
+  const testResultsDir = TEST_RESULTS_DIR;
   if (!existsSync(testResultsDir)) {
     mkdirSync(testResultsDir, { recursive: true });
   }
@@ -440,6 +416,7 @@ async function globalSetup(): Promise<void> {
     console.log('Skipping go2rtc readiness and stream initialization');
   }
 
+  recordOwnedDescendants();
   console.log('\n✓ Test environment ready\n');
 }
 
