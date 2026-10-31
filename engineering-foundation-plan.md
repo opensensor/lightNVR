@@ -1227,8 +1227,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/t7_24-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.24`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: In progress — upstream review complete; exact codec tests pending
+- **log**: Reviewb6500e29 tracesCODEQL-330 to pinnedFAAC eb4928a and documented int16layout. No sourcechange/approval; exact channel/sample testsT7.24.1 and final-stride/alignment concerns stillopen.
 - **files edited/created**:
 
 ### T7.25: cpp/toctou-race-condition in db_core.c
@@ -1245,8 +1245,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.25 --regex '^test_t7_25$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.25`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: RED producer committed — identity-preserving remediation in progress
+- **log**: 153099d1 proves3races in7cases (4controls pass): parentredirect, changedregularleaf and changedsymlink deletion. Native66b1314f09b2sanitizerclean; T7.25.1owns scopedquarantine/helddescriptor fix. Production unchanged atproducer.
 - **files edited/created**:
 
 ### T7.26: cpp/toctou-race-condition in storage_migration.c
@@ -7181,7 +7181,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity and go2rtc build/CTest selections only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery. Follow-up includes verified stale-prune native controls and real historical migration guard/generator tests in the existing Foundation tooling job, with read-only generated-header drift check.
-- **acceptance_criteria**: All twenty added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All twenty-one added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
 - **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Verified pressure-reconnect registration adds one more RED-to-GREEN check; 13/13 pass plus actionlint. Verified AAC arithmetic and migration policy targets bring final checks to15/15, after2newRED omissions. Stale-prune and durable migration/generator checks are integrated too: final24workflow checks,8Python migration/generator tests, read-only header check and both actionlint workflows pass. Advisory buffer/filesystem/settings targets also registered in go2rtc-enabled lane:27workflow checks and actionlint pass. Hosted execution unverified.
@@ -7464,7 +7464,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **ownership**: `src/database/db_core.c` cleanup_stale_backup_artifacts and narrowly scoped helpers only, `tests/unit/test_t7_25.c`, `tests/unit/cmake/eng/t7_25.cmake` needed fault seams only, `quality/evidence/T7.25.1.md`; no schema/retention/config redesign.
 - **description**: Resolve committed parent/leaf replacement regressions using held backup directory and candidate descriptors plus an owned private directory for atomic quarantine. Pin regular candidate without following symlinks or blocking on special files; verify current type/age/identity. Move relative to held directory, then compare held inode with quarantined entry before deletion. Restore mismatches only with atomic no-overwrite semantics; on conflict/error/unsupported restore preserve the quarantined object and report its retained location. Verify private directory ownership/mode/identity and use descriptor-relative operations. Never recursively delete unknown leftover quarantine after crash.
 - **acceptance_criteria**: Original inspected-parent replacement preserves replacement bytes and removes only original eligible artifact; symlink and regular leaf replacements survive with target bytes intact. Cover restore collision, failed rename/unlink/open, inode pinning and descriptor/private-directory cleanup. Unsupported no-overwrite restore must preserve data and report incomplete cleanup, never fall back to racy overwrite. Document crash leftovers, old-kernel/platform limits and exclusion of a compromised runtime UID/privileged actor or concurrent writes through an already-held fd. Ordinary selective stale cleanup remains functional.
-- **validation**: Original6-case producer (3genuineRED) retained, strengthened fault/crash/ownership controls and related backup/database tests under ASan/UBSan. Native source/build lease required; no real backup directory, database or process touched.
+- **validation**: Original7-case producer (3genuineRED) retained, strengthened fault/crash/ownership controls and related backup/database tests under ASan/UBSan. Native source/build lease required; no real backup directory, database or process touched.
 - **status**: Not Completed
 - **log**: native-4aa152ddf9c2 proves wrong parent artifact deletion and destruction of changed regular/symlink entries. Directory fd alone cannot close the leaf race; bounded stronger implementation explicitly scoped before editing.
 - **files edited/created**:

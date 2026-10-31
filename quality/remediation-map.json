@@ -1163,7 +1163,7 @@
       ],
       "kind": "upstream-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "In progress \u2014 upstream review complete; exact codec tests pending",
       "ownership": [
         "quality/reviews/t7_24-upstream.json",
         "quality/evidence/T7.24.md"
@@ -1195,7 +1195,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Reviewb6500e29 tracesCODEQL-330 to pinnedFAAC eb4928a and documented int16layout. No sourcechange/approval; exact channel/sample testsT7.24.1 and final-stride/alignment concerns stillopen."
     },
     {
       "id": "T7.25",
@@ -1207,7 +1208,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "RED producer committed \u2014 identity-preserving remediation in progress",
       "ownership": [
         "src/database/db_core.c",
         "tests/unit/test_t7_25.c",
@@ -1241,7 +1242,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "153099d1 proves3races in7cases (4controls pass): parentredirect, changedregularleaf and changedsymlink deletion. Native66b1314f09b2sanitizerclean; T7.25.1owns scopedquarantine/helddescriptor fix. Production unchanged atproducer."
     },
     {
       "id": "T7.26",
