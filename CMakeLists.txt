@@ -471,30 +471,33 @@ set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
 add_library(inih_lib STATIC ${INIH_SOURCES})
 target_include_directories(inih_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
 
+# Compile a verified build-local copy; never modify the pinned submodule.
+set(FAAC_PREPARED_ROOT "${CMAKE_BINARY_DIR}/_deps/lightnvr-faac")
+set(FAAC_PREPARE_ARGS
+    "-DFAAC_SUPERPROJECT_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+    "-DFAAC_UPSTREAM_DIR=${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac"
+    "-DFAAC_BUILD_DIR=${FAAC_PREPARED_ROOT}"
+    "-DFAAC_PATCH_DIR=${CMAKE_CURRENT_SOURCE_DIR}/patches/faac"
+    "-DFAAC_COMPILER=${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}"
+    "-DFAAC_BUILD_PROFILE=${CMAKE_BUILD_TYPE} ${CMAKE_C_FLAGS}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrepareFaac.cmake")
+execute_process(COMMAND "${CMAKE_COMMAND}" ${FAAC_PREPARE_ARGS}
+    RESULT_VARIABLE FAAC_PREPARE_RESULT)
+if(NOT FAAC_PREPARE_RESULT EQUAL 0)
+    message(FATAL_ERROR "FAAC source preparation failed; see verification error above")
+endif()
+# Recheck even incremental builds: a changed input or tampered copy must not
+# bypass validation just because CMake did not need to configure again.
+add_custom_target(faac_source_verify
+    COMMAND "${CMAKE_COMMAND}" ${FAAC_PREPARE_ARGS} VERBATIM)
 # Set up vendored FAAC library
-set(FAAC_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/bitstream.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/blockswitch.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/channels.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/cpu_compute.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/faac.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/fft.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/filtbank.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/frame.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/huff2.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/huffdata.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/quantize.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/ratecontrol.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/resample.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_analysis.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_bitstream.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_tables.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/stereo.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/tns.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/util.c"
-)
+include("${CMAKE_CURRENT_SOURCE_DIR}/patches/faac/manifest.cmake")
+set(FAAC_SOURCES "")
+foreach(FAAC_UNIT IN LISTS FAAC_TRANSLATION_UNITS)
+    list(APPEND FAAC_SOURCES "${FAAC_PREPARED_ROOT}/${FAAC_UNIT}")
+endforeach()
 add_library(faac_lib STATIC ${FAAC_SOURCES})
+add_dependencies(faac_lib faac_source_verify)
 target_compile_definitions(faac_lib PRIVATE
     PACKAGE_VERSION="2.2.0"
     PACKAGE="faac"
@@ -502,8 +505,8 @@ target_compile_definitions(faac_lib PRIVATE
     FAAC_SBR_DECIMATION=1
 )
 target_include_directories(faac_lib PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac"
+    "${FAAC_PREPARED_ROOT}/include"
+    "${FAAC_PREPARED_ROOT}/libfaac"
 )
 if(UNIX)
     target_link_libraries(faac_lib PUBLIC m)

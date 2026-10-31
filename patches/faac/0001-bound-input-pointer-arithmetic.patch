@@ -1,0 +1,78 @@
+--- a/libfaac/frame.c
++++ b/libfaac/frame.c
+@@ -540,7 +540,7 @@
+  * de-interleaving and converting to float once here so the rest of the
+  * encoder is agnostic to the input format. samplesInput may be any count that
+  * fits the FIFO; returns -1 on overflow or an invalid format. */
+-static int appendInputFifo(faacEncStruct *hEncoder, int32_t *inputBuffer,
++static int appendInputFifo(faacEncStruct *hEncoder, const void *inputBuffer,
+                            unsigned int samplesInput)
+ {
+     unsigned int numChannels = hEncoder->numChannels;
+@@ -554,8 +554,9 @@
+         float *dst = hEncoder->inputFifo[channel] + hEncoder->inputFifoFill;
+         switch (hEncoder->config.inputFormat) {
+             case INPUT_16BIT: {
+-                short *src = (short *)inputBuffer + hEncoder->config.channel_map[channel];
+-                for (i = 0; i < spch; i++) { dst[i] = (float)*src; src += numChannels; }
++                const int16_t *src = (const int16_t *)inputBuffer;
++                for (i = 0; i < spch; i++)
++                    dst[i] = (float)src[i * numChannels + hEncoder->config.channel_map[channel]];
+                 break;
+             }
+             case INPUT_24BIT: {
+@@ -573,13 +574,15 @@
+                 break;
+             }
+             case INPUT_32BIT: {
+-                int32_t *src = (int32_t *)inputBuffer + hEncoder->config.channel_map[channel];
+-                for (i = 0; i < spch; i++) { dst[i] = (1.0f/256) * (float)*src; src += numChannels; }
++                const int32_t *src = (const int32_t *)inputBuffer;
++                for (i = 0; i < spch; i++)
++                    dst[i] = (1.0f/256) * (float)src[i * numChannels + hEncoder->config.channel_map[channel]];
+                 break;
+             }
+             case INPUT_FLOAT: {
+-                float *src = (float *)inputBuffer + hEncoder->config.channel_map[channel];
+-                for (i = 0; i < spch; i++) { dst[i] = (float)*src; src += numChannels; }
++                const float *src = (const float *)inputBuffer;
++                for (i = 0; i < spch; i++)
++                    dst[i] = (float)src[i * numChannels + hEncoder->config.channel_map[channel]];
+                 /* Not audio: silence NaN, Inf and anything past the limit. A
+                  * separate pass because the conditional store keeps the
+                  * compiler from unrolling it. */
+@@ -720,7 +723,7 @@
+ #define TNS_ATTACK_MIN 0.5f
+ 
+ int faacEncEncode(faacEncHandle hpEncoder,
+-                          int32_t *inputBuffer,
++                          const void *inputBuffer,
+                           unsigned int samplesInput,
+                           unsigned char *outputBuffer,
+                           unsigned int bufferSize
+--- a/libfaac/faac.c
++++ b/libfaac/faac.c
+@@ -392,10 +392,8 @@
+     if (in_samples > faacFrameSamples(h) * h->numChannels)
+         return FAAC_ERR_INPUT_OVERFLOW;
+ 
+-    /* faacEncEncode reinterprets the input bytes per the configured
+-     * input_format; the int32_t* parameter is historical and does not imply an
+-     * int32 layout. */
+-    rc = faacEncEncode((faacEncHandle)h, (int32_t *)(uintptr_t)in,
++    /* The private core selects the typed view only after input_format. */
++    rc = faacEncEncode((faacEncHandle)h, in,
+                        in_samples, out, out_cap);
+     /* A too-small output buffer was already rejected above, so a negative
+      * return here is an unexpected core fault, not a buffer-size problem --
+--- a/libfaac/faac_internal.h
++++ b/libfaac/faac_internal.h
+@@ -79,7 +79,7 @@
+                                    unsigned long *pSizeOfDecoderSpecificInfo);
+ faacEncHandle faacEncOpen(unsigned long sampleRate, unsigned int numChannels,
+                           unsigned long *inputSamples, unsigned long *maxOutputBytes);
+-int  faacEncEncode(faacEncHandle hEncoder, int32_t *inputBuffer, unsigned int samplesInput,
++int  faacEncEncode(faacEncHandle hEncoder, const void *inputBuffer, unsigned int samplesInput,
+                    unsigned char *outputBuffer, unsigned int bufferSize);
+ int  faacEncClose(faacEncHandle hEncoder);
+ 

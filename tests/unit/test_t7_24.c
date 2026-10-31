@@ -1,5 +1,6 @@
 /* CODEQL-330 verification producer. Real pinned FAAC, no replacement codec.
  * Passing accesses do not prove final unused pointer formation is valid C. */
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,6 +209,65 @@ static void test_empty_flush_without_input(void) {
     }
     TEST_ASSERT_TRUE_MESSAGE(drained, "empty encoder flush must terminate within 16 calls");
 }
+/* Additional shared-transport format controls for the tracked correction. */
+static void additional_format(enum faac_input_format format, uint32_t channels) {
+    faac_params a = params(channels, format);
+    faac_params b = params(channels, FAAC_INPUT_32BIT);
+    open_one(0, &a); open_one(1, &b);
+    uint8_t *out0 = take(info[0].max_output_bytes);
+    uint8_t *out1 = take(info[1].max_output_bytes);
+    const uint32_t chunks[] = {1, 511, 512, 1024, 1024, 1024};
+    uint16_t endian = 1;
+    int little = *(const uint8_t *)&endian;
+    uint32_t frame = 0;
+    uint64_t total = 0;
+    for (unsigned call = 0; call < sizeof(chunks)/sizeof(chunks[0]); ++call) {
+        uint32_t n = chunks[call] * channels;
+        size_t width = format == FAAC_INPUT_24BIT ? 3 : sizeof(float);
+        size_t offset = format == FAAC_INPUT_24BIT ? 1 : 0;
+        size_t size = n * width + offset;
+        uint8_t *raw = take(size), *before = take(size);
+        int32_t *wide = take(n * sizeof(*wide));
+        raw[0] = 0x57;
+        for (uint32_t i = 0; i < n; ++i) {
+            int32_t value = sample(frame + i / channels, i % channels);
+            if (format == FAAC_INPUT_FLOAT) {
+                float f = (float)value;
+                switch ((frame + i) % 257) {
+                    case 0: f = NAN; value = 0; break;
+                    case 1: f = INFINITY; value = 0; break;
+                    case 2: f = -INFINITY; value = 0; break;
+                    case 3: f = 8388608.0f; value = 0; break;
+                    case 4: f = -8388608.0f; value = 0; break;
+                    default: break;
+                }
+                ((float *)raw)[i] = f;
+            } else {
+                uint32_t bits = (uint32_t)(value * 256);
+                for (unsigned byte = 0; byte < 3; ++byte)
+                    raw[offset + 3 * i + byte] = (uint8_t)(bits >> (8 * (little ? byte : 2 - byte)));
+            }
+            wide[i] = value * 256;
+        }
+        memcpy(before, raw, size);
+        compare_call(raw + offset, wide, n, out0, out1, &total);
+        TEST_ASSERT_EQUAL_MEMORY(before, raw, size);
+        frame += chunks[call];
+        release(wide); release(before); release(raw);
+    }
+    int drained = 0;
+    for (unsigned i = 0; i < 16; ++i) {
+        uint64_t old = total;
+        compare_call(NULL, NULL, 0, out0, out1, &total);
+        if (old == total) { drained = 1; break; }
+    }
+    TEST_ASSERT_TRUE(drained);
+    TEST_ASSERT_GREATER_THAN_UINT64(0, total);
+}
+static void test_packed24_stereo_byte_aligned(void) { additional_format(FAAC_INPUT_24BIT, 2); }
+static void test_packed24_eight_channels_byte_aligned(void) { additional_format(FAAC_INPUT_24BIT, 8); }
+static void test_float_stereo_preserves_screening(void) { additional_format(FAAC_INPUT_FLOAT, 2); }
+static void test_float_eight_channels_preserves_screening(void) { additional_format(FAAC_INPUT_FLOAT, 8); }
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_mono_packed_16_matches_32);
@@ -220,5 +280,9 @@ int main(void) {
     RUN_TEST(test_invalid_channel_maps_rejected_without_handle);
     RUN_TEST(test_rejected_arguments_do_not_consume_input);
     RUN_TEST(test_empty_flush_without_input);
+    RUN_TEST(test_packed24_stereo_byte_aligned);
+    RUN_TEST(test_packed24_eight_channels_byte_aligned);
+    RUN_TEST(test_float_stereo_preserves_screening);
+    RUN_TEST(test_float_eight_channels_preserves_screening);
     return UNITY_END();
 }
