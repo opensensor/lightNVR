@@ -3846,8 +3846,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/StreamsView.jsx web/js/components/preact/ThemeCustomizer.jsx web/js/components/preact/UI.jsx web/js/components/preact/WebRTCVideoCell.jsx web/js/components/preact/ZoneEditor.jsx web/js/components/preact/common/ModalDialog.jsx --format json --output-file build/eng-artifacts/T7.168/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.168/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.168`; inspect the raw T1 report and trace the caller.
-- **status**: Partial (names `88a17566`; original Zone Editor regression remains active RED)
-- **log**: Names-only88a17566 adds20aria-labels; coordinator AST comparison confirms no other production changes. Original21st WebRTC name reused from0080a39f. Lint461→441warnings/0errors; types and43/66budgets pass. Final focused13pass/1activeZoneEditorRED; parent awaits T7.168.2.
+- **status**: Completed (names `88a17566`, behavior `881ee46d`)
+- **log**: All 20 remaining names are fixed; the earlier WebRTC name is retained. The separately reproduced first-toggle defect is corrected without replacing its original assertion. Final 38 focused and 83 related browser cases pass, types and both asset profiles pass, default assets restored. Lint remains 440 warnings/0 errors after T7.178; no baseline or exception change.
 - **files edited/created**:
 
 ### T7.169: jsx-a11y/control-has-associated-label in EventDestinationEditor.jsx, EventRouteEditor.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, CollectionSelectorBuilder.jsx, FleetFilters.jsx
@@ -7835,8 +7835,8 @@ runtime even though a newer major exists.
 - **description**: Separately characterize the ZoneEditor card-selection/checkbox ordering issue exposed by T7.168. A first checkbox activation in an unselected card may trigger card selection before the change event and restore the prior checked state. Verify actual pointer and keyboard-first flows, independent of programmatic fill shortcuts.
 - **acceptance_criteria**: Keep the original unselected-card assertion active and retain the passing preselected-card control. Confirm or reject the defect using actual browser events, state/payload evidence and real component source. Preserve zone geometry/name/color and actual callbacks. No source correction until separately materialized; parent accessibility acceptance stays open if its original behavioral assertion remains failing.
 - **validation**: Focused real-browser fixtures without a backend or operator state; tests-only after frontend lease handoff; exact RED/controls/logs. No fabricated success by preselecting the failing workflow.
-- **status**: Not Completed
-- **log**: T7.168 names-only checks pass but original unselected-card control remains active RED; separate producer scoped.
+- **status**: Completed (producer `be3ba449`, fixture correction `7262eaba`)
+- **log**: Actual pointer-first and keyboard-first flows fail before correction, with four label/preselected controls passing. Original unselected-card assertion remains active. Final tracked RED and exact callback/save payload traces preserved; source unchanged until separately committed .2 correction.
 - **files edited/created**:
 
 ### T7.168.2: Preserve first Zone Editor checkbox activation across card selection
@@ -7846,6 +7846,6 @@ runtime even though a newer major exists.
 - **description**: Correct the confirmed first-toggle state loss: ancestor card selection rerenders the controlled checkbox between native click and change, restoring the prior checked value. Both real pointer-first and Tab/Space-first workflows reproduce without programmatic fill. Keep source changes bounded to event/state ordering.
 - **acceptance_criteria**: Original unselected-card assertion and dedicated pointer/keyboard cases pass actively. A first native toggle updates enabled state once and saves the intended value while selecting the correct card. Preselected toggles and subsequent toggles remain correct; geometry/name/color and field editing unchanged. Preserve natural checkbox behavior, focus and card-selection callbacks; do not mask failure by preselecting fixtures or suppressing useful callbacks.
 - **validation**: Retain actual2RED/2control producer logs, source hashes and payload traces; focused/related browser tests, both types, full lint and modern/default asset profiles with default restored. Production edits only after explicit frontend lease handoff.
-- **status**: Not Completed
-- **log**: Correction scoped after real pointer/keyboard producer in ignored T7.168.1 artifacts; producer must be committed before correction source edits.
+- **status**: Completed (fix `881ee46d`)
+- **log**: Checkbox change records native enabled state before card selection; clicks still bubble. Original regression plus six pointer/keyboard/label/repeat/focus controls pass. Final 38 focused/83 related cases, types, unchanged lint and 43 modern/66 default asset budgets pass; default restored.
 - **files edited/created**:

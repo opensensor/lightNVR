@@ -9818,7 +9818,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Partial \u2014 names complete; Zone Editor event-order correction pending",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/StreamsView.jsx",
         "web/js/components/preact/ThemeCustomizer.jsx",
@@ -9910,7 +9910,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "T7.162 0080a39f removes related occurrences: WebRTC control-name 9bd9a8994dceced4 3\u21922. Whole bucket/task remains open."
+      "log": "All 20 remaining names are fixed; the earlier WebRTC name is retained. The separately reproduced first-toggle defect is corrected without replacing its original assertion. Final 38 focused and 83 related browser cases pass, types and both asset profiles pass, default assets restored. Lint remains 440 warnings/0 errors after T7.178; no baseline or exception change."
     },
     {
       "id": "T7.169",
