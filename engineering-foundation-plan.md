@@ -1250,7 +1250,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.26: cpp/toctou-race-condition in storage_migration.c
-- **depends_on**: [T7, T13]
+- **depends_on**: [T7, T13, T7.26.3]
 - **agent_type**: worker
 - **ownership**: `src/storage/storage_migration.c`, `tests/unit/test_t7_26.c`, `tests/unit/cmake/eng/t7_26.cmake`, `quality/evidence/T7.26.md`.
 - **priority**: high
@@ -5357,7 +5357,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.247: constVariablePointer in db_core.c
-- **depends_on**: [T7, T13, T7.25]
+- **depends_on**: [T7, T13, T7.25, T7.25.3]
 - **agent_type**: worker
 - **ownership**: `src/database/db_core.c`, `tests/unit/test_t7_247.c`, `tests/unit/cmake/eng/t7_247.cmake`, `quality/evidence/T7.247.md`.
 - **priority**: info
