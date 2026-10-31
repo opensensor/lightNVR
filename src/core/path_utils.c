@@ -151,6 +151,7 @@ int mkdir_recursive(const char *path) {
  * path is a directory for use in recursive chmod.
  */
 static int _chmod_path(const char *path, mode_t mode, int *fd_out) {
+    if (fd_out) *fd_out = -1;
     // Open as a directory first (O_NOFOLLOW prevents following symlinks, eliminating
     // the TOCTOU race between the old lstat() check and chmod() on the same path).
     int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
