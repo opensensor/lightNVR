@@ -665,6 +665,31 @@ def evaluate(reports_dir, inventory, scanners, policy, today, release=False, rep
         fail("policy-error", "policy has no dispositions table")
     warn_days = int(policy.get("expiry_warning_days", 30))
 
+    def approved_exception(record, where, kind, scanner=None, fingerprint=None):
+        """Approval is recorded explicitly; a proposed owner/expiry is not consent."""
+        def reject(detail):
+            fail(kind, f"{where}: {detail}", scanner, fingerprint)
+            return False
+
+        for key in ("owner", "reason"):
+            if not isinstance(record.get(key), str) or not record[key].strip():
+                return reject(f"exception requires a nonempty {key}")
+        approval = record.get("approval")
+        if not isinstance(approval, dict) or approval.get("status") != "approved":
+            return reject("exception has no recorded approval (proposals are not acceptance)")
+        if record.get("status") not in (None, "approved"):
+            return reject("exception status conflicts with recorded approval")
+        for key in ("approved_by", "approved_on", "evidence"):
+            if not isinstance(approval.get(key), str) or not approval[key].strip():
+                return reject(f"approval requires a nonempty {key}")
+        try:
+            approved_on = parse_date(approval["approved_on"], f"{where}.approval.approved_on")
+        except ValueError as exc:
+            return reject(str(exc))
+        if approved_on > today:
+            return reject("approval date is in the future")
+        return True
+
     # ---- policy: accepted gaps ----
     gaps = []
     for i, g in enumerate(policy.get("accepted_gaps") or []):
@@ -676,6 +701,8 @@ def evaluate(reports_dir, inventory, scanners, policy, today, release=False, rep
             g = dict(g, _expires=parse_date(g["expires"], f"accepted_gaps[{i}].expires"))
         except ValueError as e:
             fail("policy-error", str(e), g.get("scanner"))
+            continue
+        if not approved_exception(g, f"accepted_gaps[{i}]", "policy-error", g.get("scanner")):
             continue
         g["_used"] = False
         gaps.append(g)
@@ -701,6 +728,8 @@ def evaluate(reports_dir, inventory, scanners, policy, today, release=False, rep
                 fail("inventory-error", f"{where}: unknown disposition {d!r}", r.get("scanner_id"), f)
                 continue
             exp = r.get("exception_expiry")
+            if dispositions[d].get("exception"):
+                approved_exception(r, where, "inventory-error", r.get("scanner_id"), f)
             if dispositions[d].get("exception") and not exp:
                 fail("inventory-error", f"{where}: disposition {d!r} is an exception but has no exception_expiry "
                      "(unbounded exceptions are not allowed)", r.get("scanner_id"), f)

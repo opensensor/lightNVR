@@ -7,7 +7,8 @@
     "Identity is the line-independent T1 fingerprint (quality/scanners.json#fingerprint_schemes). New fingerprints fail even when others disappear; bucket counts fail on any increase.",
     "Expiry dates are the last valid day: an exception or gap fails when today > expires.",
     "Accepted gaps are known coverage holes, printed as ACCEPTED GAP / NOT SCANNED and never counted as clean results. --release ignores all accepted gaps.",
-    "All owners/expiries below with status proposed-by-T6 need maintainer confirmation (no CODEOWNERS exists; see GAP-no-codeowners)."
+    "All owners/expiries below with status proposed-by-T6 need maintainer confirmation (no CODEOWNERS exists; see GAP-no-codeowners).",
+    "T7.1: Coverage gaps and exception dispositions require owner, reason, and approval={status: approved, approved_by: reviewer identity, approved_on: YYYY-MM-DD, evidence: review reference}. Proposed or missing approvals fail closed; no approval is inferred from an expiry. Approval must be recorded through review, never by --update-baseline."
   ],
   "dispositions": {
     "needs-triage": {"exception": false, "release_blocking": true, "meaning": "open, unreviewed; tolerated by --check only because it is inventoried"},

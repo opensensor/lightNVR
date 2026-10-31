@@ -26,7 +26,15 @@
         "line": 20
       },
       "disposition": "exception-dismissed-false-positive",
-      "exception_expiry": "2027-01-31"
+      "exception_expiry": "2027-01-31",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "CLANGTIDY-3971853557f6166d",
@@ -39,7 +47,15 @@
         "line": 5
       },
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "CLANGTIDY-23b6d28e219f20e2",
@@ -52,7 +68,15 @@
         "line": 9
       },
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "CLANGTIDY-6097ffe41888cb7e",
@@ -65,7 +89,15 @@
         "line": 7
       },
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "CPPCHECK-032b81a083372145",
@@ -116,7 +148,15 @@
       "path": "src/core/b.c",
       "count": 2,
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "CPPCHECK-BUCKET-2",
@@ -136,7 +176,15 @@
       "path": "web/js/x.jsx",
       "count": 2,
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     },
     {
       "id": "ESLINT-BUCKET-2",
@@ -146,7 +194,15 @@
       "path": "web/js/x.jsx",
       "count": 1,
       "disposition": "baseline-debt",
-      "exception_expiry": "2027-04-30"
+      "exception_expiry": "2027-04-30",
+      "owner": "fixture-maintainer",
+      "reason": "Synthetic test-only reviewed exception",
+      "approval": {
+        "status": "approved",
+        "approved_by": "fixture-reviewer",
+        "approved_on": "2026-10-31",
+        "evidence": "synthetic:test-review"
+      }
     }
   ],
   "coverage_gaps": []

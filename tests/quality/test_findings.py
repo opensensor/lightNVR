@@ -372,6 +372,48 @@ class ExceptionTests(Case):
     def test_unexpired_exception_passes(self):
         self.assertEqual(self.evaluate(today="2027-01-31")["failures"], [])  # expiry day is still valid
 
+    def test_exception_requires_recorded_approval(self):
+        for collection in ("findings", "buckets"):
+            for approval in (None, {}, {"status": "proposed"}, {"status": "approved"}):
+                with self.subTest(collection=collection, approval=approval):
+                    inv = self.load("inventory.json")
+                    row = next(r for r in inv[collection] if r["disposition"] == "baseline-debt")
+                    row["approval"] = approval
+                    self.save("inventory.json", inv)
+                    self.assertIn("inventory-error", self.kinds(self.evaluate()))
+
+    def test_exception_approval_fields_are_nonempty_strings(self):
+        original = self.load("inventory.json")
+        for key in ("approved_by", "approved_on", "evidence"):
+            for value in (None, " ", [], 42):
+                with self.subTest(key=key, value=value):
+                    inv = json.loads(json.dumps(original))
+                    inv["findings"][1]["approval"][key] = value
+                    self.save("inventory.json", inv)
+                    self.assertIn("inventory-error", self.kinds(self.evaluate()))
+
+    def test_exception_requires_owner_reason_and_valid_approval_date(self):
+        original = self.load("inventory.json")
+        for field in ("owner", "reason"):
+            inv = json.loads(json.dumps(original))
+            inv["findings"][1][field] = " "
+            self.save("inventory.json", inv)
+            self.assertIn("inventory-error", self.kinds(self.evaluate()))
+        for date in ("invalid", "2026-11-02"):
+            inv = json.loads(json.dumps(original))
+            inv["findings"][1]["approval"]["approved_on"] = date
+            self.save("inventory.json", inv)
+            self.assertIn("inventory-error", self.kinds(self.evaluate()))
+
+    def test_baseline_update_cannot_approve_an_exception(self):
+        inv = self.load("inventory.json")
+        del inv["findings"][1]["approval"]
+        self.save("inventory.json", inv)
+        before = sha(self.d / "inventory.json")
+        result = self.cli("--update-baseline", "--reason", "synthetic attempt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(sha(self.d / "inventory.json"), before)
+
     def test_expired_exception_fails(self):
         r = self.evaluate(today="2027-02-01")
         exp = [f for f in r["failures"] if f["kind"] == "expired-exception"]
@@ -414,7 +456,9 @@ class GapPolicyTests(Case):
     def gap(self, expires):
         pol = self.load("policy.json")
         pol["accepted_gaps"] = [{"scanner": "secret-scanning", "condition": "not-scanned", "owner": "maintainers/security",
-                                 "expires": expires, "reason": "disabled upstream", "coverage_gap_ref": "GAP-x"}]
+                                 "expires": expires, "reason": "disabled upstream", "coverage_gap_ref": "GAP-x",
+                                 "approval": {"status": "approved", "approved_by": "fixture-reviewer",
+                                              "approved_on": "2026-09-01", "evidence": "synthetic:test-review"}}]
         self.save("policy.json", pol)
 
     def test_accepted_gap_is_visible_and_passes(self):
@@ -428,6 +472,35 @@ class GapPolicyTests(Case):
         self.assertEqual(p.returncode, 0)
         self.assertIn("ACCEPTED GAP", p.stdout)
         self.assertIn("NOT SCANNED", p.stdout)
+
+    def test_unapproved_gaps_cannot_hide_missing_scans(self):
+        self.add_secret_scanner()
+        for approval in (None, {}, {"status": "proposed"}, {"status": "approved"}):
+            with self.subTest(approval=approval):
+                self.gap("2026-12-31")
+                pol = self.load("policy.json")
+                pol["accepted_gaps"][0]["approval"] = approval
+                self.save("policy.json", pol)
+                r = self.evaluate()
+                self.assertIn("policy-error", self.kinds(r))
+                self.assertIn("not-scanned", self.kinds(r))
+                self.assertEqual(r["accepted_gaps"], [])
+
+    def test_proposed_status_conflicts_with_approval(self):
+        self.add_secret_scanner()
+        self.gap("2026-12-31")
+        pol = self.load("policy.json")
+        pol["accepted_gaps"][0]["status"] = "proposed-by-T6"
+        self.save("policy.json", pol)
+        self.assertIn("policy-error", self.kinds(self.evaluate()))
+
+    def test_gap_future_approval_cannot_hide_missing_scan(self):
+        self.add_secret_scanner()
+        self.gap("2026-12-31")
+        pol = self.load("policy.json")
+        pol["accepted_gaps"][0]["approval"]["approved_on"] = "2026-11-02"
+        self.save("policy.json", pol)
+        self.assertIn("not-scanned", self.kinds(self.evaluate()))
 
     def test_expired_gap_fails(self):
         self.add_secret_scanner()
