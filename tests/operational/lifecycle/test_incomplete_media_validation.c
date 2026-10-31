@@ -18,6 +18,15 @@
 static char directory[] = "/tmp/lightnvr-incomplete-media-XXXXXX";
 static char database_path[256], valid_path[256], invalid_path[256], header_only_path[256];
 static time_t now;
+static bool live_writer, live_thread;
+bool __real_stream_has_continuous_writer(const char *);
+bool __real_mp4_recording_thread_alive(const char *);
+bool __wrap_stream_has_continuous_writer(const char *name) {
+    return live_writer || __real_stream_has_continuous_writer(name);
+}
+bool __wrap_mp4_recording_thread_alive(const char *name) {
+    return live_thread || __real_mp4_recording_thread_alive(name);
+}
 
 static void write_packets(AVCodecContext *encoder, AVFormatContext *output, AVPacket *packet) {
     int result;
@@ -91,6 +100,7 @@ static recording_metadata_t read_record(uint64_t id) {
 void setUp(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM recordings", NULL, NULL, NULL));
     now = time(NULL);
+    live_writer = live_thread = false;
 }
 void tearDown(void) {}
 void test_valid_stale_media_is_finalized(void) {
@@ -120,6 +130,15 @@ void test_faststart_header_without_video_payload_stays_incomplete(void) {
 }
 void test_recent_media_remains_incomplete(void) {
     uint64_t id = add_incomplete(valid_path, now);
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_FALSE(read_record(id).is_complete);
+}
+void test_old_but_live_recording_is_not_finalized(void) {
+    uint64_t id = add_incomplete(valid_path, now - 7200);
+    live_writer = true;
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_FALSE(read_record(id).is_complete);
+    live_writer = false; live_thread = true;
     TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
     TEST_ASSERT_FALSE(read_record(id).is_complete);
 }
@@ -176,6 +195,7 @@ int main(void) {
     RUN_TEST(test_truncated_nonempty_media_stays_incomplete);
     RUN_TEST(test_faststart_header_without_video_payload_stays_incomplete);
     RUN_TEST(test_recent_media_remains_incomplete);
+    RUN_TEST(test_old_but_live_recording_is_not_finalized);
     RUN_TEST(test_scan_advances_past_500_retained_invalid_files);
     int result = UNITY_END();
     shutdown_database();
