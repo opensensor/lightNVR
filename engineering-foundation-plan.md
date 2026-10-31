@@ -823,8 +823,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - No private advisory text, IDs or credentials in committed evidence.
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-ghsa-cv53-mq7p-6jp2.json`
-- **status**: In progress — exact regression coverage pending
-- **log**: Public advisory and ancestor fixes d558e69d/1bdf6fe8 reviewed; current source has later successors. Materialized four bounded tests-only child tasks before closure; version exclusion/generic tests are insufficient.
+- **status**: Completed — current source and exact regression evidence reviewed
+- **log**: All four bounded regression children complete:7migration,24buffer,14filesystem and7settings cases. Three buffer fixes plus descriptor initialization resolve observed failures; related native controls pass with2explicit unavailable libyaml controls. No release, fresh scanner, baseline change or exception approval inferred.
 - **files edited/created**:
 
 ### T7.3: Verify disposition and regression evidence for ADVISORY-repo-advisory-draft-1
@@ -7356,8 +7356,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Trace current successors of advisory daemon/backup/storage/FFmpeg/HLS filesystem sites. Produce bounded disposable-file tests for descriptor chmod and deletion/symlink behavior, reusing existing exact coverage where available. Public API/link wrappers only where necessary; no daemonization, real mounts or production edits. Split distinct discovered gaps before fixes.
 - **acceptance_criteria**: Record an individual disposition for every original filesystem site, with real-file controls and explicit race limitations. Static absence of an old path does not prove its replacement safe.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.3 --profile integration --regex '^test_t7_2_files$' --jobs 4`. Existing-fix verification can initially pass; do not fabricate a production RED or modify requirements to hide a failure.
-- **status**: Not Completed
-- **log**: Original advisory fixes predate the current plan; generic DB/media tests do not establish these exact boundary cases.
+- **status**: Completed (producer `741beec3`, fix `e3ec7ea6`)
+- **log**: All14real filesystem/descriptor cases pass after isolated fd0 regression fix;110total related ASan/UBSan cases, zero ignored. Individual original25–38sites mapped with explicit traversal/race limits.
 - **files edited/created**:
 
 ### T7.2.4: Verify settings and system operations avoid shell injection
@@ -7367,8 +7367,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Read current settings path validation and system directory/process operations replacing the advisory shell sites. Exercise public settings handlers with temporary accepted/rejected paths and assert persistence/side effects. Verify system inspection invokes no shell using wrappers or direct execution evidence. No production edits.
 - **acceptance_criteria**: Valid settings remain compatible; unsafe path inputs cannot cause shell execution or unwanted persistence. Source-only null-check cleanup is classified separately from a runtime defect.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.4 --profile integration --regex '^test_t7_2_settings$' --jobs 4`. Existing-fix verification can initially pass; do not fabricate a production RED or modify requirements to hide a failure.
-- **status**: Not Completed
-- **log**: Original advisory fixes predate the current plan; generic DB/media tests do not establish these exact boundary cases.
+- **status**: Completed — tests-only existing-fix verification
+- **log**: Seven settings/system/real-statvfs cases pass ASan/UBSan using mutableT7.7cache; exact artifacts/source hashes retained. No shell calls or host config writes, optional go2rtc version unavailable without network.
 - **files edited/created**:
 
 
@@ -7415,8 +7415,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Initialize a supplied fd_out to -1 before any early return, including the successful ELOOP symlink skip. Preserve successful directory descriptor transfer and regular-file cleanup. No broader traversal rewrite.
 - **acceptance_criteria**: Deterministic permitted-value regression no longer consumes unrelated private fd0; ordinary descriptor-based permission, symlink skip and cleanup controls remain GREEN. Explicitly distinguish test-only zero initialization from production compiler behavior.
 - **validation**: Existing T7.2.3 13-case producer under ASan/UBSan plus related filesystem/backup/HLS/deletion controls. No claim of atomic arbitrary concurrent path traversal or sanitizer detection of uninitialized reads.
-- **status**: Not Completed
-- **log**: T7.2.3 native-5fee1ec7a799 has12PASS/1RED; child exits21 after skipped symlink causes private descriptor closure. Production untouched until this scope was materialized.
+- **status**: Completed (commit `e3ec7ea6`)
+- **log**: Initialize supplied fd_out=-1 before early returns; isolated skipped-symlink fd0 regression reachesGREEN.14producer and96related cases pass ASan/UBSan, zero ignored; production compiler flags unchanged.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

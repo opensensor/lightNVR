@@ -18,9 +18,15 @@
       "d558e69d0e28400841c8a7add370f0b26e8473ab",
       "1bdf6fe84292e4398e6b2180f2c1a397515593ac"
     ],
-    "fixes_are_ancestors": true
+    "fixes_are_ancestors": true,
+    "followup_fixes": [
+      "17b6536a",
+      "5239b965",
+      "e9f4e639",
+      "e3ec7ea6"
+    ]
   },
-  "status": "pending-exact-regression-coverage",
+  "status": "current-source-regression-verified",
   "required_children": [
     "T7.2.1",
     "T7.2.2",
@@ -29,14 +35,33 @@
   ],
   "limits": [
     "Published patched version and ancestral commits do not establish every current successor boundary.",
-    "No exception approval, remote change or baseline update."
+    "No exception approval, remote change or baseline update.",
+    "Two libyaml-dependent related controls explicitly unavailable; no fresh full-profile scanner result or released-version attestation.",
+    "Filesystem tests do not prove atomic arbitrary concurrent traversal or compare-and-unlink protection between separate syscalls."
   ],
   "completed_children": [
     "T7.2.1",
-    "T7.2.2"
-  ],
-  "remaining_children": [
+    "T7.2.2",
     "T7.2.3",
     "T7.2.4"
-  ]
+  ],
+  "remaining_children": [],
+  "regressions": {
+    "T7.2.1": {
+      "cases_passed": 7,
+      "evidence": "quality/evidence/T7.2.1.md"
+    },
+    "T7.2.2": {
+      "cases_passed": 24,
+      "evidence": "quality/evidence/T7.2.2.md"
+    },
+    "T7.2.3": {
+      "cases_passed": 14,
+      "evidence": "quality/evidence/T7.2.3.md"
+    },
+    "T7.2.4": {
+      "cases_passed": 7,
+      "evidence": "quality/evidence/T7.2.4.md"
+    }
+  }
 }

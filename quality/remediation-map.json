@@ -60,7 +60,7 @@
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "In progress \u2014 exact regression coverage pending",
+      "status": "Completed",
       "ownership": [
         "quality/reviews/advisory-ghsa-cv53-mq7p-6jp2.json",
         "quality/evidence/T7.2.md"
@@ -80,7 +80,7 @@
         "ADVISORY-GHSA-cv53-mq7p-6jp2"
       ],
       "requires_external_evidence": true,
-      "log": "Ancestor fixes reviewed; migration policy7/7 passes. Buffer producer ff7cc356 reproduces6failures/17cases; exact source fixes T7.2.5\u2013T7.2.7 now block review/T33. Filesystem/settings verification remains pending."
+      "log": "All four bounded regression children complete:7migration,24buffer,14filesystem and7settings cases. Three buffer fixes plus descriptor initialization resolve observed failures; related native controls pass with2explicit unavailable libyaml controls. No release, fresh scanner, baseline change or exception approval inferred."
     },
     {
       "id": "T7.3",
