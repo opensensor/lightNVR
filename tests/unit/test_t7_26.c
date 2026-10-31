@@ -25,7 +25,13 @@ static char source_path[MAX_PATH_LENGTH], destination_path[MAX_PATH_LENGTH];
 static char temporary_path[MAX_PATH_LENGTH], sentinel[256], verified_part[256];
 static char source_uuid[LIGHTNVR_UUID_STRING_SIZE], destination_uuid[LIGHTNVR_UUID_STRING_SIZE];
 static bool armed, injected;
-static int replacement_kind;
+static int replacement_kind, publication_error;
+static bool fail_part_unlink;
+int __real_unlink(const char *);
+int __wrap_unlink(const char *path) {
+    if (fail_part_unlink && !strcmp(path, temporary_path)) { errno = EACCES; return -1; }
+    return __real_unlink(path);
+}
 static const char payload[] = "verified source recording";
 static void put_file(const char *path, const char *bytes) {
     TEST_ASSERT_EQUAL_INT(0, ensure_path(path));
@@ -59,6 +65,9 @@ long __wrap_syscall(long number, ...) {
     int newfd = va_arg(args, int); const char *newname = va_arg(args, const char *);
     unsigned int flags = va_arg(args, unsigned int); va_end(args);
     if (armed && (!strcmp(newname, destination_path) || !strcmp(newname, "clip.mp4"))) inject_before_publication();
+    if (publication_error && (!strcmp(newname, destination_path) || !strcmp(newname, "clip.mp4"))) {
+        errno = publication_error; return -1;
+    }
     return __real_syscall(number, oldfd, oldname, newfd, newname, flags);
 }
 static void assert_bytes(const char *path, const char *expected) {
@@ -92,7 +101,7 @@ static void configure_targets(void) {
     strcpy(destination_uuid, destination.uuid);
 }
 void setUp(void) {
-    armed = injected = false; replacement_kind = 0; temporary_path[0] = '\0';
+    armed = injected = fail_part_unlink = false; replacement_kind = publication_error = 0; temporary_path[0] = '\0';
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
         "DELETE FROM storage_migration_jobs;DELETE FROM detections;DELETE FROM recordings;DELETE FROM storage_targets;",
         NULL, NULL, NULL));
@@ -101,7 +110,7 @@ void setUp(void) {
     unlink(sentinel); unlink(verified_part); put_file(sentinel, "sentinel unchanged");
     configure_targets();
 }
-void tearDown(void) { armed = false; }
+void tearDown(void) { armed = fail_part_unlink = false; }
 static uint64_t create_job(storage_migration_job_t *job, const char *operation) {
     put_file(source_path, payload);
     recording_metadata_t recording = {0};
@@ -192,6 +201,27 @@ static void test_unavailable_registered_source_preserves_metadata_and_bytes(void
     TEST_ASSERT_EQUAL_INT(1, result); assert_source_location(id);
     TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
 }
+static void publication_failure(int error) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    publication_error = error;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("retry_wait", job.state);
+    assert_bytes(temporary_path, payload);
+}
+static void test_unsupported_atomic_publication_retains_source_and_temporary(void) { publication_failure(ENOSYS); }
+static void test_unsupported_filesystem_publication_retains_source_and_temporary(void) { publication_failure(EINVAL); }
+static void test_publication_io_failure_retains_source_and_temporary(void) { publication_failure(EIO); }
+static void test_collision_cleanup_failure_never_overwrites_competing_destination(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    replacement_kind = 1; armed = fail_part_unlink = true;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one()); TEST_ASSERT_TRUE(injected);
+    assert_bytes(destination_path, "concurrent destination data"); assert_source_location(id);
+    assert_bytes(temporary_path, payload);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("failed", job.state);
+}
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-26-XXXXXX"); if (!mkdtemp(root)) return 2;
     snprintf(source_root, sizeof(source_root), "%s/source", root);
@@ -211,6 +241,10 @@ int main(void) {
     RUN_TEST(test_existing_collision_survives_later_abandoned_cleanup);
     RUN_TEST(test_unverified_temporary_replacement_is_not_committed);
     RUN_TEST(test_unavailable_registered_source_preserves_metadata_and_bytes);
+    RUN_TEST(test_unsupported_atomic_publication_retains_source_and_temporary);
+    RUN_TEST(test_unsupported_filesystem_publication_retains_source_and_temporary);
+    RUN_TEST(test_publication_io_failure_retains_source_and_temporary);
+    RUN_TEST(test_collision_cleanup_failure_never_overwrites_competing_destination);
     int result = UNITY_END(); shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;
 }

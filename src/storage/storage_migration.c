@@ -24,6 +24,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 
 #include "core/logger.h"
 #include "core/path_utils.h"
@@ -249,6 +252,19 @@ static int verified_existing_destination(
     return 1;
 }
 
+/* Atomic publication must not replace a destination created after inspection.
+ * Use the Linux syscall so an older libc need not export renameat2. */
+static int publish_migration_noreplace(const char *temporary, const char *destination) {
+#if defined(__linux__) && defined(SYS_renameat2)
+    return (int)syscall(SYS_renameat2, AT_FDCWD, temporary, AT_FDCWD, destination,
+                       1U); /* Linux RENAME_NOREPLACE */
+#else
+    (void)temporary; (void)destination;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
 static int copy_and_verify(
     storage_migration_job_t *job, const char *source_path,
     const char *destination_path,
@@ -421,13 +437,13 @@ static int copy_and_verify(
         unlink(temporary_path);
         return -3;
     }
-    if (lstat(destination_path, &source_status) == 0) {
-        safe_strcpy(error, "Destination appeared while migration was copying",
-                    STORAGE_MIGRATION_ERROR_MAX, 0);
-        unlink(temporary_path);
-        return -2;
-    }
-    if (errno != ENOENT || rename(temporary_path, destination_path) != 0) {
+    if (publish_migration_noreplace(temporary_path, destination_path) != 0) {
+        if (errno == EEXIST) {
+            safe_strcpy(error, "Destination appeared while migration was copying",
+                        STORAGE_MIGRATION_ERROR_MAX, 0);
+            unlink(temporary_path);
+            return -2;
+        }
         set_error(error, "Cannot publish verified destination",
                   destination_path);
         return -1;
