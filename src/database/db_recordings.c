@@ -2532,6 +2532,13 @@ int get_recordings_for_pressure_cleanup_default_target(
  */
 int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
                                     int older_than_seconds) {
+    uint64_t maximum_id = 0;
+    time_t cutoff = time(NULL) - (time_t)(older_than_seconds > 0 ? older_than_seconds : 0);
+    return get_stale_incomplete_recordings_page(recordings, max_count, cutoff, 0, &maximum_id);
+}
+
+int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
+                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -2543,21 +2550,27 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
         log_error("Database not initialized");
         return -1;
     }
-    if (!recordings || max_count <= 0) {
+    if (!recordings || max_count <= 0 || !maximum_id) {
         log_error("Invalid parameters for get_stale_incomplete_recordings");
         return -1;
     }
 
-    time_t cutoff = time(NULL) - (time_t)(older_than_seconds > 0 ? older_than_seconds : 0);
-
     pthread_mutex_lock(db_mutex);
+    if (after_id == 0) {
+        sqlite3_stmt *limit = NULL;
+        rc = sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(id),0) FROM recordings", -1, &limit, NULL);
+        if (rc == SQLITE_OK) rc = sqlite3_step(limit);
+        if (rc == SQLITE_ROW) *maximum_id = (uint64_t)sqlite3_column_int64(limit, 0);
+        sqlite3_finalize(limit);
+        if (rc != SQLITE_ROW) { pthread_mutex_unlock(db_mutex); return -1; }
+    }
 
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type "
         "FROM recordings "
-        "WHERE is_complete = 0 AND start_time < ? "
-        "ORDER BY start_time ASC "
+        "WHERE is_complete = 0 AND deletion_pending = 0 AND start_time < ? "
+        "AND id > ? AND id <= ? ORDER BY id ASC "
         "LIMIT ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -2568,9 +2581,11 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
     }
 
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff);
-    sqlite3_bind_int(stmt, 2, max_count);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)after_id);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)*maximum_id);
+    sqlite3_bind_int(stmt, 4, max_count);
 
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_count) {
         recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
         const char *sname = (const char *)sqlite3_column_text(stmt, 1);
@@ -2610,7 +2625,7 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
 
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
-    return count;
+    return rc == SQLITE_DONE ? count : -1;
 }
 
 /**

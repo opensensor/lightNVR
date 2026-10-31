@@ -17,6 +17,9 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/time.h>
 
 #include "storage/storage_manager.h"
 #include "storage/storage_deletion.h"
@@ -34,6 +37,7 @@
 #include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "video/recording_path.h"
+#include "video/mp4_recording.h"
 #include "video/hls/hls_directory.h"
 #include "core/config.h"
 #include "core/event_producers.h"
@@ -1995,9 +1999,82 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
     return storage_source_trim(target > free_bytes ? target - free_bytes : 0);
 }
 
+/* Recovery checks a bounded sample, not just moov duration metadata: a
+ * faststart header can survive while every video payload byte is missing.
+ * Only local regular MP4 files are opened; retain evidence on any uncertainty.
+ * One decoded, error-free video frame is sufficient here, not a full-file audit. */
+typedef struct {
+    int64_t deadline;
+    AVFormatContext *format;
+} recovery_probe_t;
+
+static int recovery_probe_interrupted(void *opaque) {
+    recovery_probe_t *probe = opaque;
+    return av_gettime_relative() >= probe->deadline ||
+        (probe->format && probe->format->pb && probe->format->pb->bytes_read > 8 * 1024 * 1024);
+}
+
+static bool incomplete_media_has_video_sample(const char *path) {
+    struct stat info;
+    if (!path || path[0] != '/' || lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) return false;
+    AVFormatContext *format = avformat_alloc_context();
+    AVCodecContext *decoder = NULL;
+    AVPacket *packet = NULL;
+    AVFrame *frame = NULL;
+    AVDictionary *options = NULL;
+    bool usable = false;
+    recovery_probe_t probe = { .deadline = av_gettime_relative() + AV_TIME_BASE, .format = format };
+    if (!format) return false;
+    format->interrupt_callback = (AVIOInterruptCB){ recovery_probe_interrupted, &probe };
+    format->probesize = 1024 * 1024;
+    format->max_analyze_duration = AV_TIME_BASE;
+    av_dict_set(&options, "protocol_whitelist", "file", 0);
+    if (avformat_open_input(&format, path, av_find_input_format("mov"), &options) < 0) goto done;
+    probe.format = format;
+    if (avformat_find_stream_info(format, NULL) < 0 || recovery_probe_interrupted(&probe)) goto done;
+    int video = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+    if (video < 0) goto done;
+    const AVCodec *codec = avcodec_find_decoder(format->streams[video]->codecpar->codec_id);
+    if (!codec) goto done;
+    decoder = avcodec_alloc_context3(codec);
+    if (!decoder || avcodec_parameters_to_context(decoder, format->streams[video]->codecpar) < 0) goto done;
+    decoder->thread_count = 1;
+    decoder->err_recognition = AV_EF_EXPLODE;
+    if (avcodec_open2(decoder, codec, NULL) < 0) goto done;
+    packet = av_packet_alloc(); frame = av_frame_alloc();
+    if (!packet || !frame) goto done;
+    int64_t payload_bytes = 0;
+    for (int packets = 0; packets < 64 && !recovery_probe_interrupted(&probe); packets++) {
+        int result = av_read_frame(format, packet);
+        if (result < 0) {
+            if (result == AVERROR_EOF && avcodec_send_packet(decoder, NULL) >= 0 &&
+                avcodec_receive_frame(decoder, frame) == 0) {
+                usable = frame->width > 0 && frame->height > 0 &&
+                    !(frame->flags & AV_FRAME_FLAG_CORRUPT) && !frame->decode_error_flags;
+            }
+            break;
+        }
+        payload_bytes += packet->size;
+        if (payload_bytes > 8 * 1024 * 1024) break;
+        if (packet->stream_index == video && avcodec_send_packet(decoder, packet) >= 0 &&
+            avcodec_receive_frame(decoder, frame) == 0) {
+            usable = frame->width > 0 && frame->height > 0 &&
+                !(frame->flags & AV_FRAME_FLAG_CORRUPT) && !frame->decode_error_flags;
+        }
+        av_packet_unref(packet);
+        if (usable) break;
+    }
+done:
+    if (usable && recovery_probe_interrupted(&probe)) usable = false;
+    av_dict_free(&options);
+    av_packet_free(&packet); av_frame_free(&frame);
+    avcodec_free_context(&decoder); avformat_close_input(&format);
+    return usable;
+}
+
 // Reconcile recordings interrupted by an unclean shutdown (is_complete = 0).
 int storage_reconcile_incomplete_recordings(void) {
-    // Only touch rows old enough to be certain they are not actively recording.
+    // Exclude fresh rows; age alone does not establish that a writer stopped.
     const int STALE_WINDOW_SEC = 3600;         // 1 hour
     const int RECONCILE_BATCH   = 500;
 
@@ -2015,17 +2092,23 @@ int storage_reconcile_incomplete_recordings(void) {
     int finalized = 0;
     int pruned = 0;
     int count;
+    uint64_t after_id = 0, maximum_id = 0;
+    const time_t cutoff = time(NULL) - STALE_WINDOW_SEC;
 
     do {
-        count = get_stale_incomplete_recordings(batch, RECONCILE_BATCH, STALE_WINDOW_SEC);
+        count = get_stale_incomplete_recordings_page(batch, RECONCILE_BATCH, cutoff, after_id, &maximum_id);
         if (count <= 0) break;
 
         for (int i = 0; i < count; i++) {
+            after_id = batch[i].id;
+            if (stream_has_continuous_writer(batch[i].stream_name) ||
+                mp4_recording_thread_alive(batch[i].stream_name)) continue;
             struct stat st;
             bool have_file = (batch[i].file_path[0] != '\0' &&
                               stat(batch[i].file_path, &st) == 0 && S_ISREG(st.st_mode));
 
             if (have_file && st.st_size > 0) {
+                if (!incomplete_media_has_video_sample(batch[i].file_path)) continue;
                 // Footage survived — finalize it so it appears in listings.
                 time_t end_time = batch[i].end_time > 0 ? batch[i].end_time : st.st_mtime;
                 if (update_recording_metadata(batch[i].id, end_time,

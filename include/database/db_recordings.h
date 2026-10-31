@@ -395,6 +395,14 @@ int get_recordings_for_pressure_cleanup_default_target(
 int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
                                     int older_than_seconds);
 
+/* Bounded ID-keyset scan: first page (after_id=0) snapshots maximum_id.
+ * Keep cutoff/maximum_id fixed and pass the last returned ID on continuation;
+ * retained rows and concurrent inserts cannot cause revisits or extend the scan.
+ * Pending deletions are excluded. Returns count, or -1 on a database error. */
+int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
+                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id);
+
+
 /**
  * Get total storage bytes used by a stream from the database
  *
