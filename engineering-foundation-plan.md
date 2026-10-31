@@ -3979,7 +3979,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 ### T7.175: jsx-a11y/control-has-associated-label in RoleManagerModal.jsx, TotpSetupModal.jsx, UsersTable.jsx
 - **depends_on**: [T7, T10, T7.165]
 - **agent_type**: worker
-- **ownership**: `web/js/components/preact/users/RoleManagerModal.jsx`, `web/js/components/preact/users/TotpSetupModal.jsx`, `web/js/components/preact/users/UsersTable.jsx`, `web/tests/remediation/t7_175.spec.jsx`, `quality/evidence/T7.175.md`.
+- **ownership**: `web/js/components/preact/users/RoleManagerModal.jsx`, `web/js/components/preact/users/TotpSetupModal.jsx`, `web/js/components/preact/users/UsersTable.jsx`, `web/tests/remediation/t7_175.spec.jsx`, `web/tests/remediation/t7_165.spec.jsx` (useId hook mock compatibility only; preserve assertions), `quality/evidence/T7.175.md`.
 - **priority**: low
 - **description**: Reproduce the listed diagnostics and fix this accessibility/quality cause only in the assigned component cluster. Preserve localization, event callbacks, DOM contracts and extension-sensitive test behavior. Narrow an untestable lint-only case with documented static evidence; behavioral accessibility changes require interaction tests.
 - **findings**: ESLINT-BUCKET-400e44e71536be4e, ESLINT-BUCKET-d3aede71a08c3a5f, ESLINT-BUCKET-fcf1de019f6b4533
@@ -7181,10 +7181,10 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity build/CTest selection only, `tests/quality/native-ci.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery.
-- **acceptance_criteria**: All nine added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All eleven added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
-- **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten tests-first workflow checks plus actionlint pass. Hosted execution unverified.
+- **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Hosted execution unverified.
 - **files edited/created**:
 
 ## Expanded media recovery tasks (T27)
@@ -7299,8 +7299,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Add focused tests for valid MP4, truncated nonempty MP4 and retained invalid entries spanning a500-row batch. Require usable local media before promoting stale incomplete rows; retain unreadable/corrupt evidence incomplete. Advance past retained rows through bounded query/progress semantics while preserving one-hour active-recording grace. Reuse existing probing where suitable; no damaged-file repair or deletion in this task.
 - **acceptance_criteria**: RED reproduces false completion; GREEN leaves corrupt files unpromoted, finalizes valid stale media, preserves recent rows, reaches valid candidates behind at least500 retained invalid entries, and terminates within deadline without deleting files. Actual T29 truncated-media assertion passes after rebuild.
 - **validation**: `python3 scripts/quality/run-native.py --task T29.2 --regex '^test_incomplete_media_validation$' --jobs 4`; existing recording DB tests and actual T29 scenario.
-- **status**: Not Completed
-- **log**: F-T29-01 reproduced twice in real process recovery; no exception proposed.
+- **status**: Completed (production `8ad48404`, evidence `3a4bc326`)
+- **log**: Tests-first decoded-video and bounded keyset scan controls pass44/44 Unity cases across3 ASan/UBSan targets. Real historical-upgrade/restart scenario now12/13, truncated-media assertion GREEN; only separate T29.3 phantom rows remain. Interruptible I/O/sample limits do not claim a decoder CPU deadline or full-file integrity.
 - **files edited/created**:
 
 ### T29.3: Prune confirmed stale phantom recordings without weakening active deletion guards
