@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "task": "T7.24",
+  "status": "review_complete_boundary_validation_pending",
+  "finding_id": "CODEQL-330",
+  "finding_resolution": "unresolved",
+  "exception_approval": null,
+  "fingerprint": "codeql:cpp/suspicious-pointer-scaling:third_party/faac/libfaac/frame.c:fa72f8f97382e2ed:1",
+  "raw_report": {
+    "path": "build/eng-artifacts/T1/github/codeql-8927bc8a.sarif",
+    "sha256": "e351d0bac24d13a70933b501a1a7f4d2ffac8767dc8d12783d583b1bcc24b050",
+    "analysis_id": 2067529268,
+    "repository_revision": "8927bc8afbad",
+    "result": {
+      "correlationGuid": "7e650256-534c-4a47-b689-d06afc2d68d8",
+      "level": "warning",
+      "locations": [
+        {
+          "physicalLocation": {
+            "artifactLocation": {
+              "index": 21,
+              "uri": "third_party/faac/libfaac/frame.c"
+            },
+            "region": {
+              "endColumn": 50,
+              "endLine": 557,
+              "startColumn": 39,
+              "startLine": 557
+            }
+          }
+        }
+      ],
+      "message": {
+        "text": "This pointer might have type [signed int](1) (size 4), but this pointer arithmetic is done with type short * (size 2)."
+      },
+      "partialFingerprints": {
+        "primaryLocationLineHash": "fa72f8f97382e2ed:1"
+      },
+      "properties": {
+        "github/alertNumber": 330,
+        "github/alertUrl": "https://api.github.com/repos/opensensor/lightNVR/code-scanning/alerts/330"
+      },
+      "relatedLocations": [
+        {
+          "id": 1,
+          "message": {
+            "text": "signed int"
+          },
+          "physicalLocation": {
+            "artifactLocation": {
+              "index": 0,
+              "uri": "third_party/faac/libfaac/frame.c"
+            },
+            "region": {
+              "endColumn": 73,
+              "endLine": 543,
+              "startColumn": 62,
+              "startLine": 543
+            }
+          }
+        }
+      ],
+      "rule": {
+        "id": "cpp/suspicious-pointer-scaling",
+        "toolComponent": {
+          "index": 0
+        },
+        "index": 57
+      },
+      "ruleId": "cpp/suspicious-pointer-scaling"
+    }
+  },
+  "upstream": {
+    "repository": "https://github.com/FreewareAdvancedAudio/faac",
+    "pinned_commit": "eb4928a76fd075f9bab20e8195df84f937da289b",
+    "same_pin_at_scanner_revision": true,
+    "version": "2.2.0",
+    "working_tree_clean": true,
+    "upstream_update_applied": false,
+    "fix_version": "No fix version established; this review does not recommend an unverified library update."
+  },
+  "source_hashes": [
+    {
+      "path": "third_party/faac/libfaac/frame.c",
+      "sha256": "174e7948bd59876b6be06913aaa0e340332173a2d408be45eee317c8009a0617"
+    },
+    {
+      "path": "third_party/faac/libfaac/faac.c",
+      "sha256": "29ca7a51f3cb06b00fc70e31ae5cad8cd6ef2828f14bdfb730a5b5431d5c68f6"
+    },
+    {
+      "path": "third_party/faac/include/faac.h",
+      "sha256": "e97ac5bc5c552c4f85df9a1807cc61a40cc56f9666aeb5f0f8c8958c4cf421e7"
+    },
+    {
+      "path": "third_party/faac/docs/libfaac.md",
+      "sha256": "05897dd9234f26bb741a6e7b10a816235ffa4b4df41750972274bde1a0e3a1dc"
+    },
+    {
+      "path": "third_party/faac/meson.build",
+      "sha256": "69e65aa63e4f81d79abce72ade4a2fc4960c9858349f151f0c30d98ed0806dba"
+    },
+    {
+      "path": "src/video/faac_encoder.c",
+      "sha256": "8b90f8406d12b05bdabaac25849a9e7038931777b2b3c993c601e48ee72af366"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "sha256": "625ae1b093089a6c0c92d8b4b2fe5dafafeb3e4714da3900299f380755f5aff3"
+    },
+    {
+      "path": "tests/unit/test_faac_encoder.c",
+      "sha256": "35be9159cf6f1bcdd6ed85fd7aef09f04272aa5e0340d1c5dfae3a715dd407dc"
+    },
+    {
+      "path": "tests/unit/test_t7_16.c",
+      "sha256": "b16812f9abd6a14fcad2138867ba6d8aa45f1834fffa9b83517a9e9bab1b8156"
+    }
+  ],
+  "linked_profile": {
+    "target": "faac_lib STATIC, linked by lightnvr_lib",
+    "definitions": [
+      "PACKAGE_VERSION=2.2.0",
+      "MAX_CHANNELS=8",
+      "FAAC_SBR_DECIMATION=1"
+    ],
+    "application_format": "src/video/faac_encoder.c sets FAAC_INPUT_16BIT unconditionally",
+    "sanitizer_evidence": "Existing T7.16 lean ASan/UBSan build compiles actual FAAC and links libfaac_lib.a; not a system-library fallback. No new build/run performed by this review.",
+    "artifacts": [
+      {
+        "path": "build/eng-artifacts/T7.16/native-953a9112a501/LastTest.log",
+        "sha256": "a11d4a44073d62f6a5314fe38c1bfd11a992d9244e40121e1287112cfbfedd30"
+      },
+      {
+        "path": "build/eng-artifacts/T7.16/native-953a9112a501/run.json",
+        "sha256": "0edc163f67c8b774355f03b2a4b9758dc3a821b0c85273edbbe1237a6b0ae627"
+      },
+      {
+        "path": "build/eng-native/T7.16/lean-asan-ubsan/CMakeFiles/faac_lib.dir/flags.make",
+        "sha256": "222371ae0581d54a5526448d2c2d19a16a0bfa0f3235e21a59e7a1154bd1185f"
+      },
+      {
+        "path": "build/eng-native/T7.16/lean-asan-ubsan/tests/unit/CMakeFiles/test_t7_16.dir/link.txt",
+        "sha256": "a1da3b27f9abd9a067c9e7f6272eaf8926d7fa657ff7290a5f618a4008dd1ddd"
+      }
+    ]
+  },
+  "call_trace": [
+    "faac_adapter_open selects FAAC_INPUT_16BIT",
+    "faac_adapter_encode forwards const void* and total sample count",
+    "faac_encoder_encode validates null/capacity/sample count then casts through historical int32_t*",
+    "faacEncEncode invokes appendInputFifo only with nonnull positive input",
+    "appendInputFifo selects INPUT_16BIT and scales by short elements plus validated channel map"
+  ],
+  "diagnostic_analysis": {
+    "reported_expression": "short *src = (short *)inputBuffer + hEncoder->config.channel_map[channel];",
+    "reported_type_mismatch": "The formal inputBuffer type is int32_t*, but selected PCM storage is int16_t. The pinned public API documentation and wrapper comment explicitly establish the format-dependent byte layout.",
+    "inference": "Scaling the selected 16-bit path by two-byte samples matches the documented input contract. Replacing it with int32_t scaling would change interleaved channel selection and could overrun a correctly sized 16-bit buffer. This supports intentional reinterpretation; it is not an approved false-positive disposition.",
+    "valid_read_bound": "For N supplied samples in whole channel groups, C channels, and map m in [0,C-1], read indices are i*C+m with 0<=i<N/C. Last read N-C+m<=N-1. Public parameter validation rejects channel-map entries outside that range.",
+    "separate_pointer_formation_concern": "Each loop iteration also performs src += C, including after its last read. For m>0 this forms base+(N+m), beyond the one-past base+N pointer. There is no subsequent dereference in that iteration, but this prevents a blanket pointer-arithmetic safety conclusion. ASan/UBSan passing memory-access tests alone does not prove the pointer formation conforms.",
+    "other_limits": "The historical int32_t* intermediate also deserves alignment review against the documented int16_t alignment contract. Current buffers generally satisfy stronger allocation alignment; tests should include an int16-aligned offset. Out-of-contract short allocations cannot be detected from a bare pointer/sample count; do not label them supported. Nonwhole channel groups are outside the documented caller contract."
+  },
+  "existing_behavior_evidence": {
+    "run": "build/eng-artifacts/T7.16/native-953a9112a501",
+    "observed": "Six targets / 36 Unity cases pass; real mono/stereo/eight-channel configuration and PCM/AAC media recovery controls exist. test_faac_encoder source covers mono encode/flush and HE configuration, but that target was not selected in this T7.16 run.",
+    "reuse_scope": "Context for actual static linkage and available valid media paths only. These tests do not isolate CODEQL-330, distinct multichannel sample selection, map bounds or final pointer formation. No exact-finding regression claimed."
+  },
+  "proposed_child": {
+    "id": "T7.24.1",
+    "status": "proposed_not_materialized",
+    "title": "Verify pinned FAAC 16-bit input scaling and public API boundaries",
+    "depends_on": [
+      "T7",
+      "T13"
+    ],
+    "ownership": [
+      "tests/unit/test_t7_24.c",
+      "tests/unit/cmake/eng/t7_24.cmake",
+      "quality/evidence/T7.24.1.md"
+    ],
+    "description": "Tests-only producer using actual pinned faac_lib and existing layer3 registration. No source/submodule edits, mocks or system FAAC substitution.",
+    "cases": [
+      "Distinct signed packed int16 samples for mono, stereo and eight channels; complete encode/flush output equals equivalent int32 samples multiplied by256 under otherwise identical configuration.",
+      "Identity and reversed valid maps plus negative/out-of-range and too-short map rejection.",
+      "Exact-sized one-channel-group, partial-frame and full-frame buffers with sanitizer redzones; int16-aligned offset storage; inputs unchanged.",
+      "NULL input with positive samples rejected; NULL/zero input flush bounded until zero output; no bogus success mutation for rejected input.",
+      "One complete channel group above declared frame sample maximum rejected; undersized and NULL output rejected; handles/allocated buffers always cleaned up and close nulls handle."
+    ],
+    "validation": "python3 scripts/quality/run-native.py --task T7.24.1 --profile integration --regex '^test_(t7_24|faac_encoder)$' --jobs 4",
+    "acceptance": "Record unchanged-source results honestly, including initially passing intent controls. No forced failing expectation, unapproved exception or claim that sanitizers prove absence of pointer-formation UB. Any demonstrated defect needs a separately materialized bounded tracked upstream integration child before editing the library.",
+    "gate_changes": "T7.24 and T33 must depend on this producer if materialized; still require separately resolved pointer-formation/alignment concerns and a verified correction or explicit authorized narrow disposition before closing CODEQL-330.",
+    "lease": "Exclusive native/source build lease required; no runtime/server required."
+  },
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/FreewareAdvancedAudio/faac/eb4928a76fd075f9bab20e8195df84f937da289b/docs/libfaac.md",
+      "purpose": "Pinned authoritative PCM format/alignment, whole-channel-group count, map validation and ownership contract."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/FreewareAdvancedAudio/faac/eb4928a76fd075f9bab20e8195df84f937da289b/libfaac/frame.c",
+      "purpose": "Pinned upstream diagnostic expression and per-channel loop, checked against local source."
+    }
+  ],
+  "validation_status": {
+    "read_only_source_trace": "complete",
+    "json": "validated",
+    "new_runtime_tests": "not run; outside current ownership; proposed child required",
+    "baseline_changed": false,
+    "system_headers_changed": false,
+    "submodule_changed": false
+  }
+}
