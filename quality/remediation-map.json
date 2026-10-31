@@ -231,7 +231,7 @@
       ],
       "kind": "dependency",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Blocked \u2014 review prepared, awaiting compatible fix or maintainer decision",
       "ownership": [
         "web/package.json",
         "web/package-lock.json",
@@ -257,7 +257,8 @@
       "finding_ids": [
         "NPM-WEB-GHSA-3g3m-2fjr-6pw4-glob"
       ],
-      "lease": "exclusive package/install/build lease"
+      "lease": "exclusive package/install/build lease",
+      "review_commit": "713b3025"
     },
     {
       "id": "T7.9",
@@ -269,7 +270,7 @@
       ],
       "kind": "dependency",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Blocked \u2014 review prepared, awaiting compatible fix or maintainer decision",
       "ownership": [
         "web/package.json",
         "web/package-lock.json",
@@ -301,7 +302,8 @@
       "finding_ids": [
         "NPM-WEB-GHSA-g3hv-75wg-m249-minimatch"
       ],
-      "lease": "exclusive package/install/build lease"
+      "lease": "exclusive package/install/build lease",
+      "review_commit": "713b3025"
     },
     {
       "id": "T7.10",
@@ -313,7 +315,7 @@
       ],
       "kind": "dependency",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Blocked \u2014 review prepared, awaiting compatible fix or maintainer decision",
       "ownership": [
         "web/package.json",
         "web/package-lock.json",
@@ -340,7 +342,8 @@
         "DEPENDABOT-101",
         "NPM-WEB-GHSA-gcqx-w48m-w2h4-deepmerge"
       ],
-      "lease": "exclusive package/install/build lease"
+      "lease": "exclusive package/install/build lease",
+      "review_commit": "713b3025"
     },
     {
       "id": "T7.11",
@@ -19146,7 +19149,7 @@
       ],
       "kind": "approval-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Blocked \u2014 review prepared, awaiting compatible fix or maintainer decision",
       "ownership": [
         "quality/reviews/exception-ownership.json",
         "quality/evidence/T7.335.md"
@@ -19162,7 +19165,8 @@
       ],
       "evidence": "quality/evidence/T7.335.md",
       "finding_ids": [],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "review_commit": "713b3025"
     }
   ],
   "finding_map": [
