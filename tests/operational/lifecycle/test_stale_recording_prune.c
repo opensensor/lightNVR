@@ -18,6 +18,7 @@ static char directory[] = "/tmp/lightnvr-stale-prune-XXXXXX";
 static char database[256], media[256], moved[256], file[256], backup[256];
 static uint64_t record_id;
 static bool live_writer, live_thread, complete_after_selection;
+static int placement_change_after_snapshot;
 
 static void sql(const char *statement) {
     char *error = NULL;
@@ -65,6 +66,15 @@ int __wrap_get_stale_incomplete_recordings_page(recording_metadata_t *records, i
     }
     return result;
 }
+int __real_get_recording_metadata_by_id(uint64_t, recording_metadata_t *);
+int __wrap_get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
+    int result = __real_get_recording_metadata_by_id(id, metadata);
+    if (result == 0 && placement_change_after_snapshot) {
+        change(placement_change_after_snapshot == 1 ? "storage_target_uuid=NULL" : "object_key='changed.mp4'");
+        placement_change_after_snapshot = 0;
+    }
+    return result;
+}
 static void seed(void) {
     stream_config_t stream = {0};
     strcpy(stream.name, "stale_camera"); strcpy(stream.url, "rtsp://127.0.0.1:1/unused");
@@ -79,6 +89,7 @@ static void seed(void) {
 }
 void setUp(void) {
     live_writer = live_thread = complete_after_selection = false;
+    placement_change_after_snapshot = 0;
     sql("DELETE FROM storage_deletion_objects; DELETE FROM storage_deletions; DELETE FROM storage_migration_jobs; DELETE FROM recordings; DELETE FROM streams; DELETE FROM storage_targets;");
     mkdir(media, 0700); content(""); seed();
 }
@@ -249,6 +260,21 @@ void test_attributed_root_change_after_queue_preserves_recording(void) {
     reopen_and_process(); assert_payload("");
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
 }
+void test_attributed_snapshot_target_change_preserves_recording(void) {
+    attribute_target(); placement_change_after_snapshot = 1;
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    assert_retained(); assert_payload("");
+}
+void test_attributed_snapshot_key_change_preserves_recording(void) {
+    attribute_target(); placement_change_after_snapshot = 2;
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    assert_retained(); assert_payload("");
+}
+void test_nonfilesystem_target_preserves_recording(void) {
+    attribute_target(); sql("UPDATE storage_targets SET target_type='s3'");
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    assert_retained(); assert_payload("");
+}
 void test_attributed_unchanged_queue_completes_after_restart(void) {
     queue_attributed(); reopen_and_process();
     TEST_ASSERT_EQUAL_INT(-1, access(file, F_OK));
@@ -296,6 +322,9 @@ int main(void) {
     RUN_TEST(test_attributed_key_change_after_queue_preserves_recording);
     RUN_TEST(test_attributed_target_change_after_queue_preserves_recording);
     RUN_TEST(test_attributed_root_change_after_queue_preserves_recording);
+    RUN_TEST(test_attributed_snapshot_target_change_preserves_recording);
+    RUN_TEST(test_attributed_snapshot_key_change_preserves_recording);
+    RUN_TEST(test_nonfilesystem_target_preserves_recording);
     RUN_TEST(test_attributed_unchanged_queue_completes_after_restart);
     RUN_TEST(test_ordinary_null_guard_semantics_unchanged);
     int result = UNITY_END(); shutdown_database(); unlink(database); rmdir(directory); return result;

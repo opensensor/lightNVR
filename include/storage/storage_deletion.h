@@ -16,10 +16,11 @@
 int storage_recording_delete(uint64_t recording_id, const char *reason,
                              uint64_t *local_bytes_removed);
 /* Internal startup recovery only: selected stale incomplete row on a disabled
- * stream, with no live writer and available canonical legacy storage. Pass the
+ * stream, with no live writer and available canonical local storage. Pass the
  * observed empty regular-file identity, or NULL after confirmed ENOENT. Exact
  * row/identity guards are rechecked and persisted before any physical deletion.
- * Unknown/attributed storage, copies/derivatives or ownership retain the row. */
+ * Attributed filesystem targets require matching target/key/path and active
+ * mount guards. Unknown/nonlocal storage, copies/derivatives retain the row. */
 int storage_recording_prune_stale(const recording_metadata_t *expected,
                                    time_t cutoff, const struct stat *expected_empty);
 

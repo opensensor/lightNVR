@@ -93,14 +93,13 @@ static bool legacy_missing_path_is_authoritative(const char *path) {
     return stat(root, &info) == 0 && S_ISDIR(info.st_mode);
 }
 
-/* Legacy storage has no persisted mount identity. Require an available
- * canonical directory and canonical parent beneath it; unknown or symlinked
- * path spelling is retained. Attributed targets are not inferred from paths. */
-static bool stale_path_is_authoritative(const char *path) {
+/* Require an available canonical directory and canonical parent beneath it;
+ * unknown or symlinked path spelling is retained. */
+static bool stale_path_is_authoritative(const char *path, const char *configured_root) {
     char root[PATH_MAX], parent[PATH_MAX], copy[MAX_PATH_LENGTH], canonical[PATH_MAX];
     struct stat info;
     if (!path || path[0] != '/' || strlen(path) >= sizeof(copy) ||
-        !realpath(g_config.storage_path, root) || stat(root, &info) != 0 || !S_ISDIR(info.st_mode)) return false;
+        !realpath(configured_root, root) || stat(root, &info) != 0 || !S_ISDIR(info.st_mode)) return false;
     safe_strcpy(copy, path, sizeof(copy), 0);
     char *name = strrchr(copy, '/');
     if (!name || !name[1] || strcmp(name + 1, ".") == 0 || strcmp(name + 1, "..") == 0) return false;
@@ -112,6 +111,16 @@ static bool stale_path_is_authoritative(const char *path) {
     int written = snprintf(canonical, sizeof(canonical), "%s%s%s", parent,
                            strcmp(parent, "/") == 0 ? "" : "/", name);
     return written > 0 && written < (int)sizeof(canonical) && strcmp(canonical, path) == 0;
+}
+
+static bool stale_storage_is_authoritative(const char *path, const char *uuid, const char *key) {
+    if (!uuid[0]) return stale_path_is_authoritative(path, g_config.storage_path);
+    storage_target_t target;
+    char resolved[MAX_PATH_LENGTH];
+    return db_storage_target_get(uuid, &target) == DB_STORAGE_TARGET_OK &&
+        strcmp(target.target_type, "filesystem") == 0 && db_storage_target_mount_guard_active(&target) &&
+        db_storage_target_resolve_path(uuid, key, resolved) == 0 && strcmp(resolved, path) == 0 &&
+        stale_path_is_authoritative(path, target.root_path);
 }
 
 /* Recheck delayed guarded work after restart. This is conservative per-stream
@@ -127,13 +136,16 @@ static bool stale_owner_is_quiescent(const deletion_item_t *item) {
         "JOIN storage_deletions d ON d.recording_id=r.id "
         "JOIN streams s ON s.name=r.stream_name WHERE d.uuid=?1 AND r.file_path=?2 "
         "AND s.enabled=0 AND r.deletion_pending=1 AND r.is_complete=0 AND r.protected=0 "
-        "AND r.size_bytes=0 AND COALESCE(r.end_time,0)=0 AND r.storage_target_uuid IS NULL "
+        "AND r.size_bytes=0 AND COALESCE(r.end_time,0)=0 "
+        "AND COALESCE(r.storage_target_uuid,'')=?3 AND COALESCE(r.object_key,'')=?4 "
         "AND NOT EXISTS(SELECT 1 FROM storage_migration_jobs WHERE recording_id=r.id) "
         "AND NOT EXISTS(SELECT 1 FROM storage_recording_copies WHERE recording_id=r.id) "
         "AND NOT EXISTS(SELECT 1 FROM storage_retrieval_jobs WHERE recording_id=r.id)";
     if (sqlite3_prepare_v2(db, query, -1, &statement, NULL) == SQLITE_OK) {
         sqlite3_bind_text(statement, 1, item->deletion, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(statement, 2, item->path, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 3, item->target, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 4, item->key, -1, SQLITE_TRANSIENT);
         if (sqlite3_step(statement) == SQLITE_ROW)
             safe_strcpy(stream, (const char *)sqlite3_column_text(statement, 0), sizeof(stream), 0);
     }
@@ -146,13 +158,16 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
     storage_target_t target;
     char path[MAX_PATH_LENGTH] = {0}, error[STORAGE_TARGET_ERROR_MAX] = {0};
     bool success = false, file_removed = false;
-    if (item->stale_guard < 0 || (item->stale_guard && item->target[0])) {
+    if (item->stale_guard < 0) {
         safe_strcpy(error, "Invalid or unsupported stale deletion guard", sizeof(error), 0);
-    } else if (item->stale_guard && !stale_owner_is_quiescent(item)) {
+    } else if (item->stale_guard && (!stale_owner_is_quiescent(item) ||
+               !stale_storage_is_authoritative(item->path, item->target, item->key))) {
         safe_strcpy(error, "Guarded deletion ownership changed or is active; retained", sizeof(error), 0);
     } else if (item->target[0]) {
         if (db_storage_target_get(item->target, &target) != DB_STORAGE_TARGET_OK) {
             safe_strcpy(error, "Deletion target is unavailable", sizeof(error), 0);
+        } else if (item->stale_guard && strcmp(target.target_type, "filesystem") != 0) {
+            safe_strcpy(error, "Guarded deletion target is no longer local; retained", sizeof(error), 0);
         } else if (strcmp(target.target_type, "s3") == 0) {
             if (local_only) return 0;
             /* Do not interpret a missing bucket or configuration drift as an
@@ -172,7 +187,8 @@ static int process_item(const deletion_item_t *item, bool local_only, uint64_t *
         struct stat info;
         int status = lstat(path, &info);
         bool missing = status != 0 && errno == ENOENT;
-        if (item->stale_guard && !stale_path_is_authoritative(path)) {
+        if (item->stale_guard && (strcmp(path, item->path) != 0 ||
+            !stale_storage_is_authoritative(path, item->target, item->key))) {
             safe_strcpy(error, "Guarded deletion storage is unavailable or unknown", sizeof(error), 0);
         } else if (item->stale_guard == 1) {
             if (missing) success = true;
@@ -495,7 +511,7 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
         "EXISTS(SELECT 1 FROM streams s WHERE s.name=r.stream_name AND s.enabled=0),"
         "EXISTS(SELECT 1 FROM storage_recording_copies WHERE recording_id=r.id),"
         "EXISTS(SELECT 1 FROM storage_migration_jobs WHERE recording_id=r.id),"
-        "EXISTS(SELECT 1 FROM storage_retrieval_jobs WHERE recording_id=r.id) "
+        "EXISTS(SELECT 1 FROM storage_retrieval_jobs WHERE recording_id=r.id),COALESCE(object_key,'') "
         "FROM recordings r WHERE id=?1;",
         -1, &statement, NULL);
     if (result == SQLITE_OK) {
@@ -510,7 +526,9 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
         const char *path = (const char *)sqlite3_column_text(statement, 4);
         const char *stream = (const char *)sqlite3_column_text(statement, 5);
         const char *target = (const char *)sqlite3_column_text(statement, 9);
-        stale_matches = !sqlite3_column_int(statement, 3) && path && stream && target && !target[0] &&
+        const char *key = (const char *)sqlite3_column_text(statement, 14);
+        stale_matches = !sqlite3_column_int(statement, 3) && path && stream && target && key &&
+            strcmp(target, expected->storage_target_uuid) == 0 && strcmp(key, expected->object_key) == 0 &&
             strcmp(path, expected->file_path) == 0 && strcmp(stream, expected->stream_name) == 0 &&
             sqlite3_column_int64(statement, 6) == expected->start_time && expected->start_time < stale->cutoff &&
             sqlite3_column_int64(statement, 7) == expected->end_time && expected->end_time == 0 &&
@@ -650,9 +668,17 @@ int storage_recording_prune_stale(const recording_metadata_t *expected,
                                    time_t cutoff, const struct stat *expected_empty) {
     if (!expected || !expected->id || expected->is_complete || expected->size_bytes || expected->end_time ||
         !expected->stream_name[0] || expected->start_time >= cutoff || cutoff > time(NULL) - 3600 ||
-        !stale_path_is_authoritative(expected->file_path) ||
         stream_has_continuous_writer(expected->stream_name) || mp4_recording_thread_alive(expected->stream_name)) return -2;
-    stale_prune_t guard = { .expected = expected, .cutoff = cutoff, .kind = expected_empty ? 2 : 1 };
+    /* The lightweight stale-page query does not project storage placement.
+     * Snapshot it now and compare it again inside the deletion transaction. */
+    recording_metadata_t snapshot = {0};
+    if (get_recording_metadata_by_id(expected->id, &snapshot) != 0 ||
+        strcmp(snapshot.file_path, expected->file_path) != 0 ||
+        strcmp(snapshot.stream_name, expected->stream_name) != 0 ||
+        snapshot.start_time != expected->start_time || snapshot.end_time != expected->end_time ||
+        snapshot.size_bytes != expected->size_bytes || snapshot.is_complete ||
+        !stale_storage_is_authoritative(snapshot.file_path, snapshot.storage_target_uuid, snapshot.object_key)) return -2;
+    stale_prune_t guard = { .expected = &snapshot, .cutoff = cutoff, .kind = expected_empty ? 2 : 1 };
     struct stat current;
     int status = lstat(expected->file_path, &current);
     if (expected_empty) {

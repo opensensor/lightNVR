@@ -7,6 +7,7 @@ target_link_libraries(test_stale_recording_prune PRIVATE unity_lib lightnvr_lib
     ${HTTP_BACKEND_LIBS} inih_lib pthread dl m)
 target_link_options(test_stale_recording_prune PRIVATE
     "-Wl,--wrap=stream_has_continuous_writer" "-Wl,--wrap=mp4_recording_thread_alive"
-    "-Wl,--wrap=get_stale_incomplete_recordings_page")
+    "-Wl,--wrap=get_stale_incomplete_recordings_page"
+    "-Wl,--wrap=get_recording_metadata_by_id")
 add_test(NAME test_stale_recording_prune COMMAND test_stale_recording_prune)
 set_tests_properties(test_stale_recording_prune PROPERTIES TIMEOUT 30)
