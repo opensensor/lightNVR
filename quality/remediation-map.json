@@ -172,7 +172,7 @@
       ],
       "kind": "advisory-review",
       "priority": "critical",
-      "status": "Not Completed",
+      "status": "Completed (commit `4ac385d4`)",
       "ownership": [
         "quality/reviews/advisory-ghsa-rqj3-pch5-rq4f.json",
         "quality/evidence/T7.6.md"
@@ -191,7 +191,8 @@
       "finding_ids": [
         "ADVISORY-GHSA-rqj3-pch5-rq4f"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Pinned bundled Go security16/16 and native configuration6/6 pass; reviewed parent/submodule fixes, loopback defaults and non-root/no-direct-API deployment recipes. Current faststart2/2 also passes. No published release/advisory change, baseline mutation or exception approval."
     },
     {
       "id": "T7.7",
@@ -7842,7 +7843,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T28.1"
+        "T28.1",
+        "T29.3"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -9044,7 +9046,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `233859ab`)",
       "ownership": [
         "web/js/components/preact/Header.jsx",
         "web/tests/remediation/t7_160.spec.jsx",
@@ -9080,7 +9082,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "Header profile action is a native disabled-capable button; links retain hrefs. Eight explicit tests including actual Chromium keyboard controls pass (seven default Node cases). Exactly one mapped lint warning removed; types, both builds and43/66 budgets pass."
     },
     {
       "id": "T7.161",
@@ -10560,7 +10563,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `29b55fd6`)",
       "ownership": [
         "web/js/components/preact/MobileTileGestures.jsx",
         "web/tests/remediation/t7_176.spec.jsx",
@@ -10596,7 +10599,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "Composite menu receives tabIndex=-1 while keeping first-native-child focus/activation. Seven explicit tests including Chromium focus/Escape/Tab/Enter/Space pass (six default Node cases). Exactly one mapped warning removed; lint now895warnings/0errors, types/builds/budgets pass. No full APG conformance claim."
     },
     {
       "id": "T7.177",
@@ -15408,7 +15412,8 @@
         "T7",
         "T13",
         "T7.137",
-        "T28.1"
+        "T28.1",
+        "T29.3"
       ],
       "kind": "native-fix",
       "priority": "info",
@@ -17815,7 +17820,8 @@
       "title": "variableScope in db_recordings.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T29.2"
       ],
       "kind": "native-fix",
       "priority": "info",
@@ -17948,7 +17954,8 @@
         "T7",
         "T13",
         "T7.252",
-        "T28.1"
+        "T28.1",
+        "T29.3"
       ],
       "kind": "native-fix",
       "priority": "info",

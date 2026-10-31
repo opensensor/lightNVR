@@ -638,7 +638,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T29: Test shutdown, restart, and upgrade continuity
-- **depends_on**: [T3, T13, T29.0, T29.1]
+- **depends_on**: [T3, T13, T29.0, T29.1, T29.4, T29.2, T29.3]
 - **agent_type**: worker
 - **ownership**: `tests/unit/test_shutdown_coordinator.c`, `tests/operational/lifecycle/`, `tests/fixtures/eng/upgrade/`, `tests/unit/cmake/eng/lifecycle.cmake`.
 - **description**: Add missing shutdown-deadline, forced-kill recovery, committed/incomplete media reconciliation, previous-supported-release database/config upgrade, and browser preference compatibility evidence. Store provenance for synthetic old-version fixtures. Observe graceful timeout separately from teardown's fallback SIGKILL so a hang cannot appear to pass.
@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -891,8 +891,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - No private advisory text, IDs or credentials in committed evidence.
 - **validation**:
   - `python3 -m json.tool quality/reviews/advisory-ghsa-rqj3-pch5-rq4f.json`
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `4ac385d4`)
+- **log**: Pinned bundled Go security16/16 and native configuration6/6 pass; reviewed parent/submodule fixes, loopback defaults and non-root/no-direct-API deployment recipes. Current faststart2/2 also passes. No published release/advisory change, baseline mutation or exception approval.
 - **files edited/created**:
 
 ### T7.7: Verify disposition and regression evidence for ADVISORY-GHSA-pvw7-7j8c-qx96
@@ -3248,7 +3248,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.137: bugprone-suspicious-string-compare in storage_deletion.c
-- **depends_on**: [T7, T13, T28.1]
+- **depends_on**: [T7, T13, T28.1, T29.3]
 - **agent_type**: worker
 - **ownership**: `src/storage/storage_deletion.c`, `tests/unit/test_t7_137.c`, `tests/unit/cmake/eng/t7_137.cmake`, `quality/evidence/T7.137.md`.
 - **priority**: low
@@ -3678,8 +3678,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/Header.jsx --format json --output-file build/eng-artifacts/T7.160/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.160/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/anchor-is-valid'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.160`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `233859ab`)
+- **log**: Header profile action is a native disabled-capable button; links retain hrefs. Eight explicit tests including actual Chromium keyboard controls pass (seven default Node cases). Exactly one mapped lint warning removed; types, both builds and43/66 budgets pass.
 - **files edited/created**:
 
 ### T7.161: jsx-a11y/click-events-have-key-events in GridPicker.jsx, HLSVideoCell.jsx, HealthView.jsx, MSEVideoCell.jsx, StreamCard.jsx, StreamsView.jsx
@@ -4014,8 +4014,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/MobileTileGestures.jsx --format json --output-file build/eng-artifacts/T7.176/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.176/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/interactive-supports-focus'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.176`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `29b55fd6`)
+- **log**: Composite menu receives tabIndex=-1 while keeping first-native-child focus/activation. Seven explicit tests including Chromium focus/Escape/Tab/Enter/Space pass (six default Node cases). Exactly one mapped warning removed; lint now895warnings/0errors, types/builds/budgets pass. No full APG conformance claim.
 - **files edited/created**:
 
 ### T7.177: jsx-a11y/label-has-associated-control in BatchDownloadModal.jsx, StreamConfigModal.jsx, EventDestinationEditor.jsx, EventRouteEditor.jsx, CollectionManager.jsx, StaticCollectionMembers.jsx
@@ -5447,7 +5447,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.252: constVariablePointer in storage_deletion.c
-- **depends_on**: [T7, T13, T7.137, T28.1]
+- **depends_on**: [T7, T13, T7.137, T28.1, T29.3]
 - **agent_type**: worker
 - **ownership**: `src/storage/storage_deletion.c`, `tests/unit/test_t7_252.c`, `tests/unit/cmake/eng/t7_252.cmake`, `quality/evidence/T7.252.md`.
 - **priority**: info
@@ -6386,7 +6386,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.304: variableScope in db_recordings.c
-- **depends_on**: [T7, T13]
+- **depends_on**: [T7, T13, T29.2]
 - **agent_type**: worker
 - **ownership**: `src/database/db_recordings.c`, `tests/unit/test_t7_304.c`, `tests/unit/cmake/eng/t7_304.cmake`, `quality/evidence/T7.304.md`.
 - **priority**: info
@@ -6440,7 +6440,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.307: variableScope in storage_deletion.c
-- **depends_on**: [T7, T13, T7.252, T28.1]
+- **depends_on**: [T7, T13, T7.252, T28.1, T29.3]
 - **agent_type**: worker
 - **ownership**: `src/storage/storage_deletion.c`, `tests/unit/test_t7_307.c`, `tests/unit/cmake/eng/t7_307.cmake`, `quality/evidence/T7.307.md`.
 - **priority**: info
@@ -7203,8 +7203,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 ### T27.1: Prevent MP4 path reuse from overwriting completed recordings
 - **depends_on**: [T27.0, T28.2]
 - **agent_type**: worker
-- **ownership**: `src/video/recording_path.c`, contract comments only as needed in `include/video/recording_path.h`, bounded rotation/retry integration in `src/video/mp4_writer_thread.c`, `tests/operational/media/test_mp4_path_collision.c`, its `tests/unit/cmake/eng/media.cmake` registration, `quality/evidence/T27.1.md`.
-- **description**: Reproduce same-second path reuse with owned existing media, then ensure new segment creation cannot truncate a previous recording on rapid rotation/retry/restart. Inspect filename consumers before choosing a bounded uniqueness/reservation strategy; preserve timestamp meaning, supported layouts, mp4 extension, placement.object_key and DB path agreement. Handle buffer/allocation/reservation failure explicitly and clean up any owned reservation on failure; do not claim atomic exclusion from a racy existence check alone.
+- **ownership**: `src/video/recording_path.c`, contract comments only as needed in `include/video/recording_path.h`, bounded rotation/retry integration in `src/video/mp4_writer_thread.c`, `tests/operational/media/test_mp4_path_collision.c`, its `tests/unit/cmake/eng/media.cmake` registration, narrow reservation wrapper updates in `tests/unit/test_mp4_forced_reconnect.c` and `tests/operational/storage/test_storage_writer_backpressure.c`, `quality/evidence/T27.1.md`.
+- **description**: Reproduce same-second path reuse with owned existing media, then ensure new segment creation cannot truncate a previous recording on rapid rotation/retry/restart. Inspect filename consumers before choosing a bounded uniqueness/reservation strategy; preserve timestamp meaning, supported layouts, mp4 extension, placement.object_key and DB path agreement. Keep planned-path helpers pure; atomically reserve immediately before the actual segment call, retain ownership through the call and remove only the same-inode still-empty reservation on failure. Handle buffer/allocation/reservation failure explicitly and clean up any owned reservation on failure; do not claim atomic exclusion from a racy existence check alone.
 - **acceptance_criteria**: Tests first reproduce collision; GREEN preserves previous bytes/metadata and gives subsequent recordings distinct identities, including rapid retry/restart and existing-file controls. No existing recording is truncated, placement paths remain consistent, and the exact real H264/AAC pressure/source-restart scenario passes media/size/DB assertions. No storage-schema redesign or weakening of graceful teardown/oracles.
 - **validation**: Focused collision sanitizer target plus existing path/layout/storage-policy, forced-reconnect/audio/boundary and recording-sync/playback controls selected after source review; rerun exact real failing T27 scenario and verify both source modes before original T27 closes.
 - **status**: Not Completed
@@ -7266,8 +7266,41 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Honor existing wait contract: return false if the deadline expires before all live components stop, and preserve their true states. Wait in a predicate loop using the same absolute deadline so spurious/early condition signals cannot masquerade as successful shutdown. Preserve real completion notifications, already-stopped behavior and legitimate slot reuse; no caller/shutdown ordering redesign.
 - **acceptance_criteria**: T29.0 reaches GREEN under ASan/UBSan; timeout stays bounded, live state is retained, real completion returns true and stopped slots can be reused. Main's existing warning branch becomes reachable. No new unconditional wait, forced kill, or persisted/API state change.
 - **validation**: Focused coordinator sanitizer tests followed by T29 actual process lifecycle checks; forced cleanup must remain distinguishable from graceful completion.
+- **status**: Completed (commits `4bb5cae3`, `c80872eb`)
+- **log**: 17/17 coordinator sanitizer tests pass after observedRED. Wait uses original absolute deadline/predicate loop, returns false without inventing stopped state. Actual lifecycle normal stops3847/4240ms graceful; separate stale-media metadata defects remain under T29.2/T29.3.
+- **files edited/created**:
+
+### T29.4: Produce previous-release and actual-process lifecycle evidence
+- **depends_on**: [T3, T13, T29.1]
+- **agent_type**: worker
+- **ownership**: `tests/operational/lifecycle/` producer harness, `tests/fixtures/eng/upgrade/`, `tests/unit/cmake/eng/lifecycle.cmake`, `quality/evidence/T29.md`.
+- **description**: Record historical synthetic fixture provenance and run owned actual recording, graceful restart, forced termination/recovery, DB/media integrity and browser preference checks. Preserve genuine incomplete-media reconciliation failures for T29.2/T29.3 instead of weakening or skipping them.
+- **acceptance_criteria**: Exact previous tagged-source SQL/config/preference inputs and hashes; real nonempty assertions, bounded deadlines and verified-process cleanup. Normal shutdown success excludes forced kills; deliberately injected SIGKILL is separately reported.
+- **validation**: Recorded T29 fixture checks and actual lifecycle runner commands.
+- **status**: Completed — tests-only producer with two genuine failures (commit `0a811fe0`)
+- **log**: Historical89migration sources verified;13 runtime assertions execute,11pass/twoRED. Normal stops3847/4240ms with noforcedcleanup. Corrupt40byte MP4 promoted complete and stale zero/missing metadata retained; bounded successors required.
+- **files edited/created**: Producer paths recorded in commit0a811fe0 and quality/evidence/T29.md.
+
+### T29.2: Validate stale media before completion and guarantee scan progress
+- **depends_on**: [T29.4]
+- **agent_type**: worker
+- **ownership**: `src/storage/storage_manager.c`, `src/database/db_recordings.c`, `include/database/db_recordings.h`, `tests/operational/lifecycle/test_incomplete_media_validation.c`, `tests/unit/cmake/eng/incomplete_media_validation.cmake`, `quality/evidence/T29.2.md`.
+- **description**: Add focused tests for valid MP4, truncated nonempty MP4 and retained invalid entries spanning a500-row batch. Require usable local media before promoting stale incomplete rows; retain unreadable/corrupt evidence incomplete. Advance past retained rows through bounded query/progress semantics while preserving one-hour active-recording grace. Reuse existing probing where suitable; no damaged-file repair or deletion in this task.
+- **acceptance_criteria**: RED reproduces false completion; GREEN leaves corrupt files unpromoted, finalizes valid stale media, preserves recent rows, reaches valid candidates behind at least500 retained invalid entries, and terminates within deadline without deleting files. Actual T29 truncated-media assertion passes after rebuild.
+- **validation**: `python3 scripts/quality/run-native.py --task T29.2 --regex '^test_incomplete_media_validation$' --jobs 4`; existing recording DB tests and actual T29 scenario.
 - **status**: Not Completed
-- **log**:
+- **log**: F-T29-01 reproduced twice in real process recovery; no exception proposed.
+- **files edited/created**:
+
+### T29.3: Prune confirmed stale phantom recordings without weakening active deletion guards
+- **depends_on**: [T29.2, T28.1]
+- **agent_type**: worker
+- **ownership**: `src/storage/storage_manager.c`, `src/storage/storage_deletion.c`, `include/storage/storage_deletion.h`, `tests/operational/lifecycle/test_stale_recording_prune.c`, `tests/unit/cmake/eng/stale_recording_prune.cmake`, `quality/evidence/T29.3.md`.
+- **description**: Add tests-first coverage and narrow stale-recovery transaction for aged missing/zero-byte recordings on confirmed available storage. Recheck stale/incomplete identity, protection and migration safeguards within the transaction; prove no live writer owns the candidate. Preserve ordinary API rejection of incomplete recordings and retain rows when availability/ownership cannot be established. Age or failed stat alone is insufficient authorization to prune.
+- **acceptance_criteria**: RED reproduces phantom rows; GREEN removes only confirmed stale missing/empty metadata with consistent deletion bookkeeping. Recent/live, protected, migrating, unavailable-root and changed-since-selection candidates remain intact; general active-writer deletion tests stayGREEN. Corrected full T29 lifecycle passes13/13.
+- **validation**: `python3 scripts/quality/run-native.py --task T29.3 --regex '^test_(stale_recording_prune|storage_deletion_ledger)$' --jobs 4`; existing T28 retention controls and rebuilt T29 process scenario.
+- **status**: Not Completed
+- **log**: F-T29-02 is an interaction with the correct general active-writer guard, not permission to relax it.
 - **files edited/created**:
 
 ## Parallel Execution Groups
