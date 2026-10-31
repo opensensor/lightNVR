@@ -96,7 +96,7 @@ test.describe('Timeline Page @ui @timeline', () => {
         // Navigate to yesterday
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        const dateStr = yesterday.toISOString().split('T')[0];
+        const dateStr = yesterday.toISOString().slice(0, 10);
         
         await timelinePage.goToDate(dateStr);
         console.log(`Navigated to date: ${dateStr}`);

@@ -91,7 +91,7 @@ test.describe('Investigation player regressions @ui @investigation', () => {
     const controls = player.locator('.investigation-player-controls');
 
     await expect(video).toBeVisible();
-    await expect.poll(() => video.evaluate(element => ({
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
       width: element.videoWidth,
       height: element.videoHeight,
       metadataLoaded: element.readyState >= HTMLMediaElement.HAVE_METADATA,
@@ -106,8 +106,8 @@ test.describe('Investigation player regressions @ui @investigation', () => {
       return bounds.width / bounds.height;
     })).toBeCloseTo(4 / 3, 2);
     // Only the page's own control bar is shown; native controls would duplicate it (#568).
-    await expect.poll(() => video.evaluate(element => element.controls)).toBe(false);
-    await expect.poll(() => video.evaluate(element =>
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.controls)).toBe(false);
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) =>
       getComputedStyle(element).objectFit)).toBe('contain');
 
     await expect(controls).toBeVisible();
@@ -128,26 +128,26 @@ test.describe('Investigation player regressions @ui @investigation', () => {
     const video = player.locator('video');
     const sharedPlay = page.locator('.investigation-play-button');
     const localControls = player.locator('.investigation-player-controls');
-    await expect.poll(() => video.evaluate(el => el.readyState)).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
 
     // These are real media events, as emitted by the browser's native controls.
-    await video.evaluate(el => el.play());
+    await video.evaluate((el: HTMLVideoElement) => el.play());
     await expect(sharedPlay).toContainText('Pause');
     await expect(localControls.getByRole('button', { name: 'Pause' })).toBeVisible();
-    await video.evaluate(el => el.pause());
+    await video.evaluate((el: HTMLVideoElement) => el.pause());
     await expect(sharedPlay).toContainText('Play');
     await expect(localControls.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
 
     await sharedPlay.click();
-    await expect.poll(() => video.evaluate(el => el.paused)).toBe(false);
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
     // load() emits pause while resetting the media element. It must not pause
     // the shared investigation clock or other cameras.
-    await video.evaluate(el => el.load());
-    await expect.poll(() => video.evaluate(el => el.readyState)).toBeGreaterThanOrEqual(2);
-    await expect.poll(() => video.evaluate(el => el.paused)).toBe(false);
+    await video.evaluate((el: HTMLVideoElement) => el.load());
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
     await expect(sharedPlay).toContainText('Pause');
 
-    await video.evaluate(el => el.pause());
+    await video.evaluate((el: HTMLVideoElement) => el.pause());
     await expect(sharedPlay).toContainText('Play');
   });
 
