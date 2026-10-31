@@ -724,7 +724,7 @@ def _manifest_entry_errors(entry, reports_dir, revision, accepted_codes):
         targets = scope.get("targets")
         if not isinstance(targets, list) or not targets or any(not isinstance(x, dict) or not x.get("name") or not x.get("digest") for x in targets):
             errors.append("image scope requires tool-reported names and immutable digests")
-    elif isinstance(kind, str) and kind in {"eslint-json", "invocation-files", "npm-lockfiles", "file-list-report", "codeql-source-archive"}:
+    elif isinstance(kind, str) and kind in {"eslint-json", "invocation-files", "npm-lockfiles", "file-list-report", "codeql-source-archive", "cppcheck-progress"}:
         files, hashes = scope.get("files"), scope.get("file_sha256")
         if not isinstance(files, list) or not files or any(not isinstance(x, str) for x in files) \
                 or len(set(files)) != len(files) or not isinstance(hashes, dict) or set(hashes) != set(files):

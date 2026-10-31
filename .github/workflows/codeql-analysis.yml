@@ -1,17 +1,9 @@
 name: CodeQL
-
 on:
-  push:
-    branches: [main]
+  workflow_call:
   schedule:
-    # Run weekly on Mondays at 06:00 UTC to catch new CVE patterns
     - cron: '0 6 * * 1'
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   actions: read
   contents: read
@@ -19,56 +11,102 @@ permissions:
 
 jobs:
   analyze:
-    name: CodeQL Analysis
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     container: debian:sid-slim
-    timeout-minutes: 45
-
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        language: ['c-cpp']
-
+        include:
+          - language: c-cpp
+            scanner: codeql-cpp
+            build-mode: manual
+            suite: codeql/cpp-queries:codeql-suites/cpp-security-extended.qls
+          - language: javascript-typescript
+            scanner: codeql-javascript-typescript
+            build-mode: none
+            suite: codeql/javascript-queries:codeql-suites/javascript-security-extended.qls
+    defaults:
+      run:
+        shell: bash
+    env:
+      REPORT_DIR: build/analysis/${{ matrix.scanner }}
+      SCANNER_ID: ${{ matrix.scanner }}
+      LANGUAGE: ${{ matrix.language }}
+      QUERY_SUITE: ${{ matrix.suite }}
+      SPEC_FILE: build/codeql-spec.json
     steps:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y \
-            git build-essential cmake pkg-config \
+          apt-get install -y git python3 build-essential cmake pkg-config \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
             libsqlite3-dev libuv1-dev libllhttp-dev libcurl4-openssl-dev \
             libcjson-dev libmbedtls-dev libmosquitto-dev
-
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           submodules: false
-
-      - name: Checkout FAAC submodule
-        run: |
-          # Keep optional go2rtc/LiteRT sources out of these builds.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --depth 1 third_party/faac
-
       - name: Initialize CodeQL
+        id: init
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          # Use extended queries for more thorough security analysis
+          build-mode: ${{ matrix.build-mode }}
+          db-location: ${{ github.workspace }}/build/eng-codeql
           queries: security-extended
-
-      - name: Build for CodeQL
+      - name: Build explicit native analysis profile
+        if: matrix.language == 'c-cpp'
         run: |
-          mkdir -p build && cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_SOD=OFF \
-            -DENABLE_GO2RTC=OFF \
-            -DBUILD_TESTS=OFF
-          make -j$(nproc)
-
-      - name: Perform CodeQL Analysis
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 third_party/faac
+          cmake -S . -B build/codeql-native -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_SOD=OFF -DENABLE_GO2RTC=OFF -DENABLE_LITERT=OFF \
+            -DENABLE_SENTRY=OFF -DENABLE_SSL=OFF -DENABLE_MQTT=ON -DBUILD_TESTS=OFF
+          cmake --build build/codeql-native --parallel 2
+      - name: Finalize extracted databases without running queries
+        id: finalize
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
-
+          skip-queries: true
+          upload: never
+      - name: Generate CodeQL scanner specification
+        env:
+          CODEQL_BIN: ${{ steps.init.outputs.codeql-path }}
+          CODEQL_DATABASES: ${{ steps.finalize.outputs.db-locations }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          databases = json.loads(os.environ['CODEQL_DATABASES'])
+          if len(databases) != 1: raise ValueError('Expected exactly one extracted language database')
+          database = Path(next(iter(databases.values()))).resolve()
+          archive = (database / 'src.zip').relative_to(Path.cwd()).as_posix()
+          report = os.environ['SCANNER_ID'] + '.sarif'
+          spec = {'scanner_id':os.environ['SCANNER_ID'], 'version_command':[os.environ['CODEQL_BIN'],'version'],
+            'commands':[{'argv':[os.environ['CODEQL_BIN'],'database','analyze',str(database),os.environ['QUERY_SUITE'],
+              '--download','--format=sarif-latest','--output=' + str(Path.cwd() / os.environ['REPORT_DIR'] / report),
+              '--sarif-category=/language:' + os.environ['LANGUAGE'],'--sarif-add-baseline-file-info'],
+              'reports':[report], 'timeout_seconds':2700}],
+            'scope':{'kind':'codeql-source-archive','archive':archive}}
+          Path(os.environ['SPEC_FILE']).parent.mkdir(parents=True,exist_ok=True)
+          Path(os.environ['SPEC_FILE']).write_text(json.dumps(spec))
+          PY
+      - name: Run CodeQL queries with actual exit and archive provenance
+        run: python3 scripts/quality/scanner_run.py --spec "$SPEC_FILE" --reports "$REPORT_DIR" --expected-revision "$GITHUB_SHA"
+      - name: Check scoped CodeQL findings
+        if: always()
+        run: python3 scripts/quality/findings_lane.py --scanner "$SCANNER_ID" --reports "$REPORT_DIR" --expected-revision "$GITHUB_SHA" --json-out "$REPORT_DIR/lane-result.json"
+      - name: Upload available SARIF to code scanning
+        if: always() && hashFiles(format('{0}/*.sarif', env.REPORT_DIR)) != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ env.REPORT_DIR }}/${{ matrix.scanner }}.sarif
+          category: /language:${{ matrix.language }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: analysis-${{ matrix.scanner }}
+          path: ${{ env.REPORT_DIR }}
+          if-no-files-found: error
+          retention-days: 30

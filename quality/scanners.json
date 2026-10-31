@@ -14,7 +14,7 @@
   "policy_notes_for_T6": [
     "A scanner with access_status other than accessible/accessible-log-only, or with no report at the expected path for the evaluated revision, is a failed check, never an empty pass.",
     "A valid empty result requires the report file to exist and parse with the expected tool/run metadata (e.g. Trivy SARIF with runs[0].results == [] and tool version present).",
-    "Exit codes: clang-tidy/cppcheck/trivy are forced to 0 and npm audit exits 1 on findings; decide success from report contents, not exit codes.",
+    "T14 records actual exit statuses: npm/ESLint accept 0 or finding exit 1, cppcheck/Trivy accept 0 or configured finding exit 2. The findings policy still blocks new findings, scanner errors and incomplete coverage.",
     "Revisions differ per scanner (see last_observed.revision); compare fingerprints, not line numbers."
   ],
   "fingerprint_schemes": {
@@ -35,20 +35,21 @@
       "workflow": ".github/workflows/codeql-analysis.yml",
       "job": "analyze (matrix language=c-cpp)",
       "triggers": [
-        "push:main",
-        "schedule:weekly Mon 06:00 UTC",
-        "workflow_dispatch"
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
+        "workflow_dispatch",
+        "schedule:weekly Mon 06:00 UTC"
       ],
-      "runs_on_pull_request": false,
+      "runs_on_pull_request": true,
       "report_format": "sarif-2.1.0",
-      "retrieval": "gh api -H 'Accept: application/sarif+json' repos/opensensor/lightNVR/code-scanning/analyses/<analysis_id>; alert states via code-scanning/alerts?state=open|dismissed|fixed",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "scope": {
         "languages": [
           "c-cpp"
         ],
         "query_suite": "security-extended",
         "category": "/language:c-cpp",
-        "build": "cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SOD=OFF -DENABLE_GO2RTC=OFF -DBUILD_TESTS=OFF (full profile defaults otherwise)",
+        "build": "Release; SOD=OFF GO2RTC=OFF LITERT=OFF SENTRY=OFF SSL=OFF MQTT=ON BUILD_TESTS=OFF",
         "excluded": [
           "go2rtc integration sources (ENABLE_GO2RTC=OFF)",
           "src/sod (ENABLE_SOD=OFF)",
@@ -59,7 +60,8 @@
         ],
         "included_third_party": [
           "third_party/faac"
-        ]
+        ],
+        "actual_files": "CodeQL database src.zip; matching checkout bytes and archive hash recorded"
       },
       "access_status": "accessible",
       "http_status": 200,
@@ -74,17 +76,23 @@
         "cross_check": "analysis 2067474950 @1b8d4332 has identical 35 (rule,path,lineHash) keys"
       },
       "report_path_convention": "build/eng-artifacts/<task>/github/codeql-<sha8>.sarif",
-      "blocking": false,
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized",
-      "fingerprint_scheme": "codeql"
+      "fingerprint_scheme": "codeql",
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "codeql-javascript-typescript",
       "tool": "CodeQL",
       "kind": "sast",
-      "workflow": null,
-      "job": null,
-      "triggers": [],
+      "workflow": ".github/workflows/codeql-analysis.yml",
+      "job": "analyze (matrix language=javascript-typescript)",
+      "triggers": [
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
+        "workflow_dispatch",
+        "schedule:weekly Mon 06:00 UTC"
+      ],
       "report_format": "sarif-2.1.0",
       "scope": {
         "languages": [
@@ -94,16 +102,22 @@
           "web/js/**",
           "tests/**/*.ts",
           "playwright.config.ts"
-        ]
+        ],
+        "actual_files": "CodeQL database src.zip; matching checkout bytes and archive hash recorded",
+        "build_mode": "none",
+        "query_suite": "security-extended"
       },
-      "access_status": "not-configured",
+      "access_status": "missing",
       "http_status": null,
-      "reason": "No workflow analyzes JS/TS for security; code-scanning default-setup state=not-configured. Expected scanner to be added by T14.",
+      "reason": "JS/TS reusable PR workflow is configured by T14; no actual hosted report has been observed yet.",
       "last_observed": null,
       "report_path_convention": "build/eng-artifacts/<task>/github/codeql-js-<sha8>.sarif",
-      "blocking": false,
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized",
-      "fingerprint_scheme": "codeql"
+      "fingerprint_scheme": "codeql",
+      "runs_on_pull_request": true,
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "github-code-quality",
@@ -138,19 +152,33 @@
       "tool_version": "Debian LLVM 21.1.8 (debian:sid-slim container)",
       "kind": "sast/lint",
       "workflow": ".github/workflows/static-analysis.yml",
-      "job": "clang-tidy",
+      "job": "native (matrix scanner=clang-tidy)",
       "triggers": [
-        "push:main",
-        "pull_request:main",
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
         "workflow_dispatch"
       ],
       "report_format": "clang-diagnostic-text (path:line:col: severity: message [check])",
-      "retrieval": "gh run download <run_id> -R opensensor/lightNVR -n clang-tidy-report (30-day retention)",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "config": ".clang-tidy (WarningsAsErrors empty; HeaderFilterRegex include/.*\\.h$)",
       "scope": {
         "files": "find src/ -name '*.c' excluding */sod/* and */ezxml/*",
-        "compile_db": "cmake Release ENABLE_SOD=OFF ENABLE_GO2RTC=OFF BUILD_TESTS=OFF",
-        "notes": "258 source files scanned; go2rtc integration files are passed even though ENABLE_GO2RTC=OFF omits them from compile_commands (analyzed with inferred flags)"
+        "compile_db": "build/analysis-native/compile_commands.json",
+        "notes": "258 source files scanned; go2rtc integration files are passed even though ENABLE_GO2RTC=OFF omits them from compile_commands (analyzed with inferred flags)",
+        "build": "Release; SOD=OFF GO2RTC=OFF LITERT=OFF SENTRY=OFF SSL=OFF MQTT=ON BUILD_TESTS=OFF",
+        "paths": [
+          "compiled src/ translation units in explicit profile"
+        ],
+        "actual_files": "actual clang-tidy invocation plus required ClangTool progress",
+        "excluded": [
+          "SOD",
+          "go2rtc",
+          "LiteRT",
+          "Sentry",
+          "SSL",
+          "tests",
+          "third-party files outside src/"
+        ]
       },
       "access_status": "accessible",
       "http_status": 200,
@@ -163,10 +191,12 @@
         "artifact_expires": "2026-11-30"
       },
       "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/clang-tidy-report/clang-tidy-report.txt",
-      "exit_semantics": "report-only: set +e around clang-tidy; job always succeeds; a crashed clang-tidy yields an empty/short report that must be treated as missing",
-      "blocking": false,
+      "exit_semantics": "No shell suppression; actual exit recorded. Only exit 0 accepted; compile errors and incomplete progress fail.",
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized",
-      "fingerprint_scheme": "line-tool"
+      "fingerprint_scheme": "line-tool",
+      "runs_on_pull_request": true,
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "cppcheck",
@@ -174,23 +204,34 @@
       "tool_version": "2.13.0",
       "kind": "sast/lint",
       "workflow": ".github/workflows/static-analysis.yml",
-      "job": "cppcheck",
+      "job": "native (matrix scanner=cppcheck)",
       "triggers": [
-        "push:main",
-        "pull_request:main",
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
         "workflow_dispatch"
       ],
       "report_format": "cppcheck-xml-v2 (+ text template)",
-      "retrieval": "gh run download <run_id> -R opensensor/lightNVR -n cppcheck-reports",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "scope": {
         "paths": [
-          "src/ (including third-party src/sod, src/ezxml)"
+          "compiled src/ translation units in explicit profile"
         ],
         "includes": [
           "include/"
         ],
         "options": "--enable=all --suppress=missingIncludeSystem --suppress=unusedFunction --inline-suppr",
-        "compile_db": null
+        "compile_db": "build/analysis-native/compile_commands.json",
+        "build": "Release; SOD=OFF GO2RTC=OFF LITERT=OFF SENTRY=OFF SSL=OFF MQTT=ON BUILD_TESTS=OFF",
+        "actual_files": "captured cppcheck Checking progress",
+        "excluded": [
+          "SOD",
+          "go2rtc",
+          "LiteRT",
+          "Sentry",
+          "SSL",
+          "tests",
+          "third-party files outside src/"
+        ]
       },
       "access_status": "accessible",
       "http_status": 200,
@@ -208,29 +249,30 @@
         }
       },
       "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/cppcheck-reports/cppcheck-report.xml",
-      "exit_semantics": "report-only: --error-exitcode=0",
-      "blocking": false,
+      "exit_semantics": "No shell suppression; actual exit recorded. 0 or finding exit 2; malformed/incomplete XML still fails.",
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized for error/warning/portability; bucketed (rule,path,count) for style/information",
-      "fingerprint_scheme": "line-tool / bucket"
+      "fingerprint_scheme": "line-tool / bucket",
+      "runs_on_pull_request": true,
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "eslint-web",
       "tool": "eslint + eslint-plugin-jsx-a11y (recommended, all warn) + lightnvr-i18n/no-literal-ui-string (error)",
       "kind": "lint/a11y",
       "workflow": ".github/workflows/static-analysis.yml",
-      "job": "web-jsx-a11y (npm run lint --prefix web)",
+      "job": "web",
       "triggers": [
-        "push:main",
-        "pull_request:main",
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
         "workflow_dispatch"
       ],
-      "report_format": "eslint stylish text in job log only (no artifact)",
-      "retrieval": "gh run view -R opensensor/lightNVR --job <job_id> --log",
+      "report_format": "eslint-json",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "config": "web/eslint.config.js",
       "scope": {
         "paths": [
-          "web/js/**/*.js",
-          "web/js/**/*.jsx"
+          "web/js/**/*.{js,jsx,ts,tsx} (config ignores generated output)"
         ]
       },
       "access_status": "accessible-log-only",
@@ -242,11 +284,13 @@
         "warnings": 897,
         "errors": 0
       },
-      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/web-jsx-a11y.log (T14 target: eslint -f json artifact)",
-      "exit_semantics": "warnings never fail; only the i18n rule is an error",
-      "blocking": "partial (i18n rule only)",
+      "report_path_convention": "build/analysis/eslint/eslint.json",
+      "exit_semantics": "0 or finding exit 1; all rule/path/count buckets compared against inventory; new findings fail.",
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "bucketed (rule,path,count)",
-      "fingerprint_scheme": "bucket"
+      "fingerprint_scheme": "bucket",
+      "runs_on_pull_request": true,
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "trivy-container",
@@ -256,13 +300,14 @@
       "workflow": ".github/workflows/container-scan.yml",
       "job": "trivy",
       "triggers": [
-        "push:main",
-        "push:tags *.*.*",
-        "workflow_dispatch"
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
+        "workflow_dispatch",
+        "push:tags *.*.*"
       ],
-      "runs_on_pull_request": false,
+      "runs_on_pull_request": true,
       "report_format": "sarif-2.1.0",
-      "retrieval": "artifact trivy-scan-results, or code-scanning analyses (category container-scanning)",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "scope": {
         "image": "lightnvr:scan built from ./Dockerfile",
         "platforms": [
@@ -278,7 +323,8 @@
           "Dockerfile.alpine",
           "opensensor-sentry-image.yml image",
           ".devcontainer/Dockerfile"
-        ]
+        ],
+        "database_provenance": "trivy version --format json before and after scan; VulnerabilityDB plus any supplementary database metadata recorded. Vulnerability DB update disabled during scan after explicit download."
       },
       "access_status": "accessible",
       "http_status": 200,
@@ -290,10 +336,11 @@
         "history": "7 go2rtc Go-module CVEs (golang.org/x/crypto, golang.org/x/net) reported through b38e91c3 were fixed 2026-10-29"
       },
       "report_path_convention": "build/eng-artifacts/<task>/actions/container-scan-<run_id>/trivy-results.sarif",
-      "exit_semantics": "report-only: --exit-code 0; SARIF/artifact upload skipped when the scan step fails (missing report must fail policy)",
-      "blocking": false,
+      "exit_semantics": "0 or configured finding exit 2; errors fail; upload always attempted.",
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized",
-      "fingerprint_scheme": "sca"
+      "fingerprint_scheme": "sca",
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "dependabot",
@@ -338,13 +385,15 @@
       "tool": "npm audit",
       "tool_version": "npm 11.19.1 / node 24.22.1",
       "kind": "sca",
-      "workflow": null,
-      "job": null,
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job": "dependencies (matrix project=root)",
       "triggers": [
-        "manual (T1); T14 to add CI job"
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
+        "workflow_dispatch"
       ],
       "report_format": "npm-audit-json (auditReportVersion 2)",
-      "retrieval": "npm audit --package-lock-only --json [--omit=dev]",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "scope": {
         "lockfile": "package-lock.json",
         "variants": [
@@ -362,22 +411,26 @@
         "note": "valid empty result (dev-only Playwright/sharp tree)"
       },
       "report_path_convention": "build/eng-artifacts/<task>/npm/root-audit-{all,prod}.json",
-      "blocking": false,
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized",
-      "fingerprint_scheme": "sca"
+      "fingerprint_scheme": "sca",
+      "runs_on_pull_request": true,
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "npm-audit-web",
       "tool": "npm audit",
       "tool_version": "npm 11.19.1 / node 24.22.1",
       "kind": "sca",
-      "workflow": null,
-      "job": null,
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job": "dependencies (matrix project=web)",
       "triggers": [
-        "manual (T1); T14 to add CI job"
+        "pull_request:main via Static Analysis",
+        "push:main via Static Analysis",
+        "workflow_dispatch"
       ],
       "report_format": "npm-audit-json (auditReportVersion 2)",
-      "retrieval": "cd web && npm audit --package-lock-only --json [--omit=dev]",
+      "retrieval": "Same-run analysis-* artifact; full hashed report paths and tool/source provenance in run-manifest.json",
       "scope": {
         "lockfile": "web/package-lock.json",
         "variants": [
@@ -400,9 +453,11 @@
       },
       "report_path_convention": "build/eng-artifacts/<task>/npm/web-audit-{all,prod}.json",
       "exit_semantics": "npm audit exits 1 when vulnerabilities exist; exit status is not scan failure \u2014 parse JSON 'error' key for failures",
-      "blocking": false,
+      "blocking": "findings.py aggregate; repository required-status activation belongs to T38",
       "inventory_mode": "itemized per (package, advisory) root cause; propagated parents not itemized",
-      "fingerprint_scheme": "sca"
+      "fingerprint_scheme": "sca",
+      "runs_on_pull_request": true,
+      "ci_execution_status": "configured; hosted execution not yet verified"
     },
     {
       "id": "secret-scanning",
@@ -478,5 +533,14 @@
       "inventory_mode": "pass/fail gate (no finding records)",
       "fingerprint_scheme": null
     }
-  ]
+  ],
+  "ci_configuration": {
+    "producer": "T14",
+    "workflow": ".github/workflows/static-analysis.yml",
+    "aggregate_job": "analysis-coverage",
+    "report_root": "build/analysis-combined",
+    "manifest": "run-manifest.json",
+    "hosted_execution_verified": false,
+    "note": "last_observed records remain historical T1 evidence. CI configuration is not a new scan result. No cross-run or privileged API reports are fetched. All 13 expected scanner identities remain required."
+  }
 }

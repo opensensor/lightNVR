@@ -1,32 +1,25 @@
 name: Container Security Scan
-
 on:
+  workflow_call:
   push:
-    branches: [main]
-    tags:
-      - '*.*.*'
+    tags: ['*.*.*']
   workflow_dispatch:
-
 permissions:
   contents: read
   security-events: write
-
 jobs:
   trivy:
     name: Trivy Container Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 45
+    env:
+      REPORT_DIR: build/analysis/trivy
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker image for scanning
+      - uses: docker/setup-buildx-action@v4
+      - name: Build local image for analysis
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -36,46 +29,43 @@ jobs:
           tags: lightnvr:scan
           build-args: |
             GIT_COMMIT=${{ github.sha }}
-
-      - name: Install Trivy
+      - name: Install Trivy and fetch vulnerability database
         run: |
           sudo apt-get update
           sudo apt-get install -y wget apt-transport-https gnupg
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          echo 'deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main' | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update
           sudo apt-get install -y trivy
-
-      - name: Run Trivy vulnerability scanner (SARIF)
-        id: trivy-sarif
+          trivy image --download-db-only
+      - name: Capture Trivy report, image identity and database metadata
         run: |
-          trivy image \
-            --format sarif \
-            --output trivy-results.sarif \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --exit-code 0 \
-            lightnvr:scan
-
-      - name: Upload Trivy SARIF to GitHub Security tab
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          spec = {'scanner_id':'trivy-container', 'version_command':['trivy','version','--format','json'], 'version_format':'trivy-json',
+            'commands':[{'argv':['trivy','image','--scanners','vuln','--format','sarif',
+              '--output',str(Path.cwd() / os.environ['REPORT_DIR'] / 'trivy-results.sarif'),
+              '--skip-db-update','--severity','CRITICAL,HIGH,MEDIUM','--exit-code','2','lightnvr:scan'],
+              'reports':['trivy-results.sarif'],'accepted_exit_codes':[0,2],'timeout_seconds':1800}],
+            'scope':{'kind':'image','report':'trivy-results.sarif'}}
+          Path('build').mkdir(exist_ok=True)
+          Path('build/trivy-spec.json').write_text(json.dumps(spec))
+          PY
+          python3 scripts/quality/scanner_run.py --spec build/trivy-spec.json --reports "$REPORT_DIR" --expected-revision "$GITHUB_SHA"
+      - name: Check scoped container findings
+        if: always()
+        run: python3 scripts/quality/findings_lane.py --scanner trivy-container --reports "$REPORT_DIR" --expected-revision "$GITHUB_SHA" --json-out "$REPORT_DIR/lane-result.json"
+      - name: Upload available SARIF to code scanning
         uses: github/codeql-action/upload-sarif@v4
-        if: always() && steps.trivy-sarif.outcome == 'success'
+        if: always() && hashFiles(format('{0}/trivy-results.sarif', env.REPORT_DIR)) != ''
         with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'container-scanning'
-
-      - name: Run Trivy (table output for logs)
-        if: always() && steps.trivy-sarif.outcome == 'success'
-        run: |
-          trivy image \
-            --format table \
-            --severity CRITICAL,HIGH \
-            --exit-code 0 \
-            lightnvr:scan
-
-      - name: Upload Trivy report
-        uses: actions/upload-artifact@v7
-        if: always() && steps.trivy-sarif.outcome == 'success'
+          sarif_file: ${{ env.REPORT_DIR }}/trivy-results.sarif
+          category: container-scanning
+      - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: trivy-scan-results
-          path: trivy-results.sarif
+          name: analysis-trivy
+          path: ${{ env.REPORT_DIR }}
+          if-no-files-found: error
           retention-days: 30

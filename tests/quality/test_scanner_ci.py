@@ -53,6 +53,37 @@ class ScannerPipelineTests(unittest.TestCase):
     def write_manifest(self, value):
         (self.reports/'run-manifest.json').write_text(json.dumps(value))
 
+    def test_trivy_json_version_requires_and_records_actual_database_metadata(self):
+        spec=self.spec()
+        spec['version_format']='trivy-json'
+        metadata={'Version':'1.2.3','VulnerabilityDB':{'Version':2,'UpdatedAt':'2026-10-31T00:00:00Z'}}
+        spec['version_command']=[sys.executable,'-c',f'import json; print(json.dumps({metadata!r}))']
+        entry=self.run_scan(spec)
+        self.assertEqual(entry.get('db_version'),metadata['VulnerabilityDB'])
+        self.assertEqual(entry['tool_version'],'1.2.3')
+
+    def test_cppcheck_scope_uses_actual_progress_not_candidate_list(self):
+        spec=self.spec()
+        spec['scanner_id']='cppcheck'
+        spec['commands']=[{'argv':[sys.executable,'-c',
+            'import pathlib; print("Checking web/js/example.js ..."); pathlib.Path("reports/cppcheck.xml").write_text("<results/>")'],
+            'reports':['cppcheck.xml']}]
+        spec['scope']={'kind':'cppcheck-progress','report':'logs/cppcheck-0.stdout.log'}
+        entry=self.run_scan(spec)
+        self.assertEqual(entry['status'],'success',entry)
+        self.assertEqual(entry['scope']['files'],['web/js/example.js'])
+        self.assertIn('logs/cppcheck-0.stdout.log',entry['scope']['evidence_sha256'])
+
+    def test_merged_diagnostic_stream_preserves_stdout_and_stderr(self):
+        spec=self.spec()
+        spec['commands'][0]['argv']=[sys.executable,'-c','import sys; print("out"); print("err",file=sys.stderr)']
+        spec['commands'][0]['stderr_to_stdout']=True
+        spec['scope']={'kind':'invocation-files','files':['web/js/example.js']}
+        spec['commands'][0]['append_scope_files']=True
+        entry=self.run_scan(spec)
+        self.assertEqual(entry['status'],'success',entry)
+        self.assertEqual(set((self.reports/'eslint.json').read_text().splitlines()),{'out','err'})
+
     def test_clean_subprocess_records_actual_files_versions_hashes_and_partial_pass(self):
         result=self.run_scan()
         self.assertEqual(result['status'],'success',result)

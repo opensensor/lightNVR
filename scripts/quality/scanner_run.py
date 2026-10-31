@@ -92,6 +92,14 @@ def scope_evidence(spec, root, reports):
             raise ValueError('ESLint scope requires its JSON file report')
         names = [row['filePath'] for row in rows]
         evidence[scope['report']] = sha(report)
+    elif kind == 'cppcheck-progress':
+        # Cppcheck --project cannot accept positional source filenames. Its
+        # actual progress stream, not compile_commands candidates, is scope.
+        if scope.get('report') != f"logs/{spec['scanner_id']}-0.stdout.log":
+            raise ValueError('Cppcheck scope must use the captured command progress')
+        report = safe_path(reports, scope['report'])
+        names = re.findall(r'^Checking (.+?)(?: \.\.\.|:)', report.read_text(), re.MULTILINE)
+        evidence[scope['report']] = sha(report)
     elif kind == 'invocation-files':
         names = scope.get('files', [])
         if not all(c.get('append_scope_files') for c in spec['commands']):
@@ -198,13 +206,25 @@ def run_scanner(spec, *, root, reports, revision):
         safe_path(reports, relative).parent.mkdir(parents=True, exist_ok=True)
     entry = {'status': 'failure', 'exit_code': None, 'tool_version': None, 'revision': revision,
              'started_at': timestamp(), 'reports': declared, 'report_sha256': {}, 'commands': [], 'errors': []}
-    try:
-        version, out, err = execute(spec['version_command'], root, 30)
-        if version['exit_code'] != 0 or version['timed_out'] or not (out + err).strip():
-            raise ValueError('Tool-version command did not return a version')
-        entry['tool_version'] = (out + err).decode('utf8', errors='replace').strip()[:4096]
-    except (OSError, ValueError, KeyError) as error:
-        entry['errors'].append(str(error))
+    def capture_version():
+        try:
+            version, out, err = execute(spec['version_command'], root, 30)
+            if version['exit_code'] != 0 or version['timed_out'] or not (out + err).strip():
+                raise ValueError('Tool-version command did not return a version')
+            entry['tool_version'] = (out + err).decode('utf8', errors='replace').strip()[:4096]
+            if spec.get('version_format') == 'trivy-json':
+                metadata = json.loads(out)
+                database = metadata.get('VulnerabilityDB')
+                if not isinstance(database, dict) or not database.get('Version') or not database.get('UpdatedAt'):
+                    raise ValueError('Trivy version lacks vulnerability database metadata')
+                if not metadata.get('Version'):
+                    raise ValueError('Trivy version lacks tool version')
+                entry['tool_version'] = metadata['Version']
+                entry['db_version'] = database
+                entry['database_metadata'] = {k:v for k,v in metadata.items() if k != 'Version'}
+        except (OSError, ValueError, KeyError) as error:
+            entry['errors'].append(str(error))
+    capture_version()
     for index, command in enumerate(commands):
         argv = list(command.get('argv') or [])
         record = {'argv': argv, 'exit_code': None, 'timed_out': False}
@@ -220,7 +240,8 @@ def run_scanner(spec, *, root, reports, revision):
             stdout.parent.mkdir(parents=True, exist_ok=True)
             stderr.parent.mkdir(parents=True, exist_ok=True)
             with stdout.open('xb') as out, stderr.open('xb') as err:
-                result, _, _ = execute(argv, cwd, command.get('timeout_seconds', 1800), out, err)
+                result, _, _ = execute(argv, cwd, command.get('timeout_seconds', 1800), out,
+                                      subprocess.STDOUT if command.get('stderr_to_stdout') else err)
             record.update(result)
             accepted = command.get('accepted_exit_codes', [0])
             record['accepted'] = record['exit_code'] in accepted and not record['timed_out']
@@ -230,6 +251,9 @@ def run_scanner(spec, *, root, reports, revision):
             record['accepted'] = False
             entry['errors'].append(str(error))
         entry['commands'].append(record)
+    if spec.get('version_format') == 'trivy-json':
+        # Include supplementary databases fetched during the actual scan.
+        capture_version()
     codes = [c['exit_code'] for c in entry['commands'] if isinstance(c['exit_code'], int)]
     failed = [c['exit_code'] for c in entry['commands'] if not c['accepted'] and isinstance(c['exit_code'], int)]
     entry['exit_code'] = failed[0] if failed else max(codes, default=None)

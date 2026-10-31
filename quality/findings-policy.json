@@ -25,10 +25,13 @@
     "default": [0],
     "npm-audit-root": [0, 1],
     "npm-audit-web": [0, 1],
-    "_note": "Only consulted when run-manifest.json records exit_code. npm audit exits 1 whenever vulnerabilities exist; its failures are detected from the JSON 'error' key. clang-tidy/cppcheck/trivy are forced to exit 0 in CI, so their health comes from report contents (progress lines, crash markers, checkersReport, scan target)."
+    "eslint-web": [0, 1],
+    "cppcheck": [0, 2],
+    "trivy-container": [0, 2],
+    "_note": "npm audit and ESLint use exit 1 for findings; cppcheck and Trivy explicitly use exit 2 for findings. Report contents and provenance still decide policy; accepted finding exit codes never imply a clean scan. Other exits, timeouts, parse errors and incomplete coverage fail."
   },
-  "require_run_manifest": false,
-  "require_run_manifest_note": "T14 should emit build/eng-artifacts/<task>/run-manifest.json (exit_code, status, files_scanned, tool_version, db_version per scanner) and then set this to true.",
+  "require_run_manifest": true,
+  "require_run_manifest_note": "T14 requires same-run manifests with actual execution, report/source hashes, scope, versions and explicit --expected-revision. Historical T1 reports lack this provenance and cannot satisfy CI.",
   "scope_minimums": {
     "clang-tidy": {"files": 250, "basis": "T1 run 41176542849 declared 258 source files"}
   },
