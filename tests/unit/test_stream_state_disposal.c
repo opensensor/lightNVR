@@ -144,7 +144,7 @@ void test_stop_callback_can_lookup_but_cannot_mutate_tearing_down_registry(void)
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, child);
     if (child == 0) {
         alarm(3); /* A registry lock recursion must fail, not hang ctest. */
-        if (init_stream_state_manager(1) != 0) _exit(20);
+        if (init_stream_state_manager(2) != 0) _exit(20);
         stream_config_t config = config_for("reentrant");
         stream_state_manager_t *state = create_stream_state(&config);
         if (!state) _exit(21);
