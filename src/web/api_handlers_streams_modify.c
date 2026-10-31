@@ -2182,7 +2182,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
              config.detection_model, config.detection_threshold, config.detection_interval,
              config.pre_detection_buffer, config.post_detection_buffer);
 
-    // Send an immediate 202 Accepted response to the client
+    // Prepare the accepted response; the backend sends it after this handler returns.
     // Include ONVIF test results if applicable
     cJSON *response = cJSON_CreateObject();
     if (!response) {
@@ -2229,7 +2229,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     if (pthread_create(&thread_id, &attr, (void *(*)(void *))put_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for PUT stream");
         put_stream_task_free(task);
-        // Response already sent, just log the error
+        http_response_set_json_error(res, 500, "Failed to start update task");
     } else {
         log_info("PUT stream task started in worker thread for: %s", stream_id);
     }
