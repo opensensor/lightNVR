@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <errno.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,24 @@ static char root[256], database[MAX_PATH_LENGTH], literal[MAX_PATH_LENGTH];
 static config_t baseline, persisted;
 static unsigned saves, shell_calls;
 static http_response_t response;
+
+static int remove_owned_backups(void) {
+    char directory[MAX_PATH_LENGTH + 16];
+    snprintf(directory, sizeof(directory), "%s.backups", database);
+    DIR *dir = opendir(directory);
+    if (!dir) return errno == ENOENT ? 0 : -1;
+    int result = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        /* unlinkat removes only entries in our private backup directory;
+         * it never follows a link or recursively removes an unknown tree. */
+        if (unlinkat(dirfd(dir), entry->d_name, 0) != 0) result = -1;
+    }
+    if (closedir(dir) != 0) result = -1;
+    if (rmdir(directory) != 0) result = -1;
+    return result;
+}
 
 /* Capture the handler's persistence boundary; never write a host config file. */
 int __wrap_save_config(const config_t *config, const char *path) {
@@ -199,8 +218,9 @@ int main(void) {
     }
     free(g_config.streams);
     g_config.streams = NULL;
-    rmdir(literal);
-    rmdir(root);
+    if (remove_owned_backups() != 0) result = 1;
+    if (rmdir(literal) != 0) result = 1;
+    if (rmdir(root) != 0) result = 1;
     shutdown_logger();
     return result;
 }

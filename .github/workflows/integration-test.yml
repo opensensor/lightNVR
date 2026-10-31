@@ -463,6 +463,8 @@ jobs:
           cd build
           make -j$(nproc) \
             test_t7_2_buffers \
+            test_t7_2_files \
+            test_t7_2_settings \
             test_yaml_validate \
             test_yaml_redact \
             test_db_system_settings \
@@ -480,7 +482,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure --no-tests=error -V \
-            -R "test_t7_2_buffers$|test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_go2rtc_process_config_generation|test_go2rtc_substream_registration|test_go2rtc_live_transcode|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_ffmpeg_guard"
+            -R "test_t7_2_buffers$|test_t7_2_files$|test_t7_2_settings$|test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_proxy_thread|test_go2rtc_proxy_routing|test_go2rtc_process_config_generation|test_go2rtc_substream_registration|test_go2rtc_live_transcode|test_go2rtc_binary_detection|test_go2rtc_two_config_merge|test_ffmpeg_guard"
 
       - name: Generate coverage report
         if: always()
