@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "task": "T7.3",
+  "finding": "ADVISORY-repo-advisory-draft-1",
+  "reviewed_on": "2026-10-31",
+  "reviewer": "Codex automated source and regression review",
+  "source": {
+    "visibility": "private",
+    "alias": "repo-advisory-draft-1",
+    "state": "draft",
+    "refreshed_read_only": true,
+    "archive": "build/eng-artifacts/advisory-review/repo-security-advisories.json",
+    "archive_sha256": "d3df9e4f8909bc4ee86813f23309ea222e0f20f4501ff1e39e8a5e56ae3261f3",
+    "body_matches_original_inventory": true,
+    "affected_revision_checked": true,
+    "patched_version_field_empty": true
+  },
+  "current_source": {
+    "version": "0.45.1 (CMakeLists.txt)",
+    "reviewed_revision": "586d8d8924936f7067a691b2292b33d6bd103220",
+    "fix_commits": [
+      "181aa8fc1b0ec4dc64b3960abf2ceec5a1b4f6a6"
+    ],
+    "fixes_are_ancestors": true
+  },
+  "status": "fixed-current-source-regression-verified",
+  "reason_not_testable": "Review-only disposition; existing behavioral regression execution validates the already committed fix. No new production behavior introduced.",
+  "source_checks": [
+    {
+      "paths": [
+        "src/web/libuv_connection.c"
+      ],
+      "evidence": "Completed request targets reject decoded dot segments before dispatch or static resolution; target accumulation is checked before parsing."
+    }
+  ],
+  "regressions": [
+    {
+      "command": "python3 scripts/quality/run-native.py --task T7.7 --profile integration --sanitizer asan-ubsan --regex '^test_go2rtc_proxy_(query|thread|routing)$' --jobs 4",
+      "artifacts": "build/eng-artifacts/T7.7/native-0d36764846fe",
+      "status": "passed",
+      "targets": 3,
+      "unity_tests": 18,
+      "relevant_cases": [
+        "raw general static-file traversal rejected; normal static resources remain accessible"
+      ]
+    }
+  ],
+  "limits": [
+    "Private identifiers, report body and credentials excluded from committed review.",
+    "No advisory publication, closure, release metadata change, risk acceptance or baseline mutation.",
+    "The empty patched-version field and private advisory state are unchanged; this disposition concerns current local source.",
+    "Focused native fixtures do not qualify every deployment or physical target."
+  ]
+}
