@@ -1158,7 +1158,8 @@
       "title": "cpp/suspicious-pointer-scaling in frame.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.24.1"
       ],
       "kind": "upstream-review",
       "priority": "high",
@@ -1201,7 +1202,8 @@
       "title": "cpp/toctou-race-condition in db_core.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.25.1"
       ],
       "kind": "native-fix",
       "priority": "high",
@@ -2665,7 +2667,7 @@
       ],
       "kind": "native-fix",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Pending review \u2014 existing log-read bounds verified; no approval recorded",
       "ownership": [
         "src/core/logger_json.c",
         "tests/unit/test_t7_54.c",
@@ -2699,7 +2701,8 @@
           "scanner": "clang-tidy"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Tests-only0f11ff1d:17new plus41existing logger cases pass ASan/UBSan. Original/current allocation and clamp already bound terminator; no production change or approved false-positive. Fresh scanner review remainsT33."
     },
     {
       "id": "T7.55",
@@ -10101,7 +10104,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `efeca7c9`)",
       "ownership": [
         "web/js/components/preact/live/LiveBuildingPlan.jsx",
         "web/js/components/preact/live/LiveOperatorNavigator.jsx",
@@ -10192,7 +10195,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "All29assigned names resolved using existing translations; lint806\u2192777with0errors/nootherdelta.14focused (5Chromium),65related cases, types, modern43/default66assets/freshness pass; default restored."
     },
     {
       "id": "T7.172",
