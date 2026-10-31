@@ -1109,7 +1109,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Partial \u2014 producer confirmed four failures; scoped correction children pending",
+      "status": "Completed",
       "ownership": [
         "src/database/sqlite_migrate.c",
         "tests/unit/test_t7_23.c",
@@ -1152,7 +1152,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Original producer87e55150 established four failures; expanded parser RED13/8 then tracking RED15/3. Final15focused+7policy+9storage=31/31ASan/UBSan pass in native-1d7663de61fb. Whole-input validation now respects quoted identifiers/comments; all four tracking SQL constructors quote names without truncation. Actual raw routes and separate local API boundary documented; full scanner reconciliation remains T33."
     },
     {
       "id": "T7.24",
@@ -10341,7 +10342,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/settings/HealthTab.jsx",
         "web/js/components/preact/settings/MqttTab.jsx",
@@ -10432,7 +10433,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "All68assigned naming diagnostics resolved with18focused cases (9Chromium),108related cases, both types and43modern/66defaultbudgets passing; default fresh. Lint532\u2192461warnings/0errors with no increased buckets. Coordinator AST comparison confirms only aria-label changes across all6production files. Related T7.178 reductions recorded separately."
     },
     {
       "id": "T7.174",

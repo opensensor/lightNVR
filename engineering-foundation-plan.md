@@ -1209,8 +1209,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.23 --regex '^test_t7_23$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.23`; inspect the raw T1 report and trace the caller.
-- **status**: Partial (producer `87e55150`; four failures, correction children scoped)
-- **log**: Nine focused cases have four actual failures; seven existing policy controls pass. Separate statement-boundary and tracking-identifier causes require ordered corrections. Automatic review interrupted the worker after its producer run; exact artifacts preserved.
+- **status**: Completed (parser `23e65c8b`, identifiers `9f65a26c`)
+- **log**: Original producer87e55150 established four failures; expanded parser RED13/8 then tracking RED15/3. Final15focused+7policy+9storage=31/31ASan/UBSan pass in native-1d7663de61fb. Whole-input validation now respects quoted identifiers/comments; all four tracking SQL constructors quote names without truncation. Actual raw routes and separate local API boundary documented; full scanner reconciliation remains T33.
 - **files edited/created**:
 
 ### T7.24: cpp/suspicious-pointer-scaling in frame.c
@@ -3951,8 +3951,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/settings/HealthTab.jsx web/js/components/preact/settings/MqttTab.jsx web/js/components/preact/settings/StorageTab.jsx web/js/components/preact/settings/StreamsDefaultsTab.jsx web/js/components/preact/system/StreamStorage.jsx web/js/components/preact/timeline/CalendarPicker.jsx --format json --output-file build/eng-artifacts/T7.173/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.173/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.173`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (fix `dc3199fb`)
+- **log**: All68assigned naming diagnostics resolved with18focused cases (9Chromium),108related cases, both types and43modern/66defaultbudgets passing; default fresh. Lint532→461warnings/0errors with no increased buckets. Coordinator AST comparison confirms only aria-label changes across all6production files. Related T7.178 reductions recorded separately.
 - **files edited/created**:
 
 ### T7.174: jsx-a11y/control-has-associated-label in TimelineControls.jsx, TimelinePlayer.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, EditUserModal.jsx
@@ -4057,7 +4057,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.178/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.178`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.174 resolves ApiKey SecretReveal cf4b93673820960b 1→0; other buckets remain open.
+- **log**: T7.173 dc3199fb resolves related label association Health5e7cfcb56208eaa9 2→0 and Storage e84d458d8fcd3eef 1→0; whole task remains open.  T7.174 resolves ApiKey SecretReveal cf4b93673820960b 1→0; other buckets remain open.
 - **files edited/created**:
 
 ### T7.179: jsx-a11y/label-has-for in AuthGate.jsx, BatchDownloadModal.jsx, FleetView.jsx, LiveView.jsx, LoginView.jsx, SetupWizard.jsx
@@ -7802,8 +7802,8 @@ runtime even though a newer major exists.
 - **description**: Correct the three statement-boundary failures reproduced by 87e55150. Delimiters inside quoted identifiers/comments must not split valid statements or hide a subsequent disallowed statement from whole-input validation.
 - **acceptance_criteria**: Original UP/DOWN rejection and valid-identifier failures become green before any effects. Preserve existing migration allowlist, transactions, triggers and nested CASE handling. Add quote escaping, bracket/backtick identifier and comment controls using private disposable databases only; no policy broadening or remote input claims. The separate tracking-table failure may remain RED until T7.23.2.
 - **validation**: Tests first with exact original artifacts retained; focused and existing SQLite migration regressions under ASan/UBSan, full logs and input hashes. No server or real database use.
-- **status**: Not Completed
-- **log**: Root owns bounded correction after failed worker producer; original raw CODEQL-66/67 routes are UP/DOWN migration content.
+- **status**: Completed (fix `23e65c8b`)
+- **log**: Quoted identifiers, escaped delimiters and comments are tracked correctly; original UP/DOWN rejection plus valid-name/comment/trigger controls pass. Intermediate13cases/1remaining tracking failure versus8priorfailures, seven related controls pass. Tracking cause separately corrected in .2.
 - **files edited/created**:
 
 ### T7.23.2: Treat configured migration tracking names as SQL identifiers
@@ -7813,6 +7813,6 @@ runtime even though a newer major exists.
 - **description**: Correct the independent tracking-name sentinel failure from 87e55150. Quote/escape the configured name consistently as one identifier in create/check/insert/delete operations; preserve version binding. Production callers currently use constant schema_migrations; do not claim remote reachability.
 - **acceptance_criteria**: Sentinel remains unchanged for every name; legitimate names including embedded quotes/semicolons and long names round-trip through apply/reload/rollback without truncation. Handle allocation failure consistently and release SQL buffers. All original producer cases pass together after .1.
 - **validation**: Tests first, private SQLite fixtures, existing migration regressions and sanitizers; retain actual RED and exact hashes/logs. No scanner dismissal or baseline change.
-- **status**: Not Completed
-- **log**: Ordered after shared-file statement-boundary correction; root ownership.
+- **status**: Completed (fix `9f65a26c`)
+- **log**: All four SQL constructors use quoted SQLite identifiers and dynamic buffers. Original sentinel and new quoted/1024-character roundtrip controls pass; final31/31ASan/UBSan. Source review covers allocation returns; no injected allocation-failure or remote-reachability claim.
 - **files edited/created**:
