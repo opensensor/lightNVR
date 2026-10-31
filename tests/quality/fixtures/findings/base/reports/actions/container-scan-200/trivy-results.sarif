@@ -1,0 +1,22 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Trivy",
+          "version": "0.76.1",
+          "rules": []
+        }
+      },
+      "results": [],
+      "properties": {
+        "imageID": "sha256:feedface",
+        "imageName": "lightnvr:scan",
+        "repoTags": [
+          "lightnvr:scan"
+        ]
+      }
+    }
+  ]
+}

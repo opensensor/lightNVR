@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "producer": "fixture",
+  "findings": [
+    {
+      "id": "CODEQL-1",
+      "fingerprint": "codeql:cpp/sql-injection:src/database/a.c:aaaa1111bbbb2222:1",
+      "scanner_id": "codeql-cpp",
+      "rule_id": "cpp/sql-injection",
+      "category": "application",
+      "location": {
+        "path": "src/database/a.c",
+        "line": 10
+      },
+      "disposition": "needs-triage",
+      "exception_expiry": null
+    },
+    {
+      "id": "CODEQL-2",
+      "fingerprint": "codeql:cpp/path-injection:src/core/b.c:cccc3333dddd4444:1",
+      "scanner_id": "codeql-cpp",
+      "rule_id": "cpp/path-injection",
+      "category": "application",
+      "location": {
+        "path": "src/core/b.c",
+        "line": 20
+      },
+      "disposition": "exception-dismissed-false-positive",
+      "exception_expiry": "2027-01-31"
+    },
+    {
+      "id": "CLANGTIDY-3971853557f6166d",
+      "fingerprint": "clang-tidy:bugprone-narrowing-conversions:src/core/b.c:3971853557f6166d",
+      "scanner_id": "clang-tidy",
+      "rule_id": "bugprone-narrowing-conversions",
+      "category": "application",
+      "location": {
+        "path": "src/core/b.c",
+        "line": 5
+      },
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    },
+    {
+      "id": "CLANGTIDY-23b6d28e219f20e2",
+      "fingerprint": "clang-tidy:bugprone-narrowing-conversions:src/core/b.c:23b6d28e219f20e2",
+      "scanner_id": "clang-tidy",
+      "rule_id": "bugprone-narrowing-conversions",
+      "category": "application",
+      "location": {
+        "path": "src/core/b.c",
+        "line": 9
+      },
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    },
+    {
+      "id": "CLANGTIDY-6097ffe41888cb7e",
+      "fingerprint": "clang-tidy:readability-function-cognitive-complexity:src/core/c.c:6097ffe41888cb7e",
+      "scanner_id": "clang-tidy",
+      "rule_id": "readability-function-cognitive-complexity",
+      "category": "application",
+      "location": {
+        "path": "src/core/c.c",
+        "line": 7
+      },
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    },
+    {
+      "id": "CPPCHECK-032b81a083372145",
+      "fingerprint": "cppcheck:arrayIndexOutOfBounds:src/core/c.c:032b81a083372145",
+      "scanner_id": "cppcheck",
+      "rule_id": "arrayIndexOutOfBounds",
+      "category": "application",
+      "location": {
+        "path": "src/core/c.c",
+        "line": 12
+      },
+      "disposition": "needs-triage",
+      "exception_expiry": null
+    },
+    {
+      "id": "NPM-WEB-GHSA-aaaa-bbbb-cccc-minimatch",
+      "fingerprint": "npm-audit:web/package-lock.json:minimatch:GHSA-aaaa-bbbb-cccc",
+      "scanner_id": "npm-audit-web",
+      "rule_id": "GHSA-aaaa-bbbb-cccc",
+      "category": "build-only",
+      "location": {
+        "path": "web/package-lock.json",
+        "package": "minimatch"
+      },
+      "disposition": "needs-triage",
+      "exception_expiry": null
+    },
+    {
+      "id": "DEPENDABOT-7",
+      "fingerprint": "dependabot:web/package-lock.json:deepmerge:GHSA-dddd-eeee-ffff",
+      "scanner_id": "dependabot",
+      "rule_id": "GHSA-dddd-eeee-ffff",
+      "category": "build-only",
+      "location": {
+        "path": "web/package-lock.json",
+        "package": "deepmerge"
+      },
+      "disposition": "needs-triage",
+      "exception_expiry": null
+    }
+  ],
+  "buckets": [
+    {
+      "id": "CPPCHECK-BUCKET-1",
+      "fingerprint": "cppcheck-bucket:constParameterPointer:src/core/b.c",
+      "scanner_id": "cppcheck",
+      "rule_id": "constParameterPointer",
+      "path": "src/core/b.c",
+      "count": 2,
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    },
+    {
+      "id": "CPPCHECK-BUCKET-2",
+      "fingerprint": "cppcheck-bucket:checkersReport:",
+      "scanner_id": "cppcheck",
+      "rule_id": "checkersReport",
+      "path": "",
+      "count": 1,
+      "disposition": "informational",
+      "exception_expiry": null
+    },
+    {
+      "id": "ESLINT-BUCKET-1",
+      "fingerprint": "eslint-bucket:jsx-a11y/click-events-have-key-events:web/js/x.jsx",
+      "scanner_id": "eslint-web",
+      "rule_id": "jsx-a11y/click-events-have-key-events",
+      "path": "web/js/x.jsx",
+      "count": 2,
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    },
+    {
+      "id": "ESLINT-BUCKET-2",
+      "fingerprint": "eslint-bucket:jsx-a11y/no-autofocus:web/js/x.jsx",
+      "scanner_id": "eslint-web",
+      "rule_id": "jsx-a11y/no-autofocus",
+      "path": "web/js/x.jsx",
+      "count": 1,
+      "disposition": "baseline-debt",
+      "exception_expiry": "2027-04-30"
+    }
+  ],
+  "coverage_gaps": []
+}

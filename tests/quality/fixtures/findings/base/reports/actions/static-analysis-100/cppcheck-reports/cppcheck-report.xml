@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<results version="2">
+    <cppcheck version="2.13.0"/>
+    <errors>
+        <error id="arrayIndexOutOfBounds" severity="error" msg="Array &apos;buf[4]&apos; accessed at index 4, which is out of bounds." verbose="x" cwe="788" file0="src/core/c.c">
+            <location file="src/core/c.c" line="12" column="5"/>
+        </error>
+        <error id="constParameterPointer" severity="style" msg="Parameter &apos;p&apos; can be declared as pointer to const" verbose="x" cwe="398" file0="src/core/b.c">
+            <location file="src/core/b.c" line="30" column="10"/>
+        </error>
+        <error id="constParameterPointer" severity="style" msg="Parameter &apos;q&apos; can be declared as pointer to const" verbose="x" cwe="398" file0="src/core/b.c">
+            <location file="src/core/b.c" line="40" column="10"/>
+        </error>
+        <error id="checkersReport" severity="information" msg="Active checkers: 106/592 (use --checkers-report=&lt;filename&gt; to see details)" verbose="x"/>
+    </errors>
+</results>

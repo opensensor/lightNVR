@@ -1,0 +1,36 @@
+[
+  {
+    "filePath": "/home/runner/work/lightNVR/lightNVR/web/js/x.jsx",
+    "messages": [
+      {
+        "ruleId": "jsx-a11y/click-events-have-key-events",
+        "severity": 1,
+        "message": "m",
+        "line": 3,
+        "column": 1
+      },
+      {
+        "ruleId": "jsx-a11y/click-events-have-key-events",
+        "severity": 1,
+        "message": "m",
+        "line": 9,
+        "column": 1
+      },
+      {
+        "ruleId": "jsx-a11y/no-autofocus",
+        "severity": 1,
+        "message": "m",
+        "line": 12,
+        "column": 1
+      }
+    ],
+    "errorCount": 0,
+    "warningCount": 3
+  },
+  {
+    "filePath": "/home/runner/work/lightNVR/lightNVR/web/js/y.js",
+    "messages": [],
+    "errorCount": 0,
+    "warningCount": 0
+  }
+]

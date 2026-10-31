@@ -1,0 +1,8 @@
+[1/2] Processing file /__w/lightNVR/lightNVR/src/core/b.c.
+2 warnings generated.
+/__w/lightNVR/lightNVR/src/core/b.c:5:3: warning: narrowing conversion from 'long' to 'int' [bugprone-narrowing-conversions]
+   5 |   int x = l;
+/__w/lightNVR/lightNVR/src/core/b.c:9:3: warning: narrowing conversion from 'long' to 'int' [bugprone-narrowing-conversions]
+[2/2] Processing file /__w/lightNVR/lightNVR/src/core/c.c.
+1 warning generated.
+/__w/lightNVR/lightNVR/src/core/c.c:7:1: warning: function 'x' has cognitive complexity of 30 (threshold 25) [readability-function-cognitive-complexity]

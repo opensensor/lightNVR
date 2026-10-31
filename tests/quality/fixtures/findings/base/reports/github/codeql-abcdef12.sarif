@@ -1,0 +1,83 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "semanticVersion": "2.27.3"
+        },
+        "extensions": [
+          {
+            "name": "codeql/cpp-queries",
+            "semanticVersion": "1.9.2"
+          }
+        ]
+      },
+      "automationDetails": {
+        "id": "/language:c-cpp/"
+      },
+      "versionControlProvenance": [
+        {
+          "revisionId": "abcdef1234567890"
+        }
+      ],
+      "artifacts": [
+        {
+          "location": {
+            "uri": "src/database/a.c"
+          }
+        },
+        {
+          "location": {
+            "uri": "src/core/b.c"
+          }
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "cpp/sql-injection",
+          "message": {
+            "text": "query built from user input"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/database/a.c"
+                },
+                "region": {
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "aaaa1111bbbb2222:1"
+          }
+        },
+        {
+          "ruleId": "cpp/path-injection",
+          "message": {
+            "text": "path from user input"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/core/b.c"
+                },
+                "region": {
+                  "startLine": 20
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "cccc3333dddd4444:1"
+          }
+        }
+      ]
+    }
+  ]
+}

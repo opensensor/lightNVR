@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "dispositions": {
+    "needs-triage": {
+      "exception": false,
+      "release_blocking": true
+    },
+    "baseline-debt": {
+      "exception": true,
+      "release_blocking": false
+    },
+    "exception-dismissed-false-positive": {
+      "exception": true,
+      "release_blocking": false
+    },
+    "informational": {
+      "exception": false,
+      "release_blocking": false
+    }
+  },
+  "accepted_exit_codes": {
+    "default": [
+      0
+    ],
+    "npm-audit-web": [
+      0,
+      1
+    ]
+  },
+  "require_run_manifest": false,
+  "scope_minimums": {},
+  "path_renames": [],
+  "report_pins": [],
+  "accepted_gaps": []
+}

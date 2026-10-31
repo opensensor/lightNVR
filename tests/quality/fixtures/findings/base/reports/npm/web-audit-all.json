@@ -1,0 +1,61 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "minimatch": {
+      "name": "minimatch",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1,
+          "name": "minimatch",
+          "dependency": "minimatch",
+          "title": "ReDoS",
+          "url": "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+          "severity": "moderate",
+          "range": "<3.1.3"
+        }
+      ],
+      "effects": [
+        "glob"
+      ],
+      "range": "<3.1.3",
+      "nodes": [
+        "node_modules/minimatch"
+      ],
+      "fixAvailable": true
+    },
+    "glob": {
+      "name": "glob",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "minimatch"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": [
+        "node_modules/glob"
+      ],
+      "fixAvailable": true
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 0,
+      "critical": 0,
+      "total": 2
+    },
+    "dependencies": {
+      "prod": 10,
+      "dev": 90,
+      "optional": 0,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 100
+    }
+  }
+}

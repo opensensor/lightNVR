@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scanners": [
+    {
+      "id": "codeql-cpp",
+      "report_format": "sarif-2.1.0",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/github/codeql-<sha8>.sarif",
+      "fingerprint_scheme": "codeql",
+      "tool": "CodeQL",
+      "tool_version": "2.27.3",
+      "scope": {
+        "category": "/language:c-cpp"
+      }
+    },
+    {
+      "id": "clang-tidy",
+      "report_format": "clang-diagnostic-text (path:line:col: severity: message [check])",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/clang-tidy-report/clang-tidy-report.txt",
+      "fingerprint_scheme": "line-tool",
+      "tool": "clang-tidy",
+      "tool_version": "Debian LLVM 21.1.8"
+    },
+    {
+      "id": "cppcheck",
+      "report_format": "cppcheck-xml-v2 (+ text template)",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/cppcheck-reports/cppcheck-report.xml",
+      "fingerprint_scheme": "line-tool / bucket",
+      "tool": "cppcheck",
+      "tool_version": "2.13.0"
+    },
+    {
+      "id": "eslint-web",
+      "report_format": "eslint-json",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/actions/static-analysis-<run_id>/eslint-web.json",
+      "fingerprint_scheme": "bucket",
+      "tool": "eslint"
+    },
+    {
+      "id": "trivy-container",
+      "report_format": "sarif-2.1.0",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/actions/container-scan-<run_id>/trivy-results.sarif",
+      "fingerprint_scheme": "sca",
+      "tool": "Trivy",
+      "tool_version": "0.76.1",
+      "scope": {
+        "image": "lightnvr:scan"
+      }
+    },
+    {
+      "id": "npm-audit-web",
+      "report_format": "npm-audit-json (auditReportVersion 2)",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/npm/web-audit-{all,prod}.json",
+      "fingerprint_scheme": "sca",
+      "tool": "npm audit"
+    },
+    {
+      "id": "dependabot",
+      "report_format": "json (REST repos/{repo}/dependabot/alerts)",
+      "access_status": "accessible",
+      "report_path_convention": "build/eng-artifacts/<task>/github/dependabot-open.json",
+      "fingerprint_scheme": "sca",
+      "tool": "GitHub Dependabot alerts"
+    }
+  ]
+}

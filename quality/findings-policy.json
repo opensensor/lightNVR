@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "producer": "T6",
+  "checker": "scripts/quality/findings.py",
+  "notes": [
+    "--check never edits quality/findings.json; --update-baseline --reason is the only writer and appends a baseline_edits record.",
+    "Identity is the line-independent T1 fingerprint (quality/scanners.json#fingerprint_schemes). New fingerprints fail even when others disappear; bucket counts fail on any increase.",
+    "Expiry dates are the last valid day: an exception or gap fails when today > expires.",
+    "Accepted gaps are known coverage holes, printed as ACCEPTED GAP / NOT SCANNED and never counted as clean results. --release ignores all accepted gaps.",
+    "All owners/expiries below with status proposed-by-T6 need maintainer confirmation (no CODEOWNERS exists; see GAP-no-codeowners)."
+  ],
+  "dispositions": {
+    "needs-triage": {"exception": false, "release_blocking": true, "meaning": "open, unreviewed; tolerated by --check only because it is inventoried"},
+    "baseline-debt": {"exception": true, "release_blocking": false, "meaning": "accepted low-severity debt; requires exception_expiry"},
+    "exception-dismissed-false-positive": {"exception": true, "release_blocking": false, "meaning": "dismissed upstream; requires exception_expiry"},
+    "fixed-upstream-verify-regression": {"exception": false, "release_blocking": true, "meaning": "published advisory; release needs regression evidence"},
+    "fixed-verified": {"exception": false, "release_blocking": false, "meaning": "fix and regression evidence recorded"},
+    "private-triage-pending": {"exception": false, "release_blocking": true, "meaning": "private advisory awaiting maintainer status"},
+    "closed-upstream": {"exception": false, "release_blocking": false, "meaning": "private advisory closed upstream"},
+    "informational": {"exception": false, "release_blocking": false, "meaning": "tool diagnostics about analysis coverage, not code findings"}
+  },
+  "expiry_warning_days": 30,
+  "accepted_exit_codes": {
+    "default": [0],
+    "npm-audit-root": [0, 1],
+    "npm-audit-web": [0, 1],
+    "_note": "Only consulted when run-manifest.json records exit_code. npm audit exits 1 whenever vulnerabilities exist; its failures are detected from the JSON 'error' key. clang-tidy/cppcheck/trivy are forced to exit 0 in CI, so their health comes from report contents (progress lines, crash markers, checkersReport, scan target)."
+  },
+  "require_run_manifest": false,
+  "require_run_manifest_note": "T14 should emit build/eng-artifacts/<task>/run-manifest.json (exit_code, status, files_scanned, tool_version, db_version per scanner) and then set this to true.",
+  "scope_minimums": {
+    "clang-tidy": {"files": 250, "basis": "T1 run 41176542849 declared 258 source files"}
+  },
+  "strip_path_prefixes": ["/__w/lightNVR/lightNVR/", "/home/runner/work/lightNVR/lightNVR/"],
+  "path_renames": [],
+  "path_renames_format": "{\"from\": \"<inventoried path or dir/>\", \"to\": \"<current path or dir/>\", \"reason\": \"...\", \"approved_by\": \"...\"}. Observed paths equal to 'to' (or under a 'to' directory ending in '/') are fingerprinted with the 'from' path, so a reviewed rename keeps inventory identity. Remove the entry after an explicit --update-baseline rewrites the inventory with the new paths.",
+  "report_pins": [
+    {
+      "reports_dir": "build/eng-artifacts/T1",
+      "scanner": "codeql-cpp",
+      "paths": ["github/codeql-8927bc8a.sarif"],
+      "reason": "T1 retrieved two CodeQL analyses; the inventory was built from analysis 2067529268 @8927bc8a (1b8d4332 has identical rule/path/lineHash keys)."
+    }
+  ],
+  "accepted_gaps": [
+    {
+      "scanner": "secret-scanning",
+      "condition": "not-scanned",
+      "owner": "maintainers/security",
+      "expires": "2026-12-31",
+      "coverage_gap_ref": "GAP-secret-scanning-disabled",
+      "status": "proposed-by-T6",
+      "reason": "GitHub secret scanning is disabled (HTTP 404) and no local secret scanner exists. NOT a clean result; enable it or add a scanner before expiry."
+    },
+    {
+      "scanner": "codeql-javascript-typescript",
+      "condition": "not-scanned",
+      "owner": "T14",
+      "expires": "2027-01-31",
+      "coverage_gap_ref": "GAP-no-js-ts-sast",
+      "status": "proposed-by-T6",
+      "reason": "No JS/TS security SAST is configured yet; T14 adds it."
+    },
+    {
+      "scanner": "cppcheck",
+      "condition": "scanner-error",
+      "marker": "critical-errors",
+      "owner": "T14",
+      "expires": "2027-01-31",
+      "coverage_gap_ref": "GAP-cppcheck-config-coverage",
+      "status": "proposed-by-T6",
+      "reason": "cppcheck runs without a compile database; checkersReport reports critical errors (partial analysis). Findings are still compared; resolved items are reported as unobserved, not fixed."
+    },
+    {
+      "scanner": "sanitizer-asan-ubsan",
+      "condition": "missing-report",
+      "reports_dirs": ["build/eng-artifacts/T1"],
+      "owner": "coordinator",
+      "expires": "2026-11-30",
+      "status": "proposed-by-T6",
+      "reason": "T1 recorded only the job conclusion (success at 1b8d4332 and 8927bc8a) and did not download the ctest log. Scoped to the T1 report directory only; later report directories must include the log."
+    }
+  ]
+}
