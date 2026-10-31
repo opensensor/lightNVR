@@ -1263,8 +1263,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.26`; inspect the raw T1 report and trace the caller.
-- **status**: Partial — RED producer committed (`dc571048`)
-- **log**: Seven real SQLite/filesystem cases: three controls pass, four failures identify publication overwrite, unowned abandoned cleanup and verified-temporary substitution. Ordered children T7.26.1–T7.26.3 own correction; original finding remains open.
+- **status**: Completed — mapped publication race and confirmed ownership children fixed
+- **log**: Producer dc571048 preserved; ordered fixes87b812ad/e3321d58/d829c053/eeeb1c5e resolve final overwrite, unowned cleanup, preexisting temporary and verified substitution causes. Final37/37 native cases pass. No universal concurrency guarantee or fresh scanner dismissal; explicit limits and T33 reconciliation remain.
 - **files edited/created**:
 
 ### T7.27: cpp/toctou-race-condition in api_handlers_operator_floor_plans.c
@@ -1785,8 +1785,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.55 --regex '^test_t7_55$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.55`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Pending review — existing process-name bound verified; no approval recorded
+- **log**: Unchanged actual classifier has fgets32/NUL bound before strcspn write. Twelve actual-helper boundary/I-O cases pass ASan/UBSan initially. Fresh scoped clang21 still emits mapped diagnostic; no source change, fabricated RED, baseline update or dismissal. Evidence T7.55.md.
 - **files edited/created**:
 
 ### T7.56: clang-analyzer-security.ArrayBound in sqlite_migrate.c
@@ -7560,8 +7560,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Keep the verified temporary identity through publication and metadata commit. Reject the committed substitution producer before recording location changes; preserve replaced and verified objects. Hold descriptors and use an owned private namespace as necessary; a second pathname check alone is insufficient. Preserve normal move/copy, checksum, source deletion and cleanup semantics. Any alternative that publishes held verified bytes requires an explicit revised contract before implementation, never unverified data.
 - **acceptance_criteria**: Preserve committed producer assertions and normal controls; add focused unsupported-operation, identity and cleanup failure cases as appropriate. No real storage/database/process touched, no unrelated schema or policy redesign. Document platform and privileged-writer limits honestly. Fresh scanner reconciliation remains T33.
 - **validation**: Tests-first producer `dc571048`; `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$' --jobs 4`, related migration tests under ASan/UBSan, exact source/artifact provenance. Native source/build lease required.
-- **status**: Not Completed
-- **log**: Materialized from committed seven-case producer before implementation. Sequential ownership prevents overlapping source/test mutations.
+- **status**: Completed (`eeeb1c5e`)
+- **log**: Held verified descriptor, private quarantine and precommit identity snapshot resolve original and added replacement races; cancellation/commit failure preserve unknown entries. Final28focused+9existing=37/37 pass, sanitizers clean. Documented final filesystem/SQLite window, open-writer and logged-only successful empty-directory debt; source diff reviewed.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

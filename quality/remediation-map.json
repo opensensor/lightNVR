@@ -1256,7 +1256,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Partial \u2014 RED producer committed",
+      "status": "Completed \u2014 mapped publication race and confirmed ownership children fixed",
       "ownership": [
         "src/storage/storage_migration.c",
         "tests/unit/test_t7_26.c",
@@ -1291,7 +1291,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "dc571048: seven cases, four RED, three controls pass. Ordered correction children T7.26.1\u2013T7.26.3 explicitly fenced in T33."
+      "log": "Producer dc571048 preserved; ordered fixes87b812ad/e3321d58/d829c053/eeeb1c5e resolve final overwrite, unowned cleanup, preexisting temporary and verified substitution causes. Final37/37 native cases pass. No universal concurrency guarantee or fresh scanner dismissal; explicit limits and T33 reconciliation remain."
     },
     {
       "id": "T7.27",
@@ -2718,7 +2718,7 @@
       ],
       "kind": "native-fix",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Pending review \u2014 existing process-name bound verified; no approval recorded",
       "ownership": [
         "src/core/main.c",
         "tests/unit/test_t7_55.c",
@@ -2752,7 +2752,8 @@
           "scanner": "clang-tidy"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Unchanged actual classifier has fgets32/NUL bound before strcspn write. Twelve actual-helper boundary/I-O cases pass ASan/UBSan initially. Fresh scoped clang21 still emits mapped diagnostic; no source change, fabricated RED, baseline update or dismissal. Evidence T7.55.md."
     },
     {
       "id": "T7.56",
