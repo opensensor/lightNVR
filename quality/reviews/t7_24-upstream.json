@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task": "T7.24",
-  "status": "review_complete_boundary_validation_pending",
+  "status": "boundary_producer_complete_tracked_correction_proposed",
   "finding_id": "CODEQL-330",
   "finding_resolution": "unresolved",
   "exception_approval": null,
@@ -167,7 +167,7 @@
   },
   "proposed_child": {
     "id": "T7.24.1",
-    "status": "proposed_not_materialized",
+    "status": "materialized_and_completed_as_tests_only_producer",
     "title": "Verify pinned FAAC 16-bit input scaling and public API boundaries",
     "depends_on": [
       "T7",
@@ -208,5 +208,350 @@
     "baseline_changed": false,
     "system_headers_changed": false,
     "submodule_changed": false
-  }
+  },
+  "upstream_followup": {
+    "observed_utc": "2026-10-31T10:02:27.437168+00:00",
+    "resolved_default_branch_head": "54e40cf0561c959a5b83ac2a5bb345fdc7c4e164",
+    "resolution_url": "https://api.github.com/repos/FreewareAdvancedAudio/faac/commits?per_page=1",
+    "history_and_source": [
+      {
+        "path": "libfaac/frame.c",
+        "history_url": "https://api.github.com/repos/FreewareAdvancedAudio/faac/commits?path=libfaac/frame.c&per_page=100",
+        "returned_history_entries": 100,
+        "history_response_sha256": "b24dba90770f6de1e21df4d4bde5ede65e9bf152c4202d59273e2cd7ef525f6a",
+        "recent_commits": [
+          {
+            "sha": "0cf18799e8b54babb6e5e07850bfece685e41ba8",
+            "subject": "faac: use HE-AAC v2 for explicit-bitrate stereo AUTO and treat it as SBR (#92)"
+          },
+          {
+            "sha": "1dc06020b298e55f22786adf1ea2b0ab81fa8cef",
+            "subject": "tests: widen fuzz, ABI and link coverage and trim by channel ceiling (#90)"
+          },
+          {
+            "sha": "ab619f957c26599e27e1ce7c64a002331ebedea0",
+            "subject": "faac, faad: signal eight channels with a program config element (#88)"
+          },
+          {
+            "sha": "6e261641d84153c1c387987ed4cca983b2cdb44b",
+            "subject": "faac, faar: take float samples at unity full scale (#85)"
+          },
+          {
+            "sha": "7bf95ccc7686102af91938a96633216a59044427",
+            "subject": "faac: add an encoder-sbr build option and report SBR and PS through flags (#46)"
+          },
+          {
+            "sha": "4e0ad9fd6e521a3efc6784076b6f3cfc8b466362",
+            "subject": "endian: detect the host byte order without a build-system define (#78)"
+          },
+          {
+            "sha": "97ef4bc43cbafb60dd94dd8730e54b349a6cdcd8",
+            "subject": "ps: encode HE-AAC v2 with parametric stereo (#75)"
+          },
+          {
+            "sha": "e701d91bd4bbfcd4adb98b2b615d123b57c95748",
+            "subject": "tests: add unit, CLI and fuzz coverage (#62)"
+          },
+          {
+            "sha": "981e4a6fe39568f3306964ba851e8a967c95048c",
+            "subject": "libfaad: add the FAAD decoder and the faad tool (#53)"
+          },
+          {
+            "sha": "39768d68dccbd7704c47d13f2da6b41010124302",
+            "subject": "frame: raise the HE-AAC auto ceiling to 1 bit/s per Hz through 48 kHz (#61)"
+          },
+          {
+            "sha": "605044e760cf6c20a0e8214b695cd0f02088b211",
+            "subject": "quantize: use a compact stereo masking model (#56)"
+          },
+          {
+            "sha": "abcc332bc04d13d43c7d223c7d31d64c85d7a4bd",
+            "subject": "stereo: tune M/S selection at high bitrates (#52)"
+          },
+          {
+            "sha": "cf2410f526d47dd340e1e5f5e45965c19bf5a377",
+            "subject": "sbr: retune HE-AAC v1 for rich cores and raise the auto-mode ceiling (#49)"
+          },
+          {
+            "sha": "99ce2b0980180194f9ccd1993a786208d277cf3e",
+            "subject": "sbr: code time deltas, couple envelopes, and vectorize QMF analysis (#7)"
+          },
+          {
+            "sha": "47014b773902639120c07efb413b1886450a9911",
+            "subject": "libfaac: size the per-channel state to the channel count (#44)"
+          },
+          {
+            "sha": "c4bf92b0521334fd48f20f8e67e22e5d9fc542aa",
+            "subject": "libfaac: write the ASC with one routine, at open (#42)"
+          },
+          {
+            "sha": "21dcdb800e6937867a0f20f1d6a1f1c81f65b890",
+            "subject": "libfaac: drop the re-configuration paths of faacEncOpen (#41)"
+          },
+          {
+            "sha": "eb4928a76fd075f9bab20e8195df84f937da289b",
+            "subject": "libfaac: improve hi-res VBR above 48 kHz (#36)"
+          },
+          {
+            "sha": "effa830e18289dca410879ac23d5f4faf2fac9ee",
+            "subject": "libfaac: compact encoder state and improve its layout (#34)"
+          },
+          {
+            "sha": "73f78bf56fcb7b60dfd9581f46c08701745840e1",
+            "subject": "blockswitch/filtbank: fix the bass haze on clean sources (#28)"
+          }
+        ],
+        "head_source_url": "https://raw.githubusercontent.com/FreewareAdvancedAudio/faac/54e40cf0561c959a5b83ac2a5bb345fdc7c4e164/libfaac/frame.c",
+        "head_source_sha256": "cde756be08a0be9e115da14f7fd80ad044784dfe5be5f2c97fc3851f35a14ebb",
+        "target_patterns_still_present": {
+          "historical_int32_parameter": true,
+          "final_stride": true,
+          "integer_pointer_roundtrip": false
+        }
+      },
+      {
+        "path": "libfaac/faac.c",
+        "history_url": "https://api.github.com/repos/FreewareAdvancedAudio/faac/commits?path=libfaac/faac.c&per_page=100",
+        "returned_history_entries": 34,
+        "history_response_sha256": "cf34f3d35b067573a28b45a095ff6765d9af28058b281cdbc6c21d90c3dd384f",
+        "recent_commits": [
+          {
+            "sha": "c4f63ae97e8e5bf849d2eb7172f2eb6f1ed1568f",
+            "subject": "faac: trim faac_encoder_info, require a VBR quality, and tighten the library docs (#97)"
+          },
+          {
+            "sha": "4dc6a687df53df5669dbb13e36a3874c1060ef29",
+            "subject": "faac: realign code and drop a stray comment line after the renames (#94)"
+          },
+          {
+            "sha": "1dc06020b298e55f22786adf1ea2b0ab81fa8cef",
+            "subject": "tests: widen fuzz, ABI and link coverage and trim by channel ceiling (#90)"
+          },
+          {
+            "sha": "7bf95ccc7686102af91938a96633216a59044427",
+            "subject": "faac: add an encoder-sbr build option and report SBR and PS through flags (#46)"
+          },
+          {
+            "sha": "46acb1e4e3bef2517f1677e0badc44524226c082",
+            "subject": "faac: refuse more channels than the build supports (#84)"
+          },
+          {
+            "sha": "2c7557526be4c2bb09594844768644fbaa2d9668",
+            "subject": "faac: describe the input channel order with a layout (#83)"
+          },
+          {
+            "sha": "27bcbba303eea5922ad91b35b9ed668dde5d3b6c",
+            "subject": "faac: take a whole-stream bitrate and name the rate control (#82)"
+          },
+          {
+            "sha": "735ae4297e47ad4038ef207f08572b5f46856dbe",
+            "subject": "faac: rename the parameters and fold the MPEG version and tool bools (#81)"
+          },
+          {
+            "sha": "97ef4bc43cbafb60dd94dd8730e54b349a6cdcd8",
+            "subject": "ps: encode HE-AAC v2 with parametric stereo (#75)"
+          },
+          {
+            "sha": "c4bf92b0521334fd48f20f8e67e22e5d9fc542aa",
+            "subject": "libfaac: write the ASC with one routine, at open (#42)"
+          },
+          {
+            "sha": "21dcdb800e6937867a0f20f1d6a1f1c81f65b890",
+            "subject": "libfaac: drop the re-configuration paths of faacEncOpen (#41)"
+          },
+          {
+            "sha": "ef656f6e692ca0966abcbbb89f486f9c74f66e40",
+            "subject": "libfaac: handle allocation failures and document integration (#27)"
+          },
+          {
+            "sha": "7915c426cb9ea312938da26a4bfc507f6c0b3472",
+            "subject": "fix SONAME 2 baseline struct sizes (#25)"
+          },
+          {
+            "sha": "c19ab713633d2be08c504ea0299da529c6546f7b",
+            "subject": "harden the encoder API and WAV reader against hostile input (#15)"
+          },
+          {
+            "sha": "e9a13d37ffa4c2e84876c850cb0a0b53a5633adc",
+            "subject": "frontend: leave the SBR decoder delay out of HE-AAC priming (#227)"
+          },
+          {
+            "sha": "9e957e24f39f95366f057c5630f8cc3f269fa200",
+            "subject": "frame: resolve PNS and the MPEG version in the encoder (#223)"
+          },
+          {
+            "sha": "5d82f382a13b7661a346e11f1886b5edba739e48",
+            "subject": "frame: make the HE-AAC pipeline delay even for exact gapless (#218)"
+          },
+          {
+            "sha": "c3e082cb861923484b7ae1bd5416038176edb305",
+            "subject": "channels: add ISO/IEC 14496-3 channel configuration mapping (#213)"
+          },
+          {
+            "sha": "1942012d019b9924e4d0d0f8bf3a7aaa14d14251",
+            "subject": "sbr: code HE-AAC v1 for multichannel layouts (#200)"
+          },
+          {
+            "sha": "4d9c9b6e099ac22c9de630d46b1f3c75fde499a2",
+            "subject": "ratecontrol: add a real bit reservoir for CBR behind --cbr (#199)"
+          }
+        ],
+        "head_source_url": "https://raw.githubusercontent.com/FreewareAdvancedAudio/faac/54e40cf0561c959a5b83ac2a5bb345fdc7c4e164/libfaac/faac.c",
+        "head_source_sha256": "631458c1c64c4f0d0ed24ca68f0498130fd982ff9470e7f8a390002fd8beb9e3",
+        "target_patterns_still_present": {
+          "historical_int32_parameter": false,
+          "final_stride": false,
+          "integer_pointer_roundtrip": true
+        }
+      },
+      {
+        "path": "libfaac/faac_internal.h",
+        "history_url": "https://api.github.com/repos/FreewareAdvancedAudio/faac/commits?path=libfaac/faac_internal.h&per_page=100",
+        "returned_history_entries": 10,
+        "history_response_sha256": "e96e95e858742f81464710da6904abe077e17ec8b64393eada1693d7ec99e8df",
+        "recent_commits": [
+          {
+            "sha": "97ef4bc43cbafb60dd94dd8730e54b349a6cdcd8",
+            "subject": "ps: encode HE-AAC v2 with parametric stereo (#75)"
+          },
+          {
+            "sha": "c4bf92b0521334fd48f20f8e67e22e5d9fc542aa",
+            "subject": "libfaac: write the ASC with one routine, at open (#42)"
+          },
+          {
+            "sha": "21dcdb800e6937867a0f20f1d6a1f1c81f65b890",
+            "subject": "libfaac: drop the re-configuration paths of faacEncOpen (#41)"
+          },
+          {
+            "sha": "9e957e24f39f95366f057c5630f8cc3f269fa200",
+            "subject": "frame: resolve PNS and the MPEG version in the encoder (#223)"
+          },
+          {
+            "sha": "3718d9c8b6ac99a485d839740ef5f3d782286df6",
+            "subject": "stereo: joint-stereo policy by rate (#201)"
+          },
+          {
+            "sha": "4d9c9b6e099ac22c9de630d46b1f3c75fde499a2",
+            "subject": "ratecontrol: add a real bit reservoir for CBR behind --cbr (#199)"
+          },
+          {
+            "sha": "1eeb296664d80b414b8b4373a33ca249376b4a00",
+            "subject": "add optional hard per-frame peak-bitrate limiter (--cap-rate) (#160)"
+          },
+          {
+            "sha": "b92b7f81e53b1027107c900b11609abf32a1fb1a",
+            "subject": "docs: unify LGPL license headers, drop stale FSF address (#154)"
+          },
+          {
+            "sha": "2a62c6fe330d1a0080a5458c065e96cb91899ae8",
+            "subject": "add HE-AAC v1 (SBR) encoding support (#143)"
+          },
+          {
+            "sha": "1a166babae9a777cfcf3ff981d5086225fbfe45c",
+            "subject": "api: Replace legacy faacEnc* surface with modern faac_* API (#145)"
+          }
+        ],
+        "head_source_url": "https://raw.githubusercontent.com/FreewareAdvancedAudio/faac/54e40cf0561c959a5b83ac2a5bb345fdc7c4e164/libfaac/faac_internal.h",
+        "head_source_sha256": "e29590c56ca504aa352f22687b61437ab7ecc48cd3419aa0a758b3e52b6ad0ff",
+        "target_patterns_still_present": {
+          "historical_int32_parameter": true,
+          "final_stride": false,
+          "integer_pointer_roundtrip": false
+        }
+      }
+    ],
+    "conclusion": "No existing verified correction identified in inspected path history/current resolved upstream head; the current head still contains both constructions. Not an exhaustive assertion about every branch, unpublished work or every old commit. A broad upgrade is not a demonstrated fix.",
+    "checkout_mutated": false,
+    "cached_web_limit": "A cached master URL represented older source; conclusion uses direct primary API head resolution and immutable raw URLs instead."
+  },
+  "completed_producer": {
+    "task": "T7.24.1",
+    "commit": "b82307d8",
+    "artifact": "build/eng-artifacts/T7.24.1/native-f252a0b9a732",
+    "result": "12 cases pass ASan/UBSan; pointer-formation language concerns not closed",
+    "evidence": "quality/evidence/T7.24.1.md"
+  },
+  "application_allocation_review": {
+    "paths": [
+      "src/video/mp4_writer_utils.c:856",
+      "src/video/mp4_writer_utils.c:1106"
+    ],
+    "finding": "Both steady-state and final partial PCM blocks use AVFrame AV_SAMPLE_FMT_S16 buffers allocated with av_frame_get_buffer(f,0), then pass f->data[0] and whole channel-group counts. Installed FFmpeg header documents CPU-selected alignment for zero alignment request.",
+    "limit": "This helps explain observed aligned application buffers; no universal proof of sufficient excess array extent for final-stride formation, no waiver of the public FAAC int16/packed24 alignment contract, no upstream safety inference from passing host tests."
+  },
+  "tracked_patch_proposal": {
+    "base_pin": "eb4928a76fd075f9bab20e8195df84f937da289b",
+    "submodule_changes": false,
+    "unpublished_gitlink": false,
+    "patch_scope": [
+      "libfaac/frame.c",
+      "libfaac/faac.c",
+      "libfaac/faac_internal.h"
+    ],
+    "code_change": "Use const void* end-to-end through private faacEncEncode and appendInputFifo; public facade passes in directly. For INPUT_16BIT, INPUT_32BIT and INPUT_FLOAT use const format-correct base pointers and indexed reads base[i*numChannels+map] instead of a terminal strided increment. Preserve existing numeric scaling/float screening and packed24 semantics. No public ABI or codec policy change.",
+    "static_reason": "For each actual read, 0 <= i*C+m <= N-1; no pointer is formed for i==N/C. Format-specific casts are performed only after selecting the documented format. The unused terminal pointer and unnecessary int32 roundtrip disappear by construction; tests alone cannot establish that property.",
+    "materialization": "At configure, verify exact pinned commit and input hashes. Copy libfaac and public include directories into a newly owned build-local staging tree without symlinks or Git metadata; apply the committed unified diff with Git to that copy only; verify exact postimage hashes before publishing the build-local tree. Compile every FAAC translation unit and quoted private header from the consistent copy. Preserve licenses. Fail closed on drift, malformed/unexpected patch paths, failed application, stale/tampered outputs or mixed original/copied headers. No network access or upstream checkout mutation during configure.",
+    "output_location": "${CMAKE_BINARY_DIR}/_deps/lightnvr-faac (scanner runs must keep this beneath the repository workspace)",
+    "manifest": "Tracked manifest pins upstream repository/commit, every copied source input hash, patch hash and expected changed output hashes. Generated build manifest maps canonical upstream-relative paths to actual compiled relative paths with input/output hashes, compiler/profile and patch identity; archive alongside compile_commands and scanner reports. No #line disguise or original-path substitution.",
+    "scanner_obligation": "CodeQL source archive must contain/hash-match actual patched frame.c/faac.c/private header and manifest mapping. Existing clang/cppcheck src-only selection must retain all previous src coverage and explicitly include compiled patched FAAC translation units; record actual execution, not candidate lists. Missing/unscanned generated files are coverage failures, not clean findings. Keep raw generated SARIF paths and reconcile original CODEQL-330 fingerprint via provenance only during T33.",
+    "validation_limits": "Existing T7.24.1 tests passed unchanged code; report them as behavior preservation, not a manufactured RED/GREEN. Add meaningful RED controls for source/patch/hash/path drift and missing/mismatched compiled scanner provenance. Static code review provides the terminal-index proof. Any new real regression remains RED."
+  },
+  "implementation_children": [
+    {
+      "id": "T7.24.2",
+      "status": "proposed_not_materialized",
+      "title": "Integrate a reproducible tracked FAAC input-pointer correction",
+      "depends_on": [
+        "T7.24.1"
+      ],
+      "ownership": [
+        "CMakeLists.txt",
+        "cmake/PrepareFaac.cmake",
+        "patches/faac/0001-bound-input-pointer-arithmetic.patch",
+        "patches/faac/manifest.json",
+        "tests/quality/test_faac_patch.py",
+        "tests/unit/test_t7_24.c",
+        "quality/evidence/T7.24.2.md"
+      ],
+      "description": "Implement only the three-upstream-file patch and deterministic build-local copy/provenance contract described in tracked_patch_proposal. Keep gitlink and submodule pristine. Add regression controls for packed24 and float format preservation if modifying their shared transport/loop; retain existing layout oracles.",
+      "acceptance": [
+        "Tests first for changed base/input/patch/postimage, path escape/symlink and stale-copy failure; deterministic successful rebuild with all FAAC sources/headers from copy.",
+        "Review proves index arithmetic stays within declared sample array and no unnecessary int32 conversion remains. Public API unchanged.",
+        "Actual ASan/UBSan layout and related AAC/media controls pass with archived compile/link/source manifests; no generated source suppression or scanner closure claim until .3."
+      ],
+      "validation": [
+        "python3 -m unittest discover -s tests/quality -p test_faac_patch.py",
+        "python3 scripts/quality/run-native.py --task T7.24.2 --profile integration --regex '^test_(t7_24|faac_encoder|mp4_(audio_recovery|segment_boundaries|segment_timestamps|faststart|pressure_reconnect))$' --jobs 4"
+      ],
+      "lease": "Exclusive CMake/native/source lease; no server build required."
+    },
+    {
+      "id": "T7.24.3",
+      "status": "proposed_not_materialized",
+      "title": "Verify compiled FAAC patch scanner provenance and coverage",
+      "depends_on": [
+        "T7.24.2",
+        "T14"
+      ],
+      "ownership": [
+        ".github/workflows/codeql-analysis.yml",
+        ".github/workflows/static-analysis.yml",
+        "scripts/quality/scanner_run.py",
+        "tests/quality/test_scanner_ci.py",
+        "quality/evidence/T7.24.3.md"
+      ],
+      "description": "Retain current source coverage and add actual generated FAAC translation units to native analysis. Require and archive patch/source manifests; verify CodeQL archive includes matching compiled patched files and private header. Preserve raw paths and establish upstream mapping for T33 without baseline rewrites.",
+      "acceptance": [
+        "Tests first: missing generated archive entry, changed hash, stale pin/patch, mixed source roots or invocation omission fail closed; valid mapping retains generated path/hash and upstream identity.",
+        "Clang/cppcheck actual invocations include all configured FAAC copy translation units plus previously analyzed src files; no file-filter or source-ignore concealment.",
+        "Fresh actual CodeQL/native reports and source archives reconciled under T33. Tool unavailability/coverage failure stays explicit, never replaced by passing synthetic tests."
+      ],
+      "validation": [
+        "python3 -m unittest discover -s tests/quality -p test_scanner_ci.py",
+        "Execute the amended native-analysis and CodeQL profile workflows with actual source manifests; reconcile in T33."
+      ],
+      "lease": "Serialized scanner/native integration; no publishing or remote workflow dispatch implicitly authorized."
+    }
+  ],
+  "proposed_gate_changes": "If children materialized: T7.24 depends on T7.24.3 and T33 depends on T7.24.3; .2 follows completed .1; .3 follows .2/T14. Existing parent deps retained. No task depends on unfinished parent T7.24, avoiding cycle."
 }
