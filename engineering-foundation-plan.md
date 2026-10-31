@@ -1227,8 +1227,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/t7_24-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.24`; inspect the raw T1 report and trace the caller.
-- **status**: Partial — tracked codec correction and local scanner integration complete; CodeQL qualification pending
-- **log**: 9d845904 tracked correction verified36native cases/24pipeline tests;937d4834 provenance integration43tests. Later20unit clang/cppcheck actualscoped scans retain warnings and limits. Required actualCodeQL/fullscanner reconciliation still open.
+- **status**: Completed (tracked correction `9d845904`; actual CodeQL comparison recorded)
+- **log**: Actual CLI2.27.3/cpp-queries1.9.2 comparison reproduces CODEQL-330 at frame.c:557 on20pristine upstream units and reports zero results for the same two pointer-scaling queries on20patched units. Both actual archives/source hashes verified; stable checkpoint4b6220f9. Prior36codec cases and43pipeline tests retained; full-suite/profile/final-revision closure remains T33.
 - **files edited/created**:
 
 ### T7.25: cpp/toctou-race-condition in db_core.c
@@ -7620,8 +7620,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Correct the deterministic partial pthread_create failure deadlock established by 2bfd7736. Preserve lifecycle ownership while workers are being created and joined; a worker startup gate is an acceptable bounded design. Simply releasing lifecycle_lock around joins without preventing concurrent shutdown/reinitialization is insufficient.
 - **acceptance_criteria**: All original failure positions return and clean up with same-runtime retry, normal startup/shutdown and first-failure controls preserved. If a startup gate prevents the original lock-entry interleaving, retain original RED artifacts and adapt the handshake to prove actual workers reached the gate before failure; do not replace real threads with mocked success or weaken timeout failures. Verify concurrent start/shutdown cannot double-join, free an active runtime or leave threads; use deterministic ownership-safe tests with fake collectors only. Preserve original array-bound characterization as a separate pending scanner disposition.
 - **validation**: Run focused failure, tier-boundary and relevant existing lifecycle/type tests under ASan/UBSan using the native lease; record exact commands, source hashes, full logs and resource cleanup. No real server/collectors or baseline changes.
-- **status**: Not Completed
-- **log**: Materialized after confirmed producer; exclusive native lease assigned to t7.
+- **status**: Completed (fix `b73a1f40`)
+- **log**: Per-worker predicate gate preserves lifecycle ownership during creation/failure cleanup. Strengthened9-case producer has5pre-fixRED; final9startup/concurrency+7tier+4types=20/20ASan/UBSan pass in native-a4df2306d621, with originalRED retained. Separate registry/reinit hypothesis tracked in T7.59.3; array warning remains pending review.
 - **files edited/created**:
 
 ### T7.59.3: Characterize health shutdown versus reinitialization ownership

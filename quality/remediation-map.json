@@ -1164,7 +1164,7 @@
       ],
       "kind": "upstream-review",
       "priority": "high",
-      "status": "Partial \u2014 tracked codec correction and local scanner integration complete; CodeQL qualification pending",
+      "status": "Completed",
       "ownership": [
         "quality/reviews/t7_24-upstream.json",
         "quality/evidence/T7.24.md"
@@ -1197,7 +1197,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "9d845904 tracked correction verified36native cases/24pipeline tests;937d4834 provenance integration43tests. Later20unit clang/cppcheck actualscoped scans retain warnings and limits. Required actualCodeQL/fullscanner reconciliation still open."
+      "log": "Actual CLI2.27.3/cpp-queries1.9.2 comparison reproduces CODEQL-330 at frame.c:557 on20pristine upstream units and reports zero results for the same two pointer-scaling queries on20patched units. Both actual archives/source hashes verified; stable checkpoint4b6220f9. Prior36codec cases and43pipeline tests retained; full-suite/profile/final-revision closure remains T33."
     },
     {
       "id": "T7.25",
