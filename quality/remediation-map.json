@@ -1104,11 +1104,12 @@
       "title": "cpp/sql-injection in sqlite_migrate.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.23.2"
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Partial \u2014 producer confirmed four failures; scoped correction children pending",
       "ownership": [
         "src/database/sqlite_migrate.c",
         "tests/unit/test_t7_23.c",
