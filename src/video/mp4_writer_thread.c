@@ -241,6 +241,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     // Notify telemetry that recording is active for this stream
     metrics_set_recording_active(stream_name, true);
 
+    bool pressure_session_reset = false;
+
     // Main loop to record segments
     while (thread_ctx->running && !thread_ctx->shutdown_requested) {
         // Check if shutdown has been initiated
@@ -489,6 +491,22 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         if (storage_should_pause_recording()) {
             log_warn("Stream %s: disk at EMERGENCY pressure, pausing recording and requesting cleanup",
                      stream_name);
+            if (!pressure_session_reset) {
+                // A paused socket can buffer footage from the old source while
+                // wall time advances (or the source restarts). Never stamp that
+                // backlog as new footage after pressure recovery. Discard this
+                // session before sleeping; normal segment rotations still keep
+                // their input, boundary keyframe and audio history.
+                avformat_close_input(&thread_ctx->input_ctx);
+                av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+                cleanup_audio_transcoder(stream_name);
+                memset(&thread_ctx->segment_info, 0, sizeof(thread_ctx->segment_info));
+                safe_strcpy(thread_ctx->segment_info.stream_name, stream_name,
+                            sizeof(thread_ctx->segment_info.stream_name), 0);
+                thread_ctx->video_params_detected = false;
+                thread_ctx->retry_count = 0;
+                pressure_session_reset = true;
+            }
             trigger_storage_cleanup(true);
             for (int w = 0; w < 30 && thread_ctx->running && !thread_ctx->shutdown_requested; w++) {
                 if (!storage_should_pause_recording()) break;
@@ -496,6 +514,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             }
             continue;  // Re-evaluate connection/rotation state before recording.
         }
+        pressure_session_reset = false;
 
         // Record a segment using the record_segment function
         log_info("Recording segment for stream %s to %s", stream_name, thread_ctx->writer->output_path);
