@@ -1,0 +1,14 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "response",
+  "status": 200,
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamPrivacyModeResponse",
+  "expect": "valid",
+  "body": {
+    "success": true,
+    "privacy_mode": true
+  },
+  "schema_base": "docs/api/contracts/"
+}

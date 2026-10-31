@@ -1,0 +1,29 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "getClientConfig",
+  "direction": "response",
+  "status": 200,
+  "principal": "live_viewer",
+  "schema": "streams.yaml#/components/schemas/ClientConfig",
+  "expect": "valid",
+  "body": {
+    "go2rtc_enabled": true,
+    "web_auth_enabled": true,
+    "demo_mode": false,
+    "audio_disabled": false,
+    "auto_disabled": false,
+    "go2rtc_available": true,
+    "go2rtc_api_port": 1984,
+    "go2rtc_base_path": "/go2rtc",
+    "webrtc_disabled": false,
+    "hls_disabled": false,
+    "mse_disabled": false,
+    "default_playback_transport": "auto",
+    "go2rtc_force_native_hls": false,
+    "webrtc_connection_timeout_ms": 15000,
+    "webrtc_ice_recovery_timeout_ms": 10000,
+    "generate_thumbnails": true,
+    "thumbnails_per_recording": 3
+  },
+  "schema_base": "docs/api/contracts/"
+}

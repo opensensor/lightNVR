@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 OpenSensor Engineering and LightNVR contributors
+#
+# Canonical LightNVR HTTP API contract (OpenAPI 3.1, JSON Schema 2020-12).
+# This root document only indexes operations; paths and schemas live in the
+# fragments under docs/api/contracts/. Bundle/validate with the tooling from
+# plan task T12 (scripts/quality/contracts.mjs); do not hand-edit generated
+# outputs.
+#
+# COVERAGE IS PARTIAL. Only the Streams list/edit pilot and its read-only
+# option dependencies are specified. Every other route is inventoried in
+# quality/api-inventory.json and is NOT described by this file; absence of an
+# operation here says nothing about its behavior.
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info:
+  title: LightNVR API
+  version: 0.1.0-pilot
+  summary: Streams list/edit pilot contract
+  description: >-
+    Specified from the C handlers in src/web (serialization and parsing code
+    read directly), not from prose documentation. Where the C behavior and the
+    UI or docs disagree, operation descriptions record the C wire behavior and
+    the disagreement is recorded as a discrepancy (D-xx in
+    quality/api-inventory.json) or a finding candidate (F-T11-xx in
+    quality/evidence/T11.md). Extension keywords (`x-lightnvr-*`) are
+    annotations: they never change validation results. The schemas additionally
+    enforce explicit client-input and response-redaction policies: they do not
+    claim that every currently accepted request or emitted response conforms.
+    Known violations are recorded in the fixtures and findings, with
+    expected_server_response separate from schema validity.
+
+    Compatibility policy: response objects are open (unknown additional keys
+    are compatible) except where a schema states otherwise for redaction
+    reasons; request bodies are closed. Errors use `{"error": "<message>"}`.
+  license:
+    name: GPL-3.0-or-later
+    identifier: GPL-3.0-or-later
+servers:
+  - url: /
+    description: Same origin as the web UI.
+tags:
+  - name: streams
+    description: Streams list and edit pilot.
+  - name: pilot-option-dependency
+    description: Read-only endpoints the Streams list/edit UI loads to populate options and gating.
+security:
+  - sessionCookie: []
+  - basicAuth: []
+  - apiKey: []
+  - bearerAuth: []
+x-lightnvr-coverage:
+  scope: streams-pilot
+  inventory: quality/api-inventory.json
+  specified_operations:
+    - GET /api/streams
+    - GET /api/streams/{name}/full
+    - PUT /api/streams/{name}
+    - GET /api/streams/{name}/zones
+    - GET /api/client-config
+    - GET /api/detection/models
+    - GET /api/auth/verify
+  inventoried_not_specified:
+    - GET /api/streams/{name} (unwrapped single stream; same object as /full .stream)
+    - POST /api/streams
+    - POST /api/streams/test
+    - DELETE /api/streams/{name}
+    - POST /api/streams/{name}/zones
+    - DELETE /api/streams/{name}/zones
+    - POST /api/streams/{name}/refresh
+    - all other routes in quality/api-inventory.json routes[]
+  partially_specified:
+    - operation: GET /api/streams
+      note: the legacy (non-summary) array is schema-described via LegacyStreamList but is out of pilot and not contract-tested.
+    - operation: PUT /api/streams/{name}
+      note: enable_disabled and set_privacy_mode are described because they share the operation, but their flows are out of pilot.
+paths:
+  /api/streams:
+    $ref: './contracts/streams.yaml#/paths/~1api~1streams'
+  /api/streams/{name}/full:
+    $ref: './contracts/streams.yaml#/paths/~1api~1streams~1%7Bname%7D~1full'
+  /api/streams/{name}:
+    $ref: './contracts/streams.yaml#/paths/~1api~1streams~1%7Bname%7D'
+  /api/streams/{name}/zones:
+    $ref: './contracts/streams.yaml#/paths/~1api~1streams~1%7Bname%7D~1zones'
+  /api/client-config:
+    $ref: './contracts/streams.yaml#/paths/~1api~1client-config'
+  /api/detection/models:
+    $ref: './contracts/streams.yaml#/paths/~1api~1detection~1models'
+  /api/auth/verify:
+    $ref: './contracts/streams.yaml#/paths/~1api~1auth~1verify'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: HttpOnly session cookie set by POST /api/auth/login.
+    basicAuth:
+      type: http
+      scheme: basic
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API token (scoped tokens are accepted by the streams handlers but not by /api/auth/verify).
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API token presented as a bearer credential.
+  x-lightnvr-anonymous-modes: >-
+    When web authentication is disabled every request is treated as an admin.
+    In demo mode an unauthenticated request is treated as a viewer
+    pseudo-user. Neither mode appears as a security requirement.

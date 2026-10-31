@@ -1,0 +1,17 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "response",
+  "status": 202,
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateAccepted",
+  "expect": "valid",
+  "description": "ONVIF stream whose inline capability test failed; update still accepted.",
+  "body": {
+    "success": true,
+    "message": "Stream update request accepted and processing",
+    "onvif_status": "error",
+    "onvif_message": "Failed to detect ONVIF capabilities"
+  },
+  "schema_base": "docs/api/contracts/"
+}

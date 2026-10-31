@@ -1,0 +1,19 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "invalid",
+  "violates": "detection_retention_days min -1",
+  "expected_server_response": {
+    "status": 400,
+    "body": {
+      "error": "detection_retention_days must be between -1 and 365"
+    }
+  },
+  "body": {
+    "detection_retention_days": -2
+  },
+  "schema_base": "docs/api/contracts/"
+}

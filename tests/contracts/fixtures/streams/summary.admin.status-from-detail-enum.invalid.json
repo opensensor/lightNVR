@@ -1,0 +1,45 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listStreams",
+  "direction": "response",
+  "status": 200,
+  "principal": "live_viewer",
+  "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+  "expect": "invalid",
+  "violates": "summary status never uses Reconnecting (detail-only states)",
+  "body": {
+    "streams": [
+      {
+        "camera_uuid": "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b",
+        "name": "front-door",
+        "location_uuid": "0a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "location_name": "North Gate",
+        "location_path": "Campus / North Gate",
+        "enabled": true,
+        "width": 1920,
+        "height": 1080,
+        "fps": 15,
+        "codec": "h264",
+        "protocol": 0,
+        "record": true,
+        "record_on_schedule": true,
+        "detection_based_recording": false,
+        "isOnvif": true,
+        "tags": "outdoor,entrance",
+        "status": "Reconnecting",
+        "availability": "live",
+        "first_video_at": 1767225600,
+        "last_frame_ts": 1793404800,
+        "current_fps": 14.8,
+        "recording_active": true,
+        "last_recording_at": 1793404740,
+        "can_configure": false
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "schema_base": "docs/api/contracts/"
+}

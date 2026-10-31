@@ -1,0 +1,19 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "invalid",
+  "violates": "eptz_config must be a v1 equidistant ceiling document (contentSchema; annotation-only in 2020-12, so a validator may need explicit contentSchema support)",
+  "expected_server_response": {
+    "status": 400,
+    "body": {
+      "error": "eptz_config is not a supported version-1 equidistant ceiling configuration"
+    }
+  },
+  "body": {
+    "eptz_config": "{\"version\":1,\"projection\":\"rectilinear\"}"
+  },
+  "schema_base": "docs/api/contracts/"
+}

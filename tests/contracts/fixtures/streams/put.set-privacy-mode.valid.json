@@ -1,0 +1,21 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "request": {
+    "method": "PUT",
+    "path": "/api/streams/front-door"
+  },
+  "schema": "streams.yaml#/components/schemas/StreamPrivacyModeRequest",
+  "expect": "valid",
+  "expected_server_response": {
+    "status": 200,
+    "schema": "streams.yaml#/components/schemas/StreamPrivacyModeResponse"
+  },
+  "description": "Live cell privacy toggle (out of pilot flow, same operation).",
+  "body": {
+    "set_privacy_mode": true
+  },
+  "schema_base": "docs/api/contracts/"
+}

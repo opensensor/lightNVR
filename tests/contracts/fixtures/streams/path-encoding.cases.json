@@ -1,0 +1,84 @@
+{
+  "$comment": "Synthetic path-encoding cases for T18/T19 (not schema fixtures). 'expected' is the current C behavior; F-T11-xx marks a finding candidate.",
+  "cases": [
+    {
+      "name": "front-door",
+      "path": "/api/streams/front-door/full",
+      "expected": "resolves to front-door"
+    },
+    {
+      "name": "Garage Cam",
+      "path": "/api/streams/Garage%20Cam/full",
+      "expected": "resolves to 'Garage Cam' (legacy name; new names cannot contain spaces)"
+    },
+    {
+      "name": "Garage Cam",
+      "path": "/api/streams/Garage+Cam/full",
+      "expected": "also resolves to 'Garage Cam': path decoding maps '+' to space"
+    },
+    {
+      "name": "a+b",
+      "path": "/api/streams/a%2Bb",
+      "expected": "resolves to 'a+b' (encodeURIComponent output)"
+    },
+    {
+      "name": "a+b",
+      "path": "/api/streams/a+b",
+      "expected": "resolves to 'a b' (wrong stream / 404) because '+' decodes to space"
+    },
+    {
+      "name": "cam.v2_east-1",
+      "path": "/api/streams/cam.v2_east-1",
+      "expected": "resolves; '.', '-' and '_' need no encoding"
+    },
+    {
+      "name": "lobby/east",
+      "path": "/api/streams/lobby%2Feast/full",
+      "expected": "F-T11-08: /full truncates the decoded name at '/' and reads stream 'lobby'"
+    },
+    {
+      "name": "lobby/east",
+      "path": "/api/streams/lobby%2Feast",
+      "expected": "PUT resolves to 'lobby/east'"
+    },
+    {
+      "name": "..",
+      "path": "/api/streams/%2E%2E/full",
+      "expected": "rejected by the HTTP parser before routing (dot segment)"
+    },
+    {
+      "name": "<255 x 'e'>",
+      "path": "/api/streams/<255 x 'e'>",
+      "expected": "resolves (255-byte name, 255-byte segment)"
+    },
+    {
+      "name": "<100 x U+00E9>",
+      "path": "/api/streams/<100 x %C3%A9>",
+      "expected": "F-T11-09: 400 'Invalid request path' because the encoded segment is 600 bytes although the decoded name is 200"
+    },
+    {
+      "name": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "path": "/api/streams/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/full",
+      "expected": "resolves to the complete name (assuming the named stream and authorization exist)",
+      "encoded_suffix_bytes": 255
+    },
+    {
+      "name": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "path": "/api/streams/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/full",
+      "expected": "F-T11-09: 400 because the encoded suffix including /full is 256 bytes",
+      "encoded_suffix_bytes": 256
+    },
+    {
+      "name": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "path": "/api/streams/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/zones",
+      "expected": "resolves to the complete name (assuming the named stream and authorization exist)",
+      "encoded_suffix_bytes": 255
+    },
+    {
+      "name": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "path": "/api/streams/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/zones",
+      "expected": "F-T11-09: 400 because the encoded suffix including /zones is 256 bytes",
+      "encoded_suffix_bytes": 256
+    }
+  ]
+}

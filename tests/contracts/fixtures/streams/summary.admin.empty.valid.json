@@ -1,0 +1,25 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listStreams",
+  "direction": "response",
+  "status": 200,
+  "principal": "no_camera_grants",
+  "request": {
+    "method": "GET",
+    "path": "/api/streams",
+    "query": {
+      "summary": "true"
+    }
+  },
+  "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+  "expect": "valid",
+  "description": "No visible cameras: total 0, total_pages 0.",
+  "body": {
+    "streams": [],
+    "total": 0,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 0
+  },
+  "schema_base": "docs/api/contracts/"
+}

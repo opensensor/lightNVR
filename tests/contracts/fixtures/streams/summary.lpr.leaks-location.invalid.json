@@ -1,0 +1,24 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listStreams",
+  "direction": "response",
+  "status": 200,
+  "principal": "lpr_searcher",
+  "schema": "streams.yaml#/components/schemas/StreamSummaryPageLpr",
+  "expect": "invalid",
+  "violates": "LPR rows are identity-only (closed object)",
+  "body": {
+    "streams": [
+      {
+        "camera_uuid": "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b",
+        "name": "front-door",
+        "location_path": "Campus / North Gate"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "schema_base": "docs/api/contracts/"
+}

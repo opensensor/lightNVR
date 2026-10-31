@@ -1,0 +1,15 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "response",
+  "status": 202,
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateAccepted",
+  "expect": "valid",
+  "description": "Non-ONVIF stream.",
+  "body": {
+    "success": true,
+    "message": "Stream update request accepted and processing"
+  },
+  "schema_base": "docs/api/contracts/"
+}

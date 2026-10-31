@@ -1,0 +1,20 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "verifyAuth",
+  "direction": "response",
+  "status": 200,
+  "principal": "anonymous_auth_disabled",
+  "schema": "streams.yaml#/components/schemas/AuthVerifyResponse",
+  "expect": "valid",
+  "body": {
+    "authenticated": true,
+    "username": "admin",
+    "role": "admin",
+    "must_change_password": false,
+    "auth_enabled": false,
+    "auth_timeout_hours": 24,
+    "auth_absolute_timeout_hours": 168,
+    "trusted_device_days": 30
+  },
+  "schema_base": "docs/api/contracts/"
+}

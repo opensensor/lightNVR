@@ -1,0 +1,49 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listDetectionModels",
+  "direction": "response",
+  "status": 200,
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/DetectionModelsResponse",
+  "expect": "invalid",
+  "violates": "supported:false requires unsupported_reason",
+  "body": {
+    "models": [
+      {
+        "id": "motion",
+        "name": "Built-in Motion Detection",
+        "path": "motion",
+        "type": "builtin",
+        "supported": true,
+        "description": "Built-in motion detection"
+      },
+      {
+        "id": "api-detection",
+        "name": "API Detection",
+        "path": "api-detection",
+        "type": "api",
+        "supported": true,
+        "description": "External API-based object detection"
+      },
+      {
+        "id": "onvif",
+        "name": "ONVIF Motion Events",
+        "path": "onvif",
+        "type": "onvif",
+        "supported": true,
+        "description": "ONVIF camera motion events detection"
+      },
+      {
+        "id": "/m/x.sod",
+        "name": "x.sod",
+        "path": "/m/x.sod",
+        "type": "sod",
+        "supported": false
+      }
+    ],
+    "litert_available": false,
+    "sod_available": false,
+    "count": 4
+  },
+  "schema_base": "docs/api/contracts/"
+}

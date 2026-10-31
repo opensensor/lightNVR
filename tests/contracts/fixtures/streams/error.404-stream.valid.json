@@ -1,0 +1,12 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "direction": "response",
+  "status": 404,
+  "principal": "anonymous",
+  "schema": "common.yaml#/components/schemas/ErrorResponse",
+  "expect": "valid",
+  "body": {
+    "error": "Stream not found"
+  },
+  "schema_base": "docs/api/contracts/"
+}

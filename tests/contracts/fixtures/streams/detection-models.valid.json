@@ -1,0 +1,51 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listDetectionModels",
+  "direction": "response",
+  "status": 200,
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/DetectionModelsResponse",
+  "expect": "valid",
+  "description": "Built-ins plus one unsupported TFLite file in a build without LiteRT.",
+  "body": {
+    "models": [
+      {
+        "id": "motion",
+        "name": "Built-in Motion Detection",
+        "path": "motion",
+        "type": "builtin",
+        "supported": true,
+        "description": "Built-in motion detection"
+      },
+      {
+        "id": "api-detection",
+        "name": "API Detection",
+        "path": "api-detection",
+        "type": "api",
+        "supported": true,
+        "description": "External API-based object detection"
+      },
+      {
+        "id": "onvif",
+        "name": "ONVIF Motion Events",
+        "path": "onvif",
+        "type": "onvif",
+        "supported": true,
+        "description": "ONVIF camera motion events detection"
+      },
+      {
+        "id": "/var/lib/lightnvr/models/synthetic.tflite",
+        "name": "synthetic.tflite",
+        "path": "/var/lib/lightnvr/models/synthetic.tflite",
+        "type": "tflite",
+        "supported": false,
+        "unsupported_reason": "This build has no in-process LiteRT engine (rebuild with -DENABLE_LITERT=ON and the third_party/litert submodule initialized)",
+        "size": 4194304
+      }
+    ],
+    "litert_available": false,
+    "sod_available": false,
+    "count": 4
+  },
+  "schema_base": "docs/api/contracts/"
+}

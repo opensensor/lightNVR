@@ -1,0 +1,19 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "invalid",
+  "violates": "publish_url rejects quote characters",
+  "expected_server_response": {
+    "status": 400,
+    "body": {
+      "error": "publish_url destinations must be rtmp:// or rtmps:// URLs"
+    }
+  },
+  "body": {
+    "publish_url": "rtmp://live.example.invalid/a\"b"
+  },
+  "schema_base": "docs/api/contracts/"
+}

@@ -1,0 +1,13 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "getStreamZones",
+  "direction": "response",
+  "status": 200,
+  "principal": "live_viewer",
+  "schema": "streams.yaml#/components/schemas/ZonesResponse",
+  "expect": "valid",
+  "body": {
+    "zones": []
+  },
+  "schema_base": "docs/api/contracts/"
+}

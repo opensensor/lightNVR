@@ -1,0 +1,1209 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 OpenSensor Engineering and LightNVR contributors
+#
+# Streams pilot contract fragment (T11). Root: docs/api/openapi.yaml.
+# Not a standalone OpenAPI document: `paths` entries are Path Item $ref
+# targets and `components` holds the schemas they use.
+#
+# Pilot scope: Streams list + edit (GET /api/streams?summary=true,
+# GET /api/streams/{name}/full, PUT /api/streams/{name}) and the read-only
+# option dependencies the list/edit UI loads (client-config, detection models,
+# auth verify, zones read). Every other Streams operation is inventoried in
+# quality/api-inventory.json (streams_pilot.out_of_pilot_streams_operations)
+# and intentionally NOT specified here.
+#
+# Modelling rules used throughout:
+# - The server never emits JSON null in these responses; absent text is "".
+# - Response objects are open (additive fields are compatible) EXCEPT that
+#   viewer-facing schemas explicitly forbid or pin every credential-bearing
+#   key, and LPR summary rows are closed (identity only).
+# - Request objects are closed: the server silently ignores unknown keys, so
+#   the contract forbids them to catch client drift (e.g. D-01 `is_deleted`).
+# - Numeric bounds appear only where the C handler enforces them. Intended but
+#   unenforced ranges are recorded as `x-lightnvr-intended-range`.
+# - `x-lightnvr-overflow` says what the server does with an over-long string:
+#   `truncate` (silently, 202) or the status it returns.
+paths:
+  /api/streams:
+    get:
+      operationId: listStreams
+      tags: [streams]
+      summary: List streams (paged summary for the pilot; legacy full list otherwise)
+      description: >-
+        Authentication is checked first (401). With `summary=true` (or `1`) the
+        paged summary variant is returned; its row shape depends on `surface`.
+        Rows are filtered per camera: `admin`/`live` require live.view,
+        `lpr` requires both lpr.search and lpr.read. `can_configure` is the
+        per-camera camera.configure decision. Query parameters are validated in
+        this order: page/page_size, sort_by, sort_order, surface, availability.
+        Without `summary`, the legacy unbounded array of full stream objects is
+        returned (out of pilot; no current web/js caller) and every other query
+        parameter is ignored.
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:handle_get_streams,handle_get_stream_summaries
+      x-lightnvr-authz:
+        authentication: required (demo mode grants a viewer pseudo-user; auth disabled grants admin)
+        row_filter:
+          admin: live.view
+          live: live.view
+          lpr: lpr.search AND lpr.read
+        can_configure: camera.configure (per camera)
+      x-lightnvr-response-variant-by-query:
+        parameter: surface
+        requires: { summary: ['true', '1'] }
+        mapping:
+          admin: '#/components/schemas/StreamSummaryPageAdmin'
+          live: '#/components/schemas/StreamSummaryPageLive'
+          lpr: '#/components/schemas/StreamSummaryPageLpr'
+        otherwise: '#/components/schemas/LegacyStreamList'
+      parameters:
+        - name: summary
+          in: query
+          description: Exactly `true` or `1` selects the summary variant; any other value (including `TRUE`) selects the legacy list.
+          schema: { type: string }
+        - name: surface
+          in: query
+          schema: { type: string, enum: [admin, live, lpr], default: admin }
+          description: 'Invalid value: 400 "surface must be admin, live or lpr".'
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000000, default: 1 }
+          description: >-
+            Decimal integer parsed by strtol: leading whitespace and a plus sign
+            are accepted, but trailing whitespace/suffixes are rejected. Empty
+            or out of range:
+            400 "page and page_size must be positive; page_size max is 100".
+            A page beyond the last returns an empty `streams` array with the real totals.
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          description: 'Out of range: 400 "page and page_size must be positive; page_size max is 100".'
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [name, status, resolution, fps, recording], default: name }
+          description: 'Invalid: 400 "Invalid stream summary sort field". Ties break on case-insensitive name.'
+        - name: sort_order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
+          description: 'Invalid: 400 "sort_order must be asc or desc".'
+        - name: availability
+          in: query
+          schema: { type: string, enum: [all, live, offline, never_connected, disabled], default: all }
+          description: 'Invalid: 400 "Invalid availability value".'
+        - name: search
+          in: query
+          description: >-
+            Case-insensitive substring over name, camera_uuid, tags, location
+            path and inventory address. Values longer than 255 bytes are
+            silently truncated.
+          schema: { type: string, maxLength: 255 }
+        - name: include_admin_url
+          in: query
+          description: >-
+            Exactly `true` or `1` adds `admin_url` to rows on the admin surface
+            (never on live/lpr). Rows without camera.configure get "".
+          schema: { type: string }
+      responses:
+        '200':
+          description: Summary page (surface-specific) or legacy array.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/StreamSummaryPageAdmin'
+                  - $ref: '#/components/schemas/StreamSummaryPageLive'
+                  - $ref: '#/components/schemas/StreamSummaryPageLpr'
+                  - $ref: '#/components/schemas/LegacyStreamList'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '500':
+          description: >-
+            Includes "Authorization policy evaluation failed", which is also
+            returned for the WHOLE list when any stream lacks a fleet inventory
+            row (finding candidate F-T11-10).
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /api/streams/{name}/full:
+    get:
+      operationId: getStreamFull
+      tags: [streams]
+      summary: Full stream detail used by the edit form
+      description: >-
+        Order of checks: path decode (400 "Invalid request path"), stream
+        lookup (404 "Stream not found", BEFORE authentication), configuration
+        read (500), authentication (401), fleet row (404 "Camera not found"),
+        live.view (403). Callers with live.view but without camera.configure
+        receive the live-only redacted variant; `can_control_privacy` equals
+        the camera.configure decision and selects the variant. The response is
+        wrapped as `{"stream": {...}}` (GET /api/streams/{name}, out of pilot,
+        returns the same object unwrapped). The handler never emits
+        `detection_zones` (D-02); zones come from GET /api/streams/{name}/zones.
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:handle_get_stream_full,get_stream_api_credentials,stream_user_can_modify
+      x-lightnvr-authz:
+        required: live.view (per camera)
+        variant_selector: camera.configure (per camera) -> can_control_privacy
+      x-lightnvr-response-variant-by-field:
+        field: stream.can_control_privacy
+        mapping:
+          'true': '#/components/schemas/StreamFullResponseConfigurable'
+          'false': '#/components/schemas/StreamFullResponseLiveOnly'
+      parameters:
+        - $ref: './common.yaml#/components/parameters/StreamNamePath'
+      responses:
+        '200':
+          description: Stream detail, configure or live-only variant.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamFullResponse'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './common.yaml#/components/responses/StreamNotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /api/streams/{name}:
+    put:
+      operationId: updateStream
+      tags: [streams]
+      summary: Update stream configuration (asynchronous apply)
+      description: >-
+        Order of checks: path decode (400 "Invalid request path"), stream
+        lookup (404 "Stream not found", BEFORE authentication), configuration
+        read (500), camera.configure authorization (401/404 "Camera not
+        found"/403) BEFORE the body is parsed, then body parse (400 "Invalid
+        JSON in request body" for an empty or unparsable body). Fields are
+        applied in handler order; the first failing validation returns its
+        error and nothing is stored. Present keys with the wrong JSON type are
+        silently ignored (F-T11-05). A valid JSON body that is not an object
+        (e.g. `null`, `[]`) is accepted as a no-op 202 (F-T11-04).
+        If `isOnvif` is omitted the server recomputes it from whether `url`
+        contains "onvif" (F-T11-11). When the effective isOnvif is true the
+        handler copies onvif_username/onvif_password/onvif_profile, moves URL
+        credentials into them, and runs an ONVIF connection test inline before
+        responding; when false those three keys are ignored.
+        `set_privacy_mode` short-circuits: after all other keys were parsed and
+        validated (and `enable_disabled` already executed) it writes only
+        privacy_mode and answers 200; other edits in the same body are
+        discarded (F-T11-12). Otherwise the response is 202 and a detached
+        worker applies the change; the 202 does not prove persistence.
+        Errors in the 400 set: "playback_transport is invalid",
+        "eptz_config must be a JSON string", "eptz_config exceeds size limit",
+        "eptz_config is not a supported version-1 equidistant ceiling configuration",
+        "retention_days must be between -1 and 365",
+        "detection_retention_days must be between -1 and 365",
+        "detection_url must use http, https, rtsp, or rtsps",
+        "publish_url destinations must be rtmp:// or rtmps:// URLs".
+        413 set: "detection_url exceeds size limit", "publish_url exceeds size limit".
+      x-lightnvr-source: src/web/api_handlers_streams_modify.c:handle_put_stream,check_stream_write_access,copy_valid_eptz_config,is_allowed_detection_url,normalize_stream_url_credentials
+      x-lightnvr-authz:
+        required: camera.configure (per camera), checked before body parse
+      parameters:
+        - $ref: './common.yaml#/components/parameters/StreamNamePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/StreamUpdateRequest'
+                - $ref: '#/components/schemas/StreamPrivacyModeRequest'
+      responses:
+        '200':
+          description: set_privacy_mode short-circuit result.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamPrivacyModeResponse'
+        '202':
+          description: Update accepted; applied asynchronously by a worker thread.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamUpdateAccepted'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './common.yaml#/components/responses/StreamNotFound'
+        '413':
+          $ref: './common.yaml#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /api/streams/{name}/zones:
+    get:
+      operationId: getStreamZones
+      tags: [streams, pilot-option-dependency]
+      summary: Detection zones for a stream (read by the edit modal and ZoneEditor)
+      description: >-
+        No pre-auth existence check: 401 first, then 404 "Camera not found"
+        for unknown names, 403 without live.view. Path decode failure is 400
+        "Invalid stream name". POST/DELETE on this path are out of pilot.
+      x-lightnvr-source: src/web/api_handlers_zones.c:handle_get_zones
+      x-lightnvr-authz:
+        required: live.view (per camera)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/StreamNamePath'
+      responses:
+        '200':
+          description: Zones for the stream (possibly empty).
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZonesResponse'
+        '400':
+          $ref: './common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './common.yaml#/components/responses/StreamNotFound'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /api/client-config:
+    get:
+      operationId: getClientConfig
+      tags: [pilot-option-dependency]
+      summary: Viewer-safe runtime playback configuration
+      x-lightnvr-source: src/web/api_handlers_settings.c:handle_get_client_config
+      x-lightnvr-authz:
+        required: authentication only
+      responses:
+        '200':
+          description: Client configuration.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientConfig'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /api/detection/models:
+    get:
+      operationId: listDetectionModels
+      tags: [pilot-option-dependency]
+      summary: Detection model options for the edit form
+      description: >-
+        401 unauthenticated; 403 unless the principal has global
+        camera.configure or camera.configure on at least one camera. Viewers
+        therefore receive 403 and the UI shows no models (D-04).
+      x-lightnvr-source: src/web/api_handlers_detection_models.c:handle_get_detection_models
+      x-lightnvr-authz:
+        required: camera.configure (global, or on >= 1 camera)
+      responses:
+        '200':
+          description: Built-in models first (motion, api-detection, onvif), then file models.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetectionModelsResponse'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './common.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './common.yaml#/components/responses/InternalError'
+
+  /api/auth/verify:
+    get:
+      operationId: verifyAuth
+      tags: [pilot-option-dependency]
+      summary: Current principal (role and demo-mode gating for the Streams UI)
+      description: >-
+        Three 200 shapes: authentication disabled (synthetic admin), a real
+        authenticated user, or demo-mode anonymous viewer. Uses
+        httpd_get_authenticated_user (scoped API tokens are not accepted here
+        although the streams handlers accept them). 401 also clears the
+        session cookie. An authenticated user in demo mode receives no
+        `demo_mode` key (F-T11-13).
+      x-lightnvr-source: src/web/api_handlers_auth_backend_agnostic.c:handle_auth_verify
+      security:
+        - {}
+        - sessionCookie: []
+        - basicAuth: []
+        - apiKey: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Principal description.
+          headers:
+            Cache-Control:
+              $ref: './common.yaml#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthVerifyResponse'
+        '401':
+          $ref: './common.yaml#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    # ------------------------------------------------------------------
+    # Summary list (GET /api/streams?summary=true)
+    # ------------------------------------------------------------------
+    SummaryStatus:
+      type: string
+      enum: [Running, Degraded, Error, Stopped, Unknown]
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:summary_status
+
+    Availability:
+      type: string
+      enum: [live, offline, never_connected, disabled]
+      x-lightnvr-source: src/core/camera_selector.c:fleet_availability_state_name
+
+    SummaryForbiddenSensitiveKeys:
+      description: >-
+        Summary rows never carry credential-bearing configuration. Presence of
+        any of these keys is a redaction failure regardless of value.
+      not:
+        anyOf:
+          - required: [url]
+          - required: [onvif_username]
+          - required: [onvif_password]
+          - required: [sub_stream_url]
+          - required: [detection_url]
+          - required: [publish_url]
+          - required: [go2rtc_source_override]
+          - required: [detection_api_url]
+
+    StreamSummaryLpr:
+      description: >-
+        surface=lpr row. LPR discovery grants identity only, so this object is
+        closed: any extra key (configuration, location, health) is a policy leak.
+      type: object
+      additionalProperties: false
+      required: [camera_uuid, name]
+      properties:
+        camera_uuid:
+          $ref: './common.yaml#/components/schemas/CameraUuid'
+        name:
+          $ref: './common.yaml#/components/schemas/StreamName'
+
+    StreamSummaryBase:
+      description: Fields shared by admin and live summary rows (always emitted).
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/SummaryForbiddenSensitiveKeys'
+      required:
+        - camera_uuid
+        - name
+        - location_uuid
+        - location_name
+        - location_path
+        - enabled
+        - width
+        - height
+        - fps
+        - codec
+        - protocol
+        - record
+        - record_on_schedule
+        - detection_based_recording
+        - isOnvif
+        - tags
+        - status
+        - availability
+        - first_video_at
+        - last_frame_ts
+        - current_fps
+        - recording_active
+        - last_recording_at
+        - can_configure
+      properties:
+        camera_uuid: { $ref: './common.yaml#/components/schemas/CameraUuid' }
+        name: { $ref: './common.yaml#/components/schemas/StreamName' }
+        location_uuid: { $ref: './common.yaml#/components/schemas/CameraUuid' }
+        location_name: { type: string, maxLength: 127 }
+        location_path: { type: string, maxLength: 1023 }
+        enabled: { type: boolean }
+        width: { $ref: './common.yaml#/components/schemas/Int32' }
+        height: { $ref: './common.yaml#/components/schemas/Int32' }
+        fps: { $ref: './common.yaml#/components/schemas/Int32' }
+        codec: { type: string, maxLength: 15 }
+        protocol: { $ref: './common.yaml#/components/schemas/StreamProtocol' }
+        record: { type: boolean }
+        record_on_schedule: { type: boolean }
+        detection_based_recording: { type: boolean }
+        isOnvif: { type: boolean }
+        tags: { type: string, maxLength: 255, description: Comma-separated legacy tags. }
+        status: { $ref: '#/components/schemas/SummaryStatus' }
+        availability: { $ref: '#/components/schemas/Availability' }
+        first_video_at: { $ref: './common.yaml#/components/schemas/EpochSecondsOrZero' }
+        last_frame_ts: { $ref: './common.yaml#/components/schemas/EpochSecondsOrZero' }
+        current_fps: { type: number, minimum: 0 }
+        recording_active: { type: boolean }
+        last_recording_at: { $ref: './common.yaml#/components/schemas/EpochSecondsOrZero' }
+        can_configure:
+          type: boolean
+          description: Per-camera camera.configure decision. Authoritative for edit affordances (D-05).
+      x-lightnvr-not-emitted:
+        - error_message (D-03)
+        - playback_transport on the admin surface (D-03)
+
+    StreamSummaryAdmin:
+      description: >-
+        surface=admin row. `admin_url` appears only with include_admin_url and
+        must be "" when can_configure is false.
+      allOf:
+        - $ref: '#/components/schemas/StreamSummaryBase'
+        - type: object
+          properties:
+            admin_url: { type: string, maxLength: 511 }
+          if:
+            required: [can_configure]
+            properties:
+              can_configure: { const: false }
+          then:
+            properties:
+              admin_url: { $ref: './common.yaml#/components/schemas/EmptyString' }
+
+    StreamSummaryLive:
+      description: surface=live row. Never carries admin_url.
+      allOf:
+        - $ref: '#/components/schemas/StreamSummaryBase'
+        - type: object
+          not:
+            required: [admin_url]
+          required:
+            - streaming_enabled
+            - playback_transport
+            - eptz_config
+            - detection_model
+            - privacy_mode
+            - can_control_privacy
+            - has_sub_stream
+            - ptz_enabled
+            - backchannel_enabled
+            - go2rtc_hls_available
+          properties:
+            streaming_enabled: { type: boolean }
+            playback_transport: { $ref: './common.yaml#/components/schemas/PlaybackTransport' }
+            eptz_config: { $ref: '#/components/schemas/EptzConfigString' }
+            detection_model: { type: string, maxLength: 511 }
+            privacy_mode: { type: boolean }
+            can_control_privacy:
+              type: boolean
+              description: Equals can_configure for the row.
+            has_sub_stream: { type: boolean }
+            ptz_enabled: { type: boolean }
+            backchannel_enabled: { type: boolean }
+            go2rtc_hls_available: { type: boolean }
+
+    SummaryPageMeta:
+      type: object
+      required: [total, page, page_size, total_pages]
+      properties:
+        total: { type: integer, minimum: 0, description: Rows visible to the caller after filtering. }
+        page: { type: integer, minimum: 1, maximum: 1000000 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        total_pages: { type: integer, minimum: 0, description: '0 when total is 0, else ceil(total / page_size).' }
+
+    StreamSummaryPageAdmin:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPageMeta'
+        - type: object
+          required: [streams]
+          properties:
+            streams:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/StreamSummaryAdmin' }
+
+    StreamSummaryPageLive:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPageMeta'
+        - type: object
+          required: [streams]
+          properties:
+            streams:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/StreamSummaryLive' }
+
+    StreamSummaryPageLpr:
+      allOf:
+        - $ref: '#/components/schemas/SummaryPageMeta'
+        - type: object
+          required: [streams]
+          properties:
+            streams:
+              type: array
+              maxItems: 100
+              items: { $ref: '#/components/schemas/StreamSummaryLpr' }
+
+    LegacyStreamList:
+      description: >-
+        Out of pilot (inventoried, not contract-tested by T18): GET /api/streams
+        without summary. Bare unbounded array of the same objects as the /full
+        detail, each redacted per camera.
+      x-lightnvr-pilot: false
+      type: array
+      items: { $ref: '#/components/schemas/StreamDetail' }
+
+    # ------------------------------------------------------------------
+    # Full detail (GET /api/streams/{name}/full)
+    # ------------------------------------------------------------------
+    DetailStatus:
+      type: string
+      enum: [Running, Degraded, Error, Stopped, Unknown, Starting, Stopping, Reconnecting]
+      description: >-
+        Fleet health first; when health is unknown and the stream is enabled,
+        the stream-state/UDT status is used (adds Starting/Stopping/Reconnecting).
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:summary_status,resolve_effective_stream_status
+
+    EptzConfigString:
+      description: >-
+        "" (disabled) or JSON text of a version-1 equidistant ceiling dewarp
+        document, at most 1023 bytes. The server stores it opaquely after
+        validating; the document schema is EptzConfigV1.
+      type: string
+      maxLength: 1023
+      contentMediaType: application/json
+      contentSchema: { $ref: '#/components/schemas/EptzConfigV1' }
+      x-lightnvr-max-bytes: 1023
+      x-lightnvr-source: src/web/api_handlers_streams_modify.c:copy_valid_eptz_config; include/core/config.h:EPTZ_CONFIG_MAX
+
+    EptzConfigV1:
+      type: object
+      required: [version, projection, mount, centerX, centerY, radius, fov, rotation, defaultYaw, defaultTilt, defaultViewFov]
+      properties:
+        version: { const: 1 }
+        projection: { const: equidistant }
+        mount: { const: ceiling }
+        centerX: { type: number, minimum: 0, maximum: 1 }
+        centerY: { type: number, minimum: 0, maximum: 1 }
+        radius: { type: number, minimum: 0.05, maximum: 1 }
+        fov: { type: number, minimum: 160, maximum: 360 }
+        rotation: { type: number, minimum: -360, maximum: 360 }
+        defaultYaw: { type: number, minimum: -360, maximum: 360 }
+        defaultTilt: { type: number, minimum: -90, maximum: 30 }
+        defaultViewFov: { type: number, minimum: 20, maximum: 120 }
+
+    StreamDetailBase:
+      description: >-
+        Non-sensitive fields of the full stream object, emitted for every caller
+        with live.view. Credential-bearing keys (url, onvif_username,
+        onvif_password, admin_url, go2rtc_source_override, sub_stream_url,
+        detection_url, publish_url) are declared here only as strings and are
+        NOT required; each variant pins them.
+      type: object
+      required:
+        - camera_uuid
+        - location_uuid
+        - name
+        - enabled
+        - streaming_enabled
+        - playback_transport
+        - eptz_config
+        - width
+        - height
+        - fps
+        - codec
+        - priority
+        - record
+        - segment_duration
+        - detection_based_recording
+        - detection_model
+        - detection_threshold
+        - detection_interval
+        - pre_detection_buffer
+        - post_detection_buffer
+        - detection_object_filter
+        - detection_object_filter_list
+        - protocol
+        - record_audio
+        - audio_voice_enhancement
+        - isOnvif
+        - backchannel_enabled
+        - retention_days
+        - detection_retention_days
+        - max_storage_mb
+        - tier_critical_multiplier
+        - tier_important_multiplier
+        - tier_ephemeral_multiplier
+        - storage_priority
+        - ptz_enabled
+        - ptz_max_x
+        - ptz_max_y
+        - ptz_max_z
+        - ptz_has_home
+        - onvif_profile
+        - onvif_port
+        - record_on_schedule
+        - recording_schedule
+        - detection_record_on_schedule
+        - detection_recording_schedule
+        - tags
+        - privacy_mode
+        - can_control_privacy
+        - motion_trigger_source
+        - has_sub_stream
+        - status
+        - go2rtc_hls_available
+      properties:
+        camera_uuid: { $ref: './common.yaml#/components/schemas/CameraUuid' }
+        location_uuid: { $ref: './common.yaml#/components/schemas/CameraUuid' }
+        name: { $ref: './common.yaml#/components/schemas/StreamName' }
+        url: { type: string, maxLength: 511 }
+        enabled: { type: boolean }
+        streaming_enabled: { type: boolean }
+        playback_transport: { $ref: './common.yaml#/components/schemas/PlaybackTransport' }
+        eptz_config: { $ref: '#/components/schemas/EptzConfigString' }
+        width: { $ref: './common.yaml#/components/schemas/Int32' }
+        height: { $ref: './common.yaml#/components/schemas/Int32' }
+        fps: { $ref: './common.yaml#/components/schemas/Int32' }
+        codec: { type: string, maxLength: 15 }
+        priority: { $ref: './common.yaml#/components/schemas/Int32' }
+        record: { type: boolean }
+        segment_duration: { $ref: './common.yaml#/components/schemas/Int32' }
+        detection_based_recording: { type: boolean }
+        detection_model: { type: string, maxLength: 511 }
+        detection_threshold:
+          type: integer
+          description: >-
+            Integer percent: (int)(stored_float * 100.0f), truncated toward
+            zero. Not a 0..1 float on the wire.
+        detection_interval: { $ref: './common.yaml#/components/schemas/Int32' }
+        pre_detection_buffer: { $ref: './common.yaml#/components/schemas/Int32' }
+        post_detection_buffer: { $ref: './common.yaml#/components/schemas/Int32' }
+        detection_object_filter: { type: string, maxLength: 15 }
+        detection_object_filter_list: { type: string, maxLength: 255 }
+        protocol: { $ref: './common.yaml#/components/schemas/StreamProtocol' }
+        record_audio: { type: boolean }
+        audio_voice_enhancement: { type: boolean }
+        isOnvif: { type: boolean }
+        backchannel_enabled: { type: boolean }
+        retention_days: { $ref: './common.yaml#/components/schemas/RetentionDays' }
+        detection_retention_days: { $ref: './common.yaml#/components/schemas/RetentionDays' }
+        max_storage_mb:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          description: Quota in MB; 0 = unlimited.
+        tier_critical_multiplier: { type: number }
+        tier_important_multiplier: { type: number }
+        tier_ephemeral_multiplier: { type: number }
+        storage_priority: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_enabled: { type: boolean }
+        ptz_max_x: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_max_y: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_max_z: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_has_home: { type: boolean }
+        onvif_username: { type: string, maxLength: 63 }
+        onvif_password: { type: string, maxLength: 63 }
+        onvif_profile: { type: string, maxLength: 63 }
+        onvif_port:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          description: 0 = derive from the stream URL.
+        record_on_schedule: { type: boolean }
+        recording_schedule: { $ref: './common.yaml#/components/schemas/HourOfWeekSchedule' }
+        detection_record_on_schedule: { type: boolean }
+        detection_recording_schedule: { $ref: './common.yaml#/components/schemas/HourOfWeekSchedule' }
+        tags: { type: string, maxLength: 255 }
+        admin_url: { type: string, maxLength: 511 }
+        privacy_mode: { type: boolean }
+        can_control_privacy: { type: boolean }
+        motion_trigger_source: { type: string, maxLength: 255 }
+        go2rtc_source_override: { type: string, maxLength: 8191 }
+        sub_stream_url: { type: string, maxLength: 511 }
+        has_sub_stream:
+          type: boolean
+          description: Presence of a sub-stream; visible to viewers by design.
+        detection_url: { type: string, maxLength: 511 }
+        publish_url: { type: string, maxLength: 511 }
+        status: { $ref: '#/components/schemas/DetailStatus' }
+        error_message:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Present only when status is Error and a cause was recorded (currently model-load failures).
+        go2rtc_hls_available: { type: boolean }
+      if:
+        required: [status]
+        properties:
+          status: { not: { const: Error } }
+      then:
+        not:
+          required: [error_message]
+      x-lightnvr-not-emitted:
+        - detection_zones (D-02)
+        - detection_api_url
+        - id
+
+    StreamDetailConfigurable:
+      description: >-
+        Admin edit model: caller has camera.configure on this camera
+        (can_control_privacy = true). Sensitive fields carry real values.
+        When separate credentials are in use (isOnvif, or non-empty
+        onvif_username/onvif_password) the server strips userinfo from `url`
+        and surfaces it through the onvif_* fields.
+      allOf:
+        - $ref: '#/components/schemas/StreamDetailBase'
+        - type: object
+          required: [url, onvif_username, onvif_password, admin_url, go2rtc_source_override, sub_stream_url, detection_url, publish_url]
+          properties:
+            can_control_privacy: { const: true }
+          if:
+            anyOf:
+              - required: [isOnvif]
+                properties: { isOnvif: { const: true } }
+              - required: [onvif_username]
+                properties: { onvif_username: { minLength: 1 } }
+              - required: [onvif_password]
+                properties: { onvif_password: { minLength: 1 } }
+          then:
+            properties:
+              url: { $ref: './common.yaml#/components/schemas/UrlWithoutUserinfo' }
+
+    StreamDetailLiveOnly:
+      description: >-
+        Viewer (live.view without camera.configure) model. Every
+        credential-bearing key is OPTIONAL (a server that stops sending it is
+        compatible) but, if present, must be redacted: onvif_* and the
+        administrative URLs must be exactly "", and `url` must be
+        credential-free (no userinfo, no secret-like query parameter). A leaked
+        value therefore fails validation.
+      allOf:
+        - $ref: '#/components/schemas/StreamDetailBase'
+        - type: object
+          properties:
+            can_control_privacy: { const: false }
+            url: { $ref: './common.yaml#/components/schemas/ViewerSafeUrl' }
+            onvif_username: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            onvif_password: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            admin_url: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            go2rtc_source_override: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            sub_stream_url: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            detection_url: { $ref: './common.yaml#/components/schemas/EmptyString' }
+            publish_url: { $ref: './common.yaml#/components/schemas/EmptyString' }
+          not:
+            required: [detection_api_url]
+
+    StreamDetail:
+      description: Either variant, selected by can_control_privacy (mutually exclusive by const).
+      oneOf:
+        - $ref: '#/components/schemas/StreamDetailConfigurable'
+        - $ref: '#/components/schemas/StreamDetailLiveOnly'
+
+    StreamFullResponse:
+      type: object
+      required: [stream]
+      properties:
+        stream: { $ref: '#/components/schemas/StreamDetail' }
+
+    StreamFullResponseConfigurable:
+      type: object
+      required: [stream]
+      properties:
+        stream: { $ref: '#/components/schemas/StreamDetailConfigurable' }
+
+    StreamFullResponseLiveOnly:
+      type: object
+      required: [stream]
+      properties:
+        stream: { $ref: '#/components/schemas/StreamDetailLiveOnly' }
+
+    # ------------------------------------------------------------------
+    # Update (PUT /api/streams/{name})
+    # ------------------------------------------------------------------
+    NullableClearableString:
+      description: Clearable text field. JSON null clears the stored value (same as "").
+      type: [string, 'null']
+
+    DetectionUrl:
+      description: >-
+        "" (use main stream) or a URL whose scheme is http, https, rtsp or rtsps
+        (case-insensitive prefix check). Other schemes: 400. >= 512 bytes: 413
+        (scheme is checked first). null clears.
+      type: [string, 'null']
+      maxLength: 511
+      pattern: '^($|([Hh][Tt][Tt][Pp][Ss]?|[Rr][Tt][Ss][Pp][Ss]?)://)'
+      x-lightnvr-max-bytes: 511
+      x-lightnvr-overflow: 413
+      x-lightnvr-source: src/web/api_handlers_streams_modify.c:is_allowed_detection_url
+
+    PublishUrlList:
+      description: >-
+        "" or a comma/whitespace-separated list of rtmp:// or rtmps://
+        destinations. Each destination is printable ASCII without quotes or
+        backslash and has at least one character after the scheme. Invalid
+        list: 400; whole string >= 512 bytes: 413 (validity is checked first).
+        null clears.
+      type: [string, 'null']
+      maxLength: 511
+      pattern: '^[\t\n\v\f\r ,]*(([Rr][Tt][Mm][Pp][Ss]?://[!#-&(-+\x2D-\x5B\x5D-~]+)([\t\n\v\f\r ,]+[Rr][Tt][Mm][Pp][Ss]?://[!#-&(-+\x2D-\x5B\x5D-~]+)*)?[\t\n\v\f\r ,]*$'
+      x-lightnvr-max-bytes: 511
+      x-lightnvr-overflow: 413
+      x-lightnvr-source: src/core/url_utils.c:publish_url_list_is_valid
+
+    StreamUpdateRequest:
+      description: >-
+        Edit-form body. All keys optional (partial update). Closed: the server
+        ignores unknown keys (including `name` and the UI's `is_deleted`, D-01)
+        but the contract rejects them so client drift is visible.
+        Wrong-typed values are silently ignored by the server (F-T11-05).
+        Top-level numeric fields have no server-side range checks except
+        retention (F-T11-06); the JSON embedded in eptz_config is separately
+        range-checked. Over-long strings are silently truncated unless
+        `x-lightnvr-overflow` says otherwise (F-T11-14).
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          maxLength: 511
+          x-lightnvr-overflow: truncate
+          description: Not validated (an empty string is accepted). A change requires a stream restart.
+        enabled: { type: boolean }
+        enable_disabled:
+          type: boolean
+          x-lightnvr-pilot: false
+          description: >-
+            Out of pilot (enable/bulk-enable). `true` re-enables a disabled
+            stream synchronously, even when the same body also carries set_privacy_mode.
+        streaming_enabled: { type: boolean }
+        playback_transport: { $ref: './common.yaml#/components/schemas/PlaybackTransport' }
+        eptz_config: { $ref: '#/components/schemas/EptzConfigString' }
+        codec:
+          type: string
+          maxLength: 15
+          x-lightnvr-overflow: truncate
+          description: Codec hint; the UI sends "" (auto), "h264" or "h265". Not validated.
+        priority:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          x-lightnvr-intended-range: '1..10'
+        protocol: { $ref: './common.yaml#/components/schemas/StreamProtocol' }
+        segment_duration:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          description: Seconds.
+        record: { type: boolean }
+        detection_based_recording: { type: boolean }
+        detection_model:
+          type: string
+          maxLength: 255
+          x-lightnvr-max-bytes: 255
+          x-lightnvr-overflow: truncate
+          description: Copied through a 256-byte buffer although the stored field holds 511 bytes.
+        detection_threshold:
+          type: number
+          description: Percent; stored as value / 100.0 (float). Not range-checked.
+          x-lightnvr-intended-range: '0..100'
+        detection_interval: { $ref: './common.yaml#/components/schemas/Int32' }
+        pre_detection_buffer: { $ref: './common.yaml#/components/schemas/Int32' }
+        post_detection_buffer: { $ref: './common.yaml#/components/schemas/Int32' }
+        detection_object_filter:
+          type: string
+          maxLength: 15
+          x-lightnvr-overflow: truncate
+          x-lightnvr-intended-enum: [none, include, exclude]
+        detection_object_filter_list:
+          type: string
+          maxLength: 255
+          x-lightnvr-overflow: truncate
+        record_audio: { type: boolean }
+        audio_voice_enhancement: { type: boolean }
+        isOnvif:
+          type: boolean
+          description: When omitted the server recomputes it from `url` containing "onvif" (F-T11-11). The UI always sends it.
+        backchannel_enabled: { type: boolean }
+        onvif_username:
+          type: string
+          maxLength: 63
+          x-lightnvr-overflow: truncate
+          description: Applied only when the effective isOnvif is true; "" clears the stored value (no "unchanged" sentinel).
+        onvif_password:
+          type: string
+          maxLength: 63
+          x-lightnvr-overflow: truncate
+          x-lightnvr-sensitive: true
+          description: Applied only when the effective isOnvif is true; "" clears the stored value (no "unchanged" sentinel).
+        onvif_profile:
+          type: string
+          maxLength: 63
+          x-lightnvr-overflow: truncate
+          description: Applied only when the effective isOnvif is true.
+        onvif_port: { $ref: './common.yaml#/components/schemas/Int32' }
+        retention_days: { $ref: './common.yaml#/components/schemas/RetentionDays' }
+        detection_retention_days: { $ref: './common.yaml#/components/schemas/RetentionDays' }
+        max_storage_mb:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          description: 0 = unlimited.
+        tier_critical_multiplier: { type: number }
+        tier_important_multiplier: { type: number }
+        tier_ephemeral_multiplier: { type: number }
+        storage_priority:
+          allOf: [{ $ref: './common.yaml#/components/schemas/Int32' }]
+          x-lightnvr-intended-range: '1..10 (clamped by the UI only)'
+        ptz_enabled: { type: boolean }
+        ptz_max_x: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_max_y: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_max_z: { $ref: './common.yaml#/components/schemas/Int32' }
+        ptz_has_home: { type: boolean }
+        record_on_schedule: { type: boolean }
+        recording_schedule: { $ref: './common.yaml#/components/schemas/HourOfWeekSchedule' }
+        detection_record_on_schedule: { type: boolean }
+        detection_recording_schedule: { $ref: './common.yaml#/components/schemas/HourOfWeekSchedule' }
+        tags:
+          allOf: [{ $ref: '#/components/schemas/NullableClearableString' }]
+          maxLength: 255
+          x-lightnvr-overflow: truncate
+        admin_url:
+          allOf: [{ $ref: '#/components/schemas/NullableClearableString' }]
+          maxLength: 511
+          x-lightnvr-overflow: truncate
+        motion_trigger_source:
+          allOf: [{ $ref: '#/components/schemas/NullableClearableString' }]
+          maxLength: 255
+          x-lightnvr-overflow: truncate
+          description: Another stream's name; existence is not checked.
+        go2rtc_source_override:
+          allOf: [{ $ref: '#/components/schemas/NullableClearableString' }]
+          maxLength: 8191
+          x-lightnvr-overflow: truncate
+          description: Whitespace-only is stored as "". Not YAML-validated by PUT.
+        sub_stream_url:
+          allOf: [{ $ref: '#/components/schemas/NullableClearableString' }]
+          maxLength: 511
+          x-lightnvr-overflow: truncate
+        detection_url: { $ref: '#/components/schemas/DetectionUrl' }
+        publish_url: { $ref: '#/components/schemas/PublishUrlList' }
+
+    StreamPrivacyModeRequest:
+      description: >-
+        Live privacy toggle (used by Live video cells, not the edit form).
+        Modelled as its own closed body because the server discards every other
+        edit when this key is present (F-T11-12).
+      type: object
+      additionalProperties: false
+      required: [set_privacy_mode]
+      properties:
+        set_privacy_mode: { type: boolean }
+
+    StreamUpdateAccepted:
+      type: object
+      required: [success, message]
+      properties:
+        success: { const: true }
+        message: { const: Stream update request accepted and processing }
+        onvif_status:
+          type: string
+          enum: [success, error]
+          description: Present when the effective isOnvif was true and the inline ONVIF test ran.
+        onvif_message:
+          type: string
+          enum: [ONVIF capabilities detected successfully, Failed to detect ONVIF capabilities]
+      dependentRequired:
+        onvif_status: [onvif_message]
+        onvif_message: [onvif_status]
+
+    StreamPrivacyModeResponse:
+      description: >-
+        Always success:true, even if the database write failed (the failure is
+        only logged; F-T11-12).
+      type: object
+      required: [success, privacy_mode]
+      properties:
+        success: { const: true }
+        privacy_mode: { type: boolean }
+
+    # ------------------------------------------------------------------
+    # Option dependencies
+    # ------------------------------------------------------------------
+    ZonePoint:
+      type: object
+      required: [x, y]
+      properties:
+        x: { type: number, description: Normalized 0..1 (not re-validated on read). }
+        y: { type: number, description: Normalized 0..1 (not re-validated on read). }
+
+    DetectionZone:
+      type: object
+      required: [id, stream_name, name, enabled, color, polygon, filter_classes, min_confidence]
+      properties:
+        id: { type: string, maxLength: 63 }
+        stream_name: { $ref: './common.yaml#/components/schemas/StreamName' }
+        name: { type: string, maxLength: 63 }
+        enabled: { type: boolean }
+        color: { type: string, maxLength: 7 }
+        polygon:
+          type: array
+          maxItems: 32
+          items: { $ref: '#/components/schemas/ZonePoint' }
+        filter_classes: { type: string, maxLength: 255 }
+        min_confidence: { type: number, description: 0 = use the stream default. }
+      x-lightnvr-source: src/web/api_handlers_zones.c:handle_get_zones; include/database/db_zones.h
+
+    ZonesResponse:
+      type: object
+      required: [zones]
+      properties:
+        zones:
+          type: array
+          maxItems: 16
+          items: { $ref: '#/components/schemas/DetectionZone' }
+
+    ClientConfig:
+      type: object
+      required:
+        - go2rtc_enabled
+        - web_auth_enabled
+        - demo_mode
+        - audio_disabled
+        - auto_disabled
+        - go2rtc_available
+        - go2rtc_api_port
+        - go2rtc_base_path
+        - webrtc_disabled
+        - hls_disabled
+        - mse_disabled
+        - default_playback_transport
+        - go2rtc_force_native_hls
+        - webrtc_connection_timeout_ms
+        - webrtc_ice_recovery_timeout_ms
+        - generate_thumbnails
+        - thumbnails_per_recording
+      properties:
+        go2rtc_enabled: { type: boolean }
+        web_auth_enabled: { type: boolean }
+        demo_mode: { type: boolean }
+        audio_disabled: { type: boolean }
+        auto_disabled: { type: boolean }
+        go2rtc_available: { type: boolean }
+        go2rtc_api_port: { $ref: './common.yaml#/components/schemas/Int32' }
+        go2rtc_base_path: { type: string }
+        webrtc_disabled: { type: boolean }
+        hls_disabled: { type: boolean }
+        mse_disabled: { type: boolean }
+        default_playback_transport: { $ref: './common.yaml#/components/schemas/PlaybackTransport' }
+        go2rtc_force_native_hls: { type: boolean }
+        webrtc_connection_timeout_ms: { $ref: './common.yaml#/components/schemas/Int32' }
+        webrtc_ice_recovery_timeout_ms: { $ref: './common.yaml#/components/schemas/Int32' }
+        generate_thumbnails: { type: boolean }
+        thumbnails_per_recording: { $ref: './common.yaml#/components/schemas/Int32' }
+      x-lightnvr-note: snake_case only (D-06).
+
+    DetectionModel:
+      type: object
+      required: [id, name, path, type, supported]
+      properties:
+        id:
+          type: string
+          description: Built-ins use motion, api-detection, onvif; file models use the absolute file path.
+        name: { type: string }
+        path: { type: string }
+        type:
+          type: string
+          description: Observed values include builtin, api, onvif, sod, sod_realnet, tflite.
+        supported: { type: boolean }
+        description: { type: string, description: Built-ins only. }
+        unsupported_reason: { type: string }
+        size: { type: number, minimum: 0, description: File size in bytes (file models only). }
+      if:
+        required: [supported]
+        properties: { supported: { const: false } }
+      then:
+        required: [unsupported_reason]
+
+    DetectionModelsResponse:
+      type: object
+      required: [models, litert_available, sod_available, count]
+      properties:
+        models:
+          type: array
+          minItems: 3
+          items: { $ref: '#/components/schemas/DetectionModel' }
+          x-lightnvr-builtin-prefix: [motion, api-detection, onvif]
+        litert_available: { type: boolean }
+        sod_available: { type: boolean }
+        count: { type: integer, minimum: 3 }
+        message:
+          const: Models directory does not exist
+          description: Present only when the models directory cannot be opened.
+
+    AuthRole:
+      type: string
+      enum: [admin, user, viewer, api, unknown]
+      x-lightnvr-source: src/database/db_auth.c:db_auth_get_role_name
+
+    AuthVerifyAuthenticated:
+      type: object
+      required: [authenticated, id, username, email, role, role_id, is_active, password_change_locked, must_change_password, auth_enabled, auth_timeout_hours, auth_absolute_timeout_hours, trusted_device_days]
+      properties:
+        authenticated: { const: true }
+        id: { type: integer }
+        username: { type: string, maxLength: 63 }
+        email: { type: string, maxLength: 127 }
+        role: { $ref: '#/components/schemas/AuthRole' }
+        role_id: { type: integer, minimum: 0, maximum: 3 }
+        is_active: { type: boolean }
+        password_change_locked: { type: boolean }
+        must_change_password: { type: boolean }
+        auth_enabled: { const: true }
+        auth_timeout_hours: { type: integer }
+        auth_absolute_timeout_hours: { type: integer }
+        trusted_device_days: { type: integer }
+
+    AuthVerifyAuthDisabled:
+      type: object
+      required: [authenticated, username, role, must_change_password, auth_enabled, auth_timeout_hours, auth_absolute_timeout_hours, trusted_device_days]
+      properties:
+        authenticated: { const: true }
+        username: { const: admin }
+        role: { const: admin }
+        must_change_password: { const: false }
+        auth_enabled: { const: false }
+        auth_timeout_hours: { type: integer }
+        auth_absolute_timeout_hours: { type: integer }
+        trusted_device_days: { type: integer }
+
+    AuthVerifyDemo:
+      type: object
+      required: [authenticated, demo_mode, username, role, must_change_password]
+      properties:
+        authenticated: { const: false }
+        demo_mode: { const: true }
+        username: { const: demo }
+        role: { const: viewer }
+        must_change_password: { const: false }
+
+    AuthVerifyResponse:
+      oneOf:
+        - $ref: '#/components/schemas/AuthVerifyAuthenticated'
+        - $ref: '#/components/schemas/AuthVerifyAuthDisabled'
+        - $ref: '#/components/schemas/AuthVerifyDemo'

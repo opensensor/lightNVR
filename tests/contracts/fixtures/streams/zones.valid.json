@@ -1,0 +1,37 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "getStreamZones",
+  "direction": "response",
+  "status": 200,
+  "principal": "live_viewer",
+  "schema": "streams.yaml#/components/schemas/ZonesResponse",
+  "expect": "valid",
+  "body": {
+    "zones": [
+      {
+        "id": "zone-1",
+        "stream_name": "front-door",
+        "name": "Driveway",
+        "enabled": true,
+        "color": "#3b82f6",
+        "polygon": [
+          {
+            "x": 0.1,
+            "y": 0.2
+          },
+          {
+            "x": 0.9,
+            "y": 0.2
+          },
+          {
+            "x": 0.5,
+            "y": 0.95
+          }
+        ],
+        "filter_classes": "person,car",
+        "min_confidence": 0
+      }
+    ]
+  },
+  "schema_base": "docs/api/contracts/"
+}

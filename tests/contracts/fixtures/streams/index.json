@@ -1,0 +1,726 @@
+{
+  "$comment": "Fixture manifest for T12 (schema validation) and T18 (C contract tests). schema refs are relative to schema_base. expect=invalid fixtures MUST fail validation; expected_server_response records current C behavior for requests.",
+  "schema_base": "docs/api/contracts/",
+  "path_cases": "path-encoding.cases.json",
+  "fixtures": [
+    {
+      "file": "full.configurer.onvif.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.configurer.legacy-name-plain-credentials.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.live-only.redacted.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.sensitive-keys-absent.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.error-status.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.any.generic-schema.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-onvif-password.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-onvif-username.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.url-userinfo.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.url-username-only.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.url-query-secret.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-admin-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-sub-stream-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-detection-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-publish-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.leaked-go2rtc-override.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.live-only.claims-configure.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseLiveOnly",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "full.configurer.onvif-url-userinfo.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.configurer.missing-onvif-password.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.schedule-167-entries.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.threshold-as-fraction.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.retention-below-inherit.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.retention-over-max.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.status-docs-value.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.error-message-without-error.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.protocol-out-of-enum.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.null-tags.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponseConfigurable",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "full.unwrapped-object.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamFullResponse",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getStreamFull",
+      "principal": "configurer"
+    },
+    {
+      "file": "summary.admin.configurer-with-admin-url.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "configurer_of_front_door_only"
+    },
+    {
+      "file": "summary.admin.viewer.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.live.viewer.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageLive",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.lpr.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageLpr",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "lpr_searcher"
+    },
+    {
+      "file": "summary.admin.page-beyond-end.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.admin.empty.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "no_camera_grants"
+    },
+    {
+      "file": "summary.admin.contains-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "configurer"
+    },
+    {
+      "file": "summary.admin.admin-url-without-configure.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.live.contains-onvif-password.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageLive",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.live.contains-admin-url.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageLive",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "configurer"
+    },
+    {
+      "file": "summary.lpr.leaks-location.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageLpr",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "lpr_searcher"
+    },
+    {
+      "file": "summary.admin.page-size-over-max.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.admin.status-from-detail-enum.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "summary.admin.missing-can-configure.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamSummaryPageAdmin",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listStreams",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "put.edit-form.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.retention-tristate.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.retention-finite-boundary.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.clear-with-null.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.schedule-weekday.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.publish-and-detection-url.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.empty-object.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.set-privacy-mode.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamPrivacyModeRequest",
+      "expect": "valid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.is-deleted.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.name-in-body.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.retention-366.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.detection-retention-minus-2.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.detection-url-file-scheme.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.detection-url-too-long.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.publish-url-http.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.publish-url-quote.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.playback-transport-bogus.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.eptz-wrong-projection.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.eptz-not-string.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.schedule-wrong-length.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.record-as-string.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.protocol-out-of-enum.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.privacy-mixed-with-edit.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamPrivacyModeRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put.tags-too-long.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+      "expect": "invalid",
+      "direction": "request",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put-response.202.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateAccepted",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put-response.202-onvif-failed.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateAccepted",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put-response.200-privacy.valid.json",
+      "schema": "streams.yaml#/components/schemas/StreamPrivacyModeResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "put-response.202-onvif-status-without-message.invalid.json",
+      "schema": "streams.yaml#/components/schemas/StreamUpdateAccepted",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "updateStream",
+      "principal": "configurer"
+    },
+    {
+      "file": "error.401.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "anonymous"
+    },
+    {
+      "file": "error.403-put-viewer.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "error.404-stream.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "anonymous"
+    },
+    {
+      "file": "error.404-camera.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "configurer"
+    },
+    {
+      "file": "error.400-surface.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "error.400-retention.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "configurer"
+    },
+    {
+      "file": "error.413-publish-url.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "principal": "configurer"
+    },
+    {
+      "file": "error.message-key.invalid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "invalid",
+      "direction": "response",
+      "principal": "configurer"
+    },
+    {
+      "file": "error.empty-message.invalid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "invalid",
+      "direction": "response",
+      "principal": "configurer"
+    },
+    {
+      "file": "client-config.valid.json",
+      "schema": "streams.yaml#/components/schemas/ClientConfig",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getClientConfig",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "client-config.camelcase-only.invalid.json",
+      "schema": "streams.yaml#/components/schemas/ClientConfig",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "getClientConfig",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "detection-models.valid.json",
+      "schema": "streams.yaml#/components/schemas/DetectionModelsResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listDetectionModels",
+      "principal": "configurer"
+    },
+    {
+      "file": "detection-models.no-directory.valid.json",
+      "schema": "streams.yaml#/components/schemas/DetectionModelsResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listDetectionModels",
+      "principal": "configurer"
+    },
+    {
+      "file": "detection-models.unsupported-without-reason.invalid.json",
+      "schema": "streams.yaml#/components/schemas/DetectionModelsResponse",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "listDetectionModels",
+      "principal": "configurer"
+    },
+    {
+      "file": "detection-models.403-viewer.valid.json",
+      "schema": "common.yaml#/components/schemas/ErrorResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "listDetectionModels",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "auth-verify.user.valid.json",
+      "schema": "streams.yaml#/components/schemas/AuthVerifyResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "verifyAuth",
+      "principal": "viewer_user"
+    },
+    {
+      "file": "auth-verify.auth-disabled.valid.json",
+      "schema": "streams.yaml#/components/schemas/AuthVerifyResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "verifyAuth",
+      "principal": "anonymous_auth_disabled"
+    },
+    {
+      "file": "auth-verify.demo.valid.json",
+      "schema": "streams.yaml#/components/schemas/AuthVerifyResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "verifyAuth",
+      "principal": "anonymous_demo"
+    },
+    {
+      "file": "auth-verify.demo-as-admin.invalid.json",
+      "schema": "streams.yaml#/components/schemas/AuthVerifyResponse",
+      "expect": "invalid",
+      "direction": "response",
+      "operation": "verifyAuth",
+      "principal": "anonymous_demo"
+    },
+    {
+      "file": "zones.valid.json",
+      "schema": "streams.yaml#/components/schemas/ZonesResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamZones",
+      "principal": "live_viewer"
+    },
+    {
+      "file": "zones.empty.valid.json",
+      "schema": "streams.yaml#/components/schemas/ZonesResponse",
+      "expect": "valid",
+      "direction": "response",
+      "operation": "getStreamZones",
+      "principal": "live_viewer"
+    }
+  ]
+}

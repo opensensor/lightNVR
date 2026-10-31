@@ -1,0 +1,17 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "valid",
+  "expected_server_response": {
+    "status": 202
+  },
+  "description": "Mixed-case schemes and a two-destination publish list.",
+  "body": {
+    "detection_url": "HTTP://192.0.2.10/mjpeg",
+    "publish_url": "  RTMPS://live.example.invalid/app/k1,rtmp://b.example.invalid/x  "
+  },
+  "schema_base": "docs/api/contracts/"
+}

@@ -1,0 +1,272 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 OpenSensor Engineering and LightNVR contributors
+#
+# Shared contract fragment for the LightNVR OpenAPI 3.1 definition.
+# Root document: docs/api/openapi.yaml. Owner of this fragment: T11 (pilot);
+# later schema workers edit their assigned fragments only (see plan T12/T25).
+#
+# This is NOT a standalone OpenAPI document. It is a $ref target: every
+# reusable object lives under `components` so JSON pointers look like
+# `./common.yaml#/components/schemas/ErrorResponse`.
+#
+# Every schema below was checked against the C sources named in its
+# `x-lightnvr-source` annotation. Byte limits come from the C buffer sizes;
+# JSON Schema `maxLength` counts code points, so `maxLength` equals the byte
+# limit and is exact only for ASCII (see `x-lightnvr-max-bytes`).
+components:
+  schemas:
+    ErrorResponse:
+      description: >-
+        Error envelope used for every non-2xx JSON response in the pilot.
+        Produced only by http_response_set_json_error(), which emits exactly one
+        key. Clients must not depend on the message text for control flow except
+        where an operation documents a specific message.
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          minLength: 1
+      x-lightnvr-source: src/web/request_response.c:http_response_set_json_error
+
+    Int32:
+      description: >-
+        C `int` read through cJSON `valueint` (fractional values are truncated,
+        out-of-range values saturate). Used where the server performs no range
+        validation of its own.
+      type: integer
+      minimum: -2147483648
+      maximum: 2147483647
+
+    EpochSecondsOrZero:
+      description: Unix epoch seconds (int64). `0` means "never observed".
+      type: integer
+      minimum: 0
+      x-lightnvr-source: include/core/camera_selector.h:fleet_camera_t (int64_t); include/telemetry/stream_metrics.h last_frame_ts
+
+    CameraUuid:
+      description: >-
+        Immutable fleet identity (36-char UUID). Legacy rows created before
+        camera UUIDs existed may carry an empty string.
+      type: string
+      maxLength: 36
+      pattern: '^(|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$'
+      x-lightnvr-source: include/core/config.h:CAMERA_UUID_STRING_SIZE (37 incl. NUL)
+
+    StreamName:
+      description: >-
+        Stream (camera) name as stored. This is the primary key used in paths.
+        Names created through POST /api/streams must match
+        `^[A-Za-z0-9_-][A-Za-z0-9._-]*$` (is_valid_stream_name), but names that
+        predate that rule or arrive through configuration import can contain
+        other characters, so the read-side schema only bounds the length.
+      type: string
+      minLength: 1
+      maxLength: 255
+      x-lightnvr-max-bytes: 255
+      x-lightnvr-create-pattern: '^[A-Za-z0-9_-][A-Za-z0-9._-]*$'
+      x-lightnvr-source: include/core/config.h:MAX_STREAM_NAME; src/core/path_utils.c:is_valid_stream_name
+
+    PlaybackTransport:
+      type: string
+      enum: [auto, webrtc_only, mse_only, hls_only, webrtc_then_mse, mse_then_hls]
+      description: >-
+        Responses substitute `auto` when the stored value is invalid, so a
+        response never carries a value outside this enum.
+      x-lightnvr-source: src/core/config.c:playback_transport_is_valid
+
+    StreamProtocol:
+      description: >-
+        Transport protocol: 0 = TCP, 1 = UDP (stream_protocol_t). PUT does not
+        range-check this value (see finding candidate F-T11-06); the contract
+        only permits the two defined values.
+      type: integer
+      enum: [0, 1]
+      x-lightnvr-source: include/core/config.h:stream_protocol_t
+
+    RetentionDays:
+      description: >-
+        Tri-state per-stream retention override in days.
+        `-1` inherits the live global retention value at evaluation time,
+        `0` is explicitly unlimited (also disables tier expiry), and `1..365`
+        is a day override. Writes outside -1..365 are rejected with 400.
+        For `detection_retention_days`, `-1` inherits the *global* retention
+        value, not this stream's `retention_days`.
+      type: integer
+      minimum: -1
+      maximum: 365
+      x-lightnvr-retention-states:
+        inherit: -1
+        unlimited: 0
+        finite: '1..365'
+      x-lightnvr-source: >-
+        include/core/config.h:stream_config_t.retention_days;
+        src/web/api_handlers_streams_modify.c:handle_put_stream (range check);
+        src/storage/storage_manager.c (tri-state evaluation, tier expiry skip on 0)
+
+    HourOfWeekSchedule:
+      description: >-
+        168 booleans indexed `day * 24 + hour` in server local time, where day
+        0 = Sunday ... 6 = Saturday (struct tm tm_wday). Responses always carry
+        exactly 168 entries. On PUT, an array whose length is not 168 is
+        silently ignored (no error) and any entry other than JSON `true` is
+        stored as false (finding candidate F-T11-07).
+      type: array
+      minItems: 168
+      maxItems: 168
+      items:
+        type: boolean
+      x-lightnvr-source: >-
+        src/web/api_handlers_streams_get.c (serialization loop j<168);
+        src/web/api_handlers_streams_modify.c:handle_put_stream (arr_size == 168);
+        src/video/stream_manager.c:is_recording_scheduled (tm_wday*24+tm_hour)
+
+    EmptyString:
+      description: Redacted value. The server emits an empty string in place of a sensitive value.
+      type: string
+      const: ''
+
+    UrlWithoutUserinfo:
+      description: >-
+        A URL-like string that carries no userinfo (`user:pass@`) in its
+        authority. Empty string is permitted (viewer redaction falls back to ""
+        when credential stripping fails). A response that contains userinfo here
+        is a credential leak and must fail validation.
+      type: string
+      maxLength: 511
+      pattern: '^(?![A-Za-z][A-Za-z0-9+.-]*://[^/?#]*@)'
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:get_stream_api_credentials; src/core/url_utils.c:url_strip_credentials
+
+    UrlWithoutQuerySecrets:
+      description: >-
+        Rejects a URL whose query string carries a non-empty parameter whose key
+        contains pass, pwd, token, secret or apikey (case-insensitive). The C
+        redaction only strips userinfo, so a camera URL like
+        `rtsp://host/live?user=admin&password=x` currently reaches viewers
+        unchanged. This rule is the redaction policy the contract enforces; a
+        server response that violates it is a finding (F-T11-03), not a schema
+        bug.
+      type: string
+      not:
+        pattern: '[?&;][^=&#]*([Pp][Aa][Ss][Ss]|[Pp][Ww][Dd]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Aa][Pp][Ii]_?[Kk][Ee][Yy])[^=&#]*=[^&#]'
+
+    ViewerSafeUrl:
+      description: Credential-free URL as delivered to principals without camera.configure.
+      allOf:
+        - $ref: '#/components/schemas/UrlWithoutUserinfo'
+        - $ref: '#/components/schemas/UrlWithoutQuerySecrets'
+
+  parameters:
+    StreamNamePath:
+      name: name
+      in: path
+      required: true
+      description: >-
+        Stream name, percent-encoded as one path segment (the UI uses
+        encodeURIComponent). Routing matches the *encoded* segment against
+        `#` (a run of non-'/' characters), then http_request_extract_path_param
+        decodes it with form semantics: `%XX` is decoded and a literal `+`
+        becomes a space, so a name containing '+' must be sent as `%2B`.
+        The entire encoded suffix after `/api/streams/` must be shorter than
+        256 bytes, including `/full` or `/zones`. Thus the encoded name limit
+        is 255 bytes for PUT, 250 for `/full`, and 249 for `/zones`. Overflow
+        answers 400 "Invalid request path" ("Invalid stream name" for zones;
+        finding candidate F-T11-09).
+        Names whose decoded form contains '/' (sent as `%2F`) are truncated at
+        the first '/' by the `/full` handler and resolve to a different stream
+        (finding candidate F-T11-08). Path segments that decode to `.` or `..`
+        are rejected by the HTTP parser before routing.
+      schema:
+        $ref: '#/components/schemas/StreamName'
+      x-lightnvr-encoding: percent-encode-path-segment
+      x-lightnvr-source: >-
+        src/web/request_response.c:http_request_extract_path_param,url_decode;
+        src/web/libuv_connection.c:on_url_complete,request_path_has_dot_segment
+
+  headers:
+    CacheControl:
+      description: 'Every JSON response sets `no-cache, no-store, must-revalidate` (plus `Pragma: no-cache` and `Expires: 0`).'
+      schema:
+        type: string
+        const: no-cache, no-store, must-revalidate
+      x-lightnvr-source: src/web/request_response.c:http_response_set_json
+
+  responses:
+    BadRequest:
+      description: Malformed path, query, or body. Message text is operation-specific.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: >-
+        No authenticated principal (and demo mode is off). Body is
+        `{"error":"Unauthorized"}`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Unauthorized
+      x-lightnvr-source: src/web/httpd_utils.c:httpd_authorize_stream_action_with_context,httpd_authorize_action
+    Forbidden:
+      description: Authenticated but the authorization policy denied the action. Body is `{"error":"Forbidden"}`.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Forbidden
+      x-lightnvr-source: src/web/httpd_utils.c:httpd_authorize_stream_action_with_context,httpd_authorize_action
+    StreamNotFound:
+      description: >-
+        `{"error":"Stream not found"}` when no stream with that name is loaded.
+        This check runs BEFORE authentication, so unauthenticated callers can
+        distinguish existing from missing names (finding candidate F-T11-01).
+        `{"error":"Camera not found"}` is returned after authentication when the
+        stream exists but has no fleet inventory row.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            stream:
+              value:
+                error: Stream not found
+            camera:
+              value:
+                error: Camera not found
+      x-lightnvr-source: src/web/api_handlers_streams_get.c:handle_get_stream_full; src/web/httpd_utils.c:httpd_authorize_stream_action_with_context
+    PayloadTooLarge:
+      description: A size-checked string field exceeded its buffer.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: >-
+        Server-side failure (allocation, serialization, database read, or
+        authorization policy evaluation error: `{"error":"Authorization policy
+        evaluation failed"}`).
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -1,0 +1,19 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "invalid",
+  "violates": "playback_transport enum",
+  "expected_server_response": {
+    "status": 400,
+    "body": {
+      "error": "playback_transport is invalid"
+    }
+  },
+  "body": {
+    "playback_transport": "webrtc"
+  },
+  "schema_base": "docs/api/contracts/"
+}

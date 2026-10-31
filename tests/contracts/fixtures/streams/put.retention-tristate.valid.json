@@ -1,0 +1,22 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "request": {
+    "method": "PUT",
+    "path": "/api/streams/front-door"
+  },
+  "schema": "streams.yaml#/components/schemas/StreamUpdateRequest",
+  "expect": "valid",
+  "expected_server_response": {
+    "status": 202
+  },
+  "description": "Partial update: recordings inherit global retention (-1), detection recordings unlimited (0), quota 2048 MB.",
+  "body": {
+    "retention_days": -1,
+    "detection_retention_days": 0,
+    "max_storage_mb": 2048
+  },
+  "schema_base": "docs/api/contracts/"
+}

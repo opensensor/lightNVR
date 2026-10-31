@@ -1,0 +1,18 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "updateStream",
+  "direction": "request",
+  "principal": "configurer",
+  "schema": "streams.yaml#/components/schemas/StreamPrivacyModeRequest",
+  "expect": "invalid",
+  "violates": "set_privacy_mode cannot be combined with edits (the edits would be discarded)",
+  "expected_server_response": {
+    "status": 200,
+    "note": "server sets privacy_mode and discards retention_days (F-T11-12)"
+  },
+  "body": {
+    "set_privacy_mode": true,
+    "retention_days": 30
+  },
+  "schema_base": "docs/api/contracts/"
+}

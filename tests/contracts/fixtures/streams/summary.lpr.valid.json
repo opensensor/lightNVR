@@ -1,0 +1,33 @@
+{
+  "$comment": "Synthetic, manually reviewed contract fixture (T11). Not a capture of server output. No real credentials: synthetic-* values and RFC 5737/.invalid hosts only.",
+  "operation": "listStreams",
+  "direction": "response",
+  "status": 200,
+  "principal": "lpr_searcher",
+  "request": {
+    "method": "GET",
+    "path": "/api/streams",
+    "query": {
+      "summary": "true",
+      "surface": "lpr",
+      "page": "2",
+      "page_size": "1"
+    }
+  },
+  "schema": "streams.yaml#/components/schemas/StreamSummaryPageLpr",
+  "expect": "valid",
+  "description": "LPR identity-only rows, second page of 2.",
+  "body": {
+    "streams": [
+      {
+        "camera_uuid": "7a2b3c4d-5e6f-4a1b-9c2d-3e4f5a6b7c8d",
+        "name": "lobby"
+      }
+    ],
+    "total": 2,
+    "page": 2,
+    "page_size": 1,
+    "total_pages": 2
+  },
+  "schema_base": "docs/api/contracts/"
+}
