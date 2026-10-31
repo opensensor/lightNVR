@@ -7490,7 +7490,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **acceptance_criteria**: Missing generated/archive file, hash mismatch, stale pin/patch, mixed roots or omitted actual invocation fail closed; valid source provenance retains original and compiled identities. Clang/cppcheck include previoussrc and actualcompiledFAACunits; unavailable tools/archive remain explicit coverage failures. Synthetic tests cannot substitute for real scanner execution. Local integration may finish while hosted/full-profile qualification stays open underT14/T33; parentT7.24 remains open until required actual evidence exists.
 - **validation**: Tests-first `python3 -m unittest discover -s tests/quality -p test_scanner_ci.py`; actionlint; available actual native/CodeQL extraction with preserved manifests and hashes. No remote push/dispatch implied.
 - **status**: Completed locally (`937d4834`); actual scanner qualification pending
-- **log**: Reviewed raw-path provenance, actual compiler inputs and scanner-specific prior coverage union.43 tests pass after17 new RED failures/errors; actual49-file/20-unit build metadata validates. Tools unavailable, no actual scan or parent closure claimed. Whole quality suite now89Node+158Python pass; T14/T33 remain open.
+- **log**: Reviewed raw-path provenance, actual compiler inputs and scanner-specific prior coverage union.43 tests pass after17 new RED failures/errors; actual49-file/20-unit build metadata validates. Tools unavailable, no actual scan or parent closure claimed. Whole quality suite now89Node+158Python pass; T14/T33 remain open. Follow-up locally unpacked clang21/cppcheck2.19 each analyzes all20codecunits;104clang and30cppstyle/warning diagnostics plus15coverage limits retained, not clean/fullcoverage. CodeQL still unavailable.
 - **files edited/created**:
 
 ## Published-backup pruning identity verification (T7.25)
@@ -7527,8 +7527,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve CODEQL-310 with atomic no-overwrite publication. Preserve regular and symlink destinations inserted after the final absence check, source bytes and recording location metadata. Unsupported atomic operations fail without replacing another entry; preserve normal move/copy. Keep separate cleanup and verified-temporary RED cases visible until their ordered children.
 - **acceptance_criteria**: Preserve committed producer assertions and normal controls; add focused unsupported-operation, identity and cleanup failure cases as appropriate. No real storage/database/process touched, no unrelated schema or policy redesign. Document platform and privileged-writer limits honestly. Fresh scanner reconciliation remains T33.
 - **validation**: Tests-first producer `dc571048`; `python3 scripts/quality/run-native.py --task T7.26 --regex '^test_t7_26$' --jobs 4`, related migration tests under ASan/UBSan, exact source/artifact provenance. Native source/build lease required.
-- **status**: Not Completed
-- **log**: Materialized from committed seven-case producer before implementation. Sequential ownership prevents overlapping source/test mutations.
+- **status**: Completed (`87b812ad`)
+- **log**: Atomic guardedSYS_renameat2 no-overwrite publication resolves both competing-entry races. Eighteen cases pass with two separate known RED causes retained for .2/.3; normal migration9/9 pass, unsupported/error controls pass and sanitizers clean. Scope/source diff reviewed.
 - **files edited/created**:
 
 ### T7.26.2: Retain abandoned migration destinations without proven ownership
