@@ -10677,7 +10677,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/BatchDownloadModal.jsx",
         "web/js/components/preact/StreamConfigModal.jsx",
@@ -10771,7 +10771,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1\u21920, route7cde28afaa9ffb65 5\u21920, manager7dcecd444f491721 1\u21920. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1\u21920. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2\u21920; remaining buckets stay open. T7.167 01646f56 removes StreamConfigModal label-association81a756fe7228ad5b 2\u21920; remaining buckets stay open."
+      "log": "Commit 8df5a224 preserves all six already-resolved lint buckets and fixes remaining repeated-editor field/selector IDs, ZIP filename association and radio grouping. Actual 10 failing/4 passing controls become 14/14 focused and 80/80 related browser cases passing. Default Jest 750 pass/115 optional skips; types and modern 43/default 66 asset budgets pass, default restored. Lint 440\u2192438 warnings/0 errors with no increased buckets; unrelated dialog/form/action IDs remain outside scope."
     },
     {
       "id": "T7.178",

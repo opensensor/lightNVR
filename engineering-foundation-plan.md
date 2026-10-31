@@ -4035,8 +4035,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/BatchDownloadModal.jsx web/js/components/preact/StreamConfigModal.jsx web/js/components/preact/events/EventDestinationEditor.jsx web/js/components/preact/events/EventRouteEditor.jsx web/js/components/preact/fleet/CollectionManager.jsx web/js/components/preact/fleet/StaticCollectionMembers.jsx --format json --output-file build/eng-artifacts/T7.177/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.177/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-associated-control'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.177`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**: T7.169 836ac0a2 removes related label-association buckets destination ddc6803a9b16e391 1→0, route7cde28afaa9ffb65 5→0, manager7dcecd444f491721 1→0. Whole task remains open. T7.170 e29ab093 removes StaticCollectionMembers label-association9308fe6583bcdce7 1→0. Other buckets remain open. T7.166 2a2e603b removes BatchDownloadModal label-association199d3d91208953b4 2→0; remaining buckets stay open. T7.167 01646f56 removes StreamConfigModal label-association81a756fe7228ad5b 2→0; remaining buckets stay open.
+- **status**: Completed (fix `8df5a224`)
+- **log**: Commit 8df5a224 preserves all six already-resolved lint buckets and fixes remaining repeated-editor field/selector IDs, ZIP filename association and radio grouping. Actual 10 failing/4 passing controls become 14/14 focused and 80/80 related browser cases passing. Default Jest 750 pass/115 optional skips; types and modern 43/default 66 asset budgets pass, default restored. Lint 440→438 warnings/0 errors with no increased buckets; unrelated dialog/form/action IDs remain outside scope.
 - **files edited/created**:
 
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
