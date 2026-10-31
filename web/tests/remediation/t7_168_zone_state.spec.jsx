@@ -26,7 +26,7 @@ async function openZoneBrowser() {
  // Standalone fixture layout: no shared build assets, server or operator state.
  await page.addStyleTag({content:'canvas{max-width:640px;max-height:360px}button,input{margin:4px}'});
  await page.addScriptTag({content:output.outputFiles[0].text});await page.evaluate(()=>window.mount());
- await page.waitForFunction(()=>window.zonesLoaded&&document.querySelector('canvas')?.width>0);
+ try{await page.waitForFunction(()=>window.zonesLoaded&&document.querySelector('input[type=checkbox]'),{},{timeout:5000});}catch(error){await browser.close();throw error;}
  return{browser,page};
 }
 browserTest.each([['pointer',false],['keyboard',false],['label',false],['pointer',true],['keyboard',true],['label',true]])('first zone checkbox activation preserves value and exact save (method=%s, preselect=%s)',async(method,preselect)=>{
