@@ -168,6 +168,24 @@ static void test_tracking_quote_and_comment_names_cannot_change_unrelated_schema
         migrate_free(migration); migration = NULL;
     }
 }
+static void tracking_round_trip(const char *name) {
+    write_fixture(ordinary_sql); open_migrations(name);
+    TEST_ASSERT_TRUE(table_exists(name));
+    TEST_ASSERT_EQUAL_INT(0, migrate_up(migration, NULL)); assert_sentinel();
+    migrate_free(migration); migration = NULL; open_migrations(name);
+    char version[MIGRATE_VERSION_LEN];
+    TEST_ASSERT_EQUAL_INT(0, migrate_get_version(migration, version, sizeof(version)));
+    TEST_ASSERT_EQUAL_STRING("0001", version);
+    TEST_ASSERT_EQUAL_INT(1, migrate_down(migration)); assert_sentinel();
+    TEST_ASSERT_FALSE(table_exists("evidence"));
+}
+static void test_quoted_tracking_name_round_trips_as_one_identifier(void) {
+    tracking_round_trip("track\"ing; -- /*name*/ 'quoted'");
+}
+static void test_long_tracking_name_round_trips_without_truncation(void) {
+    char name[1025]; memset(name, 'x', sizeof(name) - 1); name[sizeof(name) - 1] = '\0';
+    tracking_round_trip(name);
+}
 static void test_migration_version_is_bound_as_data(void) {
     migration_t embedded = {.version = "v'; DROP TABLE sentinel;--", .description = "bound value",
         .sql_up = "CREATE TABLE evidence(value TEXT);", .sql_down = "DROP TABLE evidence;"};
@@ -190,6 +208,8 @@ int main(void) {
     RUN_TEST(test_down_identifier_quote_cannot_hide_disallowed_attach);
     RUN_TEST(test_tracking_identifier_cannot_execute_second_statement);
     RUN_TEST(test_tracking_quote_and_comment_names_cannot_change_unrelated_schema);
+    RUN_TEST(test_quoted_tracking_name_round_trips_as_one_identifier);
+    RUN_TEST(test_long_tracking_name_round_trips_without_truncation);
     RUN_TEST(test_migration_version_is_bound_as_data);
     return UNITY_END();
 }

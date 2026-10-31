@@ -47,15 +47,16 @@ static int create_migrations_table(sqlite_migrate_t *ctx) {
     const char *table_name = ctx->config.migrations_table ? 
                              ctx->config.migrations_table : DEFAULT_MIGRATIONS_TABLE;
     
-    char sql[512];
-    snprintf(sql, sizeof(sql),
-        "CREATE TABLE IF NOT EXISTS %s ("
+    char *sql = sqlite3_mprintf(
+        "CREATE TABLE IF NOT EXISTS \"%w\" ("
         "  version TEXT PRIMARY KEY,"
         "  applied_at INTEGER NOT NULL DEFAULT (strftime('%%s', 'now'))"
         ");", table_name);
+    if (!sql) return -1;
     
     char *err_msg = NULL;
     int rc = sqlite3_exec(ctx->db, sql, NULL, NULL, &err_msg);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         log_error("Failed to create migrations table: %s", err_msg);
         sqlite3_free(err_msg);
@@ -72,12 +73,13 @@ static bool is_migration_applied(sqlite_migrate_t *ctx, const char *version) {
     const char *table_name = ctx->config.migrations_table ? 
                              ctx->config.migrations_table : DEFAULT_MIGRATIONS_TABLE;
     
-    char sql[256];
-    snprintf(sql, sizeof(sql), 
-        "SELECT 1 FROM %s WHERE version = ?;", table_name);
+    char *sql = sqlite3_mprintf(
+        "SELECT 1 FROM \"%w\" WHERE version = ?;", table_name);
+    if (!sql) return false;
     
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(ctx->db, sql, -1, &stmt, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return false;
     }
@@ -97,12 +99,13 @@ static int record_migration_applied(sqlite_migrate_t *ctx, const char *version) 
     const char *table_name = ctx->config.migrations_table ? 
                              ctx->config.migrations_table : DEFAULT_MIGRATIONS_TABLE;
     
-    char sql[256];
-    snprintf(sql, sizeof(sql),
-        "INSERT INTO %s (version) VALUES (?);", table_name);
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO \"%w\" (version) VALUES (?);", table_name);
+    if (!sql) return -1;
     
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(ctx->db, sql, -1, &stmt, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare migration record: %s", sqlite3_errmsg(ctx->db));
         return -1;
@@ -128,12 +131,13 @@ static int remove_migration_record(sqlite_migrate_t *ctx, const char *version) {
     const char *table_name = ctx->config.migrations_table ? 
                              ctx->config.migrations_table : DEFAULT_MIGRATIONS_TABLE;
     
-    char sql[256];
-    snprintf(sql, sizeof(sql),
-        "DELETE FROM %s WHERE version = ?;", table_name);
+    char *sql = sqlite3_mprintf(
+        "DELETE FROM \"%w\" WHERE version = ?;", table_name);
+    if (!sql) return -1;
     
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(ctx->db, sql, -1, &stmt, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return -1;
     }
