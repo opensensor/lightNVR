@@ -255,35 +255,35 @@ export function Header({ version = VERSION }) {
     const activeClass = isActive ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'text-[hsl(var(--card-foreground))] hover:bg-[hsl(var(--primary)/0.8)] hover:text-[hsl(var(--primary-foreground))]';
 
     const isDisabled = item.disabled === true;
+    const controlProps = {
+      id: item.id,
+      title: item.title,
+      'aria-disabled': isDisabled || undefined,
+      className: `${baseClasses} ${mobile ? mobileClasses : desktopClasses} ${activeClass}${isDisabled ? ' opacity-60 cursor-default pointer-events-none' : ''}`,
+      onClick: (e) => {
+        if (isDisabled) {
+          e.preventDefault();
+          return;
+        }
+
+        if (item.href) {
+          forceNavigation(item.href, e);
+        }
+        if (item.onClick) {
+          item.onClick(e);
+        }
+        if (mobileMenuOpen) {
+          toggleMobileMenu();
+        }
+      },
+    };
     return (
         <li className={mobile ? "" : item.classNameLi ? item.classNameLi : "mx-1"}>
-          <a
-              href={isDisabled ? undefined : item.href}
-              id={item.id}
-              title={item.title}
-              aria-disabled={isDisabled || undefined}
-              className={`${baseClasses} ${mobile ? mobileClasses : desktopClasses} ${activeClass}${isDisabled ? ' opacity-60 cursor-default pointer-events-none' : ''}`}
-              onClick={(e) => {
-                if (isDisabled) return;
-
-                // Force navigation and prevent default behavior
-                if (item.href) {
-                  forceNavigation(item.href, e);
-                }
-
-                // Call onClick function if provided
-                if (item.onClick) {
-                  item.onClick(e);
-                }
-
-                // Close mobile menu if open
-                if (mobileMenuOpen) {
-                  toggleMobileMenu();
-                }
-              }}
-          >
-            {item.label}
-          </a>
+          {item.href ? (
+            <a {...controlProps} href={item.href}>{item.label}</a>
+          ) : (
+            <button {...controlProps} type="button" disabled={isDisabled}>{item.label}</button>
+          )}
         </li>
     );
   };
