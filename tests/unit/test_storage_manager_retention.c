@@ -2,9 +2,11 @@
 #define _GNU_SOURCE
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <sqlite3.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,15 +21,41 @@
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "storage/storage_manager.h"
+#include "storage/storage_deletion.h"
 #include "utils/strings.h"
 #include "video/recording_path.h"
 
-#define TEST_DB_PATH "/tmp/lightnvr_unit_storage_manager_retention.db"
+static char test_db_path[PATH_MAX];
+static char test_db_dir[] = "/tmp/lightnvr-retention-db-XXXXXX";
+#define TEST_DB_PATH test_db_path
 
 static char g_storage_root[PATH_MAX];
+static char fault_path[PATH_MAX];
+static atomic_int fault_errno, fault_hits;
+
+int __real_unlink(const char *path);
+int __wrap_unlink(const char *path) {
+    if (fault_errno && strcmp(path, fault_path) == 0) {
+        fault_hits++;
+        errno = fault_errno;
+        return -1;
+    }
+    return __real_unlink(path);
+}
+
+static void assert_database_integrity(void) {
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "PRAGMA integrity_check", -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("ok", (const char *)sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+}
 
 static void clear_tables(void) {
     sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "DELETE FROM storage_deletion_objects; DELETE FROM storage_deletions;", NULL, NULL, NULL));
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
 }
@@ -162,6 +190,8 @@ static int count_recordings(void) {
 }
 
 void setUp(void) {
+    fault_errno = fault_hits = 0;
+    fault_path[0] = 0;
     clear_tables();
     strcpy(g_storage_root, "/tmp/lightnvr_storage_manager_retentionXXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(g_storage_root));
@@ -177,6 +207,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    fault_errno = 0;
     shutdown_storage_manager();
     remove_tree(g_storage_root);
     g_storage_root[0] = '\0';
@@ -432,7 +463,102 @@ void test_apply_retention_policy_expires_recordings_of_deleted_streams(void) {
     assert_recording_kept(ghost_new);
 }
 
+void test_enabled_retention_modes_preserve_protected_and_open_media(void) {
+    char inherited[PATH_MAX], unlimited[PATH_MAX], finite[PATH_MAX], recent[PATH_MAX];
+    char protected_path[PATH_MAX];
+    create_mp4_dir();
+    TEST_ASSERT_EQUAL_INT(0, set_retention_days(14));
+    add_stream_with_retention("inherit", true, -1, -1);
+    add_stream_with_retention("unlimited", true, 0, 0);
+    add_stream_with_retention("finite", true, 3, 3);
+    add_recording_aged("inherit", "inherit.mp4", 20 * 86400, inherited, sizeof(inherited));
+    add_recording_aged("unlimited", "unlimited.mp4", 400 * 86400, unlimited, sizeof(unlimited));
+    add_recording_aged("finite", "finite.mp4", 5 * 86400, finite, sizeof(finite));
+    add_recording_aged("finite", "recent.mp4", 86400, recent, sizeof(recent));
+    uint64_t id = add_recording_aged("finite", "protected.mp4", 400 * 86400,
+        protected_path, sizeof(protected_path));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, true));
+    int held_fd = open(protected_path, O_RDONLY);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, held_fd);
+    TEST_ASSERT_EQUAL_INT(2, apply_retention_policy());
+    assert_recording_deleted(inherited);
+    assert_recording_deleted(finite);
+    assert_recording_kept(unlimited);
+    assert_recording_kept(recent);
+    assert_recording_kept(protected_path);
+    char byte = 1;
+    TEST_ASSERT_EQUAL_INT(1, read(held_fd, &byte, 1));
+    TEST_ASSERT_EQUAL_INT(0, byte);
+    close(held_fd);
+    TEST_ASSERT_EQUAL_INT(3, count_recordings());
+    assert_database_integrity();
+}
+
+static void check_unlink_fault_and_recovery(int error) {
+    char protected_path[PATH_MAX];
+    create_mp4_dir();
+    add_stream_with_retention("fault", true, 1, 1);
+    uint64_t id = add_recording_aged("fault", "fault.mp4", 3 * 86400,
+        fault_path, sizeof(fault_path));
+    uint64_t protected_id = add_recording_aged("fault", "protected.mp4", 4 * 86400,
+        protected_path, sizeof(protected_path));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(protected_id, true));
+    fault_errno = error;
+    TEST_ASSERT_EQUAL_INT(0, apply_retention_policy());
+    TEST_ASSERT_GREATER_THAN_INT(0, fault_hits);
+    assert_recording_kept(fault_path);
+    assert_recording_kept(protected_path);
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT r.deletion_pending,o.state,o.attempt_count FROM recordings r "
+        "JOIN storage_deletions d ON d.recording_id=r.id "
+        "JOIN storage_deletion_objects o ON o.deletion_uuid=d.uuid WHERE r.id=?", -1, &stmt, NULL));
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT(1, sqlite3_column_int(stmt, 0));
+    TEST_ASSERT_EQUAL_STRING("retry_wait", (const char *)sqlite3_column_text(stmt, 1));
+    TEST_ASSERT_EQUAL_INT(1, sqlite3_column_int(stmt, 2));
+    sqlite3_finalize(stmt);
+    assert_database_integrity();
+    fault_errno = 0;
+    /* Advance this disposable journal's retry deadline, avoiding a 30s sleep. */
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE storage_deletion_objects SET next_attempt_at=0 WHERE state='retry_wait'", NULL, NULL, NULL));
+    TEST_ASSERT_GREATER_THAN_INT(0, storage_deletion_process_one());
+    assert_recording_deleted(fault_path);
+    assert_recording_kept(protected_path);
+    assert_database_integrity();
+}
+void test_readonly_cleanup_preserves_metadata_and_recovers(void) { check_unlink_fault_and_recovery(EROFS); }
+void test_io_failure_cleanup_preserves_metadata_and_recovers(void) { check_unlink_fault_and_recovery(EIO); }
+
+void test_unavailable_root_preserves_expired_metadata_until_restored(void) {
+    char expired[PATH_MAX], protected_path[PATH_MAX], offline[PATH_MAX];
+    create_mp4_dir();
+    add_stream_with_retention("offline", true, 1, 1);
+    add_recording_aged("offline", "expired.mp4", 3 * 86400, expired, sizeof(expired));
+    uint64_t id = add_recording_aged("offline", "protected.mp4", 4 * 86400,
+        protected_path, sizeof(protected_path));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, true));
+    snprintf(offline, sizeof(offline), "%s-offline", g_storage_root);
+    TEST_ASSERT_EQUAL_INT(0, rename(g_storage_root, offline));
+    int deleted = apply_retention_policy();
+    int count = count_recordings();
+    /* Always restore before assertions, including a failing regression. */
+    TEST_ASSERT_EQUAL_INT(0, rename(offline, g_storage_root));
+    TEST_ASSERT_EQUAL_INT(0, deleted);
+    TEST_ASSERT_EQUAL_INT(2, count);
+    assert_recording_kept(expired);
+    assert_recording_kept(protected_path);
+    TEST_ASSERT_EQUAL_INT(1, apply_retention_policy());
+    assert_recording_deleted(expired);
+    assert_recording_kept(protected_path);
+    assert_database_integrity();
+}
+
 int main(void) {
+    if (!mkdtemp(test_db_dir)) return 1;
+    snprintf(test_db_path, sizeof(test_db_path), "%s/metadata.db", test_db_dir);
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) return 1;
 
@@ -447,9 +573,13 @@ int main(void) {
     RUN_TEST(test_apply_retention_policy_honours_disabled_stream_explicit_retention);
     RUN_TEST(test_apply_retention_policy_expires_recordings_of_deleted_streams);
     RUN_TEST(test_cleanup_pace_sleeps_at_least_as_long_as_the_database_work);
+    RUN_TEST(test_enabled_retention_modes_preserve_protected_and_open_media);
+    RUN_TEST(test_readonly_cleanup_preserves_metadata_and_recovers);
+    RUN_TEST(test_io_failure_cleanup_preserves_metadata_and_recovers);
+    RUN_TEST(test_unavailable_root_preserves_expired_metadata_until_restored);
     int result = UNITY_END();
 
     shutdown_database();
-    unlink(TEST_DB_PATH);
+    remove_tree(test_db_dir);
     return result;
 }

@@ -29,7 +29,9 @@
 #include "database/db_recordings.h"
 
 /* ---- test database path ---- */
-#define TEST_DB_PATH "/tmp/lightnvr_unit_retention_test.db"
+static char test_db_dir[] = "/tmp/lightnvr-retention-sqlite-XXXXXX";
+static char test_db_path[256];
+#define TEST_DB_PATH test_db_path
 
 /* ---- helpers ---- */
 
@@ -67,7 +69,7 @@ static void clear_recordings(void) {
 
 /* ---- Unity boilerplate ---- */
 void setUp(void)    { clear_recordings(); }
-void tearDown(void) {}
+void tearDown(void) { sqlite3_exec(get_db_handle(), "PRAGMA query_only=OFF; PRAGMA max_page_count=1073741823;", NULL, NULL, NULL); }
 
 /* ================================================================
  * Tests
@@ -462,7 +464,77 @@ void test_delete_recording_removes_it(void) {
  * main — init DB once, run all tests, shutdown DB
  * ================================================================ */
 
+static int scalar_int(const char *sql) {
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), sql, -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    int value = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+static void check_existing_record_and_integrity(uint64_t id) {
+    recording_metadata_t loaded;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &loaded));
+    TEST_ASSERT_TRUE(loaded.protected);
+    TEST_ASSERT_EQUAL_STRING("/rec/preserved.mp4", loaded.file_path);
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), "PRAGMA integrity_check", -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("ok", (const char *)sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+}
+
+void test_sqlite_readonly_rejects_update_without_losing_metadata_then_recovers(void) {
+    recording_metadata_t m = make_recording("cam", "/rec/preserved.mp4", time(NULL), "scheduled", true);
+    uint64_t id = add_recording_metadata(&m);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, true));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "PRAGMA query_only=ON", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, set_recording_protected(id, false));
+    TEST_ASSERT_EQUAL_INT(SQLITE_READONLY, sqlite3_errcode(get_db_handle()));
+    check_existing_record_and_integrity(id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "PRAGMA query_only=OFF", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, false));
+    recording_metadata_t loaded;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &loaded));
+    TEST_ASSERT_FALSE(loaded.protected);
+}
+
+void test_sqlite_full_rejects_new_recording_without_corruption_then_recovers(void) {
+    recording_metadata_t m = make_recording("cam", "/rec/preserved.mp4", time(NULL), "scheduled", true);
+    uint64_t id = add_recording_metadata(&m);
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(id, true));
+    int pages = scalar_int("PRAGMA page_count");
+    char sql[128];
+    snprintf(sql, sizeof(sql), "PRAGMA max_page_count=%d", pages + 8);
+    TEST_ASSERT_EQUAL_INT(pages + 8, scalar_int(sql));
+    /* Bound the real SQLite pager to eight extra pages. No host disk filling. */
+    recording_metadata_t next = make_recording("cam", "/rec/full.mp4", time(NULL), "scheduled", false);
+    memset(next.file_path, 'x', sizeof(next.file_path) - 1);
+    next.file_path[sizeof(next.file_path) - 1] = 0;
+    int inserted = 0;
+    for (; inserted < 256; inserted++) {
+        char prefix[16];
+        int length = snprintf(prefix, sizeof(prefix), "/rec/%03d-", inserted);
+        memcpy(next.file_path, prefix, (size_t)length);
+        if (add_recording_metadata(&next) == 0) break;
+    }
+    TEST_ASSERT_LESS_THAN_INT(256, inserted);
+    TEST_ASSERT_EQUAL_INT(SQLITE_FULL, sqlite3_errcode(get_db_handle()));
+    TEST_ASSERT_EQUAL_INT(inserted + 1, scalar_int("SELECT COUNT(*) FROM recordings"));
+    check_existing_record_and_integrity(id);
+    TEST_ASSERT_GREATER_THAN_INT(pages, scalar_int("PRAGMA max_page_count=1073741823"));
+    safe_strcpy(next.file_path, "/rec/recovered.mp4", sizeof(next.file_path), 0);
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&next));
+    TEST_ASSERT_EQUAL_INT(inserted + 2, scalar_int("SELECT COUNT(*) FROM recordings"));
+    check_existing_record_and_integrity(id);
+}
+
 int main(void) {
+    if (!mkdtemp(test_db_dir)) return 1;
+    snprintf(test_db_path, sizeof(test_db_path), "%s/metadata.db", test_db_dir);
     /* Remove stale test DB from a previous run */
     unlink(TEST_DB_PATH);
 
@@ -488,11 +560,14 @@ int main(void) {
     RUN_TEST(test_pressure_cleanup_deprioritizes_overrides_and_detection_within_tier);
     RUN_TEST(test_pressure_cleanup_is_scoped_to_storage_target);
     RUN_TEST(test_delete_recording_removes_it);
+    RUN_TEST(test_sqlite_readonly_rejects_update_without_losing_metadata_then_recovers);
+    RUN_TEST(test_sqlite_full_rejects_new_recording_without_corruption_then_recovers);
 
     int result = UNITY_END();
 
     shutdown_database();
     unlink(TEST_DB_PATH);
+    rmdir(test_db_dir);
 
     return result;
 }
