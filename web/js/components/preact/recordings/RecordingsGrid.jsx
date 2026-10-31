@@ -233,9 +233,14 @@ function RecordingCard({
       {/* Thumbnail area */}
       <div
         class="relative aspect-video bg-muted overflow-hidden"
-        onClick={() => playRecording(recording)}
-        title={inProgress ? t('recordings.inProgressToast') : undefined}
       >
+        <button
+          type="button"
+          class="absolute inset-0 z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          aria-label={`${t('recordings.play')} ${recording.stream || t('common.unknown')}`}
+          onClick={() => playRecording(recording)}
+          title={inProgress ? t('recordings.inProgressToast') : undefined}
+        />
         {inProgress ? (
           <div class="w-full h-full flex flex-col items-center justify-center gap-2 text-destructive">
             <span class="relative flex h-3 w-3" aria-hidden="true">
@@ -261,16 +266,17 @@ function RecordingCard({
             <span class="text-xs mt-2 opacity-50">{t('common.loading')}</span>
           </div>
         ) : (
-          <div
-            class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50 cursor-pointer"
-            onClick={(e) => { e.stopPropagation(); loadThumbnail(); }}
+          <button
+            type="button"
+            class="absolute inset-0 z-20 w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50 cursor-pointer focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+            onClick={loadThumbnail}
             title={t('recordings.clickToRetry')}
           >
             <svg class="w-12 h-12 opacity-40 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <span class="text-xs mt-2 opacity-60">{t('recordings.tapToRetry')}</span>
-          </div>
+          </button>
         )}
 
         {/* Play overlay on hover */}
@@ -308,7 +314,7 @@ function RecordingCard({
 
         {/* Selection checkbox — only visible in selection mode */}
         {canDelete && selectionMode && (
-          <div class="absolute top-2 left-2" onClick={(e) => e.stopPropagation()}>
+          <div class="absolute top-2 left-2 z-30">
             <label class="inline-flex cursor-pointer items-center justify-center">
               <input
                 type="checkbox"

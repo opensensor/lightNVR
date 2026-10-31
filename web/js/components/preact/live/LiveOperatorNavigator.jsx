@@ -329,21 +329,29 @@ export function LiveOperatorNavigator({
           </button>
           <div className="live-location-tree">
             {locationRows.map((node) => (
-              <button key={node.uuid} type="button"
-                className={`live-location-row ${selectedLocation === node.uuid && layoutCameraScope === null ? 'is-selected' : ''}`}
-                style={{ '--location-depth': node.depth }}
-                onClick={() => selectLocation(node.uuid)}
-                onDblClick={() => loadLocation(node.uuid)}>
-                <span className="live-location-name">
-                  {node.children.length > 0 && (
-                    <span onClick={(event) => {
-                      event.stopPropagation(); toggleExpanded(node.uuid);
-                    }}>{expanded.has(node.uuid) ? '▾' : '▸'}</span>
-                  )}
-                  <span>{locationIcon(node.type)}</span><span>{node.name}</span>
-                </span>
-                <small>{node.live}/{node.total}</small>
-              </button>
+              <div key={node.uuid} className="relative">
+                <button type="button"
+                  className={`live-location-row ${selectedLocation === node.uuid && layoutCameraScope === null ? 'is-selected' : ''}`}
+                  style={{ '--location-depth': node.depth }}
+                  onClick={() => selectLocation(node.uuid)}
+                  onDblClick={() => loadLocation(node.uuid)}>
+                  <span className="live-location-name">
+                    {node.children.length > 0 && <span aria-hidden="true" style={{ width: '0.75rem' }} />}
+                    <span>{locationIcon(node.type)}</span><span>{node.name}</span>
+                  </span>
+                  <small>{node.live}/{node.total}</small>
+                </button>
+                {node.children.length > 0 && (
+                  <button type="button"
+                    className="absolute rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                    style={{ left: `calc(0.45rem + ${node.depth} * 0.8rem)`, top: '50%', transform: 'translateY(-50%)' }}
+                    aria-label={node.name}
+                    aria-expanded={expanded.has(node.uuid)}
+                    onClick={() => toggleExpanded(node.uuid)}>
+                    {expanded.has(node.uuid) ? '▾' : '▸'}
+                  </button>
+                )}
+              </div>
             ))}
           </div>
           <div className="live-camera-list" aria-live="polite">

@@ -994,19 +994,26 @@ export function TimelinePlayer({
             <div
               className="absolute inset-0 flex items-center justify-center cursor-pointer rounded-lg"
               style={{ zIndex: 10, backgroundColor: 'rgba(0, 0, 0, 0.65)' }}
-              onClick={async () => {
-                setShowFullscreenPrompt(false);
-                await handleToggleFullscreen();
-              }}
             >
-              <div className="flex flex-col items-center gap-3 text-white pointer-events-none select-none">
+              <button
+                type="button"
+                className="absolute inset-0 flex items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:-outline-offset-4"
+                aria-label={t('timeline.clickToEnterFullscreen')}
+                onClick={async () => {
+                  setShowFullscreenPrompt(false);
+                  await handleToggleFullscreen();
+                }}
+              >
+              <span className="flex flex-col items-center gap-3 text-white pointer-events-none select-none">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
                      fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
                 </svg>
                 <span className="text-sm font-medium">{t('timeline.clickToEnterFullscreen')}</span>
-              </div>
+              </span>
+              </button>
               <button
+                type="button"
                 className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-lg leading-none"
                 style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', color: 'rgba(255, 255, 255, 0.7)' }}
                 onClick={(e) => { e.stopPropagation(); setShowFullscreenPrompt(false); }}

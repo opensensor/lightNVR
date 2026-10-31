@@ -565,8 +565,11 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Effective-config modal */}
                 {effectiveConfigOpen ? (
-                  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEffectiveConfigOpen(false)}>
-                    <div class="bg-card text-card-foreground rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-4" onClick={(e) => e.stopPropagation()}>
+                  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="presentation" onClick={(event) => {
+                    event.stopPropagation();
+                    if (event.target === event.currentTarget) setEffectiveConfigOpen(false);
+                  }}>
+                    <div class="bg-card text-card-foreground rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-4">
                       <div class="flex items-center justify-between mb-3 pb-2 border-b">
                         <h3 class="font-semibold">{t('settings.go2rtcEffectiveConfig')}</h3>
                         <button type="button" class="text-sm underline" onClick={() => setEffectiveConfigOpen(false)}>{t('common.close')}</button>
