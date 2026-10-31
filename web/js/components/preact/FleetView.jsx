@@ -314,7 +314,7 @@ export function FleetView({ onEditCamera }) {
             </svg>
             <label className="sr-only" htmlFor="fleet-search">{t('fleet.searchLabel')}</label>
             <input
-              id="fleet-search"
+              aria-label={t('fleet.searchLabel')} id="fleet-search"
               type="search"
               className="w-full rounded-md border border-input bg-background py-2.5 pl-10 pr-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
               value={state.search}

@@ -778,7 +778,7 @@ export function HLSVideoCell({
 
       {/* Video element */}
       <video
-        id={`video-${streamId.replace(/\s+/g, '-')}`}
+        aria-label={`${stream.name} ${t('live.stream')}`} id={`video-${streamId.replace(/\s+/g, '-')}`}
         className="video-element"
         ref={videoRef}
         autoPlay
@@ -983,7 +983,7 @@ export function HLSVideoCell({
         {/* Pause for privacy button */}
         {canControlPrivacy && <button
           type="button"
-          title={t('live.pauseForPrivacy')}
+          aria-label={t('live.pauseForPrivacy')} title={t('live.pauseForPrivacy')}
           onClick={() => setShowPrivacyConfirm(true)}
           style={{
             backgroundColor: 'transparent',

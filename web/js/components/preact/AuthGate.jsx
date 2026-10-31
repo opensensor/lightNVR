@@ -81,7 +81,7 @@ export function RequiredPasswordChange({ session }) {
               {t('passwordChangeRequired.currentPassword')}
             </label>
             <input
-              id="required-current-password"
+              aria-label={t('passwordChangeRequired.currentPassword')} id="required-current-password"
               type="password"
               autoComplete="current-password"
               className="w-full rounded border border-input bg-background p-2 text-foreground"
@@ -97,7 +97,7 @@ export function RequiredPasswordChange({ session }) {
               {t('passwordChangeRequired.newPassword')}
             </label>
             <input
-              id="required-new-password"
+              aria-label={t('passwordChangeRequired.newPassword')} id="required-new-password"
               type="password"
               autoComplete="new-password"
               minLength="8"
@@ -116,7 +116,7 @@ export function RequiredPasswordChange({ session }) {
               {t('passwordChangeRequired.confirmPassword')}
             </label>
             <input
-              id="required-confirm-password"
+              aria-label={t('passwordChangeRequired.confirmPassword')} id="required-confirm-password"
               type="password"
               autoComplete="new-password"
               className="w-full rounded border border-input bg-background p-2 text-foreground"

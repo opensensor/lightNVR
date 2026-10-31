@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { tinykeys } from 'tinykeys';
+import { useI18n } from '../../i18n.js';
 import { fullscreenSwipeAction, shouldIgnoreTileGestureTarget } from './mobileLiveGestures.js';
 import {
   PSEUDO_FULLSCREEN_EVENT,
@@ -433,10 +434,12 @@ export function FullscreenExitButton({ isFullscreen, onExit }) {
  * @returns {JSX.Element} FullscreenButton component
  */
 export function FullscreenButton({ isFullscreen, onToggle }) {
+  const { t } = useI18n();
   if (isFullscreen) return null;
 
   return (
     <button 
+      aria-label={t('live.toggleFullscreen')}
       id="fullscreen-btn"
       className="fullscreen-btn px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
       onClick={onToggle}

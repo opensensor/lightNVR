@@ -139,7 +139,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
         {/* Mode selector */}
         <div class="flex flex-col gap-3 mb-5">
           <label class="flex items-start gap-3 cursor-pointer">
-            <input type="radio" name="dl-mode" value="zip" checked={mode === 'zip'}
+            <input type="radio" name="dl-mode" aria-label={t('recordings.zipArchiveRecommended')} value="zip" checked={mode === 'zip'}
               onChange={() => setMode('zip')} class="mt-0.5" />
             <div>
               <div class="font-medium text-sm">{t('recordings.zipArchiveRecommended')}</div>
@@ -147,7 +147,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             </div>
           </label>
           <label class="flex items-start gap-3 cursor-pointer">
-            <input type="radio" name="dl-mode" value="sequential" checked={mode === 'sequential'}
+            <input type="radio" name="dl-mode" aria-label={t('recordings.sequentialDownloads')} value="sequential" checked={mode === 'sequential'}
               onChange={() => setMode('sequential')} class="mt-0.5" />
             <div>
               <div class="font-medium text-sm">{t('recordings.sequentialDownloads')}</div>
@@ -162,7 +162,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             <label class="block text-sm font-medium mb-1">{t('recordings.zipFilename')}</label>
             <input
               type="text"
-              value={zipName}
+              aria-label={t('recordings.zipFilename')} value={zipName}
               onInput={e => setZipName(e.target.value)}
               placeholder="recordings.zip"
               class="w-full px-3 py-2 rounded border border-border bg-background text-sm focus:outline-none focus:ring-2"
