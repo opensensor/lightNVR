@@ -24,6 +24,9 @@ static char original_storage[MAX_PATH_LENGTH];
 static bool armed_access, injected, fail_publication, publication_competitor;
 static bool fail_metadata, metadata_competitor;
 static int replacement_kind;
+static bool fail_backup_creation, tamper_backup_directory;
+static char altered_directory[1024];
+static char observed_backup[1024];
 static const unsigned char old_png[] = {0x89,'P','N','G',13,10,26,10,'o','l','d'};
 static const unsigned char new_png[] = {0x89,'P','N','G',13,10,26,10,'n','e','w'};
 
@@ -53,7 +56,19 @@ int __wrap_access(const char *name, int mode) {
     }
     errno = saved_errno; return result;
 }
+char *__real_mkdtemp(char *);
+char *__wrap_mkdtemp(char *name) {
+    if (fail_backup_creation && strstr(name, ".backup.")) { errno = EACCES; return NULL; }
+    char *result = __real_mkdtemp(name);
+    if (result && tamper_backup_directory && strstr(name, ".backup.")) {
+        TEST_ASSERT_EQUAL_INT(0, chmod(name, 0755));
+        safe_strcpy(altered_directory, name, sizeof(altered_directory), 0);
+    }
+    return result;
+}
 int __wrap_rename(const char *from, const char *to) {
+    if (!strcmp(from, path) && (strstr(to, ".bak") || strstr(to, "/original")))
+        safe_strcpy(observed_backup, to, sizeof(observed_backup), 0);
     if (fail_publication && !strcmp(to, path) && strstr(from, ".tmp.")) {
         fail_publication = false; injected = true;
         if (publication_competitor) put_text(path, "publication rollback competitor");
@@ -108,7 +123,7 @@ static void assert_metadata_unchanged(void) {
 }
 void setUp(void) {
     armed_access = injected = fail_publication = publication_competitor = false;
-    fail_metadata = metadata_competitor = false; replacement_kind = 0;
+    fail_metadata = metadata_competitor = fail_backup_creation = false; replacement_kind = 0; observed_backup[0] = 0; tamper_backup_directory = false; altered_directory[0] = 0;
     g_config.web_auth_enabled = false; g_config.demo_mode = false;
     safe_strcpy(g_config.storage_path, storage, sizeof(g_config.storage_path), 0);
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM operator_floor_plans;", NULL, NULL, NULL));
@@ -162,13 +177,15 @@ static void test_publication_rollback_does_not_overwrite_competitor(void) {
     fail_publication = publication_competitor = true;
     TEST_ASSERT_EQUAL_INT(500, upload_background()); TEST_ASSERT_TRUE(injected);
     assert_text(path, "publication rollback competitor");
-    assert_bytes(backup, old_png, sizeof(old_png)); assert_metadata_unchanged();
+    TEST_ASSERT_TRUE(observed_backup[0] != 0);
+    assert_bytes(observed_backup, old_png, sizeof(old_png)); assert_metadata_unchanged();
 }
 static void test_metadata_rollback_does_not_unlink_competitor(void) {
     fail_metadata = metadata_competitor = true;
     TEST_ASSERT_EQUAL_INT(500, upload_background()); TEST_ASSERT_TRUE(injected);
     assert_text(path, "metadata rollback competitor");
-    assert_bytes(backup, old_png, sizeof(old_png));
+    TEST_ASSERT_TRUE(observed_backup[0] != 0);
+    assert_bytes(observed_backup, old_png, sizeof(old_png));
     assert_bytes(uploaded, new_png, sizeof(new_png)); assert_metadata_unchanged();
 }
 static void test_preexisting_backup_is_not_silently_deleted(void) {
@@ -181,6 +198,26 @@ static void test_unauthenticated_request_preserves_existing_file(void) {
     g_config.web_auth_enabled = true;
     TEST_ASSERT_EQUAL_INT(401, upload_background());
     assert_bytes(path, old_png, sizeof(old_png)); assert_metadata_unchanged();
+}
+static void test_preexisting_backup_symlink_is_preserved(void) {
+    TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, backup));
+    TEST_ASSERT_EQUAL_INT(200, upload_background());
+    struct stat info; TEST_ASSERT_EQUAL_INT(0, lstat(backup, &info));
+    TEST_ASSERT_TRUE(S_ISLNK(info.st_mode)); assert_text(sentinel, "sentinel unchanged");
+    assert_bytes(path, new_png, sizeof(new_png));
+}
+static void test_private_backup_creation_failure_preserves_old_file(void) {
+    fail_backup_creation = true;
+    TEST_ASSERT_EQUAL_INT(500, upload_background());
+    assert_bytes(path, old_png, sizeof(old_png)); assert_metadata_unchanged();
+}
+static void test_invalid_private_directory_is_retained_without_touching_background(void) {
+    tamper_backup_directory = true;
+    TEST_ASSERT_EQUAL_INT(500, upload_background());
+    assert_bytes(path, old_png, sizeof(old_png)); assert_metadata_unchanged();
+    struct stat info; TEST_ASSERT_TRUE(altered_directory[0] != 0);
+    TEST_ASSERT_EQUAL_INT(0, lstat(altered_directory, &info));
+    TEST_ASSERT_TRUE(S_ISDIR(info.st_mode));
 }
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-27-XXXXXX"); if (!mkdtemp(root)) return 2;
@@ -204,6 +241,9 @@ int main(void) {
     RUN_TEST(test_metadata_rollback_does_not_unlink_competitor);
     RUN_TEST(test_preexisting_backup_is_not_silently_deleted);
     RUN_TEST(test_unauthenticated_request_preserves_existing_file);
+    RUN_TEST(test_preexisting_backup_symlink_is_preserved);
+    RUN_TEST(test_private_backup_creation_failure_preserves_old_file);
+    RUN_TEST(test_invalid_private_directory_is_retained_without_touching_background);
     int result = UNITY_END();
     shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;

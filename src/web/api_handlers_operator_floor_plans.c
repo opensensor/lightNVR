@@ -11,6 +11,7 @@
 
 #include <cjson/cJSON.h>
 #include <ctype.h>
+#include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -24,6 +25,7 @@
 
 #include "core/authorization.h"
 #include "core/config.h"
+#include "core/logger.h"
 #include "core/path_utils.h"
 #include "database/db_auth.h"
 #include "database/db_fleet_query.h"
@@ -867,6 +869,44 @@ static bool background_matches_mime(const char *mime,
 // floor_plans/<uuid>.<ext> suffix from ever truncating.
 #define BACKGROUND_PATH_SIZE (MAX_PATH_LENGTH + 128)
 
+typedef struct {
+    char directory[BACKGROUND_PATH_SIZE + 32];
+    char path[BACKGROUND_PATH_SIZE + 48];
+    int descriptor;
+    bool created;
+    bool validated;
+    struct stat identity;
+} background_backup_t;
+
+static bool create_background_backup(const char *destination, background_backup_t *backup) {
+    int length = snprintf(backup->directory, sizeof(backup->directory), "%s.backup.XXXXXX", destination);
+    if (length < 0 || (size_t)length >= sizeof(backup->directory) || !mkdtemp(backup->directory)) return false;
+    backup->created = true;
+    backup->descriptor = open(backup->directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat named;
+    if (backup->descriptor < 0 || fstat(backup->descriptor, &backup->identity) != 0 ||
+        lstat(backup->directory, &named) != 0 || !S_ISDIR(backup->identity.st_mode) ||
+        backup->identity.st_uid != geteuid() || (backup->identity.st_mode & 0777) != 0700 ||
+        named.st_dev != backup->identity.st_dev || named.st_ino != backup->identity.st_ino) return false;
+    backup->validated = true;
+    length = snprintf(backup->path, sizeof(backup->path), "%s/original", backup->directory);
+    return length > 0 && (size_t)length < sizeof(backup->path);
+}
+
+static void finish_background_backup(background_backup_t *backup) {
+    if (backup->created) {
+        struct stat current;
+        /* Never recurse. Failed recovery leaves the original in this private
+         * directory for inspection; empty-directory retirement is best effort. */
+        if (!backup->validated || backup->descriptor < 0 || lstat(backup->directory, &current) != 0 ||
+            current.st_dev != backup->identity.st_dev || current.st_ino != backup->identity.st_ino ||
+            rmdir(backup->directory) != 0)
+            log_warn("Floor-plan backup directory retained for inspection: %s", backup->directory);
+    }
+    if (backup->descriptor >= 0) close(backup->descriptor);
+    backup->descriptor = -1;
+}
+
 static bool background_file_path(const char *uuid, const char *mime,
                                  char *path, size_t size) {
     const char *extension = background_extension(mime);
@@ -1042,26 +1082,22 @@ void handle_put_operator_floor_plan_background(const http_request_t *req,
 
     // Preserve a same-type background until the metadata update succeeds, so
     // an SQLite failure does not turn a valid existing background into a 404.
-    char backup[BACKGROUND_PATH_SIZE + 8];
+    background_backup_t backup = {.descriptor = -1};
     bool backed_up = false;
-    int backup_length = snprintf(backup, sizeof(backup), "%s.bak", path);
-    bool valid_backup_path = backup_length >= 0 &&
-        (size_t)backup_length < sizeof(backup);
-    if (valid_backup_path) unlink(backup);
-    if (strcmp(existing.background_mime, mime) == 0 && valid_backup_path &&
-        access(path, F_OK) == 0) {
-        if (rename(path, backup) != 0) {
+    if (strcmp(existing.background_mime, mime) == 0 && access(path, F_OK) == 0) {
+        if (!create_background_backup(path, &backup) || rename(path, backup.path) != 0) {
             unlink(temporary);
+            finish_background_backup(&backup);
             pthread_mutex_unlock(&background_files_mutex);
-            http_response_set_json_error(
-                res, 500, "Failed to store floor plan background");
+            http_response_set_json_error(res, 500, "Failed to store floor plan background");
             return;
         }
         backed_up = true;
     }
     if (rename(temporary, path) != 0) {
         unlink(temporary);
-        if (backed_up) rename(backup, path);
+        if (backed_up) rename(backup.path, path);
+        finish_background_backup(&backup);
         pthread_mutex_unlock(&background_files_mutex);
         http_response_set_json_error(res, 500,
                                      "Failed to store floor plan background");
@@ -1070,12 +1106,14 @@ void handle_put_operator_floor_plan_background(const http_request_t *req,
     result = db_operator_floor_plan_set_background(uuid, mime);
     if (result != DB_OPERATOR_FLOOR_PLAN_OK) {
         unlink(path);
-        if (backed_up) rename(backup, path);
+        if (backed_up) rename(backup.path, path);
+        finish_background_backup(&backup);
         pthread_mutex_unlock(&background_files_mutex);
         set_db_error(res, result);
         return;
     }
-    if (backed_up) unlink(backup);
+    if (backed_up) unlinkat(backup.descriptor, "original", 0);
+    finish_background_backup(&backup);
     char obsolete[BACKGROUND_PATH_SIZE];
     const char *other = strcmp(mime, "image/png") == 0
         ? "image/jpeg" : "image/png";
