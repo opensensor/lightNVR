@@ -1,0 +1,587 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "docs/api/contracts/common.yaml": "d27f06e8386787dc45af712953ec87010c879632ab3c7d6318d0395bfe0604ce",
+    "docs/api/contracts/streams.yaml": "e18c04335cd5270655319dd5d4eec423d47f2a5aa0169c92ac376c46b08dae5a",
+    "docs/api/openapi.yaml": "9a24e4288717257c7f83f92105c0c491d91f2673fad434f7f76489efbaa36cf4"
+  },
+  "fixture_count": 91,
+  "owned_files": [
+    "tests/contracts/generated/manifest.json",
+    "tests/contracts/generated/openapi.json",
+    "web/js/api/generated/package.json",
+    "web/js/api/generated/types.ts",
+    "web/js/api/generated/validators.d.mts",
+    "web/js/api/generated/validators.mjs",
+    "web/js/api/generated/validators/AuthRole.d.mts",
+    "web/js/api/generated/validators/AuthRole.mjs",
+    "web/js/api/generated/validators/AuthVerifyAuthDisabled.d.mts",
+    "web/js/api/generated/validators/AuthVerifyAuthDisabled.mjs",
+    "web/js/api/generated/validators/AuthVerifyAuthenticated.d.mts",
+    "web/js/api/generated/validators/AuthVerifyAuthenticated.mjs",
+    "web/js/api/generated/validators/AuthVerifyDemo.d.mts",
+    "web/js/api/generated/validators/AuthVerifyDemo.mjs",
+    "web/js/api/generated/validators/AuthVerifyResponse.d.mts",
+    "web/js/api/generated/validators/AuthVerifyResponse.mjs",
+    "web/js/api/generated/validators/Availability.d.mts",
+    "web/js/api/generated/validators/Availability.mjs",
+    "web/js/api/generated/validators/CameraUuid.d.mts",
+    "web/js/api/generated/validators/CameraUuid.mjs",
+    "web/js/api/generated/validators/ClientConfig.d.mts",
+    "web/js/api/generated/validators/ClientConfig.mjs",
+    "web/js/api/generated/validators/DetailStatus.d.mts",
+    "web/js/api/generated/validators/DetailStatus.mjs",
+    "web/js/api/generated/validators/DetectionModel.d.mts",
+    "web/js/api/generated/validators/DetectionModel.mjs",
+    "web/js/api/generated/validators/DetectionModelsResponse.d.mts",
+    "web/js/api/generated/validators/DetectionModelsResponse.mjs",
+    "web/js/api/generated/validators/DetectionUrl.d.mts",
+    "web/js/api/generated/validators/DetectionUrl.mjs",
+    "web/js/api/generated/validators/DetectionZone.d.mts",
+    "web/js/api/generated/validators/DetectionZone.mjs",
+    "web/js/api/generated/validators/EmptyString.d.mts",
+    "web/js/api/generated/validators/EmptyString.mjs",
+    "web/js/api/generated/validators/EpochSecondsOrZero.d.mts",
+    "web/js/api/generated/validators/EpochSecondsOrZero.mjs",
+    "web/js/api/generated/validators/EptzConfigString.d.mts",
+    "web/js/api/generated/validators/EptzConfigString.mjs",
+    "web/js/api/generated/validators/EptzConfigV1.d.mts",
+    "web/js/api/generated/validators/EptzConfigV1.mjs",
+    "web/js/api/generated/validators/ErrorResponse.d.mts",
+    "web/js/api/generated/validators/ErrorResponse.mjs",
+    "web/js/api/generated/validators/HourOfWeekSchedule.d.mts",
+    "web/js/api/generated/validators/HourOfWeekSchedule.mjs",
+    "web/js/api/generated/validators/Int32.d.mts",
+    "web/js/api/generated/validators/Int32.mjs",
+    "web/js/api/generated/validators/LegacyStreamList.d.mts",
+    "web/js/api/generated/validators/LegacyStreamList.mjs",
+    "web/js/api/generated/validators/NullableClearableString.d.mts",
+    "web/js/api/generated/validators/NullableClearableString.mjs",
+    "web/js/api/generated/validators/PlaybackTransport.d.mts",
+    "web/js/api/generated/validators/PlaybackTransport.mjs",
+    "web/js/api/generated/validators/PublishUrlList.d.mts",
+    "web/js/api/generated/validators/PublishUrlList.mjs",
+    "web/js/api/generated/validators/RetentionDays.d.mts",
+    "web/js/api/generated/validators/RetentionDays.mjs",
+    "web/js/api/generated/validators/StreamDetail.d.mts",
+    "web/js/api/generated/validators/StreamDetail.mjs",
+    "web/js/api/generated/validators/StreamDetailBase.d.mts",
+    "web/js/api/generated/validators/StreamDetailBase.mjs",
+    "web/js/api/generated/validators/StreamDetailConfigurable.d.mts",
+    "web/js/api/generated/validators/StreamDetailConfigurable.mjs",
+    "web/js/api/generated/validators/StreamDetailLiveOnly.d.mts",
+    "web/js/api/generated/validators/StreamDetailLiveOnly.mjs",
+    "web/js/api/generated/validators/StreamFullResponse.d.mts",
+    "web/js/api/generated/validators/StreamFullResponse.mjs",
+    "web/js/api/generated/validators/StreamFullResponseConfigurable.d.mts",
+    "web/js/api/generated/validators/StreamFullResponseConfigurable.mjs",
+    "web/js/api/generated/validators/StreamFullResponseLiveOnly.d.mts",
+    "web/js/api/generated/validators/StreamFullResponseLiveOnly.mjs",
+    "web/js/api/generated/validators/StreamName.d.mts",
+    "web/js/api/generated/validators/StreamName.mjs",
+    "web/js/api/generated/validators/StreamPrivacyModeRequest.d.mts",
+    "web/js/api/generated/validators/StreamPrivacyModeRequest.mjs",
+    "web/js/api/generated/validators/StreamPrivacyModeResponse.d.mts",
+    "web/js/api/generated/validators/StreamPrivacyModeResponse.mjs",
+    "web/js/api/generated/validators/StreamProtocol.d.mts",
+    "web/js/api/generated/validators/StreamProtocol.mjs",
+    "web/js/api/generated/validators/StreamSummaryAdmin.d.mts",
+    "web/js/api/generated/validators/StreamSummaryAdmin.mjs",
+    "web/js/api/generated/validators/StreamSummaryBase.d.mts",
+    "web/js/api/generated/validators/StreamSummaryBase.mjs",
+    "web/js/api/generated/validators/StreamSummaryLive.d.mts",
+    "web/js/api/generated/validators/StreamSummaryLive.mjs",
+    "web/js/api/generated/validators/StreamSummaryLpr.d.mts",
+    "web/js/api/generated/validators/StreamSummaryLpr.mjs",
+    "web/js/api/generated/validators/StreamSummaryPageAdmin.d.mts",
+    "web/js/api/generated/validators/StreamSummaryPageAdmin.mjs",
+    "web/js/api/generated/validators/StreamSummaryPageLive.d.mts",
+    "web/js/api/generated/validators/StreamSummaryPageLive.mjs",
+    "web/js/api/generated/validators/StreamSummaryPageLpr.d.mts",
+    "web/js/api/generated/validators/StreamSummaryPageLpr.mjs",
+    "web/js/api/generated/validators/StreamUpdateAccepted.d.mts",
+    "web/js/api/generated/validators/StreamUpdateAccepted.mjs",
+    "web/js/api/generated/validators/StreamUpdateRequest.d.mts",
+    "web/js/api/generated/validators/StreamUpdateRequest.mjs",
+    "web/js/api/generated/validators/SummaryForbiddenSensitiveKeys.d.mts",
+    "web/js/api/generated/validators/SummaryForbiddenSensitiveKeys.mjs",
+    "web/js/api/generated/validators/SummaryPageMeta.d.mts",
+    "web/js/api/generated/validators/SummaryPageMeta.mjs",
+    "web/js/api/generated/validators/SummaryStatus.d.mts",
+    "web/js/api/generated/validators/SummaryStatus.mjs",
+    "web/js/api/generated/validators/UrlWithoutQuerySecrets.d.mts",
+    "web/js/api/generated/validators/UrlWithoutQuerySecrets.mjs",
+    "web/js/api/generated/validators/UrlWithoutUserinfo.d.mts",
+    "web/js/api/generated/validators/UrlWithoutUserinfo.mjs",
+    "web/js/api/generated/validators/ViewerSafeUrl.d.mts",
+    "web/js/api/generated/validators/ViewerSafeUrl.mjs",
+    "web/js/api/generated/validators/ZonePoint.d.mts",
+    "web/js/api/generated/validators/ZonePoint.mjs",
+    "web/js/api/generated/validators/ZonesResponse.d.mts",
+    "web/js/api/generated/validators/ZonesResponse.mjs"
+  ],
+  "schemas": {
+    "AuthRole": {
+      "validator": "validateAuthRole"
+    },
+    "AuthVerifyAuthDisabled": {
+      "validator": "validateAuthVerifyAuthDisabled"
+    },
+    "AuthVerifyAuthenticated": {
+      "validator": "validateAuthVerifyAuthenticated"
+    },
+    "AuthVerifyDemo": {
+      "validator": "validateAuthVerifyDemo"
+    },
+    "AuthVerifyResponse": {
+      "validator": "validateAuthVerifyResponse"
+    },
+    "Availability": {
+      "validator": "validateAvailability"
+    },
+    "CameraUuid": {
+      "validator": "validateCameraUuid"
+    },
+    "ClientConfig": {
+      "validator": "validateClientConfig"
+    },
+    "DetailStatus": {
+      "validator": "validateDetailStatus"
+    },
+    "DetectionModel": {
+      "validator": "validateDetectionModel"
+    },
+    "DetectionModelsResponse": {
+      "validator": "validateDetectionModelsResponse"
+    },
+    "DetectionUrl": {
+      "validator": "validateDetectionUrl"
+    },
+    "DetectionZone": {
+      "validator": "validateDetectionZone"
+    },
+    "EmptyString": {
+      "validator": "validateEmptyString"
+    },
+    "EpochSecondsOrZero": {
+      "validator": "validateEpochSecondsOrZero"
+    },
+    "EptzConfigString": {
+      "validator": "validateEptzConfigString"
+    },
+    "EptzConfigV1": {
+      "validator": "validateEptzConfigV1"
+    },
+    "ErrorResponse": {
+      "validator": "validateErrorResponse"
+    },
+    "HourOfWeekSchedule": {
+      "validator": "validateHourOfWeekSchedule"
+    },
+    "Int32": {
+      "validator": "validateInt32"
+    },
+    "LegacyStreamList": {
+      "validator": "validateLegacyStreamList"
+    },
+    "NullableClearableString": {
+      "validator": "validateNullableClearableString"
+    },
+    "PlaybackTransport": {
+      "validator": "validatePlaybackTransport"
+    },
+    "PublishUrlList": {
+      "validator": "validatePublishUrlList"
+    },
+    "RetentionDays": {
+      "validator": "validateRetentionDays"
+    },
+    "StreamDetail": {
+      "validator": "validateStreamDetail"
+    },
+    "StreamDetailBase": {
+      "validator": "validateStreamDetailBase"
+    },
+    "StreamDetailConfigurable": {
+      "validator": "validateStreamDetailConfigurable"
+    },
+    "StreamDetailLiveOnly": {
+      "validator": "validateStreamDetailLiveOnly"
+    },
+    "StreamFullResponse": {
+      "validator": "validateStreamFullResponse"
+    },
+    "StreamFullResponseConfigurable": {
+      "validator": "validateStreamFullResponseConfigurable"
+    },
+    "StreamFullResponseLiveOnly": {
+      "validator": "validateStreamFullResponseLiveOnly"
+    },
+    "StreamName": {
+      "validator": "validateStreamName"
+    },
+    "StreamPrivacyModeRequest": {
+      "validator": "validateStreamPrivacyModeRequest"
+    },
+    "StreamPrivacyModeResponse": {
+      "validator": "validateStreamPrivacyModeResponse"
+    },
+    "StreamProtocol": {
+      "validator": "validateStreamProtocol"
+    },
+    "StreamSummaryAdmin": {
+      "validator": "validateStreamSummaryAdmin"
+    },
+    "StreamSummaryBase": {
+      "validator": "validateStreamSummaryBase"
+    },
+    "StreamSummaryLive": {
+      "validator": "validateStreamSummaryLive"
+    },
+    "StreamSummaryLpr": {
+      "validator": "validateStreamSummaryLpr"
+    },
+    "StreamSummaryPageAdmin": {
+      "validator": "validateStreamSummaryPageAdmin"
+    },
+    "StreamSummaryPageLive": {
+      "validator": "validateStreamSummaryPageLive"
+    },
+    "StreamSummaryPageLpr": {
+      "validator": "validateStreamSummaryPageLpr"
+    },
+    "StreamUpdateAccepted": {
+      "validator": "validateStreamUpdateAccepted"
+    },
+    "StreamUpdateRequest": {
+      "validator": "validateStreamUpdateRequest"
+    },
+    "SummaryForbiddenSensitiveKeys": {
+      "validator": "validateSummaryForbiddenSensitiveKeys"
+    },
+    "SummaryPageMeta": {
+      "validator": "validateSummaryPageMeta"
+    },
+    "SummaryStatus": {
+      "validator": "validateSummaryStatus"
+    },
+    "UrlWithoutQuerySecrets": {
+      "validator": "validateUrlWithoutQuerySecrets"
+    },
+    "UrlWithoutUserinfo": {
+      "validator": "validateUrlWithoutUserinfo"
+    },
+    "ViewerSafeUrl": {
+      "validator": "validateViewerSafeUrl"
+    },
+    "ZonePoint": {
+      "validator": "validateZonePoint"
+    },
+    "ZonesResponse": {
+      "validator": "validateZonesResponse"
+    }
+  },
+  "operations": {
+    "listStreams": {
+      "method": "GET",
+      "path": "/api/streams",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Summary page (surface-specific) or legacy array.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StreamSummaryPageAdmin"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StreamSummaryPageLive"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StreamSummaryPageLpr"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LegacyStreamList"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "500": {
+          "description": "Includes \"Authorization policy evaluation failed\", which is also returned for the WHOLE list when any stream lacks a fleet inventory row (finding candidate F-T11-10).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          }
+        }
+      },
+      "variant_by_query": {
+        "parameter": "surface",
+        "requires": {
+          "summary": [
+            "true",
+            "1"
+          ]
+        },
+        "mapping": {
+          "admin": "#/components/schemas/StreamSummaryPageAdmin",
+          "live": "#/components/schemas/StreamSummaryPageLive",
+          "lpr": "#/components/schemas/StreamSummaryPageLpr"
+        },
+        "otherwise": "#/components/schemas/LegacyStreamList"
+      }
+    },
+    "getStreamFull": {
+      "method": "GET",
+      "path": "/api/streams/{name}/full",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Stream detail, configure or live-only variant.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamFullResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        },
+        "404": {
+          "$ref": "#/components/responses/StreamNotFound"
+        },
+        "500": {
+          "$ref": "#/components/responses/InternalError"
+        }
+      },
+      "variant_by_field": {
+        "field": "stream.can_control_privacy",
+        "mapping": {
+          "true": "#/components/schemas/StreamFullResponseConfigurable",
+          "false": "#/components/schemas/StreamFullResponseLiveOnly"
+        }
+      }
+    },
+    "updateStream": {
+      "method": "PUT",
+      "path": "/api/streams/{name}",
+      "success_statuses": [
+        200,
+        202
+      ],
+      "responses": {
+        "200": {
+          "description": "set_privacy_mode short-circuit result.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamPrivacyModeResponse"
+              }
+            }
+          }
+        },
+        "202": {
+          "description": "Update accepted; applied asynchronously by a worker thread.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamUpdateAccepted"
+              }
+            }
+          }
+        },
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        },
+        "404": {
+          "$ref": "#/components/responses/StreamNotFound"
+        },
+        "413": {
+          "$ref": "#/components/responses/PayloadTooLarge"
+        },
+        "500": {
+          "$ref": "#/components/responses/InternalError"
+        }
+      }
+    },
+    "getStreamZones": {
+      "method": "GET",
+      "path": "/api/streams/{name}/zones",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Zones for the stream (possibly empty).",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZonesResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "$ref": "#/components/responses/BadRequest"
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        },
+        "404": {
+          "$ref": "#/components/responses/StreamNotFound"
+        },
+        "500": {
+          "$ref": "#/components/responses/InternalError"
+        }
+      }
+    },
+    "getClientConfig": {
+      "method": "GET",
+      "path": "/api/client-config",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Client configuration.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientConfig"
+              }
+            }
+          }
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "500": {
+          "$ref": "#/components/responses/InternalError"
+        }
+      }
+    },
+    "listDetectionModels": {
+      "method": "GET",
+      "path": "/api/detection/models",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Built-in models first (motion, api-detection, onvif), then file models.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectionModelsResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        },
+        "403": {
+          "$ref": "#/components/responses/Forbidden"
+        },
+        "500": {
+          "$ref": "#/components/responses/InternalError"
+        }
+      }
+    },
+    "verifyAuth": {
+      "method": "GET",
+      "path": "/api/auth/verify",
+      "success_statuses": [
+        200
+      ],
+      "responses": {
+        "200": {
+          "description": "Principal description.",
+          "headers": {
+            "Cache-Control": {
+              "$ref": "#/components/headers/CacheControl"
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthVerifyResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "$ref": "#/components/responses/Unauthorized"
+        }
+      }
+    }
+  }
+}
