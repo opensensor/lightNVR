@@ -8,10 +8,12 @@ test('snapshot requests stay stable until a camera is re-enabled @ui @streams', 
     width: 640, height: 480, fps: 15, codec: 'h264', protocol: 0,
     record: false, tags: '', playback_transport: 'mse_only',
   }));
+  const primaryStream = streams.find(stream => stream.name === 'cam_a');
+  if (!primaryStream) throw new Error('Snapshot fixture requires cam_a');
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/streams/cam_a') {
-      streams[0].enabled = route.request().method() === 'PUT';
+      primaryStream.enabled = route.request().method() === 'PUT';
       await route.fulfill({ json: { success: true } });
       return;
     }
@@ -63,6 +65,8 @@ test('snapshot requests stay stable until a camera is re-enabled @ui @streams', 
   await expect(disable).toBeVisible();
   await expect.poll(() => snapshotUrls.length).toBe(4);
   await expect(camera.locator('img')).toBeVisible();
-  expect(new URL(snapshotUrls[3]).searchParams.get('src')).toBe('cam_a');
+  const refreshedSnapshotUrl = snapshotUrls[3];
+  if (!refreshedSnapshotUrl) throw new Error('Expected fourth snapshot URL after re-enable');
+  expect(new URL(refreshedSnapshotUrl).searchParams.get('src')).toBe('cam_a');
   expect(snapshotUrls[3]).not.toBe(snapshotUrls[0]);
 });

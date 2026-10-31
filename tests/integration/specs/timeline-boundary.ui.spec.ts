@@ -8,6 +8,11 @@ type Segment = { id: number; stream: string; start_timestamp: number; end_timest
 function localTimestamp(date: string, time: string): number {
   const [y, m, d] = date.split('-').map(Number);
   const [hh, mm, ss] = time.split(':').map(Number);
+  if (y === undefined || m === undefined || d === undefined ||
+      hh === undefined || mm === undefined || ss === undefined ||
+      ![y, m, d, hh, mm, ss].every(Number.isFinite)) {
+    throw new Error(`Invalid local timestamp fixture: ${date} ${time}`);
+  }
   return Math.floor(new Date(y, m - 1, d, hh, mm, ss).getTime() / 1000);
 }
 
@@ -16,14 +21,17 @@ function utcTimestamp(isoString: string): number {
 }
 
 async function mockTimelineApis(page: Page, stream: string, segments: Segment[], tagsById: Record<number, string[]> = {}) {
+  const firstSegment = segments[0];
+  const lastSegment = segments[segments.length - 1];
+  if (!firstSegment || !lastSegment) throw new Error('Timeline fixture requires at least one segment');
   await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
     json: { streams: [{ name: stream }], total_pages: 1 }
   }));
   await page.route('**/api/timeline/segments?**', route => route.fulfill({ json: { segments } }));
   await page.route('**/api/timeline/segments-by-ids?**', route => route.fulfill({ json: {
     segments,
-    start_time: new Date(segments[0].start_timestamp * 1000).toISOString(),
-    end_time: new Date(segments[segments.length - 1].end_timestamp * 1000).toISOString(),
+    start_time: new Date(firstSegment.start_timestamp * 1000).toISOString(),
+    end_time: new Date(lastSegment.end_timestamp * 1000).toISOString(),
     multi_stream: new Set(segments.map(segment => segment.stream)).size > 1
   } }));
   await page.route('**/api/detection/results/**', route => route.fulfill({ json: { detections: [] } }));
@@ -164,8 +172,10 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     await page.addInitScript(() => localStorage.setItem('recordings_view_mode', 'table'));
     await mockTimelineApis(page, stream, segments, { 102: ['person'] });
+    const boundarySegment = segments[1];
+    if (!boundarySegment) throw new Error('Boundary fixture requires a second segment');
     await page.route('**/api/recordings?**', route => route.fulfill({ json: {
-      recordings: [{ id: 102, stream, start_time_unix: segments[1].start_timestamp, duration: 600, size: '1 MB', protected: false, tags: [] }],
+      recordings: [{ id: 102, stream, start_time_unix: boundarySegment.start_timestamp, duration: 600, size: '1 MB', protected: false, tags: [] }],
       pagination: { total: 1, pages: 1, limit: 20 }
     } }));
 
@@ -421,8 +431,10 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     ];
 
     await mockTimelineApis(page, stream, segments);
+    const detectionSegment = segments[0];
+    if (!detectionSegment) throw new Error('Detection fixture requires a segment');
     await page.route('**/api/detection/results/**', route => route.fulfill({ json: { detections: [{
-      timestamp: segments[0].start_timestamp + 1,
+      timestamp: detectionSegment.start_timestamp + 1,
       x: 0.1,
       y: 0.1,
       width: 0.25,
