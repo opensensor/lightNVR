@@ -11,7 +11,9 @@
     "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false
   },
   "include": ["integration/**/*.ts", "load/**/*.ts", "../playwright.config.ts"],
   "exclude": ["../node_modules", "../web/node_modules", "../build"]

@@ -52,4 +52,6 @@ No schema/package/native/shared setup ownership overlaps are introduced.
 - **validation**: `npm run typecheck:tests`; `npx playwright test --list --reporter=list`; inspect `tsc --listFilesOnly -p tests/tsconfig.json` against `rg --files tests/integration tests/load`; run the four URL utility tests with a temporary isolated Playwright config disabling global setup/teardown (they need neither browser launch nor server); all results captured under `build/eng-artifacts/T9/`.
 - **status**: Not Completed
 
-Expansion is pending coordinator graph/ownership approval before child edits.
+Coordinator validated and inserted this expansion before child edits. All four
+child tasks were then implemented serially; completion evidence is recorded in
+T9.1.md through T9.4.md. The main plan owns final task statuses.

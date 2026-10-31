@@ -1,22 +1,39 @@
 import { test, expect } from '@playwright/test';
 import { urlUtils } from '../../web/js/components/preact/recordings/urlUtils.js';
 
+// The imported browser implementation is still JS until the recordings rollout.
+// Treat its broad Object result as unknown and require the object envelope that
+// these existing value assertions consume. No declaration invents a return type.
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function readUrlState(): (Record<string, unknown> & { filters: Record<string, unknown> }) | null {
+  const state: unknown = urlUtils.getFiltersFromUrl();
+  if (state === null) return null;
+  if (!isRecord(state) || !isRecord(state.filters)) {
+    throw new Error('Expected URL state with a filters object');
+  }
+  return { ...state, filters: state.filters };
+}
+
 const setWindowLocation = (url: string) => {
-  (globalThis as any).window = {
+  const browserWindow = {
     location: new URL(url),
     history: {
-      replaceState: (_state: unknown, _title: string, nextUrl: string) => {
-        (globalThis as any).window.location = new URL(nextUrl, (globalThis as any).window.location.href);
+      replaceState: (_state: unknown, _title: string, nextUrl: string): void => {
+        browserWindow.location = new URL(nextUrl, browserWindow.location.href);
       }
     }
   };
-  (globalThis as any).history = (globalThis as any).window.history;
+  Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: browserWindow });
+  Object.defineProperty(globalThis, 'history', { configurable: true, writable: true, value: browserWindow.history });
+  return browserWindow;
 };
 
 test('parses comma-separated multi-select filters from the URL', () => {
   setWindowLocation('http://localhost/recordings?stream=cam1,cam2&detection_label=person,car&tag=urgent,review&capture_method=scheduled,manual&detection=1');
 
-  const state = urlUtils.getFiltersFromUrl();
+  const state = readUrlState();
 
   expect(state?.filters.streamIds).toEqual(['cam1', 'cam2']);
   expect(state?.filters.detectionLabels).toEqual(['person', 'car']);
@@ -45,7 +62,7 @@ test('builds one active-filter badge per selected value', () => {
 });
 
 test('serializes multi-select filters back into the URL', () => {
-  setWindowLocation('http://localhost/recordings');
+  const browserWindow = setWindowLocation('http://localhost/recordings');
 
   urlUtils.updateUrlWithFilters(
     {
@@ -60,7 +77,7 @@ test('serializes multi-select filters back into the URL', () => {
     'desc'
   );
 
-  const params = ((globalThis as any).window.location as URL).searchParams;
+  const params = browserWindow.location.searchParams;
   expect(params.get('stream')).toBe('cam1,cam2');
   expect(params.get('detection_label')).toBe('person,car');
   expect(params.get('tag')).toBe('urgent');
@@ -70,9 +87,9 @@ test('serializes multi-select filters back into the URL', () => {
 });
 
 test('supports the all-items pagination mode in URL state', () => {
-  setWindowLocation('http://localhost/recordings?limit=all&page=4');
+  const browserWindow = setWindowLocation('http://localhost/recordings?limit=all&page=4');
 
-  const state = urlUtils.getFiltersFromUrl();
+  const state = readUrlState();
   expect(state?.limit).toBe(20);
   expect(state?.showAll).toBe(true);
   expect(state?.page).toBe(1);
@@ -84,7 +101,7 @@ test('supports the all-items pagination mode in URL state', () => {
     'desc'
   );
 
-  const params = ((globalThis as any).window.location as URL).searchParams;
+  const params = browserWindow.location.searchParams;
   expect(params.get('limit')).toBe('all');
   expect(params.get('page')).toBe('1');
 });
