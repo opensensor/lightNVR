@@ -7,6 +7,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/md5.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -214,11 +215,76 @@ void test_non_keyframe_at_duration_waits_for_next_keyframe(void) {
     record_and_check_boundary(64, 32);
 }
 
+/* The established contract retains exactly one shared boundary keyframe.
+ * Verify its byte identity and frame cadence across three real decoded files;
+ * overlap beyond that one frame or a missing frame is never accepted. */
+void test_three_segments_decode_with_one_shared_boundary_frame(void) {
+    open_fixture(1);
+    int counts[3] = {0};
+    int decoded[3] = {0};
+    int64_t boundaries[3] = {0};
+    uint8_t first_hash[3][16], last_hash[3][16];
+    for (int n = 0; n < 3; n++) {
+        TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 2, 0,
+            &input, &segment, NULL, NULL, NULL, NULL));
+        TEST_ASSERT_NOT_NULL(segment.pending_video_keyframe);
+        boundaries[n] = segment.pending_video_keyframe->dts;
+        AVFormatContext *recorded = NULL;
+        AVPacket *packet = av_packet_alloc();
+        AVFrame *frame = av_frame_alloc();
+        TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&recorded, output_path, NULL, NULL));
+        TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(recorded, NULL));
+        const AVCodec *codec = avcodec_find_decoder(recorded->streams[0]->codecpar->codec_id);
+        TEST_ASSERT_NOT_NULL(codec);
+        AVCodecContext *decoder = avcodec_alloc_context3(codec);
+        TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_to_context(decoder, recorded->streams[0]->codecpar));
+        TEST_ASSERT_EQUAL_INT(0, avcodec_open2(decoder, codec, NULL));
+        int64_t previous = AV_NOPTS_VALUE;
+        while (av_read_frame(recorded, packet) >= 0) {
+            if (packet->stream_index == 0) {
+                TEST_ASSERT_NOT_EQUAL(AV_NOPTS_VALUE, packet->dts);
+                if (previous != AV_NOPTS_VALUE) {
+                    int64_t expected_step = av_rescale_q(1, (AVRational){1,24}, recorded->streams[0]->time_base);
+                    TEST_ASSERT_INT64_WITHIN(1, expected_step, packet->dts - previous);
+                }
+                if (counts[n] == 0) av_md5_sum(first_hash[n], packet->data, packet->size);
+                av_md5_sum(last_hash[n], packet->data, packet->size);
+                previous = packet->dts;
+                counts[n]++;
+                TEST_ASSERT_EQUAL_INT(0, avcodec_send_packet(decoder, packet));
+                while (avcodec_receive_frame(decoder, frame) >= 0) {
+                    decoded[n]++;
+                    av_frame_unref(frame);
+                }
+            }
+            av_packet_unref(packet);
+        }
+        TEST_ASSERT_EQUAL_INT(0, avcodec_send_packet(decoder, NULL));
+        while (avcodec_receive_frame(decoder, frame) >= 0) {
+            decoded[n]++;
+            av_frame_unref(frame);
+        }
+        avcodec_free_context(&decoder);
+        avformat_close_input(&recorded);
+        av_packet_free(&packet);
+        av_frame_free(&frame);
+    }
+    for (int n = 0; n < 3; n++) {
+        TEST_ASSERT_EQUAL_INT64(av_rescale_q(2 * (n + 1), (AVRational){1,1},
+            input->streams[0]->time_base), boundaries[n]);
+        TEST_ASSERT_EQUAL_INT(counts[n], decoded[n]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(2 * 24 + 1, counts[n],
+            "Exactly one boundary frame may overlap consecutive segments");
+        if (n > 0) TEST_ASSERT_EQUAL_MEMORY(last_hash[n-1], first_hash[n], 16);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_keyframe_at_duration_closes_current_segment_and_starts_next);
     RUN_TEST(test_non_keyframe_at_duration_waits_for_next_keyframe);
     RUN_TEST(test_segments_snapshot_live_faststart_setting_at_open);
     RUN_TEST(test_writer_keeps_faststart_snapshot_after_live_update);
+    RUN_TEST(test_three_segments_decode_with_one_shared_boundary_frame);
     return UNITY_END();
 }

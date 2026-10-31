@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "scope": "Synthetic host functional regression thresholds; not hardware performance qualification",
+  "fps": 10,
+  "segment_seconds": 3,
+  "consecutive_segments": 3,
+  "startup_deadline_seconds": 60,
+  "disconnect_seconds": 4,
+  "recovery_deadline_seconds": 60,
+  "segment_duration_tolerance_seconds": 1.1,
+  "database_time_tolerance_seconds": 1.1,
+  "continuous_gap_tolerance_seconds": 1.1,
+  "shutdown_deadline_seconds": 30,
+  "allowed_boundary_overlap_video_frames": 1,
+  "scenarios": [
+    {"id": "video-only", "audio": false},
+    {"id": "h264-aac", "audio": true, "pause_during_restore": true}
+  ]
+}

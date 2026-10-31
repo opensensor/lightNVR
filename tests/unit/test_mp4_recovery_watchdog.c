@@ -11,9 +11,12 @@ static const int *health_script;
 static size_t script_length, checks;
 static int starts, stops, responses, response_dead_seconds;
 static bool fail_restart;
+static unsigned sleeps, stop_after_sleeps;
 
 unsigned __wrap_sleep(unsigned seconds) {
     TEST_ASSERT_EQUAL_UINT(1, seconds);
+    sleeps++;
+    if (stop_after_sleeps && sleeps == stop_after_sleeps) ctx.running = 0;
     TEST_ASSERT_LESS_OR_EQUAL_UINT(script_length, checks);
     return 0;
 }
@@ -84,6 +87,7 @@ void setUp(void) {
     starts = stops = responses = response_dead_seconds = 0;
     checks = 0;
     fail_restart = false;
+    sleeps = stop_after_sleeps = 0;
 }
 
 void tearDown(void) {
@@ -137,11 +141,39 @@ static void test_failed_restart_cleans_up_writer_registration(void) {
     TEST_ASSERT_EQUAL_INT(0, responses);
 }
 
+static void test_five_failed_restarts_wait_full_cooldown_then_retry(void) {
+    int script[31] = {0};
+    script[30] = 1;
+    run_script(script, 31);
+    TEST_ASSERT_EQUAL_INT(7, starts); // initial + five retries + post-cooldown
+    TEST_ASSERT_EQUAL_INT(7, stops);
+    TEST_ASSERT_EQUAL_UINT(31 + 300, sleeps);
+}
+
+static void test_shutdown_interrupts_cooldown_without_retry(void) {
+    int script[31] = {0};
+    // Keep the outer loop alive after the final scripted health check until
+    // shutdown is requested from within cooldown's seventh one-second sleep.
+    health_script = script;
+    script_length = 31;
+    stop_after_sleeps = 30 + 7;
+    mp4_recording_thread(&ctx);
+    TEST_ASSERT_EQUAL_UINT(30, checks);
+    TEST_ASSERT_EQUAL_UINT(37, sleeps);
+    TEST_ASSERT_EQUAL_INT(6, starts);
+    TEST_ASSERT_EQUAL_INT(7, stops); // five restarts, cooldown stop, final cleanup
+    TEST_ASSERT_FALSE(ctx.running);
+    TEST_ASSERT_NULL(ctx.mp4_writer);
+    TEST_ASSERT_NULL(get_mp4_writer_for_stream(ctx.config.name));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_brief_inactivity_reports_responsive_without_restart);
     RUN_TEST(test_response_clears_dead_count_before_a_later_outage);
     RUN_TEST(test_sustained_outage_stops_before_restart_and_recovers);
     RUN_TEST(test_failed_restart_cleans_up_writer_registration);
+    RUN_TEST(test_five_failed_restarts_wait_full_cooldown_then_retry);
+    RUN_TEST(test_shutdown_interrupts_cooldown_without_retry);
     return UNITY_END();
 }
