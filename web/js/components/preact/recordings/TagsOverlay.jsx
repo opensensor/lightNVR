@@ -24,6 +24,7 @@ export function TagIcon({ className = 'w-4 h-4' }) {
  * Small tag chip for displaying a tag
  */
 function TagChip({ tag, onRemove, readOnly = false }) {
+  const { t } = useI18n();
   return (
     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary border border-primary/20">
       {tag}
@@ -32,7 +33,7 @@ function TagChip({ tag, onRemove, readOnly = false }) {
           type="button"
           class="hover:text-destructive ml-0.5"
           onClick={(e) => { e.stopPropagation(); onRemove(tag); }}
-          title={`Remove tag "${tag}"`}
+          title={t('recordings.removeTagTitle', { tag })}
         >
           ×
         </button>

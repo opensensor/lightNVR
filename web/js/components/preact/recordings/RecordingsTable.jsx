@@ -385,7 +385,7 @@ export function RecordingsTable({
                     {recording.detection_labels && recording.detection_labels.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {recording.detection_labels.map((det, idx) => (
-                          <span key={idx} className="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
+                          <span key={idx} className="badge-success text-xs" title={t(det.count === 1 ? 'recordings.detectionCountOne' : 'recordings.detectionCountMany', { count: det.count })}>
                             {det.label}
                             {det.count > 1 && <span className="ml-1 opacity-75">({det.count})</span>}
                           </span>

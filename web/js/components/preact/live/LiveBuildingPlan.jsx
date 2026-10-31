@@ -1051,7 +1051,7 @@ export function LiveBuildingPlan({
           )}
           <svg ref={svgRef} tabIndex="-1"
             className={`live-plan-canvas ${panning ? 'is-panning' : ''} ${editing && sketchTool !== 'select' ? 'is-drawing' : ''}`}
-            viewBox={viewBox} role="img" aria-label={`${plan.name} camera plan`}
+            viewBox={viewBox} role="img" aria-label={t('live.plan.canvasLabel', { name: plan.name })}
             onPointerDown={handleSurfacePointerDown}
             onPointerMove={handleSurfacePointerMove}
             onPointerUp={handleSurfacePointerEnd}

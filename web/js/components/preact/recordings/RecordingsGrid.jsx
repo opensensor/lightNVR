@@ -249,7 +249,7 @@ function RecordingCard({
         ) : loadState === 'loaded' ? (
           <img
             src={thumbnailUrl}
-            alt={`${recording.stream} recording`}
+            alt={t('recordings.thumbnailAlt', { stream: recording.stream })}
             class="w-full h-full object-cover transition-opacity duration-300"
             onError={handleImageError}
           />
@@ -368,7 +368,7 @@ function RecordingCard({
             <div class={`flex flex-wrap gap-1 min-h-[22px] ${show('actions') ? 'mb-2' : ''}`}>
               {recording.detection_labels && recording.detection_labels.length > 0 ? (
                 recording.detection_labels.map((det, idx) => (
-                  <span key={idx} class="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
+                  <span key={idx} class="badge-success text-xs" title={t(det.count === 1 ? 'recordings.detectionCountOne' : 'recordings.detectionCountMany', { count: det.count })}>
                     {det.label}
                     {det.count > 1 && <span class="ml-0.5 opacity-75">({det.count})</span>}
                   </span>
@@ -426,7 +426,7 @@ function RecordingCard({
                 class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--success))' }}
                 onClick={() => downloadRecording(recording)}
-                title={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
+                title={`${t('recordings.download')}${recording.size ? ' (' + recording.size + ')' : ''}`}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -446,7 +446,7 @@ function RecordingCard({
                 class="p-1 rounded-full"
                 style={{ color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' }}
                 onClick={() => toggleProtection && toggleProtection(recording)}
-                title={recording.protected ? 'Unprotect' : 'Protect'}
+                title={t(recording.protected ? 'recordings.unprotect' : 'recordings.protect')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   {recording.protected ? (

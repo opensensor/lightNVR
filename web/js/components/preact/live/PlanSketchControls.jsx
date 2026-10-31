@@ -32,9 +32,9 @@ export function PlanSketchTools({
       </div>
       <div className="live-plan-sketch-tool-group">
         <button type="button" onClick={onUndo} disabled={!canUndo}
-          title={`${t('live.plan.sketch.undo')} (Ctrl+Z)`}>↶</button>
+          title={t('live.plan.sketch.undoShortcut', { action: t('live.plan.sketch.undo') })}>↶</button>
         <button type="button" onClick={onRedo} disabled={!canRedo}
-          title={`${t('live.plan.sketch.redo')} (Ctrl+Shift+Z)`}>↷</button>
+          title={t('live.plan.sketch.redoShortcut', { action: t('live.plan.sketch.redo') })}>↷</button>
         <button type="button" className={snap ? 'is-active' : ''}
           aria-pressed={snap ? 'true' : 'false'}
           title={t('live.plan.sketch.snap')}
