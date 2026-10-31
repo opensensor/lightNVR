@@ -71,7 +71,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">
           {t('common.name')}
-          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
+          <input className={`${fieldClasses} mt-1`} aria-label={t('common.name')} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
         </label>
         <label className="text-sm font-medium">
           {t('collections.type')}
@@ -82,10 +82,10 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
         </label>
         <label className="text-sm font-medium sm:col-span-2">
           {t('collections.description')}
-          <textarea className={`${fieldClasses} mt-1`} rows="2" maxLength={511} value={form.description} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
+          <textarea className={`${fieldClasses} mt-1`} rows="2" maxLength={511} aria-label={t('collections.description')} value={form.description} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
         </label>
         <label className="touch-target flex cursor-pointer items-start gap-2 text-sm sm:col-span-2">
-          <input type="checkbox" className="mt-1 h-4 w-4" checked={form.shared} onChange={(event) => setForm({ ...form, shared: event.currentTarget.checked })} />
+          <input type="checkbox" className="mt-1 h-4 w-4" aria-label={t('collections.shared')} checked={form.shared} onChange={(event) => setForm({ ...form, shared: event.currentTarget.checked })} />
           <span><span className="block font-medium">{t('collections.shared')}</span><span className="block text-xs text-muted-foreground">{t('collections.sharedHelp')}</span></span>
         </label>
       </div>

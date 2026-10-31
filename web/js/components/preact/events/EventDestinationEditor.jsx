@@ -66,15 +66,15 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
             <h3 className="mb-3 font-semibold">{t('events.destination.identity')}</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label={t('common.name')}>
-                <input className={fieldClasses} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} />
+                <input className={fieldClasses} aria-label={t('common.name')} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} />
               </Field>
               <label className="touch-target flex cursor-pointer items-center gap-3 self-end rounded-md border border-border bg-muted/20 px-3 py-2.5 text-sm">
-                <input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />
+                <input type="checkbox" aria-label={t('events.destination.enabled')} checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />
                 <span><span className="block font-medium">{t('events.destination.enabled')}</span><span className="block text-xs text-muted-foreground">{t('events.destination.enabledHelp')}</span></span>
               </label>
               <div className="md:col-span-2">
                 <Field label={t('common.description')}>
-                  <textarea className={`${fieldClasses} min-h-20`} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea>
+                  <textarea className={`${fieldClasses} min-h-20`} aria-label={t('common.description')} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea>
                 </Field>
               </div>
             </div>
@@ -85,15 +85,15 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
                 <Field label={t('events.destination.host')} help={t('events.destination.hostHelp')}>
-                  <input className={fieldClasses} value={draft.host} maxLength="255" placeholder="mqtt.example.net" onInput={(event) => update({ host: event.currentTarget.value })} />
+                  <input className={fieldClasses} aria-label={t('events.destination.host')} value={draft.host} maxLength="255" placeholder="mqtt.example.net" onInput={(event) => update({ host: event.currentTarget.value })} />
                 </Field>
               </div>
               <Field label={t('events.destination.port')}>
-                <input className={fieldClasses} type="number" min="1" max="65535" value={draft.port} onInput={(event) => update({ port: event.currentTarget.value })} />
+                <input className={fieldClasses} type="number" min="1" max="65535" aria-label={t('events.destination.port')} value={draft.port} onInput={(event) => update({ port: event.currentTarget.value })} />
               </Field>
               <div className="md:col-span-2">
                 <Field label={t('events.destination.clientId')} help={t('events.destination.clientIdHelp')}>
-                  <input className={fieldClasses} value={draft.clientId} maxLength="127" onInput={(event) => update({ clientId: event.currentTarget.value })} />
+                  <input className={fieldClasses} aria-label={t('events.destination.clientId')} value={draft.clientId} maxLength="127" onInput={(event) => update({ clientId: event.currentTarget.value })} />
                 </Field>
               </div>
               <Field label={t('events.destination.qos')}>
@@ -105,17 +105,17 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
               </Field>
               <div className="md:col-span-2">
                 <Field label={t('events.destination.topicTemplate')} help={t('events.destination.topicHelp')}>
-                  <input className={`${fieldClasses} font-mono`} value={draft.topicTemplate} maxLength="511" onInput={(event) => update({ topicTemplate: event.currentTarget.value })} />
+                  <input className={`${fieldClasses} font-mono`} aria-label={t('events.destination.topicTemplate')} value={draft.topicTemplate} maxLength="511" onInput={(event) => update({ topicTemplate: event.currentTarget.value })} />
                 </Field>
               </div>
               <Field label={t('events.destination.keepalive')}>
-                <input className={fieldClasses} type="number" min="5" max="3600" value={draft.keepaliveSeconds} onInput={(event) => update({ keepaliveSeconds: event.currentTarget.value })} />
+                <input className={fieldClasses} type="number" min="5" max="3600" aria-label={t('events.destination.keepalive')} value={draft.keepaliveSeconds} onInput={(event) => update({ keepaliveSeconds: event.currentTarget.value })} />
               </Field>
               <div className="md:col-span-3">
                 <Field label={t('events.destination.statusTopicTemplate')} help={t('events.destination.statusTopicHelp')}>
                   <input
                     className={`${fieldClasses} font-mono`}
-                    value={draft.statusTopicTemplate}
+                    aria-label={t('events.destination.statusTopicTemplate')} value={draft.statusTopicTemplate}
                     maxLength="511"
                     placeholder="lightnvr/v1/status/{installation_uuid}/{destination_uuid}"
                     onInput={(event) => update({ statusTopicTemplate: event.currentTarget.value })}
@@ -134,15 +134,15 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
             <h3 className="mb-3 font-semibold">{t('events.destination.authentication')}</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label={t('auth.username')}>
-                <input className={fieldClasses} autoComplete="off" value={draft.username} maxLength="127" onInput={(event) => update({ username: event.currentTarget.value })} />
+                <input className={fieldClasses} autoComplete="off" aria-label={t('auth.username')} value={draft.username} maxLength="127" onInput={(event) => update({ username: event.currentTarget.value })} />
               </Field>
               <Field label={t('auth.password')} help={draft.passwordConfigured ? t('events.destination.passwordPreserved') : t('events.destination.passwordOptional')}>
-                <input className={fieldClasses} type="password" autoComplete="new-password" value={draft.password} maxLength="255" disabled={draft.clearPassword} placeholder={draft.passwordConfigured ? '••••••••' : ''} onInput={(event) => update({ password: event.currentTarget.value, clearPassword: false })} />
+                <input className={fieldClasses} type="password" autoComplete="new-password" aria-label={t('auth.password')} value={draft.password} maxLength="255" disabled={draft.clearPassword} placeholder={draft.passwordConfigured ? '••••••••' : ''} onInput={(event) => update({ password: event.currentTarget.value, clearPassword: false })} />
               </Field>
             </div>
             {!creating && draft.passwordConfigured && (
               <label className="touch-target mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                <input type="checkbox" checked={draft.clearPassword} onChange={(event) => update({ clearPassword: event.currentTarget.checked, password: '' })} />
+                <input type="checkbox" aria-label={t('events.destination.clearPassword')} checked={draft.clearPassword} onChange={(event) => update({ clearPassword: event.currentTarget.checked, password: '' })} />
                 {t('events.destination.clearPassword')}
               </label>
             )}
@@ -165,17 +165,17 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
               {(draft.tlsMode === 'custom_ca' || draft.tlsMode === 'mutual') && (
                 <div className="md:col-span-2">
                   <Field label={t('events.destination.caFile')} help={t('events.destination.absolutePathHelp')}>
-                    <input className={`${fieldClasses} font-mono`} value={draft.caFile} maxLength="511" placeholder="/etc/lightnvr/certs/broker-ca.pem" onInput={(event) => update({ caFile: event.currentTarget.value })} />
+                    <input className={`${fieldClasses} font-mono`} aria-label={t('events.destination.caFile')} value={draft.caFile} maxLength="511" placeholder="/etc/lightnvr/certs/broker-ca.pem" onInput={(event) => update({ caFile: event.currentTarget.value })} />
                   </Field>
                 </div>
               )}
               {draft.tlsMode === 'mutual' && (
                 <>
                   <Field label={t('events.destination.certFile')}>
-                    <input className={`${fieldClasses} font-mono`} value={draft.certFile} maxLength="511" placeholder="/etc/lightnvr/certs/client.pem" onInput={(event) => update({ certFile: event.currentTarget.value })} />
+                    <input className={`${fieldClasses} font-mono`} aria-label={t('events.destination.certFile')} value={draft.certFile} maxLength="511" placeholder="/etc/lightnvr/certs/client.pem" onInput={(event) => update({ certFile: event.currentTarget.value })} />
                   </Field>
                   <Field label={t('events.destination.keyFile')}>
-                    <input className={`${fieldClasses} font-mono`} value={draft.keyFile} maxLength="511" placeholder="/etc/lightnvr/certs/client.key" onInput={(event) => update({ keyFile: event.currentTarget.value })} />
+                    <input className={`${fieldClasses} font-mono`} aria-label={t('events.destination.keyFile')} value={draft.keyFile} maxLength="511" placeholder="/etc/lightnvr/certs/client.key" onInput={(event) => update({ keyFile: event.currentTarget.value })} />
                   </Field>
                 </>
               )}

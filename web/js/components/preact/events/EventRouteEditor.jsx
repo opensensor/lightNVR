@@ -52,15 +52,15 @@ function ScheduleWindow({ window, index, onChange, onRemove, t }) {
           const checked = window.days.includes(day);
           return (
             <label key={day} className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.12)]' : 'border-border'}`}>
-              <input type="checkbox" className="sr-only" checked={checked} onChange={() => toggleDay(day)} />
+              <input type="checkbox" className="sr-only" aria-label={t(key)} checked={checked} onChange={() => toggleDay(day)} />
               {t(key)}
             </label>
           );
         })}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <Field label={t('events.schedule.start')}><input className={fieldClasses} type="time" value={window.start} onInput={(event) => onChange({ ...window, start: event.currentTarget.value })} /></Field>
-        <Field label={t('events.schedule.end')}><input className={fieldClasses} type="time" value={window.end} onInput={(event) => onChange({ ...window, end: event.currentTarget.value })} /></Field>
+        <Field label={t('events.schedule.start')}><input className={fieldClasses} type="time" aria-label={t('events.schedule.start')} value={window.start} onInput={(event) => onChange({ ...window, start: event.currentTarget.value })} /></Field>
+        <Field label={t('events.schedule.end')}><input className={fieldClasses} type="time" aria-label={t('events.schedule.end')} value={window.end} onInput={(event) => onChange({ ...window, end: event.currentTarget.value })} /></Field>
       </div>
     </article>
   );
@@ -212,15 +212,15 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
         <div className="space-y-6 overflow-y-auto p-5">
           <section>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label={t('common.name')}><input className={fieldClasses} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
+              <Field label={t('common.name')}><input className={fieldClasses} aria-label={t('common.name')} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
               <Field label={t('events.route.destination')} help={t('events.route.destinationHelp')}>
                 <select className={fieldClasses} value={draft.destination} onChange={(event) => update({ destination: event.currentTarget.value })}>
                   {destinations.map((destination) => <option key={destination.key} value={destination.key} disabled={destination.managed && destination.enabled === false}>{destination.name}{destination.enabled === false ? ` — ${t('common.disabled')}` : ''}</option>)}
                 </select>
               </Field>
-              <div className="md:col-span-2"><Field label={t('common.description')}><textarea className={`${fieldClasses} min-h-20`} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea></Field></div>
+              <div className="md:col-span-2"><Field label={t('common.description')}><textarea className={`${fieldClasses} min-h-20`} aria-label={t('common.description')} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea></Field></div>
             </div>
-            <label className="touch-target mt-4 inline-flex cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/15 px-3 py-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} /><span><span className="font-medium">{t('events.route.enabled')}</span> <span className="text-muted-foreground">— {t('events.route.enabledHelp')}</span></span></label>
+            <label className="touch-target mt-4 inline-flex cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/15 px-3 py-2 text-sm"><input type="checkbox" aria-label={t('events.route.enabled')} checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} /><span><span className="font-medium">{t('events.route.enabled')}</span> <span className="text-muted-foreground">— {t('events.route.enabledHelp')}</span></span></label>
           </section>
 
           <section className="border-t border-border pt-5">
@@ -231,7 +231,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
                 const selected = draft.eventTypes.includes(eventType.type);
                 return (
                   <label key={eventType.type} className={`cursor-pointer rounded-lg border p-3 ${selected ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.08)]' : 'border-border bg-background'}`}>
-                    <div className="flex items-start gap-3"><input className="mt-1" type="checkbox" checked={selected} onChange={() => toggleEventType(eventType.type)} /><span className="min-w-0"><span className="block font-medium">{shortEventType(eventType.type)}</span><span className="block text-xs text-muted-foreground">{eventType.description}</span><span className="mt-1 block font-mono text-[10px] text-muted-foreground break-all">{eventType.type}</span></span></div>
+                    <div className="flex items-start gap-3"><input className="mt-1" type="checkbox" aria-label={shortEventType(eventType.type)} checked={selected} onChange={() => toggleEventType(eventType.type)} /><span className="min-w-0"><span className="block font-medium">{shortEventType(eventType.type)}</span><span className="block text-xs text-muted-foreground">{eventType.description}</span><span className="mt-1 block font-mono text-[10px] text-muted-foreground break-all">{eventType.type}</span></span></div>
                   </label>
                 );
               })}
@@ -240,12 +240,12 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
 
           {detectionSelected && (
             <section className="border-t border-border pt-5">
-              <label className="touch-target flex cursor-pointer items-start gap-3"><input className="mt-1" type="checkbox" checked={draft.detectionFilterEnabled} onChange={(event) => update({ detectionFilterEnabled: event.currentTarget.checked })} /><span><span className="block font-semibold">{t('events.route.detectionFilters')}</span><span className="block text-sm text-muted-foreground">{t('events.route.detectionFiltersHelp')}</span></span></label>
+              <label className="touch-target flex cursor-pointer items-start gap-3"><input className="mt-1" type="checkbox" aria-label={t('events.route.detectionFilters')} checked={draft.detectionFilterEnabled} onChange={(event) => update({ detectionFilterEnabled: event.currentTarget.checked })} /><span><span className="block font-semibold">{t('events.route.detectionFilters')}</span><span className="block text-sm text-muted-foreground">{t('events.route.detectionFiltersHelp')}</span></span></label>
               {draft.detectionFilterEnabled && (
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <Field label={t('events.route.labels')} help={t('events.route.listHelp')}><input className={fieldClasses} value={draft.labels} placeholder="person, vehicle" onInput={(event) => update({ labels: event.currentTarget.value })} /></Field>
-                  <Field label={t('events.route.zones')} help={t('events.route.listHelp')}><input className={fieldClasses} value={draft.zones} placeholder="entrance, loading-dock" onInput={(event) => update({ zones: event.currentTarget.value })} /></Field>
-                  <Field label={t('events.route.minConfidence')} help={t('events.route.confidenceHelp')}><input className={fieldClasses} type="number" min="0" max="1" step="0.01" value={draft.minConfidence} onInput={(event) => update({ minConfidence: event.currentTarget.value })} /></Field>
+                  <Field label={t('events.route.labels')} help={t('events.route.listHelp')}><input className={fieldClasses} aria-label={t('events.route.labels')} value={draft.labels} placeholder="person, vehicle" onInput={(event) => update({ labels: event.currentTarget.value })} /></Field>
+                  <Field label={t('events.route.zones')} help={t('events.route.listHelp')}><input className={fieldClasses} aria-label={t('events.route.zones')} value={draft.zones} placeholder="entrance, loading-dock" onInput={(event) => update({ zones: event.currentTarget.value })} /></Field>
+                  <Field label={t('events.route.minConfidence')} help={t('events.route.confidenceHelp')}><input className={fieldClasses} type="number" min="0" max="1" step="0.01" aria-label={t('events.route.minConfidence')} value={draft.minConfidence} onInput={(event) => update({ minConfidence: event.currentTarget.value })} /></Field>
                 </div>
               )}
             </section>
@@ -254,7 +254,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
           {healthSelected && (
             <section className="border-t border-border pt-5">
               <label className="touch-target flex cursor-pointer items-start gap-3">
-                <input className="mt-1" type="checkbox" checked={draft.healthFilterEnabled} onChange={(event) => update({ healthFilterEnabled: event.currentTarget.checked })} />
+                <input className="mt-1" type="checkbox" aria-label={t('events.route.healthFilters')} checked={draft.healthFilterEnabled} onChange={(event) => update({ healthFilterEnabled: event.currentTarget.checked })} />
                 <span>
                   <span className="block font-semibold">{t('events.route.healthFilters')}</span>
                   <span className="block text-sm text-muted-foreground">{t('events.route.healthFiltersHelp')}</span>
@@ -272,7 +272,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
                       <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         {healthConditions.map((condition) => (
                           <label key={condition.code} className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 text-sm">
-                            <input className="mt-1" type="checkbox" checked={draft.healthConditionCodes.includes(condition.code)} onChange={() => toggleHealthCondition(condition.code)} />
+                            <input className="mt-1" type="checkbox" aria-label={condition.code.replace(/[._]/g, ' ')} checked={draft.healthConditionCodes.includes(condition.code)} onChange={() => toggleHealthCondition(condition.code)} />
                             <span><span className="block">{condition.code.replace(/[._]/g, ' ')}</span><code className="block text-[10px] text-muted-foreground">{condition.code}</code></span>
                           </label>
                         ))}
@@ -284,7 +284,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
                     <div className="mt-2 flex flex-wrap gap-3">
                       {healthSeverities.map((severity) => (
                         <label key={severity} className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                          <input type="checkbox" checked={draft.healthSeverities.includes(severity)} onChange={() => toggleHealthSeverity(severity)} />
+                          <input type="checkbox" aria-label={severity} checked={draft.healthSeverities.includes(severity)} onChange={() => toggleHealthSeverity(severity)} />
                           {severity}
                         </label>
                       ))}
@@ -302,18 +302,18 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
           </section>
 
           <section className="border-t border-border pt-5">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.schedule')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.scheduleHelp')}</p></div><label className="touch-target inline-flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={draft.scheduleEnabled} onChange={(event) => setScheduled(event.currentTarget.checked)} />{t('events.route.restrictSchedule')}</label></div>
-            <div className="mt-4 max-w-sm"><Field label={t('events.schedule.timezone')} help={t('events.schedule.timezoneHelp')}><input className={fieldClasses} value={draft.timezone} placeholder="America/New_York" onInput={(event) => update({ timezone: event.currentTarget.value })} /></Field></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.schedule')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.scheduleHelp')}</p></div><label className="touch-target inline-flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" aria-label={t('events.route.restrictSchedule')} checked={draft.scheduleEnabled} onChange={(event) => setScheduled(event.currentTarget.checked)} />{t('events.route.restrictSchedule')}</label></div>
+            <div className="mt-4 max-w-sm"><Field label={t('events.schedule.timezone')} help={t('events.schedule.timezoneHelp')}><input className={fieldClasses} aria-label={t('events.schedule.timezone')} value={draft.timezone} placeholder="America/New_York" onInput={(event) => update({ timezone: event.currentTarget.value })} /></Field></div>
             {draft.scheduleEnabled && <div className="mt-4 space-y-3">{draft.windows.map((window, index) => <ScheduleWindow key={index} window={window} index={index} onChange={(nextWindow) => updateWindow(index, nextWindow)} onRemove={() => removeWindow(index)} t={t} />)}<button type="button" className="btn-secondary" onClick={() => update({ windows: [...draft.windows, { ...DEFAULT_SCHEDULE_WINDOW, days: [...DEFAULT_SCHEDULE_WINDOW.days] }] })}>{t('events.schedule.addWindow')}</button></div>}
           </section>
 
           <section className="border-t border-border pt-5">
             <h3 className="font-semibold">{t('events.route.suppression')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.suppressionHelp')}</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Field label={t('events.route.debounce')} help={t('events.route.debounceHelp')}><input className={fieldClasses} type="number" min="0" max="86400" value={draft.debounceSeconds} onInput={(event) => update({ debounceSeconds: event.currentTarget.value })} /></Field>
-              <Field label={t('events.route.cooldown')} help={t('events.route.cooldownHelp')}><input className={fieldClasses} type="number" min="0" max="604800" value={draft.cooldownSeconds} onInput={(event) => update({ cooldownSeconds: event.currentTarget.value })} /></Field>
-              <Field label={t('events.route.grouping')} help={t('events.route.groupingHelp')}><input className={fieldClasses} type="number" min="0" max="3600" value={draft.groupingWindowSeconds} onInput={(event) => update({ groupingWindowSeconds: event.currentTarget.value })} /></Field>
-              <Field label={t('events.route.rateLimit')} help={t('events.route.rateLimitHelp')}><input className={fieldClasses} type="number" min="0" max="60000" value={draft.maxEventsPerMinute} onInput={(event) => update({ maxEventsPerMinute: event.currentTarget.value })} /></Field>
+              <Field label={t('events.route.debounce')} help={t('events.route.debounceHelp')}><input className={fieldClasses} type="number" min="0" max="86400" aria-label={t('events.route.debounce')} value={draft.debounceSeconds} onInput={(event) => update({ debounceSeconds: event.currentTarget.value })} /></Field>
+              <Field label={t('events.route.cooldown')} help={t('events.route.cooldownHelp')}><input className={fieldClasses} type="number" min="0" max="604800" aria-label={t('events.route.cooldown')} value={draft.cooldownSeconds} onInput={(event) => update({ cooldownSeconds: event.currentTarget.value })} /></Field>
+              <Field label={t('events.route.grouping')} help={t('events.route.groupingHelp')}><input className={fieldClasses} type="number" min="0" max="3600" aria-label={t('events.route.grouping')} value={draft.groupingWindowSeconds} onInput={(event) => update({ groupingWindowSeconds: event.currentTarget.value })} /></Field>
+              <Field label={t('events.route.rateLimit')} help={t('events.route.rateLimitHelp')}><input className={fieldClasses} type="number" min="0" max="60000" aria-label={t('events.route.rateLimit')} value={draft.maxEventsPerMinute} onInput={(event) => update({ maxEventsPerMinute: event.currentTarget.value })} /></Field>
             </div>
           </section>
 

@@ -80,7 +80,7 @@ export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClos
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {['none', 'add', 'remove', 'replace'].map((operation) => (
                 <label key={operation} className={`cursor-pointer rounded-md border p-2 text-center text-sm ${tagOperation === operation ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]' : 'border-border'}`}>
-                  <input className="sr-only" type="radio" name="tag-operation" value={operation} checked={tagOperation === operation} onChange={() => setTagOperation(operation)} disabled={working} />
+                  <input className="sr-only" type="radio" aria-label={t(`fleet.bulk.tagOperation.${operation}`)} name="tag-operation" value={operation} checked={tagOperation === operation} onChange={() => setTagOperation(operation)} disabled={working} />
                   {t(`fleet.bulk.tagOperation.${operation}`)}
                 </label>
               ))}
@@ -90,7 +90,7 @@ export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClos
                 {sortedTags.map((tag) => (
                   <label key={tag.uuid} className="flex cursor-pointer items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-muted/50">
                     <span className="flex min-w-0 items-center gap-2">
-                      <input type="checkbox" className="h-4 w-4" checked={tagUuids.includes(tag.uuid)} onChange={() => toggleTag(tag.uuid)} disabled={working} />
+                      <input type="checkbox" className="h-4 w-4" aria-label={tag.label} checked={tagUuids.includes(tag.uuid)} onChange={() => toggleTag(tag.uuid)} disabled={working} />
                       <span className="h-3 w-3 flex-none rounded-full border border-border" style={{ backgroundColor: tag.color || 'transparent' }}></span>
                       <span className="truncate text-sm">{tag.label}</span>
                     </span>

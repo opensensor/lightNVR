@@ -30,7 +30,7 @@ function ValueChecks({ values, options, onChange, getLabel, idPrefix }) {
         const checked = values.includes(value);
         return (
           <label key={value} htmlFor={`${idPrefix}-${value}`} className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.12)]' : 'border-border'}`}>
-            <input id={`${idPrefix}-${value}`} type="checkbox" className="sr-only" checked={checked} onChange={() => onChange(toggleValue(values, value))} />
+            <input aria-label={label} id={`${idPrefix}-${value}`} type="checkbox" className="sr-only" checked={checked} onChange={() => onChange(toggleValue(values, value))} />
             {label}
           </label>
         );
@@ -131,6 +131,7 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
     <div className="min-w-64 flex-1 rounded-md border border-border bg-background p-2">
       <label className="sr-only" htmlFor={`${idPrefix}-search`}>{t('access.cameraSearch')}</label>
       <input
+        aria-label={t('access.cameraSearch')}
         id={`${idPrefix}-search`}
         type="search"
         className={`${fieldClasses} w-full`}
@@ -220,6 +221,7 @@ function RuleValueEditor({ rule, index, locations, tags, onChange, t, builderId,
   return (
     <input
       className={`${fieldClasses} min-w-56 flex-1`}
+      aria-label={t(`collections.rule.${rule.type}`)}
       value={(rule.values || []).join(', ')}
       placeholder={t(rule.type === 'vendor' ? 'collections.builder.vendorPlaceholder' : 'collections.builder.modelPlaceholder')}
       onInput={(event) => onChange({ ...rule, values: event.currentTarget.value.split(',').map((value) => value.trimStart()) })}
@@ -331,7 +333,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
 
       {advanced ? (
         <div>
-          <textarea className="min-h-56 w-full rounded-md border border-input bg-background p-3 font-mono text-xs" value={advancedJson} onInput={(event) => { setAdvancedJson(event.currentTarget.value); setPreview(null); }} spellCheck="false"></textarea>
+          <textarea aria-label={t('collections.builder.advancedMode')} className="min-h-56 w-full rounded-md border border-input bg-background p-3 font-mono text-xs" value={advancedJson} onInput={(event) => { setAdvancedJson(event.currentTarget.value); setPreview(null); }} spellCheck="false"></textarea>
           {advancedValidation.error && <p className="mt-1 text-xs text-[hsl(var(--danger))]">{advancedValidation.error}</p>}
         </div>
       ) : (

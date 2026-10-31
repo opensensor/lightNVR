@@ -6,7 +6,7 @@ function FilterCheckbox({ id, checked, label, count, onChange }) {
   return (
     <label htmlFor={id} className="flex items-center justify-between gap-3 py-1.5 text-sm cursor-pointer">
       <span className="flex min-w-0 items-center gap-2">
-        <input id={id} type="checkbox" className={inputClasses} checked={checked} onChange={onChange} />
+        <input aria-label={label} id={id} type="checkbox" className={inputClasses} checked={checked} onChange={onChange} />
         <span className="truncate">{label}</span>
       </span>
       <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
