@@ -103,7 +103,7 @@ export function CalendarPicker({ value, onChange }) {
     <div className="relative" ref={wrapperRef} data-testid="date-picker">
       {/* Trigger row: ◀  date-button  ▶ */}
       <div className="flex items-center gap-1">
-        <button
+        <button aria-label={t('timeline.previousDay')}
           type="button"
           onClick={prevDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
@@ -130,7 +130,7 @@ export function CalendarPicker({ value, onChange }) {
           </svg>
         </button>
 
-        <button
+        <button aria-label={t('timeline.nextDay')}
           type="button"
           onClick={nextDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
@@ -150,7 +150,7 @@ export function CalendarPicker({ value, onChange }) {
         >
           {/* Month / Year header */}
           <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={prevMonth}
+            <button aria-label={t('timeline.previousMonth')} type="button" onClick={prevMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.previousMonth')}
             >
@@ -163,7 +163,7 @@ export function CalendarPicker({ value, onChange }) {
               {monthFormatter.format(new Date(viewYear, viewMonth, 1))}
             </span>
 
-            <button type="button" onClick={nextMonth}
+            <button aria-label={t('timeline.nextMonth')} type="button" onClick={nextMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.nextMonth')}
             >

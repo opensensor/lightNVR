@@ -18,7 +18,7 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
           </label>
           <div class="col-span-2">
             <label class="inline-flex items-center gap-2 cursor-pointer">
-              <input
+              <input aria-label={t('settings.disableAudioGlobally')}
                 type="checkbox"
                 id="setting-audio-disabled"
                 name="audioDisabled"
@@ -44,7 +44,7 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
         <div data-setting-label={t('settings.defaultPreDetectionBufferSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-default-pre-buffer" class="font-medium">{t('settings.defaultPreDetectionBufferSeconds')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.defaultPreDetectionBufferSeconds')}
               type="number"
               id="setting-default-pre-buffer"
               name="defaultPreBuffer"
@@ -61,7 +61,7 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
         <div data-setting-label={t('settings.defaultPostDetectionBufferSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-default-post-buffer" class="font-medium">{t('settings.defaultPostDetectionBufferSeconds')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.defaultPostDetectionBufferSeconds')}
               type="number"
               id="setting-default-post-buffer"
               name="defaultPostBuffer"

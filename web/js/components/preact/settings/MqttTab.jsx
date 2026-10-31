@@ -15,7 +15,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.enableMqtt')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-enabled" class="font-medium">{t('settings.enableMqtt')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.enableMqtt')}
               type="checkbox"
               id="setting-mqtt-enabled"
               name="mqttEnabled"
@@ -30,7 +30,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.brokerHost')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-broker-host" class="font-medium">{t('settings.brokerHost')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.brokerHost')}
               type="text"
               id="setting-mqtt-broker-host"
               name="mqttBrokerHost"
@@ -46,7 +46,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.brokerPort')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-broker-port" class="font-medium">{t('settings.brokerPort')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.brokerPort')}
               type="number"
               id="setting-mqtt-broker-port"
               name="mqttBrokerPort"
@@ -73,7 +73,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               it stays wired to the shared `handleInputChange` reducer in
               SettingsView, which keys off `e.target.name`.
             */}
-            <input
+            <input aria-label={t('auth.username')}
               type="text"
               id="setting-mqtt-username"
               name="mqttUsername"
@@ -90,7 +90,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('auth.password')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-password" class="font-medium">{t('auth.password')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('auth.password')}
               type="password"
               id="setting-mqtt-password"
               name="mqttPassword"
@@ -106,7 +106,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.clientId')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-client-id" class="font-medium">{t('settings.clientId')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.clientId')}
               type="text"
               id="setting-mqtt-client-id"
               name="mqttClientId"
@@ -122,7 +122,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.topicPrefix')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-topic-prefix" class="font-medium">{t('settings.topicPrefix')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.topicPrefix')}
               type="text"
               id="setting-mqtt-topic-prefix"
               name="mqttTopicPrefix"
@@ -138,7 +138,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.enableTls')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-tls-enabled" class="font-medium">{t('settings.enableTls')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.enableTls')}
               type="checkbox"
               id="setting-mqtt-tls-enabled"
               name="mqttTlsEnabled"
@@ -153,7 +153,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.keepaliveSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-keepalive" class="font-medium">{t('settings.keepaliveSeconds')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.keepaliveSeconds')}
               type="number"
               id="setting-mqtt-keepalive"
               name="mqttKeepalive"
@@ -187,7 +187,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.retainMessages')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-retain" class="font-medium">{t('settings.retainMessages')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.retainMessages')}
               type="checkbox"
               id="setting-mqtt-retain"
               name="mqttRetain"
@@ -208,7 +208,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('settings.enableHaDiscovery')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-ha-discovery" class="font-medium">{t('settings.enableHaDiscovery')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.enableHaDiscovery')}
               type="checkbox"
               id="setting-mqtt-ha-discovery"
               name="mqttHaDiscovery"
@@ -225,7 +225,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
             <div data-setting-label={t('settings.discoveryPrefix')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
               <label for="setting-mqtt-ha-discovery-prefix" class="font-medium">{t('settings.discoveryPrefix')}</label>
               <div class="col-span-2">
-                <input
+                <input aria-label={t('settings.discoveryPrefix')}
                   type="text"
                   id="setting-mqtt-ha-discovery-prefix"
                   name="mqttHaDiscoveryPrefix"
@@ -241,7 +241,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
             <div data-setting-label={t('settings.snapshotIntervalSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
               <label for="setting-mqtt-ha-snapshot-interval" class="font-medium">{t('settings.snapshotIntervalSeconds')}</label>
               <div class="col-span-2">
-                <input
+                <input aria-label={t('settings.snapshotIntervalSeconds')}
                   type="number"
                   id="setting-mqtt-ha-snapshot-interval"
                   name="mqttHaSnapshotInterval"

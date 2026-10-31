@@ -98,7 +98,7 @@ export function StreamStorage({ systemInfo, formatBytes }) {
               {streamStorageData.map((stream, index) => {
                 const color = getStreamColor(index);
                 return (
-                  <a
+                  <a aria-label={t('system.viewRecordingsForStream', { stream: stream.name })}
                     key={stream.name}
                     href={`recordings.html?stream=${encodeURIComponent(stream.name)}`}
                     className="h-2.5 block hover:opacity-70 transition-opacity cursor-pointer"
@@ -124,7 +124,7 @@ export function StreamStorage({ systemInfo, formatBytes }) {
                   ? t('system.quotaMbLimit', { mb: stream.maxStorageMb })
                   : t('system.noQuota');
                 return (
-                  <a
+                  <a aria-label={t('system.viewRecordingsForStream', { stream: stream.name })}
                     key={stream.name}
                     href={`recordings.html?stream=${encodeURIComponent(stream.name)}`}
                     className="flex items-center p-2 rounded bg-muted hover:bg-muted/70 transition-colors cursor-pointer"

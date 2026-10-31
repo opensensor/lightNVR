@@ -182,7 +182,7 @@ function NumericSetting({ name, settings, onChange, disabled, label, help }) {
   const [minimum, maximum] = HEALTH_LIMITS[name];
   return (
     <Setting label={label} help={help}>
-      <input class={fieldClass} type="number" name={name} min={minimum} max={maximum} step="1" value={settings[name]} disabled={disabled} onInput={onChange} />
+      <input aria-label={label} class={fieldClass} type="number" name={name} min={minimum} max={maximum} step="1" value={settings[name]} disabled={disabled} onInput={onChange} />
     </Setting>
   );
 }
@@ -200,7 +200,7 @@ function ConditionOverride({ condition, overrides, disabled, onChange, t }) {
   const thresholdMin = condition.unit === 'ratio' ? 0 : undefined;
   return (
     <details class="rounded-lg border border-border bg-background p-3" data-setting-label={`${condition.code} ${t('settings.health.conditionOverride')}`}>
-      <summary class="cursor-pointer list-none">
+      <summary aria-label={`${condition.code.replace(/[._]/g, ' ')} ${t('settings.health.conditionOverride')}`} class="cursor-pointer list-none">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><div class="font-medium">{condition.code.replace(/[._]/g, ' ')}</div><code class="text-[10px] text-muted-foreground">{condition.code}</code></div>
           <span class="rounded-full bg-muted px-2 py-1 text-xs">{mode === 'default' ? t('settings.health.profileDefault') : mode}</span>
@@ -220,12 +220,12 @@ function ConditionOverride({ condition, overrides, disabled, onChange, t }) {
           <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {['warning', 'critical', 'recovery'].map((field) => (
               <Setting key={field} label={t(`settings.health.${field}`)} help={condition.unit}>
-                <input class={fieldClass} type="number" min={thresholdMin} max={thresholdMax} step="any" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
+                <input aria-label={t(`settings.health.${field}`)} class={fieldClass} type="number" min={thresholdMin} max={thresholdMax} step="any" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
               </Setting>
             ))}
             {['warning_for_seconds', 'critical_for_seconds', 'recovery_for_seconds'].map((field) => (
               <Setting key={field} label={t(`settings.health.${field}`)}>
-                <input class={fieldClass} type="number" min="0" max={DWELL_MAX_SECONDS} step="1" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
+                <input aria-label={t(`settings.health.${field}`)} class={fieldClass} type="number" min="0" max={DWELL_MAX_SECONDS} step="1" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
               </Setting>
             ))}
           </div>
@@ -260,8 +260,8 @@ export function HealthTab({ settings, setSettings, handleInputChange, canModifyS
         {serverError && <p role="alert" class="mt-3 rounded-md bg-[hsl(var(--danger)/0.12)] p-3 text-sm text-[hsl(var(--danger))]">{serverError}</p>}
         {validationErrors.length > 0 && <p role="alert" class="mt-3 rounded-md bg-[hsl(var(--danger)/0.12)] p-3 text-sm text-[hsl(var(--danger))]">{t(`settings.health.validation.${validationErrors[0]}`)}</p>}
         <div class="mt-5 grid gap-4 md:grid-cols-2">
-          <label class="settings-item flex cursor-pointer items-start gap-3 rounded-md border border-border p-3" data-setting-label={t('settings.health.enabled')}><input type="checkbox" name="healthEnabled" checked={settings.healthEnabled} disabled={disabled} onChange={handleInputChange} /><span><span class="block font-medium">{t('settings.health.enabled')}</span><span class="block text-xs text-muted-foreground">{t('settings.health.enabledHelp')}</span></span></label>
-          <label class="settings-item flex cursor-pointer items-start gap-3 rounded-md border border-border p-3" data-setting-label={t('settings.health.writeProbe')}><input type="checkbox" name="healthWriteProbeEnabled" checked={settings.healthWriteProbeEnabled} disabled={disabled} onChange={handleInputChange} /><span><span class="block font-medium">{t('settings.health.writeProbe')}</span><span class="block text-xs text-muted-foreground">{t('settings.health.writeProbeHelp')}</span></span></label>
+          <label class="settings-item flex cursor-pointer items-start gap-3 rounded-md border border-border p-3" data-setting-label={t('settings.health.enabled')}><input aria-label={t('settings.health.enabled')} type="checkbox" name="healthEnabled" checked={settings.healthEnabled} disabled={disabled} onChange={handleInputChange} /><span><span class="block font-medium">{t('settings.health.enabled')}</span><span class="block text-xs text-muted-foreground">{t('settings.health.enabledHelp')}</span></span></label>
+          <label class="settings-item flex cursor-pointer items-start gap-3 rounded-md border border-border p-3" data-setting-label={t('settings.health.writeProbe')}><input aria-label={t('settings.health.writeProbe')} type="checkbox" name="healthWriteProbeEnabled" checked={settings.healthWriteProbeEnabled} disabled={disabled} onChange={handleInputChange} /><span><span class="block font-medium">{t('settings.health.writeProbe')}</span><span class="block text-xs text-muted-foreground">{t('settings.health.writeProbeHelp')}</span></span></label>
           <Setting label={t('settings.health.profile')} help={t('settings.health.profileHelp')}><select class={fieldClass} name="healthProfile" value={settings.healthProfile} disabled={disabled} onChange={handleInputChange}><option value="balanced">{t('settings.health.profile.balanced')}</option><option value="conservative">{t('settings.health.profile.conservative')}</option><option value="disabled">{t('common.disabled')}</option></select></Setting>
           <Setting label={t('settings.health.hardwareProvider')} help={t(`settings.health.providerHelp.${settings.healthHardwareProvider}`)}><select class={fieldClass} name="healthHardwareProvider" value={settings.healthHardwareProvider} disabled={disabled} onChange={handleInputChange}><option value="auto">{t('settings.health.provider.auto')}</option><option value="smartctl">{t('settings.health.provider.smartctl')}</option><option value="disabled">{t('common.disabled')}</option></select></Setting>
         </div>

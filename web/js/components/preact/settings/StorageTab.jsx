@@ -117,11 +117,11 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
       {objectTarget && <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {['endpoint', 'region', 'bucket', 'credential_ref'].map((field) => <label key={field} class="text-sm font-medium">
           <span class="block mb-1">{t(`settings.archive.${field}`)}</span>
-          <input class="w-full p-2 border border-input rounded bg-background" value={value[field] || ''}
+          <input aria-label={t(`settings.archive.${field}`)} class="w-full p-2 border border-input rounded bg-background" value={value[field] || ''}
             onInput={(event) => set(field, event.currentTarget.value)} disabled={busy || (editing && field !== 'credential_ref')} autoComplete="off" spellCheck={false} />
         </label>)}
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.archive.budget')}</span>
-          <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
+          <input aria-label={t('settings.archive.budget')} type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
             onInput={(event) => set('archive_budget_gb', event.currentTarget.value)} disabled={busy} />
         </label>
         <p class="text-sm text-muted-foreground md:col-span-2">{t('settings.archive.connectionHelp')}</p>
@@ -129,7 +129,7 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.name')}</span>
-          <input class="w-full p-2 border border-input rounded bg-background" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} />
+          <input aria-label={t('settings.storageTargets.name')} class="w-full p-2 border border-input rounded bg-background" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} />
         </label>
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.class')}</span>
@@ -141,39 +141,39 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
         </label>
         <label class="text-sm font-medium md:col-span-2">
           <span class="block mb-1">{t('settings.storageTargets.root')}</span>
-          <input class="w-full p-2 border border-input rounded bg-background font-mono text-sm disabled:opacity-60" value={value.root_path} onInput={(event) => set('root_path', event.currentTarget.value)} disabled={busy || rootLocked} placeholder={objectTarget ? t('settings.storageTargets.objectRootPlaceholder', { bucket: value.bucket || t('settings.storageTargets.bucketPlaceholder') }) : t('settings.storageTargets.localRootPlaceholder')} />
+          <input aria-label={t('settings.storageTargets.root')} class="w-full p-2 border border-input rounded bg-background font-mono text-sm disabled:opacity-60" value={value.root_path} onInput={(event) => set('root_path', event.currentTarget.value)} disabled={busy || rootLocked} placeholder={objectTarget ? t('settings.storageTargets.objectRootPlaceholder', { bucket: value.bucket || t('settings.storageTargets.bucketPlaceholder') }) : t('settings.storageTargets.localRootPlaceholder')} />
           {rootLocked && <span class="block mt-1 text-xs text-muted-foreground">{t('settings.storageTargets.rootLocked')}</span>}
         </label>
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.reserveGb')}</span>
-          <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.reserve_gb} onInput={(event) => set('reserve_gb', event.currentTarget.value)} disabled={busy} />
+          <input aria-label={t('settings.storageTargets.reserveGb')} type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.reserve_gb} onInput={(event) => set('reserve_gb', event.currentTarget.value)} disabled={busy} />
         </label>
         <div class="grid grid-cols-2 gap-3">
           <label class="text-sm font-medium">
             <span class="block mb-1">{t('settings.storageTargets.lowWatermark')}</span>
-            <input type="number" min="0" max="98" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.low_watermark_pct} onInput={(event) => set('low_watermark_pct', event.currentTarget.value)} disabled={busy} />
+            <input aria-label={t('settings.storageTargets.lowWatermark')} type="number" min="0" max="98" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.low_watermark_pct} onInput={(event) => set('low_watermark_pct', event.currentTarget.value)} disabled={busy} />
           </label>
           <label class="text-sm font-medium">
             <span class="block mb-1">{t('settings.storageTargets.highWatermark')}</span>
-            <input type="number" min="1" max="99" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.high_watermark_pct} onInput={(event) => set('high_watermark_pct', event.currentTarget.value)} disabled={busy} />
+            <input aria-label={t('settings.storageTargets.highWatermark')} type="number" min="1" max="99" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.high_watermark_pct} onInput={(event) => set('high_watermark_pct', event.currentTarget.value)} disabled={busy} />
           </label>
         </div>
         <label class="text-sm font-medium">
           <span class="block mb-1">{t('settings.storageTargets.migrationBandwidth')}</span>
-          <input type="number" min="0" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.migration_mbps} onInput={(event) => set('migration_mbps', event.currentTarget.value)} disabled={busy} />
+          <input aria-label={t('settings.storageTargets.migrationBandwidth')} type="number" min="0" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.migration_mbps} onInput={(event) => set('migration_mbps', event.currentTarget.value)} disabled={busy} />
           <span class="block mt-1 text-xs font-normal text-muted-foreground">{t('settings.storageTargets.migrationBandwidthHelp')}</span>
         </label>
         <div class="grid grid-cols-2 gap-3">
-          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveStart')}</span><input type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_start} onInput={(event) => set('archival_window_start', event.currentTarget.value)} disabled={busy} /></label>
-          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveEnd')}</span><input type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_end} onInput={(event) => set('archival_window_end', event.currentTarget.value)} disabled={busy} /></label>
+          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveStart')}</span><input aria-label={t('settings.storageTargets.archiveStart')} type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_start} onInput={(event) => set('archival_window_start', event.currentTarget.value)} disabled={busy} /></label>
+          <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storageTargets.archiveEnd')}</span><input aria-label={t('settings.storageTargets.archiveEnd')} type="time" class="w-full p-2 border border-input rounded bg-background" value={value.archival_window_end} onInput={(event) => set('archival_window_end', event.currentTarget.value)} disabled={busy} /></label>
           <span class="col-span-2 text-xs text-muted-foreground">{t('settings.storageTargets.archiveWindowHelp')}</span>
         </div>
         <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy || value.is_default} />
+          <input aria-label={t('settings.storageTargets.enabled')} type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy || value.is_default} />
           {t('settings.storageTargets.enabled')}
         </label>
         <label class="touch-target flex cursor-pointer items-start gap-2 text-sm font-medium md:col-span-2">
-          <input type="checkbox" class="mt-1" checked={value.mount_required} onChange={(event) => set('mount_required', event.currentTarget.checked)} disabled={busy || objectTarget} />
+          <input aria-label={t('settings.storageTargets.mountRequired')} type="checkbox" class="mt-1" checked={value.mount_required} onChange={(event) => set('mount_required', event.currentTarget.checked)} disabled={busy || objectTarget} />
           <span><span class="block">{t('settings.storageTargets.mountRequired')}</span><span class="block text-xs font-normal text-muted-foreground">{t('settings.storageTargets.mountRequiredHelp')}</span></span>
         </label>
       </div>
@@ -389,9 +389,9 @@ function StoragePoolsPanel({ canModifySettings, t }) {
   return <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storagePools.title')}>
     <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePools.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePools.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePools.add')}</button>}</div>
     {editor && <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" value={editor.name} onInput={(event) => setEditor({ ...editor, name: event.currentTarget.value })} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePools.strategy')}</span><select class="w-full p-2 border border-input rounded bg-background" value={editor.strategy} onChange={(event) => setEditor({ ...editor, strategy: event.currentTarget.value })} disabled={busy}><option value="most_free">{t('settings.storagePools.mostFree')}</option><option value="round_robin">{t('settings.storagePools.roundRobin')}</option><option value="priority">{t('settings.storagePools.priority')}</option></select></label></div>
-      <fieldset><legend class="text-sm font-semibold mb-2">{t('settings.storagePools.members')}</legend><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{targets.map((target) => <label key={target.uuid} class="touch-target flex items-center gap-2 text-sm"><input type="checkbox" checked={editor.members.includes(target.uuid)} onChange={() => toggleMember(target.uuid)} disabled={busy} />{target.name}</label>)}</div></fieldset>
-      <label class="touch-target flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={editor.enabled} onChange={(event) => setEditor({ ...editor, enabled: event.currentTarget.checked })} disabled={busy} />{t('settings.storagePools.enabled')}</label>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input aria-label={t('common.name')} class="w-full p-2 border border-input rounded bg-background" value={editor.name} onInput={(event) => setEditor({ ...editor, name: event.currentTarget.value })} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePools.strategy')}</span><select class="w-full p-2 border border-input rounded bg-background" value={editor.strategy} onChange={(event) => setEditor({ ...editor, strategy: event.currentTarget.value })} disabled={busy}><option value="most_free">{t('settings.storagePools.mostFree')}</option><option value="round_robin">{t('settings.storagePools.roundRobin')}</option><option value="priority">{t('settings.storagePools.priority')}</option></select></label></div>
+      <fieldset><legend class="text-sm font-semibold mb-2">{t('settings.storagePools.members')}</legend><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{targets.map((target) => <label key={target.uuid} class="touch-target flex items-center gap-2 text-sm"><input aria-label={target.name} type="checkbox" checked={editor.members.includes(target.uuid)} onChange={() => toggleMember(target.uuid)} disabled={busy} />{target.name}</label>)}</div></fieldset>
+      <label class="touch-target flex items-center gap-2 text-sm font-medium"><input aria-label={t('settings.storagePools.enabled')} type="checkbox" checked={editor.enabled} onChange={(event) => setEditor({ ...editor, enabled: event.currentTarget.checked })} disabled={busy} />{t('settings.storagePools.enabled')}</label>
       <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" onClick={() => setEditor(null)} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-primary" onClick={save} disabled={busy || !editor.name.trim() || editor.members.length === 0}>{busy ? t('common.saving') : t('common.saveChanges')}</button></div>
     </div>}
     {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
@@ -510,30 +510,30 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
       <div><h4 class="font-semibold">{t(value.uuid ? 'settings.storagePolicies.edit' : 'settings.storagePolicies.add')}</h4><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.editorHelp')}</p></div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength="127" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input aria-label={t('common.name')} class="w-full p-2 border border-input rounded bg-background" maxLength="127" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input aria-label={t('settings.storagePolicies.priority')} type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => set('primary_pool_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
         {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
-        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3"><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.minimumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.minimum_retention_days} onInput={(event) => set('minimum_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.desiredDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.desired_retention_days} onInput={(event) => set('desired_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.maximumDays')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.maximum_retention_days} onInput={(event) => set('maximum_retention_days', event.currentTarget.value)} disabled={busy} /></label></div>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.copyCount')}</span><input type="number" min="1" max="8" class="w-full p-2 border border-input rounded bg-background" value={value.required_copy_count} onInput={(event) => set('required_copy_count', event.currentTarget.value)} disabled={busy} /></label>
+        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3"><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.minimumDays')}</span><input aria-label={t('settings.storagePolicies.minimumDays')} type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.minimum_retention_days} onInput={(event) => set('minimum_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.desiredDays')}</span><input aria-label={t('settings.storagePolicies.desiredDays')} type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.desired_retention_days} onInput={(event) => set('desired_retention_days', event.currentTarget.value)} disabled={busy} /></label><label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.maximumDays')}</span><input aria-label={t('settings.storagePolicies.maximumDays')} type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.maximum_retention_days} onInput={(event) => set('maximum_retention_days', event.currentTarget.value)} disabled={busy} /></label></div>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.copyCount')}</span><input aria-label={t('settings.storagePolicies.copyCount')} type="number" min="1" max="8" class="w-full p-2 border border-input rounded bg-background" value={value.required_copy_count} onInput={(event) => set('required_copy_count', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.replicationPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.replication_pool_uuid || ''} onChange={(event) => set('replication_pool_uuid', event.currentTarget.value)} disabled={busy || Number(value.required_copy_count) <= 1}><option value="">{t('settings.storagePolicies.choosePool')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.migrateAfter')}</span><input type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.migration_after_days} onInput={(event) => set('migration_after_days', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.migrateAfter')}</span><input aria-label={t('settings.storagePolicies.migrateAfter')} type="number" min="0" max="36500" class="w-full p-2 border border-input rounded bg-background" value={value.migration_after_days} onInput={(event) => set('migration_after_days', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.migrationTarget')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.migration_target_uuid || ''} onChange={(event) => set('migration_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{targets.filter((target) => target.uuid !== value.primary_target_uuid).map((target) => <option key={target.uuid} value={target.uuid}>{target.name}</option>)}</select></label>
-        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.pressurePriority')}</span><input type="number" min="-1000000" max="1000000" class="w-full p-2 border border-input rounded bg-background" value={value.pressure_priority} onInput={(event) => set('pressure_priority', event.currentTarget.value)} disabled={busy} /></label>
-        <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.pressurePriority')}</span><input aria-label={t('settings.storagePolicies.pressurePriority')} type="number" min="-1000000" max="1000000" class="w-full p-2 border border-input rounded bg-background" value={value.pressure_priority} onInput={(event) => set('pressure_priority', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium md:col-span-2"><input aria-label={t('settings.storagePolicies.enabled')} type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
       </div>
       <fieldset class="rounded border border-border p-3 my-3">
         <legend class="px-1 font-semibold">{t('settings.archive.policy')}</legend>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           {['archive_after_seconds', 'hot_residency_seconds'].map((field) => <label key={field} class="text-sm font-medium">
             <span class="block mb-1">{t(`settings.archive.${field}`)}</span>
-            <input type="number" min="-1" max="2147483647" step="1" class="w-full p-2 border border-input rounded bg-background"
+            <input aria-label={t(`settings.archive.${field}`)} type="number" min="-1" max="2147483647" step="1" class="w-full p-2 border border-input rounded bg-background"
               value={value[field] ?? -1} onInput={(event) => set(field, event.currentTarget.value)} disabled={busy} />
           </label>)}
           {['archive_protected', 'archive_on_pressure'].map((field) => <label key={field} class="touch-target flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={!!value[field]} onChange={(event) => set(field, event.currentTarget.checked)} disabled={busy} />
+            <input aria-label={t(`settings.archive.${field}`)} type="checkbox" checked={!!value[field]} onChange={(event) => set(field, event.currentTarget.checked)} disabled={busy} />
             {t(`settings.archive.${field}`)}
           </label>)}
           <p class="text-xs text-muted-foreground md:col-span-2">{t('settings.archive.policyHelp')}</p>
@@ -702,7 +702,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
         <div data-setting-label={t('settings.storagePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-storage-path" class="font-medium">{t('settings.storagePath')}</label>
-          <input
+          <input aria-label={t('settings.storagePath')}
             type="text"
             id="setting-storage-path"
             name="storagePath"
@@ -715,7 +715,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.hlsStoragePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-storage-path-hls" class="font-medium">{t('settings.hlsStoragePath')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.hlsStoragePath')}
               type="text"
               id="setting-storage-path-hls"
               name="storagePathHls"
@@ -748,7 +748,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.maxStorageGb')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.maxStorageGb')}
               type="number"
               id="setting-max-storage"
               name="maxStorage"
@@ -764,7 +764,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.retentionDays')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-retention" class="font-medium">{t('settings.retentionDays')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.retentionDays')}
               type="number"
               id="setting-retention"
               name="retention"
@@ -781,7 +781,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.autoDeleteOldest')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-auto-delete" class="font-medium">{t('settings.autoDeleteOldest')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.autoDeleteOldest')}
               type="checkbox"
               id="setting-auto-delete"
               name="autoDelete"
@@ -796,7 +796,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.minFreePct')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-min-free-pct" class="font-medium">{t('settings.minFreePct')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.minFreePct')}
               type="number"
               id="setting-min-free-pct"
               name="minFreePct"
@@ -816,7 +816,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label class="flex flex-col text-sm gap-1">
                 <span>{t('settings.pressureWarningPct')}</span>
-                <input
+                <input aria-label={t('settings.pressureWarningPct')}
                   type="number" name="pressureWarningPct" min="0" max="100" step="0.5"
                   class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.pressureWarningPct}
@@ -826,7 +826,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               </label>
               <label class="flex flex-col text-sm gap-1">
                 <span>{t('settings.pressureCriticalPct')}</span>
-                <input
+                <input aria-label={t('settings.pressureCriticalPct')}
                   type="number" name="pressureCriticalPct" min="0" max="100" step="0.5"
                   class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.pressureCriticalPct}
@@ -836,7 +836,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               </label>
               <label class="flex flex-col text-sm gap-1">
                 <span>{t('settings.pressureEmergencyPct')}</span>
-                <input
+                <input aria-label={t('settings.pressureEmergencyPct')}
                   type="number" name="pressureEmergencyPct" min="0" max="100" step="0.5"
                   class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.pressureEmergencyPct}
@@ -851,7 +851,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.enableGridViewThumbnails')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-generate-thumbnails" class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.enableGridViewThumbnails')}
               type="checkbox"
               id="setting-generate-thumbnails"
               name="generateThumbnails"
@@ -883,7 +883,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         </div>
         <div data-setting-label={t('settings.databasePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-db-path" class="font-medium">{t('settings.databasePath')}</label>
-          <input
+          <input aria-label={t('settings.databasePath')}
             type="text"
             id="setting-db-path"
             name="dbPath"
@@ -896,7 +896,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.databaseBackupIntervalMinutes')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-db-backup-interval" class="font-medium">{t('settings.databaseBackupIntervalMinutes')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.databaseBackupIntervalMinutes')}
               type="number"
               id="setting-db-backup-interval"
               name="dbBackupIntervalMinutes"
@@ -912,7 +912,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.databaseBackupRetentionCopies')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-db-backup-retention" class="font-medium">{t('settings.databaseBackupRetentionCopies')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.databaseBackupRetentionCopies')}
               type="number"
               id="setting-db-backup-retention"
               name="dbBackupRetentionCount"
@@ -946,7 +946,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         <div data-setting-label={t('settings.postBackupScript')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
           <label for="setting-db-post-backup-script" class="font-medium">{t('settings.postBackupScript')}</label>
           <div class="col-span-2">
-            <input
+            <input aria-label={t('settings.postBackupScript')}
               type="text"
               id="setting-db-post-backup-script"
               name="dbPostBackupScript"
