@@ -1729,10 +1729,10 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - Each mapped finding has individual fixed-with-regression evidence or an explicitly approved, current, narrowly scoped exception; unobserved/excluded diagnostics are not fixed.
   - Preserve unrelated baseline diagnostics. Final full-profile fresh reports and optional feature coverage are reconciled in T33.
 - **validation**:
-  - `python3 scripts/quality/run-native.py --task T7.52 --regex '^test_t7_52$'`
+  - `python3 scripts/quality/run-native.py --task T7.2.8 --profile integration --regex '^test_(t7_2_files|path_utils|storage_(deletion_ledger|manager_retention)|stale_recording_prune|hls_cache_cleanup)$' --jobs 4`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.52`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed — exact existing RED/GREEN regression reused
+- **log**: Raw T1 path_utils.c:224 garbage-fd diagnostic follows the exact ELOOP branch fixed by e3ec7ea6. Retained T7.2.3 descriptor regression741beec3 reproduces closure of privatefd0 and passes after initialization;110related cases pass. No redundant test or fresh scanner-clean claim.
 - **files edited/created**:
 
 ### T7.53: clang-analyzer-security.ArrayBound in authorization.c
