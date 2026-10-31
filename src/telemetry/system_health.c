@@ -57,6 +57,7 @@ typedef struct {
     bool initialized;
     bool started;
     bool requested;
+    bool startup_ready; /* Protected by lock; no collection before full startup. */
 } tier_worker_t;
 
 typedef struct system_health_runtime {
@@ -761,6 +762,13 @@ static void add_ms_to_timespec(struct timespec *value, uint32_t milliseconds) {
 static void *tier_worker_main(void *argument) {
     tier_worker_t *worker = argument;
     system_health_runtime_t *state = worker->runtime;
+    /* Startup owns lifecycle_lock until all workers exist, or failed workers
+     * have been joined. Do not enter collection (which takes that lock) before
+     * successful publication; a failed start wakes this gate only to exit. */
+    pthread_mutex_lock(&worker->lock);
+    while (atomic_load(&state->running) && !worker->startup_ready)
+        pthread_cond_wait(&worker->wake, &worker->lock);
+    pthread_mutex_unlock(&worker->lock);
     while (atomic_load(&state->running)) {
         pthread_mutex_lock(&worker->lock);
         worker->requested = false;
@@ -797,6 +805,9 @@ int system_health_start(void) {
     size_t started = 0U;
     for (size_t tier = 0; tier < SYSTEM_HEALTH_TIER_COUNT; ++tier) {
         tier_worker_t *worker = &state->workers[tier];
+        pthread_mutex_lock(&worker->lock);
+        worker->startup_ready = false;
+        pthread_mutex_unlock(&worker->lock);
         if (pthread_create(&worker->thread, NULL, tier_worker_main, worker) != 0)
             break;
         worker->started = true;
@@ -818,6 +829,13 @@ int system_health_start(void) {
     pthread_mutex_lock(&state->lock);
     state->stats.worker_threads = SYSTEM_HEALTH_TIER_COUNT;
     pthread_mutex_unlock(&state->lock);
+    for (size_t tier = 0; tier < SYSTEM_HEALTH_TIER_COUNT; ++tier) {
+        tier_worker_t *worker = &state->workers[tier];
+        pthread_mutex_lock(&worker->lock);
+        worker->startup_ready = true;
+        pthread_cond_signal(&worker->wake);
+        pthread_mutex_unlock(&worker->lock);
+    }
     pthread_mutex_unlock(&lifecycle_lock);
     return 0;
 }
