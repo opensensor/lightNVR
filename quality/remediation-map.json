@@ -1358,7 +1358,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Pending review \u2014 existing allocation guards verified; no approval recorded",
       "ownership": [
         "src/core/event_router.c",
         "tests/unit/test_t7_28.c",
@@ -1401,7 +1401,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Tests-only46812624:19new and7existing router cases pass ASan/UBSan. Original/current TZif bounds already limit both reported allocations; proposed already-guarded disposition requires review and freshT33scan. No production, baseline or exception change."
     },
     {
       "id": "T7.29",
