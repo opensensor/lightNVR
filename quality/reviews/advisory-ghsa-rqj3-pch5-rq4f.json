@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "task": "T7.6",
+  "finding": "ADVISORY-GHSA-rqj3-pch5-rq4f",
+  "reviewed_on": "2026-10-31",
+  "reviewer": "Codex automated source and regression review",
+  "source": {
+    "visibility": "public",
+    "url": "https://github.com/opensensor/lightNVR/security/advisories/GHSA-rqj3-pch5-rq4f",
+    "state": "published",
+    "affected_versions": "<= 0.43.4",
+    "patched_versions_as_published": "None"
+  },
+  "status": "fixed-current-source-regression-verified",
+  "current_source": {
+    "version": "0.45.1 (CMakeLists.txt)",
+    "tested_parent_revision": "233859ab4a0092e6fd79b521b654f41f7659fcea",
+    "isolation_fix": "cb07a0d9e1bb15c9972168ce5afa274ea9ad091d",
+    "pinned_go2rtc_revision": "6986a1b3f122651b318a957534da44bb4c65e271",
+    "go2rtc_fix": "41c9dfd38c513d73a8265259dcda19a1932f6174",
+    "both_fixes_ancestors": true
+  },
+  "regressions": {
+    "go": {
+      "command": "go test -mod=readonly -count=1 -timeout=60s -json ./internal/api ./internal/streams ./internal/ffmpeg ./pkg/ffmpeg -run '^(TestAdmin|TestProducer|TestConfigStream|TestValidate|TestConfigRejects|TestFFmpeg|TestArgv)'",
+      "working_directory": "go2rtc",
+      "passed": 16,
+      "packages": 4,
+      "failed": 0,
+      "skipped": 0,
+      "artifact": "build/eng-artifacts/T7.6/go-security.jsonl"
+    },
+    "native": {
+      "command": "python3 scripts/quality/run-native.py --task T7.6 --profile integration --sanitizer asan-ubsan --regex '^test_(go2rtc_process_config_generation|mp4_faststart)$' --jobs 4",
+      "passed_targets": 2,
+      "passed_config_cases": 6,
+      "passed_unrelated_faststart_cases": 2,
+      "artifact": "build/eng-artifacts/T7.6/native-a4dec68757ec"
+    },
+    "deployment_static": {
+      "artifact": "build/eng-artifacts/T7.6/deployment-controls.log",
+      "checks": [
+        "final Docker USER10001:10001 in both recipes",
+        "no1984EXPOSE orCompose mapping",
+        "all capabilities dropped and no-new-privileges"
+      ]
+    }
+  },
+  "limits": [
+    "Source/default configuration review and focused regressions do not attest arbitrary deployed images or operator overrides.",
+    "No published advisory metadata, baseline or exception approval changed.",
+    "Published patched-version field remains None; no released-version claim inferred."
+  ]
+}
