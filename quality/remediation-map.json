@@ -1163,7 +1163,7 @@
       ],
       "kind": "upstream-review",
       "priority": "high",
-      "status": "In progress \u2014 upstream review complete; exact codec tests pending",
+      "status": "In progress \u2014 codec tests verified; upstream pointer review pending",
       "ownership": [
         "quality/reviews/t7_24-upstream.json",
         "quality/evidence/T7.24.md"
@@ -1196,7 +1196,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "Reviewb6500e29 tracesCODEQL-330 to pinnedFAAC eb4928a and documented int16layout. No sourcechange/approval; exact channel/sample testsT7.24.1 and final-stride/alignment concerns stillopen."
+      "log": "b6500e29 traces reportedscaling to documented int16 layout; b82307d8 provides12actualFAAC cases passing. Final-stride/intermediate-pointer language concerns remain open for upstream/reproduciblepatch review; no sourcechange/approval or freshscannerclosure."
     },
     {
       "id": "T7.25",

@@ -1227,8 +1227,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 -m json.tool quality/reviews/t7_24-upstream.json`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.24`; inspect the raw T1 report and trace the caller.
-- **status**: In progress — upstream review complete; exact codec tests pending
-- **log**: Reviewb6500e29 tracesCODEQL-330 to pinnedFAAC eb4928a and documented int16layout. No sourcechange/approval; exact channel/sample testsT7.24.1 and final-stride/alignment concerns stillopen.
+- **status**: In progress — codec tests verified; upstream pointer review pending
+- **log**: b6500e29 traces reportedscaling to documented int16 layout; b82307d8 provides12actualFAAC cases passing. Final-stride/intermediate-pointer language concerns remain open for upstream/reproduciblepatch review; no sourcechange/approval or freshscannerclosure.
 - **files edited/created**:
 
 ### T7.25: cpp/toctou-race-condition in db_core.c
@@ -7454,15 +7454,15 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Test the actually linked pinned FAAC implementation through its public interface: packed int16 mono/stereo/eight-channel signed samples versus equivalent int32×256 input, valid channel maps and invalid indexes, partial/full-frame/redzone boundaries, null/flush/oversized/undersized-output rejection and unchanged input/close ownership. No mock codec or upstream edits.
 - **acceptance_criteria**: Exact meaningful sample/layout behavior and sanitizer controls, preserving any real failure. Existing configuration-only tests cannot substitute. Final-stride pointer formation may escape ASan detection; do not infer absence of C pointer-formation UB or approve scanner dismissal from encoded-output equivalence alone.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.24.1 --profile integration --regex '^test_(t7_24|faac_encoder)$' --jobs 4`; any upstream patch/pin requires a separate tracked integration child.
-- **status**: Not Completed
-- **log**: Parent trace locates CODEQL-330 in pinned FAAC frame.c eb4928a; original cast appears intentional sample interpretation, but exact boundaries lack verification.
+- **status**: Completed — tests-only producer (`b82307d8`)
+- **log**: 10new plus2existing actualFAAC cases pass ASan/UBSan, exact int16/int32layout equivalence, maps/alignment/boundary/ownership. Initial unsupported immediate-empty-flush oracle corrected to documented boundeddrain; no productfix or staticpointerformation safety claim.
 - **files edited/created**:
 
 ### T7.25.1: Quarantine and verify stale backup artifacts before unlinking
 - **depends_on**: [T7, T13]
 - **agent_type**: worker
 - **ownership**: `src/database/db_core.c` cleanup_stale_backup_artifacts and narrowly scoped helpers only, `tests/unit/test_t7_25.c`, `tests/unit/cmake/eng/t7_25.cmake` needed fault seams only, `quality/evidence/T7.25.1.md`; no schema/retention/config redesign.
-- **description**: Resolve committed parent/leaf replacement regressions using held backup directory and candidate descriptors plus an owned private directory for atomic quarantine. Pin regular candidate without following symlinks or blocking on special files; verify current type/age/identity. Move relative to held directory, then compare held inode with quarantined entry before deletion. Restore mismatches only with atomic no-overwrite semantics; on conflict/error/unsupported restore preserve the quarantined object and report its retained location. Verify private directory ownership/mode/identity and use descriptor-relative operations. Never recursively delete unknown leftover quarantine after crash.
+- **description**: Resolve committed parent/leaf replacement regressions using held backup directory and candidate descriptors plus an owned private directory for atomic quarantine. Pin regular candidate without following symlinks or blocking on special files; verify current type/name eligibility/identity and snapshot size/mtime, preserving the existing startup-only cleanup policy without inventing an age cutoff. Move relative to held directory, then compare held inode with quarantined entry before deletion. Restore mismatches only with atomic no-overwrite semantics; on conflict/error/unsupported restore preserve the quarantined object and report its retained location. Verify private directory ownership/mode/identity and use descriptor-relative operations. Never recursively delete unknown leftover quarantine after crash.
 - **acceptance_criteria**: Original inspected-parent replacement preserves replacement bytes and removes only original eligible artifact; symlink and regular leaf replacements survive with target bytes intact. Cover restore collision, failed rename/unlink/open, inode pinning and descriptor/private-directory cleanup. Unsupported no-overwrite restore must preserve data and report incomplete cleanup, never fall back to racy overwrite. Document crash leftovers, old-kernel/platform limits and exclusion of a compromised runtime UID/privileged actor or concurrent writes through an already-held fd. Ordinary selective stale cleanup remains functional.
 - **validation**: Original7-case producer (3genuineRED) retained, strengthened fault/crash/ownership controls and related backup/database tests under ASan/UBSan. Native source/build lease required; no real backup directory, database or process touched.
 - **status**: Not Completed
