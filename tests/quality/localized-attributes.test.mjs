@@ -13,8 +13,8 @@ const examples = [
   ['settings.storageTargets.localRootPlaceholder', {}, '/mnt/nvr-hot-01'],
   ['settings.storageTargets.bucketPlaceholder', {}, 'bucket'],
   ['live.plan.canvasLabel', { name: 'Floor 2' }, 'Floor 2 camera plan'],
-  ['live.plan.sketch.undoShortcut', {}, 'Undo drawing (Ctrl+Z)'],
-  ['live.plan.sketch.redoShortcut', {}, 'Redo drawing (Ctrl+Shift+Z)'],
+  ['live.plan.sketch.undoShortcut', { action: 'Undo drawing' }, 'Undo drawing (Ctrl+Z)'],
+  ['live.plan.sketch.redoShortcut', { action: 'Redo drawing' }, 'Redo drawing (Ctrl+Shift+Z)'],
   ['recordings.thumbnailAlt', { stream: 'Front entrance' }, 'Front entrance recording'],
   ['recordings.detectionCountOne', { count: 1 }, '1 detection'],
   ['recordings.detectionCountMany', { count: 4 }, '4 detections'],
@@ -28,7 +28,7 @@ async function load(context, locale) {
     async json() {
       if (url.endsWith('/manifest.json')) return { locales: [{ code: 'en' }, { code: 'fr' }] };
       if (url.endsWith('/en.json')) return english;
-      if (url.endsWith('/fr.json')) return { 'settings.tabsLabel': 'Sections des paramètres' };
+      if (url.endsWith('/fr.json')) return { 'settings.tabsLabel': 'Sections des paramètres', 'live.plan.sketch.undo': 'Annuler le dessin', 'live.plan.sketch.redo': 'Rétablir le dessin' };
       throw new Error(`Unexpected locale URL ${url}`);
     },
   }));
@@ -48,4 +48,10 @@ test('partial locale uses English attribute fallback without losing localized ex
   await load(context, 'fr');
   for (const [key, params, expected] of examples) assert.equal(t(key, params), expected, key);
   assert.equal(t('settings.tabsLabel'), 'Sections des paramètres');
+});
+
+test('fallback shortcut templates retain the already translated action', async (context) => {
+  await load(context, 'fr');
+  assert.equal(t('live.plan.sketch.undoShortcut', { action: t('live.plan.sketch.undo') }), 'Annuler le dessin (Ctrl+Z)');
+  assert.equal(t('live.plan.sketch.redoShortcut', { action: t('live.plan.sketch.redo') }), 'Rétablir le dessin (Ctrl+Shift+Z)');
 });
