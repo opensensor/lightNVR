@@ -9312,7 +9312,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/live/LiveOperatorNavigator.jsx",
         "web/js/components/preact/recordings/RecordingsGrid.jsx",
@@ -9403,7 +9403,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "Nine assigned click/key warnings and9related occurrences removed; native sibling media/location actions preserve existing callbacks and structural backdrop guards.95/95combined tests including actual browser, types, default/modern builds and43/66asset checks pass. No baseline or locale edits.",
+      "commit": "29fa0d50"
     },
     {
       "id": "T7.164",
@@ -12864,7 +12866,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": " T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1\u21920; Recordings55a74c5d3180cf15 4\u21921; Go2rtcfd743aa60d9abb1f 2\u21920; Clearfbc7ca1e0083c1d1 1\u21920; Restart259ca1824a1d1447 1\u21920; Timelinec06de8e6c5473e61 2\u21921. Remaining hover/mouse guards and other buckets keep this task open."
     },
     {
       "id": "T7.200",
@@ -12981,7 +12984,8 @@
           "evidence": "quality/evidence/T7.164.md",
           "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
         }
-      ]
+      ],
+      "log": " T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1\u21920; Recordings55a74c5d3180cf15 4\u21921; Go2rtcfd743aa60d9abb1f 2\u21920; Clearfbc7ca1e0083c1d1 1\u21920; Restart259ca1824a1d1447 1\u21920; Timelinec06de8e6c5473e61 2\u21921. Remaining hover/mouse guards and other buckets keep this task open."
     },
     {
       "id": "T7.201",

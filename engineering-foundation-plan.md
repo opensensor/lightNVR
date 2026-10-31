@@ -3741,8 +3741,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/live/LiveOperatorNavigator.jsx web/js/components/preact/recordings/RecordingsGrid.jsx web/js/components/preact/settings/Go2rtcTab.jsx web/js/components/preact/system/ClearLogsModal.jsx web/js/components/preact/system/RestartModal.jsx web/js/components/preact/timeline/TimelinePlayer.jsx --format json --output-file build/eng-artifacts/T7.163/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.163/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.163`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `29fa0d50`)
+- **log**: Nine assigned click/key warnings and9related occurrences removed; native sibling media/location actions preserve existing callbacks and structural backdrop guards.95/95combined tests including actual browser, types, default/modern builds and43/66asset checks pass. No baseline or locale edits.
 - **files edited/created**:
 
 ### T7.164: jsx-a11y/click-events-have-key-events in AccessPolicyModal.jsx, AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, DeleteUserModal.jsx, EditUserModal.jsx
@@ -4498,7 +4498,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.199/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.199`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1→0; Recordings55a74c5d3180cf15 4→1; Go2rtcfd743aa60d9abb1f 2→0; Clearfbc7ca1e0083c1d1 1→0; Restart259ca1824a1d1447 1→0; Timelinec06de8e6c5473e61 2→1. Remaining hover/mouse guards and other buckets keep this task open.
 - **files edited/created**:
 
 ### T7.200: jsx-a11y/no-static-element-interactions in RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx, AccessPolicyModal.jsx
@@ -4519,7 +4519,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.200/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.200`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred.
+- **log**: Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred. T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1→0; Recordings55a74c5d3180cf15 4→1; Go2rtcfd743aa60d9abb1f 2→0; Clearfbc7ca1e0083c1d1 1→0; Restart259ca1824a1d1447 1→0; Timelinec06de8e6c5473e61 2→1. Remaining hover/mouse guards and other buckets keep this task open.
 - **files edited/created**:
 
 ### T7.201: jsx-a11y/no-static-element-interactions in AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, DeleteUserModal.jsx, EditUserModal.jsx, RoleManagerModal.jsx
