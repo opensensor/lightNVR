@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "status": "proposed-not-applied",
+  "producer": "T15.2",
+  "remote_changes_applied": false,
+  "target": {
+    "repository": "opensensor/lightNVR",
+    "branch": "main"
+  },
+  "path_behavior": "No workflow path filters or job conditions. Every main-targeting PR runs all foundation jobs. Workflow names/job contexts must be verified from an authorized PR before T38 applies remote rules.",
+  "checks": [
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "types",
+      "context": "Foundation types",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "lint",
+      "context": "Foundation lint",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "unit",
+      "context": "Foundation unit",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "schema",
+      "context": "Foundation schema",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "tooling",
+      "context": "Foundation tooling",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "assets-default",
+      "context": "Foundation assets default",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/engineering-foundation.yml",
+      "job_id": "assets-modern",
+      "context": "Foundation assets modern",
+      "enforcement_verified": false
+    },
+    {
+      "workflow": ".github/workflows/static-analysis.yml",
+      "job_id": "analysis-coverage",
+      "context": "Analysis coverage and findings",
+      "enforcement_verified": false
+    }
+  ],
+  "future_contract_lane": {
+    "status": "pending-T39",
+    "required_check": null,
+    "reason": "Real C backend pilot contract tests are produced by T18 and activated by T39. Generated-schema checks do not substitute for backend tests."
+  },
+  "application_scope": "Strict new TS/TSX plus explicit legacy JS frontier; full application migration is not claimed.",
+  "approval_scope": "No dependency, scanner-gap or findings exception is approved by these settings.",
+  "remote_application": {
+    "owner_task": "T38",
+    "mode": "add these verified identities while preserving all unrelated current required checks and branch protection settings",
+    "preconditions": [
+      "T15 complete",
+      "T39 real contract job exists and passes its deliberate-failure control",
+      "Read current branch protection/rulesets",
+      "Verify exact check-run identities and app IDs on authorized PR",
+      "Add real contract check and verify failing status prevents merge without merging failing code"
+    ]
+  }
+}

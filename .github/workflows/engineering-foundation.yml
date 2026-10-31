@@ -1,0 +1,264 @@
+# All PRs run every job so required checks cannot remain pending due to path filters.
+name: Engineering Foundation
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  types:
+    name: Foundation types
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: |-
+          mkdir -p build/eng-artifacts/foundation-types
+          {
+            npm --prefix web run typecheck
+            npm run typecheck:tests
+          } 2>&1 | tee build/eng-artifacts/foundation-types/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-types
+          path: build/eng-artifacts/foundation-types
+          retention-days: 14
+          if-no-files-found: warn
+  lint:
+    name: Foundation lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: |-
+          mkdir -p build/eng-artifacts/foundation-lint
+          {
+            npm --prefix web run lint
+          } 2>&1 | tee build/eng-artifacts/foundation-lint/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-lint
+          path: build/eng-artifacts/foundation-lint
+          retention-days: 14
+          if-no-files-found: warn
+  unit:
+    name: Foundation unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: |-
+          mkdir -p build/eng-artifacts/foundation-unit
+          {
+            npm --prefix web test -- --runInBand
+          } 2>&1 | tee build/eng-artifacts/foundation-unit/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-unit
+          path: build/eng-artifacts/foundation-unit
+          retention-days: 14
+          if-no-files-found: warn
+  schema:
+    name: Foundation schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: |-
+          mkdir -p build/eng-artifacts/foundation-schema
+          {
+            node scripts/quality/contracts.mjs --check
+          } 2>&1 | tee build/eng-artifacts/foundation-schema/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-schema
+          path: build/eng-artifacts/foundation-schema
+          retention-days: 14
+          if-no-files-found: warn
+  tooling:
+    name: Foundation tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: |-
+          mkdir -p build/eng-artifacts/foundation-tooling
+          {
+            node --test tests/quality/*.test.mjs
+            python3 -m unittest discover -s tests/quality -p 'test_*.py'
+            python3 quality/evidence/T7-check.py --require-integrated
+          } 2>&1 | tee build/eng-artifacts/foundation-tooling/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-tooling
+          path: build/eng-artifacts/foundation-tooling
+          retention-days: 14
+          if-no-files-found: warn
+  assets-default:
+    name: Foundation assets default
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      LIGHTNVR_WEB_LEGACY: "true"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: >-
+          mkdir -p build/eng-artifacts/foundation-assets-default
+
+          {
+            npm --prefix web run build
+            node scripts/quality/assets.mjs --report > build/eng-artifacts/foundation-assets-default/assets.json
+            node scripts/quality/assets.mjs --check --profile default
+          } 2>&1 | tee build/eng-artifacts/foundation-assets-default/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-assets-default
+          path: build/eng-artifacts/foundation-assets-default
+          retention-days: 14
+          if-no-files-found: warn
+  assets-modern:
+    name: Foundation assets modern
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      LIGHTNVR_WEB_LEGACY: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |-
+            package-lock.json
+            web/package-lock.json
+      - name: Install locked dependencies
+        run: |-
+          npm ci
+          npm ci --prefix web
+      - name: Run checks
+        run: >-
+          mkdir -p build/eng-artifacts/foundation-assets-modern
+
+          {
+            npm --prefix web run build
+            node scripts/quality/assets.mjs --report > build/eng-artifacts/foundation-assets-modern/assets.json
+            node scripts/quality/assets.mjs --check --profile modern
+          } 2>&1 | tee build/eng-artifacts/foundation-assets-modern/check.log
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: foundation-assets-modern
+          path: build/eng-artifacts/foundation-assets-modern
+          retention-days: 14
+          if-no-files-found: warn
