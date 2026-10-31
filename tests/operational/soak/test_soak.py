@@ -59,13 +59,26 @@ class Contract(unittest.TestCase):
         self.assertFalse(soak.qualify([{'id':'nvr.threads','limit':2}], {'nvr.threads':float('nan')})['passed'])
 
     def test_resource_growth_is_failure(self):
-        samples=[{'nvr': {'rss_bytes':n,'fds':4,'threads':2}} for n in [100,200,300]]
+        samples=[{'window':'one','nvr': {'rss_bytes':n,'fds':4,'threads':2}} for n in [100,200,300]]
         result=soak.resource_summary(samples, {'rss_bytes':50,'fds':0,'threads':0})
         self.assertFalse(result['passed']);self.assertIn('rss_bytes',str(result['failures']))
 
     def test_missing_and_null_growth_cannot_qualify(self):
         self.assertFalse(soak.resource_summary([], {'rss_bytes':1})['passed'])
         self.assertFalse(soak.resource_summary([{'nvr':{'rss_bytes':2}}], {'rss_bytes':None})['passed'])
+
+    def test_growth_before_restart_is_not_hidden(self):
+        samples=[{'window':window,'nvr':{'rss_bytes':value}} for window,value in [('first',100),('first',300),('second',100),('second',100)]]
+        result=soak.resource_summary(samples, {'rss_bytes':50})
+        self.assertFalse(result['passed']);self.assertTrue(result['failures'])
+
+    def test_missing_middle_metric_cannot_qualify(self):
+        samples=[{'window':'one','nvr':{'rss_bytes':100}}, {'window':'one','nvr':{}}, {'window':'one','nvr':{'rss_bytes':100}}]
+        self.assertFalse(soak.resource_summary(samples, {'rss_bytes':100})['passed'])
+
+    def test_unknown_lifetime_cannot_qualify(self):
+        samples=[{'nvr':{'rss_bytes':100}}, {'nvr':{'rss_bytes':100}}]
+        self.assertFalse(soak.resource_summary(samples, {'rss_bytes':100})['passed'])
 
     def test_source_and_browser_classification_separate(self):
         self.assertEqual(soak.role(identity(binary='/nvr'), None, '/nvr'),'nvr')
@@ -100,9 +113,18 @@ class Contract(unittest.TestCase):
         self.assertFalse(soak.assess_report('lifecycle',[])['passed'])
 
     def test_lifecycle_failure_propagates(self):
-        checks=[{'name':str(i),'passed':True} for i in range(13)]
+        checks=[{'name':name,'passed':True} for name in soak.LIFECYCLE_CHECKS]
+        for row in checks:
+            if 'graceful shutdown' in row['name']:row['detail']={'elapsedMs':100,'graceful':True,'forcedKill':False,'forcedChildCleanup':False,'lingeringChildren':[]}
         self.assertTrue(soak.assess_report('lifecycle',checks)['passed'])
         checks[3]['passed']=False
+        self.assertFalse(soak.assess_report('lifecycle',checks)['passed'])
+
+    def test_duplicate_or_misnamed_lifecycle_cannot_pass(self):
+        self.assertFalse(soak.assess_report('lifecycle',[{'name':'same','passed':True} for _ in range(13)])['passed'])
+
+    def test_missing_lifecycle_shutdown_detail_cannot_pass(self):
+        checks=[{'name':name,'passed':True} for name in soak.LIFECYCLE_CHECKS]
         self.assertFalse(soak.assess_report('lifecycle',checks)['passed'])
 
     def test_recovery_deadline_and_gap_fail(self):
@@ -160,7 +182,14 @@ class Contract(unittest.TestCase):
 
     def test_descendants_cannot_adopt_same_name_unrelated_pid(self):
         root=identity(pid=100,parent=1);child=identity(pid=101,parent=100);unrelated=identity(pid=102,parent=1)
-        with patch.object(soak,'process_table',return_value={100:root,101:child,102:unrelated}):
+        with patch.object(soak,'process_table',return_value={100:root,101:child,102:unrelated}), patch.object(soak,'read_identity',side_effect=lambda pid:{100:root,101:child,102:unrelated}.get(pid)):
             self.assertEqual(set(soak.owned_snapshot(root)),{100,101})
+
+    def test_reused_intermediate_parent_is_not_owned(self):
+        root=identity(pid=100,parent=1);parent=identity(pid=101,parent=100);child=identity(pid=102,parent=101)
+        table={100:root,101:parent,102:child}
+        current={**table,101:{**parent,'start':'reused','parent':999}}
+        with patch.object(soak,'process_table',return_value=table), patch.object(soak,'read_identity',side_effect=current.get):
+            self.assertNotIn(102,soak.owned_snapshot(root))
 
 if __name__=='__main__':unittest.main()
