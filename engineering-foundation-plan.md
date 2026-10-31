@@ -677,12 +677,12 @@ records and gate dependencies must be added by the named producer.
 - **validation**:
   - `python3 -m json.tool quality/c-boundary.json`
   - Review documented invariants and the added task DAG against actual callers and T3 evidence.
-- **status**: Not Completed
-- **log**:
-- **files edited/created**:
+- **status**: Completed — bounded disposal improvement selected; child implementation pending
+- **log**: Source review found global state shutdown destroys one of two initialized mutexes while normal removal destroys both. Selected shared private final-disposal helper; exact lifecycle regression, implementation and verification tasks T31.1–T31.3 inserted. No T7 source ownership overlap; runner/test registration follows T13. JSON and graph review pass; no implementation outcome claimed.
+- **files edited/created**: `quality/c-boundary.json`, `quality/evidence/T31.md`, this plan
 
 ### T32: Integrate and verify the C boundary improvement
-- **depends_on**: [T5, T27, T28, T29, T31]
+- **depends_on**: [T5, T27, T28, T29, T31, T31.1, T31.2, T31.3]
 - **agent_type**: local
 - **ownership**: selected boundary integration paths from T31, `quality/evidence/T32.md`; no unrelated native modules.
 - **description**: **Locked until completed T31.* dependencies are inserted.** Reconcile the selected refactor, verify evidence of simpler ownership/reduced coupling or removal of the defect, and rerun affected operational/sanitizer checks.
@@ -6981,6 +6981,41 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **status**: Not Completed
 
 Coordinator verified this serial task chain and inserted T9.4 into T13/T15 before child edits. Root type-check lease is held by its worker.
+
+## Expanded C boundary tasks (T31)
+
+### T31.1: Reproduce stream-state mutex disposal imbalance
+- **depends_on**: [T31, T13]
+- **agent_type**: worker
+- **ownership**: `tests/unit/test_stream_state_disposal.c`, `tests/unit/cmake/eng/stream_state_disposal.cmake`, `quality/evidence/T31.1.md`.
+- **description**: Wrap pthread_mutex_destroy in a focused native test and track only the two mutex addresses of created states. Test normal removal, extra-ref refusal, global shutdown, repeated shutdown and repeated lifecycle cycles. Add registration through T13's fragment seam. Do not modify production code in this task.
+- **acceptance_criteria**: The original shutdown path fails because state_mutex is not destroyed; normal removal and refusal assertions establish unchanged preconditions. No live stream or remote server is used.
+- **validation**: `python3 scripts/quality/run-native.py --task T31.1 --regex '^test_stream_state_disposal$'` must fail for the expected missing destruction, with exact RED output retained.
+- **status**: Not Completed
+- **log**:
+- **files edited/created**:
+
+### T31.2: Unify final disposal of stream-state resources
+- **depends_on**: [T31.1]
+- **agent_type**: worker
+- **ownership**: `src/video/stream_state.c`, `quality/evidence/T31.2.md`.
+- **description**: Introduce a private final-disposal helper destroying both initialized per-state mutexes before freeing, and use it from existing normal removal and global shutdown paths. Document quiescence/lock preconditions. Keep stop ordering, ref checks, timestamp cleanup, public API and state layout unchanged.
+- **acceptance_criteria**: T31.1 regressions pass; every final-disposal caller uses the helper and no duplicate destroy is added. No concurrency redesign or new allocation is introduced.
+- **validation**: `python3 scripts/quality/run-native.py --task T31.2 --regex '^test_stream_(state_disposal|state|manager)$'`.
+- **status**: Not Completed
+- **log**:
+- **files edited/created**:
+
+### T31.3: Verify resource-disposal regression under sanitizers
+- **depends_on**: [T31.2]
+- **agent_type**: local
+- **ownership**: `quality/evidence/T31.3.md`.
+- **description**: Rerun the focused disposal/state/manager tests in the isolated native runner and its ASan/UBSan profile; record exact toolchain, revision and flags. Assert repeated-cycle success and no diagnostics. Physical device budgets remain deferred and are not replaced by sanitizer results.
+- **acceptance_criteria**: Functional and ASan/UBSan runs pass with nonzero test discovery, no invalid/double destroy observations, and no sanitizer errors; no runtime performance claim is made.
+- **validation**: `python3 scripts/quality/run-native.py --task T31.3 --regex '^test_stream_(state_disposal|state|manager)$'`; run the same selection with the sanitizer option produced/documented by T13.
+- **status**: Not Completed
+- **log**:
+- **files edited/created**:
 
 ## Parallel Execution Groups
 
