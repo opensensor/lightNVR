@@ -278,12 +278,16 @@ static void test_destination_inspection_error_keeps_cleanup_pending(void) {
     destination_stat_error = 0;
     assert_source_location(id); assert_cleanup_pending(&job, "cancelled");
 }
-static void test_preexisting_temporary_is_not_truncated_or_published(void) {
+static void test_preexisting_temporary_is_preserved_while_fresh_attempt_succeeds(void) {
     storage_migration_job_t job; uint64_t id = create_job(&job, "move");
     put_file(temporary_path, "preexisting temporary sentinel");
     TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
     assert_bytes(temporary_path, "preexisting temporary sentinel");
-    assert_source_location(id); TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
+    recording_metadata_t recording;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &recording));
+    TEST_ASSERT_EQUAL_STRING(destination_uuid, recording.storage_target_uuid);
+    assert_bytes(destination_path, payload);
+    TEST_ASSERT_EQUAL_INT(-1, access(source_path, F_OK));
 }
 static void test_preexisting_temporary_survives_failed_job_and_later_cleanup(void) {
     storage_migration_job_t job; uint64_t id = create_job(&job, "move");
@@ -296,6 +300,41 @@ static void test_preexisting_temporary_survives_failed_job_and_later_cleanup(voi
     assert_bytes(temporary_path, "unowned temporary cleanup sentinel");
     assert_bytes(destination_path, "unowned final cleanup sentinel");
     assert_source_location(id); assert_cleanup_pending(&job, "failed");
+}
+static void test_retry_preserves_previous_attempt_and_uses_fresh_artifact(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    publication_error = EIO;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(temporary_path, payload);
+    publication_error = 0;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE storage_migration_jobs SET next_attempt_at=0;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_bytes(temporary_path, payload); assert_bytes(destination_path, payload);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("completed", job.state);
+}
+static void test_preexisting_temporary_symlink_and_target_survive(void) {
+    storage_migration_job_t job; create_job(&job, "copy");
+    TEST_ASSERT_EQUAL_INT(0, ensure_path(temporary_path));
+    TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, temporary_path));
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_bytes(sentinel, "sentinel unchanged"); assert_bytes(destination_path, payload);
+    struct stat info; TEST_ASSERT_EQUAL_INT(0, lstat(temporary_path, &info));
+    TEST_ASSERT_TRUE(S_ISLNK(info.st_mode));
+}
+static void test_fresh_attempt_without_legacy_name_keeps_cleanup_pending(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    char fresh[MAX_PATH_LENGTH];
+    int length = snprintf(fresh, sizeof(fresh), "%s.migration-%s.%s.part", destination_path,
+                          job.uuid, "11111111-1111-4111-8111-111111111111");
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof(fresh));
+    put_file(fresh, "unowned fresh attempt");
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_bytes(fresh, "unowned fresh attempt"); assert_source_location(id);
+    TEST_ASSERT_EQUAL_INT(-1, access(temporary_path, F_OK));
+    assert_cleanup_pending(&job, "cancelled");
 }
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-26-XXXXXX"); if (!mkdtemp(root)) return 2;
@@ -325,8 +364,11 @@ int main(void) {
     RUN_TEST(test_cancelled_job_without_artifacts_completes_cleanup);
     RUN_TEST(test_matching_bytes_do_not_prove_abandoned_destination_ownership);
     RUN_TEST(test_destination_inspection_error_keeps_cleanup_pending);
-    RUN_TEST(test_preexisting_temporary_is_not_truncated_or_published);
+    RUN_TEST(test_preexisting_temporary_is_preserved_while_fresh_attempt_succeeds);
     RUN_TEST(test_preexisting_temporary_survives_failed_job_and_later_cleanup);
+    RUN_TEST(test_retry_preserves_previous_attempt_and_uses_fresh_artifact);
+    RUN_TEST(test_preexisting_temporary_symlink_and_target_survive);
+    RUN_TEST(test_fresh_attempt_without_legacy_name_keeps_cleanup_pending);
     int result = UNITY_END(); shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;
 }

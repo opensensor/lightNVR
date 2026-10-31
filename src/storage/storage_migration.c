@@ -11,6 +11,7 @@
 #include "storage/storage_migration.h"
 
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <mbedtls/sha256.h>
@@ -40,6 +41,7 @@
 #include "storage/storage_deletion.h"
 #include "storage/storage_source.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 
 #define MIGRATION_COPY_BUFFER (256U * 1024U)
 #define MIGRATION_PROGRESS_INTERVAL (4ULL * 1024ULL * 1024ULL)
@@ -301,10 +303,22 @@ static int copy_and_verify(
         close(source);
         return -2;
     }
-    int destination = open(temporary_path,
-                           O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC |
-                               O_NOFOLLOW,
+    int destination = -1;
+    for (unsigned int attempt = 0; attempt < 8; ++attempt) {
+        destination = open(temporary_path,
+                           O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
                            source_status.st_mode & 0777);
+        if (destination >= 0 || errno != EEXIST) break;
+        log_warn("Unowned migration temporary retained for inspection: %s", temporary_path);
+        char attempt_uuid[LIGHTNVR_UUID_STRING_SIZE];
+        if (lightnvr_uuid_generate_v4(attempt_uuid) != 0) break;
+        length = snprintf(temporary_path, sizeof(temporary_path),
+                          "%s.migration-%s.%s.part", destination_path, job->uuid, attempt_uuid);
+        if (length < 0 || (size_t)length >= sizeof(temporary_path)) {
+            errno = ENAMETOOLONG;
+            break;
+        }
+    }
     if (destination < 0) {
         set_error(error, "Cannot create temporary destination",
                   temporary_path);
@@ -572,8 +586,37 @@ static void cleanup_abandoned(void) {
                 log_warn("Unowned migration destination retained for inspection: %s", path);
                 result = -1;
             }
-            int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s.part", path, uuid);
-            if (n > 0 && n < (int)sizeof(temporary) && unlink(temporary) && errno != ENOENT) result = -1;
+            /* Job-derived names do not persist inode ownership. Inspect all
+             * attempt names, including retry artifacts, but never reclaim them. */
+            int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s", path, uuid);
+            if (n <= 0 || n >= (int)sizeof(temporary)) {
+                result = -1;
+            } else {
+                char parent_path[MAX_PATH_LENGTH];
+                safe_strcpy(parent_path, temporary, sizeof(parent_path), 0);
+                char *leaf = strrchr(temporary, '/');
+                const char *prefix = leaf ? leaf + 1 : temporary;
+                DIR *directory = opendir(dirname(parent_path));
+                if (!directory) {
+                    if (errno != ENOENT) result = -1;
+                } else {
+                    struct dirent *entry;
+                    errno = 0;
+                    while ((entry = readdir(directory))) {
+                        if (!strncmp(entry->d_name, prefix, strlen(prefix)) &&
+                            entry->d_name[strlen(prefix)] == '.') {
+                            safe_strcpy(error, "Temporary destination retained: migration ownership is not recorded",
+                                        sizeof(error), 0);
+                            log_warn("Unowned migration attempt retained for inspection: %s/%s",
+                                     parent_path, entry->d_name);
+                            result = -1;
+                        }
+                        errno = 0;
+                    }
+                    if (errno != 0) result = -1;
+                    closedir(directory);
+                }
+            }
         }
     }
     pthread_mutex_lock(mutex);
