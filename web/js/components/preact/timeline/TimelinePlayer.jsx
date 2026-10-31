@@ -922,6 +922,7 @@ export function TimelinePlayer({
         >
           <video
               ref={setVideoRefs}
+              aria-label={t('timeline.timelinePlayback')}
               className="w-full h-full object-contain"
               controls={!eptzEnabled}
               controlsList="nofullscreen"
@@ -981,11 +982,14 @@ export function TimelinePlayer({
 
           {/* Detection overlay canvas */}
           {detectionOverlayEnabled && !eptzEnabled && (
-            <canvas
-              ref={canvasRef}
+            <div
+              role="img"
+              aria-label={t('recordings.detections')}
               className="absolute top-0 left-0 w-full h-full pointer-events-none"
               style={{ zIndex: 2 }}
-            />
+            >
+              <canvas ref={canvasRef} className="block w-full h-full" aria-hidden="true" />
+            </div>
           )}
 
           {/* Fullscreen prompt — shown when arriving from a Live View fullscreen session.
@@ -1045,6 +1049,7 @@ export function TimelinePlayer({
           <input
             type="checkbox"
             id="timeline-detection-overlay"
+            aria-label={`${t('recordings.detections')}${detections.length > 0 ? ` (${detections.length})` : ''}`}
             className="w-3.5 h-3.5 accent-primary"
             checked={detectionOverlayEnabled}
             disabled={eptzEnabled}

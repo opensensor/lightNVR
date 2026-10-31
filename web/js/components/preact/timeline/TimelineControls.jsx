@@ -393,6 +393,7 @@ export function TimelineControls() {
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
           title={t('timeline.zoomOut')}
+          aria-label={t('timeline.zoomOut')}
           disabled={!canZoomOut}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -406,6 +407,7 @@ export function TimelineControls() {
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
           title={t('timeline.zoomIn')}
+          aria-label={t('timeline.zoomIn')}
           disabled={!canZoomIn}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

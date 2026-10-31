@@ -165,6 +165,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
               id="username"
               type="text"
               name="username"
+              aria-label={t('fields.username')}
               value={formData.username}
               onChange={handleInputChange}
               required
@@ -181,6 +182,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                 id="password"
                 type="password"
                 name="password"
+                aria-label={t('users.passwordKeepCurrent')}
                 value={formData.password}
                 onChange={handleInputChange}
               />
@@ -196,6 +198,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
               id="email"
               type="email"
               name="email"
+              aria-label={t('fields.email')}
               value={formData.email}
               onChange={handleInputChange}
             />
@@ -226,6 +229,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                 <input
                   type="checkbox"
                   name="is_active"
+                  aria-label={t('users.active')}
                   checked={formData.is_active}
                   onChange={handleInputChange}
                   className="mr-2"
@@ -241,6 +245,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                 <input
                   type="checkbox"
                   name="password_change_locked"
+                  aria-label={t('users.lockPasswordChanges')}
                   checked={formData.password_change_locked}
                   onChange={handleInputChange}
                   className="mr-2"
@@ -262,6 +267,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 id="allowed_login_cidrs"
                 name="allowed_login_cidrs"
+                aria-label={t('users.allowedLoginIpRanges')}
                 value={formData.allowed_login_cidrs || ''}
                 onChange={handleInputChange}
                 placeholder={allowedLoginCidrsPlaceholder}

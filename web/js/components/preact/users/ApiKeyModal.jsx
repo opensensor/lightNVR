@@ -52,6 +52,7 @@ function SecretReveal({ revealed, copied, confirmed, onCopy, onConfirmChange, on
         <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-border p-4 text-sm">
           <input
             type="checkbox"
+            aria-label={`${t('tokens.secret.savedConfirm')} ${t('tokens.secret.savedHelp')}`}
             className="mt-0.5 h-4 w-4"
             checked={confirmed}
             onChange={(event) => onConfirmChange(event.currentTarget.checked)}
@@ -76,7 +77,7 @@ function ActionPicker({ actions, selected, onToggle, t }) {
           <div className="grid gap-2 sm:grid-cols-2">
             {group.actions.map((action) => (
               <label key={action.key} className="flex cursor-pointer items-start gap-2 rounded p-2 hover:bg-muted/50">
-                <input type="checkbox" className="mt-0.5 h-4 w-4" checked={selected.includes(action.key)} onChange={() => onToggle(action.key)} />
+                <input type="checkbox" aria-label={[action.key, action.destructive ? t('tokens.destructive') : '', action.description].filter(Boolean).join(' ')} className="mt-0.5 h-4 w-4" checked={selected.includes(action.key)} onChange={() => onToggle(action.key)} />
                 <span className="min-w-0 text-sm"><span className="font-medium">{action.key}</span>{action.destructive && <span className="ml-2 rounded-full bg-[hsl(var(--danger)/0.12)] px-1.5 py-0.5 text-[0.65rem] text-[hsl(var(--danger))]">{t('tokens.destructive')}</span>}<span className="mt-0.5 block text-xs text-muted-foreground">{action.description}</span></span>
               </label>
             ))}
@@ -302,7 +303,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
                   <section className="space-y-4 rounded-lg border border-border p-4">
                     <div><h3 className="text-lg font-semibold">{t('tokens.createTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('tokens.createDescription')}</p></div>
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                      <label className="text-sm font-medium">{t('tokens.name')}<input className={`${fieldClasses} mt-1`} maxLength="127" value={draft.description} placeholder={t('tokens.namePlaceholder')} onInput={(event) => updateDraft({ description: event.currentTarget.value })} /></label>
+                      <label className="text-sm font-medium">{t('tokens.name')}<input aria-label={t('tokens.name')} className={`${fieldClasses} mt-1`} maxLength="127" value={draft.description} placeholder={t('tokens.namePlaceholder')} onInput={(event) => updateDraft({ description: event.currentTarget.value })} /></label>
                       <label className="text-sm font-medium">{t('tokens.expiry')}<select className={`${fieldClasses} mt-1`} value={draft.expiryDays} onChange={(event) => updateDraft({ expiryDays: Number(event.currentTarget.value) })}>{TOKEN_EXPIRY_OPTIONS.map((days) => <option key={days} value={days}>{t('tokens.expiryDays', { days })}</option>)}</select></label>
                     </div>
 
@@ -318,7 +319,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
                   </section>
 
                   <section className="space-y-3 rounded-lg border border-border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{t('tokens.existingTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('tokens.existingDescription')}</p></div>{inactiveCount > 0 && <label className="touch-target flex cursor-pointer items-center gap-2 text-xs"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.currentTarget.checked)} />{t('tokens.showInactive', { count: inactiveCount })}</label>}</div>
+                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">{t('tokens.existingTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('tokens.existingDescription')}</p></div>{inactiveCount > 0 && <label className="touch-target flex cursor-pointer items-center gap-2 text-xs"><input type="checkbox" aria-label={t('tokens.showInactive', { count: inactiveCount })} checked={showInactive} onChange={(event) => setShowInactive(event.currentTarget.checked)} />{t('tokens.showInactive', { count: inactiveCount })}</label>}</div>
                     <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-1">
                       {visibleTokens.map((token) => <TokenCard key={token.uuid} token={token} collections={collections} revoking={revokingUuid === token.uuid} onRevoke={(candidate) => setConfirmation({ kind: 'revoke', token: candidate })} t={t} />)}
                       {visibleTokens.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center"><h4 className="font-semibold">{t('tokens.emptyTitle')}</h4><p className="mt-1 text-sm text-muted-foreground">{t('tokens.emptyDescription')}</p></div>}
