@@ -10503,7 +10503,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `359ade6d`)",
       "ownership": [
         "web/js/components/preact/users/RoleManagerModal.jsx",
         "web/js/components/preact/users/TotpSetupModal.jsx",
@@ -10561,7 +10561,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "11assigned control-name warnings resolved;14combined browser-enabled tests, strict types/lint and bothasset budgets pass. Default output restored."
     },
     {
       "id": "T7.176",
@@ -11687,7 +11688,16 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "finding_id": "ESLINT-BUCKET-2e14d60ae388c180",
+          "task": "T7.175",
+          "commit": "359ade6d",
+          "evidence": "quality/evidence/T7.175.md",
+          "effect": "3RoleManager label-for occurrences removed; T7.187 acceptance still pending."
+        }
+      ]
     },
     {
       "id": "T7.188",

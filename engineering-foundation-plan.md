@@ -785,7 +785,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 
 | Frontier | Tasks | Resource constraints |
 | --- | --- | --- |
-| Policy/reviews | Tasks whose only producer is T6/T7/T11 | No production workload; approvals remain pending |
+| Policy/reviews | Tasks whose only producer is T6/T7/T11; T7.2.1–T7.2.4 afterT13 | Reviews do not approve exceptions; advisory regression children use serialized native leases |
 | Dependency | kind=dependency after T8 | One package/install/build writer, then T15 |
 | Web | kind=web-fix after T10 | Max three workers; unique focused Jest files, exclusive full lint/build |
 | Native/pilot | kind=native-fix/pilot-fix after T13 | Shared server/native operations serialized by runner lease; exact CMake fragments |
@@ -3993,8 +3993,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/users/RoleManagerModal.jsx web/js/components/preact/users/TotpSetupModal.jsx web/js/components/preact/users/UsersTable.jsx --format json --output-file build/eng-artifacts/T7.175/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.175/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.175`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `359ade6d`)
+- **log**: All11 mapped control-name warnings resolved using existing localized visible text/button titles;14/14 combined browser-enabled tests preserve modal boundaries and callbacks. Full lint887→873 with0errors/no additions (3 related RoleManager label-for warnings also clear); types and both43/66asset budgets pass, default restored.
 - **files edited/created**:
 
 ### T7.176: jsx-a11y/interactive-supports-focus in MobileTileGestures.jsx
@@ -4246,7 +4246,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.187/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/label-has-for'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.187`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related T7.175 evidence clears RoleManager bucket ESLINT-BUCKET-2e14d60ae388c180 (3occurrences); remaining TOTP semantics and repeated-instance label activation are verified here before closure.
 - **files edited/created**:
 
 ### T7.188: jsx-a11y/media-has-caption in HLSVideoCell.jsx, MSEVideoCell.jsx, UI.jsx, WebRTCVideoCell.jsx, InvestigationView.jsx, TimelinePlayer.jsx
