@@ -20,7 +20,7 @@ are needed. All temporary database/media directories use `mkdtemp`.
 | Root unavailable/restored | Rename owned root temporarily, restore before assertions | Expired and protected metadata remain while root unavailable; expired file reclaimed after restoration |
 | SQLite read-only | Real connection `PRAGMA query_only=ON`, restored after test | Protection update rejected with SQLITE_READONLY; row unchanged; update succeeds after restoration |
 | SQLite full | Real pager `max_page_count=page_count+8`, at most256 recording insert attempts | SQLITE_FULL, exact committed row count, prior protected row unchanged and integrity_check=ok; subsequent insert succeeds after limit lifted |
-| Active segment ENOSPC/EIO/EROFS | Fourth output `av_interleaved_write_frame` fails; scoped to exact output URL | Segment returns I/O failure immediately, closes output/demuxer, telemetry records error; restored run produces decodable media |
+| Active segment ENOSPC/EIO/EROFS | Fourth output `av_interleaved_write_frame` fails (also final keyframe25 for EROFS); scoped to exact output URL | Segment returns I/O failure immediately, closes output/demuxer, telemetry records error; restored run produces decodable media |
 | Read-only segment open | Exact output `avio_open` returns EROFS | No packet write/file created; restored run decodes |
 | Emergency backpressure | Production writer loop with pressure seam and deterministic two1second sleep calls (no real sleep) | No segment before recovery, aggressive cleanup requested, one segment after recovery; shutdown while paused opens none |
 
