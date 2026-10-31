@@ -10789,7 +10789,8 @@
         "web/js/components/preact/users/ApiKeyModal.jsx",
         "web/tests/remediation/t7_178.spec.jsx",
         "quality/evidence/T7.178.md",
-        "web/tests/remediation/t7_173.spec.jsx"
+        "web/tests/remediation/t7_173.spec.jsx",
+        "web/tests/remediation/t7_174.spec.jsx"
       ],
       "source_paths": [
         "web/js/components/preact/settings/HealthTab.jsx",
