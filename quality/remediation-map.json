@@ -8887,7 +8887,8 @@
       "title": "clang-analyzer-deadcode.DeadStores in recording_path.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T27.1"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -17004,7 +17005,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.157"
+        "T7.157",
+        "T27.1"
       ],
       "kind": "native-fix",
       "priority": "info",
