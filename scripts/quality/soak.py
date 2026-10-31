@@ -155,7 +155,7 @@ def role(item, parent_role, binary):
     if 'ffmpeg' in name and any(x in args for x in ['lavfi','testsrc','virtual?']):return 'source'
     if any(x in name for x in ['chrome','chromium','crashpad']):return 'browser'
     if parent_role in ['nvr','managed']:return 'managed'
-    if 'go2rtc' in name or 'ffmpeg' in name:return 'source'
+    if 'go2rtc' in name:return 'source'
     return 'helper'
 
 

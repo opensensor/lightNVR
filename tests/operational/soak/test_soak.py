@@ -86,6 +86,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(soak.role(identity(binary='/ffmpeg',args=['ffmpeg','-f','lavfi','-i','testsrc']), 'managed', '/nvr'),'source')
         self.assertEqual(soak.role(identity(binary='/go2rtc'), None, '/nvr'),'source')
         self.assertEqual(soak.role(identity(binary='/chrome'), None, '/nvr'),'browser')
+        self.assertEqual(soak.role(identity(binary='/ffmpeg',args=['ffmpeg','-i','recording.mp4','-f','null','-']), None, '/nvr'),'helper')
         self.assertEqual(soak.role(identity(binary='/child'), 'source', '/nvr'),'source')
 
     def test_pid_reuse_before_read_refused(self):
