@@ -199,6 +199,61 @@ void test_live_owner_after_queue_preserves_file(void) {
     reopen_and_process(); assert_payload("");
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
 }
+static void attribute_target(void) {
+    char statement[1024];
+    snprintf(statement, sizeof(statement), "INSERT INTO storage_targets(uuid,name,root_path) VALUES('11111111-1111-4111-8111-111111111111','local','%s'); UPDATE recordings SET storage_target_uuid='11111111-1111-4111-8111-111111111111',object_key='candidate.mp4'", media);
+    sql(statement);
+}
+static void queue_attributed(void) {
+    attribute_target(); queue_guard("empty");
+    sql("UPDATE storage_deletion_objects SET target_uuid='11111111-1111-4111-8111-111111111111',object_key='candidate.mp4'");
+}
+void test_attributed_empty_stale_recording_pruned(void) {
+    attribute_target();
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT COUNT(*) FROM recordings"));
+    TEST_ASSERT_EQUAL_INT(-1, access(file, F_OK));
+}
+void test_attributed_missing_stale_recording_pruned(void) {
+    attribute_target(); unlink(file);
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT COUNT(*) FROM recordings"));
+}
+void test_attributed_wrong_object_key_preserves_recording(void) {
+    attribute_target(); change("object_key='wrong.mp4'");
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    assert_retained(); assert_payload("");
+}
+void test_attributed_missing_mount_guard_preserves_recording(void) {
+    attribute_target(); sql("UPDATE storage_targets SET mount_required=1,mount_guard_path='/not/a/mounted/storage'");
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    assert_retained(); assert_payload("");
+}
+void test_attributed_unavailable_root_preserves_recording(void) {
+    attribute_target(); TEST_ASSERT_EQUAL_INT(0, rename(media, moved));
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings()); assert_retained();
+    TEST_ASSERT_EQUAL_INT(0, rename(moved, media)); assert_payload("");
+}
+void test_attributed_key_change_after_queue_preserves_recording(void) {
+    queue_attributed(); change("object_key='different.mp4'");
+    reopen_and_process(); assert_payload("");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
+}
+void test_attributed_target_change_after_queue_preserves_recording(void) {
+    queue_attributed(); change("storage_target_uuid=NULL");
+    reopen_and_process(); assert_payload("");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
+}
+void test_attributed_root_change_after_queue_preserves_recording(void) {
+    queue_attributed(); sql("UPDATE storage_targets SET root_path='/tmp'");
+    reopen_and_process(); assert_payload("");
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT COUNT(*) FROM recordings"));
+}
+void test_attributed_unchanged_queue_completes_after_restart(void) {
+    queue_attributed(); reopen_and_process();
+    TEST_ASSERT_EQUAL_INT(-1, access(file, F_OK));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT COUNT(*) FROM recordings"));
+}
 void test_ordinary_null_guard_semantics_unchanged(void) {
     content("ordinary footage"); change("is_complete=1"); queue_guard("ordinary");
     reopen_and_process();
@@ -233,6 +288,15 @@ int main(void) {
     RUN_TEST(test_unchanged_missing_guard_completes_after_restart);
     RUN_TEST(test_enabled_stream_after_queue_preserves_file);
     RUN_TEST(test_live_owner_after_queue_preserves_file);
+    RUN_TEST(test_attributed_empty_stale_recording_pruned);
+    RUN_TEST(test_attributed_missing_stale_recording_pruned);
+    RUN_TEST(test_attributed_wrong_object_key_preserves_recording);
+    RUN_TEST(test_attributed_missing_mount_guard_preserves_recording);
+    RUN_TEST(test_attributed_unavailable_root_preserves_recording);
+    RUN_TEST(test_attributed_key_change_after_queue_preserves_recording);
+    RUN_TEST(test_attributed_target_change_after_queue_preserves_recording);
+    RUN_TEST(test_attributed_root_change_after_queue_preserves_recording);
+    RUN_TEST(test_attributed_unchanged_queue_completes_after_restart);
     RUN_TEST(test_ordinary_null_guard_semantics_unchanged);
     int result = UNITY_END(); shutdown_database(); unlink(database); rmdir(directory); return result;
 }
