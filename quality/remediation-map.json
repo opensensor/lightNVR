@@ -1255,7 +1255,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Partial \u2014 RED producer committed",
       "ownership": [
         "src/storage/storage_migration.c",
         "tests/unit/test_t7_26.c",
@@ -1289,7 +1289,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "dc571048: seven cases, four RED, three controls pass. Ordered correction children T7.26.1\u2013T7.26.3 explicitly fenced in T33."
     },
     {
       "id": "T7.27",
@@ -9222,7 +9223,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/ToastContainer.jsx",
         "web/js/components/preact/UI.jsx",
@@ -9313,7 +9314,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "0080a39f resolves all eight assigned click/key warnings with native controls and structural boundaries. Eighteen focused cases including nine Chromium cases; full 66 suites/699 pass, types and modern43/default66 asset checks pass. Lint760\u2192742, zero errors and no additions; related occurrences logged separately.",
+      "commit": "0080a39f"
     },
     {
       "id": "T7.163",
@@ -9893,7 +9896,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "T7.162 0080a39f removes related occurrences: WebRTC control-name 9bd9a8994dceced4 3\u21922. Whole bucket/task remains open."
     },
     {
       "id": "T7.169",
@@ -12285,7 +12289,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "T7.162 0080a39f removes related occurrences: Language noninteractive-element 370c727cb2690828 2\u21920. Whole bucket/task remains open."
     },
     {
       "id": "T7.194",
@@ -12561,7 +12566,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "T7.162 0080a39f removes related occurrences: Language tabindex d5958c65428cdc31 1\u21920; other component remains open. Whole bucket/task remains open."
     },
     {
       "id": "T7.197",
@@ -12779,7 +12785,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": " T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2\u21920; other buckets remainopen."
+      "log": "T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2\u21920; other buckets remainopen. T7.162 0080a39f removes related occurrences: Toast static b18881a630321191 1\u21920, UI d9d81163d1e1193d 3\u21921, WebRTC 3322f39793a9258c 1\u21920, Zone 6bdf7c909180cb5e 1\u21920. Whole bucket/task remains open."
     },
     {
       "id": "T7.199",
@@ -12888,7 +12894,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": " T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1\u21920; Recordings55a74c5d3180cf15 4\u21921; Go2rtcfd743aa60d9abb1f 2\u21920; Clearfbc7ca1e0083c1d1 1\u21920; Restart259ca1824a1d1447 1\u21920; Timelinec06de8e6c5473e61 2\u21921. Remaining hover/mouse guards and other buckets keep this task open."
+      "log": "T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1\u21920; Recordings55a74c5d3180cf15 4\u21921; Go2rtcfd743aa60d9abb1f 2\u21920; Clearfbc7ca1e0083c1d1 1\u21920; Restart259ca1824a1d1447 1\u21920; Timelinec06de8e6c5473e61 2\u21921. Remaining hover/mouse guards and other buckets keep this task open. T7.162 0080a39f removes related occurrences: ModalDialog static 243fa74ece4acc83 1\u21920. Whole bucket/task remains open."
     },
     {
       "id": "T7.200",

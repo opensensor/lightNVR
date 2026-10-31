@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1, T7.24.2, T7.24.3, T7.25.2, T7.26.1, T7.26.2, T7.26.3]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1, T7.24.2, T7.24.3, T7.25.2, T7.26.1, T7.26.2, T7.26.3, T7.25.3]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -3720,8 +3720,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/ToastContainer.jsx web/js/components/preact/UI.jsx web/js/components/preact/WebRTCVideoCell.jsx web/js/components/preact/ZoneEditor.jsx web/js/components/preact/common/LanguageSelector.jsx web/js/components/preact/common/ModalDialog.jsx --format json --output-file build/eng-artifacts/T7.162/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.162/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.162`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed
+- **log**: 0080a39f resolves all eight assigned click/key warnings with native controls and structural boundaries. Eighteen focused cases including nine Chromium cases; full 66 suites/699 pass, types and modern43/default66 asset checks pass. Lint760→742, zero errors and no additions; related occurrences logged separately.
 - **files edited/created**:
 
 ### T7.163: jsx-a11y/click-events-have-key-events in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx
@@ -3847,7 +3847,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.168/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.168`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.162 0080a39f removes related occurrences: WebRTC control-name 9bd9a8994dceced4 3→2. Whole bucket/task remains open.
 - **files edited/created**:
 
 ### T7.169: jsx-a11y/control-has-associated-label in EventDestinationEditor.jsx, EventRouteEditor.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, CollectionSelectorBuilder.jsx, FleetFilters.jsx
@@ -4372,7 +4372,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.193/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.193`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.162 0080a39f removes related occurrences: Language noninteractive-element 370c727cb2690828 2→0. Whole bucket/task remains open.
 - **files edited/created**:
 
 ### T7.194: jsx-a11y/no-noninteractive-element-interactions in LiveOperatorNavigator.jsx, RecordingsGrid.jsx, TimelineCursor.jsx, TimelineSegments.jsx, AccessPolicyModal.jsx, AddUserModal.jsx
@@ -4435,7 +4435,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.196/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-tabindex'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.196`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.162 0080a39f removes related occurrences: Language tabindex d5958c65428cdc31 1→0; other component remains open. Whole bucket/task remains open.
 - **files edited/created**:
 
 ### T7.197: jsx-a11y/no-static-element-interactions in GridPicker.jsx, HLSVideoCell.jsx, HealthView.jsx, LiveView.jsx, MSEVideoCell.jsx, StreamCard.jsx
@@ -4477,7 +4477,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.198/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.198`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2→0; other buckets remainopen.
+- **log**: T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2→0; other buckets remainopen. T7.162 0080a39f removes related occurrences: Toast static b18881a630321191 1→0, UI d9d81163d1e1193d 3→1, WebRTC 3322f39793a9258c 1→0, Zone 6bdf7c909180cb5e 1→0. Whole bucket/task remains open.
 - **files edited/created**:
 
 ### T7.199: jsx-a11y/no-static-element-interactions in ModalDialog.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, OrganizationManager.jsx, LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx
@@ -4498,7 +4498,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.199/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.199`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1→0; Recordings55a74c5d3180cf15 4→1; Go2rtcfd743aa60d9abb1f 2→0; Clearfbc7ca1e0083c1d1 1→0; Restart259ca1824a1d1447 1→0; Timelinec06de8e6c5473e61 2→1. Remaining hover/mouse guards and other buckets keep this task open.
+- **log**: T7.163 (29fa0d50) removes related no-static occurrences: Live be705595f12d1850 1→0; Recordings55a74c5d3180cf15 4→1; Go2rtcfd743aa60d9abb1f 2→0; Clearfbc7ca1e0083c1d1 1→0; Restart259ca1824a1d1447 1→0; Timelinec06de8e6c5473e61 2→1. Remaining hover/mouse guards and other buckets keep this task open. T7.162 0080a39f removes related occurrences: ModalDialog static 243fa74ece4acc83 1→0. Whole bucket/task remains open.
 - **files edited/created**:
 
 ### T7.200: jsx-a11y/no-static-element-interactions in RecordingsGrid.jsx, Go2rtcTab.jsx, ClearLogsModal.jsx, RestartModal.jsx, TimelinePlayer.jsx, AccessPolicyModal.jsx
@@ -7478,8 +7478,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Implement the reviewed three-file tracked patch (frame.c/faac.c/faac_internal.h): const void transport and format-correct bounded indexed16/32/float reads, preserving numeric scaling/float screening/packed24/publicABI. Verify pinned gitlink and all copied input hashes, patch hash/path scope and changed postimages. Copy a consistent FAAC source/header tree into owned build-local staging, apply only committed patch and publish verified output/provenance. Keep submodule pristine and license intact; no unpublished gitlink, network at configure, source filter exclusion or #line path disguise. Preserve declared minimum build-tool compatibility; request a separate bounded toolchain change if required.
 - **acceptance_criteria**: Tests-first failure controls for input/pin/patch/postimage drift, path escape/symlink and stale/tampered output; deterministic successful regeneration and no mixed source/header roots. Generated manifest maps exact compiled paths to canonical upstream identity and hashes. Static index proof eliminates unused terminal pointer and unnecessary int32 conversion; current semantic regressions may initially pass and must not be fabricated as RED. Actual format/AAC/media sanitizer controls pass. Scanner qualification remains separately fenced byT7.24.3.
 - **validation**: `python3 -m unittest discover -s tests/quality -p test_faac_patch.py`; `python3 scripts/quality/run-native.py --task T7.24.2 --profile integration --regex '^test_(t7_24|faac_encoder|mp4_(audio_recovery|segment_boundaries|segment_timestamps|faststart|pressure_reconnect))$' --jobs 4`.
-- **status**: Not Completed
-- **log**: Upstream immutable54e40cf0561c959a5b83ac2a5bb345fdc7c4e164 retains both constructions; proposal3c370a44. Native/CMake/source lease followsT7.25.1, no server target.
+- **status**: Completed
+- **log**: 9d845904 verified tracked three-file patch preserves public ABI/formats and bounds indexed reads. Twenty compiled units/49 copied inputs verified; 24 preparation tests and 36 native cases across seven targets pass. Reviewed minimum-CMake implementation and unchanged gitlink. Actual scanner qualification remains T7.24.3/T33.
 - **files edited/created**:
 
 ### T7.24.3: Require compiled FAAC patch provenance in scanner coverage
@@ -7506,6 +7506,17 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **log**: Five ASan/UBSan cases: two normal controls pass, three parent/leaf replacement races fail. Full evidence and source hashes retained; no production change. Correction remains fenced separately.
 - **files edited/created**:
 
+
+### T7.25.3: Preserve selected published backup identity during retention
+- **depends_on**: [T7.25.2, T7.25.1]
+- **agent_type**: worker
+- **ownership**: `src/database/db_core.c` prune_timestamped_backups and narrowly shared identity helpers only, `tests/unit/test_t7_25_retention.c`, `tests/unit/cmake/eng/t7_25_retention.cmake`, `quality/evidence/T7.25.3.md`.
+- **description**: Resolve the three committed retention replacement failures. Hold the inspected directory and selected regular-file identities from collection through deletion. Reuse bounded private quarantine/no-overwrite restore where appropriate, without repinning a changed leaf as the original candidate. Preserve newest-first retention count/order and exclusion of incomplete artifacts. No age/config/schema redesign or recursive cleanup of unknown leftovers.
+- **acceptance_criteria**: Original two controls and three race assertions remain; deterministic seams may follow descriptor-relative inspection while asserting injection. Changed regular/symlink entries and target bytes survive; original-directory pruning survives pathname replacement. Unsupported operations and cleanup failures preserve objects and report incomplete pruning. Add failure/descriptor-cleanup controls and preserve all stale-artifact regressions. Document privileged-writer limits.
+- **validation**: Committed tests-first producer877f9e5e; focused retention, stale-artifact and database regressions under ASan/UBSan with full logs and source hashes. Native/source lease follows storage migration corrections; no server build or real backups.
+- **status**: Not Completed
+- **log**: Separately materialized before production edits; parent T7.25 fixes a different stale-artifact cause. T33 directly fences this correction.
+- **files edited/created**:
 
 ## Storage migration identity corrections (T7.26)
 
