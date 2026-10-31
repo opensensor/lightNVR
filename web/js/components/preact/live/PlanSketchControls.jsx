@@ -62,7 +62,7 @@ function PercentField({ id, label, value, onCommit }) {
   return (
     <label className="live-plan-sketch-field" htmlFor={id}>
       <span>{label}</span>
-      <input id={id} type="number" min="0" max="100" step="0.1"
+      <input id={id} type="number" aria-label={label} min="0" max="100" step="0.1"
         value={percentValue(value)}
         onChange={(event) => {
           const parsed = parsePercent(event.currentTarget.value);
@@ -114,6 +114,7 @@ export function PlanSketchInspector({
               <button key={tone} type="button" className={`tone-${tone} ${shape.tone === tone ? 'is-active' : ''}`}
                 aria-pressed={shape.tone === tone ? 'true' : 'false'}
                 title={t(`live.plan.sketch.tone.${tone}`)}
+                aria-label={t(`live.plan.sketch.tone.${tone}`)}
                 onClick={() => commit({ ...shape, tone })}>
                 <i />
               </button>
@@ -122,7 +123,7 @@ export function PlanSketchInspector({
           {(shape.type === 'rect' || shape.type === 'area') && (
             <label className="live-plan-sketch-field is-wide" htmlFor={`${uid}-label`}>
               <span>{t('live.plan.sketch.labelText')}</span>
-              <input id={`${uid}-label`} type="text" maxLength={SKETCH_LIMITS.textMax}
+              <input id={`${uid}-label`} type="text" aria-label={t('live.plan.sketch.labelText')} maxLength={SKETCH_LIMITS.textMax}
                 value={shape.label || ''}
                 onInput={(event) => {
                   const label = event.currentTarget.value;
@@ -137,7 +138,7 @@ export function PlanSketchInspector({
             <>
               <label className="live-plan-sketch-field is-wide" htmlFor={`${uid}-text`}>
                 <span>{t('live.plan.sketch.text')}</span>
-                <input id={`${uid}-text`} type="text" maxLength={SKETCH_LIMITS.textMax}
+                <input id={`${uid}-text`} type="text" aria-label={t('live.plan.sketch.text')} maxLength={SKETCH_LIMITS.textMax}
                   value={shape.text}
                   onInput={(event) => {
                     const text = event.currentTarget.value;
@@ -158,7 +159,7 @@ export function PlanSketchInspector({
           {shape.type === 'rect' && (
             <>
               <label className="live-plan-sketch-field is-check" htmlFor={`${uid}-filled`}>
-                <input id={`${uid}-filled`} type="checkbox" checked={shape.filled}
+                <input id={`${uid}-filled`} type="checkbox" aria-label={t('live.plan.sketch.filled')} checked={shape.filled}
                   onChange={(event) => commit({ ...shape, filled: event.currentTarget.checked })} />
                 <span>{t('live.plan.sketch.filled')}</span>
               </label>

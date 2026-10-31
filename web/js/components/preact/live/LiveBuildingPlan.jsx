@@ -139,7 +139,7 @@ function PlanCoverageControl({ id, label, value, minimum, maximum, onChange }) {
     <div className="live-plan-coverage-field">
       <label htmlFor={`${id}-range`}>{label}</label>
       <div className="live-plan-coverage-row">
-        <input id={`${id}-range`} type="range"
+        <input id={`${id}-range`} type="range" aria-label={label}
           min={minimum} max={maximum} step="1"
           value={normalized}
           aria-valuetext={t('live.plan.degreesValue', { value: coverageValueLabel(normalized) })}
@@ -1217,7 +1217,7 @@ export function LiveBuildingPlan({
             <div className="live-plan-settings">
               <div><strong>{t('live.plan.canvas')}</strong></div>
               <label>{t('live.plan.width')}
-                <input type="number" min="400" max="4000" step="10"
+                <input type="number" aria-label={t('live.plan.width')} min="400" max="4000" step="10"
                   value={draftWidthValue} aria-invalid={draftWidth === null}
                   onInput={(event) => setDraftSize({
                     canvas_width: event.currentTarget.value,
@@ -1225,7 +1225,7 @@ export function LiveBuildingPlan({
                   })} />
               </label>
               <label>{t('live.plan.height')}
-                <input type="number" min="300" max="4000" step="10"
+                <input type="number" aria-label={t('live.plan.height')} min="300" max="4000" step="10"
                   value={draftHeightValue} aria-invalid={draftHeight === null}
                   onInput={(event) => setDraftSize({
                     canvas_width: draftWidthValue,

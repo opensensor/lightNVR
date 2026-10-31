@@ -45,7 +45,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
         type="button"
         class="p-1.5 rounded hover:bg-muted/70 transition-colors"
         onClick={() => setOpen(o => !o)}
-        title={t('recordings.configureElements')}
+        aria-label={t('recordings.configureElements')} title={t('recordings.configureElements')}
       >
         <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -62,6 +62,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
             <label key={el.key} class="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm">
               <input
                 type="checkbox"
+                aria-label={t(el.labelKey)}
                 checked={!hiddenColumns[el.key]}
                 onChange={() => toggleColumn(el.key)}
                 class="w-3.5 h-3.5 rounded"
@@ -422,7 +423,7 @@ function RecordingCard({
                 class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--primary))' }}
                 onClick={() => playRecording(recording)}
-                title={t('recordings.play')}
+                aria-label={t('recordings.play')} title={t('recordings.play')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -432,6 +433,7 @@ function RecordingCard({
                 class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--success))' }}
                 onClick={() => downloadRecording(recording)}
+                aria-label={t('recordings.download')}
                 title={`${t('recordings.download')}${recording.size ? ' (' + recording.size + ')' : ''}`}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -442,7 +444,7 @@ function RecordingCard({
                 class="p-1 rounded-full inline-flex"
                 style={{ color: 'hsl(var(--info))' }}
                 href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
-                title={t('live.viewInTimeline')}
+                aria-label={t('live.viewInTimeline')} title={t('live.viewInTimeline')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
@@ -467,7 +469,7 @@ function RecordingCard({
                   class="p-1 rounded-full ml-auto"
                   style={{ color: 'hsl(var(--danger))' }}
                   onClick={() => deleteRecording(recording)}
-                  title={t('common.delete')}
+                  aria-label={t('common.delete')} title={t('common.delete')}
                 >
                   <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -532,7 +534,7 @@ export function RecordingsGrid({
             type="button"
             onClick={toggleCollapsed}
             className="p-1.5 rounded hover:bg-muted/70 transition-colors"
-            title={t('recordings.showFilters')}
+            aria-label={t('recordings.showFilters')} title={t('recordings.showFilters')}
           >
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -547,6 +549,7 @@ export function RecordingsGrid({
                 <label class="flex cursor-pointer items-center gap-2 mr-2">
                   <input
                     type="checkbox"
+                    aria-label={t('recordings.selectAll')}
                     checked={selectAll}
                     onChange={toggleSelectAll}
                     class="w-4 h-4 rounded focus:ring-2"

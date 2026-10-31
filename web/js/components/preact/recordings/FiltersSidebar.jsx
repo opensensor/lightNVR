@@ -203,6 +203,7 @@ export function FiltersSidebar({
           onClick={toggleCollapsed}
           className="p-1.5 rounded hover:bg-muted/70 transition-colors"
           title={t('recordings.hideFilters')}
+          aria-label={t('recordings.hideFilters')}
         >
           <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -231,11 +232,11 @@ export function FiltersSidebar({
                 <div>
                   <label htmlFor="start-date" className="block text-xs font-medium text-muted-foreground mb-1">{t('recordings.start')}</label>
                   <div className="flex gap-1.5">
-                    <input type="date" id="start-date"
+                    <input type="date" id="start-date" aria-label={t('recordings.start')}
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.startDate}
                       onChange={(e) => setFilters((prev) => ({ ...prev, startDate: e.target.value }))} />
-                    <input type="time" id="start-time"
+                    <input type="time" id="start-time" aria-label={t('recordings.start')}
                       className="w-24 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.startTime}
                       onChange={(e) => setFilters((prev) => ({ ...prev, startTime: e.target.value }))} />
@@ -244,11 +245,11 @@ export function FiltersSidebar({
                 <div>
                   <label htmlFor="end-date" className="block text-xs font-medium text-muted-foreground mb-1">{t('recordings.end')}</label>
                   <div className="flex gap-1.5">
-                    <input type="date" id="end-date"
+                    <input type="date" id="end-date" aria-label={t('recordings.end')}
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.endDate}
                       onChange={(e) => setFilters((prev) => ({ ...prev, endDate: e.target.value }))} />
-                    <input type="time" id="end-time"
+                    <input type="time" id="end-time" aria-label={t('recordings.end')}
                       className="w-24 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.endTime}
                       onChange={(e) => setFilters((prev) => ({ ...prev, endTime: e.target.value }))} />

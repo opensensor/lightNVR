@@ -313,7 +313,7 @@ export function LiveOperatorNavigator({
         <div className="live-navigator-panel">
           <label className="live-navigator-search">
             <span className="sr-only">{t('live.navigator.search')}</span>
-            <input type="search" value={search} placeholder={t('live.navigator.search')}
+            <input type="search" aria-label={t('live.navigator.search')} value={search} placeholder={t('live.navigator.search')}
               onInput={(event) => setSearch(event.currentTarget.value)} />
           </label>
           <select className="live-navigator-availability" value={availability}
@@ -361,6 +361,7 @@ export function LiveOperatorNavigator({
             {visibleCameras.map((stream) => (
               <button key={stream.camera_uuid} type="button" draggable
                 className="live-camera-row"
+                aria-label={`${stream.name} ${stream.location_path || t('live.navigator.unassigned')}`}
                 title={`${t('live.navigator.cameras')}: ${stream.name}`}
                 onDragStart={(event) => {
                   event.dataTransfer.setData('application/x-lightnvr-camera', stream.camera_uuid);
