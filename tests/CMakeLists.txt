@@ -1,5 +1,7 @@
 # Tests CMakeLists.txt
 
+include(cmake/CiSuites.cmake)
+
 # Get the ENABLE_SOD option from parent
 if(NOT DEFINED ENABLE_SOD)
     option(ENABLE_SOD "Enable SOD library for object detection" ON)
@@ -136,6 +138,7 @@ set_target_properties(test_db_backup
 
 # Add database backup test to CTest
 add_test(NAME test_db_backup COMMAND test_db_backup)
+lightnvr_ci_test(test_db_backup CI_UNIT)
 
 # Add stream detection test
 add_executable(test_stream_detection test_stream_detection.c)
