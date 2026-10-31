@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "producer": "T31",
-  "status": "selected; implementation pending",
+  "status": "implemented and focused verification complete; T32 operational integration pending",
   "selected_boundary": "stream-state allocation/destruction",
-  "reason": "create_stream_state initializes two mutexes. remove_stream_state destroys both; shutdown_stream_state_manager destroys only mutex before freeing. Consolidating final disposal removes divergent resource lifecycle paths.",
+  "reason": "Global state shutdown both omits state_mutex destruction and holds states_mutex across stop callbacks that reacquire it through HLS cleanup. The latter reproduced during T13 real go2rtc API smoke and required failed fallback cleanup.",
   "evidence": {
     "initialization": "src/video/stream_state.c:create_stream_state",
     "missing_cleanup": "src/video/stream_state.c:shutdown_stream_state_manager",
@@ -12,7 +12,8 @@
       "src/core/main.c:cleanup shutdown sequence",
       "tests/unit/test_stream_state.c",
       "tests/unit/test_stream_manager.c"
-    ]
+    ],
+    "deadlock": "build/eng-artifacts/T13-smoke/integration-105ce37b-a48e-4da3-aa28-41eab776cab2/playwright.log; shutdown_stream_state_manager -> stop_stream_with_state -> stream_stop_hls -> stop_hls_stream -> hls_unified_thread.c:get_stream_state_by_name"
   },
   "ownership": {
     "allocation": "create_stream_state owns calloc and both pthread_mutex_init calls; on second init failure destroys first and frees",
@@ -20,7 +21,7 @@
     "borrowing": "get_stream_state_by_name returns borrowed pointer; existing caller/ref lifecycle is not changed",
     "final_disposal": "new private helper destroys mutex and state_mutex then frees, called only after existing stop/quiescence path",
     "thread_affinity": "no new thread; existing removal/shutdown caller performs disposal",
-    "locks": "states_mutex held for final disposal; state->mutex and state_mutex must be unlocked and unused; helper acquires no locks",
+    "locks": "Registry mutex protects registry/teardown flag and final disposal, but is released around stop callbacks so registry lookup can reenter. Reject registry create/remove/recursive shutdown while teardown is in progress to preserve state ownership during lock handoff. Per-state mutexes must be unlocked/quiescent before disposal.",
     "callbacks": "no callback registration or disable ordering change",
     "cancellation_shutdown": "existing stop and shutdown ordering preserved; main stops stream manager and adapter first",
     "scope_limit": "No repair of unrelated concurrent borrowed-pointer lifetime or state-transition policy is claimed."
@@ -30,7 +31,10 @@
     "Both initialized per-state mutexes destroyed exactly once on removal and global shutdown",
     "Refused removal with extra references destroys neither mutex",
     "Repeated global shutdown performs no additional per-state destroy",
-    "Repeated create/remove/shutdown cycles preserve current registry and reference behavior"
+    "Repeated create/remove/shutdown cycles preserve current registry and reference behavior",
+    "Stop callbacks may look up their state without recursively locking the registry mutex",
+    "Registry mutations/recursive shutdown cannot free or replace states during unlocked teardown callbacks",
+    "Actual go2rtc smoke must exit within the existing deadline without fallback kills"
   ],
   "tasks": [
     "T31.1",
@@ -39,5 +43,11 @@
   ],
   "test_registration_producer": "T13",
   "remediation_overlap": [],
-  "physical_qualification": "deferred by user; no performance claim"
+  "physical_qualification": "deferred by user; no performance claim",
+  "verification": {
+    "tests": "quality/evidence/T31.1.md",
+    "implementation": "9a7e6188",
+    "committed_revision_checks": "quality/evidence/T31.3.md",
+    "physical_qualification": "deferred by user"
+  }
 }

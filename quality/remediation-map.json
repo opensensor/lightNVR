@@ -2424,7 +2424,8 @@
       "title": "clang-analyzer-core.NullDereference in api_handlers_streams_modify.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T13.3"
       ],
       "kind": "native-fix",
       "priority": "medium",
@@ -18409,7 +18410,8 @@
         "T11",
         "T13",
         "T7.64",
-        "T7.50"
+        "T7.50",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18529,7 +18531,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.317"
+        "T7.317",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18564,7 +18567,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.320"
+        "T7.320",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18599,7 +18603,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.321"
+        "T7.321",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18634,7 +18639,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.322"
+        "T7.322",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18776,7 +18782,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.323"
+        "T7.323",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18811,7 +18818,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.327"
+        "T7.327",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18880,7 +18888,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.328"
+        "T7.328",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18915,7 +18924,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.330"
+        "T7.330",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18951,7 +18961,8 @@
         "T11",
         "T13",
         "T7.326",
-        "T7.331"
+        "T7.331",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -18988,7 +18999,8 @@
         "T7",
         "T11",
         "T13",
-        "T7.332"
+        "T7.332",
+        "T13.3"
       ],
       "kind": "pilot-fix",
       "priority": "medium",
@@ -24280,7 +24292,8 @@
       "web/js/components/preact/recordings/RecordingsTable.jsx": "T10.3",
       "web/js/components/preact/recordings/TagsOverlay.jsx": "T10.3",
       "quality/evidence/T10.3.md": "T10.3"
-    }
+    },
+    "delete_worker_launch_failure_predecessor": "T13.3 owns the stream-modify handler before existing T7 remediation writers; source-discovered failure response is a new candidate, not an original T1 fingerprint."
   },
   "discrepancy_map": {
     "D-01": [
