@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <float.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -202,6 +203,35 @@ static void test_zone_excessive_point_count_rejected(void) {
     detection_zone_t input = zone(MAX_ZONE_POINTS + 1);
     TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("camera", &input, 1));
 }
+static void test_zone_one_and_two_points_are_not_polygons(void) {
+    detection_zone_t input = zone(1);
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("camera", &input, 1));
+    input.polygon_count = 2;
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("camera", &input, 1));
+}
+static void test_zone_invalid_later_batch_member_never_mutates_rows(void) {
+    detection_zone_t original = zone(3);
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("camera", &original, 1));
+    detection_zone_t batch[2] = {zone(3), zone(3)};
+    strcpy(batch[0].id, "first-replacement");
+    strcpy(batch[1].id, "invalid-replacement");
+    const int invalid[] = {0, -1, 1, 2, MAX_ZONE_POINTS + 1, INT_MAX};
+    sqlite3_int64 before = sqlite3_total_changes64(db);
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        batch[1].polygon_count = invalid[i];
+        TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("camera", batch, 2));
+        /* total_changes includes rolled-back writes, so this proves validation
+         * precedes DELETE/INSERT, not just eventual transaction rollback. */
+        TEST_ASSERT_EQUAL_INT64(before, sqlite3_total_changes64(db));
+        assert_original_zone();
+    }
+}
+static void test_zone_empty_list_still_clears_zones(void) {
+    detection_zone_t input = zone(3), result;
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("camera", &input, 1));
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("camera", &input, 0));
+    TEST_ASSERT_EQUAL_INT(0, get_detection_zones("camera", &result, 1));
+}
 
 static void assert_query_identity(const char *stream, const char **sources, int count) {
     TEST_ASSERT_NOT_NULL(captured_url);
@@ -304,6 +334,9 @@ int main(void) {
     RUN_TEST(test_zone_serialized_overflow_rolls_back);
     RUN_TEST(test_zone_zero_negative_counts_roll_back);
     RUN_TEST(test_zone_excessive_point_count_rejected);
+    RUN_TEST(test_zone_one_and_two_points_are_not_polygons);
+    RUN_TEST(test_zone_invalid_later_batch_member_never_mutates_rows);
+    RUN_TEST(test_zone_empty_list_still_clears_zones);
     RUN_TEST(test_multi_source_valid_escaping_preserves_identity);
     RUN_TEST(test_multi_source_maximum_valid_stream_name);
     RUN_TEST(test_multi_source_aggregate_overflow_never_sends_partial_sources);

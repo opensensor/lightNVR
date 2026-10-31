@@ -105,6 +105,15 @@ int save_detection_zones(const char *stream_name, const detection_zone_t *zones,
         return -1;
     }
 
+    /* Validate the entire batch before deleting or inserting any rows. A
+     * polygon needs at least three points and must fit its fixed array. */
+    for (int i = 0; i < count; i++) {
+        if (zones[i].polygon_count < 3 || zones[i].polygon_count > MAX_ZONE_POINTS) {
+            log_error("Invalid polygon point count: %d", zones[i].polygon_count);
+            return -1;
+        }
+    }
+
     sqlite3 *db = get_db_handle();
     if (!db) {
         log_error("Database not initialized");
