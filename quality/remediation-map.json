@@ -1159,7 +1159,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.24.1"
+        "T7.24.1",
+        "T7.24.3"
       ],
       "kind": "upstream-review",
       "priority": "high",
@@ -9117,7 +9118,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/GridPicker.jsx",
         "web/js/components/preact/HLSVideoCell.jsx",
@@ -9208,7 +9209,9 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "All8assigned click/key warnings resolved via native actions/structural boundaries and hidden-control keyboard alternatives;9related removals, lint777\u2192760with0errors/noadditions.19focused cases (9Chromium), full65suites/675passed before addedcapcontrol, types and final43/66assets/freshness pass.",
+      "commit": "d8552365"
     },
     {
       "id": "T7.162",
@@ -9681,7 +9684,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": " T7.161 d8552365 removes HLS control-name occurrence aa839344c6e5b30d 3\u21922; remaining bucket stays open."
     },
     {
       "id": "T7.167",
@@ -12664,7 +12668,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": " T7.161 d8552365 removes related static occurrences Grid45ebdb33421d89d5 2\u21921,HLSd6af678aacfbb026 2\u21920,Healthe48ab90f6d76f69a 1\u21920,MSEd0493f3174391c77 1\u21920,StreamCard134e1087e8cda477 1\u21920. Remaining buckets stayopen."
     },
     {
       "id": "T7.198",
@@ -12773,7 +12778,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": " T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2\u21920; other buckets remainopen."
     },
     {
       "id": "T7.199",

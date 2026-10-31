@@ -114,3 +114,9 @@ test('tooling preserves durable migration guards and checks generated schema wit
   assert.ok(c.includes('python3 scripts/generate_embedded_migrations.py --check db/migrations include/database/db_embedded_migrations.h'));
   assert.doesNotMatch(c, /--update/);
 });
+
+test('tooling verifies soak qualification failure propagation without running hardware scenarios', () => {
+  const c = commands(workflow().jobs.tooling);
+  assert.ok(c.includes('python3 tests/operational/soak/test_soak.py'));
+  assert.doesNotMatch(c, /scripts\/quality\/soak.py --profile/);
+});

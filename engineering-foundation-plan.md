@@ -696,7 +696,7 @@ records and gate dependencies must be added by the named producer.
 - **files edited/created**:
 
 ### T33: Verify remediation closure and refresh findings evidence
-- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1]
+- **depends_on**: [T7, T14, T7.1, T7.2, T7.3, T7.4, T7.5, T7.6, T7.7, T7.8, T7.9, T7.10, T7.11, T7.12, T7.13, T7.14, T7.15, T7.16, T7.17, T7.18, T7.19, T7.20, T7.21, T7.22, T7.23, T7.24, T7.25, T7.26, T7.27, T7.28, T7.29, T7.30, T7.31, T7.32, T7.33, T7.34, T7.35, T7.36, T7.37, T7.38, T7.39, T7.40, T7.41, T7.42, T7.43, T7.44, T7.45, T7.46, T7.47, T7.48, T7.49, T7.50, T7.51, T7.52, T7.53, T7.54, T7.55, T7.56, T7.57, T7.58, T7.59, T7.60, T7.61, T7.62, T7.63, T7.64, T7.65, T7.66, T7.67, T7.68, T7.69, T7.70, T7.71, T7.72, T7.73, T7.74, T7.75, T7.76, T7.77, T7.78, T7.79, T7.80, T7.81, T7.82, T7.83, T7.84, T7.85, T7.86, T7.87, T7.88, T7.89, T7.90, T7.91, T7.92, T7.93, T7.94, T7.95, T7.96, T7.97, T7.98, T7.99, T7.100, T7.101, T7.102, T7.103, T7.104, T7.105, T7.106, T7.107, T7.108, T7.109, T7.110, T7.111, T7.112, T7.113, T7.114, T7.115, T7.116, T7.117, T7.118, T7.119, T7.120, T7.121, T7.122, T7.123, T7.124, T7.125, T7.126, T7.127, T7.128, T7.129, T7.130, T7.131, T7.132, T7.133, T7.134, T7.135, T7.136, T7.137, T7.138, T7.139, T7.140, T7.141, T7.142, T7.143, T7.144, T7.145, T7.146, T7.147, T7.148, T7.149, T7.150, T7.151, T7.152, T7.153, T7.154, T7.155, T7.156, T7.157, T7.158, T7.159, T7.160, T7.161, T7.162, T7.163, T7.164, T7.165, T7.166, T7.167, T7.168, T7.169, T7.170, T7.171, T7.172, T7.173, T7.174, T7.175, T7.176, T7.177, T7.178, T7.179, T7.180, T7.181, T7.182, T7.183, T7.184, T7.185, T7.186, T7.187, T7.188, T7.189, T7.190, T7.191, T7.192, T7.193, T7.194, T7.195, T7.196, T7.197, T7.198, T7.199, T7.200, T7.201, T7.202, T7.203, T7.204, T7.205, T7.206, T7.207, T7.208, T7.209, T7.210, T7.211, T7.212, T7.213, T7.214, T7.215, T7.216, T7.217, T7.218, T7.219, T7.220, T7.221, T7.222, T7.223, T7.224, T7.225, T7.226, T7.227, T7.228, T7.229, T7.230, T7.231, T7.232, T7.233, T7.234, T7.235, T7.236, T7.237, T7.238, T7.239, T7.240, T7.241, T7.242, T7.243, T7.244, T7.245, T7.246, T7.247, T7.248, T7.249, T7.250, T7.251, T7.252, T7.253, T7.254, T7.255, T7.256, T7.257, T7.258, T7.259, T7.260, T7.261, T7.262, T7.263, T7.264, T7.265, T7.266, T7.267, T7.268, T7.269, T7.270, T7.271, T7.272, T7.273, T7.274, T7.275, T7.276, T7.277, T7.278, T7.279, T7.280, T7.281, T7.282, T7.283, T7.284, T7.285, T7.286, T7.287, T7.288, T7.289, T7.290, T7.291, T7.292, T7.293, T7.294, T7.295, T7.296, T7.297, T7.298, T7.299, T7.300, T7.301, T7.302, T7.303, T7.304, T7.305, T7.306, T7.307, T7.308, T7.309, T7.310, T7.311, T7.312, T7.313, T7.314, T7.315, T7.316, T7.317, T7.318, T7.319, T7.320, T7.321, T7.322, T7.323, T7.324, T7.325, T7.326, T7.327, T7.328, T7.329, T7.330, T7.331, T7.332, T7.333, T7.334, T7.335, T38, T13.3, T13.4, T28.1, T28.2, T29.1, T27.1, T29.3, T27.2, T7.2.1, T7.2.2, T7.2.3, T7.2.4, T7.2.5, T7.2.6, T7.2.7, T7.2.8, T7.11.1, T7.53.1, T7.24.1, T7.25.1, T7.24.2, T7.24.3]
 - **agent_type**: local
 - **ownership**: findings dispositions/inventory, `quality/evidence/T33.md`; production changes only through explicit fix tasks.
 - **description**: **Locked until all T7.* terminal dependencies are inserted and complete.** Re-run scanners on the integrated revision. Resolve any new actionable findings through additional atomic tasks and dependencies. Check exceptions against current exposure/upstream state and expiry. Do not replace evidence with bulk suppression or warning-count reduction.
@@ -1214,7 +1214,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **files edited/created**:
 
 ### T7.24: cpp/suspicious-pointer-scaling in frame.c
-- **depends_on**: [T7, T13, T7.24.1]
+- **depends_on**: [T7, T13, T7.24.1, T7.24.3]
 - **agent_type**: local
 - **ownership**: `quality/reviews/t7_24-upstream.json`, `quality/evidence/T7.24.md`.
 - **priority**: high
@@ -3699,8 +3699,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/GridPicker.jsx web/js/components/preact/HLSVideoCell.jsx web/js/components/preact/HealthView.jsx web/js/components/preact/MSEVideoCell.jsx web/js/components/preact/StreamCard.jsx web/js/components/preact/StreamsView.jsx --format json --output-file build/eng-artifacts/T7.161/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.161/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.161`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `d8552365`)
+- **log**: All8assigned click/key warnings resolved via native actions/structural boundaries and hidden-control keyboard alternatives;9related removals, lint777→760with0errors/noadditions.19focused cases (9Chromium), full65suites/675passed before addedcapcontrol, types and final43/66assets/freshness pass.
 - **files edited/created**:
 
 ### T7.162: jsx-a11y/click-events-have-key-events in ToastContainer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx, LanguageSelector.jsx, ModalDialog.jsx
@@ -3805,7 +3805,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.166/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.166`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.161 d8552365 removes HLS control-name occurrence aa839344c6e5b30d 3→2; remaining bucket stays open.
 - **files edited/created**:
 
 ### T7.167: jsx-a11y/control-has-associated-label in LiveView.jsx, LoginView.jsx, MSEVideoCell.jsx, SetupWizard.jsx, SnapshotManager.jsx, StreamConfigModal.jsx
@@ -4456,7 +4456,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.197/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.197`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.161 d8552365 removes related static occurrences Grid45ebdb33421d89d5 2→1,HLSd6af678aacfbb026 2→0,Healthe48ab90f6d76f69a 1→0,MSEd0493f3174391c77 1→0,StreamCard134e1087e8cda477 1→0. Remaining buckets stayopen.
 - **files edited/created**:
 
 ### T7.198: jsx-a11y/no-static-element-interactions in StreamConfigModal.jsx, StreamsView.jsx, ToastContainer.jsx, UI.jsx, WebRTCVideoCell.jsx, ZoneEditor.jsx
@@ -4477,7 +4477,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.198/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.198`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: T7.161 d8552365 removes Streams static21e6c2fa9c26c964 2→0; other buckets remainopen.
 - **files edited/created**:
 
 ### T7.199: jsx-a11y/no-static-element-interactions in ModalDialog.jsx, BulkOrganizeModal.jsx, CollectionManager.jsx, OrganizationManager.jsx, LiveBuildingPlan.jsx, LiveOperatorNavigator.jsx
@@ -7181,7 +7181,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **agent_type**: local
 - **ownership**: `.github/workflows/integration-test.yml` Unity and go2rtc build/CTest selections only, `tests/quality/native-ci.test.mjs`, `.github/workflows/engineering-foundation.yml` (tooling commands only), `tests/quality/foundation-workflow.test.mjs`, `quality/evidence/T15.3.md`.
 - **description**: Include existing writer-watchdog, segment-timestamp and faststart tests plus newly verified stream-state disposal, DELETE/PUT launch failure, storage mux/backpressure and deletion-ledger regressions in both the existing Unity build list and its CTest selection. The broad existing stream_state regex already selects the new disposal test; explicitly build it rather than leaving a not-built failure. Preserve the previous selection and require nonempty discovery. Follow-up includes verified stale-prune native controls and real historical migration guard/generator tests in the existing Foundation tooling job, with read-only generated-header drift check.
-- **acceptance_criteria**: All twenty-one added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
+- **acceptance_criteria**: All twenty-two added targets are built and selected, all previous entries retained, no empty success or failure masking. Workflow validation passes; local producer evidence covers actual test execution. Hosted execution remains unverified until authorized publication.
 - **validation**: Tests first inspect actual YAML build/CTest commands for matching inclusion; actionlint and recorded focused native producer runs. No source/fixture change or remote action.
 - **status**: Completed locally (commit `12dffcda`)
 - **log**: Nine native regression targets added to build and selection; all73 prior build targets and full priorregex preserved. Ten initial tests-first workflow checks plus actionlint pass. Follow-up adds verified collision and stale-media validation targets; two new checks failed first, then12/12 pass. Verified pressure-reconnect registration adds one more RED-to-GREEN check; 13/13 pass plus actionlint. Verified AAC arithmetic and migration policy targets bring final checks to15/15, after2newRED omissions. Stale-prune and durable migration/generator checks are integrated too: final24workflow checks,8Python migration/generator tests, read-only header check and both actionlint workflows pass. Advisory buffer/filesystem/settings targets also registered in go2rtc-enabled lane:27workflow checks and actionlint pass. Hosted execution unverified.
@@ -7467,6 +7467,30 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **validation**: Original7-case producer (3genuineRED) retained, strengthened fault/crash/ownership controls and related backup/database tests under ASan/UBSan. Native source/build lease required; no real backup directory, database or process touched.
 - **status**: Not Completed
 - **log**: native-4aa152ddf9c2 proves wrong parent artifact deletion and destruction of changed regular/symlink entries. Directory fd alone cannot close the leaf race; bounded stronger implementation explicitly scoped before editing.
+- **files edited/created**:
+
+## Reproducible FAAC correction and analysis provenance (T7.24)
+
+### T7.24.2: Apply a tracked FAAC input-pointer correction in a verified build copy
+- **depends_on**: [T7.24.1]
+- **agent_type**: worker
+- **ownership**: `CMakeLists.txt` FAAC source preparation only, `cmake/PrepareFaac.cmake`, `patches/faac/0001-bound-input-pointer-arithmetic.patch`, `patches/faac/manifest.json`, `tests/quality/test_faac_patch.py`, `tests/unit/test_t7_24.c` additional format controls only, `quality/evidence/T7.24.2.md`.
+- **description**: Implement the reviewed three-file tracked patch (frame.c/faac.c/faac_internal.h): const void transport and format-correct bounded indexed16/32/float reads, preserving numeric scaling/float screening/packed24/publicABI. Verify pinned gitlink and all copied input hashes, patch hash/path scope and changed postimages. Copy a consistent FAAC source/header tree into owned build-local staging, apply only committed patch and publish verified output/provenance. Keep submodule pristine and license intact; no unpublished gitlink, network at configure, source filter exclusion or #line path disguise. Preserve declared minimum build-tool compatibility; request a separate bounded toolchain change if required.
+- **acceptance_criteria**: Tests-first failure controls for input/pin/patch/postimage drift, path escape/symlink and stale/tampered output; deterministic successful regeneration and no mixed source/header roots. Generated manifest maps exact compiled paths to canonical upstream identity and hashes. Static index proof eliminates unused terminal pointer and unnecessary int32 conversion; current semantic regressions may initially pass and must not be fabricated as RED. Actual format/AAC/media sanitizer controls pass. Scanner qualification remains separately fenced byT7.24.3.
+- **validation**: `python3 -m unittest discover -s tests/quality -p test_faac_patch.py`; `python3 scripts/quality/run-native.py --task T7.24.2 --profile integration --regex '^test_(t7_24|faac_encoder|mp4_(audio_recovery|segment_boundaries|segment_timestamps|faststart|pressure_reconnect))$' --jobs 4`.
+- **status**: Not Completed
+- **log**: Upstream immutable54e40cf0561c959a5b83ac2a5bb345fdc7c4e164 retains both constructions; proposal3c370a44. Native/CMake/source lease followsT7.25.1, no server target.
+- **files edited/created**:
+
+### T7.24.3: Require compiled FAAC patch provenance in scanner coverage
+- **depends_on**: [T7.24.2, T14.1]
+- **agent_type**: worker
+- **ownership**: `.github/workflows/codeql-analysis.yml`, `.github/workflows/static-analysis.yml`, `scripts/quality/scanner_run.py`, `tests/quality/test_scanner_ci.py`, `quality/evidence/T7.24.3.md`.
+- **description**: Extend existing localT14 wiring0901a9d2 and completedT14.1 manifest engine. Preserve all prior src coverage and add actual compiled patched FAAC translation units to native scanners. Require/hash-check generated source/patch mapping and actual CodeQL archive entries; archive manifests and compile commands with reports. Preserve raw generated paths; original finding reconciliation is evidence-backed T33 work, never baseline rewrite or path suppression. Depend on local provenance producer, not pending hostedT14acceptance, to permit independent implementation.
+- **acceptance_criteria**: Missing generated/archive file, hash mismatch, stale pin/patch, mixed roots or omitted actual invocation fail closed; valid source provenance retains original and compiled identities. Clang/cppcheck include previoussrc and actualcompiledFAACunits; unavailable tools/archive remain explicit coverage failures. Synthetic tests cannot substitute for real scanner execution. Local integration may finish while hosted/full-profile qualification stays open underT14/T33; parentT7.24 remains open until required actual evidence exists.
+- **validation**: Tests-first `python3 -m unittest discover -s tests/quality -p test_scanner_ci.py`; actionlint; available actual native/CodeQL extraction with preserved manifests and hashes. No remote push/dispatch implied.
+- **status**: Not Completed
+- **log**: Build-copy correction must not disappear from analysis merely because its paths are generated. Local scanner engine prerequisite complete; full hosted scanner acceptance remains pending.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

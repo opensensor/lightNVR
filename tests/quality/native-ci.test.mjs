@@ -20,7 +20,7 @@ test('Unity CI rejects empty discovery and does not mask execution failure', () 
 });
 
 const goJob = YAML.parse(fs.readFileSync('.github/workflows/integration-test.yml', 'utf8')).jobs['go2rtc-unit-tests'];
-for (const target of ['test_t7_2_buffers', 'test_t7_2_files', 'test_t7_2_settings']) {
+for (const target of ['test_t7_2_buffers', 'test_t7_2_files', 'test_t7_2_settings', 'test_t7_24']) {
 test('go2rtc CI builds and executes verified advisory regression ' + target, () => {
   const build = goJob.steps.find(step => step.name === 'Build go2rtc-related tests').run;
   const run = goJob.steps.find(step => step.name === 'Run go2rtc-related tests').run;
