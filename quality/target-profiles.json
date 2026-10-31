@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "task": "T5",
+  "recorded_at": "2026-10-31",
+  "inspected_revision": "27e4d57e",
+  "status": "profiles_recorded_physical_calibration_deferred",
+  "qualification_status": "incomplete",
+  "deferral": {
+    "authorized_by": "user",
+    "scope": "Physical-device runtime measurements",
+    "instruction": "Oh, we can defer that one",
+    "effect": "No physical performance acceptance or numeric constrained budget is claimed; independent implementation continues."
+  },
+  "profiles": [
+    {
+      "id": "container-amd64",
+      "platform": "linux/amd64",
+      "required": true,
+      "runner": "ubuntu-latest",
+      "build_mode": "native",
+      "source": ".github/workflows/docker-publish.yml",
+      "feature_profile": "release-container-debian in quality/native-profiles.json",
+      "build_command": "docker buildx build --platform linux/amd64 --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --output type=oci,dest=build/eng-artifacts/T36/amd64.oci .",
+      "qualification_status": "not_run",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-sid-amd64",
+      "platform": "linux/amd64",
+      "debian_suite": "sid",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "native",
+      "build_command": "docker buildx build --platform linux/amd64 --build-arg DEBIAN_SUITE=sid --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:sid-amd64 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-trixie-amd64",
+      "platform": "linux/amd64",
+      "debian_suite": "trixie",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "native",
+      "build_command": "docker buildx build --platform linux/amd64 --build-arg DEBIAN_SUITE=trixie --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:trixie-amd64 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "container-arm64",
+      "platform": "linux/arm64",
+      "required": true,
+      "runner": "ubuntu-24.04-arm",
+      "build_mode": "native arm64 builder required",
+      "source": ".github/workflows/docker-publish.yml",
+      "feature_profile": "release-container-debian in quality/native-profiles.json",
+      "build_command": "docker buildx build --platform linux/arm64 --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --output type=oci,dest=build/eng-artifacts/T36/arm64.oci .",
+      "qualification_status": "not_run",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-sid-arm64",
+      "platform": "linux/arm64",
+      "debian_suite": "sid",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "native arm64 builder required",
+      "build_command": "docker buildx build --platform linux/arm64 --build-arg DEBIAN_SUITE=sid --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:sid-arm64 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-trixie-arm64",
+      "platform": "linux/arm64",
+      "debian_suite": "trixie",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "native arm64 builder required",
+      "build_command": "docker buildx build --platform linux/arm64 --build-arg DEBIAN_SUITE=trixie --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:trixie-arm64 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "container-arm-v7",
+      "platform": "linux/arm/v7",
+      "required": true,
+      "runner": "ubuntu-latest",
+      "build_mode": "amd64 cross compiler with armhf sysroot; QEMU only for target package setup",
+      "source": ".github/workflows/docker-publish.yml",
+      "feature_profile": "release-container-debian in quality/native-profiles.json",
+      "build_command": "docker buildx build --platform linux/arm/v7 --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --output type=oci,dest=build/eng-artifacts/T36/arm-v7.oci .",
+      "qualification_status": "not_run",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-sid-arm-v7",
+      "platform": "linux/arm/v7",
+      "debian_suite": "sid",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "amd64 cross compiler with armhf sysroot; QEMU only for target package setup",
+      "build_command": "docker buildx build --platform linux/arm/v7 --build-arg DEBIAN_SUITE=sid --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:sid-arm-v7 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    },
+    {
+      "id": "deb-trixie-arm-v7",
+      "platform": "linux/arm/v7",
+      "debian_suite": "trixie",
+      "required": true,
+      "source": ".github/workflows/debian-package.yml",
+      "build_mode": "amd64 cross compiler with armhf sysroot; QEMU only for target package setup",
+      "build_command": "docker buildx build --platform linux/arm/v7 --build-arg DEBIAN_SUITE=trixie --build-arg DEB_BUILD=true --build-arg GIT_COMMIT=\"$(git rev-parse HEAD)\" --load -t lightnvr-eng-t36:trixie-arm-v7 .",
+      "qualification_status": "not_run",
+      "package_steps": "Use the extraction/control/package logic in .github/workflows/debian-package.yml locally; omit release upload. A builder image alone does not qualify the .deb install/upgrade.",
+      "physical_runtime_evidence": null
+    }
+  ],
+  "build_provenance_requirements": [
+    "Run from a clean isolated checkout at the selected exact revision with initialized submodules. Never mutate archived baseline files.",
+    "Create build/eng-artifacts/T36 before the commands; do not push images or publish packages.",
+    "Record base image digest, resolved apt package versions, compiler/linker, effective feature flags, lockfiles, binary hash and output manifest. Mutable Debian tags mean source pinning alone is insufficient reproducibility.",
+    "arm64 builds require the declared native arm64 runner. Dockerfile rejects amd64 to arm64 cross builds.",
+    "No cross-build or QEMU run proves physical performance; missing runners leave target qualification open."
+  ],
+  "embedded_scope": {
+    "documented_support": [
+      "README.md names Ingenic A1, 256 MB, and MIPS among Linux-compatible processors.",
+      "docs/BUILD.md documents LIGHTNVR_PROFILE=embedded with at most 16 streams, optional SOD/LiteRT/MQTT/denoise off."
+    ],
+    "mips_release_required": null,
+    "decision_status": "unresolved_deferred_with_physical_target_selection",
+    "physical_nvr": null,
+    "viewing_device": null,
+    "browser_name_version": null,
+    "required_device_details": [
+      "device model and architecture",
+      "RAM, storage medium/filesystem and free space",
+      "OS/kernel/libc and toolchain",
+      "browser/device model, version, GPU/hardware decode, viewport and network",
+      "feature overrides and firmware/package revision"
+    ],
+    "native_build_template": "cmake -S . -B build/embedded -DCMAKE_BUILD_TYPE=Release -DLIGHTNVR_PROFILE=embedded && cmake --build build/embedded -j2",
+    "native_build_limit": "Host-native template only. A MIPS toolchain/sysroot and dependency build recipe must be supplied and validated before MIPS qualification.",
+    "non_container_required": true,
+    "non_container_reason": "Published Debian package matrix is explicit in .github/workflows/debian-package.yml; additional embedded firmware targets are not silently dropped.",
+    "alpine_status": "Dockerfile.alpine exists, but no release workflow proves it is a required release target; scope decision remains open."
+  },
+  "web_profiles": [
+    {
+      "id": "default",
+      "required": true,
+      "archive": "build/eng-baseline/1b8d4332/web-default",
+      "command": "npm run build",
+      "cwd": "web",
+      "env": {},
+      "input_hashes": {
+        "web/package.json": "b9b25a1b3fb000822d502ebe773e2bb6fa61f93314552ef909e3481b10e25fee",
+        "web/package-lock.json": "4563ca16df360549a606c28c1d165ab7dc4122f489af28edc61e0802a1e14879",
+        "web/vite.config.js": "378b6892979516a3a690b7771f9117f6eedf07dcab2844cefbd46f71477ffac1",
+        "web/vite-plugin-theme-inject.js": "8f8137b4f13f69af45620d2ffee7717d87da75d0e93ddd2c3d23843635ab5635",
+        "web/postcss.config.js": "d3c737602d9b59c158bf819c686342e5ced8afa281472b16ba98918ca357fba9",
+        "web/js/version.js": "b842bcd52489d63914f699f5d7e8678f2b856022536dbcfeb5a95ec8bc68d75d"
+      },
+      "report_sha256": "7ebbb209791e92d22f3cd08c6fc6ae03c58513b7ded6546a0d41111febdc6c0e",
+      "file_manifest_sha256": "342e0df6ab21e77f81cc7da4bc56177e537091296c9a15bccb38c5ed8b253c67",
+      "physical_browser_status": "deferred_by_user",
+      "locales": "All 18 baseline locales. The English-only firmware example is a separate, unmeasured profile."
+    },
+    {
+      "id": "modern",
+      "required": true,
+      "archive": "build/eng-baseline/1b8d4332/web-modern",
+      "command": "npm run build",
+      "cwd": "web",
+      "env": {
+        "LIGHTNVR_WEB_LEGACY": "false"
+      },
+      "input_hashes": {
+        "web/package.json": "b9b25a1b3fb000822d502ebe773e2bb6fa61f93314552ef909e3481b10e25fee",
+        "web/package-lock.json": "4563ca16df360549a606c28c1d165ab7dc4122f489af28edc61e0802a1e14879",
+        "web/vite.config.js": "378b6892979516a3a690b7771f9117f6eedf07dcab2844cefbd46f71477ffac1",
+        "web/vite-plugin-theme-inject.js": "8f8137b4f13f69af45620d2ffee7717d87da75d0e93ddd2c3d23843635ab5635",
+        "web/postcss.config.js": "d3c737602d9b59c158bf819c686342e5ced8afa281472b16ba98918ca357fba9",
+        "web/js/version.js": "b842bcd52489d63914f699f5d7e8678f2b856022536dbcfeb5a95ec8bc68d75d"
+      },
+      "report_sha256": "9ab3c9947200e0f00f4ebb80a05f34ed6d7196fd609afe3c52690657d18d3417",
+      "file_manifest_sha256": "afaa072387d41f97e2cd3cc38340b76fde1949684dd0c93d2a1bed59eca93d92",
+      "physical_browser_status": "deferred_by_user",
+      "locales": "All 18 baseline locales. The English-only firmware example is a separate, unmeasured profile."
+    }
+  ],
+  "baseline_sources": {
+    "native_manifest": "quality/native-profiles.json",
+    "native_archive": "build/eng-baseline/1b8d4332/native/release-full-system-ffmpeg",
+    "native_binary_sha256": "a56ce959b256f08dd04fd72e0ad8054669ad300464894d99995efca2928a61d1",
+    "native_manifest_sha256": "35e5e18ca2b678893700592ccab546fa97c648bba89fa51651542a4ed0041d67",
+    "native_limit": "Host release reference differs from Debian containers and omits host libyaml; debug and mismatched-FFmpeg archives are not performance references.",
+    "asset_manifest": "quality/web-budgets.json"
+  }
+}

@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "task": "T5",
+  "recorded_at": "2026-10-31",
+  "status": "physical_calibration_deferred_by_user",
+  "qualification_status": "incomplete",
+  "policy": {
+    "missing_limit": "unqualified; must never become zero, infinity, pass, or silently skip",
+    "measurement_scope": "NVR and browser measured separately; include managed go2rtc/ffmpeg children in NVR aggregate and publish per-process results. Synthetic source generator runs off-target.",
+    "budget_changes": "Explicit manifest edit with raw samples, exact provenance, measured cost and product rationale; no automatic baseline reset.",
+    "host_reference": "Informational only, never substitutes for named constrained hardware or production feature qualification.",
+    "asset_budgets": "Existing measured numeric asset limits remain in quality/web-budgets.json and are not reset here."
+  },
+  "metrics": [
+    {
+      "id": "nvr.binary_bytes",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.idle_rss_bytes",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.recording_rss_bytes",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.cpu_one_core_percent",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.open_file_descriptors",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.threads",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.recording_gap_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.recovery_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "nvr.shutdown_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.cold_startup_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.warm_startup_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.streams_edit_open_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.save_acknowledgement_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.live_first_frame_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.renderer_rss_bytes",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.javascript_heap_bytes",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    },
+    {
+      "id": "browser.long_task_ms",
+      "baseline": null,
+      "limit": null,
+      "tolerance": null,
+      "status": "deferred_by_user",
+      "reason": "Physical device/browser and repeated workload calibration have not been supplied or run."
+    }
+  ],
+  "workload": {
+    "status": "protocol_defined_not_executed_on_physical_target",
+    "fixtures": {
+      "source": "Synthetic FFmpeg testsrc2; no camera credentials or production recordings. Archive exact ffmpeg version/command, fixture hashes and ffprobe JSON.",
+      "video": {
+        "codec": "H.264",
+        "profile": "baseline",
+        "pixel_format": "yuv420p",
+        "width": 1280,
+        "height": 720,
+        "fps": 15,
+        "bitrate_bits_per_second": 1000000,
+        "gop_frames": 30,
+        "b_frames": 0
+      },
+      "audio_variants": [
+        "video only",
+        "AAC mono 48000 Hz 64000 bit/s synthetic sine"
+      ],
+      "stream_counts": [
+        0,
+        1,
+        4
+      ],
+      "segment_seconds": 60,
+      "network": "RTSP over TCP on isolated test network; source generator off-target; record link speed/RTT/loss",
+      "storage": {
+        "requirements": "Dedicated disposable filesystem with at least 4 GiB free; record filesystem/device. Never production data.",
+        "retention_days": 1,
+        "auto_delete_oldest": false,
+        "max_size": 0,
+        "max_size_semantics": "Unlimited application setting for bounded calibration workload; physical free space is checked and the scenario stops before exhaustion."
+      },
+      "detection": "Baseline workload detection off. SOD/LiteRT/MQTT/archive production-feature scenarios measured separately, never claimed covered by idle/remux."
+    },
+    "phases": [
+      {
+        "id": "idle",
+        "streams": 0,
+        "warmup_seconds": 60,
+        "sample_seconds": 300
+      },
+      {
+        "id": "record-one",
+        "streams": 1,
+        "warmup_seconds": 120,
+        "sample_seconds": 600
+      },
+      {
+        "id": "record-four",
+        "streams": 4,
+        "warmup_seconds": 120,
+        "sample_seconds": 600
+      },
+      {
+        "id": "record-and-view",
+        "streams": 4,
+        "warmup_seconds": 120,
+        "sample_seconds": 600,
+        "browser": "one Live view, four tiles; repeat Streams list/edit/save with synthetic tags every 30 seconds"
+      }
+    ],
+    "repetitions": 5,
+    "sample_interval_seconds": 1,
+    "rationale": "Protocol durations/counts are experimental settings, not measured acceptance limits. Five independent process runs expose run-to-run variance; ten-minute recording phases span at least ten segments. Revise workload with documented product reason before calibration."
+  },
+  "measurement_method": {
+    "provenance": [
+      "exact source revision and clean tree",
+      "baseline binary/assets hashes",
+      "compiler, linker, loaded library versions and feature flags",
+      "synthetic media hash plus ffprobe stream metadata",
+      "OS, kernel, CPU governor, RAM/swap, storage/free-space and network",
+      "browser version, flags, viewport, GPU/decode status and cache state"
+    ],
+    "cold_cache": "Browser: fresh user-data directory, clear HTTP cache/storage and disable cache for first navigation. NVR: fresh process and disposable DB; report OS page cache uncontrolled unless a dedicated target is rebooted under an approved protocol. Never drop host-wide caches.",
+    "warm_cache": "Reuse the browser profile with caching enabled, reload once before sampling; reuse fixture filesystem cache while restarting NVR process. Label every sample; never combine cold and warm distributions.",
+    "nvr": "Sample monotonic time, /proc/PID/stat utime+stime, /proc/PID/status VmRSS/VmHWM/Threads, and /proc/PID/fd count. CPU percent = delta_ticks / CLK_TCK / delta_monotonic_seconds * 100 (one core = 100%). Record child PIDs and start times; aggregate RSS explicitly (shared pages may be double counted) or use PSS where available.",
+    "browser": "Use PerformanceObserver/navigation timing for navigation and long tasks, explicit marks around edit-open and save acknowledgement, video first decoded frame for Live, and browser process memory via OS counters. JS heap via Chromium CDP if available; report unavailable on other browsers, never zero.",
+    "recordings": "ffprobe every committed segment, decode at least the first segment after each recovery. Check adjacent packet/media timestamps, playable codec, DB times and byte counts. Separate intentional outage from unexplained recording gaps.",
+    "comparison": "Publish every run, median/p95/max per metric and cold/warm state; calculate candidate-minus-baseline on identical device, fixtures and feature flags with alternating baseline/candidate runs. Calibrate tolerances from repeated baseline variation and product recovery constraints, then review numeric limits before enabling a gate.",
+    "failure_rules": [
+      "Unexpected process exit, sanitizer error, corrupt/undecodable recording or missing samples fails its scenario.",
+      "Unknown target, uncalibrated limit or unsupported metric remains unqualified.",
+      "Teardown records graceful deadline separately from fallback kill; a fallback kill is not successful shutdown.",
+      "Do not reuse production URLs, DB/storage, PID files, credentials or globally fixed ports."
+    ]
+  },
+  "host_reference": {
+    "status": "measured_informational_only",
+    "host": {
+      "architecture": "x86_64",
+      "kernel": "7.0.0-38-generic",
+      "cpu": "AMD Ryzen 9 7950X 16-Core Processor",
+      "memory_total_kib": 128614452,
+      "logical_cpus": 32
+    },
+    "method": {
+      "warmup_seconds": 20,
+      "samples_per_run": 60,
+      "sample_interval_seconds": 1,
+      "runs": 3,
+      "cache": "fresh database/process; OS page cache uncontrolled/warm",
+      "scope": "lightnvr PID only; go2rtc/MQTT disabled; zero streams; no browser"
+    },
+    "binary_bytes": 10362224,
+    "binary_sha256": "a56ce959b256f08dd04fd72e0ad8054669ad300464894d99995efca2928a61d1",
+    "raw_artifact": "build/eng-artifacts/T5/idle-host.json",
+    "raw_sha256": "e605771ad0e955778296aeddaef53cc046e8bf7d74c0b91fd1277c92a49fb5c4",
+    "collector_artifact": "build/eng-artifacts/T5/measure-idle.py",
+    "collector_sha256": "22eb19f28192a02bde6e0474e4774a1eae462ccd6b624c984ea853f5228a71f5",
+    "runs": [
+      {
+        "run": 1,
+        "sample_count": 60,
+        "http_ready_seconds": 0.2068465100019239,
+        "shutdown_seconds": 3.6190339110034984,
+        "exit_code": 0,
+        "forced_kill": false,
+        "rss_kib": {
+          "min": 55524,
+          "median": 55554.0,
+          "max": 55688
+        },
+        "peak_rss_kib": {
+          "min": 55524,
+          "median": 55554.0,
+          "max": 55688
+        },
+        "fds": {
+          "min": 18,
+          "median": 18.0,
+          "max": 18
+        },
+        "threads": {
+          "min": 21,
+          "median": 21.0,
+          "max": 21
+        },
+        "cpu_one_core_percent": {
+          "min": 0.0,
+          "median": 0.0,
+          "max": 1.9992401548317742
+        }
+      },
+      {
+        "run": 2,
+        "sample_count": 60,
+        "http_ready_seconds": 0.2017917429911904,
+        "shutdown_seconds": 3.669562605995452,
+        "exit_code": 0,
+        "forced_kill": false,
+        "rss_kib": {
+          "min": 56108,
+          "median": 56138.0,
+          "max": 56272
+        },
+        "peak_rss_kib": {
+          "min": 56108,
+          "median": 56138.0,
+          "max": 56272
+        },
+        "fds": {
+          "min": 18,
+          "median": 18.0,
+          "max": 18
+        },
+        "threads": {
+          "min": 21,
+          "median": 21.0,
+          "max": 21
+        },
+        "cpu_one_core_percent": {
+          "min": 0.0,
+          "median": 0.0,
+          "max": 0.9996740112998845
+        }
+      },
+      {
+        "run": 3,
+        "sample_count": 60,
+        "http_ready_seconds": 0.20217874500667676,
+        "shutdown_seconds": 3.619521572982194,
+        "exit_code": 0,
+        "forced_kill": false,
+        "rss_kib": {
+          "min": 55672,
+          "median": 55836.0,
+          "max": 55848
+        },
+        "peak_rss_kib": {
+          "min": 55672,
+          "median": 55836.0,
+          "max": 55848
+        },
+        "fds": {
+          "min": 18,
+          "median": 18.0,
+          "max": 18
+        },
+        "threads": {
+          "min": 21,
+          "median": 21.0,
+          "max": 21
+        },
+        "cpu_one_core_percent": {
+          "min": 0.0,
+          "median": 0.0,
+          "max": 1.99937101188529
+        }
+      }
+    ],
+    "budget": null,
+    "limitation": "No physical constrained/browser/recording/production-feature qualification; short warm-cache idle run on a workstation only."
+  }
+}
