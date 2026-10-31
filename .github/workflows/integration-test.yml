@@ -610,6 +610,10 @@ jobs:
         if: ${{ matrix.shard == 1 }}
         run: npm --prefix web run test:e2e -- --testPathPatterns=bulkTagsReconciliation
 
+      - name: Zone Editor checkbox regression
+        if: ${{ matrix.shard == 1 }}
+        run: npm --prefix web run test:e2e -- --testPathPatterns=zoneEditorCheckbox
+
       - name: Run Playwright UI tests
         run: |
           # Clean any existing playwright reports to ensure fresh state
