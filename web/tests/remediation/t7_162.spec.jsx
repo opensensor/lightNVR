@@ -56,8 +56,12 @@ it('zone selection has a native delegate while edits and canvas handlers retain 
   const tree = render(ZoneEditor, { zones, onClose: jest.fn(), onZonesChange: jest.fn() }, { 1: 0 });
   const card = nodes(tree).find(node => node.key === 'one'); expect(card.props.role).toBe('presentation');
   const button = nodes(card).find(node => node.type === 'button'); native(button); expect(button.props['aria-pressed']).toBe(true);
-  expect(button.props.onClick).toBeUndefined(); card.props.onClick(); expect(mockHooks.setters[1]).toHaveBeenCalledTimes(1);
-  const checkbox = nodes(card).find(node => node.props?.type === 'checkbox'); checkbox.props.onChange({ target: { checked: false } }); card.props.onClick();
+  expect(button.props.onClick).toBeUndefined(); card.props.onClick({ target: { type: 'button' } }); expect(mockHooks.setters[1]).toHaveBeenCalledTimes(1);
+  const checkbox = nodes(card).find(node => node.props?.type === 'checkbox');
+  // Native click bubbles before change: selection must not reset its pending value.
+  card.props.onClick({ target: { type: 'checkbox', checked: false } });
+  expect(mockHooks.setters[1]).toHaveBeenCalledTimes(1);
+  checkbox.props.onChange({ target: { checked: false } });
   expect(mockHooks.setters[6]).toHaveBeenCalledTimes(1); expect(mockHooks.setters[6].mock.calls[0][0][0].enabled).toBe(false); expect(mockHooks.setters[1]).toHaveBeenCalledTimes(2);
   const canvas = nodes(tree).find(node => node.type === 'canvas'); for (const key of ['onClick', 'onMouseDown', 'onMouseMove', 'onMouseUp']) expect(typeof canvas.props[key]).toBe('function');
 });

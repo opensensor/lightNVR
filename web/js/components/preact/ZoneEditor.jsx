@@ -642,7 +642,10 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                 className={`mb-3 p-3 rounded border ${
                   index === selectedZoneIndex ? 'border-primary bg-primary/10' : 'border-border'
                 }`}
-                onClick={() => setSelectedZoneIndex(index)}
+                onClick={(event) => {
+                  // Preserve the native toggle until onChange records it below.
+                  if (event.target.type !== 'checkbox') setSelectedZoneIndex(index);
+                }}
               >
                 <button type="button"
                   className="mb-2 rounded text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
@@ -672,7 +675,10 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                     <input aria-label={t('common.enabled')}
                       type="checkbox"
                       checked={zone.enabled}
-                      onChange={(e) => updateZoneProperty(index, 'enabled', e.target.checked)}
+                      onChange={(e) => {
+                        updateZoneProperty(index, 'enabled', e.target.checked);
+                        setSelectedZoneIndex(index);
+                      }}
                     />
                     <span className="text-sm">{t('common.enabled')}</span>
                   </label>
