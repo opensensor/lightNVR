@@ -45,7 +45,7 @@ static void assert_payload(const char *expected) {
     FILE *input = fopen(file, "rb"); TEST_ASSERT_NOT_NULL(input);
     size_t count = fread(bytes, 1, sizeof(bytes), input); fclose(input);
     TEST_ASSERT_EQUAL_size_t(strlen(expected), count);
-    TEST_ASSERT_EQUAL_MEMORY(expected, bytes, count);
+    if (count) TEST_ASSERT_EQUAL_MEMORY(expected, bytes, count);
 }
 static void change(const char *assignment) {
     char statement[512];
