@@ -8,6 +8,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <cjson/cJSON.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -187,7 +188,11 @@ void authorization_context_free(authorization_context_t *context) {
 }
 
 static void *grow_array(void *items, int *capacity, size_t item_size) {
+    if (*capacity < 0 || *capacity > INT_MAX / 2) return NULL;
     int next_capacity = *capacity == 0 ? 4 : *capacity * 2;
+    if (item_size != 0 && (size_t)next_capacity > SIZE_MAX / item_size) {
+        return NULL;
+    }
     void *resized = realloc(items, (size_t)next_capacity * item_size);
     if (!resized) return NULL;
     *capacity = next_capacity;
