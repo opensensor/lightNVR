@@ -201,7 +201,7 @@
       ],
       "kind": "advisory-review",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Completed (commit `22012e65`)",
       "ownership": [
         "quality/reviews/advisory-ghsa-pvw7-7j8c-qx96.json",
         "quality/evidence/T7.7.md"
@@ -220,7 +220,8 @@
       "finding_ids": [
         "ADVISORY-GHSA-pvw7-7j8c-qx96"
       ],
-      "requires_external_evidence": true
+      "requires_external_evidence": true,
+      "log": "Public advisory state/source reviewed; existing fix507bce1c is an ancestor. Integration-profile ASan/UBSan passes3 targets/18tests, including decoded query identity, cache update and delayed worker shutdown. No baseline/approval or published advisory mutation."
     },
     {
       "id": "T7.8",
@@ -6599,7 +6600,8 @@
       "title": "bugprone-multi-level-implicit-pointer-conversion in mp4_segment_recorder.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T28.2"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -7839,7 +7841,8 @@
       "title": "bugprone-suspicious-string-compare in storage_deletion.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T28.1"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -8793,7 +8796,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.119"
+        "T7.119",
+        "T28.2"
       ],
       "kind": "native-fix",
       "priority": "low",
@@ -15402,7 +15406,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.137"
+        "T7.137",
+        "T28.1"
       ],
       "kind": "native-fix",
       "priority": "info",
@@ -17940,7 +17945,8 @@
       "depends_on": [
         "T7",
         "T13",
-        "T7.252"
+        "T7.252",
+        "T28.1"
       ],
       "kind": "native-fix",
       "priority": "info",
