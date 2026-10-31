@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "task": "T8",
+  "node": {
+    "required": ">=24.11.0 <25",
+    "verified": "24.22.1"
+  },
+  "npm": "11.19.1",
+  "packages": {
+    "root": {
+      "typescript": "5.9.3",
+      "openapi-typescript": "7.13.0",
+      "ajv": "8.20.0",
+      "ajv-formats": "3.0.1",
+      "@apidevtools/json-schema-ref-parser": "16.0.5",
+      "yaml": "2.9.0",
+      "@types/node": "24.19.2",
+      "esbuild": "0.28.2"
+    },
+    "web": {
+      "typescript": "5.9.3",
+      "typescript-eslint": "8.72.1",
+      "@babel/preset-typescript": "8.0.7",
+      "@babel/preset-react": "8.0.1",
+      "@types/jest": "30.0.0",
+      "@types/node": "24.19.2"
+    }
+  },
+  "commands": {
+    "application_and_web_test_types": "npm --prefix web run typecheck",
+    "integration_and_load_types": "npm run typecheck:tests",
+    "unit": "npm --prefix web test -- --runInBand"
+  },
+  "typing_scope": {
+    "application": [
+      "web/js/**/*.ts",
+      "web/js/**/*.tsx"
+    ],
+    "web_tests": [
+      "web/tests/**/*.ts",
+      "web/tests/**/*.tsx"
+    ],
+    "real_fixture": "web/tests/types/preact-fixture.tsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "legacy_status": "Existing JS/JSX remains explicitly unchecked; T25/T34 own migration and closure. No existing browser implementation is claimed migrated by T8.",
+    "inventory": "quality/application-inventory.json",
+    "integration_tests_status": "Command registered; tests/tsconfig.json and existing test repairs are produced by T9."
+  },
+  "jsx": {
+    "compiler": "react-jsx with jsxImportSource=preact",
+    "babel": "automatic runtime, importSource=preact; Babel8 preset-typescript (no removed allowDeclareFields option)",
+    "vite": "existing Vite8 Oxc automatic Preact config retained"
+  },
+  "generator_compatibility": {
+    "openapi": "3.1.0",
+    "json_schema": "2020-12",
+    "fixtures_validated": 91,
+    "generated_types_compile": true,
+    "canonical_components_required": "Merge schema fragments into root components and normalize refs before openapi-typescript. Generic ref-parser.bundle places refs in paths/responses that generate invalid indexed types.",
+    "standalone_browser": "Ajv ESM standalone emits CJS helper require; bundle generated output with root esbuild (browser platform, esm format). Compiler/generator packages must stay out of app runtime.",
+    "contentSchema": "Annotation only: T12 must decode and validate nonempty eptz_config; empty string means disabled.",
+    "byte_limits": "T12 must explicitly validate x-lightnvr-max-bytes; JSON Schema maxLength counts code points.",
+    "proof": "build/eng-artifacts/T8/check-generation.mjs"
+  },
+  "evidence": "quality/evidence/T8.md"
+}

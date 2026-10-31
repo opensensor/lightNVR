@@ -3,7 +3,7 @@
 // excluded here and run via `npm run test:e2e` (jest.e2e.config.cjs).
 module.exports = {
   testMatch: [
-    '**/tests/**/*.spec.js'
+    '**/tests/**/*.spec.[jt]s?(x)'
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
@@ -13,6 +13,6 @@ module.exports = {
   setupFilesAfterEnv: ['./tests/setup.cjs'],
   testTimeout: 30000,
   transform: {
-    '^.+\\.jsx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
+    '^.+\\.[jt]sx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
   }
 };

@@ -6,6 +6,7 @@
  * in warn mode so CI reports violations without failing the build; switch rules
  * to error as each finding category in the issue is closed.
  */
+import tseslint from 'typescript-eslint';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import noLiteralUiString from './eslint-rules/no-literal-ui-string.js';
@@ -21,7 +22,7 @@ export default [
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
   {
-    files: ['js/**/*.js', 'js/**/*.jsx'],
+    files: ['js/**/*.{js,jsx,ts,tsx}'],
     linterOptions: {
       // Targeted disable comments (e.g. react-hooks) belong to configs outside
       // this a11y lint; don't flag them as unused here.
@@ -47,10 +48,15 @@ export default [
     },
   },
   {
-    files: ['js/components/**/*.js', 'js/components/**/*.jsx'],
+    files: ['js/components/**/*.{js,jsx,ts,tsx}'],
     // Existing technical labels and examples are counted by file in the
     // baseline. New JSX text or visible-attribute literals fail lint.
     plugins: { 'lightnvr-i18n': { rules: { 'no-literal-ui-string': noLiteralUiString } } },
     rules: { 'lightnvr-i18n/no-literal-ui-string': 'error' },
+  },
+  {
+    files: ['js/**/*.{ts,tsx}'],
+    languageOptions: { parser: tseslint.parser },
+    plugins: { '@typescript-eslint': tseslint.plugin },
   },
 ];

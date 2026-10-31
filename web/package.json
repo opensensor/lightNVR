@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "lint": "eslint js",
     "test": "jest --config=jest.config.cjs",
-    "test:e2e": "jest --config=jest.e2e.config.cjs --runInBand"
+    "test:e2e": "jest --config=jest.e2e.config.cjs --runInBand",
+    "typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.tests.json"
   },
   "author": "",
   "license": "ISC",
@@ -36,8 +37,12 @@
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
+    "@babel/preset-react": "8.0.1",
+    "@babel/preset-typescript": "8.0.7",
     "@prefresh/vite": "^3.0.1",
     "@sentry/vite-plugin": "^11.10.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
     "@vitejs/plugin-legacy": "^8.2.3",
     "autoprefixer": "^10.5.4",
     "babel-jest": "^30.4.1",
@@ -49,6 +54,8 @@
     "postcss": "^8.5.26",
     "postcss-import": "^16.2.0",
     "selenium-webdriver": "^4.47.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
     "vite": "^8.3.5",
     "vite-plugin-compression": "^0.5.1"
   }
