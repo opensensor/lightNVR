@@ -1281,8 +1281,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.27 --regex '^test_t7_27$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.27`; inspect the raw T1 report and trace the caller.
-- **status**: Partial — five RED ownership failures committed
-- **log**: 183bdafe producer: twelve passing and five failing cases overall, no sanitizer diagnostics. Three mapped race sites and separate unknown-backup deletion reproduced; ordered children T7.27.1–T7.27.3 own correction.
+- **status**: Completed (fixes `dc287459`, `a8ce89a3`, `44dbb7ee`)
+- **log**: All three scoped filesystem identity/publication children complete; final 24 focused plus 8 existing cases pass under ASan/UBSan. Unknown artifacts and publication/rollback competitors retained; filesystem/SQLite window and other documented limits remain explicit. Fresh full scanner reconciliation remains T33.
 - **files edited/created**:
 
 ### T7.28: cpp/uncontrolled-allocation-size in event_router.c
@@ -1857,8 +1857,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 - **validation**:
   - `python3 scripts/quality/run-native.py --task T7.59 --regex '^test_t7_59$'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.59`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Pending review (characterization `58ebf811`)
+- **log**: Seven actual worker-boundary cases plus four type cases pass initially; constructed tiers are 0..3 and public invalid tiers are rejected. Fresh clang21 still reports the mapped array warning. No production correction, false-positive approval or baseline disposition claimed. Separate startup deadlock producer/correction tracked as T7.59.1/.2.
 - **files edited/created**:
 
 ### T7.60: clang-analyzer-security.ArrayBound in go2rtc_process.c
@@ -3930,8 +3930,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/recordings/TagsOverlay.jsx web/js/components/preact/settings/AdvancedTab.jsx web/js/components/preact/settings/AuthTab.jsx web/js/components/preact/settings/DetectionTab.jsx web/js/components/preact/settings/GeneralTab.jsx web/js/components/preact/settings/Go2rtcTab.jsx --format json --output-file build/eng-artifacts/T7.172/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.172/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/control-has-associated-label'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.172`; inspect the raw T1 report and trace the caller.
-- **status**: Partial — names committed; bulk-tag behavior correction pending
-- **log**: 661cfb61 resolves all50 assigned names; types/lint and asset profiles pass, warnings582→532. Interaction coverage separately reproduced stale bulk-tag state with the actual delayed-parent contract. T7.172.1 must make that regression actively pass before parent acceptance; immediate-prop fixture success alone does not close it.
+- **status**: Completed (names `661cfb61`, behavior `9c355497`)
+- **log**: All 50 assigned accessible names covered; separately scoped bulk-tag defect fixed and original delayed-props assertion actively green. Final 22 focused/143 related pass, both type checks and asset profiles pass, lint stays 532 warnings/0 errors with unchanged rule/file counts after behavior fix. Default assets restored.
 - **files edited/created**:
 
 ### T7.173: jsx-a11y/control-has-associated-label in HealthTab.jsx, MqttTab.jsx, StorageTab.jsx, StreamsDefaultsTab.jsx, StreamStorage.jsx, CalendarPicker.jsx
@@ -7596,8 +7596,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve CODEQL-314 and CODEQL-315 with no-overwrite restoration and identity-aware removal of this request's published upload on failure. Preserve competing public entries, the original backup and any displaced verified upload. Publication into the vacated public name must also avoid overwriting a new competitor; add a separate tests-first control for that boundary. Restore ordinary failure cases when no conflict exists; retain/report owned backup artifacts on restoration conflict or unsupported operations.
 - **acceptance_criteria**: Preserve committed competitor/source-byte, response and metadata assertions. A private backup namespace may replace legacy .bak observation in the fixture only while proving the same original bytes/inode survive and the competing public entry remains unchanged; document this observation change before implementation. No blanket overwrite/unlink cleanup, unrelated GET/DELETE redesign, schema changes or universal concurrent-writer claim. Document filesystem/SQLite and privileged/open-writer limits. No real user storage touched.
 - **validation**: Tests-first producer183bdafe: nine focused cases/fiveRED plus eight passing API/DB controls. Add focused collision/unsupported/failure controls and run related cases under ASan/UBSan; preserve full logs and exact hashes. Sequential native/source/CMake lease required.
-- **status**: Not Completed
-- **log**: Materialized before production correction from raw313/314/315 and separately reproduced unknown-backup deletion. Original failure oracles remain, with explicitly permitted private-location observation only.
+- **status**: Completed (fix `44dbb7ee`)
+- **log**: Original rollback/publication RED plus held-directory creation regression corrected; final T7.27/native-779c0c46b674 passes 32/32 under ASan/UBSan. Upload creation uses exclusive openat against the held private directory; no-replace publication and identity-bound rollback preserve competitors. Evidence includes failure/FD cleanup controls and remaining scope limits.
 - **files edited/created**:
 
 ## Health-worker partial-start verification (T7.59)
@@ -7633,8 +7633,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Resolve the separately reproduced bulk-tag defect: after a successful new tag operation, updating the autocomplete catalog recalculates state from stale recording props and can uncheck the new tag; later same-count refetched rows may not trigger reconciliation. Trace the actual RecordingsView callback, which currently invalidates the query rather than synchronously replacing props. Choose a bounded state reconciliation correction without changing backend APIs or unrelated tag policies.
 - **acceptance_criteria**: Preserve the original successful-new-tag checked assertion with realistically delayed recording props. Same-count data refresh and selection changes recompute correct all/some/none states. Existing add/remove payloads, pending/error guards and callbacks remain correct; failed requests do not display successful state. Do not depend solely on a fixture parent that supplies immediate updated records when the real parent does not. The stale-prop regression must become an active passing test before parent T7.172 acceptance, not a permanently opt-in known failure.
 - **validation**: Preserve bulk-stale-props-red.log and deterministic failing browser command; add focused delayed/same-count/selection/failure controls, run related tag and accessibility regressions plus types/lint and both asset profiles. Commit names-only work separately from this behavioral fix; restore default assets. No real recordings or remote requests.
-- **status**: Not Completed
-- **log**: Discovered by T7.172 interaction coverage. Original bulk effect depends on allTags and selectedRecs.length; new successful tag updates allTags while actual parent only invalidates the recordings query. Scoped before behavioral implementation.
+- **status**: Completed (fix `9c355497`)
+- **log**: Catalog arrival preserves successful local edits; new recording snapshots and selected-ID changes reconcile authoritative state, late requests cannot modify another selection. Original stale-prop, late-catalog and same-size-selection RED become GREEN; 22 focused/143 related pass with failure/pending/callback controls. RecordingsView unchanged.
 - **files edited/created**:
 
 ## Independent soak tooling (T30)

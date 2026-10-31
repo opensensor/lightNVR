@@ -1303,7 +1303,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Partial \u2014 five RED ownership failures committed",
+      "status": "Completed",
       "ownership": [
         "src/web/api_handlers_operator_floor_plans.c",
         "tests/unit/test_t7_27.c",
@@ -1356,7 +1356,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "183bdafe producer: twelve passing and five failing cases overall, no sanitizer diagnostics. Three mapped race sites and separate unknown-backup deletion reproduced; ordered children T7.27.1\u2013T7.27.3 own correction."
+      "log": "All three scoped filesystem identity/publication children complete; final 24 focused plus 8 existing cases pass under ASan/UBSan. Unknown artifacts and publication/rollback competitors retained; filesystem/SQLite window and other documented limits remain explicit. Fresh full scanner reconciliation remains T33."
     },
     {
       "id": "T7.28",
@@ -2956,7 +2956,7 @@
       ],
       "kind": "native-fix",
       "priority": "medium",
-      "status": "Not Completed",
+      "status": "Pending review",
       "ownership": [
         "src/telemetry/system_health.c",
         "tests/unit/test_t7_59.c",
@@ -2990,7 +2990,8 @@
           "scanner": "clang-tidy"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Seven actual worker-boundary cases plus four type cases pass initially; constructed tiers are 0..3 and public invalid tiers are rejected. Fresh clang21 still reports the mapped array warning. No production correction, false-positive approval or baseline disposition claimed. Separate startup deadlock producer/correction tracked as T7.59.1/.2."
     },
     {
       "id": "T7.60",
@@ -10234,7 +10235,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Partial \u2014 names committed; bulk-tag behavior correction pending",
+      "status": "Completed",
       "ownership": [
         "web/js/components/preact/recordings/TagsOverlay.jsx",
         "web/js/components/preact/settings/AdvancedTab.jsx",
@@ -10326,7 +10327,7 @@
         }
       ],
       "lease": "isolated Jest test; exclusive full lint/build lease",
-      "log": "661cfb61 resolves all50 assigned names; types/lint and asset profiles pass, warnings582\u2192532. Interaction coverage separately reproduced stale bulk-tag state with the actual delayed-parent contract. T7.172.1 must make that regression actively pass before parent acceptance; immediate-prop fixture success alone does not close it.",
+      "log": "All 50 assigned accessible names covered; separately scoped bulk-tag defect fixed and original delayed-props assertion actively green. Final 22 focused/143 related pass, both type checks and asset profiles pass, lint stays 532 warnings/0 errors with unchanged rule/file counts after behavior fix. Default assets restored.",
       "commit": "661cfb61"
     },
     {
