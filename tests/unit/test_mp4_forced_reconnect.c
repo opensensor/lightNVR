@@ -3,6 +3,14 @@
 #include "../../src/video/mp4_writer_thread.c"
 #include "unity.h"
 
+/* The segment itself is already a deterministic seam in this loop test. */
+int __wrap_reserve_mp4_recording_path(char *path,size_t size,storage_placement_t *placement) {
+    (void)path;(void)size;(void)placement;return 123;
+}
+int __wrap_release_mp4_recording_path(int descriptor,const char *path) {
+    (void)descriptor;(void)path;return 0;
+}
+
 static mp4_writer_t writer;
 static mp4_writer_thread_t reader;
 static AVFormatContext *audio_input;

@@ -43,6 +43,7 @@
 #include "video/mp4_writer_thread.h"
 #include "video/mp4_segment_recorder.h"
 #include "video/recording_path.h"
+#include "telemetry/recording_io_metrics.h"
 #include "video/streams.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
@@ -386,6 +387,14 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             }
         }
 
+        // Normalize before rotation, not only before record_segment. Otherwise
+        // a configured 0/negative duration skips finalization on every retry
+        // and leaves the previous metadata ID attached to the next file.
+        if (segment_duration <= 0) {
+            segment_duration = 30;
+            log_info("No segment duration configured, using default: %d seconds", segment_duration);
+        }
+
         // Check if it's time to create a new segment based on segment duration
         // Force segment rotation every segment_duration seconds
         if (segment_duration > 0) {
@@ -491,14 +500,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // Record a segment using the record_segment function
         log_info("Recording segment for stream %s to %s", stream_name, thread_ctx->writer->output_path);
         // Use the segment duration from the database or writer
-        if (segment_duration > 0) {
-            log_info("Using segment duration: %d seconds (from %s)",
-                    segment_duration,
-                    (db_config_result == 0 && db_stream_config.segment_duration > 0) ? "database" : "writer context");
-        } else {
-            segment_duration = 30;
-            log_info("No segment duration configured, using default: %d seconds", segment_duration);
-        }
+        log_info("Using segment duration: %d seconds (from %s)",
+                 segment_duration,
+                 (db_config_result == 0 && db_stream_config.segment_duration > 0) ? "database" : "writer context");
 
         // Variables for retry mechanism and resource management
         // Use per-thread context fields to avoid sharing state across streams
@@ -555,11 +559,26 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // (e.g., during dead recording recovery), not just during global shutdown.
         time_t segment_start = time(NULL);
         on_segment_activity_cb(thread_ctx);
-        ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
-                           segment_duration, thread_ctx->writer->has_audio,
-                           &thread_ctx->input_ctx, &thread_ctx->segment_info,
-                           on_segment_started_cb, on_segment_activity_cb, thread_ctx,
-                           &thread_ctx->shutdown_requested);
+        int reservation = reserve_mp4_recording_path(thread_ctx->writer->output_path,
+                            sizeof(thread_ctx->writer->output_path), &thread_ctx->writer->placement);
+        if (reservation < 0) {
+            int reservation_error = errno;
+            recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                        RECORDING_IO_OPERATION_FILESYSTEM, reservation_error);
+            log_error("Unable to reserve a fresh recording path for %s: %s",
+                      stream_name, strerror(reservation_error));
+            ret = AVERROR(reservation_error);
+        } else {
+            ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
+                               segment_duration, thread_ctx->writer->has_audio,
+                               &thread_ctx->input_ctx, &thread_ctx->segment_info,
+                               on_segment_started_cb, on_segment_activity_cb, thread_ctx,
+                               &thread_ctx->shutdown_requested);
+            if (release_mp4_recording_path(reservation, thread_ctx->writer->output_path) != 0) {
+                log_warn("Failed to release empty recording reservation for %s: %s",
+                         stream_name, strerror(errno));
+            }
+        }
         time_t segment_end = time(NULL);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
@@ -648,28 +667,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->video_params_detected = false;
             }
 
-            // Refresh the output path so the next attempt writes to a new file.
-            // Without this the same timestamp-based filename from writer creation is
-            // reused on every retry, producing "Output file already exists" warnings
-            // for every attempt after the first partial (261-byte) file is written.
-            if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
-                time_t retry_ts = time(NULL);
-                char retry_path[MAX_PATH_LENGTH];
-                storage_placement_t retry_placement;
-                if (prepare_placed_mp4_recording_path(
-                        get_streaming_config(), stream_name, retry_ts,
-                        retry_path, sizeof(retry_path),
-                        &retry_placement) == 0) {
-                    safe_strcpy(thread_ctx->writer->output_path, retry_path,
-                                sizeof(thread_ctx->writer->output_path), 0);
-                    update_writer_directory_from_path(thread_ctx->writer, retry_path);
-                    thread_ctx->writer->placement = retry_placement;
-                    log_debug("Updated output path for retry attempt: %s",
-                              thread_ctx->writer->output_path);
-                } else {
-                    log_warn("Storage placement blocked retry MP4 path for %s (reason: %s)",
-                             stream_name, retry_placement.reason);
-                }
+            // Rotate through the normal finalization path before retrying. Do
+            // not replace output_path while current_recording_id still refers
+            // to the previous partial file; its bytes/metadata must stay paired.
+            if (thread_ctx->writer && segment_duration > 0) {
+                thread_ctx->writer->last_rotation_time = time(NULL) - segment_duration;
             }
 
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",

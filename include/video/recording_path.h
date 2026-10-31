@@ -62,6 +62,23 @@ int prepare_placed_mp4_recording_path(
     char *output, size_t output_size, storage_placement_t *placement);
 
 /**
+ * Atomically reserve a fresh .mp4 pathname immediately before writing a segment.
+ * Keeps the timestamped planned path when unused, otherwise tries bounded numeric
+ * suffixes. On success updates path and placement.object_key together and returns
+ * an owned open descriptor. On failure neither caller value changes; errno is set.
+ * The planned-path helpers above do not reserve or create a recording file.
+ */
+int reserve_mp4_recording_path(char *path, size_t path_size,
+                               storage_placement_t *placement);
+
+/**
+ * Close an owned reservation after the segment call. Remove only a still-empty
+ * regular file whose inode matches the held descriptor; preserve written media,
+ * replaced paths and other writers' files. Returns -1 on cleanup/close failure.
+ */
+int release_mp4_recording_path(int descriptor, const char *path);
+
+/**
  * Build the on-demand HEVC->H.264 playback-cache path for a recording,
  * mirroring the thumbnails/<id>_<n>.jpg convention so cleanup can key off
  * the recording id alone rather than mirroring the mp4 hierarchy.

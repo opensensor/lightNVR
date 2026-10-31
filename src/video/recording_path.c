@@ -9,6 +9,10 @@
 
 #include "video/recording_path.h"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -191,4 +195,67 @@ int prepare_placed_mp4_recording_path(
     safe_strcpy(placement->object_key, output + root_length + 1,
                 sizeof(placement->object_key), 0);
     return placement->object_key[0] ? 0 : -1;
+}
+
+/* Planning a timestamped name and claiming it are separate operations. A real
+ * O_EXCL reservation closes the same-second/restart race without changing the
+ * historical directory or timestamp format for the ordinary first segment. */
+int reserve_mp4_recording_path(char *path, size_t path_size,
+                               storage_placement_t *placement) {
+    if (!path || !path_size || path[0] != '/') { errno = EINVAL; return -1; }
+    size_t length = strnlen(path, path_size);
+    if (length == path_size || length < 4 || strcmp(path + length - 4, ".mp4")) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (length >= MAX_PATH_LENGTH) { errno = ENAMETOOLONG; return -1; }
+    size_t root_length = 0;
+    if (placement) {
+        root_length = strlen(placement->target_root);
+        if (!root_length || strncmp(path, placement->target_root, root_length) ||
+            path[root_length] != '/') { errno = EINVAL; return -1; }
+    }
+    char candidate[MAX_PATH_LENGTH];
+    for (unsigned attempt = 0; attempt < 1000; attempt++) {
+        int size = attempt == 0 ? snprintf(candidate, sizeof(candidate), "%s", path)
+            : snprintf(candidate, sizeof(candidate), "%.*s_%03u.mp4", (int)(length - 4), path, attempt);
+        if (size < 0 || (size_t)size >= sizeof(candidate) || (size_t)size >= path_size ||
+            (placement && (size_t)size - root_length >= sizeof(placement->object_key))) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        int fd = open(candidate, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0644);
+        if (fd < 0) {
+            if (errno == EEXIST) continue;
+            return -1;
+        }
+        /* All lengths and placement constraints were validated before create;
+         * no allocation/copy operation after reservation can fail. */
+        memcpy(path, candidate, (size_t)size + 1);
+        if (placement) strcpy(placement->object_key, candidate + root_length + 1);
+        return fd;
+    }
+    errno = EEXIST;
+    return -1;
+}
+
+int release_mp4_recording_path(int descriptor, const char *path) {
+    if (descriptor < 0) { errno = EINVAL; return -1; }
+    struct stat held, current;
+    int result = 0, saved_errno = 0;
+    if (fstat(descriptor, &held) != 0) {
+        result = -1; saved_errno = errno;
+    } else if (S_ISREG(held.st_mode) && held.st_size == 0 && path) {
+        if (lstat(path, &current) == 0) {
+            if (S_ISREG(current.st_mode) && current.st_dev == held.st_dev &&
+                current.st_ino == held.st_ino && current.st_size == 0 && unlink(path) != 0) {
+                result = -1; saved_errno = errno;
+            }
+        } else if (errno != ENOENT) {
+            result = -1; saved_errno = errno;
+        }
+    }
+    if (close(descriptor) != 0 && result == 0) { result = -1; saved_errno = errno; }
+    if (result != 0) errno = saved_errno;
+    return result;
 }
