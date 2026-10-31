@@ -3,6 +3,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdarg.h>
+#include <sys/syscall.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,8 +25,8 @@ static char endpoint[128], uuid[CAMERA_UUID_STRING_SIZE];
 static char original_storage[MAX_PATH_LENGTH];
 static bool armed_access, injected, fail_publication, publication_competitor;
 static bool fail_metadata, metadata_competitor;
-static int replacement_kind;
-static bool fail_backup_creation, tamper_backup_directory;
+static int replacement_kind, binding_error;
+static bool fail_backup_creation, tamper_backup_directory, mismatch_restore_collision;
 static char altered_directory[1024];
 static char observed_backup[1024];
 static const unsigned char old_png[] = {0x89,'P','N','G',13,10,26,10,'o','l','d'};
@@ -46,15 +48,44 @@ static void assert_bytes(const char *name, const void *expected, size_t size) {
 static void assert_text(const char *name, const char *text) { assert_bytes(name, text, strlen(text)); }
 int __real_access(const char *, int);
 int __real_rename(const char *, const char *);
+static void replace_inspected_background(void) {
+    armed_access = false; injected = true;
+    TEST_ASSERT_EQUAL_INT(0, __real_rename(path, saved));
+    if (replacement_kind == 1) put_text(path, "unrelated replacement");
+    else TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, path));
+}
 int __wrap_access(const char *name, int mode) {
     int result = __real_access(name, mode); int saved_errno = errno;
-    if (armed_access && !strcmp(name, path) && result == 0) {
-        armed_access = false; injected = true;
-        TEST_ASSERT_EQUAL_INT(0, __real_rename(path, saved));
-        if (replacement_kind == 1) put_text(path, "unrelated replacement");
-        else TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, path));
+    if (armed_access && !strcmp(name, path) && result == 0) replace_inspected_background();
+    errno = saved_errno; return result;
+}
+int __real_fstat(int, struct stat *);
+int __wrap_fstat(int fd, struct stat *info) {
+    int result = __real_fstat(fd, info); int saved_errno = errno;
+    if (armed_access && result == 0 && S_ISREG(info->st_mode)) {
+        char proc[64], name[1024]; snprintf(proc, sizeof(proc), "/proc/self/fd/%d", fd);
+        ssize_t size = readlink(proc, name, sizeof(name)-1);
+        if (size > 0) { name[size] = 0; if (!strcmp(name, path)) replace_inspected_background(); }
     }
     errno = saved_errno; return result;
+}
+long __real_syscall(long, ...);
+long __wrap_syscall(long number, ...) {
+    if (number != SYS_renameat2) { TEST_FAIL_MESSAGE("Unexpected background syscall"); errno = ENOSYS; return -1; }
+    va_list args; va_start(args, number);
+    int from = va_arg(args, int); const char *oldname = va_arg(args, const char *);
+    int to = va_arg(args, int); const char *newname = va_arg(args, const char *);
+    unsigned flags = va_arg(args, unsigned); va_end(args);
+    if (!strcmp(newname, "original")) {
+        char proc[64], name[1024]; snprintf(proc, sizeof(proc), "/proc/self/fd/%d", to);
+        ssize_t size = readlink(proc, name, sizeof(name)-1); TEST_ASSERT_TRUE(size > 0); name[size] = 0;
+        int length = snprintf(observed_backup, sizeof(observed_backup), "%s/original", name);
+        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof(observed_backup));
+        if (binding_error) { errno = binding_error; return -1; }
+    }
+    if (mismatch_restore_collision && !strcmp(oldname, "original") && strcmp(newname, "original"))
+        put_text(path, "identity restore competitor");
+    return __real_syscall(number, from, oldname, to, newname, flags);
 }
 char *__real_mkdtemp(char *);
 char *__wrap_mkdtemp(char *name) {
@@ -123,7 +154,7 @@ static void assert_metadata_unchanged(void) {
 }
 void setUp(void) {
     armed_access = injected = fail_publication = publication_competitor = false;
-    fail_metadata = metadata_competitor = fail_backup_creation = false; replacement_kind = 0; observed_backup[0] = 0; tamper_backup_directory = false; altered_directory[0] = 0;
+    fail_metadata = metadata_competitor = fail_backup_creation = false; replacement_kind = binding_error = 0; observed_backup[0] = 0; tamper_backup_directory = mismatch_restore_collision = false; altered_directory[0] = 0;
     g_config.web_auth_enabled = false; g_config.demo_mode = false;
     safe_strcpy(g_config.storage_path, storage, sizeof(g_config.storage_path), 0);
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM operator_floor_plans;", NULL, NULL, NULL));
@@ -219,6 +250,30 @@ static void test_invalid_private_directory_is_retained_without_touching_backgrou
     TEST_ASSERT_EQUAL_INT(0, lstat(altered_directory, &info));
     TEST_ASSERT_TRUE(S_ISDIR(info.st_mode));
 }
+static void test_initial_upload_without_old_background_succeeds(void) {
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT(DB_OPERATOR_FLOOR_PLAN_OK, db_operator_floor_plan_set_background(uuid, NULL));
+    TEST_ASSERT_EQUAL_INT(200, upload_background());
+    assert_bytes(path, new_png, sizeof(new_png)); assert_metadata_unchanged();
+}
+static void test_preexisting_symlink_background_is_rejected(void) {
+    TEST_ASSERT_EQUAL_INT(0, unlink(path)); TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, path));
+    TEST_ASSERT_EQUAL_INT(500, upload_background());
+    struct stat info; TEST_ASSERT_EQUAL_INT(0, lstat(path, &info)); TEST_ASSERT_TRUE(S_ISLNK(info.st_mode));
+    assert_text(sentinel, "sentinel unchanged"); assert_metadata_unchanged();
+}
+static void test_unsupported_old_file_binding_preserves_background(void) {
+    binding_error = ENOSYS;
+    TEST_ASSERT_EQUAL_INT(500, upload_background());
+    assert_bytes(path, old_png, sizeof(old_png)); assert_metadata_unchanged();
+}
+static void test_identity_restore_collision_preserves_all_entries(void) {
+    armed_access = true; replacement_kind = 1; mismatch_restore_collision = true;
+    TEST_ASSERT_EQUAL_INT(500, upload_background()); TEST_ASSERT_TRUE(injected);
+    assert_bytes(saved, old_png, sizeof(old_png));
+    assert_text(path, "identity restore competitor");
+    assert_text(observed_backup, "unrelated replacement"); assert_metadata_unchanged();
+}
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-27-XXXXXX"); if (!mkdtemp(root)) return 2;
     snprintf(storage, sizeof(storage), "%s/storage", root);
@@ -244,6 +299,10 @@ int main(void) {
     RUN_TEST(test_preexisting_backup_symlink_is_preserved);
     RUN_TEST(test_private_backup_creation_failure_preserves_old_file);
     RUN_TEST(test_invalid_private_directory_is_retained_without_touching_background);
+    RUN_TEST(test_initial_upload_without_old_background_succeeds);
+    RUN_TEST(test_preexisting_symlink_background_is_rejected);
+    RUN_TEST(test_unsupported_old_file_binding_preserves_background);
+    RUN_TEST(test_identity_restore_collision_preserves_all_entries);
     int result = UNITY_END();
     shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;

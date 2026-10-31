@@ -5,6 +5,7 @@
  * This file is part of LightNVR <https://github.com/opensensor/lightNVR>.
  */
 
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
 #include "web/api_handlers_operator_floor_plans.h"
@@ -12,6 +13,10 @@
 #include <cjson/cJSON.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <errno.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 #include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -873,6 +878,8 @@ typedef struct {
     char directory[BACKGROUND_PATH_SIZE + 32];
     char path[BACKGROUND_PATH_SIZE + 48];
     int descriptor;
+    int parent;
+    int old_file;
     bool created;
     bool validated;
     struct stat identity;
@@ -905,6 +912,56 @@ static void finish_background_backup(background_backup_t *backup) {
     }
     if (backup->descriptor >= 0) close(backup->descriptor);
     backup->descriptor = -1;
+    if (backup->parent >= 0) close(backup->parent);
+    if (backup->old_file >= 0) close(backup->old_file);
+    backup->parent = backup->old_file = -1;
+}
+
+static bool background_same_inode(const struct stat *a, const struct stat *b) {
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino;
+}
+
+static int background_move_noreplace(int from, const char *source, int to, const char *destination) {
+#if defined(__linux__) && defined(SYS_renameat2)
+    return (int)syscall(SYS_renameat2, from, source, to, destination, 1U);
+#else
+    (void)from; (void)source; (void)to; (void)destination;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+/* 1 means a bound original, 0 means absent, -1 rejects without metadata change. */
+static int bind_background_original(const char *destination, const char *directory,
+                                    background_backup_t *backup) {
+    const char *leaf = strrchr(destination, '/');
+    leaf = leaf ? leaf + 1 : destination;
+    backup->parent = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat parent_identity, named, original;
+    if (backup->parent < 0 || fstat(backup->parent, &parent_identity) != 0) return -1;
+#ifdef O_PATH
+    backup->old_file = openat(backup->parent, leaf, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+#else
+    backup->old_file = openat(backup->parent, leaf, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+#endif
+    if (backup->old_file < 0) return errno == ENOENT ? 0 : -1;
+    if (fstat(backup->old_file, &original) != 0 || !S_ISREG(original.st_mode)) return -1;
+    if (!create_background_backup(destination, backup)) return -1;
+    const char *private_leaf = strrchr(backup->directory, '/');
+    private_leaf = private_leaf ? private_leaf + 1 : backup->directory;
+    if (lstat(directory, &named) != 0 || !background_same_inode(&parent_identity, &named) ||
+        fstatat(backup->parent, private_leaf, &named, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !background_same_inode(&backup->identity, &named)) return -1;
+    if (background_move_noreplace(backup->parent, leaf, backup->descriptor, "original") != 0) return -1;
+    if (fstatat(backup->descriptor, "original", &named, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !S_ISREG(named.st_mode) || !background_same_inode(&original, &named) ||
+        original.st_size != named.st_size || original.st_mtim.tv_sec != named.st_mtim.tv_sec ||
+        original.st_mtim.tv_nsec != named.st_mtim.tv_nsec) {
+        if (background_move_noreplace(backup->descriptor, "original", backup->parent, leaf) != 0)
+            log_warn("Changed floor-plan entry retained in private backup: %s", backup->path);
+        return -1;
+    }
+    return 1;
 }
 
 static bool background_file_path(const char *uuid, const char *mime,
@@ -1082,17 +1139,18 @@ void handle_put_operator_floor_plan_background(const http_request_t *req,
 
     // Preserve a same-type background until the metadata update succeeds, so
     // an SQLite failure does not turn a valid existing background into a 404.
-    background_backup_t backup = {.descriptor = -1};
+    background_backup_t backup = {.descriptor = -1, .parent = -1, .old_file = -1};
     bool backed_up = false;
-    if (strcmp(existing.background_mime, mime) == 0 && access(path, F_OK) == 0) {
-        if (!create_background_backup(path, &backup) || rename(path, backup.path) != 0) {
+    if (strcmp(existing.background_mime, mime) == 0) {
+        int bound = bind_background_original(path, directory, &backup);
+        if (bound < 0) {
             unlink(temporary);
             finish_background_backup(&backup);
             pthread_mutex_unlock(&background_files_mutex);
             http_response_set_json_error(res, 500, "Failed to store floor plan background");
             return;
         }
-        backed_up = true;
+        backed_up = bound > 0;
     }
     if (rename(temporary, path) != 0) {
         unlink(temporary);
