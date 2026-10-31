@@ -360,11 +360,12 @@
       "title": "cpp/cleartext-storage-database in db_event_destinations.c",
       "depends_on": [
         "T7",
-        "T13"
+        "T13",
+        "T7.11.1"
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "Not Completed",
+      "status": "Blocked \u2014 credential storage contract requires design and implementation or reviewed exception",
       "ownership": [
         "src/database/db_event_destinations.c",
         "tests/unit/test_t7_11.c",
@@ -407,7 +408,8 @@
           "scanner": "codeql-cpp"
         }
       ],
-      "lease": "exclusive native runner/build lease"
+      "lease": "exclusive native runner/build lease",
+      "log": "Both raw create/update sinks reproduced as plaintext in SQLite;8private DB/API controls pass for existing authorization/redaction, which do not remediate at-rest exposure. No production change or approval. T7.11.1 produces a concrete proposed contract before implementation can be scoped."
     },
     {
       "id": "T7.12",
