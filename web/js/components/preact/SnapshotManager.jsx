@@ -202,7 +202,7 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }) {
   return (
     <button
       className="snapshot-btn"
-      title={t('timeline.takeSnapshot')}
+      aria-label={t('timeline.takeSnapshot')} title={t('timeline.takeSnapshot')}
       data-id={streamId}
       data-name={streamName}
       onClick={handleClick}

@@ -880,7 +880,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
             id="fullscreen-btn"
             className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:ring-2 focus:ring-primary"
             onClick={() => toggleFullscreen()}
-            title={t(profile.fullscreenTitleKey)}
+            aria-label={t(profile.fullscreenTitleKey)} title={t(profile.fullscreenTitleKey)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

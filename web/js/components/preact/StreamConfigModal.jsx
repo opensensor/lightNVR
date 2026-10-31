@@ -396,6 +396,7 @@ export function StreamConfigModal({
             </p>
           </div>
           <button
+            aria-label={t('common.close')}
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted"
           >
@@ -422,7 +423,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="stream-name"
+                    aria-label={t('streamsConfig.streamName')} id="stream-name"
                     name="name"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${isEditing ? 'bg-muted/30' : ''}`}
                     value={currentStream.name}
@@ -446,7 +447,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="stream-url"
+                    aria-label={t('streamsConfig.streamUrl')} id="stream-url"
                     name="url"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder={t('streamsConfig.streamUrlPlaceholder')}
@@ -467,7 +468,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="stream-sub-url"
+                    aria-label={t('streamsConfig.subStreamUrl')} id="stream-sub-url"
                     name="subStreamUrl"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder={t('streamsConfig.subStreamUrlPlaceholder')}
@@ -486,7 +487,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="stream-admin-url"
+                    aria-label={t('streamsConfig.cameraAdminUrl')} id="stream-admin-url"
                     name="adminUrl"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder="http://192.168.1.100/"
@@ -506,7 +507,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="stream-tags"
+                    aria-label={t('streamsConfig.streamTags')} id="stream-tags"
                     name="tags"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                     placeholder={t('streamsConfig.streamTagsPlaceholder')}
@@ -535,7 +536,7 @@ export function StreamConfigModal({
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      id="stream-enabled"
+                      aria-label={t('streamsConfig.streamActive')} id="stream-enabled"
                       name="enabled"
                       className="h-4 w-4 rounded border-input"
                       style={primaryAccentStyle}
@@ -547,7 +548,7 @@ export function StreamConfigModal({
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      id="stream-streaming-enabled"
+                      aria-label={t('streamsConfig.liveViewEnabled')} id="stream-streaming-enabled"
                       name="streamingEnabled"
                       className="h-4 w-4 rounded border-input"
                       style={primaryAccentStyle}
@@ -597,7 +598,7 @@ export function StreamConfigModal({
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      id="stream-is-onvif"
+                      aria-label={t('streamsConfig.onvifCamera')} id="stream-is-onvif"
                       name="isOnvif"
                       className="h-4 w-4 rounded border-input"
                       style={primaryAccentStyle}
@@ -621,7 +622,7 @@ export function StreamConfigModal({
                         <label htmlFor="stream-onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
                         <input
                           type="text"
-                          id="stream-onvif-username"
+                          aria-label={t('auth.username')} id="stream-onvif-username"
                           name="onvifUsername"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                           placeholder="admin"
@@ -633,7 +634,7 @@ export function StreamConfigModal({
                         <label htmlFor="stream-onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
                         <input
                           type="password"
-                          id="stream-onvif-password"
+                          aria-label={t('auth.password')} id="stream-onvif-password"
                           name="onvifPassword"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                           placeholder="••••••••"
@@ -645,7 +646,7 @@ export function StreamConfigModal({
                         <label htmlFor="stream-onvif-profile" className="block text-sm font-medium mb-1">{t('streamsConfig.profileOptional')}</label>
                         <input
                           type="text"
-                          id="stream-onvif-profile"
+                          aria-label={t('streamsConfig.profileOptional')} id="stream-onvif-profile"
                           name="onvifProfile"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                           placeholder="Profile_1"
@@ -657,7 +658,7 @@ export function StreamConfigModal({
                         <label htmlFor="stream-onvif-port" className="block text-sm font-medium mb-1">{t('streamsConfig.onvifPort')}</label>
                         <input
                           type="number"
-                          id="stream-onvif-port"
+                          aria-label={t('streamsConfig.onvifPort')} id="stream-onvif-port"
                           name="onvifPort"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                           placeholder="80"
@@ -738,7 +739,7 @@ export function StreamConfigModal({
                       <label className="flex items-start space-x-3 cursor-pointer p-3 hover:bg-muted/30 transition-colors rounded-lg">
                         <input
                           type="checkbox"
-                          id="stream-record"
+                          aria-label={t('streamsConfig.enableContinuousRecording')} id="stream-record"
                           name="record"
                           className="h-4 w-4 mt-0.5 rounded border-input"
                           style={primaryAccentStyle}
@@ -761,7 +762,7 @@ export function StreamConfigModal({
                           <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit border border-transparent hover:border-primary/20">
                             <input
                               type="checkbox"
-                              id="stream-record-on-schedule"
+                              aria-label={t('streamsConfig.onASchedule') + ' ' + t('streamsConfig.restrictRecordingToSchedule')} id="stream-record-on-schedule"
                               name="recordOnSchedule"
                               className="h-3.5 w-3.5 rounded border-input"
                               style={primaryAccentStyle}
@@ -794,7 +795,7 @@ export function StreamConfigModal({
                     <label className="flex items-start space-x-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
                       <input
                         type="checkbox"
-                        id="stream-detection-enabled"
+                        aria-label={t('streamsConfig.enableDetectionRecording')} id="stream-detection-enabled"
                         name="detectionEnabled"
                         className="h-4 w-4 mt-0.5 rounded border-input"
                         style={primaryAccentStyle}
@@ -813,7 +814,7 @@ export function StreamConfigModal({
                         <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit">
                           <input
                             type="checkbox"
-                            id="stream-detection-record-on-schedule"
+                            aria-label={t('streamsConfig.onASchedule') + ' ' + t('streamsConfig.detectionScheduleHelpShort')} id="stream-detection-record-on-schedule"
                             name="detectionRecordOnSchedule"
                             className="h-3.5 w-3.5 rounded border-input"
                             style={primaryAccentStyle}
@@ -886,7 +887,7 @@ export function StreamConfigModal({
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        id="stream-record-audio"
+                        aria-label={t('streamsConfig.recordAudio')} id="stream-record-audio"
                         name="recordAudio"
                         className="h-4 w-4 rounded border-input"
                         style={primaryAccentStyle}
@@ -898,7 +899,7 @@ export function StreamConfigModal({
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        id="stream-backchannel-enabled"
+                        aria-label={t('streamsConfig.twoWayAudio')} id="stream-backchannel-enabled"
                         name="backchannelEnabled"
                         className="h-4 w-4 rounded border-input"
                         style={primaryAccentStyle}
@@ -913,7 +914,7 @@ export function StreamConfigModal({
                   >
                     <input
                       type="checkbox"
-                      id="stream-audio-voice-enhancement"
+                      aria-label={t('streamsConfig.audioVoiceEnhancement')} id="stream-audio-voice-enhancement"
                       name="audioVoiceEnhancement"
                       className="h-4 w-4 rounded border-input"
                       style={primaryAccentStyle}
@@ -973,7 +974,7 @@ export function StreamConfigModal({
                             type="button"
                             onClick={onRefreshModels}
                             className="p-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground"
-                            title={t('streamsConfig.refreshModels')}
+                            aria-label={t('streamsConfig.refreshModels')} title={t('streamsConfig.refreshModels')}
                           >
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
@@ -1026,7 +1027,7 @@ export function StreamConfigModal({
                                 </div>
                                 <input
                                   type="text"
-                                  id="stream-custom-api-url"
+                                  aria-label={t('streamsConfig.customApiEndpointUrl')} id="stream-custom-api-url"
                                   name="detectionModel"
                                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                                   placeholder={t('streamsConfig.customApiEndpointPlaceholder')}
@@ -1068,7 +1069,7 @@ export function StreamConfigModal({
                         </label>
                         <input
                           type="text"
-                          id="stream-detection-url"
+                          aria-label={t('streamsConfig.detectionUrl')} id="stream-detection-url"
                           name="detectionUrl"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                           placeholder={t('streamsConfig.detectionUrlPlaceholder')}
@@ -1086,7 +1087,7 @@ export function StreamConfigModal({
                         </label>
                         <input
                           type="range"
-                          id="stream-detection-threshold"
+                          aria-label={t('streamsConfig.detectionThreshold')} id="stream-detection-threshold"
                           name="detectionThreshold"
                           className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                           min="0"
@@ -1107,7 +1108,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="stream-detection-interval"
+                            aria-label={t('streamsConfig.detectionIntervalFrames')} id="stream-detection-interval"
                             name="detectionInterval"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="1"
@@ -1124,7 +1125,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="stream-pre-buffer"
+                            aria-label={t('streamsConfig.preDetectionBufferSec')} id="stream-pre-buffer"
                             name="preBuffer"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="0"
@@ -1141,7 +1142,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="stream-post-buffer"
+                            aria-label={t('streamsConfig.postDetectionBufferSec')} id="stream-post-buffer"
                             name="postBuffer"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="0"
@@ -1181,7 +1182,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="text"
-                            id="stream-detection-object-filter-list"
+                            aria-label={t(currentStream.detectionObjectFilter === 'include' ? 'streamsConfig.includeObjects' : 'streamsConfig.excludeObjects')} id="stream-detection-object-filter-list"
                             name="detectionObjectFilterList"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             placeholder={t('streamsConfig.objectFilterListPlaceholder')}
@@ -1209,7 +1210,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="retention-days"
+                        aria-label={t('streamsConfig.retentionDays')} id="retention-days"
                         name="retentionDays"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="-1"
@@ -1226,7 +1227,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="detection-retention-days"
+                        aria-label={t('streamsConfig.detectionRetentionDays')} id="detection-retention-days"
                         name="detectionRetentionDays"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="-1"
@@ -1243,7 +1244,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="max-storage-mb"
+                        aria-label={t('streamsConfig.maxStorageMb')} id="max-storage-mb"
                         name="maxStorageMb"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="0"
@@ -1259,7 +1260,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="tier-critical-multiplier"
+                        aria-label={t('streamsConfig.tierCriticalMultiplier')} id="tier-critical-multiplier"
                         name="tierCriticalMultiplier"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="0"
@@ -1274,7 +1275,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="tier-important-multiplier"
+                        aria-label={t('streamsConfig.tierImportantMultiplier')} id="tier-important-multiplier"
                         name="tierImportantMultiplier"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="0"
@@ -1289,7 +1290,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="tier-ephemeral-multiplier"
+                        aria-label={t('streamsConfig.tierEphemeralMultiplier')} id="tier-ephemeral-multiplier"
                         name="tierEphemeralMultiplier"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="0"
@@ -1304,7 +1305,7 @@ export function StreamConfigModal({
                       </label>
                       <input
                         type="number"
-                        id="storage-priority"
+                        aria-label={t('streamsConfig.storagePriority')} id="storage-priority"
                         name="storagePriority"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                         min="1"
@@ -1409,7 +1410,7 @@ export function StreamConfigModal({
                 <label className="touch-target flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    id="eptz-enabled"
+                    aria-label={t('streamsConfig.eptzEnable')} id="eptz-enabled"
                     name="eptzEnabled"
                     className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
                     checked={!!currentStream.eptzEnabled}
@@ -1427,49 +1428,49 @@ export function StreamConfigModal({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label htmlFor="eptz-center-x" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzCenterX')}</label>
-                        <input type="number" id="eptz-center-x" name="eptzCenterX" min="0" max="1" step="0.001"
+                        <input type="number" aria-label={t('streamsConfig.eptzCenterX')} id="eptz-center-x" name="eptzCenterX" min="0" max="1" step="0.001"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzCenterX} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-center-y" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzCenterY')}</label>
-                        <input type="number" id="eptz-center-y" name="eptzCenterY" min="0" max="1" step="0.001"
+                        <input type="number" aria-label={t('streamsConfig.eptzCenterY')} id="eptz-center-y" name="eptzCenterY" min="0" max="1" step="0.001"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzCenterY} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-radius" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzRadius')}</label>
-                        <input type="number" id="eptz-radius" name="eptzRadius" min="0.05" max="1" step="0.001"
+                        <input type="number" aria-label={t('streamsConfig.eptzRadius')} id="eptz-radius" name="eptzRadius" min="0.05" max="1" step="0.001"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzRadius} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-fov" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzLensFov')}</label>
-                        <input type="number" id="eptz-fov" name="eptzFov" min="160" max="360" step="1"
+                        <input type="number" aria-label={t('streamsConfig.eptzLensFov')} id="eptz-fov" name="eptzFov" min="160" max="360" step="1"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzFov} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-rotation" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzRotation')}</label>
-                        <input type="number" id="eptz-rotation" name="eptzRotation" min="-360" max="360" step="1"
+                        <input type="number" aria-label={t('streamsConfig.eptzRotation')} id="eptz-rotation" name="eptzRotation" min="-360" max="360" step="1"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzRotation} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-default-yaw" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzDefaultYaw')}</label>
-                        <input type="number" id="eptz-default-yaw" name="eptzDefaultYaw" min="-360" max="360" step="1"
+                        <input type="number" aria-label={t('streamsConfig.eptzDefaultYaw')} id="eptz-default-yaw" name="eptzDefaultYaw" min="-360" max="360" step="1"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzDefaultYaw} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-default-tilt" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzDefaultTilt')}</label>
-                        <input type="number" id="eptz-default-tilt" name="eptzDefaultTilt" min="-90" max="30" step="1"
+                        <input type="number" aria-label={t('streamsConfig.eptzDefaultTilt')} id="eptz-default-tilt" name="eptzDefaultTilt" min="-90" max="30" step="1"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzDefaultTilt} onChange={onInputChange} />
                       </div>
                       <div>
                         <label htmlFor="eptz-default-view-fov" className="block text-sm font-medium mb-2">{t('streamsConfig.eptzViewFov')}</label>
-                        <input type="number" id="eptz-default-view-fov" name="eptzDefaultViewFov" min="20" max="120" step="1"
+                        <input type="number" aria-label={t('streamsConfig.eptzViewFov')} id="eptz-default-view-fov" name="eptzDefaultViewFov" min="20" max="120" step="1"
                           className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                           value={currentStream.eptzDefaultViewFov} onChange={onInputChange} />
                       </div>
@@ -1493,7 +1494,7 @@ export function StreamConfigModal({
                   <div className="flex items-center space-x-3">
                     <input
                       type="checkbox"
-                      id="ptz-enabled"
+                      aria-label={t('streamsConfig.enablePtzControl')} id="ptz-enabled"
                       name="ptzEnabled"
                       className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
                       checked={currentStream.ptzEnabled || false}
@@ -1517,7 +1518,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="ptz-max-x"
+                            aria-label={t('streamsConfig.maxPanX')} id="ptz-max-x"
                             name="ptzMaxX"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="0"
@@ -1533,7 +1534,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="ptz-max-y"
+                            aria-label={t('streamsConfig.maxTiltY')} id="ptz-max-y"
                             name="ptzMaxY"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="0"
@@ -1549,7 +1550,7 @@ export function StreamConfigModal({
                           </label>
                           <input
                             type="number"
-                            id="ptz-max-z"
+                            aria-label={t('streamsConfig.maxZoomZ')} id="ptz-max-z"
                             name="ptzMaxZ"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                             min="0"
@@ -1564,7 +1565,7 @@ export function StreamConfigModal({
                       <div className="flex items-center space-x-3 mt-4">
                         <input
                           type="checkbox"
-                          id="ptz-has-home"
+                          aria-label={t('streamsConfig.cameraSupportsHomePosition')} id="ptz-has-home"
                           name="ptzHasHome"
                           className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
                           checked={currentStream.ptzHasHome || false}
@@ -1611,7 +1612,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="number"
-                    id="stream-segment"
+                    aria-label={t('streamsConfig.segmentDurationSeconds')} id="stream-segment"
                     name="segment"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                     min="30"
@@ -1628,7 +1629,7 @@ export function StreamConfigModal({
                   </label>
                   <input
                     type="text"
-                    id="motion-trigger-source"
+                    aria-label={t('streamsConfig.motionTriggerSource')} id="motion-trigger-source"
                     name="motionTriggerSource"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                     placeholder={t('streamsConfig.motionTriggerSourcePlaceholder')}
@@ -1651,7 +1652,7 @@ export function StreamConfigModal({
                   {t('streamsConfig.go2rtcSourceOverrideLabel')}
                 </label>
                 <textarea
-                  id="go2rtc-source-override"
+                  aria-label={t('streamsConfig.go2rtcSourceOverrideLabel')} id="go2rtc-source-override"
                   name="go2rtcSourceOverride"
                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                   rows="4"
@@ -1677,7 +1678,7 @@ export function StreamConfigModal({
                 </label>
                 <input
                   type="text"
-                  id="publish-url"
+                  aria-label={t('streamsConfig.publishUrl')} id="publish-url"
                   name="publishUrl"
                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                   placeholder="rtmp://a.rtmp.youtube.com/live2/xxxx-xxxx-xxxx-xxxx-xxxx"

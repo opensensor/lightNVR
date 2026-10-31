@@ -317,7 +317,7 @@ export function LoginView() {
               <label htmlFor="username" className="block text-sm font-medium mb-1">{t('login.username')}</label>
               <input
                   type="text"
-                  id="username"
+                  aria-label={t('login.username')} id="username"
                   name="username"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder={t('login.usernamePlaceholder')}
@@ -331,7 +331,7 @@ export function LoginView() {
               <label htmlFor="password" className="block text-sm font-medium mb-1">{t('login.password')}</label>
               <input
                   type="password"
-                  id="password"
+                  aria-label={t('login.password')} id="password"
                   name="password"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder={t('login.passwordPlaceholder')}
@@ -346,7 +346,7 @@ export function LoginView() {
                 <label htmlFor="totp-code-force" className="block text-sm font-medium mb-1">{t('login.verificationCode')}</label>
                 <input
                     type="text"
-                    id="totp-code-force"
+                    aria-label={t('login.verificationCode')} id="totp-code-force"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
                     placeholder="000000"
                     value={forceMfaTotpCode}
@@ -362,7 +362,7 @@ export function LoginView() {
               <label className="touch-target flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
-                  checked={rememberDevice}
+                  aria-label={t('login.rememberDevice', { days: trustedDeviceDays })} checked={rememberDevice}
                   onChange={(e) => setRememberDevice(e.target.checked)}
                   disabled={isLoggingIn}
                 />
@@ -390,7 +390,7 @@ export function LoginView() {
               <label htmlFor="totp-code" className="block text-sm font-medium mb-1">{t('login.verificationCode')}</label>
               <input
                   type="text"
-                  id="totp-code"
+                  aria-label={t('login.verificationCode')} id="totp-code"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
                   placeholder="000000"
                   value={totpCode}
@@ -406,7 +406,7 @@ export function LoginView() {
               <label className="touch-target flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
-                  checked={rememberDevice}
+                  aria-label={t('login.rememberDevice', { days: trustedDeviceDays })} checked={rememberDevice}
                   onChange={(e) => setRememberDevice(e.target.checked)}
                   disabled={isLoggingIn}
                 />

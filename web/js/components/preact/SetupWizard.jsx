@@ -84,7 +84,7 @@ function StorageStep({ form, onChange }) {
         <input
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
-          value={form.storagePath}
+          aria-label={t('setupWizard.storagePath')} value={form.storagePath}
           onInput={e => onChange('storagePath', e.target.value)}
           placeholder="/var/lib/lightnvr/recordings"
         />
@@ -94,7 +94,7 @@ function StorageStep({ form, onChange }) {
           type="number"
           min="0"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
-          value={form.maxStorageSize}
+          aria-label={t('setupWizard.maxStorage')} value={form.maxStorageSize}
           onInput={e => onChange('maxStorageSize', e.target.value)}
         />
       </Field>
@@ -102,7 +102,7 @@ function StorageStep({ form, onChange }) {
         <input
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
-          value={form.dbPath}
+          aria-label={t('setupWizard.dbPath')} value={form.dbPath}
           onInput={e => onChange('dbPath', e.target.value)}
           placeholder="/var/lib/lightnvr/lightnvr.db"
         />
@@ -147,7 +147,7 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
           min="2"
           max="128"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
-          value={form.threadPoolSize}
+          aria-label={t('setupWizard.threadPool')} value={form.threadPoolSize}
           onInput={e => onChange('threadPoolSize', e.target.value)}
           placeholder={recommended.toString()}
         />
@@ -161,7 +161,7 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
           min="1"
           max={maxStreamsCeiling}
           class="w-full p-2 border border-input rounded bg-background text-foreground"
-          value={form.maxStreams}
+          aria-label={t('setupWizard.maxStreams')} value={form.maxStreams}
           onInput={e => onChange('maxStreams', e.target.value)}
         />
       </Field>
