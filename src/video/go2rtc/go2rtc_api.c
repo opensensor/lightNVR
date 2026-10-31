@@ -15,6 +15,8 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <ctype.h>
+#include <limits.h>
+#include <stdint.h>
 #include <cjson/cJSON.h>
 #include <pthread.h>
 
@@ -238,6 +240,14 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         return false;
     }
 
+    /* Convert before addition and check the existing aggregate URL budget.
+     * The public API accepts an array count, not a fixed four-source limit. */
+    if ((size_t)num_sources >= SIZE_MAX / URL_BUFFER_SIZE) {
+        log_error("Too many sources for go2rtc URL allocation");
+        return false;
+    }
+    size_t url_buf_size = ((size_t)num_sources + 1) * URL_BUFFER_SIZE;
+
     CURL *curl;
     CURLcode res;
     bool success = false;
@@ -256,14 +266,13 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     // Build URL with multiple src parameters
     // Format: http://host:port/api/streams?src=url1&src=url2&name=stream_id
     // We need a larger buffer for multiple sources
-    char *url = malloc((size_t)URL_BUFFER_SIZE * (num_sources + 1));
+    char *url = malloc(url_buf_size);
     if (!url) {
         log_error("Failed to allocate memory for URL");
         curl_easy_cleanup(curl);
         return false;
     }
 
-    size_t url_buf_size = (size_t)URL_BUFFER_SIZE * (num_sources + 1);
     int written = snprintf(url, url_buf_size, "http://%s:%d%s/api/streams?", // codeql[cpp/non-https-url] - localhost-only internal API
                            g_api_host, g_api_port, go2rtc_api_get_base_path());
     if (written < 0 || (size_t)written >= url_buf_size) {
@@ -276,28 +285,31 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 
     // Add each source as a src parameter
     for (int i = 0; i < num_sources; i++) {
-        // URL encode the source
-        char encoded_url[URL_BUFFER_SIZE * 3];
-        simple_url_escape(sources[i], encoded_url, URL_BUFFER_SIZE * 3);
-
-        if (i > 0) {
-            written = snprintf(url + offset, url_buf_size - offset, "&");
-            if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
-            offset += (size_t)written;
-        }
-        written = snprintf(url + offset, url_buf_size - offset, "src=%s", encoded_url);
-        if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
+        // Encoding must preserve the complete source, never a fixed-buffer prefix.
+        if (!sources[i]) goto cleanup_multi;
+        size_t source_len = strlen(sources[i]);
+        if (source_len >= url_buf_size || source_len > INT_MAX) goto cleanup_multi;
+        char *encoded_url = curl_easy_escape(curl, sources[i], (int)source_len);
+        if (!encoded_url) goto cleanup_multi;
+        written = snprintf(url + offset, url_buf_size - offset, "%ssrc=%s",
+                           i > 0 ? "&" : "", encoded_url);
+        curl_free(encoded_url);
+        if (written < 0 || (size_t)written >= url_buf_size - offset) goto cleanup_multi;
         offset += (size_t)written;
     }
 
     // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_stream_id[MAX_STREAM_NAME * 3];
-    simple_url_escape(stream_id, encoded_stream_id, MAX_STREAM_NAME * 3);
+    size_t stream_id_len = strlen(stream_id);
+    if (stream_id_len >= url_buf_size || stream_id_len > INT_MAX) goto cleanup_multi;
+    char *encoded_stream_id = curl_easy_escape(curl, stream_id, (int)stream_id_len);
+    if (!encoded_stream_id) goto cleanup_multi;
 
     // Add stream name
     written = snprintf(url + offset, url_buf_size - offset, "&name=%s", encoded_stream_id);
+    curl_free(encoded_stream_id);
     if (written < 0 || (size_t)written >= url_buf_size - offset) {
         log_warn("URL truncated building go2rtc request for stream %s", stream_id);
+        goto cleanup_multi;
     }
 
     log_info("Adding go2rtc stream with %d source(s) for %s", num_sources, stream_id);
@@ -328,7 +340,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         }
     }
 
-    // Clean up
+cleanup_multi:
     free(url);
     curl_easy_cleanup(curl);
 

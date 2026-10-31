@@ -18,6 +18,21 @@ static char *captured_url;
 static unsigned requests;
 static char scratch[8192], names[MAX_TRACKED_COLUMNS][64];
 static sqlite3_stmt *statement;
+static bool fail_url_allocation;
+static size_t rejected_allocation;
+static unsigned allocation_rejections;
+
+void *__real_malloc(size_t);
+void *__wrap_malloc(size_t size) {
+    /* The builder's aggregate URL is the only >=2048-byte malloc made by
+     * project code in this call. Delegate normal allocations unchanged. */
+    if (fail_url_allocation && size >= 2048) {
+        rejected_allocation = size;
+        allocation_rejections++;
+        return NULL;
+    }
+    return __real_malloc(size);
+}
 
 /* Only replace the connection provider; schema checks, query assembly and
  * zone transactions/serialization are the actual production functions. */
@@ -55,6 +70,9 @@ void setUp(void) {
     statement = NULL;
     captured_url = NULL;
     requests = 0;
+    fail_url_allocation = false;
+    rejected_allocation = 0;
+    allocation_rejections = 0;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(":memory:", &db));
     sql("CREATE TABLE t(id INTEGER); INSERT INTO t VALUES(1);");
     sql("CREATE TABLE detection_zones(id TEXT PRIMARY KEY, stream_name TEXT, "
@@ -321,6 +339,40 @@ static void test_multi_source_one_byte_aggregate_overflow(void) {
     memset(scratch, 'a', source_len); scratch[source_len] = '\0';
     submit("camera", sources, 1, false);
 }
+static void test_multi_source_more_than_four_valid_sources(void) {
+    const char *sources[] = {"rtsp://camera/1", "rtsp://camera/2", "rtsp://camera/3",
+                             "rtsp://camera/4", "rtsp://camera/5"};
+    submit("camera", sources, 5, true);
+}
+static void test_multi_source_nonpositive_counts_rejected(void) {
+    const char *sources[] = {"rtsp://camera/1"};
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("camera", sources, 0));
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("camera", sources, -1));
+    TEST_ASSERT_EQUAL_UINT(0, requests);
+}
+static void test_multi_source_allocation_failure_sends_nothing(void) {
+    const char *sources[] = {"rtsp://camera/1", "rtsp://camera/2"};
+    fail_url_allocation = true;
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("camera", sources, 2));
+    TEST_ASSERT_EQUAL_UINT(1, allocation_rejections);
+    TEST_ASSERT_EQUAL_UINT64(3072, rejected_allocation);
+    TEST_ASSERT_EQUAL_UINT(0, requests);
+}
+static void test_multi_source_maximum_count_arithmetic_before_allocation_failure(void) {
+    const char *sources[] = {"unused"};
+    fail_url_allocation = true;
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("camera", sources, INT_MAX));
+    uint64_t expected = UINT64_C(1024) * ((uint64_t)INT_MAX + 1);
+    if (expected > SIZE_MAX) {
+        TEST_ASSERT_EQUAL_UINT(0, allocation_rejections);
+    } else {
+        TEST_ASSERT_EQUAL_UINT(1, allocation_rejections);
+        TEST_ASSERT_EQUAL_UINT64(expected, rejected_allocation);
+    }
+    TEST_ASSERT_EQUAL_UINT(0, requests);
+    /* Allocation is rejected before iteration; this does not claim that the
+     * one-entry fixture is an INT_MAX-length source array or support for it. */
+}
 int main(void) {
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) return 2;
     UNITY_BEGIN();
@@ -344,6 +396,10 @@ int main(void) {
     RUN_TEST(test_multi_source_name_overflow_preserves_identity_or_rejects);
     RUN_TEST(test_multi_source_exact_aggregate_buffer_fit);
     RUN_TEST(test_multi_source_one_byte_aggregate_overflow);
+    RUN_TEST(test_multi_source_more_than_four_valid_sources);
+    RUN_TEST(test_multi_source_nonpositive_counts_rejected);
+    RUN_TEST(test_multi_source_allocation_failure_sends_nothing);
+    RUN_TEST(test_multi_source_maximum_count_arithmetic_before_allocation_failure);
     int result = UNITY_END();
     curl_global_cleanup();
     return result;
