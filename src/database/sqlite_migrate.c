@@ -238,11 +238,12 @@ static int validate_migration_file_security(const char *filepath) {
  * A CREATE TRIGGER body is a sequence of statements wrapped in BEGIN..END, so
  * splitting on the first semicolon would cut it in half: the allowlist would
  * reject the dangling END and sqlite3_exec would report "incomplete input".
- * Treat the whole trigger, including nested CASE..END expressions, as one
- * statement. Quoted literals/identifiers and comments are skipped everywhere.
+ * As in SQLite's complete.c, a trigger ends with the token sequence ; END ;.
+ * Counting BEGIN/CASE is incorrect because they can also be identifier names.
+ * Quoted literals/identifiers and comments are skipped everywhere.
  */
 static bool is_word_char(char c) {
-    return isalnum((unsigned char)c) || c == '_';
+    return isalnum((unsigned char)c) || c == '_' || c == '$' || (unsigned char)c >= 0x80;
 }
 
 /* Match `word` at `cursor` on identifier boundaries, so a column such as
@@ -266,8 +267,7 @@ static const char *statement_end(const char *start) {
     }
 
     char quote = 0;
-    int depth = 0;          /* BEGIN/CASE blocks still open */
-    bool body_started = false;
+    unsigned terminator = 0; /* 0: other token, 1: semicolon, 2: semicolon END */
     for (cursor = start; *cursor; cursor++) {
         if (quote) {
             if (*cursor == quote) {
@@ -279,6 +279,7 @@ static const char *statement_end(const char *start) {
             continue;
         }
         if (*cursor == '\'' || *cursor == '"' || *cursor == '`' || *cursor == '[') {
+            terminator = 0;
             quote = *cursor == '[' ? ']' : *cursor;
             continue;
         }
@@ -298,20 +299,16 @@ static const char *statement_end(const char *start) {
             if (*cursor == ';') return cursor;
             continue;
         }
-        if (word_matches(start, cursor, "BEGIN", 5) ||
-            word_matches(start, cursor, "CASE", 4)) {
-            depth++;
-            body_started = true;
+        if (isspace((unsigned char)*cursor)) continue;
+        if (*cursor == ';') {
+            if (terminator == 2) return cursor;
+            terminator = 1;
             continue;
         }
-        if (word_matches(start, cursor, "END", 3)) {
-            if (depth > 0) depth--;
-            if (body_started && depth == 0) {
-                cursor += 3;
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                return cursor;
-            }
-        }
+        if (terminator == 1 && word_matches(start, cursor, "END", 3)) {
+            terminator = 2;
+            cursor += 2;
+        } else terminator = 0;
     }
     return cursor;
 }

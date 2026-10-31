@@ -128,6 +128,32 @@ static void test_trigger_quoted_keywords_and_nested_case_round_trip(void) {
                          "INSERT INTO evidence VALUES('it''s;');",
                          "DROP TRIGGER \"BEGIN;END\"; DROP TABLE evidence;");
 }
+static void trigger_following_statement_is_validated(const char *name) {
+    allocated_sql = sqlite3_mprintf("-- migrate:up\nCREATE TABLE evidence(value TEXT);"
+        "CREATE TRIGGER %s AFTER INSERT ON evidence BEGIN SELECT 1; END;"
+        "ATTACH DATABASE '%q' AS escaped;\n-- migrate:down\nDROP TABLE evidence;\n", name, outside);
+    TEST_ASSERT_NOT_NULL(allocated_sql); write_fixture(allocated_sql); open_migrations(NULL);
+    int result = migrate_up(migration, NULL);
+    assert_sentinel(); TEST_ASSERT_EQUAL_INT(-1, access(outside, F_OK));
+    TEST_ASSERT_EQUAL_INT(-1, result); TEST_ASSERT_FALSE(table_exists("evidence"));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM schema_migrations"));
+}
+static void test_trigger_named_begin_does_not_hide_following_statement(void) {
+    trigger_following_statement_is_validated("BEGIN");
+}
+static void test_trigger_dollar_identifier_does_not_hide_following_statement(void) {
+    trigger_following_statement_is_validated("BEGIN$name");
+}
+static void test_trigger_unicode_identifier_does_not_hide_following_statement(void) {
+    trigger_following_statement_is_validated("BEGIN\xc3\xa9");
+}
+static void test_trigger_keyword_name_and_terminator_comments_round_trip(void) {
+    statement_round_trip("CREATE TABLE evidence(value TEXT);"
+                         "CREATE TRIGGER BEGIN AFTER INSERT ON evidence BEGIN "
+                         "SELECT CASE WHEN 1 THEN 'END;' ELSE ';END;' END; /* ; END */ END /* ; */;"
+                         "INSERT INTO evidence VALUES('kept');",
+                         "DROP TRIGGER BEGIN; DROP TABLE evidence;");
+}
 static void test_up_identifier_quote_cannot_hide_disallowed_attach(void) {
     char sql[1024];
     int length = snprintf(sql, sizeof(sql), "-- migrate:up\n"
@@ -204,6 +230,10 @@ int main(void) {
     RUN_TEST(test_bracket_identifier_round_trip);
     RUN_TEST(test_inline_comments_do_not_change_statement_boundaries);
     RUN_TEST(test_trigger_quoted_keywords_and_nested_case_round_trip);
+    RUN_TEST(test_trigger_named_begin_does_not_hide_following_statement);
+    RUN_TEST(test_trigger_dollar_identifier_does_not_hide_following_statement);
+    RUN_TEST(test_trigger_unicode_identifier_does_not_hide_following_statement);
+    RUN_TEST(test_trigger_keyword_name_and_terminator_comments_round_trip);
     RUN_TEST(test_up_identifier_quote_cannot_hide_disallowed_attach);
     RUN_TEST(test_down_identifier_quote_cannot_hide_disallowed_attach);
     RUN_TEST(test_tracking_identifier_cannot_execute_second_statement);
