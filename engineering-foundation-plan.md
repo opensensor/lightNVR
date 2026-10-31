@@ -3783,8 +3783,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/users/RoleManagerModal.jsx web/js/components/preact/users/TotpSetupModal.jsx --format json --output-file build/eng-artifacts/T7.165/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.165/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.165`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `fe93b78c`)
+- **log**: Four assigned dialog boundary warnings resolved; native keyboard controls and existing dialog behavior preserved. Eight default Node cases and nine explicit Chromium-enabled cases pass. Four directly related interaction warnings also disappear; types, both builds and43/66budgets pass. Lint now887warnings/0errors; broader TOTP modal semantics remain outside scope.
 - **files edited/created**:
 
 ### T7.166: jsx-a11y/control-has-associated-label in AuthGate.jsx, BatchDownloadModal.jsx, DetectionOverlay.jsx, FleetView.jsx, FullscreenManager.jsx, HLSVideoCell.jsx
@@ -4414,7 +4414,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.195/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.195`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-noninteractive-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md.
 - **files edited/created**:
 
 ### T7.196: jsx-a11y/no-noninteractive-tabindex in FisheyeEptzCanvas.jsx, LanguageSelector.jsx
@@ -4540,7 +4540,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.201/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.201`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-static-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md.
 - **files edited/created**:
 
 ### T7.202: jsx-a11y/no-static-element-interactions in TotpSetupModal.jsx
@@ -4561,7 +4561,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.202/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.202`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related occurrence already resolved by T7.165 (fe93b78c): TotpSetupModal no-static-element-interactions2→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md.
 - **files edited/created**:
 
 ### T7.203: nullPointerArithmeticRedundantCheck in sod_img_writer.h
@@ -7317,7 +7317,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 ### T29.5: Persist stale-deletion identity guards across restart
 - **depends_on**: [T29.4, T28.1]
 - **agent_type**: local
-- **ownership**: `db/migrations/0090_add_stale_deletion_guards.sql`, generated `include/database/db_embedded_migrations.h`, `tests/operational/lifecycle/test_stale_guard_migration.py`, current-schema expectation only in `tests/operational/lifecycle/run-lifecycle.mjs` or its actual existing producer path, `quality/evidence/T29.5.md`.
+- **ownership**: `db/migrations/0090_add_stale_deletion_guards.sql`, generated `include/database/db_embedded_migrations.h`, `tests/operational/lifecycle/test_stale_guard_migration.py`, current-schema expectation only in `tests/operational/lifecycle/run.mjs`, `quality/evidence/T29.5.md`.
 - **description**: Add explicit nullable stale_guard_kind/dev/ino fields to the durable deletion-object ledger so T29.3 can distinguish expected absence from a specific empty inode after a restart. Ordinary deletion objects remain NULL/unmodified. Keep the historical89-source fixture immutable; require those prior versions/data plus the explicit new migration in the actual upgrade check. Use the repository embedded-migration generator; no hand-edited generated arrays.
 - **acceptance_criteria**: Tests first cover missing guard schema, then actual historical-to-current SQL upgrade preserves existing rows and gives NULL guard defaults. Explicit missing/empty guard values survive reopening and invalid guard shapes fail or are rejected by the consumer. Migration/header check passes. Never silently remove pending safety guards on downgrade; unsupported rollback must fail explicitly or reject pending guarded operations, with honest documented limits. No production database is touched.
 - **validation**: Focused SQLite migration tests using disposable databases, `python3 tests/unit/test_embedded_migration_generator.py`, generator --check, and rebuilt actual T29 upgrade/restart assertions after T29.3.

@@ -9504,7 +9504,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `fe93b78c`)",
       "ownership": [
         "web/js/components/preact/users/RoleManagerModal.jsx",
         "web/js/components/preact/users/TotpSetupModal.jsx",
@@ -9551,7 +9551,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "Four assigned dialog boundary warnings resolved; native keyboard controls and existing dialog behavior preserved. Eight default Node cases and nine explicit Chromium-enabled cases pass. Four directly related interaction warnings also disappear; types, both builds and43/66budgets pass. Lint now887warnings/0errors; broader TOTP modal semantics remain outside scope."
     },
     {
       "id": "T7.166",
@@ -12424,7 +12425,14 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "task": "T7.165",
+          "evidence": "quality/evidence/T7.165.md",
+          "resolution": "RoleManagerModal no-noninteractive-element-interactions1\u21920"
+        }
+      ]
     },
     {
       "id": "T7.196",
@@ -13020,7 +13028,14 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "task": "T7.165",
+          "evidence": "quality/evidence/T7.165.md",
+          "resolution": "RoleManagerModal no-static-element-interactions1\u21920"
+        }
+      ]
     },
     {
       "id": "T7.202",
@@ -13068,7 +13083,14 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "task": "T7.165",
+          "evidence": "quality/evidence/T7.165.md",
+          "resolution": "TotpSetupModal no-static-element-interactions2\u21920"
+        }
+      ]
     },
     {
       "id": "T7.203",
@@ -22551,7 +22573,10 @@
       "finding_id": "ESLINT-BUCKET-752682010e0c301c",
       "task_id": "T7.195",
       "resolution": "pending-task",
-      "approved_exception": false
+      "approved_exception": false,
+      "related_evidence": [
+        "quality/evidence/T7.165.md"
+      ]
     },
     {
       "finding_id": "ESLINT-BUCKET-f32c4fd5a51337d3",
@@ -22743,13 +22768,19 @@
       "finding_id": "ESLINT-BUCKET-5c8c07852ed0b107",
       "task_id": "T7.201",
       "resolution": "pending-task",
-      "approved_exception": false
+      "approved_exception": false,
+      "related_evidence": [
+        "quality/evidence/T7.165.md"
+      ]
     },
     {
       "finding_id": "ESLINT-BUCKET-e046fbe269eed0dc",
       "task_id": "T7.202",
       "resolution": "pending-task",
-      "approved_exception": false
+      "approved_exception": false,
+      "related_evidence": [
+        "quality/evidence/T7.165.md"
+      ]
     },
     {
       "finding_id": "CPPCHECK-38d664fd8e77f607",
