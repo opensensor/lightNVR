@@ -1,5 +1,5 @@
 /** Real component effects with delayed API and parent recording snapshots. */
-// Run with: npm --prefix web run test:e2e -- --testPathPatterns=bulkTagsReconciliation
+// Run with: npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'
 const browserTest = it;
 async function openBrowser({
   delayedCatalog = false
