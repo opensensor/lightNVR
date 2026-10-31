@@ -605,6 +605,10 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      - name: Bulk tag reconciliation regression
+        if: ${{ matrix.shard == 1 }}
+        run: npm --prefix web run test:e2e -- --testPathPatterns=bulkTagsReconciliation
+
       - name: Run Playwright UI tests
         run: |
           # Clean any existing playwright reports to ensure fresh state
