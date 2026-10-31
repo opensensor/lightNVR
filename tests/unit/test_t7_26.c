@@ -27,6 +27,10 @@ static char source_uuid[LIGHTNVR_UUID_STRING_SIZE], destination_uuid[LIGHTNVR_UU
 static bool armed, injected;
 static int replacement_kind, publication_error, destination_stat_error;
 static bool fail_part_unlink;
+static int quarantine_error, committing_replacement;
+static bool restore_collision, commit_failure_replacement, cancel_after_publication;
+static char private_artifact[MAX_PATH_LENGTH], active_job[LIGHTNVR_UUID_STRING_SIZE];
+static char relocated_parent[256];
 int __real_unlink(const char *);
 int __wrap_unlink(const char *path) {
     if (fail_part_unlink && !strcmp(path, temporary_path)) { errno = EACCES; return -1; }
@@ -43,6 +47,7 @@ static void inject_before_publication(void) {
     armed = false; injected = true;
     if (replacement_kind == 1) put_file(destination_path, "concurrent destination data");
     else if (replacement_kind == 2) TEST_ASSERT_EQUAL_INT(0, symlink(sentinel, destination_path));
+    else if (replacement_kind == 4) put_file(temporary_path, "modified verified inode");
     else {
         TEST_ASSERT_EQUAL_INT(0, rename(temporary_path, verified_part));
         put_file(temporary_path, "unverified replacement data");
@@ -65,11 +70,66 @@ long __wrap_syscall(long number, ...) {
     int oldfd = va_arg(args, int); const char *oldname = va_arg(args, const char *);
     int newfd = va_arg(args, int); const char *newname = va_arg(args, const char *);
     unsigned int flags = va_arg(args, unsigned int); va_end(args);
-    if (armed && (!strcmp(newname, destination_path) || !strcmp(newname, "clip.mp4"))) inject_before_publication();
+    bool quarantine = !strcmp(oldname, temporary_path) ||
+        (!strcmp(newname, "verified") && strstr(oldname, ".migration-"));
+    if (armed && ((replacement_kind >= 3 && quarantine) ||
+        (replacement_kind < 3 && (!strcmp(newname, destination_path) || !strcmp(newname, "clip.mp4")))))
+        inject_before_publication();
+    if (quarantine_error && quarantine) { errno = quarantine_error; return -1; }
     if (publication_error && (!strcmp(newname, destination_path) || !strcmp(newname, "clip.mp4"))) {
         errno = publication_error; return -1;
     }
-    return __real_syscall(number, oldfd, oldname, newfd, newname, flags);
+    if (quarantine && !strcmp(newname, "verified")) {
+        char descriptor_path[64], directory[MAX_PATH_LENGTH];
+        snprintf(descriptor_path, sizeof(descriptor_path), "/proc/self/fd/%d", newfd);
+        ssize_t length = readlink(descriptor_path, directory, sizeof(directory)-1);
+        TEST_ASSERT_TRUE(length > 0); directory[length] = '\0';
+        int size = snprintf(private_artifact, sizeof(private_artifact), "%s/verified", directory);
+        TEST_ASSERT_TRUE(size > 0 && (size_t)size < sizeof(private_artifact));
+    }
+    if (restore_collision && !strcmp(oldname, "verified") && strstr(newname, ".part"))
+        put_file(temporary_path, "restore collision sentinel");
+    long result = __real_syscall(number, oldfd, oldname, newfd, newname, flags);
+    if (result == 0 && cancel_after_publication && !strcmp(newname, "clip.mp4")) {
+        cancel_after_publication = false;
+        TEST_ASSERT_EQUAL_INT(0, rename(destination_path, verified_part));
+        put_file(destination_path, "cancelled substitution sentinel");
+        storage_migration_job_t job;
+        TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(active_job, &job));
+    }
+    return result;
+}
+db_storage_migration_result_t __real_db_storage_migration_update_progress(
+    const char *, const char *, uint64_t, uint64_t);
+db_storage_migration_result_t __wrap_db_storage_migration_update_progress(
+    const char *uuid, const char *state, uint64_t copied, uint64_t total) {
+    if (committing_replacement && !strcmp(state, "committing")) {
+        int kind = committing_replacement; committing_replacement = 0;
+        if (kind == 2) {
+            char parent[MAX_PATH_LENGTH], relocated_file[MAX_PATH_LENGTH];
+            strcpy(parent, destination_path); *strrchr(parent, '/') = 0;
+            TEST_ASSERT_EQUAL_INT(0, rename(parent, relocated_parent));
+            TEST_ASSERT_EQUAL_INT(0, mkdir(parent, 0700));
+            int size = snprintf(relocated_file, sizeof(relocated_file), "%s/clip.mp4", relocated_parent);
+            TEST_ASSERT_TRUE(size > 0 && (size_t)size < sizeof(relocated_file));
+            TEST_ASSERT_EQUAL_INT(0, link(relocated_file, destination_path));
+        } else {
+            TEST_ASSERT_EQUAL_INT(0, rename(destination_path, verified_part));
+            put_file(destination_path, "substituted published destination");
+        }
+    }
+    return __real_db_storage_migration_update_progress(uuid, state, copied, total);
+}
+db_storage_migration_result_t __real_db_storage_migration_commit_location(
+    const storage_migration_job_t *, const char *, const char *);
+db_storage_migration_result_t __wrap_db_storage_migration_commit_location(
+    const storage_migration_job_t *job, const char *path, const char *checksum) {
+    if (commit_failure_replacement) {
+        TEST_ASSERT_EQUAL_INT(0, rename(destination_path, verified_part));
+        put_file(destination_path, "failed commit substitution sentinel");
+        return DB_STORAGE_MIGRATION_ERROR;
+    }
+    return __real_db_storage_migration_commit_location(job, path, checksum);
 }
 static void assert_bytes(const char *path, const char *expected) {
     FILE *file = fopen(path, "r"); TEST_ASSERT_NOT_NULL(file);
@@ -102,12 +162,13 @@ static void configure_targets(void) {
     strcpy(destination_uuid, destination.uuid);
 }
 void setUp(void) {
-    armed = injected = fail_part_unlink = false; replacement_kind = publication_error = destination_stat_error = 0; temporary_path[0] = '\0';
+    armed = injected = fail_part_unlink = false; replacement_kind = publication_error = destination_stat_error = 0; quarantine_error = committing_replacement = 0; temporary_path[0] = '\0';
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
         "DELETE FROM storage_migration_jobs;DELETE FROM detections;DELETE FROM recordings;DELETE FROM storage_targets;",
         NULL, NULL, NULL));
-    remove_owned_tree(source_root); remove_owned_tree(destination_root);
+    remove_owned_tree(source_root); remove_owned_tree(destination_root); remove_owned_tree(relocated_parent);
     TEST_ASSERT_EQUAL_INT(0, mkdir(source_root, 0700)); TEST_ASSERT_EQUAL_INT(0, mkdir(destination_root, 0700));
+    restore_collision = commit_failure_replacement = cancel_after_publication = false; private_artifact[0] = 0;
     unlink(sentinel); unlink(verified_part); put_file(sentinel, "sentinel unchanged");
     configure_targets();
 }
@@ -127,6 +188,7 @@ static uint64_t create_job(storage_migration_job_t *job, const char *operation) 
     uint64_t id = add_recording_metadata(&recording); TEST_ASSERT_NOT_EQUAL_UINT64(0, id);
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK,
         db_storage_migration_create_operation(id, destination_uuid, operation, 0, job));
+    strcpy(active_job, job->uuid);
     size_t needed = strlen(destination_path) + strlen(job->uuid) + sizeof(".migration-.part");
     TEST_ASSERT_TRUE(needed <= sizeof(temporary_path));
     strcpy(temporary_path, destination_path);
@@ -336,11 +398,69 @@ static void test_fresh_attempt_without_legacy_name_keeps_cleanup_pending(void) {
     TEST_ASSERT_EQUAL_INT(-1, access(temporary_path, F_OK));
     assert_cleanup_pending(&job, "cancelled");
 }
+static void test_quarantine_unsupported_preserves_verified_temporary(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    quarantine_error = ENOSYS;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(temporary_path, payload);
+    TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
+}
+static void test_post_publication_substitution_is_rejected_before_commit(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    committing_replacement = 1;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(verified_part, payload);
+    assert_bytes(destination_path, "substituted published destination");
+}
+static void test_restore_collision_retains_private_entry_and_cleanup_debt(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    replacement_kind = 3; armed = restore_collision = true;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(verified_part, payload);
+    assert_bytes(temporary_path, "restore collision sentinel");
+    assert_bytes(private_artifact, "unverified replacement data");
+    TEST_ASSERT_EQUAL_INT(0, unlink(temporary_path)); /* Remove only test-created sentinel. */
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_bytes(private_artifact, "unverified replacement data");
+    assert_cleanup_pending(&job, "failed");
+}
+static void test_failed_commit_does_not_unlink_substituted_destination(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    commit_failure_replacement = true;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(verified_part, payload);
+    assert_bytes(destination_path, "failed commit substitution sentinel");
+}
+static void test_cancelled_publication_does_not_unlink_substituted_destination(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    cancel_after_publication = true;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(verified_part, payload);
+    assert_bytes(destination_path, "cancelled substitution sentinel");
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
+    assert_cleanup_pending(&job, "cancelled");
+}
+static void test_modified_verified_inode_is_rejected(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    replacement_kind = 4; armed = true;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one()); TEST_ASSERT_TRUE(injected);
+    assert_source_location(id); assert_bytes(temporary_path, "modified verified inode");
+    TEST_ASSERT_EQUAL_INT(-1, access(destination_path, F_OK));
+}
+static void test_parent_replacement_with_same_file_inode_is_rejected(void) {
+    storage_migration_job_t job; uint64_t id = create_job(&job, "move");
+    committing_replacement = 2;
+    TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
+    assert_source_location(id); assert_bytes(destination_path, payload);
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
+    TEST_ASSERT_EQUAL_STRING("failed", job.state);
+}
 int main(void) {
     strcpy(root, "/tmp/lightnvr-t7-26-XXXXXX"); if (!mkdtemp(root)) return 2;
     snprintf(source_root, sizeof(source_root), "%s/source", root);
     snprintf(destination_root, sizeof(destination_root), "%s/destination", root);
     snprintf(db_path, sizeof(db_path), "%s/database.sqlite", root);
+    snprintf(relocated_parent, sizeof(relocated_parent), "%s/relocated-parent", root);
     snprintf(source_path, sizeof(source_path), "%s/camera/clip.mp4", source_root);
     snprintf(destination_path, sizeof(destination_path), "%s/camera/clip.mp4", destination_root);
     snprintf(sentinel, sizeof(sentinel), "%s/sentinel", root);
@@ -369,6 +489,13 @@ int main(void) {
     RUN_TEST(test_retry_preserves_previous_attempt_and_uses_fresh_artifact);
     RUN_TEST(test_preexisting_temporary_symlink_and_target_survive);
     RUN_TEST(test_fresh_attempt_without_legacy_name_keeps_cleanup_pending);
+    RUN_TEST(test_quarantine_unsupported_preserves_verified_temporary);
+    RUN_TEST(test_post_publication_substitution_is_rejected_before_commit);
+    RUN_TEST(test_restore_collision_retains_private_entry_and_cleanup_debt);
+    RUN_TEST(test_failed_commit_does_not_unlink_substituted_destination);
+    RUN_TEST(test_cancelled_publication_does_not_unlink_substituted_destination);
+    RUN_TEST(test_modified_verified_inode_is_rejected);
+    RUN_TEST(test_parent_replacement_with_same_file_inode_is_rejected);
     int result = UNITY_END(); shutdown_database(); free(g_config.streams); g_config.streams = NULL;
     remove_owned_tree(root); return result;
 }
