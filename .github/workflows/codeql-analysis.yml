@@ -89,6 +89,10 @@ jobs:
               '--sarif-category=/language:' + os.environ['LANGUAGE'],'--sarif-add-baseline-file-info'],
               'reports':[report], 'timeout_seconds':2700}],
             'scope':{'kind':'codeql-source-archive','archive':archive}}
+          if os.environ['LANGUAGE'] == 'c-cpp':
+            spec['faac'] = {
+              'provenance':'build/codeql-native/_deps/lightnvr-faac/provenance.json',
+              'compile_commands':'build/codeql-native/compile_commands.json'}
           Path(os.environ['SPEC_FILE']).parent.mkdir(parents=True,exist_ok=True)
           Path(os.environ['SPEC_FILE']).write_text(json.dumps(spec))
           PY

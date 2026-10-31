@@ -131,32 +131,41 @@ jobs:
       - name: Analyze with captured exit and source scope
         run: |
           python3 - <<'PY'
-          import json, os
+          import json, os, sys
           from pathlib import Path
+          sys.path.insert(0, 'scripts/quality')
+          from scanner_run import native_analysis_inputs
           root = Path.cwd()
           sid = os.environ['SCANNER_ID']
           report_dir = os.environ['REPORT_DIR']
+          faac = {'provenance':'build/analysis-native/_deps/lightnvr-faac/provenance.json',
+                  'compile_commands':'build/analysis-native/compile_commands.json'}
+          files = native_analysis_inputs(root, faac, sid)
           if sid == 'clang-tidy':
-            entries = json.loads(Path('build/analysis-native/compile_commands.json').read_text())
-            files = sorted({Path(row['file']).resolve().relative_to(root).as_posix() for row in entries
-              if Path(row['file']).resolve().is_relative_to(root / 'src')
-              and not any(part in ('sod','ezxml') for part in Path(row['file']).parts)})
             report = 'clang-tidy-report.txt'
-            # ClangTool itself emits [i/N] Processing file on stderr. Capture
-            # both streams without a pipeline; no fabricated progress markers.
             command = {'argv':['clang-tidy','-p','build/analysis-native','--quiet'],
               'stdout_report':report, 'stderr_to_stdout':True, 'reports':[report],
               'append_scope_files':True, 'timeout_seconds':2100}
             scope = {'kind':'invocation-files','files':files}
           else:
+            # Keep every source matched by the former */src/* filter and add
+            # actual patched FAAC units, retaining each compiler invocation.
+            entries = json.loads(Path(faac['compile_commands']).read_text())
+            selected = set(files)
+            filtered = [row for row in entries
+              if Path(row['file']).resolve().relative_to(root).as_posix() in selected]
+            project = 'build/analysis-native/compile_commands.cppcheck.json'
+            Path(project).write_text(json.dumps(filtered, indent=2) + '\n')
+            faac['analysis_compile_commands'] = project
             report = 'cppcheck-report.xml'
-            command = {'argv':['cppcheck','--project=build/analysis-native/compile_commands.json',
-              '--file-filter=*/src/*','--enable=all','--suppress=missingIncludeSystem',
+            command = {'argv':['cppcheck','--project=' + project,
+              '--enable=all','--suppress=missingIncludeSystem',
               '--suppress=unusedFunction','--inline-suppr','--error-exitcode=2','--xml','--xml-version=2',
               '--output-file=' + str(root / report_dir / report)],
               'reports':[report], 'accepted_exit_codes':[0,2], 'timeout_seconds':2100}
             scope = {'kind':'cppcheck-progress','report':'logs/cppcheck-0.stdout.log'}
-          spec = {'scanner_id':sid,'version_command':[sid,'--version'],'commands':[command],'scope':scope}
+          spec = {'scanner_id':sid,'version_command':[sid,'--version'],
+                  'commands':[command],'scope':scope,'faac':faac}
           Path('build/native-spec.json').write_text(json.dumps(spec))
           PY
           python3 scripts/quality/scanner_run.py --spec build/native-spec.json --reports "$REPORT_DIR" --expected-revision "$GITHUB_SHA"

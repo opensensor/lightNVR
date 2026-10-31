@@ -237,3 +237,154 @@ class ScannerPipelineTests(unittest.TestCase):
         shutil.copyfile(self.reports/'eslint.json',self.reports/'unhashed.json')
         self.policy['report_pins']=[{'reports_dir':str(self.reports),'scanner':'eslint-web','paths':['unhashed.json']}]
         self.assertEqual(self.lane()['status'],'partial-fail')
+
+
+class FaacCompiledProvenanceTests(unittest.TestCase):
+    """Synthetic scanner output tests validation, not real scanner qualification."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='faac-scan-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.reports = self.root / 'reports'
+        self.build = self.root / 'build/native'
+        self.copy = self.build / '_deps/lightnvr-faac'
+        self.patchdir = self.root / 'patches/faac'
+        self.patchdir.mkdir(parents=True)
+        self.patch = self.patchdir / '0001-bound-input-pointer-arithmetic.patch'
+        self.patch.write_text('synthetic fixture patch\n')
+        self.source = self.root / 'third_party/faac'
+        names = ['libfaac/frame.c', 'libfaac/faac.c', 'libfaac/faac_internal.h']
+        inputs = {}; outputs = {}; rows = []
+        for name in names:
+            original = self.source / name; original.parent.mkdir(parents=True, exist_ok=True)
+            original.write_text('original ' + name + '\n')
+            copied = self.copy / name; copied.parent.mkdir(parents=True, exist_ok=True)
+            copied.write_text('patched ' + name + '\n')
+            inputs[name] = scanner_run.sha(original); outputs[name] = scanner_run.sha(copied)
+            rows.append({'upstream_path':name, 'input_sha256':inputs[name],
+                         'output_sha256':outputs[name], 'compiled_path':str(copied)})
+        (self.copy / 'include').mkdir()
+        self.units = sorted(str(self.copy / p) for p in names if p.endswith('.c'))
+        subprocess.run(['git','-C',str(self.source),'init','-q'],check=True)
+        subprocess.run(['git','-C',str(self.source),'add','.'],check=True)
+        subprocess.run(['git','-C',str(self.source),'-c','user.name=Fixture',
+                        '-c','user.email=fixture@example.invalid','commit','-qm','fixture'],check=True)
+        self.pin=subprocess.check_output(['git','-C',str(self.source),'rev-parse','HEAD'],text=True).strip()
+        subprocess.run(['git','-C',str(self.root),'init','-q'],check=True)
+        subprocess.run(['git','-C',str(self.root),'update-index','--add','--cacheinfo',
+                        '160000,'+self.pin+',third_party/faac'],check=True)
+        self.static = {'schema_version':1, 'upstream_commit':self.pin,
+                       'patch_sha256':scanner_run.sha(self.patch), 'input_files':inputs,
+                       'output_files':outputs, 'translation_units':sorted(p for p in names if p.endswith('.c'))}
+        (self.patchdir / 'manifest.json').write_text(json.dumps(self.static))
+        (self.patchdir / 'manifest.cmake').write_text('# fixture table\n')
+        self.prov = {'schema_version':1, 'upstream_commit':self.pin,
+                     'patch_sha256':self.static['patch_sha256'],
+                     'manifest_sha256':scanner_run.sha(self.patchdir / 'manifest.json'),
+                     'source_root':str(self.source), 'build_root':str(self.copy),
+                     'compiler':'synthetic cc', 'build_profile':'test',
+                     'files':rows, 'translation_units':self.units}
+        self.provpath = self.copy / 'provenance.json'; self.save()
+        self.commands = [{'directory':str(self.build), 'file':p,
+                          'arguments':['cc','-I'+str(self.copy/'include'),'-I'+str(self.copy/'libfaac'),'-c',p]}
+                         for p in self.units]
+        self.compdb = self.build / 'compile_commands.json'; self.save_commands()
+
+    def save(self): self.provpath.write_text(json.dumps(self.prov))
+    def save_commands(self): self.compdb.write_text(json.dumps(self.commands))
+    def rel(self, p): return Path(p).relative_to(self.root).as_posix()
+    def spec(self, kind='invocation-files', files=None):
+        files = files if files is not None else [self.rel(p) for p in self.units]
+        sid = 'codeql-cpp' if kind == 'codeql-source-archive' else 'clang-tidy'
+        scope = {'kind':kind, 'files':files}
+        command = {'argv':[sys.executable,'-c','print("[]")'],
+                   'reports':['scan.json'], 'stdout_report':'scan.json'}
+        if kind == 'invocation-files': command['append_scope_files'] = True
+        else:
+            archive = self.build / 'src.zip'
+            with zipfile.ZipFile(archive,'w') as z:
+                for f in files: z.write(self.root / f, f)
+            scope = {'kind':kind, 'archive':self.rel(archive)}
+        return {'scanner_id':sid, 'version_command':[sys.executable,'-c','print("synthetic scanner")'],
+                'commands':[command], 'scope':scope,
+                'faac':{'provenance':self.rel(self.provpath),'compile_commands':self.rel(self.compdb)}}
+    def run_scan(self, spec=None):
+        return scanner_run.run_scanner(spec or self.spec(), root=self.root,
+                                      reports=self.reports, revision=REVISION)
+    def fails(self, spec=None):
+        result = self.run_scan(spec); self.assertEqual(result['status'],'failure',result)
+        self.assertTrue(result['errors'])
+
+    def test_valid_mapping_retains_actual_paths_and_archives_inputs(self):
+        result=self.run_scan(); self.assertEqual(result['status'],'success',result)
+        mapping=result['scope']['faac_provenance']
+        self.assertEqual(mapping['upstream_commit'],self.pin)
+        self.assertEqual(result['scope']['files'],[self.rel(p) for p in self.units])
+        self.assertEqual(len(mapping['files']),3)
+        for path,digest in mapping['evidence_sha256'].items():
+            self.assertEqual(scanner_run.sha(self.reports/path),digest)
+
+    def test_missing_required_faac_spec_cannot_skip_validation(self):
+        spec=self.spec(); del spec['faac']; self.fails(spec)
+    def test_missing_provenance_refused(self):
+        self.provpath.unlink(); self.fails()
+    def test_changed_generated_source_refused(self):
+        Path(self.units[0]).write_text('tampered\n'); self.fails()
+    def test_changed_original_source_refused(self):
+        (self.source/'libfaac/frame.c').write_text('tampered\n'); self.fails()
+    def test_stale_pin_refused(self):
+        self.prov['upstream_commit']='d'*40; self.save(); self.fails()
+    def test_changed_patch_refused(self):
+        self.patch.write_text('another patch\n'); self.fails()
+    def test_mixed_original_compile_root_refused(self):
+        self.commands[0]['file']=str(self.source/'libfaac/faac.c'); self.save_commands(); self.fails()
+    def test_original_private_include_root_refused(self):
+        self.commands[0]['arguments'].insert(1,'-I'+str(self.source/'libfaac'))
+        self.save_commands(); self.fails()
+    def test_unlisted_translation_unit_refused(self):
+        self.prov['translation_units']=self.units[:1]; self.save(); self.fails()
+    def test_omitted_actual_invocation_cannot_pass(self):
+        self.fails(self.spec(files=[self.rel(self.units[0])]))
+    def test_codeql_requires_generated_private_header_and_units(self):
+        self.fails(self.spec('codeql-source-archive'))
+    def test_codeql_archive_preserves_generated_paths(self):
+        names=[self.rel(self.copy/p) for p in self.static['input_files']]
+        result=self.run_scan(self.spec('codeql-source-archive',names))
+        self.assertEqual(result['status'],'success',result)
+        self.assertEqual(set(result['scope']['files']),set(names))
+        self.assertEqual(len(result['scope']['faac_provenance']['files']),3)
+    def test_codeql_changed_archive_source_fails(self):
+        names=[self.rel(self.copy/p) for p in self.static['input_files']]
+        spec=self.spec('codeql-source-archive',names)
+        with zipfile.ZipFile(self.build/'src.zip','w') as z:
+            for name in names:z.writestr(name,b'not compiled source')
+        self.fails(spec)
+    def test_actual_cppcheck_progress_must_include_all_units(self):
+        spec=self.spec(); spec['scanner_id']='cppcheck'
+        spec['scope']={'kind':'cppcheck-progress','report':'logs/cppcheck-0.stdout.log'}
+        spec['commands']=[{'argv':[sys.executable,'-c',
+            'import pathlib; print('+repr('Checking '+self.rel(self.units[0])+' ...')+'); pathlib.Path("reports/scan.json").write_text("[]")'],
+            'reports':['scan.json']}]
+        self.fails(spec)
+    def test_native_selection_preserves_prior_sources_and_adds_compiled_faac(self):
+        for path in ['src/example.c','src/sod/excluded.c','external/tool/src/example.c']:
+            file=self.root/path;file.parent.mkdir(parents=True,exist_ok=True);file.write_text('int example;')
+            self.commands.append({'directory':str(self.root),'file':str(file),'arguments':['cc','-c',str(file)]})
+        self.save_commands()
+        options={'provenance':self.rel(self.provpath),'compile_commands':self.rel(self.compdb)}
+        clang=scanner_run.native_analysis_inputs(self.root,options,'clang-tidy')
+        cpp=scanner_run.native_analysis_inputs(self.root,options,'cppcheck')
+        self.assertEqual(set(clang),{'src/example.c'}|{self.rel(x) for x in self.units})
+        self.assertEqual(set(cpp),{'src/example.c','src/sod/excluded.c','external/tool/src/example.c'}|{self.rel(x) for x in self.units})
+
+    def test_actual_gitlink_drift_refused(self):
+        subprocess.run(['git','-C',str(self.root),'update-index','--add','--cacheinfo',
+                        '160000,'+'f'*40+',third_party/faac'],check=True)
+        self.fails()
+
+    def test_filtered_compile_database_cannot_invent_flags(self):
+        filtered=self.build/'analysis.json'
+        changed=json.loads(json.dumps(self.commands));changed[0]['arguments'].append('-DCHANGED')
+        filtered.write_text(json.dumps(changed))
+        spec=self.spec();spec['faac']['analysis_compile_commands']=self.rel(filtered)
+        self.fails(spec)

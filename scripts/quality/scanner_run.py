@@ -10,11 +10,14 @@ and explicit scope evidence. Existing reports/scanner records are never replaced
 import argparse
 import datetime as dt
 import hashlib
+import fnmatch
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
 import signal
+import shlex
+import shutil
 import subprocess
 import tempfile
 import zipfile
@@ -79,6 +82,160 @@ def source_records(root, names):
         files.append(name)
         hashes[name] = sha(file)
     return sorted(set(files)), hashes
+
+
+def checkout_relative(root, path):
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            path = candidate.relative_to(root).as_posix()
+        except ValueError:
+            raise ValueError('FAAC evidence is outside checkout') from None
+    else:
+        path = candidate.as_posix()
+    safe_path(root, path)
+    return path
+
+
+def load_faac_provenance(root, options):
+    """Verify copied bytes and actual compiler inputs against tracked authority."""
+    root = Path(root).resolve()
+    if not isinstance(options, dict):
+        raise ValueError('Missing required compiled FAAC provenance')
+    static_path = safe_path(root, 'patches/faac/manifest.json')
+    static = json.loads(static_path.read_text())
+    patch_path = safe_path(root, 'patches/faac/0001-bound-input-pointer-arithmetic.patch')
+    prov_path = safe_path(root, options['provenance'])
+    compdb_path = safe_path(root, options['compile_commands'])
+    prov = json.loads(prov_path.read_text())
+    if static.get('schema_version') != 1 or prov.get('schema_version') != 1:
+        raise ValueError('Unsupported FAAC provenance version')
+    for key in ('upstream_commit', 'patch_sha256'):
+        if prov.get(key) != static.get(key) or not prov.get(key):
+            raise ValueError('FAAC provenance identity mismatch: ' + key)
+    if prov.get('manifest_sha256') != sha(static_path) or static['patch_sha256'] != sha(patch_path):
+        raise ValueError('FAAC tracked manifest/patch hash mismatch')
+    source_root = safe_path(root, 'third_party/faac')
+    head, stdout, stderr = execute(['git','-C',str(source_root),'rev-parse','HEAD'], root, 30)
+    link, linkout, linkerr = execute(['git','-C',str(root),'ls-files','--stage','--','third_party/faac'], root, 30)
+    expected_link = '160000 ' + static['upstream_commit'] + ' 0\tthird_party/faac'
+    if head['exit_code'] != 0 or head['timed_out'] or stdout.decode().strip() != static['upstream_commit']:
+        raise ValueError('FAAC actual upstream pin mismatch')
+    if link['exit_code'] != 0 or link['timed_out'] or linkout.decode().strip() != expected_link:
+        raise ValueError('FAAC actual gitlink mismatch')
+    copy = safe_path(root, checkout_relative(root, prov['build_root']))
+    if prov.get('source_root') != str(source_root) or not copy.as_posix().endswith('/_deps/lightnvr-faac'):
+        raise ValueError('FAAC source/copy root mismatch')
+    if prov_path != copy / 'provenance.json' or compdb_path != copy.parent.parent / 'compile_commands.json':
+        raise ValueError('FAAC provenance/compile database mixed build roots')
+    rows = prov.get('files')
+    if not isinstance(rows, list) or len(rows) != len(static['input_files']):
+        raise ValueError('FAAC copied-file inventory mismatch')
+    seen = set()
+    for row in rows:
+        name = row['upstream_path']
+        if name in seen or name not in static['input_files'] or name not in static['output_files']:
+            raise ValueError('FAAC unexpected/duplicate mapped source')
+        seen.add(name)
+        original = safe_path(source_root, name)
+        copied = safe_path(copy, name)
+        if row['compiled_path'] != str(copied):
+            raise ValueError('FAAC compiled path disguises original identity')
+        if row['input_sha256'] != static['input_files'][name] or sha(original) != row['input_sha256']:
+            raise ValueError('FAAC original source hash mismatch: ' + name)
+        if row['output_sha256'] != static['output_files'][name] or sha(copied) != row['output_sha256']:
+            raise ValueError('FAAC compiled source hash mismatch: ' + name)
+    if seen != set(static['output_files']):
+        raise ValueError('FAAC input/output inventory mismatch')
+    expected_units = sorted(str(safe_path(copy, p)) for p in static['translation_units'])
+    if not expected_units or prov.get('translation_units') != expected_units:
+        raise ValueError('FAAC translation-unit inventory mismatch')
+    commands = json.loads(compdb_path.read_text())
+    if not isinstance(commands, list):
+        raise ValueError('Malformed compilation database')
+    actual_units = []
+    for row in commands:
+        file = Path(row['file'])
+        if not file.is_absolute():
+            file = Path(row['directory']) / file
+        if file.is_relative_to(source_root):
+            raise ValueError('Original FAAC compile root mixed with patched source')
+        if not file.is_relative_to(copy):
+            continue
+        safe_path(root, checkout_relative(root, file))
+        if str(file) not in expected_units:
+            raise ValueError('Unexpected compiled FAAC translation unit')
+        argv = row.get('arguments') or shlex.split(row['command'])
+        if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+            raise ValueError('Malformed FAAC compiler argv')
+        if any(str(source_root) in arg for arg in argv):
+            raise ValueError('Original FAAC include root mixed with patched headers')
+        joined = ' '.join(argv)
+        if str(copy / 'include') not in joined or str(copy / 'libfaac') not in joined:
+            raise ValueError('Missing copied FAAC include roots')
+        actual_units.append(str(file))
+    if sorted(actual_units) != expected_units:
+        raise ValueError('FAAC compile database omits/duplicates translation units')
+    artifacts = {'provenance.json':prov_path, 'compile_commands.json':compdb_path,
+        'manifest.json':static_path, 'manifest.cmake':safe_path(root,'patches/faac/manifest.cmake'),
+        'input-pointer.patch':patch_path}
+    if options.get('analysis_compile_commands'):
+        analysis_path = safe_path(root, options['analysis_compile_commands'])
+        selected = json.loads(analysis_path.read_text())
+        if not isinstance(selected, list) or not selected or any(row not in commands for row in selected):
+            raise ValueError('Filtered analysis compilation database differs from actual compiler inputs')
+        artifacts['analysis_compile_commands.json'] = analysis_path
+    return prov, commands, artifacts
+
+
+def native_analysis_inputs(root, options, scanner):
+    """Union the old scanner-specific source selection with compiled FAAC."""
+    root = Path(root).resolve()
+    prov, commands, _ = load_faac_provenance(root, options)
+    selected = {checkout_relative(root, p) for p in prov['translation_units']}
+    for row in commands:
+        path = Path(row['file'])
+        if not path.is_absolute():
+            path = Path(row['directory']) / path
+        if not path.is_relative_to(root):
+            continue
+        if scanner == 'clang-tidy':
+            keep = path.is_relative_to(root / 'src') and not any(p in ('sod','ezxml') for p in path.parts)
+        elif scanner == 'cppcheck':
+            keep = fnmatch.fnmatch(path.as_posix(), '*/src/*')
+        else:
+            raise ValueError('Unknown native scanner selection')
+        if keep:
+            selected.add(checkout_relative(root, path))
+    return sorted(selected)
+
+
+def attach_faac_evidence(spec, root, reports, scope):
+    required = spec['scanner_id'] in ('clang-tidy','cppcheck','codeql-cpp') and (root/'patches/faac/manifest.json').exists()
+    if not required and 'faac' not in spec:
+        return
+    prov, _, artifacts = load_faac_provenance(root, spec.get('faac'))
+    needed = {checkout_relative(root, p) for p in prov['translation_units']}
+    if scope.get('kind') == 'codeql-source-archive':
+        needed.add(checkout_relative(root, Path(prov['build_root'])/'libfaac/faac_internal.h'))
+        artifacts['codeql-src.zip'] = safe_path(root, spec['scope']['archive'])
+    if spec['scanner_id'] in ('clang-tidy','cppcheck'):
+        needed.update(native_analysis_inputs(root, spec['faac'], spec['scanner_id']))
+    missing = needed - set(scope.get('files', []))
+    if missing:
+        raise ValueError('Required compiled/native sources were not scanned: ' + ', '.join(sorted(missing)))
+    archived = {}
+    for name, original in artifacts.items():
+        relative = 'provenance/faac/' + name
+        target = safe_path(reports, relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with original.open('rb') as source, target.open('xb') as dest:
+            shutil.copyfileobj(source, dest)
+        archived[relative] = sha(target)
+    scope['faac_provenance'] = {'upstream_commit':prov['upstream_commit'],
+        'patch_sha256':prov['patch_sha256'], 'manifest_sha256':prov['manifest_sha256'],
+        'files':prov['files'], 'translation_units':prov['translation_units'],
+        'evidence_sha256':archived}
 
 
 def scope_evidence(spec, root, reports):
@@ -264,6 +421,7 @@ def run_scanner(spec, *, root, reports, revision):
             entry['errors'].append(str(error))
     try:
         entry['scope'] = scope_evidence(spec, root, reports)
+        attach_faac_evidence(spec, root, reports, entry['scope'])
         if 'files' in entry['scope']:
             entry['files_scanned'] = len(entry['scope']['files'])
     except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as error:
