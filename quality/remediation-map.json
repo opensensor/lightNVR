@@ -1209,7 +1209,7 @@
       ],
       "kind": "native-fix",
       "priority": "high",
-      "status": "RED producer committed \u2014 identity-preserving remediation in progress",
+      "status": "Completed \u2014 mapped stale-artifact race fixed (`54d2f7ca`)",
       "ownership": [
         "src/database/db_core.c",
         "tests/unit/test_t7_25.c",
@@ -1244,7 +1244,7 @@
         }
       ],
       "lease": "exclusive native runner/build lease",
-      "log": "153099d1 proves3races in7cases (4controls pass): parentredirect, changedregularleaf and changedsymlink deletion. Native66b1314f09b2sanitizerclean; T7.25.1owns scopedquarantine/helddescriptor fix. Production unchanged atproducer."
+      "log": "153099d1 genuine3RED producer retained; identity-preserving stale-artifact helper reaches45/45relatedGREEN. ExactCODEQL-321 cause fixed without broadstorage policy changes; freshscanner reconciliation remainsT33. Separate published-backup pruning concern fenced asT7.25.2, not silently covered."
     },
     {
       "id": "T7.26",
