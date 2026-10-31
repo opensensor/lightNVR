@@ -11,6 +11,7 @@
 #include "storage/storage_migration.h"
 
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <mbedtls/sha256.h>
@@ -24,6 +25,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 
 #include "core/logger.h"
 #include "core/path_utils.h"
@@ -37,6 +41,7 @@
 #include "storage/storage_deletion.h"
 #include "storage/storage_source.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 
 #define MIGRATION_COPY_BUFFER (256U * 1024U)
 #define MIGRATION_PROGRESS_INTERVAL (4ULL * 1024ULL * 1024ULL)
@@ -117,27 +122,20 @@ static int finish_digest(mbedtls_sha256_context *context,
     return 0;
 }
 
-static int sha256_file(const char *path, uint64_t *size,
-                       char checksum[STORAGE_MIGRATION_CHECKSUM_MAX],
-                       char error[STORAGE_MIGRATION_ERROR_MAX]) {
-    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
-    if (descriptor < 0) {
-        set_error(error, "Cannot open", path);
-        return -1;
-    }
+static int sha256_descriptor(int descriptor, const char *path, uint64_t *size,
+    char checksum[STORAGE_MIGRATION_CHECKSUM_MAX], char error[STORAGE_MIGRATION_ERROR_MAX]) {
+    if (lseek(descriptor, 0, SEEK_SET) < 0) { set_error(error, "Cannot seek", path); return -1; }
     struct stat status;
     if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode) ||
         status.st_size < 0) {
         if (errno == 0) errno = EINVAL;
         set_error(error, "Not a readable regular file", path);
-        close(descriptor);
         return -1;
     }
     mbedtls_sha256_context context;
     mbedtls_sha256_init(&context);
     if (mbedtls_sha256_starts(&context, 0) != 0) {
         mbedtls_sha256_free(&context);
-        close(descriptor);
         safe_strcpy(error, "Could not initialize SHA-256",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
         return -1;
@@ -145,7 +143,6 @@ static int sha256_file(const char *path, uint64_t *size,
     unsigned char *buffer = malloc(MIGRATION_COPY_BUFFER);
     if (!buffer) {
         mbedtls_sha256_free(&context);
-        close(descriptor);
         safe_strcpy(error, "Out of memory while verifying recording",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
         return -1;
@@ -170,7 +167,6 @@ static int sha256_file(const char *path, uint64_t *size,
         total += (uint64_t)count;
     }
     free(buffer);
-    close(descriptor);
     if (result == 0 && finish_digest(&context, checksum) != 0) {
         safe_strcpy(error, "Could not finish SHA-256",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
@@ -179,6 +175,15 @@ static int sha256_file(const char *path, uint64_t *size,
         mbedtls_sha256_free(&context);
     }
     if (result == 0 && size) *size = total;
+    return result;
+}
+
+static int sha256_file(const char *path, uint64_t *size,
+    char checksum[STORAGE_MIGRATION_CHECKSUM_MAX], char error[STORAGE_MIGRATION_ERROR_MAX]) {
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) { set_error(error, "Cannot open", path); return -1; }
+    int result = sha256_descriptor(descriptor, path, size, checksum, error);
+    close(descriptor);
     return result;
 }
 
@@ -249,9 +254,139 @@ static int verified_existing_destination(
     return 1;
 }
 
+typedef struct {
+    int fd;
+    int parent;
+    struct stat identity;
+    struct stat parent_identity;
+    char parent_path[MAX_PATH_LENGTH];
+    char leaf[MAX_PATH_LENGTH];
+} migration_publication_t;
+
+static bool same_inode(const struct stat *a, const struct stat *b) {
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino;
+}
+
+static bool same_verified_file(const struct stat *a, const struct stat *b) {
+    return same_inode(a, b) && S_ISREG(b->st_mode) && a->st_size == b->st_size &&
+        a->st_mtim.tv_sec == b->st_mtim.tv_sec && a->st_mtim.tv_nsec == b->st_mtim.tv_nsec;
+}
+
+static void release_publication(migration_publication_t *publication) {
+    if (publication->fd >= 0) close(publication->fd);
+    if (publication->parent >= 0) close(publication->parent);
+    publication->fd = publication->parent = -1;
+}
+
+/* This is a precommit snapshot, not an atomic filesystem/SQLite transaction.
+ * Held descriptors also cannot exclude writers that already have the inode open. */
+static bool publication_still_verified(const migration_publication_t *publication) {
+    if (publication->fd < 0) return true; /* Other transfer paths are unchanged. */
+    struct stat held, named, parent;
+    return fstat(publication->fd, &held) == 0 &&
+        same_verified_file(&publication->identity, &held) &&
+        fstatat(publication->parent, publication->leaf, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
+        same_verified_file(&publication->identity, &named) &&
+        lstat(publication->parent_path, &parent) == 0 &&
+        same_inode(&publication->parent_identity, &parent);
+}
+
+static int move_migration_noreplace(int from, const char *old_name,
+                                    int to, const char *new_name) {
+#if defined(__linux__) && defined(SYS_renameat2)
+    return (int)syscall(SYS_renameat2, from, old_name, to, new_name, 1U);
+#else
+    (void)from; (void)old_name; (void)to; (void)new_name;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+/* Bind the pathname to the already verified descriptor inside an owned private
+ * directory. Restore without replacing anything on failure; preserve and log
+ * the private entry when restoration is impossible. */
+static int publish_verified_temporary(int descriptor, const struct stat *verified,
+    const char *temporary, const char *destination, const char *job_uuid,
+    migration_publication_t *publication,
+    char error[STORAGE_MIGRATION_ERROR_MAX]) {
+    char parent_path[MAX_PATH_LENGTH], private_name[MAX_PATH_LENGTH] = {0};
+    safe_strcpy(parent_path, destination, sizeof(parent_path), 0);
+    char *parent_name = dirname(parent_path);
+    const char *destination_leaf = strrchr(destination, '/');
+    destination_leaf = destination_leaf ? destination_leaf + 1 : destination;
+    const char *temporary_leaf = strrchr(temporary, '/');
+    temporary_leaf = temporary_leaf ? temporary_leaf + 1 : temporary;
+    int parent = open(parent_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int private_fd = -1, result = -1;
+    bool private_created = false, identity_known = false, retained = false;
+    struct stat directory_identity, current, parent_identity;
+    if (parent < 0 || fstat(parent, &parent_identity) != 0) goto finish;
+    for (unsigned attempt = 0; attempt < 4; ++attempt) {
+        char uuid[LIGHTNVR_UUID_STRING_SIZE];
+        if (lightnvr_uuid_generate_v4(uuid) != 0) goto finish;
+        int length = snprintf(private_name, sizeof(private_name), "%s.migration-%s.publish-%s",
+                              destination_leaf, job_uuid, uuid);
+        if (length < 0 || (size_t)length >= sizeof(private_name)) { errno = ENAMETOOLONG; goto finish; }
+        if (mkdirat(parent, private_name, 0700) == 0) { private_created = true; break; }
+        if (errno != EEXIST) goto finish;
+    }
+    if (!private_created || fstatat(parent, private_name, &directory_identity, AT_SYMLINK_NOFOLLOW) != 0)
+        goto finish;
+    identity_known = true;
+    if (!S_ISDIR(directory_identity.st_mode) || directory_identity.st_uid != geteuid() ||
+        (directory_identity.st_mode & 0777) != 0700) { errno = EPERM; goto finish; }
+    private_fd = openat(parent, private_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (private_fd < 0 || fstat(private_fd, &current) != 0 || !same_inode(&directory_identity, &current))
+        goto finish;
+    if (move_migration_noreplace(parent, temporary_leaf, private_fd, "verified") != 0) goto finish;
+    retained = true;
+    if (fstatat(private_fd, "verified", &current, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !same_verified_file(verified, &current)) {
+        safe_strcpy(error, "Temporary identity changed after verification; retained", STORAGE_MIGRATION_ERROR_MAX, 0);
+        result = -2;
+        goto restore;
+    }
+    if (move_migration_noreplace(private_fd, "verified", parent, destination_leaf) != 0) {
+        if (errno == EEXIST) {
+            safe_strcpy(error, "Destination appeared while migration was copying", STORAGE_MIGRATION_ERROR_MAX, 0);
+            result = -2;
+        } else set_error(error, "Cannot publish verified destination", destination);
+        goto restore;
+    }
+    retained = false;
+    if (fsync(parent) != 0) {
+        set_error(error, "Cannot sync published destination directory", destination);
+        goto finish;
+    }
+    publication->fd = descriptor;
+    publication->parent = parent;
+    publication->identity = *verified;
+    publication->parent_identity = parent_identity;
+    safe_strcpy(publication->parent_path, parent_name, sizeof(publication->parent_path), 0);
+    safe_strcpy(publication->leaf, destination_leaf, sizeof(publication->leaf), 0);
+    result = 0;
+    goto finish;
+restore:
+    if (move_migration_noreplace(private_fd, "verified", parent, temporary_leaf) == 0) retained = false;
+finish:
+    if (result != 0 && !error[0]) set_error(error, "Cannot bind verified temporary", temporary);
+    if (private_created) {
+        /* Best effort, empty-directory-only removal. A parent entry can still
+         * change after this check; no recursive deletion is performed. */
+        if (retained || !identity_known ||
+            fstatat(parent, private_name, &current, AT_SYMLINK_NOFOLLOW) != 0 ||
+            !same_inode(&directory_identity, &current) ||
+            unlinkat(parent, private_name, AT_REMOVEDIR) != 0)
+            log_warn("Migration private artifact retained for inspection: %s/%s", parent_name, private_name);
+    }
+    if (private_fd >= 0) close(private_fd);
+    if (result != 0 && parent >= 0) close(parent);
+    return result;
+}
+
 static int copy_and_verify(
     storage_migration_job_t *job, const char *source_path,
-    const char *destination_path,
+    const char *destination_path, migration_publication_t *publication,
     char checksum[STORAGE_MIGRATION_CHECKSUM_MAX],
     char error[STORAGE_MIGRATION_ERROR_MAX]) {
     int existing = verified_existing_destination(
@@ -285,10 +420,22 @@ static int copy_and_verify(
         close(source);
         return -2;
     }
-    int destination = open(temporary_path,
-                           O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC |
-                               O_NOFOLLOW,
+    int destination = -1;
+    for (unsigned int attempt = 0; attempt < 8; ++attempt) {
+        destination = open(temporary_path,
+                           O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
                            source_status.st_mode & 0777);
+        if (destination >= 0 || errno != EEXIST) break;
+        log_warn("Unowned migration temporary retained for inspection: %s", temporary_path);
+        char attempt_uuid[LIGHTNVR_UUID_STRING_SIZE];
+        if (lightnvr_uuid_generate_v4(attempt_uuid) != 0) break;
+        length = snprintf(temporary_path, sizeof(temporary_path),
+                          "%s.migration-%s.%s.part", destination_path, job->uuid, attempt_uuid);
+        if (length < 0 || (size_t)length >= sizeof(temporary_path)) {
+            errno = ENAMETOOLONG;
+            break;
+        }
+    }
     if (destination < 0) {
         set_error(error, "Cannot create temporary destination",
                   temporary_path);
@@ -379,7 +526,6 @@ static int copy_and_verify(
         result = -1;
     }
     free(buffer);
-    close(destination);
     close(source);
     char source_checksum[STORAGE_MIGRATION_CHECKSUM_MAX];
     if (result == 0 && finish_digest(&context, source_checksum) != 0) {
@@ -390,7 +536,7 @@ static int copy_and_verify(
         mbedtls_sha256_free(&context);
     }
     if (result != 0) {
-        if (result == -3) unlink(temporary_path);
+        close(destination);
         return result;
     }
 
@@ -400,43 +546,36 @@ static int copy_and_verify(
         DB_STORAGE_MIGRATION_OK) {
         safe_strcpy(error, "Could not persist verification state",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
+        close(destination);
         return -1;
     }
     uint64_t destination_size = 0;
     char destination_checksum[STORAGE_MIGRATION_CHECKSUM_MAX];
-    if (sha256_file(temporary_path, &destination_size,
-                    destination_checksum, error) != 0) {
+    struct stat verified, after_verification;
+    if (fstat(destination, &verified) != 0 ||
+        sha256_descriptor(destination, temporary_path, &destination_size,
+                    destination_checksum, error) != 0 ||
+        fstat(destination, &after_verification) != 0 ||
+        !same_verified_file(&verified, &after_verification)) {
+        close(destination);
         return -1;
     }
     if (destination_size != copied ||
         strcmp(source_checksum, destination_checksum) != 0) {
         safe_strcpy(error, "Destination checksum verification failed",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
-        unlink(temporary_path);
+        close(destination);
         return -1;
     }
     if (migration_cancel_requested(job)) {
         safe_strcpy(error, "Cancelled by operator",
                     STORAGE_MIGRATION_ERROR_MAX, 0);
-        unlink(temporary_path);
+        close(destination);
         return -3;
     }
-    if (lstat(destination_path, &source_status) == 0) {
-        safe_strcpy(error, "Destination appeared while migration was copying",
-                    STORAGE_MIGRATION_ERROR_MAX, 0);
-        unlink(temporary_path);
-        return -2;
-    }
-    if (errno != ENOENT || rename(temporary_path, destination_path) != 0) {
-        set_error(error, "Cannot publish verified destination",
-                  destination_path);
-        return -1;
-    }
-    if (fsync_parent(destination_path) != 0) {
-        set_error(error, "Cannot sync destination directory for",
-                  destination_path);
-        return -1;
-    }
+    result = publish_verified_temporary(destination, &verified, temporary_path,
+                                        destination_path, job->uuid, publication, error);
+    if (result != 0) { close(destination); return result; }
     safe_strcpy(checksum, source_checksum,
                 STORAGE_MIGRATION_CHECKSUM_MAX, 0);
     return 0;
@@ -529,16 +668,64 @@ static void cleanup_abandoned(void) {
     char error[256] = {0}, path[MAX_PATH_LENGTH], temporary[MAX_PATH_LENGTH];
     if (db_storage_migration_get(uuid, &job) == DB_STORAGE_MIGRATION_OK &&
         db_storage_target_get(job.destination_target_uuid, &target) == DB_STORAGE_TARGET_OK) {
-        bool retained = destination_retained(&job);
+        int retained = destination_retained(&job);
         if (!strcmp(target.target_type, "s3")) {
             result = storage_s3_probe(&target, false);
             if (!result) result = storage_s3_abort_upload(&target, job.destination_object_key, upload, error);
             if (!result && !retained) result = storage_s3_delete(&target, job.destination_object_key, error);
         } else if (db_storage_target_mount_guard_active(&target) &&
                    !db_storage_target_resolve_path(target.uuid, job.destination_object_key, path)) {
-            result = retained || unlink(path) == 0 || errno == ENOENT ? 0 : -1;
-            int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s.part", path, uuid);
-            if (n > 0 && n < (int)sizeof(temporary) && unlink(temporary) && errno != ENOENT) result = -1;
+            struct stat status;
+            if (retained < 0) {
+                safe_strcpy(error, "Cannot establish destination ownership; retained",
+                            sizeof(error), 0);
+                result = -1;
+            } else if (retained > 0) {
+                result = 0;
+            } else if (lstat(path, &status) != 0) {
+                result = errno == ENOENT ? 0 : -1;
+                if (result != 0)
+                    safe_strcpy(error, "Cannot inspect unowned destination; retained",
+                                sizeof(error), 0);
+            } else {
+                /* A failed/cancelled job does not prove it published this
+                 * pathname. Preserve unknown objects, even matching bytes. */
+                safe_strcpy(error, "Final destination retained: migration ownership is not recorded",
+                            sizeof(error), 0);
+                log_warn("Unowned migration destination retained for inspection: %s", path);
+                result = -1;
+            }
+            /* Job-derived names do not persist inode ownership. Inspect all
+             * attempt names, including retry artifacts, but never reclaim them. */
+            int n = snprintf(temporary, sizeof(temporary), "%s.migration-%s", path, uuid);
+            if (n <= 0 || n >= (int)sizeof(temporary)) {
+                result = -1;
+            } else {
+                char parent_path[MAX_PATH_LENGTH];
+                safe_strcpy(parent_path, temporary, sizeof(parent_path), 0);
+                char *leaf = strrchr(temporary, '/');
+                const char *prefix = leaf ? leaf + 1 : temporary;
+                DIR *directory = opendir(dirname(parent_path));
+                if (!directory) {
+                    if (errno != ENOENT) result = -1;
+                } else {
+                    struct dirent *entry;
+                    errno = 0;
+                    while ((entry = readdir(directory))) {
+                        if (!strncmp(entry->d_name, prefix, strlen(prefix)) &&
+                            entry->d_name[strlen(prefix)] == '.') {
+                            safe_strcpy(error, "Temporary destination retained: migration ownership is not recorded",
+                                        sizeof(error), 0);
+                            log_warn("Unowned migration attempt retained for inspection: %s/%s",
+                                     parent_path, entry->d_name);
+                            result = -1;
+                        }
+                        errno = 0;
+                    }
+                    if (errno != 0) result = -1;
+                    closedir(directory);
+                }
+            }
         }
     }
     pthread_mutex_lock(mutex);
@@ -547,9 +734,13 @@ static void cleanup_abandoned(void) {
         "UPDATE storage_migration_jobs SET artifacts_cleaned=1,upload_id='',upload_parts='',"
         "state=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE state END WHERE uuid=?;" :
         "UPDATE storage_migration_jobs SET next_attempt_at=strftime('%s','now')+60,"
-        "last_error='Unpublished transfer artifacts await cleanup' WHERE uuid=?;";
+        "last_error=? WHERE uuid=?;";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, uuid, -1, SQLITE_TRANSIENT);
+        int parameter = 1;
+        if (result != 0)
+            sqlite3_bind_text(stmt, parameter++, error[0] ? error :
+                              "Unpublished transfer artifacts await cleanup", -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, parameter, uuid, -1, SQLITE_TRANSIENT);
         sqlite3_step(stmt);
     }
     if (stmt) sqlite3_finalize(stmt);
@@ -662,6 +853,7 @@ int storage_migration_process_one(void) {
     char checksum[STORAGE_MIGRATION_CHECKSUM_MAX];
     char error[STORAGE_MIGRATION_ERROR_MAX] = {0};
     int copied;
+    migration_publication_t publication = {.fd = -1, .parent = -1};
     if (object_source && object_destination) {
         int resolved = storage_source_resolve(job.recording_id, source_path, error);
         if (resolved != STORAGE_SOURCE_READY) {
@@ -704,30 +896,36 @@ int storage_migration_process_one(void) {
     } else if (object_source) {
         copied = restore_to_filesystem(&job, &source_target, &destination_target, destination_path, checksum, error);
     } else {
-        copied = copy_and_verify(&job, source_path, destination_path, checksum, error);
+        copied = copy_and_verify(&job, source_path, destination_path, &publication, checksum, error);
     }
     if (copied != 0) {
         if (copied == -3) {
             db_storage_migration_mark_cancelled(job.uuid, &job);
+            release_publication(&publication);
             return 1;
         }
         db_storage_migration_record_failure(&job, error[0] ? error :
                                              "Recording copy failed",
                                              copied != -2);
+        release_publication(&publication);
         return 1;
     }
     if (migration_cancel_requested(&job)) {
         if (retained_destination) {
             db_storage_migration_mark_cancelled(job.uuid, &job);
+            release_publication(&publication);
             return 1;
         }
         if (object_destination) {
             if (storage_s3_delete(&destination_target, job.destination_object_key, error) != 0) {
                 db_storage_migration_record_failure(&job, "Cancelled upload awaits destination cleanup", true);
+                release_publication(&publication);
                 return 1;
             }
-        } else unlink(destination_path);
+        } else if (publication.fd < 0) unlink(destination_path);
+        else log_warn("Cancelled filesystem destination retained for inspection: %s", destination_path);
         db_storage_migration_mark_cancelled(job.uuid, &job);
+        release_publication(&publication);
         return 1;
     }
     if (db_storage_migration_update_progress(
@@ -735,6 +933,7 @@ int storage_migration_process_one(void) {
         DB_STORAGE_MIGRATION_OK) {
         db_storage_migration_record_failure(
             &job, "Could not persist commit state", true);
+        release_publication(&publication);
         return 1;
     }
     if (storage_target_probe_and_publish(job.destination_target_uuid, false,
@@ -744,10 +943,18 @@ int storage_migration_process_one(void) {
         !db_storage_target_mount_guard_active(&destination_target)) {
         db_storage_migration_record_failure(
             &job, "Destination target became unavailable before commit", true);
+        release_publication(&publication);
         return 1;
     }
     if (!object_source && !db_storage_target_mount_guard_active(&source_target)) {
         db_storage_migration_record_failure(&job, "Source mount became unavailable before commit", true);
+        release_publication(&publication);
+        return 1;
+    }
+    if (!publication_still_verified(&publication)) {
+        db_storage_migration_record_failure(&job,
+            "Published destination identity changed before commit; retained", false);
+        release_publication(&publication);
         return 1;
     }
     db_storage_migration_result_t committed = strcmp(job.operation, "copy") == 0
@@ -757,9 +964,12 @@ int storage_migration_process_one(void) {
         if (!retained_destination && object_destination) {
             if (storage_s3_delete(&destination_target, job.destination_object_key, error) != 0) {
                 db_storage_migration_record_failure(&job, "Uncommitted archive copy awaits cleanup", true);
+                release_publication(&publication);
                 return 1;
             }
-        } else if (!retained_destination) unlink(destination_path);
+        } else if (!retained_destination && publication.fd < 0) unlink(destination_path);
+        else if (!retained_destination)
+            log_warn("Uncommitted filesystem destination retained for inspection: %s", destination_path);
         if (migration_cancel_requested(&job)) {
             db_storage_migration_mark_cancelled(job.uuid, &job);
         } else if (committed == DB_STORAGE_MIGRATION_SOURCE_CHANGED) {
@@ -770,6 +980,7 @@ int storage_migration_process_one(void) {
             db_storage_migration_record_failure(
                 &job, "Could not atomically commit recording location", true);
         }
+        release_publication(&publication);
         return 1;
     }
     if (strcmp(job.operation, "move") == 0) {
@@ -779,6 +990,7 @@ int storage_migration_process_one(void) {
         log_info("Storage replication %s completed for recording %llu",
                  job.uuid, (unsigned long long)job.recording_id);
     }
+    release_publication(&publication);
     return 1;
 }
 

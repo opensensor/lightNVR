@@ -139,6 +139,9 @@ target_sources(test_stream_frame_rate PRIVATE
 # ====================================================================
 add_layer2_test(test_config)
 add_layer2_test(test_db_core_initialization)
+add_layer2_test(test_storage_migration_publication)
+target_link_options(test_storage_migration_publication PRIVATE -Wl,--wrap=lstat -Wl,--wrap=syscall -Wl,--wrap=unlink -Wl,--wrap=db_storage_migration_update_progress -Wl,--wrap=db_storage_migration_commit_location)
+set_tests_properties(test_storage_migration_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_logger)
 add_layer2_test(test_strings)
 add_layer2_test(test_interruptible_sleep)
