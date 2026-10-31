@@ -2091,6 +2091,32 @@ static const char migration_0089_down[] =
     "        AND v.revision=r.storage_policy_version);\n"
     "DROP INDEX idx_recordings_storage_policy_revision;";
 
+static const char migration_0090_up[] =
+    "ALTER TABLE storage_deletion_objects ADD COLUMN stale_guard_kind TEXT\n"
+    "    CHECK (stale_guard_kind IS NULL OR stale_guard_kind IN ('missing', 'empty'));\n"
+    "ALTER TABLE storage_deletion_objects ADD COLUMN stale_guard_dev INTEGER;\n"
+    "ALTER TABLE storage_deletion_objects ADD COLUMN stale_guard_ino INTEGER\n"
+    "    CHECK (CASE\n"
+    "        WHEN stale_guard_kind IS NULL THEN stale_guard_dev IS NULL AND stale_guard_ino IS NULL\n"
+    "        WHEN stale_guard_kind = 'missing' THEN stale_guard_dev IS NULL AND stale_guard_ino IS NULL\n"
+    "        WHEN stale_guard_kind = 'empty' THEN stale_guard_dev IS NOT NULL AND stale_guard_dev >= 0\n"
+    "            AND stale_guard_ino IS NOT NULL AND stale_guard_ino > 0\n"
+    "        ELSE 0\n"
+    "    END);";
+
+static const char migration_0090_down[] =
+    "-- Removing these guards can make a pending operation delete replacement footage.\n"
+    "-- Downgrade is unsupported even when no guarded work currently appears pending;\n"
+    "-- do not run an older binary against this database. Restore a separately verified\n"
+    "-- pre-upgrade backup under a separately qualified recovery procedure instead.\n"
+    "CREATE TEMP TABLE IF NOT EXISTS stale_guard_downgrade_blocker (value INTEGER);\n"
+    "CREATE TEMP TRIGGER IF NOT EXISTS prevent_stale_guard_downgrade\n"
+    "BEFORE INSERT ON stale_guard_downgrade_blocker\n"
+    "BEGIN\n"
+    "    SELECT RAISE(ABORT, 'stale deletion guards cannot be downgraded');\n"
+    "END;\n"
+    "INSERT INTO stale_guard_downgrade_blocker VALUES (1);";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2715,8 +2741,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0089_down,
         .is_embedded = true
     },
+    {
+        .version = "0090",
+        .description = "add_stale_deletion_guards",
+        .sql_up = migration_0090_up,
+        .sql_down = migration_0090_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 89
+#define EMBEDDED_MIGRATIONS_COUNT 90
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -117,7 +117,7 @@ try {
   await start('upgrade');
   await check('previous-release database integrity and schema continuity', () => {
     assert.deepEqual(query('PRAGMA integrity_check'), [{ integrity_check: 'ok' }]);
-    assert.deepEqual(query('SELECT version FROM schema_migrations ORDER BY version'), seeded.schema_versions);
+    assert.deepEqual(query('SELECT version FROM schema_migrations ORDER BY version'), [...seeded.schema_versions, { version: '0090' }]);
     assert.equal(query("SELECT value FROM system_settings WHERE key='t29.synthetic.preference'")[0].value, 'preserve-me');
   });
   await check('committed historical footage remains playable and byte-identical', () => {
