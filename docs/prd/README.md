@@ -10,6 +10,12 @@ or hardware acceptance may still remain where the individual PRD says so.
 
 ## Active PRDs
 
+### Engineering foundation
+
+| PRD | Topic | Status |
+| --- | --- | --- |
+| [Engineering 01 — Security, Quality, and Typed Frontend Foundation](ENG_01_Safety_Contracts_TypeScript.md) | Findings remediation and CI enforcement, Preact TS/TSX, executable API contracts, operational regression coverage, embedded budgets, and targeted C refactoring | Draft (2026-10-31), based on main after PR #691; phased preparation that benefits the current product independently of any future Rust work |
+
 ### UX / Design
 
 | PRD | Topic | Driving issues |
