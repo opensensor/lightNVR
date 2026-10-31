@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonicalAllowances, sourceIdentity } from './source-identity.js';
 
-const baseline = JSON.parse(fs.readFileSync(new URL('../i18n-literal-baseline.json', import.meta.url), 'utf8'));
+const baseline = canonicalAllowances(JSON.parse(fs.readFileSync(new URL('../i18n-literal-baseline.json', import.meta.url), 'utf8')));
 const componentsRoot = fileURLToPath(new URL('../js/components/', import.meta.url));
 const visibleAttributes = new Set(['title', 'aria-label', 'placeholder', 'alt']);
 
 function candidate(value) {
+  if (typeof value !== 'string') return null;
   const normalized = value.replace(/\s+/g, ' ').trim();
   return /[A-Za-z]/.test(normalized) ? normalized : null;
 }
@@ -16,7 +18,14 @@ function candidate(value) {
 function expressionStrings(node) {
   if (!node) return [];
   if (node.type === 'Literal' && typeof node.value === 'string') return [node.value];
-  if (node.type === 'TemplateLiteral') return node.quasis.map((part) => part.value.cooked || '');
+  if (['TSAsExpression', 'TSTypeAssertion', 'TSNonNullExpression', 'TSSatisfiesExpression', 'ChainExpression'].includes(node.type)) {
+    return expressionStrings(node.expression);
+  }
+  if (node.type === 'TemplateLiteral') {
+    return [...node.quasis.map((part) => part.value.cooked || ''), ...node.expressions.flatMap(expressionStrings)];
+  }
+  if (node.type === 'ArrayExpression') return node.elements.flatMap(expressionStrings);
+  if (node.type === 'SequenceExpression') return expressionStrings(node.expressions.at(-1));
   if (node.type === 'ConditionalExpression') {
     return [...expressionStrings(node.consequent), ...expressionStrings(node.alternate)];
   }
@@ -35,7 +44,7 @@ export default {
   },
   create(context) {
     const file = path.relative(componentsRoot, context.filename).replaceAll(path.sep, '/');
-    const allowed = baseline[file] || {};
+    const allowed = baseline.get(sourceIdentity(file)) || {};
     const seen = new Map();
 
     function check(node, text) {
@@ -51,8 +60,10 @@ export default {
     return {
       JSXText(node) { check(node, node.value); },
       JSXAttribute(node) {
-        if (visibleAttributes.has(node.name.name) && node.value?.type === 'Literal') {
-          check(node, node.value.value);
+        if (!visibleAttributes.has(node.name.name)) return;
+        if (node.value?.type === 'Literal') check(node, node.value.value);
+        if (node.value?.type === 'JSXExpressionContainer') {
+          for (const value of expressionStrings(node.value.expression)) check(node, value);
         }
       },
       JSXExpressionContainer(node) {
