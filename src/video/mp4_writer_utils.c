@@ -1246,7 +1246,8 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
     /* FAAC keeps the configured full output rate while coding HE-AAC's core
      * at half rate; its access units therefore span 2048 full-rate samples. */
     (*transcoded_params)->sample_rate = (int)faac_adapter_get_sample_rate(faac_enc);
-    (*transcoded_params)->bit_rate = faac_cfg.bit_rate_per_channel * nb_ch;
+    /* Widen before multiplication; bit_rate is 64-bit metadata. */
+    (*transcoded_params)->bit_rate = (int64_t)faac_cfg.bit_rate_per_channel * nb_ch;
     (*transcoded_params)->profile = profile;
     (*transcoded_params)->frame_size = faac_adapter_get_frame_samples(faac_enc);
     (*transcoded_params)->initial_padding = faac_adapter_get_encoder_delay(faac_enc);
