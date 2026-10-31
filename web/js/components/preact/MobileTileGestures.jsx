@@ -234,6 +234,7 @@ export function MobileTileContextMenu({
         ref={menuRef}
         className="mobile-tile-menu"
         role="menu"
+        tabIndex={-1}
         aria-label={t('live.tileActions')}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
