@@ -628,5 +628,36 @@ class BaselineEditTests(Case):
         self.assertEqual(p.returncode, 2)
 
 
+class RequiredManifestTests(Case):
+    def require_manifest(self):
+        policy = self.load("policy.json")
+        policy["require_run_manifest"] = True
+        self.save("policy.json", policy)
+
+    def test_required_provenance_needs_explicit_revision(self):
+        self.require_manifest()
+        self.wj("run-manifest.json", {"schema_version": 1, "revision": "a" * 40, "scanners": {}})
+        result = self.evaluate()
+        self.assertTrue(any("expected-revision" in item["detail"] for item in result["failures"]))
+
+    def test_malformed_manifest_root_is_failure_not_internal_error(self):
+        self.require_manifest()
+        self.wj("run-manifest.json", [])
+        result = self.evaluate()
+        self.assertIn("invalid-run-manifest", self.kinds(result))
+        self.assertEqual(self.cli("--check", "--expected-revision", "a" * 40).returncode, 1)
+
+    def test_manifest_symlink_is_rejected_before_read(self):
+        outside = self.tmp / "outside.json"
+        outside.write_text('{"scanners": {}, "private": "not report data"}')
+        (self.reports / "run-manifest.json").symlink_to(outside)
+        self.assertIn("invalid-run-manifest", self.kinds(self.evaluate()))
+
+    def test_unrequired_manifest_also_rejects_traversal_report_paths(self):
+        self.wj("run-manifest.json", {"scanners": {"eslint-web": {"reports": ["../inventory.json"]}}})
+        result = self.evaluate()
+        self.assertIn("invalid-run-manifest", self.kinds(result))
+
+
 if __name__ == "__main__":
     unittest.main()

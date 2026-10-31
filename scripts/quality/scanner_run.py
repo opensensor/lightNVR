@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Run one scanner with real exit/report/file provenance (never a policy verdict).
+
+Usage: scanner_run.py --spec scan.json --root . --reports build/scan \
+  --expected-revision <full SHA>
+The JSON spec supplies argv arrays (no shell), a version_command, report paths,
+and explicit scope evidence. Existing reports/scanner records are never replaced.
+"""
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import signal
+import subprocess
+import tempfile
+import zipfile
+
+
+def safe_path(base, relative):
+    """Reject traversal and symlinks before reads, writes, or hashes."""
+    base = Path(base).resolve()
+    if not isinstance(relative, str) or not relative or '\\' in relative:
+        raise ValueError('Expected a nonempty portable relative path')
+    parsed = PurePosixPath(relative)
+    if parsed.is_absolute() or any(part in ('..', '.') for part in relative.split('/')):
+        raise ValueError(f'Unsafe relative path: {relative}')
+    target = base
+    for part in parsed.parts:
+        target = target / part
+        if target.is_symlink():
+            raise ValueError(f'Symlink is not scan evidence: {relative}')
+    if not target.resolve().is_relative_to(base):
+        raise ValueError(f'Path escapes evidence root: {relative}')
+    return target
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def timestamp():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def execute(argv, cwd, timeout, stdout=None, stderr=None):
+    if not isinstance(argv, list) or not argv or any(not isinstance(x, str) for x in argv):
+        raise ValueError('Scanner commands must be nonempty argv arrays')
+    process = subprocess.Popen(argv, cwd=cwd, stdout=stdout or subprocess.PIPE,
+                               stderr=stderr or subprocess.PIPE, start_new_session=True)
+    timed_out = False
+    try:
+        out, err = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        os.killpg(process.pid, signal.SIGKILL)
+        out, err = process.communicate()
+    return {'exit_code': process.returncode, 'timed_out': timed_out}, out or b'', err or b''
+
+
+def source_records(root, names):
+    files = []
+    hashes = {}
+    for name in names:
+        if not isinstance(name, str):
+            raise ValueError('Scanned-file names must be strings')
+        candidate = Path(name)
+        if candidate.is_absolute():
+            try:
+                name = candidate.relative_to(root).as_posix()
+            except ValueError:
+                raise ValueError('Reported source file is outside the checkout') from None
+        file = safe_path(root, name)
+        if not file.is_file():
+            raise ValueError(f'Scanned source does not exist: {name}')
+        files.append(name)
+        hashes[name] = sha(file)
+    return sorted(set(files)), hashes
+
+
+def scope_evidence(spec, root, reports):
+    scope = spec.get('scope') or {}
+    kind = scope.get('kind')
+    evidence = {}
+    if kind == 'eslint-json':
+        report = safe_path(reports, scope['report'])
+        rows = json.loads(report.read_text())
+        if not isinstance(rows, list):
+            raise ValueError('ESLint scope requires its JSON file report')
+        names = [row['filePath'] for row in rows]
+        evidence[scope['report']] = sha(report)
+    elif kind == 'invocation-files':
+        names = scope.get('files', [])
+        if not all(c.get('append_scope_files') for c in spec['commands']):
+            raise ValueError('Invocation scope files must be passed to every scanner command')
+    elif kind == 'npm-lockfiles':
+        names = []
+        for command in spec['commands']:
+            argv = command['argv']
+            if Path(argv[0]).name not in ('npm', 'npm.cmd') or 'audit' not in argv:
+                raise ValueError('npm-lockfiles scope requires npm audit commands')
+            names.append((PurePosixPath(command.get('cwd', '')) / 'package-lock.json').as_posix())
+    elif kind == 'file-list-report':
+        report = safe_path(reports, scope['report'])
+        names = json.loads(report.read_text())['files']
+        evidence[scope['report']] = sha(report)
+    elif kind == 'codeql-source-archive':
+        archive = safe_path(root, scope['archive'])
+        names = []
+        prefix = root.as_posix().lstrip('/') + '/'
+        excluded = 0
+        with zipfile.ZipFile(archive) as zipped:
+            for item in zipped.infolist():
+                if item.is_dir():
+                    continue
+                name = item.filename.lstrip('/')
+                if name.startswith(prefix):
+                    name = name[len(prefix):]
+                elif not (root / name).is_file():
+                    excluded += 1
+                    continue
+                file = safe_path(root, name)
+                if hashlib.sha256(zipped.read(item)).hexdigest() != sha(file):
+                    raise ValueError(f'CodeQL archive differs from checkout: {name}')
+                names.append(name)
+        files, hashes = source_records(root, names)
+        if not files:
+            raise ValueError('CodeQL archive contains no checkout sources')
+        return {'kind': kind, 'files': files, 'file_sha256': hashes,
+                'archive_sha256': sha(archive), 'external_entries_omitted': excluded}
+    elif kind == 'image':
+        report = safe_path(reports, scope['report'])
+        runs = json.loads(report.read_text())['runs']
+        targets = []
+        for run in runs:
+            props = run.get('properties') or {}
+            if not props.get('imageName') or not props.get('imageID'):
+                raise ValueError('Image scope requires tool-reported imageName and imageID')
+            targets.append({'name': props['imageName'], 'digest': props['imageID']})
+        if not targets:
+            raise ValueError('Image scanner reported no targets')
+        return {'kind': 'image', 'targets': targets, 'evidence_sha256': {scope['report']: sha(report)}}
+    else:
+        raise ValueError(f'Unsupported or candidate-only scope evidence: {kind}')
+    files, hashes = source_records(root, names)
+    if not files:
+        raise ValueError('No actual scanned files recorded')
+    return {'kind': kind, 'files': files, 'file_sha256': hashes, 'evidence_sha256': evidence}
+
+
+def run_scanner(spec, *, root, reports, revision):
+    root = Path(root).resolve()
+    reports = Path(reports)
+    if not reports.is_absolute():
+        reports = root / reports
+    try:
+        reports = safe_path(root, reports.absolute().relative_to(root).as_posix())
+    except ValueError:
+        raise ValueError('Report directory must be a nonsymlink path inside checkout root') from None
+    if not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', revision or ''):
+        raise ValueError('Expected a full immutable commit revision')
+    sid = spec.get('scanner_id')
+    if not isinstance(sid, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', sid):
+        raise ValueError('Invalid scanner ID')
+    commands = spec.get('commands')
+    if not isinstance(commands, list) or not commands:
+        raise ValueError('No scanner commands supplied')
+    declared = []
+    evidence_outputs = []
+    for command in commands:
+        command_reports = command.get('reports') or []
+        if not command_reports:
+            raise ValueError('Each scanner command must declare its reports')
+        declared.extend(command_reports)
+        evidence_outputs.extend(command.get('evidence_outputs', []))
+        if command.get('stdout_report') and command['stdout_report'] not in command_reports:
+            raise ValueError('stdout report must be among declared reports')
+    outputs = declared + evidence_outputs
+    scope = spec.get('scope') or {}
+    if scope.get('kind') in ('eslint-json', 'file-list-report', 'image') and scope.get('report') not in outputs:
+        raise ValueError('Tool scope must come from a declared fresh output')
+    if len(set(outputs)) != len(outputs):
+        raise ValueError('Report output paths must be unique')
+    for relative in outputs:
+        if safe_path(reports, relative).exists():
+            raise ValueError(f'Refusing preexisting/stale report: {relative}')
+    manifest_path = safe_path(reports, 'run-manifest.json')
+    manifest = {'schema_version': 1, 'revision': revision, 'scanners': {}}
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get('revision') != revision or sid in manifest.get('scanners', {}):
+            raise ValueError('Manifest belongs to another revision or already records this scanner')
+    reports.mkdir(parents=True, exist_ok=True)
+    for relative in outputs:
+        safe_path(reports, relative).parent.mkdir(parents=True, exist_ok=True)
+    entry = {'status': 'failure', 'exit_code': None, 'tool_version': None, 'revision': revision,
+             'started_at': timestamp(), 'reports': declared, 'report_sha256': {}, 'commands': [], 'errors': []}
+    try:
+        version, out, err = execute(spec['version_command'], root, 30)
+        if version['exit_code'] != 0 or version['timed_out'] or not (out + err).strip():
+            raise ValueError('Tool-version command did not return a version')
+        entry['tool_version'] = (out + err).decode('utf8', errors='replace').strip()[:4096]
+    except (OSError, ValueError, KeyError) as error:
+        entry['errors'].append(str(error))
+    for index, command in enumerate(commands):
+        argv = list(command.get('argv') or [])
+        record = {'argv': argv, 'exit_code': None, 'timed_out': False}
+        try:
+            cwd = root if not command.get('cwd') else safe_path(root, command['cwd'])
+            if command.get('append_scope_files'):
+                names, _ = source_records(root, spec.get('scope', {}).get('files', []))
+                argv += [str(root / name) for name in names]
+                record['argv'] = argv
+            stdout_name = command.get('stdout_report') or f'logs/{sid}-{index}.stdout.log'
+            stdout = safe_path(reports, stdout_name)
+            stderr = safe_path(reports, f'logs/{sid}-{index}.stderr.log')
+            stdout.parent.mkdir(parents=True, exist_ok=True)
+            stderr.parent.mkdir(parents=True, exist_ok=True)
+            with stdout.open('xb') as out, stderr.open('xb') as err:
+                result, _, _ = execute(argv, cwd, command.get('timeout_seconds', 1800), out, err)
+            record.update(result)
+            accepted = command.get('accepted_exit_codes', [0])
+            record['accepted'] = record['exit_code'] in accepted and not record['timed_out']
+            if not record['accepted']:
+                entry['errors'].append(f'Command {index} failed with exit {record["exit_code"]}')
+        except (OSError, ValueError, KeyError) as error:
+            record['accepted'] = False
+            entry['errors'].append(str(error))
+        entry['commands'].append(record)
+    codes = [c['exit_code'] for c in entry['commands'] if isinstance(c['exit_code'], int)]
+    failed = [c['exit_code'] for c in entry['commands'] if not c['accepted'] and isinstance(c['exit_code'], int)]
+    entry['exit_code'] = failed[0] if failed else max(codes, default=None)
+    for relative in declared:
+        try:
+            entry['report_sha256'][relative] = sha(safe_path(reports, relative))
+        except (OSError, ValueError) as error:
+            entry['errors'].append(str(error))
+    try:
+        entry['scope'] = scope_evidence(spec, root, reports)
+        if 'files' in entry['scope']:
+            entry['files_scanned'] = len(entry['scope']['files'])
+    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as error:
+        entry['errors'].append(str(error))
+    entry['completed_at'] = timestamp()
+    if not entry['errors']:
+        entry['status'] = 'success'
+    manifest['scanners'][sid] = entry
+    # One output directory per CI job; independent jobs merge only after finish.
+    # Atomic replacement avoids a partial JSON manifest after process failure.
+    with tempfile.NamedTemporaryFile(mode='w', dir=reports, prefix='.manifest-', delete=False) as temp:
+        json.dump(manifest, temp, indent=2)
+        temp.write('\n')
+        temporary = temp.name
+    os.replace(temporary, manifest_path)
+    return entry
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--spec', required=True)
+    parser.add_argument('--root', default='.')
+    parser.add_argument('--reports', required=True)
+    parser.add_argument('--expected-revision', required=True)
+    args = parser.parse_args(argv)
+    try:
+        entry = run_scanner(json.loads(Path(args.spec).read_text()), root=Path(args.root), reports=Path(args.reports), revision=args.expected_revision)
+        print(f'SCANNER {entry["status"].upper()}: this is execution provenance, not a findings-policy verdict')
+        for error in entry['errors']:
+            print(error)
+        return 0 if entry['status'] == 'success' else 1
+    except (OSError, ValueError) as error:
+        print(f'SCANNER ERROR: {error}')
+        return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

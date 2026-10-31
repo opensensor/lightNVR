@@ -23,6 +23,11 @@ run-manifest.json written by the pipeline:
    "scanners": {"<scanner id>": {"exit_code": 0, "status": "success",
        "reports": ["relative/path"], "tool_version": "...", "db_version": "...",
        "files_scanned": 123}}}
+When require_run_manifest is enabled, --expected-revision is mandatory and each
+entry must also include its revision, timezone-aware started_at/completed_at,
+actual command exit records, report_sha256, and a supported scope with exact
+files/file_sha256 (or immutable image targets). scanner_run.py produces this
+metadata. Missing, stale, tampered or candidate-only evidence fails closed.
 Recorded non-success status or an exit code outside the policy's
 accepted_exit_codes is a scanner error even when a report file exists.
 
@@ -70,7 +75,7 @@ GAP_LABEL = {
     "ambiguous-report": "AMBIGUOUS REPORT", "scope-mismatch": "SCOPE MISMATCH",
     "missing-run-manifest": "NO RUN MANIFEST",
 }
-FATAL_KINDS = {"missing-report", "not-scanned", "ambiguous-report", "invalid-report", "empty-scope", "scope-mismatch"}
+FATAL_KINDS = {"missing-report", "not-scanned", "ambiguous-report", "invalid-report", "empty-scope", "scope-mismatch", "invalid-run-manifest", "missing-run-manifest"}
 DEFAULT_STRIP_PREFIXES = ["/__w/lightNVR/lightNVR/", "/home/runner/work/lightNVR/lightNVR/"]
 SUCCESS_STATUSES = {"success", "succeeded", "ok", "passed", "completed"}
 
@@ -635,7 +640,11 @@ def discover(reports_dir, sc, pins, manifest_entry):
         return paths, issues, "convention"
     paths, issues = [], []
     for rel in rels:
-        p = reports_dir / rel
+        try:
+            p = _manifest_path(reports_dir, rel)
+        except ValueError as error:
+            issues.append(("invalid-run-manifest", str(error)))
+            continue
         if p.is_file():
             paths.append(p)
         else:
@@ -650,7 +659,101 @@ def _version_tokens(s):
     return re.findall(r"\d+(?:\.\d+)+", str(s or ""))
 
 
-def evaluate(reports_dir, inventory, scanners, policy, today, release=False, reports_key=None):
+def _manifest_path(base, relative):
+    """Do not follow a report manifest outside its artifact directory."""
+    if not isinstance(relative, str) or not relative or "\\" in relative or Path(relative).is_absolute() \
+            or any(part in ("..", ".", "") for part in relative.split("/")):
+        raise ValueError("unsafe manifest report path")
+    target = Path(base).resolve()
+    for part in relative.split("/"):
+        target = target / part
+        if target.is_symlink():
+            raise ValueError(f"symlink is not report evidence: {relative}")
+    if not target.resolve().is_relative_to(Path(base).resolve()):
+        raise ValueError("manifest report escapes report directory")
+    return target
+
+
+def _manifest_entry_errors(entry, reports_dir, revision, accepted_codes):
+    errors = []
+    if not isinstance(entry, dict):
+        return ["scanner manifest entry must be an object"]
+    for key in ("tool_version", "status"):
+        if not isinstance(entry.get(key), str) or not entry[key].strip():
+            errors.append(f"required manifest {key} is missing/empty")
+    if type(entry.get("exit_code")) is not int:
+        errors.append("required manifest exit_code must be an integer")
+    if entry.get("revision") != revision:
+        errors.append("scanner manifest revision does not match run revision")
+    try:
+        started = dt.datetime.fromisoformat(entry["started_at"])
+        completed = dt.datetime.fromisoformat(entry["completed_at"])
+        if not started.tzinfo or not completed.tzinfo or completed < started:
+            raise ValueError("invalid interval")
+    except (KeyError, TypeError, ValueError):
+        errors.append("manifest requires a timezone-aware ordered execution interval")
+    commands = entry.get("commands")
+    if not isinstance(commands, list) or not commands:
+        errors.append("manifest requires actual command execution records")
+    else:
+        for command in commands:
+            if not isinstance(command, dict) or type(command.get("exit_code")) is not int \
+                    or command.get("exit_code") not in accepted_codes or command.get("timed_out") is not False \
+                    or not isinstance(command.get("argv"), list) or not command["argv"] \
+                    or any(not isinstance(arg, str) for arg in command["argv"]):
+                errors.append("manifest command failed, timed out, or lacks an exit status")
+    reports = entry.get("reports")
+    hashes = entry.get("report_sha256")
+    if not isinstance(reports, list) or not reports or any(not isinstance(x, str) for x in reports) \
+            or len(set(reports)) != len(reports) or not isinstance(hashes, dict) or set(hashes) != set(reports):
+        errors.append("manifest requires unique report paths and matching report hashes")
+    else:
+        for relative in reports:
+            try:
+                file = _manifest_path(reports_dir, relative)
+                if not re.fullmatch(r"[0-9a-f]{64}", str(hashes[relative])) or hashlib.sha256(file.read_bytes()).hexdigest() != hashes[relative]:
+                    errors.append(f"report hash mismatch: {relative}")
+            except (OSError, ValueError) as exc:
+                errors.append(f"invalid manifest report: {exc}")
+    scope = entry.get("scope")
+    if not isinstance(scope, dict):
+        errors.append("manifest requires actual scope evidence")
+        return errors
+    kind = scope.get("kind")
+    if kind == "image":
+        targets = scope.get("targets")
+        if not isinstance(targets, list) or not targets or any(not isinstance(x, dict) or not x.get("name") or not x.get("digest") for x in targets):
+            errors.append("image scope requires tool-reported names and immutable digests")
+    elif isinstance(kind, str) and kind in {"eslint-json", "invocation-files", "npm-lockfiles", "file-list-report", "codeql-source-archive"}:
+        files, hashes = scope.get("files"), scope.get("file_sha256")
+        if not isinstance(files, list) or not files or any(not isinstance(x, str) for x in files) \
+                or len(set(files)) != len(files) or not isinstance(hashes, dict) or set(hashes) != set(files):
+            errors.append("scope requires nonempty unique actual scanned files and source hashes")
+        else:
+            if type(entry.get("files_scanned")) is not int or entry["files_scanned"] != len(files):
+                errors.append("files_scanned must equal the actual scanned-file list length")
+            for name in files:
+                if Path(name).is_absolute() or "\\" in name or any(x in (".", "..", "") for x in name.split("/")) \
+                        or not re.fullmatch(r"[0-9a-f]{64}", str(hashes[name])):
+                    errors.append("scope contains invalid source path/hash")
+        if kind == "codeql-source-archive" and not re.fullmatch(r"[0-9a-f]{64}", str(scope.get("archive_sha256", ""))):
+            errors.append("CodeQL scope requires its actual source archive hash")
+    else:
+        errors.append("candidate-only or unsupported evidence cannot prove scanned scope")
+    evidence = scope.get("evidence_sha256", {})
+    if not isinstance(evidence, dict):
+        errors.append("scope evidence hashes must be an object")
+        evidence = {}
+    for relative, expected in evidence.items():
+        try:
+            if hashlib.sha256(_manifest_path(reports_dir, relative).read_bytes()).hexdigest() != expected:
+                errors.append(f"scope evidence hash mismatch: {relative}")
+        except (OSError, ValueError) as exc:
+            errors.append(f"invalid scope evidence: {exc}")
+    return errors
+
+
+def evaluate(reports_dir, inventory, scanners, policy, today, release=False, reports_key=None, expected_revision=None):
     reports_dir = Path(reports_dir)
     today = parse_date(today, "today")
     reports_key = reports_key or reports_dir.as_posix()
@@ -750,14 +853,30 @@ def evaluate(reports_dir, inventory, scanners, policy, today, release=False, rep
 
     # ---- run manifest ----
     manifest, manifest_path = None, reports_dir / "run-manifest.json"
-    if manifest_path.is_file():
+    if manifest_path.is_symlink():
+        fail("invalid-run-manifest", "run-manifest.json must not be a symlink")
+    elif manifest_path.is_file():
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(manifest.get("scanners"), dict):
+            if not isinstance(manifest, dict) or not isinstance(manifest.get("scanners"), dict):
                 raise ValueError("'scanners' must be an object")
         except (ValueError, OSError) as e:
             fail("invalid-run-manifest", f"run-manifest.json unreadable: {e}")
             manifest = None
+    manifest_errors = []
+    if policy.get("require_run_manifest"):
+        if not expected_revision:
+            manifest_errors.append("required provenance needs an explicit --expected-revision")
+        if manifest:
+            if type(manifest.get("schema_version")) is not int or manifest.get("schema_version") != 1:
+                manifest_errors.append("unsupported run-manifest schema_version")
+            revision = manifest.get("revision")
+            if not isinstance(revision, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision):
+                manifest_errors.append("run-manifest revision must be a full commit hash")
+            if revision != expected_revision:
+                manifest_errors.append("run-manifest revision does not match expected revision")
+        for detail in manifest_errors:
+            fail("invalid-run-manifest", detail)
     accepted_exit = policy.get("accepted_exit_codes") or {}
     scope_min = policy.get("scope_minimums") or {}
     pins_all = [p for p in policy.get("report_pins") or [] if p.get("reports_dir") == reports_key]
@@ -770,8 +889,20 @@ def evaluate(reports_dir, inventory, scanners, policy, today, release=False, rep
         mentry = (manifest or {}).get("scanners", {}).get(sid) if manifest else None
         if policy.get("require_run_manifest") and mentry is None:
             obs.issue("missing-run-manifest", "no run-manifest.json entry (exit code/status not recorded)")
+        if policy.get("require_run_manifest") and mentry is not None:
+            for detail in _manifest_entry_errors(mentry, reports_dir, (manifest or {}).get("revision"),
+                                                accepted_exit.get(sid, accepted_exit.get("default", [0]))):
+                obs.issue("invalid-run-manifest", detail)
         pins = next((p["paths"] for p in pins_all if p.get("scanner") == sid), None)
-        paths, d_issues, source = discover(reports_dir, sc, pins, mentry)
+        if policy.get("require_run_manifest") and pins and isinstance(mentry, dict) \
+                and pins != mentry.get("reports"):
+            obs.issue("invalid-run-manifest", "policy report pins differ from required hashed reports")
+        if policy.get("require_run_manifest") and (manifest_errors or any(x["fatal"] for x in obs.issues)):
+            paths, d_issues, source = [], [], "invalid required run-manifest"
+            if not isinstance(mentry, dict):
+                mentry = None
+        else:
+            paths, d_issues, source = discover(reports_dir, sc, pins, mentry)
         not_configured = str(sc.get("access_status", "")).split(" ")[0] in ("not-configured", "disabled")
         for kind, detail in d_issues:
             if kind == "missing-report" and not_configured and not paths:
@@ -1099,6 +1230,7 @@ def build_parser():
     ap.add_argument("--release", action="store_true",
                     help="release policy: accepted gaps do not apply; release-blocking dispositions fail")
     ap.add_argument("--json-out", help="write the machine-readable result here")
+    ap.add_argument("--expected-revision", help="full immutable revision to compare with required run provenance")
     ap.add_argument("--reason", help="justification recorded with --update-baseline")
     return ap
 
@@ -1124,7 +1256,7 @@ def main(argv=None):
         except ValueError:
             key = reports.resolve().as_posix()
         result = evaluate(reports_dir=reports, inventory=inventory, scanners=scanners, policy=policy,
-                          today=today, release=args.release, reports_key=key)
+                          today=today, release=args.release, reports_key=key, expected_revision=args.expected_revision)
         render(result, sys.stdout)
         if args.json_out:
             Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
