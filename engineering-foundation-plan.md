@@ -4042,7 +4042,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
 ### T7.178: jsx-a11y/label-has-associated-control in HealthTab.jsx, StorageTab.jsx, ApiKeyModal.jsx
 - **depends_on**: [T7, T10, T7.173, T7.174, T10.2]
 - **agent_type**: worker
-- **ownership**: `web/js/components/preact/settings/HealthTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `web/js/components/preact/users/ApiKeyModal.jsx`, `web/tests/remediation/t7_178.spec.jsx`, `web/tests/remediation/t7_173.spec.jsx` and `web/tests/remediation/t7_174.spec.jsx` hook/mock and locator compatibility only, `quality/evidence/T7.178.md`.
+- **ownership**: `web/js/components/preact/settings/HealthTab.jsx`, `web/js/components/preact/settings/StorageTab.jsx`, `web/js/components/preact/users/ApiKeyModal.jsx`, `web/tests/remediation/t7_178.spec.jsx`, `web/tests/remediation/t7_173.spec.jsx` and `web/tests/remediation/t7_174.spec.jsx` hook/mock and locator compatibility only, `web/tests/remediation/t7_164.spec.jsx` useId hook mock only, `quality/evidence/T7.178.md`.
 - **priority**: low
 - **description**: Reproduce the listed diagnostics and fix this accessibility/quality cause only in the assigned component cluster. Preserve localization, event callbacks, DOM contracts and extension-sensitive test behavior. Narrow an untestable lint-only case with documented static evidence; behavioral accessibility changes require interaction tests.
 - **findings**: ESLINT-BUCKET-5e7cfcb56208eaa9, ESLINT-BUCKET-e84d458d8fcd3eef, ESLINT-BUCKET-cf4b93673820960b
