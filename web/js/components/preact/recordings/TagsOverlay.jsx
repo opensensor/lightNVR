@@ -186,28 +186,43 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     .filter(([_, sel]) => sel)
     .map(([id]) => parseInt(id, 10));
 
-  const selectedRecs = recordings.filter(r => selectedIds.includes(r.id));
+  const selectionKey = JSON.stringify(selectedIds);
+  const currentSelectionRef = useRef(selectionKey);
+  currentSelectionRef.current = selectionKey;
 
-  // Compute tag states from selected recordings
+  // The catalog is independent of the recording snapshot. Loading more names
+  // must not overwrite a successful local edit while the parent refetches rows.
   useEffect(() => {
     recordingsAPI.getAllRecordingTags().then(setAllTags);
   }, []);
 
   useEffect(() => {
-    const states = {};
-    // Gather all tags from selected recordings
-    const allUsedTags = new Set();
-    selectedRecs.forEach(r => (r.tags || []).forEach(t => allUsedTags.add(t)));
-    allTags.forEach(t => allUsedTags.add(t));
-
-    allUsedTags.forEach(tag => {
-      const count = selectedRecs.filter(r => (r.tags || []).includes(tag)).length;
-      if (count === 0) states[tag] = 'none';
-      else if (count === selectedRecs.length) states[tag] = 'all';
-      else states[tag] = 'some';
+    setTagStates(prev => {
+      const states = { ...prev };
+      allTags.forEach(tag => {
+        if (!Object.hasOwn(states, tag)) states[tag] = 'none';
+      });
+      return states;
     });
-    setTagStates(states);
-  }, [allTags, selectedRecs.length]);
+  }, [allTags]);
+
+  // A new recording snapshot is authoritative, including same-count refetches.
+  // Use selected IDs rather than their count so replacing a selection reconciles
+  // correctly without rerunning on each newly allocated selection object.
+  useEffect(() => {
+    const ids = JSON.parse(selectionKey);
+    const selectedRecs = recordings.filter(recording => ids.includes(recording.id));
+    setTagStates(prev => {
+      const states = {};
+      const knownTags = new Set(Object.keys(prev));
+      selectedRecs.forEach(recording => (recording.tags || []).forEach(tag => knownTags.add(tag)));
+      knownTags.forEach(tag => {
+        const count = selectedRecs.filter(recording => (recording.tags || []).includes(tag)).length;
+        states[tag] = count === 0 ? 'none' : count === selectedRecs.length ? 'all' : 'some';
+      });
+      return states;
+    });
+  }, [recordings, selectionKey]);
 
   // Close on outside click
   useEffect(() => {
@@ -225,18 +240,22 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
       if (current === 'all') {
         // Remove from all
         await recordingsAPI.batchUpdateRecordingTags(selectedIds, [], [tag]);
-        setTagStates(prev => ({ ...prev, [tag]: 'none' }));
+        if (currentSelectionRef.current === selectionKey) {
+          setTagStates(prev => ({ ...prev, [tag]: 'none' }));
+        }
         showStatusMessage(t('recordings.tagRemovedFromRecordings', { tag, count: selectedIds.length }));
       } else {
         // 'none' or 'some' -> add to all
         await recordingsAPI.batchUpdateRecordingTags(selectedIds, [tag], []);
-        setTagStates(prev => ({ ...prev, [tag]: 'all' }));
+        if (currentSelectionRef.current === selectionKey) {
+          setTagStates(prev => ({ ...prev, [tag]: 'all' }));
+        }
         showStatusMessage(t('recordings.tagAddedToRecordings', { tag, count: selectedIds.length }));
       }
       if (onTagsChanged) onTagsChanged();
     } catch { /* error shown by API */ }
     setSaving(false);
-  }, [tagStates, selectedIds, onTagsChanged]);
+  }, [tagStates, selectedIds, selectionKey, onTagsChanged]);
 
   const addNewTag = useCallback(async (tag) => {
     const trimmed = tag.trim();
@@ -244,7 +263,9 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     setSaving(true);
     try {
       await recordingsAPI.batchUpdateRecordingTags(selectedIds, [trimmed], []);
-      setTagStates(prev => ({ ...prev, [trimmed]: 'all' }));
+      if (currentSelectionRef.current === selectionKey) {
+        setTagStates(prev => ({ ...prev, [trimmed]: 'all' }));
+      }
       if (!allTags.includes(trimmed)) setAllTags(prev => [...prev, trimmed].sort());
       setInputValue('');
       setShowSuggestions(false);
@@ -252,7 +273,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
       if (onTagsChanged) onTagsChanged();
     } catch { /* error shown by API */ }
     setSaving(false);
-  }, [selectedIds, allTags, onTagsChanged]);
+  }, [selectedIds, selectionKey, allTags, onTagsChanged]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && inputValue.trim()) { e.preventDefault(); addNewTag(inputValue); }
