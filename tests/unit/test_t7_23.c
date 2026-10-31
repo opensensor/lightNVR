@@ -100,6 +100,34 @@ static void test_apostrophe_in_quoted_identifier_round_trips(void) { quoted_iden
 static void test_semicolon_and_comment_text_in_quoted_identifier_round_trip(void) {
     quoted_identifier_round_trip("semi;--/*identifier*/");
 }
+static void statement_round_trip(const char *up, const char *down) {
+    allocated_sql = sqlite3_mprintf("-- migrate:up\n%s\n-- migrate:down\n%s\n", up, down);
+    TEST_ASSERT_NOT_NULL(allocated_sql);
+    write_fixture(allocated_sql); open_migrations(NULL);
+    TEST_ASSERT_EQUAL_INT(0, migrate_up(migration, NULL)); assert_sentinel();
+    TEST_ASSERT_EQUAL_INT(1, migrate_down(migration)); assert_sentinel();
+}
+static void test_backtick_identifier_and_escaped_delimiter_round_trip(void) {
+    statement_round_trip("CREATE TABLE `semi;quo``te'name`(value TEXT);",
+                         "DROP TABLE `semi;quo``te'name`;");
+}
+static void test_bracket_identifier_round_trip(void) {
+    statement_round_trip("CREATE TABLE [semi;quote'name](value TEXT);",
+                         "DROP TABLE [semi;quote'name];");
+}
+static void test_inline_comments_do_not_change_statement_boundaries(void) {
+    statement_round_trip("CREATE TABLE evidence /* '; END */ (value TEXT);\n"
+                         "INSERT INTO evidence VALUES('it''s; kept'); -- '; BEGIN\n"
+                         "UPDATE evidence SET value='changed';",
+                         "DROP TABLE evidence /* '; BEGIN */;");
+}
+static void test_trigger_quoted_keywords_and_nested_case_round_trip(void) {
+    statement_round_trip("CREATE TABLE evidence(value TEXT);"
+                         "CREATE TRIGGER \"BEGIN;END\" AFTER INSERT ON evidence BEGIN "
+                         "UPDATE evidence SET value=CASE WHEN new.value='it''s;' THEN 'END' ELSE 'BEGIN' END; END;"
+                         "INSERT INTO evidence VALUES('it''s;');",
+                         "DROP TRIGGER \"BEGIN;END\"; DROP TABLE evidence;");
+}
 static void test_up_identifier_quote_cannot_hide_disallowed_attach(void) {
     char sql[1024];
     int length = snprintf(sql, sizeof(sql), "-- migrate:up\n"
@@ -154,6 +182,10 @@ int main(void) {
     RUN_TEST(test_double_quote_in_identifier_round_trips);
     RUN_TEST(test_apostrophe_in_quoted_identifier_round_trips);
     RUN_TEST(test_semicolon_and_comment_text_in_quoted_identifier_round_trip);
+    RUN_TEST(test_backtick_identifier_and_escaped_delimiter_round_trip);
+    RUN_TEST(test_bracket_identifier_round_trip);
+    RUN_TEST(test_inline_comments_do_not_change_statement_boundaries);
+    RUN_TEST(test_trigger_quoted_keywords_and_nested_case_round_trip);
     RUN_TEST(test_up_identifier_quote_cannot_hide_disallowed_attach);
     RUN_TEST(test_down_identifier_quote_cannot_hide_disallowed_attach);
     RUN_TEST(test_tracking_identifier_cannot_execute_second_statement);

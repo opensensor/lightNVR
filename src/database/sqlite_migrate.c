@@ -235,7 +235,7 @@ static int validate_migration_file_security(const char *filepath) {
  * splitting on the first semicolon would cut it in half: the allowlist would
  * reject the dangling END and sqlite3_exec would report "incomplete input".
  * Treat the whole trigger, including nested CASE..END expressions, as one
- * statement. Single-quoted literals are skipped everywhere.
+ * statement. Quoted literals/identifiers and comments are skipped everywhere.
  */
 static bool is_word_char(char c) {
     return isalnum((unsigned char)c) || c == '_';
@@ -261,15 +261,35 @@ static const char *statement_end(const char *start) {
         trigger = word_matches(start, after, "TRIGGER", 7);
     }
 
-    int in_string = 0;
+    char quote = 0;
     int depth = 0;          /* BEGIN/CASE blocks still open */
     bool body_started = false;
     for (cursor = start; *cursor; cursor++) {
-        if (*cursor == '\'') {
-            in_string = !in_string;
+        if (quote) {
+            if (*cursor == quote) {
+                /* SQLite doubles quote delimiters inside strings/identifiers;
+                 * bracket identifiers instead end at the first closing ]. */
+                if (quote != ']' && cursor[1] == quote) cursor++;
+                else quote = 0;
+            }
             continue;
         }
-        if (in_string) continue;
+        if (*cursor == '\'' || *cursor == '"' || *cursor == '`' || *cursor == '[') {
+            quote = *cursor == '[' ? ']' : *cursor;
+            continue;
+        }
+        if (cursor[0] == '-' && cursor[1] == '-') {
+            while (*cursor && *cursor != '\n') cursor++;
+            if (!*cursor) return cursor;
+            continue;
+        }
+        if (cursor[0] == '/' && cursor[1] == '*') {
+            cursor += 2;
+            while (*cursor && !(cursor[0] == '*' && cursor[1] == '/')) cursor++;
+            if (!*cursor) return cursor;
+            cursor++;
+            continue;
+        }
         if (!trigger) {
             if (*cursor == ';') return cursor;
             continue;
