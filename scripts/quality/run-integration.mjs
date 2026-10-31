@@ -30,20 +30,22 @@ export function selectedCount(report) {
   const total = count(report.suites); if (!total) throw new Error('No tests selected; refusing empty success'); return total;
 }
 
-export function createRun({ task, binary, go2rtc }) {
+export function createRun({ task, binary, go2rtc, configProfile = 'default' }) {
   taskId(task);
+  if (!['default', 'health'].includes(configProfile)) throw new Error('Unknown configuration profile');
+  if (configProfile === 'health') go2rtc = false;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `lightnvr-eng-${task}-`));
   const token = crypto.randomUUID(); const artifacts = path.join(root, 'build/eng-artifacts', task, 'integration-' + token);
   fs.mkdirSync(artifacts, { recursive: true });
   const config = path.join(dir, 'lightnvr.ini'); binary = fs.realpathSync(binary);
   let ini = fs.readFileSync(path.join(root, 'config/lightnvr-health-test.ini'), 'utf8')
-    .replaceAll('/tmp/lightnvr-test', dir).replace('root = ./web/dist', `root = ${root}/web/dist`)
-    .replace('[mqtt]\nenabled = true', '[mqtt]\nenabled = false');
+    .replaceAll('/tmp/lightnvr-test', dir).replace('root = ./web/dist', `root = ${root}/web/dist`);
+  if (configProfile !== 'health') ini = ini.replace('[mqtt]\nenabled = true', '[mqtt]\nenabled = false');
   if (go2rtc) ini = ini.replace('[go2rtc]\nenabled = false', `[go2rtc]\nenabled = true\nbinary_path = ${root}/go2rtc/go2rtc\napi_port = 11984\nrtsp_port = 18554\nwebrtc_port = 18555\nauto_start = true`).replace('max_streams = 1', 'max_streams = 8');
   fs.writeFileSync(config, ini);
   fs.writeFileSync(path.join(dir, 'owner.json'), JSON.stringify({ dir, token, config, configHash: fileHash(config), binary, artifacts }, null, 2));
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('LIGHTNVR_') && !['GO2RTC_URL', 'GO2RTC_BASE_PATH', 'GO2RTC_RTSP_PORT', 'DEBUG', 'PWDEBUG', 'HEADED', 'LD_LIBRARY_PATH'].includes(key)));
-  Object.assign(env, { LIGHTNVR_RUN_TOKEN: token, LIGHTNVR_TEST_DIR: dir, LIGHTNVR_TEST_CONFIG: config, LIGHTNVR_TEST_BIN: binary, LIGHTNVR_URL: 'http://127.0.0.1:18080', GO2RTC_URL: 'http://127.0.0.1:11984', GO2RTC_RTSP_PORT: '18554', LIGHTNVR_SKIP_GO2RTC: go2rtc ? '0' : '1', LIGHTNVR_TEST_RESULTS_DIR: path.join(artifacts, 'results'), PLAYWRIGHT_HTML_OUTPUT_DIR: path.join(artifacts, 'html'), PLAYWRIGHT_JSON_OUTPUT_NAME: path.join(artifacts, 'results.json'), LD_LIBRARY_PATH: path.dirname(binary) });
+  Object.assign(env, { LIGHTNVR_RUN_TOKEN: token, LIGHTNVR_TEST_DIR: dir, LIGHTNVR_TEST_CONFIG: config, LIGHTNVR_TEST_BIN: binary, LIGHTNVR_URL: 'http://127.0.0.1:18080', GO2RTC_URL: 'http://127.0.0.1:11984', GO2RTC_RTSP_PORT: '18554', LIGHTNVR_SKIP_GO2RTC: go2rtc ? '0' : '1', LIGHTNVR_TEST_RESULTS_DIR: path.join(artifacts, 'results'), PLAYWRIGHT_HTML_OUTPUT_DIR: path.join(artifacts, 'html'), PLAYWRIGHT_HTML_OPEN: 'never', PLAYWRIGHT_JSON_OUTPUT_NAME: path.join(artifacts, 'results.json'), LD_LIBRARY_PATH: path.dirname(binary) });
   return { dir, artifacts, config, binary, env };
 }
 
@@ -69,18 +71,83 @@ function execute(command, args, env, log) {
   });
 }
 
-export async function main(argv = process.argv.slice(2)) {
-  const options = { task: '', project: 'api', grep: '', binary: '', go2rtc: true };
+const usage = 'Usage: --task ID [--project all|api|ui|go2rtc] [--grep regex] [--shard i/n] [--file tests/integration/path.spec.ts ...] [--binary path] [--config-profile default|health] [--without-go2rtc] [--list]';
+
+export function parseOptions(argv) {
+  if (argv.includes('--help')) return { help: true };
+  const options = { task: '', project: 'api', grep: '', binary: '', go2rtc: true, files: [], shard: '', list: false, configProfile: 'default' };
+  const keys = { '--task': 'task', '--project': 'project', '--grep': 'grep', '--binary': 'binary', '--shard': 'shard', '--config-profile': 'configProfile', '--file': 'file' };
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--without-go2rtc') { options.go2rtc = false; continue; }
-    const key = { '--task': 'task', '--project': 'project', '--grep': 'grep', '--binary': 'binary' }[arg];
-    if (!key || argv[i + 1] === undefined) throw new Error('Usage: --task ID [--project api|ui|go2rtc] [--grep regex] [--binary path] [--without-go2rtc]');
-    options[key] = argv[++i];
+    const argument = argv[i];
+    if (argument === '--without-go2rtc') { options.go2rtc = false; continue; }
+    if (argument === '--list') { options.list = true; continue; }
+    const equal = argument.indexOf('=');
+    const flag = equal < 0 ? argument : argument.slice(0, equal);
+    const key = keys[flag];
+    const value = equal < 0 ? argv[++i] : argument.slice(equal + 1);
+    if (!key || value === undefined || value === '' || value.startsWith('--')) throw new Error(usage);
+    if (key === 'file') {
+      const file = fs.realpathSync(path.resolve(root, value));
+      const directory = path.join(root, 'tests/integration') + path.sep;
+      if (!file.startsWith(directory) || !/\.spec\.(ts|tsx|js|jsx)$/.test(file) || !fs.statSync(file).isFile()) throw new Error('File filters must name exact integration spec files inside tests/integration');
+      options.files.push(file);
+    } else options[key] = value;
   }
   taskId(options.task);
-  if (!['api', 'ui', 'go2rtc'].includes(options.project)) throw new Error('Unknown Playwright project');
+  if (!['all', 'api', 'ui', 'go2rtc'].includes(options.project)) throw new Error('Unknown Playwright project');
+  if (options.grep) new RegExp(options.grep);
+  if (options.shard) {
+    const match = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(options.shard);
+    if (!match || !Number.isSafeInteger(Number(match[2])) || Number(match[1]) > Number(match[2])) throw new Error('Shard must be i/n with 1 <= i <= n');
+  }
+  if (!['default', 'health'].includes(options.configProfile)) throw new Error('Unknown configuration profile');
+  if (options.configProfile === 'health') {
+    options.go2rtc = false;
+    if (!options.binary && !options.list) throw new Error('The health profile requires an explicit MQTT-enabled --binary');
+  }
+  return options;
+}
+
+export function playwrightArgs(options) {
+  const args = [path.join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--retries=0'];
+  if (options.project !== 'all') args.push('--project=' + options.project);
+  if (options.grep) args.push('--grep', options.grep);
+  if (options.shard) args.push('--shard=' + options.shard);
+  for (const file of options.files) args.push('^' + file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+  return args;
+}
+
+export function archiveRunLogs(run) {
+  const destination = path.join(run.artifacts, 'runtime');
+  fs.mkdirSync(destination, { recursive: true });
+  for (const name of ['lightnvr.ini', 'lightnvr.log', 'owner.json', 'process.json', 'process-stopped.json', 'go2rtc/go2rtc.log', 'go2rtc/go2rtc.yaml']) {
+    const source = path.join(run.dir, name);
+    if (!fs.existsSync(source) || fs.lstatSync(source).isSymbolicLink() || !fs.lstatSync(source).isFile() || !fs.realpathSync(source).startsWith(fs.realpathSync(run.dir) + path.sep)) continue;
+    const target = path.join(destination, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(source, target);
+  }
+}
+
+async function discover(options, artifacts, env = process.env) {
+  fs.mkdirSync(artifacts, { recursive: true });
+  const discovery = path.join(artifacts, 'discovery.json');
+  const log = path.join(artifacts, 'discovery.log');
+  const status = await execute(process.execPath, [...playwrightArgs(options), '--list', '--reporter=json'], { ...env, PLAYWRIGHT_JSON_OUTPUT_NAME: discovery, PLAYWRIGHT_HTML_OPEN: 'never' }, log);
+  console.log(fs.readFileSync(log, 'utf8'));
+  if (status) return { status, count: 0 };
+  return { status: 0, count: selectedCount(JSON.parse(fs.readFileSync(discovery, 'utf8'))) };
+}
+
+export async function main(argv = process.argv.slice(2)) {
+  const options = parseOptions(argv);
+  if (options.help) { console.log(usage); return 0; }
   for (const key of ['LIGHTNVR_URL', 'GO2RTC_URL']) if (process.env[key]) validateLoopback(process.env[key]);
+  if (process.env.LIGHTNVR_TEST_CONFIG) throw new Error('Arbitrary LIGHTNVR_TEST_CONFIG is not accepted; use --config-profile default or health');
+  if (options.list) {
+    const artifacts = path.join(root, 'build/eng-artifacts', options.task, 'discovery-' + crypto.randomUUID());
+    const result = await discover(options, artifacts);
+    console.log(`Discovery artifacts: ${artifacts}`);
+    return result.status;
+  }
   if (!options.binary) {
     const buildTask = options.task + '-server';
     const profile = options.go2rtc ? 'integration' : 'lean';
@@ -90,17 +157,17 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const release = acquireLock(); let run; let status = 1;
   try {
-    for (const port of options.go2rtc ? [18080, 11984, 18554, 18555] : [18080]) await assertPortFree(port);
+    const ports = options.go2rtc ? [18080, 11984, 18554, 18555] : [18080];
+    // The health lane deliberately exercises an unreachable local broker.
+    if (options.configProfile === 'health') ports.push(18884);
+    for (const port of ports) await assertPortFree(port);
     run = createRun(options);
     console.log(`Integration artifacts: ${run.artifacts}\nOwned runtime: ${run.dir}`);
-    const args = [path.join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--project', options.project, '--retries=0'];
-    if (options.grep) args.push('--grep', options.grep);
-    const discovery = path.join(run.artifacts, 'discovery.json');
-    status = await execute(process.execPath, [...args, '--list', '--reporter=json'], { ...run.env, PLAYWRIGHT_JSON_OUTPUT_NAME: discovery }, path.join(run.artifacts, 'discovery.log'));
+    const discovery = await discover(options, run.artifacts, run.env);
+    status = discovery.status;
     if (status) return status;
-    const count = selectedCount(JSON.parse(fs.readFileSync(discovery, 'utf8')));
-    fs.writeFileSync(path.join(run.artifacts, 'run.json'), JSON.stringify({ task: options.task, binary: run.binary, binaryHash: fileHash(run.binary), selectedTests: count, go2rtc: options.go2rtc, serialization: 'shared native/integration runtime lease; fixed legacy ports' }, null, 2));
-    status = await execute(process.execPath, [...args, '--reporter=list,json'], run.env, path.join(run.artifacts, 'playwright.log'));
+    fs.writeFileSync(path.join(run.artifacts, 'run.json'), JSON.stringify({ task: options.task, binary: run.binary, binaryHash: fileHash(run.binary), selectedTests: discovery.count, go2rtc: options.go2rtc, configProfile: options.configProfile, files: options.files, shard: options.shard, serialization: 'shared native/integration runtime lease; fixed legacy ports' }, null, 2));
+    status = await execute(process.execPath, [...playwrightArgs(options), '--reporter=list,json,html'], run.env, path.join(run.artifacts, 'playwright.log'));
     console.log(fs.readFileSync(path.join(run.artifacts, 'playwright.log'), 'utf8').slice(-12000));
     if (status === 0) {
       const results = JSON.parse(fs.readFileSync(path.join(run.artifacts, 'results.json'), 'utf8'));
@@ -111,8 +178,10 @@ export async function main(argv = process.argv.slice(2)) {
     let cleanupError;
     try { if (run) await stopOwnedProcess(run.env); }
     catch (error) { cleanupError = error; status = 2; }
-    finally { release(); }
-    // Keep owned runtime data/logs for diagnosis. Never recursively delete external paths.
+    finally {
+      try { if (run) archiveRunLogs(run); }
+      finally { release(); }
+    }
     if (run) fs.writeFileSync(path.join(run.artifacts, 'exit.json'), JSON.stringify({ exitCode: status, runtimeRetained: run.dir, cleanupError: cleanupError?.message }));
     if (cleanupError) throw cleanupError;
   }

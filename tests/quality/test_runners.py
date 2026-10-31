@@ -176,6 +176,72 @@ class IntegrationRunnerTests(unittest.TestCase):
           } finally {child.kill('SIGKILL');fs.rmSync(run.dir,{recursive:true});fs.rmSync(run.artifacts,{recursive:true});}
         """)
 
+    def test_cli_preserves_project_file_shard_and_grep(self):
+        self.node("""
+          import assert from 'node:assert/strict';
+          import { parseOptions, playwrightArgs } from './scripts/quality/run-integration.mjs';
+          const options=parseOptions(['--task','T15.1','--project','all','--shard','2/3','--grep','@api|@ui','--file','tests/integration/specs/system-health.api.spec.ts','--file','tests/integration/specs/system-health.ui.spec.ts','--list']);
+          const args=playwrightArgs(options);
+          assert.equal(options.list,true);assert.equal(options.files.length,2);
+          assert.ok(!args.includes('--project'));assert.ok(args.includes('--shard=2/3'));
+          assert.equal(args[args.indexOf('--grep')+1],'@api|@ui');
+          const filters=args.filter(arg=>arg.startsWith('^'));assert.equal(filters.length,2);
+          assert.ok(new RegExp(filters[0]).test(options.files[0]));
+          assert.ok(!new RegExp(filters[0]).test(options.files[0].replace('.api.','XapiY')));
+          assert.ok(playwrightArgs(parseOptions(['--task=T15.1','--project=ui','--shard=1/2'])).includes('--project=ui'));
+        """)
+
+    def test_cli_rejects_config_and_unsafe_file_or_shard(self):
+        self.node("""
+          import assert from 'node:assert/strict';
+          import { parseOptions } from './scripts/quality/run-integration.mjs';
+          for (const extra of [['--config','/tmp/production'],['--file','package.json'],['--file','../outside.spec.ts'],['--shard','0/2'],['--shard','3/2'],['--shard','1/0'],['--project','unknown'],['--config-profile','production'],['--workers','8']]) assert.throws(()=>parseOptions(['--task','T15.1',...extra]));
+          assert.throws(()=>parseOptions(['--task','T15.1','--config-profile','health']),/binary/);
+        """)
+
+    def test_health_profile_keeps_mqtt_and_omits_go2rtc(self):
+        self.node("""
+          import assert from 'node:assert/strict';import fs from 'node:fs';
+          import { parseOptions, createRun } from './scripts/quality/run-integration.mjs';
+          const options=parseOptions(['--task','T15-health-test','--config-profile','health','--binary',process.execPath]);
+          const run=createRun(options);
+          try {
+            const ini=fs.readFileSync(run.config,'utf8');
+            assert.ok(ini.includes('[mqtt]\\nenabled = true'));
+            assert.ok(ini.includes('broker_host = 127.0.0.1'));
+            assert.ok(ini.includes('broker_port = 18884'));
+            assert.ok(ini.includes('[go2rtc]\\nenabled = false'));
+            assert.equal(run.env.LIGHTNVR_SKIP_GO2RTC,'1');
+          }finally{fs.rmSync(run.dir,{recursive:true});fs.rmSync(run.artifacts,{recursive:true});}
+        """)
+
+    def test_discovery_does_not_need_binary_or_runtime_directory(self):
+        self.node("""
+          import assert from 'node:assert/strict';import fs from 'node:fs';
+          import { main } from './scripts/quality/run-integration.mjs';
+          const before=fs.readdirSync('/tmp').filter(n=>n.startsWith('lightnvr-eng-T15-discovery-test-'));
+          assert.equal(await main(['--task','T15-discovery-test','--project','api','--grep','GET /api/system','--binary','/no-binary-required-for-discovery','--list']),0);
+          assert.deepEqual(fs.readdirSync('/tmp').filter(n=>n.startsWith('lightnvr-eng-T15-discovery-test-')),before);
+          fs.rmSync('build/eng-artifacts/T15-discovery-test',{recursive:true});
+        """)
+
+    def test_log_archive_ignores_external_symlinks_and_unrelated_data(self):
+        self.node("""
+          import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';
+          import { createRun, archiveRunLogs } from './scripts/quality/run-integration.mjs';
+          const run=createRun({task:'T15-archive-test',binary:process.execPath,go2rtc:false});
+          try {
+            fs.writeFileSync(path.join(run.dir,'lightnvr.log'),'owned log');
+            fs.writeFileSync(path.join(run.dir,'unrelated-secret'),'do not archive');
+            fs.symlinkSync('/etc/passwd',path.join(run.dir,'other.log'));
+            archiveRunLogs(run);
+            const files=fs.readdirSync(path.join(run.artifacts,'runtime'));
+            assert.ok(files.includes('lightnvr.log'));assert.ok(files.includes('lightnvr.ini'));
+            assert.ok(!files.includes('other.log'));assert.ok(!files.includes('unrelated-secret'));
+            assert.equal(fs.readFileSync(path.join(run.artifacts,'runtime/lightnvr.log'),'utf8'),'owned log');
+          }finally{fs.rmSync(run.dir,{recursive:true});fs.rmSync(run.artifacts,{recursive:true});}
+        """)
+
     def test_unselected_cli_fails_before_server_creation(self):
         result = subprocess.run(['node','scripts/quality/run-integration.mjs','--task','../escape'], cwd=ROOT, capture_output=True)
         self.assertNotEqual(result.returncode,0)

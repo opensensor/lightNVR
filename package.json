@@ -6,10 +6,10 @@
     "node": ">=24.11.0 <25"
   },
   "scripts": {
-    "test": "npx playwright test",
-    "test:api": "npx playwright test --grep @api",
-    "test:ui": "npx playwright test --grep @ui",
-    "test:go2rtc": "npx playwright test --grep @go2rtc",
+    "test": "node scripts/quality/run-integration.mjs --task npm-test --project all",
+    "test:api": "node scripts/quality/run-integration.mjs --task npm-api --project api --grep @api",
+    "test:ui": "node scripts/quality/run-integration.mjs --task npm-ui --project ui --grep @ui",
+    "test:go2rtc": "node scripts/quality/run-integration.mjs --task npm-go2rtc --project api --grep @go2rtc",
     "test:report": "npx playwright show-report",
     "test:load": "node --experimental-strip-types tests/load/index.ts",
     "test:load:api": "node --experimental-strip-types tests/load/index.ts --tags api",

@@ -327,14 +327,13 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-          LIGHTNVR_TEST_BIN="$GITHUB_WORKSPACE/build/health-ci/bin/lightnvr" \
-            LIGHTNVR_TEST_CONFIG="$GITHUB_WORKSPACE/config/lightnvr-health-test.ini" \
-            LIGHTNVR_SKIP_GO2RTC=1 \
-            npx playwright test \
-              tests/integration/specs/system-health.api.spec.ts \
-              tests/integration/specs/system-health-mqtt.api.spec.ts \
-              tests/integration/specs/system-health.ui.spec.ts \
-              tests/integration/specs/system-health-settings.ui.spec.ts
+          node scripts/quality/run-integration.mjs \
+            --task ci-health --project all --config-profile health \
+            --binary "$GITHUB_WORKSPACE/build/health-ci/bin/lightnvr" \
+            --file tests/integration/specs/system-health.api.spec.ts \
+            --file tests/integration/specs/system-health-mqtt.api.spec.ts \
+            --file tests/integration/specs/system-health.ui.spec.ts \
+            --file tests/integration/specs/system-health-settings.ui.spec.ts
 
       - name: Generate system health coverage report
         if: always()
@@ -368,12 +367,12 @@ jobs:
 
       - name: Upload health test artifacts
         uses: actions/upload-artifact@v7
-        if: failure()
+        if: always()
         with:
           name: system-health-test-results
           path: |
             build/health-ci/Testing/
-            playwright-report/
+            build/eng-artifacts/ci-health/
             test-results/
           retention-days: 7
 
@@ -529,6 +528,7 @@ jobs:
             build-essential \
             cmake \
             pkg-config \
+            python3 \
             libavcodec-dev \
             libavformat-dev \
             libavutil-dev \
@@ -606,94 +606,25 @@ jobs:
 
       - name: Run Playwright UI tests
         run: |
-          # Clean any existing playwright reports to ensure fresh state
-          rm -rf playwright-report test-results
-          mkdir -p playwright-report test-results
-
-          # Pre-flight checks before running tests
-          echo "=== Pre-flight checks ==="
-          echo "Checking if lightNVR binary exists..."
-          ls -la build/bin/lightnvr || echo "lightNVR binary NOT found"
-          echo ""
-          echo "Checking if go2rtc binary exists..."
-          ls -la go2rtc/go2rtc || echo "go2rtc binary NOT found"
-          echo ""
-          echo "Checking if web/dist exists..."
-          ls -la web/dist/ | head -5 || echo "web/dist NOT found"
-          echo ""
-          echo "Checking if config file exists..."
-          ls -la config/lightnvr-test.ini || echo "Config file NOT found"
-          echo ""
-
-          echo ""
-          echo "=== Running Playwright shard ${{ matrix.shard }}/2 ==="
-
-          # Stream output into the job log while preserving a copy for the
-          # failure artifact. This also leaves useful progress visible if a
-          # runner is cancelled externally.
-          RESULT=0
-          set +e
-          npx playwright test --project=ui --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-output.log
-          RESULT=${PIPESTATUS[0]}
-          set -e
-
-          if [ $RESULT -ne 0 ]; then
-            echo ""
-            echo "=== Playwright tests failed ==="
-            echo ""
-            echo "Checking if lightNVR is still running..."
-            pgrep -a lightnvr || echo "lightNVR is NOT running"
-            pgrep -a go2rtc || echo "go2rtc is NOT running"
-            echo ""
-            echo "Checking lightNVR logs..."
-            if [ -f /tmp/lightnvr-test/lightnvr.log ]; then
-              echo "=== Last 200 lines of lightnvr.log ==="
-              tail -200 /tmp/lightnvr-test/lightnvr.log
-            else
-              echo "No log file found at /tmp/lightnvr-test/lightnvr.log"
-            fi
-            echo ""
-            echo "Checking for core dumps..."
-            ls -la /tmp/core* 2>/dev/null || echo "No core dumps found"
-            echo ""
-            exit $RESULT
-          fi
-        shell: bash
+          node scripts/quality/run-integration.mjs \
+            --task ci-ui-${{ matrix.shard }} --project ui \
+            --binary "$GITHUB_WORKSPACE/build/bin/lightnvr" \
+            --shard ${{ matrix.shard }}/2
         env:
           CI: true
 
-      - name: Upload Playwright report
+      - name: Upload Playwright artifacts
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-${{ matrix.shard }}
-          path: playwright-report/
+          path: build/eng-artifacts/ci-ui-${{ matrix.shard }}/
           retention-days: 30
 
-      - name: Upload test screenshots
+      - name: Upload legacy explicit-path screenshots
         uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-screenshots-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
-
-      - name: Upload lightNVR logs
-        uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: lightnvr-logs-${{ matrix.shard }}
-          path: |
-            /tmp/lightnvr-test/
-            playwright-output.log
-          retention-days: 7
-
-      - name: Cleanup
-        if: always()
-        run: |
-          # Stop any remaining processes
-          pkill -f lightnvr || true
-          pkill -f go2rtc || true
-
-          # Clean up test artifacts
-          rm -rf /tmp/lightnvr-test
