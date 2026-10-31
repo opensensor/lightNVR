@@ -9412,7 +9412,7 @@
       ],
       "kind": "web-fix",
       "priority": "low",
-      "status": "Not Completed",
+      "status": "Completed (commit `71dbd4c1`)",
       "ownership": [
         "web/js/components/preact/users/AccessPolicyModal.jsx",
         "web/js/components/preact/users/AddUserModal.jsx",
@@ -9503,7 +9503,8 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "log": "10assigned and10related warnings resolved;53combined browser-enabled cases preserve modal control behavior, types/lint/bothasset budgets pass. No product guard change from malformed Audit fixture."
     },
     {
       "id": "T7.165",
@@ -12366,7 +12367,16 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "finding_id": "ESLINT-BUCKET-939df4abd7adefdd",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        }
+      ]
     },
     {
       "id": "T7.195",
@@ -12454,6 +12464,20 @@
           "task": "T7.165",
           "evidence": "quality/evidence/T7.165.md",
           "resolution": "RoleManagerModal no-noninteractive-element-interactions1\u21920"
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-68103860cfe78d89",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-be996c224380b85e",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
         }
       ]
     },
@@ -12946,7 +12970,16 @@
           "scanner": "eslint-web"
         }
       ],
-      "lease": "isolated Jest test; exclusive full lint/build lease"
+      "lease": "isolated Jest test; exclusive full lint/build lease",
+      "related_evidence": [
+        {
+          "finding_id": "ESLINT-BUCKET-6bab06cb3c8102a9",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        }
+      ]
     },
     {
       "id": "T7.201",
@@ -13057,6 +13090,41 @@
           "task": "T7.165",
           "evidence": "quality/evidence/T7.165.md",
           "resolution": "RoleManagerModal no-static-element-interactions1\u21920"
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-3ace786e8c2cd1a8",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-08d8785eb7476330",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-51093f104f4e1cbb",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-7c82f257c4fb1103",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "2direct boundary occurrence(s) removed; full task remains independently gated."
+        },
+        {
+          "finding_id": "ESLINT-BUCKET-c4dd2be3483455e5",
+          "task": "T7.164",
+          "commit": "71dbd4c1",
+          "evidence": "quality/evidence/T7.164.md",
+          "effect": "1direct boundary occurrence(s) removed; full task remains independently gated."
         }
       ]
     },

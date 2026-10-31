@@ -3762,8 +3762,8 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `web/node_modules/.bin/eslint web/js/components/preact/users/AccessPolicyModal.jsx web/js/components/preact/users/AddUserModal.jsx web/js/components/preact/users/ApiKeyModal.jsx web/js/components/preact/users/AuditHistoryModal.jsx web/js/components/preact/users/DeleteUserModal.jsx web/js/components/preact/users/EditUserModal.jsx --format json --output-file build/eng-artifacts/T7.164/eslint.json`
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.164/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/click-events-have-key-events'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.164`; inspect the raw T1 report and trace the caller.
-- **status**: Not Completed
-- **log**:
+- **status**: Completed (commit `71dbd4c1`)
+- **log**: Ten assigned boundary warnings plus10direct related warnings resolved (lint872→852,0errors/no additions). Direct tests-first10RED; final53/53 combined browser-enabled cases preserve pending guards, focus/drag/confirmation behavior. Types and both43/66asset budgets pass, default restored. Audit apparent Escape failure was a malformed fixture timestamp, not a product defect.
 - **files edited/created**:
 
 ### T7.165: jsx-a11y/click-events-have-key-events in RoleManagerModal.jsx, TotpSetupModal.jsx
@@ -4393,7 +4393,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.194/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.194`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred.
 - **files edited/created**:
 
 ### T7.195: jsx-a11y/no-noninteractive-element-interactions in ApiKeyModal.jsx, AuditHistoryModal.jsx, EditUserModal.jsx, RoleManagerModal.jsx
@@ -4414,7 +4414,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.195/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-noninteractive-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.195`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-noninteractive-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md.
+- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-noninteractive-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md. Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred.
 - **files edited/created**:
 
 ### T7.196: jsx-a11y/no-noninteractive-tabindex in FisheyeEptzCanvas.jsx, LanguageSelector.jsx
@@ -4519,7 +4519,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.200/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.200`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**:
+- **log**: Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred.
 - **files edited/created**:
 
 ### T7.201: jsx-a11y/no-static-element-interactions in AddUserModal.jsx, ApiKeyModal.jsx, AuditHistoryModal.jsx, DeleteUserModal.jsx, EditUserModal.jsx, RoleManagerModal.jsx
@@ -4540,7 +4540,7 @@ T7 → T7.1 approval enforcement → T14; T8 → dependency remediations → T15
   - `python3 -c 'import json; data=json.load(open('"'"'build/eng-artifacts/T7.201/eslint.json'"'"')); assert not [m for f in data for m in f["messages"] if m.get("ruleId")=='"'"'jsx-a11y/no-static-element-interactions'"'"'], "targeted diagnostic remains"'`
   - Reproducer locations and scanner fingerprints: `quality/remediation-map.json` task `T7.201`; inspect the raw T1 report and trace the caller.
 - **status**: Not Completed
-- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-static-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md.
+- **log**: Related occurrence already resolved by T7.165 (fe93b78c): RoleManagerModal no-static-element-interactions1→0. Recheck after dependencies and other owned files before closing this task; evidence quality/evidence/T7.165.md. Related exact user-modal boundary removals are recorded in T7.164/71dbd4c1 and the map; no whole-task closure inferred.
 - **files edited/created**:
 
 ### T7.202: jsx-a11y/no-static-element-interactions in TotpSetupModal.jsx
@@ -7381,8 +7381,8 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 - **description**: Return explicit failure when a selected column or separator cannot fit, preserving valid query/index behavior. Existing public64×63-character column regression must stop returning an incomplete SELECT. Tests-first producer ff7cc356 is already committed; no broad refactor or unrelated source ownership.
 - **acceptance_criteria**: Existing query overflow RED becomesGREEN; valid long clauses and max-fitting query controls remain passing. Keep unrelated known buffer failures visible.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.5 --profile integration --regex '^test_t7_2_buffers$' --jobs 4`; record per-cause outcomes while other explicitly assigned failures remain, then final allGREEN plus relevant existing DB/go2rtc controls.
-- **status**: Not Completed
-- **log**: Exact source cause reproduced by T7.2.2; baseline and advisory metadata remain unchanged.
+- **status**: Completed (commit `17b6536a`)
+- **log**: Two overflow branches now return explicit failure. All6query controls pass; full producer12PASS/5knownRED until separate zone/URL fixes. Baseline/advisory metadata unchanged.
 - **files edited/created**:
 
 ### T7.2.6: Reject polygon counts beyond fixed zone capacity
@@ -7399,7 +7399,7 @@ Coordinator verified this serial task chain and inserted T9.4 into T13/T15 befor
 ### T7.2.7: Preserve complete go2rtc multi-source identities or reject before transport
 - **depends_on**: [T7.2.6]
 - **agent_type**: worker
-- **ownership**: `src/video/go2rtc/go2rtc_api.c`, `tests/unit/test_t7_2_buffers.c` (additional boundary controls only; preserve existing assertions), `quality/evidence/T7.2.7.md`.
+- **ownership**: `src/video/go2rtc/go2rtc_api.c`, `tests/unit/test_t7_2_buffers.c` (additional boundary controls only; preserve existing assertions), `tests/unit/cmake/eng/t7_2_buffers.cmake` (targeted malloc wrapper registration only), `quality/evidence/T7.2.7.md`.
 - **description**: Fix checked encoding/URL sizing and error paths in the multi-source request builder only. Reject any source/name or aggregate overflow before curl perform, or allocate complete checked encodings. Preserve valid request semantics and free all allocations. Do not silently drop a source or truncate identity; check arithmetic/count constraints before allocation/iteration. Tests-first producer ff7cc356 is already committed; no broad refactor or unrelated source ownership.
 - **acceptance_criteria**: All four captured identity/overflow RED cases and valid request controls pass; final17-case producer suite is entirelyGREEN with ASan/UBSan. Additional boundary tests may strengthen coverage but original assertions cannot be weakened.
 - **validation**: `python3 scripts/quality/run-native.py --task T7.2.7 --profile integration --regex '^test_t7_2_buffers$' --jobs 4`; record per-cause outcomes while other explicitly assigned failures remain, then final allGREEN plus relevant existing DB/go2rtc controls.
