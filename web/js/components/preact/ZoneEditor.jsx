@@ -565,7 +565,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                   }}
                 />
               )}
-              <canvas
+              <canvas aria-label={`${t('zoneEditor.title')}: ${streamName}`}
                 ref={canvasRef}
                 onClick={handleCanvasClick}
                 onMouseDown={handleMouseDown}
@@ -649,7 +649,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                   aria-pressed={index === selectedZoneIndex}>
                   {t('zoneEditor.selectZone')} {zone.name}
                 </button>
-                <input
+                <input aria-label={t('zoneEditor.zoneNamePlaceholder')}
                   type="text"
                   value={zone.name}
                   onChange={(e) => updateZoneProperty(index, 'name', e.target.value)}
@@ -659,7 +659,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                 
                 <div className="flex items-center space-x-2 mb-2">
                   <label className="text-sm">{t('zoneEditor.color')}</label>
-                  <input
+                  <input aria-label={t('zoneEditor.color')}
                     type="color"
                     value={zone.color || '#3b82f6'}
                     onChange={(e) => updateZoneProperty(index, 'color', e.target.value)}
@@ -669,7 +669,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
                 <div className="flex items-center space-x-2 mb-2">
                   <label className="inline-flex cursor-pointer items-center space-x-2">
-                    <input
+                    <input aria-label={t('common.enabled')}
                       type="checkbox"
                       checked={zone.enabled}
                       onChange={(e) => updateZoneProperty(index, 'enabled', e.target.checked)}

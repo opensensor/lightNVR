@@ -228,7 +228,7 @@ export function TextInputDialog({
         <div className="space-y-4 px-5 py-4">
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block">{inputLabel}</span>
-            <input
+            <input aria-label={inputLabel}
               ref={inputRef}
               type="text"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
@@ -242,7 +242,7 @@ export function TextInputDialog({
           </label>
           {checkboxLabel && (
             <label className="touch-target flex cursor-pointer items-start gap-3 text-sm">
-              <input
+              <input aria-label={checkboxLabel}
                 type="checkbox"
                 className="mt-0.5 h-4 w-4"
                 checked={checked}

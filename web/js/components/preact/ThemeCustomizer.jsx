@@ -110,7 +110,7 @@ export function ThemeCustomizer() {
             </p>
           </div>
         </div>
-        <button
+        <button aria-label={t(isDark ? 'appearance.switchToLightMode' : 'appearance.switchToDarkMode')}
           onClick={toggleDarkMode}
           class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
           style={{
@@ -167,7 +167,7 @@ export function ThemeCustomizer() {
             <span>{isDark ? t('appearance.brighter') : t('appearance.higherContrast')}</span>
           </div>
 
-          <input
+          <input aria-label={t('appearance.colorIntensity')}
             type="range"
             min="0"
             max="100"

@@ -799,7 +799,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 ? 'relative w-screen h-screen bg-black'
                 : 'relative w-full aspect-video bg-black overflow-hidden md:h-full md:aspect-auto'}
             >
-              <video
+              <video aria-label={title || t('recordings.video')}
                 ref={videoRef}
                 className="w-full h-full object-contain"
                 controls
@@ -813,7 +813,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   {playbackMessage}
                 </div>
               )}
-              <canvas
+              <canvas aria-label={t('recordings.detectionOverlays')}
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full pointer-events-none"
                 style={{ display: 'none', zIndex: 2 }}
@@ -884,7 +884,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="flex items-center gap-2 mb-1">
-                    <input
+                    <input aria-label={t('recordings.showDetectionOverlays')}
                       type="checkbox"
                       id="detection-overlay-checkbox"
                       className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
@@ -908,7 +908,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       {t('recordings.detectionSensitivity')}
                     </label>
 
-                    <input
+                    <input aria-label={t('recordings.detectionSensitivity')}
                       type="range"
                       id="detection-sensitivity-slider"
                       className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"

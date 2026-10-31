@@ -1457,7 +1457,7 @@ export function WebRTCVideoCell({
       )}
 
       {/* Video element */}
-      <video
+      <video aria-label={`${stream.name} ${t('live.stream')}`}
         id={`video-${streamId.replace(/\s+/g, '-')}`}
         className="video-element"
         ref={videoRef}
@@ -1674,7 +1674,7 @@ export function WebRTCVideoCell({
           }}
         />
         {/* Pause for privacy button */}
-        {canControlPrivacy && <button
+        {canControlPrivacy && <button aria-label={t('live.pauseForPrivacy')}
           type="button"
           title={t('live.pauseForPrivacy')}
           onClick={() => setShowPrivacyConfirm(true)}

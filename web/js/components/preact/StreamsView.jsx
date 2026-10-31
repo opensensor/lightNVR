@@ -1538,7 +1538,7 @@ export function StreamsView() {
           {canModifyStreams && selectionMode && (
             <div className="flex flex-wrap items-center gap-3 px-3 py-2 mb-3 rounded-md bg-card border border-border">
               <label className="touch-target inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                <input
+                <input aria-label={t('streams.selectAll')}
                   type="checkbox"
                   className="w-4 h-4 rounded cursor-pointer"
                   checked={selectedStreams.size > 0 && selectedStreams.size === (sortedStreams || []).length}
@@ -1592,7 +1592,7 @@ export function StreamsView() {
               the pre-T5 column-header sort affordances still work. */}
           <div className="flex flex-wrap items-center gap-2 mb-3 text-sm text-muted-foreground">
             <label className="sr-only" htmlFor="streams-search">{t('streams.search')}</label>
-            <input
+            <input aria-label={t('streams.search')}
               id="streams-search"
               type="search"
               className="min-w-56 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground"
@@ -1800,7 +1800,7 @@ export function StreamsView() {
                   <label htmlFor="onvif-network-override" className="text-sm font-medium whitespace-nowrap">
                     {t('streams.discoveryNetwork')}
                   </label>
-                  <input
+                  <input aria-label={t('streams.discoveryNetwork')}
                     type="text"
                     id="onvif-network-override"
                     className="p-2 border border-input rounded bg-background text-foreground w-full max-w-xs text-sm"
@@ -1937,7 +1937,7 @@ export function StreamsView() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
                     <label htmlFor="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
-                    <input
+                    <input aria-label={t('auth.username')}
                         type="text"
                         id="onvif-username"
                         name="username"
@@ -1949,7 +1949,7 @@ export function StreamsView() {
                   </div>
                   <div className="form-group">
                     <label htmlFor="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
-                    <input
+                    <input aria-label={t('auth.password')}
                         type="password"
                         id="onvif-password"
                         name="password"
@@ -2024,7 +2024,7 @@ export function StreamsView() {
             <div className="p-4">
               <div className="mb-4">
                 <label htmlFor="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
-                <input
+                <input aria-label={t('streams.enterNameForStream')}
                     type="text"
                     id="custom-stream-name"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
