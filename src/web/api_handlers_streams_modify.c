@@ -44,6 +44,8 @@
 #include "video/mp4_recording.h"
 #include "utils/yaml_validate.h"
 
+static pthread_mutex_t g_put_stream_update_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static bool check_stream_write_access(const http_request_t *req,
                                       http_response_t *res,
                                       const stream_config_t *config) {
@@ -180,11 +182,16 @@ static void *put_stream_worker(void *arg) {
     log_set_thread_context("StreamAPI", task->stream_id);
     log_info("Processing PUT /api/streams/%s in worker thread", task->stream_id);
 
+    // Serialize PUT updates to avoid stale full-snapshot overwrites from
+    // concurrently queued workers.
+    pthread_mutex_lock(&g_put_stream_update_mutex);
+
     // Resolve the stream handle at worker time from the durable name key; the
     // stream may have been deleted while this task was queued.
     stream_handle_t stream = get_stream_by_name(task->stream_id);
     if (!stream) {
         log_warn("Stream %s no longer exists, dropping queued PUT update", task->stream_id);
+        pthread_mutex_unlock(&g_put_stream_update_mutex);
         put_stream_task_free(task);
         return NULL;
     }
@@ -196,6 +203,7 @@ static void *put_stream_worker(void *arg) {
     // Update stream configuration in database first
     if (update_stream_config(task->stream_id, &task->config) != 0) {
         log_error("Failed to update stream configuration in database for %s", task->stream_id);
+        pthread_mutex_unlock(&g_put_stream_update_mutex);
         put_stream_task_free(task);
         return NULL;
     }
@@ -204,6 +212,7 @@ static void *put_stream_worker(void *arg) {
     stream_config_t updated_config;
     if (get_stream_config(stream, &updated_config) != 0) {
         log_error("Failed to refresh stream configuration from database for stream %s", task->config.name);
+        pthread_mutex_unlock(&g_put_stream_update_mutex);
         put_stream_task_free(task);
         return NULL;
     }
