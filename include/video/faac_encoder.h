@@ -25,7 +25,7 @@ typedef struct faac_encoder_config {
     uint32_t sample_rate;        /**< Input PCM sample rate in Hz */
     uint32_t num_channels;       /**< Number of audio channels */
     uint32_t bit_rate_per_channel; /**< Bitrate in bps per channel (0 for default ~64kbps/ch) */
-    enum faac_object_type object_type; /**< FAAC_OBJ_AUTO, FAAC_OBJ_HE_AAC_V1, FAAC_OBJ_LOW */
+    enum faac_object_type object_type; /**< FAAC_OBJ_AUTO, FAAC_OBJ_HE_AAC_V1, FAAC_OBJ_LC */
 } faac_encoder_config_t;
 
 /**
@@ -57,7 +57,7 @@ uint32_t faac_adapter_get_frame_samples(faac_adapter_t *adapter);
 uint32_t faac_adapter_get_max_output_bytes(faac_adapter_t *adapter);
 
 /**
- * Get resolved sample rate (e.g. extended rate for HE-AAC).
+ * Get the output sample rate (the input rate; HE-AAC signals the same full rate).
  */
 uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter);
 

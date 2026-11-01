@@ -20,6 +20,7 @@ struct faac_adapter {
     uint8_t *asc_buf;
     size_t asc_size;
     uint32_t num_channels;
+    uint32_t sample_rate;
 };
 
 faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
@@ -35,6 +36,7 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     }
 
     adapter->num_channels = config->num_channels;
+    adapter->sample_rate = config->sample_rate;
 
     faac_params params;
     faac_status status = faac_params_init(&params, sizeof(params));
@@ -45,8 +47,8 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     }
 
     params.sample_rate = config->sample_rate;
-    params.num_channels = config->num_channels;
-    params.output_format = FAAC_STREAM_RAW; // Raw AAC for MP4 container
+    params.channels = config->num_channels;
+    params.stream_format = FAAC_STREAM_RAW; // Raw AAC for MP4 container
     params.input_format = FAAC_INPUT_16BIT;
     params.object_type = config->object_type; // FAAC_OBJ_AUTO by default
 
@@ -55,8 +57,9 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     if (br_per_ch == 0) {
         br_per_ch = (config->sample_rate >= 32000) ? 64000 : 32000;
     }
-    params.bit_rate = br_per_ch;
-    params.rate_control = FAAC_RC_AUTO; // ABR when bit_rate is set
+    // FAAC 3 takes a whole-stream bitrate
+    params.bit_rate = br_per_ch * config->num_channels;
+    params.rate_control = FAAC_RC_ABR;
 
     status = faac_encoder_open(&params, &adapter->enc);
     if (status != FAAC_OK || !adapter->enc) {
@@ -95,8 +98,8 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     memcpy(adapter->asc_buf, asc_ptr, asc_len);
     adapter->asc_size = asc_len;
 
-    log_info("Opened FAAC encoder: %u Hz, %u ch, bitrate %u bps/ch, frame_samples %u, delay %u, obj_type %d",
-             adapter->info.sample_rate, config->num_channels, adapter->info.bit_rate,
+    log_info("Opened FAAC encoder: %u Hz, %u ch, bitrate %u bps, frame_samples %u, delay %u, obj_type %d",
+             adapter->sample_rate, config->num_channels, adapter->info.bit_rate,
              adapter->info.frame_samples, adapter->info.encoder_delay, (int)adapter->info.object_type);
 
     return adapter;
@@ -120,7 +123,7 @@ uint32_t faac_adapter_get_max_output_bytes(faac_adapter_t *adapter) {
 }
 
 uint32_t faac_adapter_get_sample_rate(faac_adapter_t *adapter) {
-    return adapter ? adapter->info.sample_rate : 0;
+    return adapter ? adapter->sample_rate : 0;
 }
 
 enum faac_object_type faac_adapter_get_object_type(faac_adapter_t *adapter) {

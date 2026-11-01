@@ -504,40 +504,60 @@ set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
 add_library(inih_lib STATIC ${INIH_SOURCES})
 target_include_directories(inih_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
 
-# Set up vendored FAAC library
+# Set up vendored FAAC library (libfaac encoder only, HE-AAC v1/SBR, no PS).
+# Mirrors upstream meson: encoder-sbr=true, encoder-ps=false, max-channels=8.
+set(FAAC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac")
 set(FAAC_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/bitstream.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/blockswitch.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/channels.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/cpu_compute.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/faac.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/fft.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/filtbank.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/frame.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/huff2.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/huffdata.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/quantize.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/ratecontrol.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/resample.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_analysis.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_bitstream.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/sbr_tables.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/stereo.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/tns.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac/util.c"
+    "${FAAC_DIR}/common/fft.c"
+    "${FAAC_DIR}/common/sbr_tables.c"
+    "${FAAC_DIR}/common/sfb_tables.c"
+    "${FAAC_DIR}/libfaac/bitstream.c"
+    "${FAAC_DIR}/libfaac/blockswitch.c"
+    "${FAAC_DIR}/libfaac/channels.c"
+    "${FAAC_DIR}/libfaac/cpu_compute.c"
+    "${FAAC_DIR}/libfaac/faac.c"
+    "${FAAC_DIR}/libfaac/filtbank.c"
+    "${FAAC_DIR}/libfaac/frame.c"
+    "${FAAC_DIR}/libfaac/huff2.c"
+    "${FAAC_DIR}/libfaac/huffdata.c"
+    "${FAAC_DIR}/libfaac/quantize.c"
+    "${FAAC_DIR}/libfaac/ratecontrol.c"
+    "${FAAC_DIR}/libfaac/resample.c"
+    "${FAAC_DIR}/libfaac/sbr.c"
+    "${FAAC_DIR}/libfaac/sbr_analysis.c"
+    "${FAAC_DIR}/libfaac/sbr_bitstream.c"
+    "${FAAC_DIR}/libfaac/sbr_huff_tables.c"
+    "${FAAC_DIR}/libfaac/stereo.c"
+    "${FAAC_DIR}/libfaac/tns.c"
+    "${FAAC_DIR}/libfaac/util.c"
 )
-add_library(faac_lib STATIC ${FAAC_SOURCES})
-target_compile_definitions(faac_lib PRIVATE
-    PACKAGE_VERSION="2.2.0"
+set(FAAC_DEFINITIONS
+    PACKAGE_VERSION="3.0.0"
     PACKAGE="faac"
     MAX_CHANNELS=8
     FAAC_SBR_DECIMATION=1
+    FAAC_ENCODER_SBR=1
+    FAAC_ENCODER_PS=0
+    COMMON_PREFIX=faac_
 )
-target_include_directories(faac_lib PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/faac/libfaac"
+include(CheckIncludeFile)
+check_include_file(immintrin.h FAAC_HAVE_IMMINTRIN_H)
+if(FAAC_HAVE_IMMINTRIN_H AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
+    list(APPEND FAAC_DEFINITIONS HAVE_SSE2=1)
+    set(FAAC_QUANTIZE_SSE "${FAAC_DIR}/libfaac/quantize_sse.c")
+    list(APPEND FAAC_SOURCES "${FAAC_QUANTIZE_SSE}")
+    if(NOT MSVC)
+        set_source_files_properties("${FAAC_QUANTIZE_SSE}" PROPERTIES COMPILE_OPTIONS "-msse2")
+    endif()
+endif()
+add_library(faac_lib STATIC ${FAAC_SOURCES})
+target_compile_definitions(faac_lib PRIVATE ${FAAC_DEFINITIONS})
+target_include_directories(faac_lib PRIVATE
+    "${FAAC_DIR}"
+    "${FAAC_DIR}/common"
+    "${FAAC_DIR}/libfaac"
 )
+target_include_directories(faac_lib PUBLIC "${FAAC_DIR}/include")
 if(UNIX)
     target_link_libraries(faac_lib PUBLIC m)
 endif()
