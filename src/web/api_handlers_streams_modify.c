@@ -1800,6 +1800,18 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             src = "";
         }
 
+        if (strlen(src) >= sizeof(config.go2rtc_source_override)) {
+            send_json_error(res, 400, "go2rtc_source_override exceeds maximum allowed length");
+            cJSON_Delete(root);
+            return;
+        }
+
+        if (src[0] != '\0' && !yaml_validate_str(src)) {
+            send_json_error(res, 400, "Invalid go2rtc_source_override YAML");
+            cJSON_Delete(root);
+            return;
+        }
+
         if (strncmp(config.go2rtc_source_override, src,
                     sizeof(config.go2rtc_source_override) - 1) != 0) {
             safe_strcpy(config.go2rtc_source_override, src,
