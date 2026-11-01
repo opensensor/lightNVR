@@ -1,4 +1,6 @@
-import { getPtzCapabilities, savePtzPreset, setPtzHome } from '../js/components/preact/ptzActions.js';
+import {
+  getPtzCapabilities, savePtzPreset, setPtzHome, ptzMove, ptzStop, ptzHome, ptzGotoPreset
+} from '../js/components/preact/ptzActions.js';
 
 describe('PTZ position actions', () => {
   afterEach(() => {
@@ -66,5 +68,38 @@ describe('PTZ position actions', () => {
     await expect(savePtzPreset('Lobby', 'Front door', onPresets))
       .rejects.toMatchObject({ status: 502, stage: 'refresh' });
     expect(onPresets).not.toHaveBeenCalled();
+  });
+
+  test('movement actions post to the right endpoints', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true })
+    });
+
+    await ptzMove('Lobby', 0.5, -0.25, 0);
+    await ptzStop('Lobby');
+    await ptzHome('Lobby');
+    await ptzGotoPreset('Lobby', 'preset-1');
+
+    expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/streams/Lobby/ptz/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pan: 0.5, tilt: -0.25, zoom: 0 })
+    });
+    expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/streams/Lobby/ptz/stop', { method: 'POST' });
+    expect(global.fetch).toHaveBeenNthCalledWith(3, '/api/streams/Lobby/ptz/home', { method: 'POST' });
+    expect(global.fetch).toHaveBeenNthCalledWith(4, '/api/streams/Lobby/ptz/goto-preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'preset-1' })
+    });
+  });
+
+  test('movement actions reject on HTTP errors instead of parsing the body', async () => {
+    const json = jest.fn();
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, json });
+
+    await expect(ptzMove('Lobby', 1, 0, 0)).rejects.toMatchObject({ status: 500 });
+    await expect(ptzGotoPreset('Lobby', 'x')).rejects.toMatchObject({ status: 500 });
+    expect(json).not.toHaveBeenCalled();
   });
 });

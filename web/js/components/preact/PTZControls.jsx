@@ -7,96 +7,11 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useI18n } from '../../i18n.js';
 import { showSuccessToast, showErrorToast } from './ToastContainer.jsx';
-import { getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome } from './ptzActions.js';
+import {
+  getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome,
+  ptzMove, ptzStop, ptzHome, ptzGotoPreset
+} from './ptzActions.js';
 
-/**
- * PTZ API functions
- */
-const ptzApi = {
-  async move(streamName, pan, tilt, zoom) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/move`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pan, tilt, zoom })
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `PTZ move failed (${response.status})`;
-      if (errorText) {
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
-        } catch {
-          errorMessage = errorText;
-        }
-      }
-      throw new Error(errorMessage);
-    }
-    return response.json();
-  },
-
-  async stop(streamName) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/stop`, {
-      method: 'POST'
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `PTZ stop failed (${response.status})`;
-      if (errorText) {
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
-        } catch {
-          errorMessage = errorText;
-        }
-      }
-      throw new Error(errorMessage);
-    }
-    return response.json();
-  },
-
-  async home(streamName) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/home`, {
-      method: 'POST'
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `PTZ home failed (${response.status})`;
-      if (errorText) {
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
-        } catch {
-          errorMessage = errorText;
-        }
-      }
-      throw new Error(errorMessage);
-    }
-    return response.json();
-  },
-
-  async gotoPreset(streamName, token) {
-    const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/goto-preset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `PTZ goto preset failed (${response.status})`;
-      if (errorText) {
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
-        } catch {
-          errorMessage = errorText;
-        }
-      }
-      throw new Error(errorMessage);
-    }
-    return response.json();
-  }
-};
 
 /**
  * Direction button component
@@ -225,7 +140,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     setIsMoving(true);
     setError(null);
     
-    ptzApi.move(stream.name, pan * speed, tilt * speed, zoom * speed)
+    ptzMove(stream.name, pan * speed, tilt * speed, zoom * speed)
       .catch(err => {
         setIsMoving(false);
         setError(t('live.ptzMoveFailed'));
@@ -237,7 +152,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     if (!stream?.name || !isMoving) return;
     setIsMoving(false);
     
-    ptzApi.stop(stream.name)
+    ptzStop(stream.name)
       .catch(err => console.error('PTZ stop error:', err));
   }, [stream?.name, isMoving]);
 
@@ -245,7 +160,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     if (!stream?.name) return;
     setError(null);
     
-    ptzApi.home(stream.name)
+    ptzHome(stream.name)
       .catch(err => {
         setError(t('live.ptzHomeFailed'));
         console.error('PTZ home error:', err);
@@ -256,7 +171,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     if (!stream?.name) return;
     setError(null);
     
-    ptzApi.gotoPreset(stream.name, token)
+    ptzGotoPreset(stream.name, token)
       .catch(err => {
         setError(t('live.ptzPresetFailed'));
         console.error('PTZ preset error:', err);

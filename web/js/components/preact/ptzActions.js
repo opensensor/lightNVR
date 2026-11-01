@@ -44,3 +44,25 @@ export async function savePtzPreset(streamName, name, onPresets) {
 export function setPtzHome(streamName) {
   return ptzRequest(streamName, 'set-home', { method: 'POST' });
 }
+
+const postJson = (body) => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body)
+});
+
+export function ptzMove(streamName, pan, tilt, zoom) {
+  return ptzRequest(streamName, 'move', postJson({ pan, tilt, zoom }));
+}
+
+export function ptzStop(streamName) {
+  return ptzRequest(streamName, 'stop', { method: 'POST' });
+}
+
+export function ptzHome(streamName) {
+  return ptzRequest(streamName, 'home', { method: 'POST' });
+}
+
+export function ptzGotoPreset(streamName, token) {
+  return ptzRequest(streamName, 'goto-preset', postJson({ token }));
+}
