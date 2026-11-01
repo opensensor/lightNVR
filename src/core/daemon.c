@@ -55,28 +55,50 @@ int init_daemon(const char *pid_file) {
     log_info("Starting daemon mode with PID file: %s", pid_file_path);
     log_info("Current working directory: %s", getcwd(NULL, 0));
 
+    // Create startup status pipe for parent/child handshake
+    int status_pipe[2];
+    if (pipe(status_pipe) != 0) {
+        log_error("Failed to create startup status pipe: %s", strerror(errno));
+        return -1;
+    }
+
     // Fork the process
     pid_t pid = fork();
     if (pid < 0) {
         log_error("Failed to fork daemon process: %s", strerror(errno));
+        close(status_pipe[0]);
+        close(status_pipe[1]);
         return -1;
     }
 
-    // Parent process exits
+    // Parent process waits for child initialization result
     if (pid > 0) {
-        log_info("Parent process exiting, child PID: %d", pid);
-        // Wait briefly to ensure child has time to start and write PID file
-        usleep(200000); // 200ms - increased from 100ms for better reliability
-        exit(EXIT_SUCCESS);
+        close(status_pipe[1]);
+        log_info("Parent process waiting for child startup, child PID: %d", pid);
+
+        unsigned char child_status = 0;
+        ssize_t n = read(status_pipe[0], &child_status, 1);
+        close(status_pipe[0]);
+
+        if (n == 1 && child_status == 1) {
+            log_info("Child daemon initialization succeeded, child PID: %d", pid);
+            exit(EXIT_SUCCESS);
+        }
+
+        log_error("Child daemon initialization failed, child PID: %d", pid);
+        exit(EXIT_FAILURE);
     }
 
     // Child process continues
+    close(status_pipe[0]);
     log_info("Child process starting daemon initialization, PID: %d", getpid());
 
     // Create a new session
     pid_t sid = setsid();
     if (sid < 0) {
         log_error("Failed to create session: %s", strerror(errno));
+        (void)write(status_pipe[1], "\0", 1);
+        close(status_pipe[1]);
         return -1;
     }
     log_info("Created new session with SID: %d", sid);
@@ -131,10 +153,16 @@ int init_daemon(const char *pid_file) {
     int fd = write_pid_file(pid_file_path);
     if (fd < 0) {
         log_error("Failed to write PID file, daemon initialization failed");
+        (void)write(status_pipe[1], "\0", 1);
+        close(status_pipe[1]);
         return -1;
     }
 
     log_info("Daemon started successfully with PID %d", getpid());
+
+    // Notify parent that daemon initialization has completed successfully
+    (void)write(status_pipe[1], "\1", 1);
+    close(status_pipe[1]);
 
     // Add a small delay to ensure everything is properly initialized
     usleep(100000); // 100ms
