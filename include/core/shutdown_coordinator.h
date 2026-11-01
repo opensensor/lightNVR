@@ -38,6 +38,7 @@ typedef struct {
     atomic_int state;
     void *context;
     int priority; // Higher priority components are stopped first
+    int generation; // Bumped each time the slot is reused (see component IDs)
 } component_info_t;
 
 // Shutdown coordinator
@@ -57,15 +58,26 @@ int init_shutdown_coordinator(void);
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void);
 
-// Register a component with the coordinator
-// Returns a component ID that can be used to update state
+// Register a component with the coordinator.
+// Returns an opaque component ID (or -1 on failure) that can be used to update
+// state. IDs encode the slot and the slot's generation: STOPPED slots are
+// reused, and a reused slot gets a new ID, so a late update carrying the
+// previous owner's ID is ignored instead of changing the new owner's state.
 int register_component(const char *name, component_type_t type, void *context, int priority);
 
-// Update a component's state
+// Update a component's state. Stale or invalid IDs are ignored.
 void update_component_state(int component_id, component_state_t state);
 
-// Get a component's state
+// Get a component's state. Stale IDs (the slot has since been reused) report
+// COMPONENT_STOPPED, since the component they referred to has stopped.
 component_state_t get_component_state(int component_id);
+
+// Find the current ID of the most recently registered component with this
+// name, or -1 if none. Use this instead of indexing components[] directly.
+int find_component_id_by_name(const char *name);
+
+// Slot index of a component ID (exposed for tests/diagnostics).
+int component_id_slot(int component_id);
 
 // Initiate shutdown sequence
 void initiate_shutdown(void);

@@ -273,7 +273,9 @@ void test_repeated_restart_reuses_stopped_slots(void) {
         int id = register_component("restarting_recorder", COMPONENT_OTHER, NULL, 1);
         TEST_ASSERT_GREATER_OR_EQUAL_INT(0, id);
         if (generation == 0) first = id;
-        TEST_ASSERT_EQUAL_INT(first, id);
+        /* Same slot is reused (no slot exhaustion), under a fresh ID. */
+        TEST_ASSERT_EQUAL_INT(component_id_slot(first), component_id_slot(id));
+        TEST_ASSERT_EQUAL_INT(1, atomic_load(&get_shutdown_coordinator()->component_count));
         TEST_ASSERT_EQUAL_INT(COMPONENT_RUNNING, get_component_state(id));
         update_component_state(id, COMPONENT_STOPPED);
         TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
@@ -289,8 +291,11 @@ void test_late_update_from_previous_owner_does_not_stop_reused_slot(void) {
     TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
 
     int reused_id = register_component("owner_b", COMPONENT_OTHER, NULL, 1);
-    TEST_ASSERT_EQUAL_INT(id, reused_id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(component_id_slot(id), component_id_slot(reused_id),
+                                  "Stopped slot should be reused");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(id, reused_id, "A reused slot must get a new ID");
     TEST_ASSERT_EQUAL_INT(COMPONENT_RUNNING, get_component_state(reused_id));
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPED, get_component_state(id));
 
     /* Simulate a stale late update from the previous logical owner of this reused slot. */
     update_component_state(id, COMPONENT_STOPPED);
@@ -298,8 +303,22 @@ void test_late_update_from_previous_owner_does_not_stop_reused_slot(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(COMPONENT_RUNNING, get_component_state(reused_id),
                                   "Late update from previous owner must not stop reused slot");
 
+    TEST_ASSERT_FALSE_MESSAGE(wait_for_all_components_stopped(0),
+                              "Stale update must not make shutdown think all components stopped");
+
     update_component_state(reused_id, COMPONENT_STOPPED);
     TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
+}
+
+void test_find_component_id_by_name_returns_current_id(void) {
+    TEST_ASSERT_EQUAL_INT(-1, find_component_id_by_name("missing"));
+    int first = register_component("hls_writer_cam", COMPONENT_HLS_WRITER, NULL, 1);
+    TEST_ASSERT_EQUAL_INT(first, find_component_id_by_name("hls_writer_cam"));
+    update_component_state(first, COMPONENT_STOPPED);
+    int second = register_component("hls_writer_cam", COMPONENT_HLS_WRITER, NULL, 1);
+    TEST_ASSERT_EQUAL_INT(second, find_component_id_by_name("hls_writer_cam"));
+    update_component_state(find_component_id_by_name("hls_writer_cam"), COMPONENT_STOPPED);
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPED, get_component_state(second));
 }
 
 /* ================================================================
@@ -387,6 +406,8 @@ int main(void) {
     RUN_TEST(test_wait_observes_actual_component_completion);
     RUN_TEST(test_repeated_restart_reuses_stopped_slots);
     RUN_TEST(test_spurious_wake_does_not_claim_completion);
+    RUN_TEST(test_late_update_from_previous_owner_does_not_stop_reused_slot);
+    RUN_TEST(test_find_component_id_by_name_returns_current_id);
     RUN_TEST(test_cleanup_wakes_blocked_waiter);
     RUN_TEST(test_register_after_cleanup_rejected);
     RUN_TEST(test_state_recorded_after_cleanup);

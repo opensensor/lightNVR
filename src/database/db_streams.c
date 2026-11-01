@@ -499,7 +499,43 @@ uint64_t add_stream_config(const stream_config_t *stream) {
 }
 
 /**
+ * Set a stream's privacy mode. This is the only writer of privacy_mode for an
+ * existing stream; update_stream_config() leaves it untouched.
+ *
+ * @return 0 on success, -1 on error or if the stream does not exist
+ */
+int set_stream_privacy_mode(const char *name, bool privacy_mode) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db || !name) {
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    if (sqlite3_prepare_v2(db, "UPDATE streams SET privacy_mode = ? WHERE name = ?;",
+                           -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, privacy_mode ? 1 : 0);
+        sqlite3_bind_text(stmt, 2, name, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_DONE) {
+            result = sqlite3_changes(db) > 0 ? 0 : -1;
+        } else {
+            log_error("Failed to set privacy mode for stream %s: %s", name, sqlite3_errmsg(db));
+        }
+    } else {
+        log_error("Failed to prepare privacy mode update: %s", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    return result;
+}
+
+/**
  * Update a stream configuration in the database
+ *
+ * Note: does not write privacy_mode; use set_stream_privacy_mode().
  *
  * @param name Stream name to update
  * @param stream Updated stream configuration
@@ -527,7 +563,12 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, ONVIF credentials, recording schedule, tags, and privacy_mode
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, ONVIF credentials, recording schedule, and tags.
+    // privacy_mode is deliberately NOT written here: it is owned by
+    // set_stream_privacy_mode(). Callers pass in-memory or earlier-loaded
+    // configs whose privacy_mode can be stale, and writing it back would
+    // silently turn privacy mode off. Parameter 45 is bound to NULL so the
+    // COALESCE keeps the stored value (and the parameter numbering is unchanged).
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
@@ -539,7 +580,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                       "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                       "onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, "
-                      "record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = ?, "
+                      "record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = COALESCE(?, privacy_mode), "
                       "motion_trigger_source = ?, go2rtc_source_override = ?, "
                       "sub_stream_url = ?, audio_voice_enhancement = ?, "
                       "detection_url = ?, publish_url = ?, "
@@ -625,7 +666,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind tags, admin URL, privacy_mode, motion_trigger_source, go2rtc override, and sub-stream parameters
     sqlite3_bind_text(stmt, 43, stream->tags, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 44, stream->admin_url, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 45, stream->privacy_mode ? 1 : 0);
+    sqlite3_bind_null(stmt, 45);  // privacy_mode: keep stored value (see SQL comment)
     sqlite3_bind_text(stmt, 46, stream->motion_trigger_source, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 47,
                       normalized_go2rtc_source_override(stream->go2rtc_source_override),
