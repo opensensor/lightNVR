@@ -66,7 +66,13 @@ int init_daemon(const char *pid_file) {
     }
 
     log_info("Starting daemon mode with PID file: %s", pid_file_path);
-    log_info("Current working directory: %s", getcwd(NULL, 0));
+    char *cwd = getcwd(NULL, 0);
+    if (cwd != NULL) {
+        log_info("Current working directory: %s", cwd);
+        free(cwd);
+    } else {
+        log_warn("Current working directory unavailable: %s", strerror(errno));
+    }
 
     // Create startup status pipe for parent/child handshake
     int status_pipe[2];
