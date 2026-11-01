@@ -44,6 +44,8 @@
 #include "video/mp4_recording.h"
 #include "utils/yaml_validate.h"
 
+static pthread_mutex_t g_put_stream_update_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static bool check_stream_write_access(const http_request_t *req,
                                       http_response_t *res,
                                       const stream_config_t *config) {
@@ -63,6 +65,7 @@ typedef struct {
     char original_url[MAX_URL_LENGTH];         // Original URL before update
     stream_protocol_t original_protocol;       // Original protocol before update
     bool original_record_audio;                // Original record_audio before update
+    bool original_backchannel_enabled;         // Original backchannel_enabled before update
     bool original_enabled;                     // Original enabled flag before update
     bool config_changed;                       // Whether config changed
     bool requires_restart;                     // Whether restart is required
@@ -170,13 +173,7 @@ static void redact_url_for_log(const char *url, char *out_url, size_t out_size) 
  *
  * This function performs the actual stream update work in a background thread.
  */
-static void *put_stream_worker(void *arg) {
-    put_stream_task_t *task = (put_stream_task_t *)arg;
-    if (!task) {
-        log_error("Invalid PUT stream task");
-        return NULL;
-    }
-
+static void put_stream_worker_locked(put_stream_task_t *task) {
     log_set_thread_context("StreamAPI", task->stream_id);
     log_info("Processing PUT /api/streams/%s in worker thread", task->stream_id);
 
@@ -186,7 +183,7 @@ static void *put_stream_worker(void *arg) {
     if (!stream) {
         log_warn("Stream %s no longer exists, dropping queued PUT update", task->stream_id);
         put_stream_task_free(task);
-        return NULL;
+        return;
     }
 
     // Note: update_stream_config() never writes privacy_mode (owned by the
@@ -197,7 +194,7 @@ static void *put_stream_worker(void *arg) {
     if (update_stream_config(task->stream_id, &task->config) != 0) {
         log_error("Failed to update stream configuration in database for %s", task->stream_id);
         put_stream_task_free(task);
-        return NULL;
+        return;
     }
 
     // Force update of stream configuration in memory to ensure it matches the database
@@ -205,7 +202,7 @@ static void *put_stream_worker(void *arg) {
     if (get_stream_config(stream, &updated_config) != 0) {
         log_error("Failed to refresh stream configuration from database for stream %s", task->config.name);
         put_stream_task_free(task);
-        return NULL;
+        return;
     }
 
     if (set_stream_detection_params(stream,
@@ -359,6 +356,7 @@ static void *put_stream_worker(void *arg) {
         bool url_changed = strcmp(task->original_url, task->config.url) != 0;
         bool protocol_changed = task->original_protocol != task->config.protocol;
         bool record_audio_changed = task->original_record_audio != task->config.record_audio;
+        bool backchannel_changed = task->original_backchannel_enabled != task->config.backchannel_enabled;
 
         // First clear HLS segments if URL changed
         if (url_changed) {
@@ -388,15 +386,15 @@ static void *put_stream_worker(void *arg) {
             }
         }
 
-        // If URL, protocol, record_audio, or credentials changed, update the dynamic
+        // If URL, protocol, record_audio, backchannel, or credentials changed, update the dynamic
         // go2rtc API registration. Streams with a source override are YAML-backed;
         // those changes are applied by the go2rtc process restart below instead.
         bool go2rtc_reloaded = false;
         if (!task->go2rtc_override_changed &&
             task->config.go2rtc_source_override[0] == '\0' &&
-            (url_changed || protocol_changed || record_audio_changed || task->credentials_changed)) {
+            (url_changed || protocol_changed || record_audio_changed || backchannel_changed || task->credentials_changed)) {
             go2rtc_reloaded = true;
-            log_info("URL, protocol, record_audio, or credentials changed for stream %s, updating go2rtc registration", task->config.name);
+            log_info("URL, protocol, record_audio, backchannel, or credentials changed for stream %s, updating go2rtc registration", task->config.name);
 
             if (go2rtc_integration_reload_stream_config(task->config.name, task->config.url,
                                                         task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
@@ -498,6 +496,24 @@ static void *put_stream_worker(void *arg) {
 
     // Clean up
     put_stream_task_free(task);
+}
+
+/**
+ * @brief Thread entry for PUT stream update.
+ *
+ * Applies are serialized so two queued updates never interleave their
+ * DB write / stop / go2rtc reload / start sequences.
+ */
+static void *put_stream_worker(void *arg) {
+    put_stream_task_t *task = (put_stream_task_t *)arg;
+    if (!task) {
+        log_error("Invalid PUT stream task");
+        return NULL;
+    }
+
+    pthread_mutex_lock(&g_put_stream_update_mutex);
+    put_stream_worker_locked(task);  // frees task on every path
+    pthread_mutex_unlock(&g_put_stream_update_mutex);
     return NULL;
 }
 
@@ -1482,6 +1498,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 
     stream_protocol_t original_protocol = config.protocol;
     bool original_record_audio = config.record_audio;
+    bool original_backchannel_enabled = config.backchannel_enabled;
 
     cJSON *url = cJSON_GetObjectItem(stream_json, "url");
     if (url && cJSON_IsString(url)) {
@@ -2248,6 +2265,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     safe_strcpy(task->original_url, original_url, MAX_URL_LENGTH, 0);
     task->original_protocol = original_protocol;
     task->original_record_audio = original_record_audio;
+    task->original_backchannel_enabled = original_backchannel_enabled;
     task->original_enabled = original_enabled;
     task->config_changed = config_changed;
     task->requires_restart = requires_restart;
