@@ -58,9 +58,8 @@ static bool check_stream_write_access(const http_request_t *req,
  * @brief Structure for PUT stream update task
  */
 typedef struct {
-    stream_handle_t stream;                    // Stream handle
     stream_config_t config;                    // Updated stream configuration
-    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID
+    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID (durable key for worker-time lookup)
     char original_url[MAX_URL_LENGTH];         // Original URL before update
     stream_protocol_t original_protocol;       // Original protocol before update
     bool original_record_audio;                // Original record_audio before update
