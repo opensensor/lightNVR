@@ -90,8 +90,14 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     const uint8_t *asc_ptr = NULL;
     uint32_t asc_len = 0;
     status = faac_encoder_asc(adapter->enc, &asc_ptr, &asc_len);
-    if (status != FAAC_OK || !asc_ptr || asc_len == 0) {
+    if (status != FAAC_OK) {
         log_error("faac_encoder_asc failed: %s", faac_strerror(status));
+        faac_encoder_close(&adapter->enc);
+        free(adapter);
+        return NULL;
+    } else if (!asc_ptr || asc_len == 0) {
+        log_error("faac_encoder_asc returned invalid AudioSpecificConfig (ptr=%p, len=%u)",
+                  (const void *)asc_ptr, asc_len);
         faac_encoder_close(&adapter->enc);
         free(adapter);
         return NULL;
