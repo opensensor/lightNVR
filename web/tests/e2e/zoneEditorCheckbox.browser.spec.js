@@ -17,7 +17,7 @@ const fixtureZones = [{
   }]
 }];
 const t = key => 'translated:' + key;
-// Run with: npm --prefix web run test:e2e -- --testPathPatterns=zoneEditorCheckbox
+// Run with: npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'
 const browserTest = it;
 async function openZoneBrowser() {
   const {

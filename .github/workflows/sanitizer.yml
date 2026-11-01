@@ -59,8 +59,7 @@ jobs:
         run: |
           cd build
           echo "Running tests with ASan + UBSan enabled..."
-          ctest --output-on-failure -V \
-            -R "test_sqlite_migration_boundaries|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_faac_encoder|test_audio_transcoder|test_audio_voice_enhancement|test_audio_voice_filter_faults|test_udt_recording|test_detection_current_frame|test_detection_io_recovery|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_stream_frame_rate|test_recording_video_params|test_mp4_segment_boundaries|test_storage_retention_sqlite|test_audit_log|test_audit_summary"
+          ctest --output-on-failure --no-tests=error -V -L '^ci-sanitizer$'
 
       - name: Smoke test - start and stop service
         run: |
