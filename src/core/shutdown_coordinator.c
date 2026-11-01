@@ -69,14 +69,11 @@ int init_shutdown_coordinator(void) {
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
-    // Check if already destroyed to prevent double-cleanup
-    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
-        return;  // Already cleaned up
+    // Atomically claim cleanup ownership to prevent double-destroy races.
+    // atomic_exchange returns the previous value.
+    if (atomic_exchange(&g_coordinator.coordinator_destroyed, true)) {
+        return;  // Already cleaned up (or cleanup in progress/completed)
     }
-
-    // Mark coordinator as destroyed BEFORE destroying mutex
-    // This prevents signal handlers from trying to use the mutex
-    atomic_store(&g_coordinator.coordinator_destroyed, true);
 
     // Small memory barrier to ensure the flag is visible to other threads
     __sync_synchronize();
