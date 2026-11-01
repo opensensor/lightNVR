@@ -287,14 +287,18 @@ static bool timezone_load_tzif(const char *name,
         free(bytes);
         return false;
     }
-    /* Re-check the bound at the allocation site so the limit is explicit
-     * here, not only inside parse_tzif_header(). */
-    if (counts.time_count < 0 ||
-        counts.time_count > ROUTER_TZ_MAX_TRANSITIONS) {
+    if (counts.time_count < 0) {
         free(bytes);
         return false;
     }
+    /* Bound the local size_t actually passed to calloc(). parse_tzif_header()
+     * enforces the same limit on the struct field, but static analysis does
+     * not carry a bound on a struct member through to the allocation size. */
     size_t transition_count = (size_t)counts.time_count;
+    if (transition_count > (size_t)ROUTER_TZ_MAX_TRANSITIONS) {
+        free(bytes);
+        return false;
+    }
     if (transition_count > 0) {
         timezone->transitions = calloc(transition_count,
                                        sizeof(*timezone->transitions));

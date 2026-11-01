@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <mosquitto.h>
 #include <cjson/cJSON.h>
 
@@ -618,9 +619,18 @@ static int save_detection_snapshot(const char *safe_name, time_t timestamp,
     // Write to a temp file first so a reader never sees a partial JPEG
     char tmp_path[MAX_PATH_LENGTH];
     snprintf(tmp_path, sizeof(tmp_path), "%s/.%s.jpg.tmp", dir_path, ts_str);
-    FILE *f = fopen(tmp_path, "wb");
+    /* Create with an explicit mode: fopen() would use 0666 & ~umask, and the
+     * daemon clears its umask, which would leave the file world-writable. */
+    int fd = open(tmp_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) {
+        log_error("MQTT: Failed to open snapshot file %s: %s", tmp_path, strerror(errno));
+        return -1;
+    }
+    FILE *f = fdopen(fd, "wb");
     if (!f) {
         log_error("MQTT: Failed to open snapshot file %s: %s", tmp_path, strerror(errno));
+        close(fd);
+        unlink(tmp_path);
         return -1;
     }
     size_t written = fwrite(jpeg_data, 1, jpeg_size, f);
