@@ -34,14 +34,13 @@ export function computeOptimalGrid(n) {
  * @param {number}   props.cols      Current column count
  * @param {number}   props.rows      Current row count
  * @param {Function} props.onSelect  Called with (cols, rows) on cell click
- * @param {number}   [props.maxCells]  Maximum selectable cells (= stream count).
- *                                    Cells whose cols×rows would exceed this are
- *                                    greyed out and unclickable.
+ * @param {number}   [props.maxCells]  Stream count. Only sizes the picker (a
+ *                                    square just large enough to fit it); it
+ *                                    does not disable cells, because a layout
+ *                                    with spare cells (e.g. 3×3 for 5 streams)
+ *                                    is valid. Only MAX_GRID_CELLS is enforced.
  */
 export function GridPicker({ cols, rows, onSelect, maxCells }) {
-  const normalizedMaxCells =
-    Number.isFinite(maxCells) && maxCells > 0 ? Math.floor(maxCells) : MAX_GRID_CELLS;
-  const effectiveMaxCells = Math.min(MAX_GRID_CELLS, normalizedMaxCells);
   const { t } = useI18n();
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
@@ -113,7 +112,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
             {Array.from({ length: gridRows }, (_, r) =>
               Array.from({ length: gridCols }, (_, c) => {
                 const cellCount   = (c + 1) * (r + 1);
-                const overLimit   = cellCount > effectiveMaxCells;
+                const overLimit   = cellCount > MAX_GRID_CELLS;
                 const highlighted = !overLimit && r < hover.r && c < hover.c;
                 const isCurrent   = !overLimit && r < rows   && c < cols;
                 return (
@@ -121,7 +120,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
                     title={overLimit
-                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: effectiveMaxCells })
+                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
                       : `${c + 1}×${r + 1}`}
                     className={`rounded-sm border transition-colors ${
                       overLimit
@@ -140,7 +139,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
             )}
           </div>
           <p className="text-xs text-center text-muted-foreground mt-2">
-            {t('live.maxStreamsPerPage', { max: effectiveMaxCells })}
+            {t('live.maxStreamsPerPage', { max: MAX_GRID_CELLS })}
           </p>
         </div>
       )}
