@@ -95,8 +95,13 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
 
       {/* Popover */}
       {open && (
+        // onMouseLeave only resets the visual size preview; keyboard users get
+        // the same via each cell's onFocus/onBlur, so no interaction is lost.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
           className="absolute inset-e-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-xl p-3 select-none"
+          role="group"
+          aria-label={t('live.selectGridLayout')}
           onMouseLeave={() => setHover({ c: cols, r: rows })}
         >
           <p className="text-xs font-semibold text-center text-foreground mb-2 tabular-nums">
@@ -115,14 +120,19 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                 const overLimit   = cellCount > MAX_GRID_CELLS;
                 const highlighted = !overLimit && r < hover.r && c < hover.c;
                 const isCurrent   = !overLimit && r < rows   && c < cols;
+                const label = overLimit
+                  ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
+                  : `${c + 1}×${r + 1}`;
+                const preview = () => { if (!overLimit) setHover({ c: c + 1, r: r + 1 }); };
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
-                    title={overLimit
-                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
-                      : `${c + 1}×${r + 1}`}
-                    className={`rounded-sm border transition-colors ${
+                    title={label}
+                    aria-label={label}
+                    disabled={overLimit}
+                    className={`block p-0 rounded-sm border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       overLimit
                         ? 'bg-muted/30 border-border/30 opacity-30 cursor-not-allowed'
                         : highlighted
@@ -131,7 +141,9 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                             ? 'bg-primary/25 border-primary/40 cursor-pointer'
                             : 'bg-muted border-border hover:border-primary/50 hover:bg-muted/80 cursor-pointer'
                     }`}
-                    onMouseEnter={() => { if (!overLimit) setHover({ c: c + 1, r: r + 1 }); }}
+                    onMouseEnter={preview}
+                    onFocus={preview}
+                    onBlur={() => setHover({ c: cols, r: rows })}
                     onClick={() => { if (!overLimit) { onSelect(c + 1, r + 1); setOpen(false); } }}
                   />
                 );
