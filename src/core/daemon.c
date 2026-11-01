@@ -430,6 +430,11 @@ int daemon_status(const char *pid_file) {
         // Process is running
         log_info("Daemon is running with PID %d", pid);
         return 1;
+    } else if (errno == EPERM) {
+        // Process exists, but we don't have permission to signal it.
+        // For status checks, this still means the daemon is running.
+        log_info("Daemon is running with PID %d (no permission to signal)", pid);
+        return 1;
     } else {
         if (errno == ESRCH) {
             // Process is not running, but the PID file is still locked by another process.
