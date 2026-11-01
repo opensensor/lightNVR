@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "Отменить",
   "live.plan.sketch.redo": "Повторить",
   "live.plan.sketch.snap": "Привязка к сетке",
-  "live.plan.sketch.hint.select": "Перетаскивайте фигуры, края или маркеры для правки; перетащите ручку камеры, чтобы направить её. Правый клик — другие действия. Пробел или перетаскивание средней кнопкой сдвигает вид; Alt отключает сетку.",
+  "live.plan.sketch.hint.select": "Перетаскивайте фигуры, края или маркеры для правки; проведите по пустому месту, чтобы выделить рамкой (Shift добавляет). Перетащите ручки камеры, чтобы направить её или задать угол обзора. Правый клик — другие действия. Пробел или перетаскивание средней кнопкой сдвигает вид; Alt отключает сетку.",
   "live.plan.sketch.hint.room": "Проведите по плану, чтобы нарисовать помещение или контур здания. Правый клик во время рисования отменяет.",
   "live.plan.sketch.hint.wall": "Щёлкайте, чтобы добавить точки стены; Shift фиксирует углы по 45°. Двойной щелчок или Enter завершает, Backspace удаляет последнюю точку, Escape отменяет.",
   "live.plan.sketch.hint.area": "Щёлкайте, чтобы обвести область. Щёлкните первую точку или нажмите Enter, чтобы замкнуть её; Backspace удаляет последнюю точку.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Последний час · камер: {count}",
   "live.navigator.refreshEvents": "Обновить события",
   "live.navigator.eventsNoScope": "В этой области нет камер. Выберите «Все камеры», расположение с камерами или план.",
-  "live.navigator.eventsError": "Не удалось загрузить недавние события: {error}"
+  "live.navigator.eventsError": "Не удалось загрузить недавние события: {error}",
+  "live.plan.menu.deleteShapes": "Удалить фигуры: {count}",
+  "live.plan.fovHandle": "Перетащите, чтобы расширить или сузить угол обзора (Shift — шаг 15°)",
+  "live.plan.location": "Расположение",
+  "live.plan.noLocation": "Без расположения",
+  "live.plan.locationHint": "Если связать план с расположением, он появится под этим расположением в навигаторе.",
+  "live.plan.assignLocationPrompt": "Камер на этом плане, не назначенных в {location}: {count}.",
+  "live.plan.assignLocation": "Назначить в {location}",
+  "live.plan.assignLocationDone": "Назначено камер в {location}: {count}",
+  "live.plan.assignLocationPartial": "Назначено камер: {done}; с ошибкой: {failed}: {error}",
+  "live.plan.sketch.multiSelected": "Выбрано фигур: {count}",
+  "live.plan.sketch.multiHint": "Перетащите любую, чтобы сдвинуть группу. Shift+щелчок добавляет или убирает фигуру; стрелки сдвигают."
 }

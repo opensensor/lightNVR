@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Deshacer",
   "live.plan.sketch.redo": "Rehacer",
   "live.plan.sketch.snap": "Ajustar a la cuadrícula",
-  "live.plan.sketch.hint.select": "Arrastra formas, bordes o controladores para editarlos; arrastra el control de una cámara para orientarla. Clic derecho para más opciones. Espacio o arrastre con botón central para desplazar; Alt omite la cuadrícula.",
+  "live.plan.sketch.hint.select": "Arrastra formas, bordes o controladores para editar; arrastra en un espacio vacío para seleccionar con un recuadro (Shift añade). Arrastra los controles de una cámara para orientarla o ajustar su campo de visión. Clic derecho para más opciones. Espacio o arrastre con botón central para desplazar; Alt omite la cuadrícula.",
   "live.plan.sketch.hint.room": "Arrastra sobre el plano para dibujar una habitación o el contorno de un edificio. Clic derecho durante el arrastre para cancelar.",
   "live.plan.sketch.hint.wall": "Haz clic para añadir puntos de pared; Shift fija ángulos de 45°. Doble clic o Enter termina, Retroceso quita el último punto, Escape cancela.",
   "live.plan.sketch.hint.area": "Haz clic para delimitar un área. Haz clic en el primer punto o pulsa Enter para cerrarla; Retroceso quita el último punto.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Última hora · {count} cámaras",
   "live.navigator.refreshEvents": "Actualizar eventos",
   "live.navigator.eventsNoScope": "No hay cámaras en este ámbito. Elige Todas las cámaras, una ubicación con cámaras o un plano.",
-  "live.navigator.eventsError": "No se pudieron cargar los eventos recientes: {error}"
+  "live.navigator.eventsError": "No se pudieron cargar los eventos recientes: {error}",
+  "live.plan.menu.deleteShapes": "Eliminar {count} formas",
+  "live.plan.fovHandle": "Arrastra para ampliar o reducir el campo de visión (Shift ajusta a 15°)",
+  "live.plan.location": "Ubicación",
+  "live.plan.noLocation": "Sin ubicación",
+  "live.plan.locationHint": "Vincular el plano a una ubicación lo muestra bajo esa ubicación en el Navegador.",
+  "live.plan.assignLocationPrompt": "{count} cámaras de este plano no están asignadas a {location}.",
+  "live.plan.assignLocation": "Asignar a {location}",
+  "live.plan.assignLocationDone": "{count} cámaras asignadas a {location}",
+  "live.plan.assignLocationPartial": "{done} cámaras asignadas; {failed} fallaron: {error}",
+  "live.plan.sketch.multiSelected": "{count} formas seleccionadas",
+  "live.plan.sketch.multiHint": "Arrastra cualquiera para mover el grupo. Shift+clic añade o quita una forma; las flechas desplazan."
 }

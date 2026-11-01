@@ -51,7 +51,7 @@
   "live.plan.sketch.undo": "Undo",
   "live.plan.sketch.redo": "Redo",
   "live.plan.sketch.snap": "Snap to grid",
-  "live.plan.sketch.hint.select": "Drag shapes, edges or handles to edit; drag a camera's knob to aim it. Right-click for more. Space or middle-drag pans; Alt skips the grid.",
+  "live.plan.sketch.hint.select": "Drag shapes, edges or handles to edit; drag empty space to box-select (Shift adds). Drag a camera's knobs to aim it or set its view. Right-click for more. Space or middle-drag pans; Alt skips the grid.",
   "live.plan.sketch.hint.room": "Drag on the plan to draw a room or building outline. Right-click mid-drag to cancel.",
   "live.plan.sketch.hint.wall": "Click to add wall points; Shift locks to 45°. Double-click or Enter finishes, Backspace removes the last point, Escape cancels.",
   "live.plan.sketch.hint.area": "Click to outline an area. Click the first point or press Enter to close it; Backspace removes the last point.",
@@ -2911,5 +2911,16 @@
   "live.navigator.eventsScope": "Last hour · {count} cameras",
   "live.navigator.refreshEvents": "Refresh events",
   "live.navigator.eventsNoScope": "No cameras in this scope. Pick All cameras, a location with cameras, or a plan.",
-  "live.navigator.eventsError": "Recent events could not be loaded: {error}"
+  "live.navigator.eventsError": "Recent events could not be loaded: {error}",
+  "live.plan.menu.deleteShapes": "Delete {count} shapes",
+  "live.plan.fovHandle": "Drag to widen or narrow the field of view (Shift snaps to 15°)",
+  "live.plan.location": "Location",
+  "live.plan.noLocation": "No location",
+  "live.plan.locationHint": "Linking the plan to a location lists it under that location in the Navigator.",
+  "live.plan.assignLocationPrompt": "{count} cameras on this plan are not assigned to {location}.",
+  "live.plan.assignLocation": "Assign to {location}",
+  "live.plan.assignLocationDone": "Assigned {count} cameras to {location}",
+  "live.plan.assignLocationPartial": "Assigned {done} cameras; {failed} failed: {error}",
+  "live.plan.sketch.multiSelected": "{count} shapes selected",
+  "live.plan.sketch.multiHint": "Drag any of them to move the group. Shift-click adds or removes a shape; arrow keys nudge."
 }

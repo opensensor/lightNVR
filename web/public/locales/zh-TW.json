@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "復原",
   "live.plan.sketch.redo": "重做",
   "live.plan.sketch.snap": "對齊格線",
-  "live.plan.sketch.hint.select": "拖曳形狀、邊緣或控制點進行編輯；拖曳攝影機的旋鈕調整朝向。按右鍵查看更多操作。按住 Space 或中鍵拖曳可平移；Alt 可忽略格線。",
+  "live.plan.sketch.hint.select": "拖曳形狀、邊緣或控制點進行編輯；在空白處拖曳可框選（Shift 加選）。拖曳攝影機的旋鈕可調整朝向或視野。按右鍵查看更多操作。按住 Space 或中鍵拖曳可平移；Alt 可忽略格線。",
   "live.plan.sketch.hint.room": "在平面圖上拖曳以繪製房間或建築輪廓。拖曳時按右鍵可取消。",
   "live.plan.sketch.hint.wall": "按一下新增牆面點；Shift 鎖定為 45°。按兩下或 Enter 完成，Backspace 移除最後一點，Escape 取消。",
   "live.plan.sketch.hint.area": "按一下勾勒區域。按第一個點或按 Enter 封閉；Backspace 移除最後一點。",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "最近一小時 · {count} 台攝影機",
   "live.navigator.refreshEvents": "重新整理事件",
   "live.navigator.eventsNoScope": "此範圍內沒有攝影機。請選擇「所有攝影機」、有攝影機的位置或平面圖。",
-  "live.navigator.eventsError": "無法載入最近事件：{error}"
+  "live.navigator.eventsError": "無法載入最近事件：{error}",
+  "live.plan.menu.deleteShapes": "刪除 {count} 個形狀",
+  "live.plan.fovHandle": "拖曳以擴大或縮小視野（Shift 以 15° 為間隔）",
+  "live.plan.location": "位置",
+  "live.plan.noLocation": "無位置",
+  "live.plan.locationHint": "將平面圖連結到位置後，會在導覽器中顯示於該位置之下。",
+  "live.plan.assignLocationPrompt": "此平面圖上有 {count} 台攝影機未指派到 {location}。",
+  "live.plan.assignLocation": "指派到 {location}",
+  "live.plan.assignLocationDone": "已將 {count} 台攝影機指派到 {location}",
+  "live.plan.assignLocationPartial": "已指派 {done} 台攝影機；{failed} 台失敗：{error}",
+  "live.plan.sketch.multiSelected": "已選取 {count} 個形狀",
+  "live.plan.sketch.multiHint": "拖曳其中任一個即可移動整組。Shift+按一下可加入或移除形狀；方向鍵可微調。"
 }

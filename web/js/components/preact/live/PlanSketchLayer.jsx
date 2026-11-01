@@ -96,7 +96,7 @@ function RectEdgeZones({ shape, width, height, markerScale, onHandlePointerDown 
 }
 
 function SketchShape({
-  shape, width, height, editing, selected, markerScale, t,
+  shape, width, height, editing, selected, showHandles, markerScale, t,
   onPointerDown, onClick, onDblClick, onContextMenu,
 }) {
   const interactive = editing;
@@ -152,7 +152,7 @@ function SketchShape({
     <g className={`live-plan-shape is-${shape.type} tone-${shape.tone} ${selected ? 'is-selected' : ''}`}
       {...groupProps}>
       {body}
-      {editing && selected && (
+      {editing && selected && showHandles && (
         <ShapeHandles shape={shape} width={width} height={height}
           markerScale={markerScale} onHandlePointerDown={onPointerDown}
           onContextMenu={onContextMenu} />
@@ -205,7 +205,7 @@ export function PlanSketchLayer({
   width,
   height,
   editing,
-  selectedShapeId,
+  selectedShapeIds,
   markerScale,
   drawing,
   drawingClosable,
@@ -219,7 +219,8 @@ export function PlanSketchLayer({
     <g className={`live-plan-sketch ${editing ? 'is-editing' : ''}`}>
       {(shapes || []).map((shape) => (
         <SketchShape key={shape.id} shape={shape} width={width} height={height}
-          editing={editing} selected={shape.id === selectedShapeId}
+          editing={editing} selected={Boolean(selectedShapeIds?.has(shape.id))}
+          showHandles={selectedShapeIds?.size === 1}
           markerScale={markerScale} t={t}
           onPointerDown={onShapePointerDown} onClick={onShapeClick}
           onDblClick={onShapeDblClick} onContextMenu={onShapeContextMenu} />

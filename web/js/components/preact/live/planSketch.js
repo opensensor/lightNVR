@@ -368,6 +368,63 @@ export function wrapRotation(rotation, delta) {
   return Math.round(next * 10) / 10;
 }
 
+/** Union bounds of several shapes, or null for an empty list. */
+export function shapesBounds(shapes) {
+  if (!shapes || shapes.length === 0) return null;
+  return shapes.map(shapeBounds).reduce((acc, bounds) => ({
+    x0: Math.min(acc.x0, bounds.x0), y0: Math.min(acc.y0, bounds.y0),
+    x1: Math.max(acc.x1, bounds.x1), y1: Math.max(acc.y1, bounds.y1),
+  }));
+}
+
+/** Ids of shapes lying entirely inside a marquee rectangle (plan fractions). */
+export function shapesInMarquee(shapes, a, b) {
+  const x0 = Math.min(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  return (shapes || []).filter((shape) => {
+    const bounds = shapeBounds(shape);
+    return bounds.x0 >= x0 && bounds.y0 >= y0 && bounds.x1 <= x1 && bounds.y1 <= y1;
+  }).map((shape) => shape.id);
+}
+
+/**
+ * Move several shapes by one shared delta, clamped so the whole group stays
+ * on the plan (shapes keep their relative positions at the edges).
+ */
+export function translateShapeGroup(shapes, ids, dx, dy) {
+  const selected = new Set(ids);
+  const bounds = shapesBounds(shapes.filter((shape) => selected.has(shape.id)));
+  if (!bounds) return shapes;
+  const shiftX = Math.max(-bounds.x0, Math.min(1 - bounds.x1, dx));
+  const shiftY = Math.max(-bounds.y0, Math.min(1 - bounds.y1, dy));
+  if (!shiftX && !shiftY) return shapes;
+  return shapes.map((shape) => selected.has(shape.id)
+    ? translateShape(shape, shiftX, shiftY) : shape);
+}
+
+/** Bring several shapes to the front or back, keeping their relative order. */
+export function reorderShapeGroup(shapes, ids, direction) {
+  const selected = new Set(ids);
+  const picked = shapes.filter((shape) => selected.has(shape.id));
+  if (picked.length === 0) return shapes;
+  const rest = shapes.filter((shape) => !selected.has(shape.id));
+  return direction === 'back' ? [...picked, ...rest] : [...rest, ...picked];
+}
+
+/**
+ * Field of view (1..180°) from dragging a wedge edge: twice the angle
+ * between the camera heading and the pointer heading.
+ */
+export function fovFromHeading(rotation, heading, snapDegrees = 0) {
+  if (!Number.isFinite(rotation) || !Number.isFinite(heading)) return null;
+  const delta = Math.abs(wrapRotation(heading, -rotation));
+  let fov = delta * 2;
+  if (snapDegrees > 0) fov = Math.round(fov / snapDegrees) * snapDegrees;
+  return Math.max(1, Math.min(180, Math.round(fov * 10) / 10));
+}
+
 /** True when a click lands close enough to the first point to close an area. */
 export function closesPolygon(points, point, canvas, toleranceUnits = 14) {
   if (!points || points.length < 3 || !canvas?.width || !canvas?.height) return false;

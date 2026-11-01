@@ -4,7 +4,9 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.jsx';
 import { t as translate, useI18n } from '../../../i18n.js';
 import {
+  buildLocationTree,
   clusterFloorPlanCameras,
+  flattenLocationTree,
   coverageWedgePath,
   floorPlanCanvasFromImage,
   floorPlanPayload,
@@ -14,6 +16,11 @@ import {
   SKETCH_LIMITS,
   SKETCH_TONES,
   aimRotation,
+  fovFromHeading,
+  reorderShapeGroup,
+  shapesBounds,
+  shapesInMarquee,
+  translateShapeGroup,
   appendPolylinePoint,
   canRemoveVertex,
   closesPolygon,
@@ -45,6 +52,7 @@ import {
 import { PlanSketchLayer } from './PlanSketchLayer.jsx';
 import { PlanSketchInspector, PlanSketchTools } from './PlanSketchControls.jsx';
 import { PlanContextMenu } from './PlanContextMenu.jsx';
+import { applyBulkOrganization } from '../fleet/fleetOrganization.js';
 
 const TOOL_SHORTCUTS = { v: 'select', r: 'room', w: 'wall', a: 'area', l: 'label' };
 /** Draft edited as one undo history so Ctrl+Z covers shapes and cameras. */
@@ -215,7 +223,10 @@ export function LiveBuildingPlan({
   const [sketchTool, setSketchTool] = useState('select');
   const [sketchTone, setSketchTone] = useState(SKETCH_TONES[0]);
   const [draftHistory, setDraftHistory] = useState(() => createHistory(EMPTY_DRAFT));
-  const [selectedShapeId, setSelectedShapeId] = useState('');
+  const [selectedShapeIds, setSelectedShapeIds] = useState([]);
+  const setSelectedShapeId = (shapeId) => setSelectedShapeIds(shapeId ? [shapeId] : []);
+  const [marquee, setMarquee] = useState(null);
+  const [draftLocationUuid, setDraftLocationUuid] = useState('');
   const [drawing, setDrawing] = useState(null);
   const [snap, setSnap] = useState(true);
   const [toolLock, setToolLock] = useState(false);
@@ -239,6 +250,17 @@ export function LiveBuildingPlan({
     queryFn: ({ signal }) => fetchJSON('/api/live/plans', { signal }),
     staleTime: 15000,
   });
+  // Shared with the Navigator (same key), used to link a plan to a location.
+  const locationsQuery = useQuery({
+    queryKey: ['fleet-locations'],
+    queryFn: ({ signal }) => fetchJSON('/api/locations', { signal }),
+    staleTime: 60000,
+  });
+  const locationOptions = useMemo(() => {
+    const locations = locationsQuery.data?.locations || [];
+    const tree = buildLocationTree(locations, []);
+    return flattenLocationTree(tree, new Set(locations.map((location) => location.uuid)));
+  }, [locationsQuery.data]);
   const plans = plansQuery.data?.plans || [];
   const plan = plans.find((item) => item.uuid === selectedPlanUuid) || plans[0] || null;
   const canModify = Boolean(plansQuery.data?.can_modify);
@@ -276,8 +298,12 @@ export function LiveBuildingPlan({
   const cameras = editing ? draftCameras : (plan?.cameras || []);
   const viewSketch = useMemo(() => sketchShapesFromPlan(plan), [plan]);
   const sketchShapes = editing ? draftSketch : viewSketch;
-  const selectedShape = editing
-    ? draftSketch.find((shape) => shape.id === selectedShapeId) || null : null;
+  const selectedIdSet = useMemo(() => new Set(selectedShapeIds), [selectedShapeIds]);
+  // Selection in draw order; a single selection drives handles and inspector.
+  const selectedShapes = editing
+    ? draftSketch.filter((shape) => selectedIdSet.has(shape.id)) : [];
+  const selectedShape = selectedShapes.length === 1 ? selectedShapes[0] : null;
+  const hasShapeSelection = selectedShapes.length > 0;
   const placedUuids = useMemo(() => new Set(
     cameras.map((camera) => camera.camera_uuid),
   ), [cameras]);
@@ -639,6 +665,20 @@ export function LiveBuildingPlan({
       setPlacementCameraUuid('');
     }
   };
+  const selectShapes = (ids) => {
+    setSelectedShapeIds(ids);
+    if (ids.length > 0) {
+      setSelectedCameraUuid('');
+      setPlacementCameraUuid('');
+    }
+  };
+  const toggleShapeSelection = (shapeId) => {
+    const next = selectedIdSet.has(shapeId)
+      ? selectedShapeIds.filter((id) => id !== shapeId)
+      : [...selectedShapeIds, shapeId];
+    selectShapes(next);
+    return next.includes(shapeId);
+  };
   // New shapes come back in Select with handles showing so mistakes can be
   // fixed straight away; the tool lock (Q) keeps drawing the same kind.
   const addShape = (shape, nextTool = toolLock ? sketchTool : 'select') => {
@@ -647,49 +687,83 @@ export function LiveBuildingPlan({
     selectShape(shape.id);
     setSketchTool(nextTool);
   };
+  const addShapes = (shapes) => {
+    const room = SKETCH_LIMITS.maxShapes - draftSketch.length;
+    const added = shapes.slice(0, Math.max(0, room));
+    if (added.length === 0) return;
+    commitSketch([...draftSketch, ...added]);
+    selectShapes(added.map((shape) => shape.id));
+    setSketchTool('select');
+  };
   const replaceShape = (next) => {
     commitSketch(draftSketch.map((shape) => shape.id === next.id ? next : shape),
       `shape:${next.id}`);
     if (next.tone) setSketchTone(next.tone);
   };
-  const deleteShapeById = (shapeId) => {
+  const deleteShapesById = (ids) => {
+    const doomed = new Set(ids);
     commitDraft((draft) => ({
-      ...draft, shapes: draft.shapes.filter((shape) => shape.id !== shapeId),
+      ...draft, shapes: draft.shapes.filter((shape) => !doomed.has(shape.id)),
     }));
-    setSelectedShapeId((current) => current === shapeId ? '' : current);
+    setSelectedShapeIds((current) => current.filter((id) => !doomed.has(id)));
   };
+  const deleteShapeById = (shapeId) => deleteShapesById([shapeId]);
   const deleteSelectedShape = () => {
-    if (selectedShape) deleteShapeById(selectedShape.id);
+    if (hasShapeSelection) deleteShapesById(selectedShapeIds);
+  };
+  /** Copies of `shapes` with fresh ids, offset one grid step. */
+  const cloneShapes = (shapes) => {
+    const taken = shapeIds();
+    return shapes.map((shape) => {
+      const copy = duplicateShape(shape, taken, canvasDims);
+      taken.push(copy.id);
+      return copy;
+    });
   };
   const duplicateSelectedShape = () => {
-    if (!selectedShape || draftSketch.length >= SKETCH_LIMITS.maxShapes) return;
-    addShape(duplicateShape(selectedShape, shapeIds(), canvasDims), 'select');
+    if (hasShapeSelection) addShapes(cloneShapes(selectedShapes));
   };
-  const copyShape = (shape) => {
-    if (shape) clipboardRef.current = shape;
+  const copyShapes = (shapes) => {
+    if (shapes?.length) clipboardRef.current = shapes;
   };
+  const copyShape = (shape) => copyShapes(shape ? [shape] : []);
   const pasteShape = (at = null) => {
     const source = clipboardRef.current;
-    if (!source || draftSketch.length >= SKETCH_LIMITS.maxShapes) return;
-    let copy = { ...source, id: createShapeId(shapeIds()) };
-    if (at) {
-      const middle = shapeCenter(copy);
-      copy = translateShape(copy, at.x - middle.x, at.y - middle.y);
-    } else {
-      const step = gridStep(canvasDims);
-      copy = translateShape(copy, step.x, step.y);
-    }
+    if (!source?.length || draftSketch.length >= SKETCH_LIMITS.maxShapes) return;
+    const taken = shapeIds();
+    let copies = source.map((shape) => {
+      const id = createShapeId(taken);
+      taken.push(id);
+      return { ...shape, id };
+    });
+    const bounds = shapesBounds(copies);
+    const step = gridStep(canvasDims);
+    const dx = at ? at.x - (bounds.x0 + bounds.x1) / 2 : step.x;
+    const dy = at ? at.y - (bounds.y0 + bounds.y1) / 2 : step.y;
+    copies = translateShapeGroup(copies, copies.map((shape) => shape.id), dx, dy);
     // Repeated pastes cascade instead of stacking on one spot.
-    clipboardRef.current = copy;
-    addShape(copy, 'select');
+    clipboardRef.current = copies;
+    addShapes(copies);
   };
   const reorderShapeById = (shapeId, direction) => commitDraft((draft) => ({
     ...draft, shapes: reorderShape(draft.shapes, shapeId, direction),
   }));
+  const reorderShapesById = (ids, direction) => commitDraft((draft) => ({
+    ...draft, shapes: reorderShapeGroup(draft.shapes, ids, direction),
+  }));
+  const recolorShapes = (ids, tone) => {
+    const targets = new Set(ids);
+    commitDraft((draft) => ({
+      ...draft,
+      shapes: draft.shapes.map((shape) => targets.has(shape.id) ? { ...shape, tone } : shape),
+    }));
+    setSketchTone(tone);
+  };
   const nudgeSelectedShape = (stepsX, stepsY) => {
-    if (!selectedShape) return;
+    if (!hasShapeSelection) return;
     const step = gridStep(canvasDims);
-    replaceShape(translateShape(selectedShape, stepsX * step.x, stepsY * step.y));
+    commitSketch(translateShapeGroup(draftSketch, selectedShapeIds,
+      stepsX * step.x, stepsY * step.y), `nudge:${selectedShapeIds.join(',')}`);
   };
   const focusShapeField = (shape) => {
     if (!shape) return;
@@ -792,6 +866,42 @@ export function LiveBuildingPlan({
     setPlacementCameraUuid((current) => current === cameraUuid ? '' : current);
   };
 
+  const planLocation = plan.location_uuid
+    ? (locationsQuery.data?.locations || []).find((location) => location.uuid === plan.location_uuid)
+    : null;
+  // Placing a camera on a plan is not a location assignment; offer to make
+  // the Navigator's location tree agree with the plan in one step.
+  const unassignedPlanStreams = planLocation
+    ? (plan.cameras || []).map((camera) => streamsByUuid.get(camera.camera_uuid))
+      .filter((stream) => stream && stream.location_uuid !== planLocation.uuid)
+    : [];
+  const assignPlanCamerasToLocation = async () => {
+    if (!planLocation || unassignedPlanStreams.length === 0) return;
+    setBusy(true);
+    try {
+      const { succeeded, failed } = await applyBulkOrganization(
+        unassignedPlanStreams, { locationUuid: planLocation.uuid }, fetchJSON);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['streams'] }),
+        queryClient.invalidateQueries({ queryKey: ['fleet-locations'] }),
+      ]);
+      if (failed.length > 0) {
+        showStatusMessage(t('live.plan.assignLocationPartial', {
+          done: succeeded.length, failed: failed.length,
+          error: failed[0].error,
+        }), 'warning', 6000);
+      } else {
+        showStatusMessage(t('live.plan.assignLocationDone', {
+          count: succeeded.length, location: planLocation.name,
+        }), 'success', 3000);
+      }
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resetEditorState = () => {
     setEditing(false);
     setDraftHistory(createHistory(EMPTY_DRAFT));
@@ -811,6 +921,7 @@ export function LiveBuildingPlan({
     };
     editStartDraftRef.current = initial;
     setDraftHistory(createHistory(initial));
+    setDraftLocationUuid(plan.location_uuid || '');
     setDraftSize(null);
     setDraftRevision(plan.revision);
     setSelectedShapeId('');
@@ -820,7 +931,8 @@ export function LiveBuildingPlan({
   };
   const cancelEditing = () => resetEditorState();
   const hasDraftChanges = editing &&
-    (draftHistory.present !== editStartDraftRef.current || draftSize !== null);
+    (draftHistory.present !== editStartDraftRef.current || draftSize !== null ||
+      draftLocationUuid !== (plan.location_uuid || ''));
   const requestCancelEditing = () => {
     if (hasDraftChanges) setDiscardOpen(true);
     else cancelEditing();
@@ -835,6 +947,7 @@ export function LiveBuildingPlan({
           ...floorPlanPayload({
             ...plan,
             ...sizeForSave,
+            location_uuid: draftLocationUuid || null,
             revision: draftRevision ?? plan.revision,
           }, draftCameras),
           sketch: sketchPayload(draftSketch),
@@ -958,6 +1071,17 @@ export function LiveBuildingPlan({
     }
     // Point-by-point tools add on click; a press must not start a pan.
     if (editing && sketchTool !== 'select') return;
+    if (editing && event.pointerType !== 'touch') {
+      // Dragging empty canvas box-selects; Shift/Ctrl adds to the selection.
+      const start = rawPlanPoint(event);
+      if (!start) return;
+      interactionRef.current = {
+        mode: 'marquee', pointerId: event.pointerId, start,
+        base: event.shiftKey || event.ctrlKey || event.metaKey ? selectedShapeIds : [],
+        startX: event.clientX, startY: event.clientY, moved: false,
+      };
+      return;
+    }
     startPan(event);
   };
 
@@ -999,6 +1123,25 @@ export function LiveBuildingPlan({
     };
   };
 
+  const handleFovPointerDown = (event, marker) => {
+    if (!editing) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (isPanGesture(event)) return;
+    event.stopPropagation();
+    suppressClickRef.current = false;
+    interactionRef.current = {
+      mode: 'fov',
+      pointerId: event.pointerId,
+      cameraUuid: marker.camera_uuid,
+      origin: { x: marker.x, y: marker.y },
+      rotation: normalizeCoverage(marker).rotation,
+      before: draftHistoryRef.current.present,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+  };
+
   const handleShapePointerDown = (event, shapeId, handle) => {
     if (!editing || sketchTool !== 'select' || placementCameraUuid) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -1009,11 +1152,24 @@ export function LiveBuildingPlan({
     const matrix = svgRef.current?.getScreenCTM();
     const shape = draftSketch.find((candidate) => candidate.id === shapeId);
     if (!matrix || !shape) return;
+    let group = null;
+    if (handle.kind === 'move') {
+      if (event.shiftKey || event.ctrlKey || event.metaKey) {
+        // Modifier-press toggles membership; the click must not undo it.
+        const included = toggleShapeSelection(shapeId);
+        suppressClickRef.current = true;
+        if (!included) return;
+        group = [...new Set([...selectedShapeIds, shapeId])];
+      } else if (selectedIdSet.has(shapeId) && selectedShapeIds.length > 1) {
+        group = selectedShapeIds;
+      }
+    }
     interactionRef.current = {
       mode: 'shape',
       pointerId: event.pointerId,
       shapeId,
       handle,
+      group,
       original: shape,
       before: draftHistoryRef.current.present,
       startX: event.clientX,
@@ -1022,13 +1178,14 @@ export function LiveBuildingPlan({
       screenPlanHeight: Math.hypot(matrix.c, matrix.d) * height,
       moved: false,
     };
-    selectShape(shapeId);
+    if (!group) selectShape(shapeId);
   };
 
   const handleShapeClick = (event, shapeId) => {
     if (!editing || sketchTool !== 'select' || placementCameraUuid) return;
     event.stopPropagation();
     if (suppressClickRef.current) return;
+    // A plain click inside a multi-selection narrows it to this shape.
     selectShape(shapeId);
   };
 
@@ -1046,6 +1203,26 @@ export function LiveBuildingPlan({
   const applyShapeDrag = (interaction, event) => {
     let next = interaction.original;
     const kind = interaction.handle.kind;
+    if (kind === 'move' && interaction.group) {
+      let dx = (event.clientX - interaction.startX) / interaction.screenPlanWidth;
+      let dy = (event.clientY - interaction.startY) / interaction.screenPlanHeight;
+      const beforeShapes = interaction.before.shapes;
+      if (snap && !event.altKey) {
+        const bounds = shapesBounds(beforeShapes.filter((shape) =>
+          interaction.group.includes(shape.id)));
+        const snapped = snapPoint({ x: bounds.x0 + dx, y: bounds.y0 + dy }, canvasDims);
+        dx = snapped.x - bounds.x0;
+        dy = snapped.y - bounds.y0;
+      }
+      const moved = translateShapeGroup(beforeShapes, interaction.group, dx, dy);
+      const byId = new Map(moved.map((shape) => [shape.id, shape]));
+      const groupIds = new Set(interaction.group);
+      previewDraft((draft) => ({
+        ...draft,
+        shapes: draft.shapes.map((shape) => groupIds.has(shape.id) ? byId.get(shape.id) || shape : shape),
+      }));
+      return;
+    }
     if (kind === 'move') {
       const dx = (event.clientX - interaction.startX) / interaction.screenPlanWidth;
       const dy = (event.clientY - interaction.startY) / interaction.screenPlanHeight;
@@ -1114,6 +1291,27 @@ export function LiveBuildingPlan({
       applyShapeDrag(interaction, event);
       return;
     }
+    if (interaction.mode === 'marquee') {
+      const current = rawPlanPoint(event);
+      if (!current) return;
+      setMarquee({ start: interaction.start, current });
+      const hits = shapesInMarquee(draftSketch, interaction.start, current);
+      selectShapes([...new Set([...interaction.base, ...hits])]);
+      return;
+    }
+    if (interaction.mode === 'fov') {
+      const heading = aimRotation(interaction.origin, rawPlanPoint(event), canvasDims);
+      const fov = heading === null ? null : fovFromHeading(interaction.rotation, heading,
+        event.shiftKey ? 15 : (snap && !event.altKey ? 5 : 0));
+      if (fov !== null) {
+        previewDraft((draft) => ({
+          ...draft,
+          cameras: draft.cameras.map((camera) => camera.camera_uuid === interaction.cameraUuid
+            ? { ...camera, fov } : camera),
+        }));
+      }
+      return;
+    }
     if (interaction.mode === 'aim') {
       const rotation = aimRotation(interaction.origin, rawPlanPoint(event),
         canvasDims, aimSnapDegrees(event));
@@ -1164,8 +1362,11 @@ export function LiveBuildingPlan({
       finishGesture(interaction.before);
       setPlacementCameraUuid('');
       setSelectedCameraUuid(interaction.cameraUuid);
+    } else if (interaction.mode === 'marquee') {
+      setMarquee(null);
+      // A press without a drag falls through to the canvas click (deselect).
     } else if ((interaction.mode === 'shape' || interaction.mode === 'camera' ||
-      interaction.mode === 'aim') && interaction.moved) {
+      interaction.mode === 'aim' || interaction.mode === 'fov') && interaction.moved) {
       finishGesture(interaction.before);
     }
     try {
@@ -1200,6 +1401,41 @@ export function LiveBuildingPlan({
     { id: 'cancel', label: t('live.plan.menu.cancelDrawing'), shortcut: 'Esc', onSelect: cancelDrawing },
   ];
 
+  const toneSwatches = (ids, activeTone) => ({
+    id: 'tone', label: t('live.plan.sketch.tone'),
+    swatches: SKETCH_TONES.map((tone) => ({
+      id: tone, className: `tone-${tone}`, label: t(`live.plan.sketch.tone.${tone}`),
+      active: activeTone === tone,
+      onSelect: () => recolorShapes(ids, tone),
+    })),
+  });
+  const groupMenuItems = (shapes) => {
+    const ids = shapes.map((shape) => shape.id);
+    const tones = new Set(shapes.map((shape) => shape.tone));
+    return [
+      {
+        id: 'duplicate', label: t('live.plan.sketch.duplicate'), shortcut: 'Ctrl+D',
+        disabled: draftSketch.length + ids.length > SKETCH_LIMITS.maxShapes,
+        onSelect: () => addShapes(cloneShapes(shapes)),
+      },
+      { id: 'copy', label: t('live.plan.menu.copy'), shortcut: 'Ctrl+C', onSelect: () => copyShapes(shapes) },
+      {
+        id: 'cut', label: t('live.plan.menu.cut'), shortcut: 'Ctrl+X',
+        onSelect: () => { copyShapes(shapes); deleteShapesById(ids); },
+      },
+      separator,
+      { id: 'front', label: t('live.plan.menu.bringToFront'), onSelect: () => reorderShapesById(ids, 'front') },
+      { id: 'back', label: t('live.plan.menu.sendToBack'), onSelect: () => reorderShapesById(ids, 'back') },
+      separator,
+      toneSwatches(ids, tones.size === 1 ? shapes[0].tone : null),
+      separator,
+      {
+        id: 'delete', label: t('live.plan.menu.deleteShapes', { count: ids.length }),
+        shortcut: 'Del', danger: true, onSelect: () => deleteShapesById(ids),
+      },
+    ];
+  };
+
   const handleShapeContextMenu = (event, shapeId, handle) => {
     if (!editing) return;
     if (drawingRef.current) {
@@ -1211,6 +1447,10 @@ export function LiveBuildingPlan({
     if (sketchTool !== 'select') {
       setSketchTool('select');
       setDrawingNow(null);
+    }
+    if (selectedIdSet.has(shapeId) && selectedShapes.length > 1) {
+      openMenu(event, groupMenuItems(selectedShapes));
+      return;
     }
     selectShape(shapeId);
     const items = [];
@@ -1243,17 +1483,7 @@ export function LiveBuildingPlan({
       { id: 'backward', label: t('live.plan.menu.sendBackward'), onSelect: () => reorderShapeById(shapeId, 'backward') },
       { id: 'back', label: t('live.plan.menu.sendToBack'), onSelect: () => reorderShapeById(shapeId, 'back') },
       separator,
-      {
-        id: 'tone', label: t('live.plan.sketch.tone'),
-        swatches: SKETCH_TONES.map((tone) => ({
-          id: tone, className: `tone-${tone}`, label: t(`live.plan.sketch.tone.${tone}`),
-          active: shape.tone === tone,
-          onSelect: () => {
-            updateShapeById(shapeId, (current) => ({ ...current, tone }));
-            setSketchTone(tone);
-          },
-        })),
-      },
+      toneSwatches([shapeId], shape.tone),
     );
     if (shape.type === 'rect') {
       items.push({
@@ -1380,7 +1610,7 @@ export function LiveBuildingPlan({
     const inScope = target === document.body || target === document.documentElement ||
       Boolean(sectionRef.current?.contains(target));
     if (!inScope) return;
-    const selectedCamera = !selectedShape && selectedCameraUuid
+    const selectedCamera = !hasShapeSelection && selectedCameraUuid
       ? draftCameras.find((camera) => camera.camera_uuid === selectedCameraUuid) : null;
     if (event.key === 'Escape') {
       if (contextMenu) closeContextMenu();
@@ -1389,7 +1619,7 @@ export function LiveBuildingPlan({
         setDrawingNow(null);
       } else if (drawingRef.current) cancelDrawing();
       else if (placementCameraUuid) setPlacementCameraUuid('');
-      else if (selectedShapeId) setSelectedShapeId('');
+      else if (hasShapeSelection) setSelectedShapeIds([]);
       else if (selectedCameraUuid) setSelectedCameraUuid('');
       else if (sketchTool !== 'select') selectTool('select');
       else return;
@@ -1407,17 +1637,21 @@ export function LiveBuildingPlan({
       } else if (key === 'y') {
         event.preventDefault();
         redoSketch();
-      } else if (key === 'c' && selectedShape) {
+      } else if (key === 'a' && !drawingRef.current) {
         event.preventDefault();
-        copyShape(selectedShape);
-      } else if (key === 'x' && selectedShape) {
+        if (sketchTool !== 'select') selectTool('select');
+        selectShapes(draftSketch.map((shape) => shape.id));
+      } else if (key === 'c' && hasShapeSelection) {
         event.preventDefault();
-        copyShape(selectedShape);
+        copyShapes(selectedShapes);
+      } else if (key === 'x' && hasShapeSelection) {
+        event.preventDefault();
+        copyShapes(selectedShapes);
         deleteSelectedShape();
       } else if (key === 'v' && clipboardRef.current) {
         event.preventDefault();
         pasteShape();
-      } else if (key === 'd' && selectedShape) {
+      } else if (key === 'd' && hasShapeSelection) {
         event.preventDefault();
         duplicateSelectedShape();
       }
@@ -1441,7 +1675,7 @@ export function LiveBuildingPlan({
       if (drawingRef.current) {
         event.preventDefault();
         removeLastDrawingPoint();
-      } else if (selectedShape) {
+      } else if (hasShapeSelection) {
         event.preventDefault();
         deleteSelectedShape();
       } else if (selectedCamera) {
@@ -1450,7 +1684,7 @@ export function LiveBuildingPlan({
       }
       return;
     }
-    if (event.key.startsWith('Arrow') && (selectedShape || selectedCamera)) {
+    if (event.key.startsWith('Arrow') && (hasShapeSelection || selectedCamera)) {
       event.preventDefault();
       const steps = event.shiftKey ? 5 : 1;
       const delta = {
@@ -1458,7 +1692,7 @@ export function LiveBuildingPlan({
         ArrowUp: [0, -steps], ArrowDown: [0, steps],
       }[event.key];
       if (!delta) return;
-      if (selectedShape) nudgeSelectedShape(delta[0], delta[1]);
+      if (hasShapeSelection) nudgeSelectedShape(delta[0], delta[1]);
       else nudgeCamera(selectedCamera.camera_uuid, delta[0], delta[1]);
       return;
     }
@@ -1467,6 +1701,16 @@ export function LiveBuildingPlan({
       const step = event.shiftKey ? 45 : CAMERA_ROTATE_STEP;
       rotateCamera(selectedCamera.camera_uuid,
         event.key === '[' || event.key === '{' ? -step : step);
+      return;
+    }
+    if (selectedCamera && ['-', '=', '+', '_'].includes(event.key)) {
+      event.preventDefault();
+      const step = event.shiftKey ? 15 : 5;
+      const current = normalizeCoverage(selectedCamera).fov;
+      const widen = event.key === '=' || event.key === '+';
+      updateCameraById(selectedCamera.camera_uuid, {
+        fov: clamp(current + (widen ? step : -step), 1, 180),
+      });
       return;
     }
     if (event.altKey) return;
@@ -1610,8 +1854,8 @@ export function LiveBuildingPlan({
                 });
                 return;
               }
-              if (sketchTool === 'select') {
-                if (selectedShapeId) setSelectedShapeId('');
+              if (sketchTool === 'select' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+                if (hasShapeSelection) setSelectedShapeIds([]);
                 if (selectedCameraUuid) setSelectedCameraUuid('');
               }
             }}
@@ -1649,13 +1893,21 @@ export function LiveBuildingPlan({
                 preserveAspectRatio="none" className="live-plan-background" />
             )}
             <PlanSketchLayer shapes={sketchShapes} width={width} height={height}
-              editing={editing} selectedShapeId={selectedShapeId}
+              editing={editing} selectedShapeIds={selectedIdSet}
               markerScale={markerScale} drawing={drawing}
               drawingClosable={drawingClosable} t={t}
               onShapePointerDown={handleShapePointerDown}
               onShapeClick={handleShapeClick}
               onShapeDblClick={handleShapeDblClick}
               onShapeContextMenu={handleShapeContextMenu} />
+            {marquee && (() => {
+              const box = rectFromPoints(marquee.start, marquee.current);
+              return box ? (
+                <rect x={box.x * width} y={box.y * height}
+                  width={box.w * width} height={box.h * height}
+                  className="live-plan-marquee" />
+              ) : null;
+            })()}
 
             {renderedMarkers.map((marker) => {
               const markerX = marker.x * width;
@@ -1718,6 +1970,17 @@ export function LiveBuildingPlan({
                         onPointerDown={(event) => handleAimPointerDown(event, marker)}>
                         <title>{t('live.plan.aimHandle')}</title>
                       </circle>
+                      {/* Wedge-edge handles widen or narrow the field of view. */}
+                      {[-1, 1].map((side) => {
+                        const half = (coverage.fov * Math.PI) / 360;
+                        return (
+                          <circle key={side} cx={55 * Math.cos(half)} cy={side * 55 * Math.sin(half)} r="7"
+                            className="live-plan-fov-handle"
+                            onPointerDown={(event) => handleFovPointerDown(event, marker)}>
+                            <title>{t('live.plan.fovHandle')}</title>
+                          </circle>
+                        );
+                      })}
                     </g>
                   )}
                 </g>
@@ -1773,16 +2036,43 @@ export function LiveBuildingPlan({
                   ? t('live.plan.canvasHint')
                   : t('live.plan.canvasInvalid')}
               </small>
+              <label className="live-plan-location-field">{t('live.plan.location')}
+                <select value={draftLocationUuid}
+                  onChange={(event) => setDraftLocationUuid(event.currentTarget.value)}>
+                  <option value="">{t('live.plan.noLocation')}</option>
+                  {locationOptions.map((location) => (
+                    <option key={location.uuid} value={location.uuid}>
+                      {`${'\u00a0\u00a0'.repeat(location.depth)}${location.name}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <small>{t('live.plan.locationHint')}</small>
+            </div>
+          )}
+          {!editing && canModify && planLocation && unassignedPlanStreams.length > 0 && (
+            <div className="live-plan-location-callout">
+              <p>{t('live.plan.assignLocationPrompt', {
+                count: unassignedPlanStreams.length, location: planLocation.name,
+              })}</p>
+              <button type="button" className="btn-primary" disabled={busy}
+                onClick={assignPlanCamerasToLocation}>
+                {t('live.plan.assignLocation', { location: planLocation.name })}
+              </button>
             </div>
           )}
           {editing && (
             <PlanSketchInspector uid={`${panelUid}-sketch`} shapes={draftSketch}
-              selectedShape={selectedShape} t={t}
-              onSelect={selectShape} onChange={replaceShape}
+              selectedShape={selectedShape} selectedIds={selectedIdSet}
+              selectionCount={selectedShapes.length} t={t}
+              onSelect={(shapeId, additive) => (additive
+                ? toggleShapeSelection(shapeId) : selectShape(shapeId))}
+              onChange={replaceShape}
+              onRecolorSelection={(tone) => recolorShapes(selectedShapeIds, tone)}
               onDelete={deleteSelectedShape} onDuplicate={duplicateSelectedShape}
-              onDeselect={() => setSelectedShapeId('')} />
+              onDeselect={() => setSelectedShapeIds([])} />
           )}
-          {selectedShape ? null : selectedStream && selectedPlacement ? (
+          {hasShapeSelection ? null : selectedStream && selectedPlacement ? (
             <>
               <PlanCameraPreview stream={selectedStream} />
               <div className="live-plan-camera-summary">

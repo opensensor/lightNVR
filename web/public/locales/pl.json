@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Cofnij",
   "live.plan.sketch.redo": "Ponów",
   "live.plan.sketch.snap": "Przyciągaj do siatki",
-  "live.plan.sketch.hint.select": "Przeciągaj kształty, krawędzie lub uchwyty, aby je edytować; przeciągnij pokrętło kamery, aby ją skierować. Prawy przycisk – więcej opcji. Spacja lub przeciąganie środkowym przyciskiem przesuwa widok; Alt pomija siatkę.",
+  "live.plan.sketch.hint.select": "Przeciągaj kształty, krawędzie lub uchwyty, aby je edytować; przeciągnij po pustym miejscu, aby zaznaczyć ramką (Shift dodaje). Przeciągnij pokrętła kamery, aby ją skierować lub ustawić pole widzenia. Prawy przycisk – więcej opcji. Spacja lub przeciąganie środkowym przyciskiem przesuwa widok; Alt pomija siatkę.",
   "live.plan.sketch.hint.room": "Przeciągnij na planie, aby narysować pomieszczenie lub obrys budynku. Prawy przycisk podczas przeciągania anuluje.",
   "live.plan.sketch.hint.wall": "Klikaj, aby dodać punkty ściany; Shift blokuje kąt 45°. Dwuklik lub Enter kończy, Backspace usuwa ostatni punkt, Escape anuluje.",
   "live.plan.sketch.hint.area": "Klikaj, aby obrysować obszar. Kliknij pierwszy punkt lub naciśnij Enter, aby go zamknąć; Backspace usuwa ostatni punkt.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Ostatnia godzina · kamery: {count}",
   "live.navigator.refreshEvents": "Odśwież zdarzenia",
   "live.navigator.eventsNoScope": "Brak kamer w tym zakresie. Wybierz Wszystkie kamery, lokalizację z kamerami lub plan.",
-  "live.navigator.eventsError": "Nie udało się wczytać ostatnich zdarzeń: {error}"
+  "live.navigator.eventsError": "Nie udało się wczytać ostatnich zdarzeń: {error}",
+  "live.plan.menu.deleteShapes": "Usuń kształty: {count}",
+  "live.plan.fovHandle": "Przeciągnij, aby poszerzyć lub zawęzić pole widzenia (Shift przyciąga do 15°)",
+  "live.plan.location": "Lokalizacja",
+  "live.plan.noLocation": "Brak lokalizacji",
+  "live.plan.locationHint": "Powiązanie planu z lokalizacją wyświetla go pod tą lokalizacją w Nawigatorze.",
+  "live.plan.assignLocationPrompt": "Kamery na tym planie nieprzypisane do {location}: {count}.",
+  "live.plan.assignLocation": "Przypisz do {location}",
+  "live.plan.assignLocationDone": "Przypisano kamery do {location}: {count}",
+  "live.plan.assignLocationPartial": "Przypisano kamery: {done}; nieudane: {failed}: {error}",
+  "live.plan.sketch.multiSelected": "Zaznaczone kształty: {count}",
+  "live.plan.sketch.multiHint": "Przeciągnij dowolny, aby przesunąć grupę. Shift+klik dodaje lub usuwa kształt; strzałki przesuwają."
 }

@@ -1194,7 +1194,7 @@
   "live.plan.sketch.undo": "실행 취소",
   "live.plan.sketch.redo": "다시 실행",
   "live.plan.sketch.snap": "그리드에 스냅",
-  "live.plan.sketch.hint.select": "도형, 가장자리 또는 핸들을 드래그해 편집하고, 카메라의 노브를 드래그해 방향을 지정합니다. 오른쪽 클릭으로 더 많은 작업을 엽니다. Space 또는 가운데 버튼 드래그로 화면을 이동하고, Alt로 그리드를 무시합니다.",
+  "live.plan.sketch.hint.select": "도형, 가장자리 또는 핸들을 드래그해 편집하고, 빈 공간을 드래그하면 영역으로 선택합니다(Shift로 추가). 카메라의 노브를 드래그해 방향이나 시야를 설정합니다. 오른쪽 클릭으로 더 많은 작업을 엽니다. Space 또는 가운데 버튼 드래그로 화면을 이동하고, Alt로 그리드를 무시합니다.",
   "live.plan.sketch.hint.room": "평면도에서 드래그해 방이나 건물 외곽선을 그립니다. 드래그 중 오른쪽 클릭하면 취소됩니다.",
   "live.plan.sketch.hint.wall": "클릭해 벽 점을 추가합니다. Shift는 45° 단위로 고정합니다. 더블 클릭 또는 Enter로 완료, Backspace로 마지막 점 제거, Escape로 취소합니다.",
   "live.plan.sketch.hint.area": "클릭해 영역을 그립니다. 첫 점을 클릭하거나 Enter를 눌러 닫습니다. Backspace로 마지막 점을 제거합니다.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "최근 1시간 · 카메라 {count}대",
   "live.navigator.refreshEvents": "이벤트 새로 고침",
   "live.navigator.eventsNoScope": "이 범위에 카메라가 없습니다. 모든 카메라, 카메라가 있는 위치 또는 평면도를 선택하세요.",
-  "live.navigator.eventsError": "최근 이벤트를 불러올 수 없습니다: {error}"
+  "live.navigator.eventsError": "최근 이벤트를 불러올 수 없습니다: {error}",
+  "live.plan.menu.deleteShapes": "도형 {count}개 삭제",
+  "live.plan.fovHandle": "드래그해 시야를 넓히거나 좁힙니다 (Shift는 15° 단위)",
+  "live.plan.location": "위치",
+  "live.plan.noLocation": "위치 없음",
+  "live.plan.locationHint": "평면도를 위치에 연결하면 내비게이터에서 해당 위치 아래에 표시됩니다.",
+  "live.plan.assignLocationPrompt": "이 평면도의 카메라 {count}대가 {location}에 할당되지 않았습니다.",
+  "live.plan.assignLocation": "{location}에 할당",
+  "live.plan.assignLocationDone": "카메라 {count}대를 {location}에 할당했습니다",
+  "live.plan.assignLocationPartial": "{done}대 할당, {failed}대 실패: {error}",
+  "live.plan.sketch.multiSelected": "도형 {count}개 선택됨",
+  "live.plan.sketch.multiHint": "아무 도형이나 드래그하면 그룹이 이동합니다. Shift+클릭으로 도형을 추가하거나 제외하고, 화살표 키로 미세 이동합니다."
 }

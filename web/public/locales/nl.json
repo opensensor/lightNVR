@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Ongedaan maken",
   "live.plan.sketch.redo": "Opnieuw",
   "live.plan.sketch.snap": "Op raster uitlijnen",
-  "live.plan.sketch.hint.select": "Sleep vormen, randen of grepen om ze te bewerken; sleep de knop van een camera om hem te richten. Rechtsklik voor meer. Spatie of middelklik-slepen verschuift de weergave; Alt negeert het raster.",
+  "live.plan.sketch.hint.select": "Sleep vormen, randen of grepen om te bewerken; sleep over lege ruimte om met een kader te selecteren (Shift voegt toe). Sleep de knoppen van een camera om hem te richten of het zichtveld in te stellen. Rechtsklik voor meer. Spatie of middelklik-slepen verschuift de weergave; Alt negeert het raster.",
   "live.plan.sketch.hint.room": "Sleep op de plattegrond om een ruimte of gebouwomtrek te tekenen. Rechtsklik tijdens het slepen om te annuleren.",
   "live.plan.sketch.hint.wall": "Klik om muurpunten toe te voegen; Shift vergrendelt op 45°. Dubbelklik of Enter rondt af, Backspace verwijdert het laatste punt, Escape annuleert.",
   "live.plan.sketch.hint.area": "Klik om een gebied te omlijnen. Klik op het eerste punt of druk op Enter om het te sluiten; Backspace verwijdert het laatste punt.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Laatste uur · {count} camera's",
   "live.navigator.refreshEvents": "Gebeurtenissen vernieuwen",
   "live.navigator.eventsNoScope": "Geen camera's in dit bereik. Kies Alle camera's, een locatie met camera's of een plattegrond.",
-  "live.navigator.eventsError": "Recente gebeurtenissen konden niet worden geladen: {error}"
+  "live.navigator.eventsError": "Recente gebeurtenissen konden niet worden geladen: {error}",
+  "live.plan.menu.deleteShapes": "{count} vormen verwijderen",
+  "live.plan.fovHandle": "Sleep om het zichtveld te verbreden of te versmallen (Shift klikt vast op 15°)",
+  "live.plan.location": "Locatie",
+  "live.plan.noLocation": "Geen locatie",
+  "live.plan.locationHint": "Als je de plattegrond aan een locatie koppelt, verschijnt hij onder die locatie in de Navigator.",
+  "live.plan.assignLocationPrompt": "{count} camera's op deze plattegrond zijn niet toegewezen aan {location}.",
+  "live.plan.assignLocation": "Toewijzen aan {location}",
+  "live.plan.assignLocationDone": "{count} camera's toegewezen aan {location}",
+  "live.plan.assignLocationPartial": "{done} camera's toegewezen; {failed} mislukt: {error}",
+  "live.plan.sketch.multiSelected": "{count} vormen geselecteerd",
+  "live.plan.sketch.multiHint": "Sleep er een om de groep te verplaatsen. Shift-klik voegt een vorm toe of verwijdert hem; pijltjestoetsen verschuiven."
 }

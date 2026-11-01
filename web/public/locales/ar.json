@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "تراجع",
   "live.plan.sketch.redo": "إعادة",
   "live.plan.sketch.snap": "محاذاة للشبكة",
-  "live.plan.sketch.hint.select": "اسحب الأشكال أو الحواف أو المقابض لتعديلها؛ واسحب مقبض الكاميرا لتوجيهها. انقر بزر الماوس الأيمن لمزيد من الخيارات. Space أو السحب بالزر الأوسط لتحريك العرض؛ Alt لتجاهل الشبكة.",
+  "live.plan.sketch.hint.select": "اسحب الأشكال أو الحواف أو المقابض لتعديلها؛ واسحب في مساحة فارغة للتحديد بمربع (Shift للإضافة). اسحب مقابض الكاميرا لتوجيهها أو ضبط مجال رؤيتها. انقر بزر الماوس الأيمن لمزيد من الخيارات. Space أو السحب بالزر الأوسط لتحريك العرض؛ Alt لتجاهل الشبكة.",
   "live.plan.sketch.hint.room": "اسحب على المخطط لرسم غرفة أو حدود مبنى. انقر بزر الماوس الأيمن أثناء السحب للإلغاء.",
   "live.plan.sketch.hint.wall": "انقر لإضافة نقاط الجدار؛ Shift يثبّت الزاوية على 45°. النقر المزدوج أو Enter للإنهاء، Backspace لحذف آخر نقطة، Escape للإلغاء.",
   "live.plan.sketch.hint.area": "انقر لتحديد منطقة. انقر على النقطة الأولى أو اضغط Enter لإغلاقها؛ Backspace لحذف آخر نقطة.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "آخر ساعة · {count} كاميرات",
   "live.navigator.refreshEvents": "تحديث الأحداث",
   "live.navigator.eventsNoScope": "لا توجد كاميرات في هذا النطاق. اختر كل الكاميرات أو موقعًا يحتوي على كاميرات أو مخططًا.",
-  "live.navigator.eventsError": "تعذر تحميل الأحداث الأخيرة: {error}"
+  "live.navigator.eventsError": "تعذر تحميل الأحداث الأخيرة: {error}",
+  "live.plan.menu.deleteShapes": "حذف {count} أشكال",
+  "live.plan.fovHandle": "اسحب لتوسيع مجال الرؤية أو تضييقه (Shift للمحاذاة كل 15°)",
+  "live.plan.location": "الموقع",
+  "live.plan.noLocation": "بلا موقع",
+  "live.plan.locationHint": "ربط المخطط بموقع يعرضه تحت ذلك الموقع في المتصفح.",
+  "live.plan.assignLocationPrompt": "{count} كاميرات في هذا المخطط غير معيّنة إلى {location}.",
+  "live.plan.assignLocation": "تعيين إلى {location}",
+  "live.plan.assignLocationDone": "تم تعيين {count} كاميرات إلى {location}",
+  "live.plan.assignLocationPartial": "تم تعيين {done} كاميرات؛ فشل {failed}: {error}",
+  "live.plan.sketch.multiSelected": "تم تحديد {count} أشكال",
+  "live.plan.sketch.multiHint": "اسحب أيًا منها لتحريك المجموعة. Shift مع النقر يضيف شكلًا أو يزيله؛ مفاتيح الأسهم للتحريك الدقيق."
 }

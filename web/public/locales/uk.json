@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "Скасувати",
   "live.plan.sketch.redo": "Повторити",
   "live.plan.sketch.snap": "Прив'язка до сітки",
-  "live.plan.sketch.hint.select": "Перетягуйте фігури, краї або маркери для редагування; перетягніть ручку камери, щоб спрямувати її. Правий клік — інші дії. Пробіл або перетягування середньою кнопкою зсуває вигляд; Alt вимикає сітку.",
+  "live.plan.sketch.hint.select": "Перетягуйте фігури, краї або маркери для редагування; проведіть по порожньому місцю, щоб виділити рамкою (Shift додає). Перетягніть ручки камери, щоб спрямувати її або задати кут огляду. Правий клік — інші дії. Пробіл або перетягування середньою кнопкою зсуває вигляд; Alt вимикає сітку.",
   "live.plan.sketch.hint.room": "Проведіть по плану, щоб намалювати приміщення або контур будівлі. Правий клік під час малювання скасовує.",
   "live.plan.sketch.hint.wall": "Клацайте, щоб додати точки стіни; Shift фіксує кути по 45°. Подвійне клацання або Enter завершує, Backspace видаляє останню точку, Escape скасовує.",
   "live.plan.sketch.hint.area": "Клацайте, щоб окреслити область. Клацніть першу точку або натисніть Enter, щоб замкнути її; Backspace видаляє останню точку.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Остання година · камер: {count}",
   "live.navigator.refreshEvents": "Оновити події",
   "live.navigator.eventsNoScope": "У цій області немає камер. Виберіть «Усі камери», розташування з камерами або план.",
-  "live.navigator.eventsError": "Не вдалося завантажити нещодавні події: {error}"
+  "live.navigator.eventsError": "Не вдалося завантажити нещодавні події: {error}",
+  "live.plan.menu.deleteShapes": "Видалити фігури: {count}",
+  "live.plan.fovHandle": "Перетягніть, щоб розширити або звузити кут огляду (Shift — крок 15°)",
+  "live.plan.location": "Розташування",
+  "live.plan.noLocation": "Без розташування",
+  "live.plan.locationHint": "Якщо пов'язати план із розташуванням, він з'явиться під цим розташуванням у навігаторі.",
+  "live.plan.assignLocationPrompt": "Камер на цьому плані, не призначених до {location}: {count}.",
+  "live.plan.assignLocation": "Призначити до {location}",
+  "live.plan.assignLocationDone": "Призначено камер до {location}: {count}",
+  "live.plan.assignLocationPartial": "Призначено камер: {done}; з помилкою: {failed}: {error}",
+  "live.plan.sketch.multiSelected": "Вибрано фігур: {count}",
+  "live.plan.sketch.multiHint": "Перетягніть будь-яку, щоб зсунути групу. Shift+клацання додає або прибирає фігуру; стрілки зсувають."
 }

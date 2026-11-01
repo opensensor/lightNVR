@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "Geri al",
   "live.plan.sketch.redo": "Yinele",
   "live.plan.sketch.snap": "Izgaraya yapıştır",
-  "live.plan.sketch.hint.select": "Düzenlemek için şekilleri, kenarları veya tutamaçları sürükleyin; bir kamerayı yönlendirmek için düğmesini sürükleyin. Daha fazlası için sağ tıklayın. Boşluk veya orta tuşla sürükleme görünümü kaydırır; Alt ızgarayı atlar.",
+  "live.plan.sketch.hint.select": "Düzenlemek için şekilleri, kenarları veya tutamaçları sürükleyin; kutuyla seçmek için boş alanda sürükleyin (Shift ekler). Bir kamerayı yönlendirmek veya görüş alanını ayarlamak için düğmelerini sürükleyin. Daha fazlası için sağ tıklayın. Boşluk veya orta tuşla sürükleme görünümü kaydırır; Alt ızgarayı atlar.",
   "live.plan.sketch.hint.room": "Bir oda veya bina dış hattı çizmek için plan üzerinde sürükleyin. İptal etmek için sürüklerken sağ tıklayın.",
   "live.plan.sketch.hint.wall": "Duvar noktası eklemek için tıklayın; Shift 45°'ye kilitler. Çift tıklama veya Enter bitirir, Backspace son noktayı kaldırır, Escape iptal eder.",
   "live.plan.sketch.hint.area": "Bir alanı çizmek için tıklayın. Kapatmak için ilk noktaya tıklayın veya Enter'a basın; Backspace son noktayı kaldırır.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Son saat · {count} kamera",
   "live.navigator.refreshEvents": "Olayları yenile",
   "live.navigator.eventsNoScope": "Bu kapsamda kamera yok. Tüm kameralar'ı, kameralı bir konumu veya bir planı seçin.",
-  "live.navigator.eventsError": "Son olaylar yüklenemedi: {error}"
+  "live.navigator.eventsError": "Son olaylar yüklenemedi: {error}",
+  "live.plan.menu.deleteShapes": "{count} şekli sil",
+  "live.plan.fovHandle": "Görüş alanını genişletmek veya daraltmak için sürükleyin (Shift 15°'ye yaslar)",
+  "live.plan.location": "Konum",
+  "live.plan.noLocation": "Konum yok",
+  "live.plan.locationHint": "Planı bir konuma bağlamak, onu Gezgin'de o konumun altında listeler.",
+  "live.plan.assignLocationPrompt": "Bu plandaki {count} kamera {location} konumuna atanmamış.",
+  "live.plan.assignLocation": "{location} konumuna ata",
+  "live.plan.assignLocationDone": "{count} kamera {location} konumuna atandı",
+  "live.plan.assignLocationPartial": "{done} kamera atandı; {failed} başarısız: {error}",
+  "live.plan.sketch.multiSelected": "{count} şekil seçildi",
+  "live.plan.sketch.multiHint": "Grubu taşımak için herhangi birini sürükleyin. Shift-tıklama şekil ekler veya çıkarır; ok tuşları kaydırır."
 }

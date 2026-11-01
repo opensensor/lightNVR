@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Annuler",
   "live.plan.sketch.redo": "Rétablir",
   "live.plan.sketch.snap": "Aligner sur la grille",
-  "live.plan.sketch.hint.select": "Faites glisser formes, bords ou poignées pour les modifier ; faites glisser le bouton d'une caméra pour l'orienter. Clic droit pour plus d'options. Espace ou glisser avec le bouton du milieu pour déplacer la vue ; Alt ignore la grille.",
+  "live.plan.sketch.hint.select": "Faites glisser formes, bords ou poignées pour modifier ; faites glisser sur une zone vide pour sélectionner par rectangle (Shift ajoute). Faites glisser les boutons d'une caméra pour l'orienter ou régler son champ de vision. Clic droit pour plus d'options. Espace ou glisser avec le bouton du milieu pour déplacer la vue ; Alt ignore la grille.",
   "live.plan.sketch.hint.room": "Faites glisser sur le plan pour dessiner une pièce ou le contour d'un bâtiment. Clic droit pendant le glissement pour annuler.",
   "live.plan.sketch.hint.wall": "Cliquez pour ajouter des points de mur ; Shift verrouille à 45°. Double-clic ou Enter pour terminer, Retour arrière retire le dernier point, Escape annule.",
   "live.plan.sketch.hint.area": "Cliquez pour délimiter une zone. Cliquez sur le premier point ou appuyez sur Enter pour la fermer ; Retour arrière retire le dernier point.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Dernière heure · {count} caméras",
   "live.navigator.refreshEvents": "Actualiser les événements",
   "live.navigator.eventsNoScope": "Aucune caméra dans ce périmètre. Choisissez Toutes les caméras, un emplacement avec des caméras ou un plan.",
-  "live.navigator.eventsError": "Impossible de charger les événements récents : {error}"
+  "live.navigator.eventsError": "Impossible de charger les événements récents : {error}",
+  "live.plan.menu.deleteShapes": "Supprimer {count} formes",
+  "live.plan.fovHandle": "Faites glisser pour élargir ou réduire le champ de vision (Shift aimante à 15°)",
+  "live.plan.location": "Emplacement",
+  "live.plan.noLocation": "Aucun emplacement",
+  "live.plan.locationHint": "Associer le plan à un emplacement l'affiche sous cet emplacement dans le Navigateur.",
+  "live.plan.assignLocationPrompt": "{count} caméras de ce plan ne sont pas affectées à {location}.",
+  "live.plan.assignLocation": "Affecter à {location}",
+  "live.plan.assignLocationDone": "{count} caméras affectées à {location}",
+  "live.plan.assignLocationPartial": "{done} caméras affectées ; {failed} en échec : {error}",
+  "live.plan.sketch.multiSelected": "{count} formes sélectionnées",
+  "live.plan.sketch.multiHint": "Faites glisser l'une d'elles pour déplacer le groupe. Shift+clic ajoute ou retire une forme ; les flèches déplacent."
 }

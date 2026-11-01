@@ -24,7 +24,7 @@ async function openPlanBrowser() {
   import { QueryClient, QueryClientProvider } from './js/query-client.js';
   import { LiveBuildingPlan } from './js/components/preact/live/LiveBuildingPlan.jsx';
   const plan = ${JSON.stringify(fixturePlan)};
-  window.calls = { puts: [] };
+  window.calls = { puts: [], locations: [] };
   const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url, options = {}) => {
     const target = String(url);
@@ -34,6 +34,11 @@ async function openPlanBrowser() {
       return json({ ...plan, ...body, revision: plan.revision + 1 });
     }
     if (target.startsWith('/api/live/plans')) return json({ plans: [plan], can_modify: true });
+    if (target === '/api/locations') return json({ locations: [{ uuid: 'loc-1', name: 'Orchard', parent_uuid: null, sort_order: 0 }] });
+    if (target.startsWith('/api/cameras/') && options.method === 'PUT') {
+      window.calls.locations.push({ url: target, body: JSON.parse(options.body) });
+      return json({});
+    }
     return new Response('', { status: 404 });
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -220,6 +225,109 @@ it('places a camera by pressing and aims it by dragging, then re-aims with the k
     expect(body.cameras).toEqual([expect.objectContaining({
       camera_uuid: 'cam-1', rotation: 90, x: expect.closeTo(0.3, 1), y: expect.closeTo(0.3, 1),
     })]);
+  } finally {
+    await browser.close();
+  }
+}, 30000);
+
+const rectXs = (page) => page.locator('g.live-plan-shape.is-rect rect.live-plan-shape-rect')
+  .evaluateAll((rects) => rects.map((rect) => Math.round(Number(rect.getAttribute('x')))));
+const selectedCount = (page, expected) => eventually(
+  () => page.locator('g.live-plan-shape.is-selected').count(), (value) => value === expected);
+
+it('box-selects, shift-clicks and moves several shapes together', async () => {
+  const { browser, page } = await openPlanBrowser();
+  try {
+    await pressTool(page, 'r');
+    await drag(page, await planPoint(page, 0.1, 0.1), await planPoint(page, 0.25, 0.25));
+    await shapeCount(page, 1);
+    await pressTool(page, 'r');
+    await drag(page, await planPoint(page, 0.3, 0.1), await planPoint(page, 0.45, 0.25));
+    expect(await shapeCount(page, 2)).toBe(2);
+    await page.keyboard.press('Escape');
+    expect(await selectedCount(page, 0)).toBe(0);
+
+    // Dragging from empty canvas draws a marquee around both rooms.
+    await drag(page, await planPoint(page, 0.05, 0.05), await planPoint(page, 0.5, 0.3));
+    expect(await selectedCount(page, 2)).toBe(2);
+    expect(await page.getByText('live.plan.sketch.multiSelected').count()).toBe(1);
+
+    // Dragging either one moves the whole group by the same amount.
+    const before = await rectXs(page);
+    await drag(page, await planPoint(page, 0.175, 0.175), await planPoint(page, 0.275, 0.175));
+    const after = await eventually(() => rectXs(page), (xs) => xs[0] !== before[0]);
+    expect(after.map((x, index) => x - before[index])).toEqual([120, 120]);
+    expect(await selectedCount(page, 2)).toBe(2);
+
+    // Plain click narrows to one; Shift-click adds the other back.
+    const first = await planPoint(page, 0.275, 0.175);
+    await page.mouse.click(first.x, first.y);
+    expect(await selectedCount(page, 1)).toBe(1);
+    const second = await planPoint(page, 0.475, 0.175);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(second.x, second.y);
+    await page.keyboard.up('Shift');
+    expect(await selectedCount(page, 2)).toBe(2);
+
+    // Group delete is one undo step; Ctrl+A selects everything.
+    await page.keyboard.press('Delete');
+    expect(await shapeCount(page, 0)).toBe(0);
+    await page.keyboard.press('Control+z');
+    expect(await shapeCount(page, 2)).toBe(2);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+a');
+    expect(await selectedCount(page, 2)).toBe(2);
+
+    // Group right-click menu.
+    const center = await planPoint(page, 0.275, 0.175);
+    await page.mouse.click(center.x, center.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: /live\.plan\.sketch\.duplicate/ }).click();
+    expect(await shapeCount(page, 4)).toBe(4);
+    expect(await selectedCount(page, 2)).toBe(2);
+  } finally {
+    await browser.close();
+  }
+}, 30000);
+
+it('widens the field of view from the wedge handle and links the plan to a location', async () => {
+  const { browser, page } = await openPlanBrowser();
+  try {
+    await page.locator('.live-plan-unplaced button', { hasText: 'Front gate' }).click();
+    const origin = await planPoint(page, 0.4, 0.4);
+    await page.mouse.click(origin.x, origin.y);
+    expect(await fieldNumber(page, '-fov-number', 65)).toBe(65);
+
+    // Drag the lower wedge-edge handle to 60° off the heading: 120° FOV.
+    const handles = page.locator('.live-plan-fov-handle');
+    expect(await eventually(() => handles.count(), (value) => value === 2)).toBe(2);
+    const handle = await handles.nth(1).boundingBox();
+    // Read the camera's on-screen center now: hints above the canvas can
+    // shift it while placement is armed.
+    const ring = await page.locator('.live-plan-camera-ring').boundingBox();
+    const center = { x: ring.x + ring.width / 2, y: ring.y + ring.height / 2 };
+    const radius = 150;
+    await drag(page, { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }, {
+      x: center.x + radius * Math.cos(Math.PI / 3), y: center.y + radius * Math.sin(Math.PI / 3),
+    });
+    expect(await fieldNumber(page, '-fov-number', 120)).toBe(120);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('=');
+    expect(await fieldNumber(page, '-fov-number', 125)).toBe(125);
+
+    await page.locator('.live-plan-location-field select').selectOption('loc-1');
+    await page.getByRole('button', { name: 'live.plan.save', exact: true }).click();
+    await page.waitForFunction(() => window.calls.puts.length === 1);
+    const [body] = await page.evaluate(() => window.calls.puts);
+    expect(body.location_uuid).toBe('loc-1');
+    expect(body.cameras[0]).toMatchObject({ camera_uuid: 'cam-1', fov: 125 });
+
+    // Back in view mode, offer to put the plan's cameras in that location.
+    const assign = page.getByRole('button', { name: 'live.plan.assignLocation', exact: true });
+    await assign.click();
+    await page.waitForFunction(() => window.calls.locations.length === 1);
+    expect(await page.evaluate(() => window.calls.locations)).toEqual([{
+      url: '/api/cameras/cam-1/location', body: { location_uuid: 'loc-1' },
+    }]);
   } finally {
     await browser.close();
   }

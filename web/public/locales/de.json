@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Rückgängig",
   "live.plan.sketch.redo": "Wiederholen",
   "live.plan.sketch.snap": "Am Raster ausrichten",
-  "live.plan.sketch.hint.select": "Formen, Kanten oder Griffe ziehen, um sie zu bearbeiten; den Knopf einer Kamera ziehen, um sie auszurichten. Rechtsklick für mehr. Leertaste oder Mittelklick-Ziehen verschiebt die Ansicht; Alt ignoriert das Raster.",
+  "live.plan.sketch.hint.select": "Formen, Kanten oder Griffe ziehen, um sie zu bearbeiten; auf leerer Fläche ziehen, um per Rahmen auszuwählen (Shift ergänzt). Die Knöpfe einer Kamera ziehen, um sie auszurichten oder den Sichtbereich einzustellen. Rechtsklick für mehr. Leertaste oder Mittelklick-Ziehen verschiebt die Ansicht; Alt ignoriert das Raster.",
   "live.plan.sketch.hint.room": "Auf dem Plan ziehen, um einen Raum oder Gebäudeumriss zu zeichnen. Rechtsklick während des Ziehens bricht ab.",
   "live.plan.sketch.hint.wall": "Klicken, um Wandpunkte hinzuzufügen; Shift rastet auf 45° ein. Doppelklick oder Enter beendet, Rücktaste entfernt den letzten Punkt, Escape bricht ab.",
   "live.plan.sketch.hint.area": "Klicken, um eine Fläche zu umreißen. Ersten Punkt anklicken oder Enter drücken, um sie zu schließen; Rücktaste entfernt den letzten Punkt.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Letzte Stunde · {count} Kameras",
   "live.navigator.refreshEvents": "Ereignisse aktualisieren",
   "live.navigator.eventsNoScope": "Keine Kameras in diesem Bereich. Wähle Alle Kameras, einen Standort mit Kameras oder einen Plan.",
-  "live.navigator.eventsError": "Aktuelle Ereignisse konnten nicht geladen werden: {error}"
+  "live.navigator.eventsError": "Aktuelle Ereignisse konnten nicht geladen werden: {error}",
+  "live.plan.menu.deleteShapes": "{count} Formen löschen",
+  "live.plan.fovHandle": "Ziehen, um den Sichtbereich zu vergrößern oder zu verkleinern (Shift rastet auf 15° ein)",
+  "live.plan.location": "Standort",
+  "live.plan.noLocation": "Kein Standort",
+  "live.plan.locationHint": "Wird der Plan mit einem Standort verknüpft, erscheint er im Navigator unter diesem Standort.",
+  "live.plan.assignLocationPrompt": "{count} Kameras auf diesem Plan sind {location} nicht zugeordnet.",
+  "live.plan.assignLocation": "{location} zuordnen",
+  "live.plan.assignLocationDone": "{count} Kameras {location} zugeordnet",
+  "live.plan.assignLocationPartial": "{done} Kameras zugeordnet; {failed} fehlgeschlagen: {error}",
+  "live.plan.sketch.multiSelected": "{count} Formen ausgewählt",
+  "live.plan.sketch.multiHint": "Eine beliebige ziehen, um die Gruppe zu verschieben. Shift-Klick fügt eine Form hinzu oder entfernt sie; Pfeiltasten verschieben."
 }

@@ -1774,3 +1774,29 @@ body.pseudo-native-fullscreen-active {
         opacity: 0.85;
     }
 }
+
+/* Multi-select marquee and camera field-of-view handles. */
+.live-plan-marquee {
+    fill: rgb(56 189 248 / 0.1);
+    stroke: #38bdf8;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+}
+.live-plan-fov-handle { fill: #fff; stroke: #38bdf8; stroke-width: 2.5; cursor: ew-resize; }
+.live-plan-fov-handle:hover { fill: #bae6fd; }
+.live-plan-sketch-multi-hint { margin: 0.4rem 0; font-size: 0.75rem; opacity: 0.75; }
+.live-plan-location-field select { flex: 1 1 auto; min-width: 0; }
+.live-plan-location-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid rgb(56 189 248 / 0.35);
+    border-radius: 0.5rem;
+    background: rgb(56 189 248 / 0.08);
+    font-size: 0.82rem;
+}
+.live-plan-location-callout p { margin: 0; }

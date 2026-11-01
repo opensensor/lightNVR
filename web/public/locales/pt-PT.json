@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Anular",
   "live.plan.sketch.redo": "Refazer",
   "live.plan.sketch.snap": "Ajustar à grelha",
-  "live.plan.sketch.hint.select": "Arraste formas, margens ou pegas para editar; arraste o botão de uma câmara para a orientar. Clique com o botão direito para mais opções. Espaço ou arrastar com o botão do meio desloca a vista; Alt ignora a grelha.",
+  "live.plan.sketch.hint.select": "Arraste formas, margens ou pegas para editar; arraste num espaço vazio para selecionar com uma caixa (Shift adiciona). Arraste os botões de uma câmara para a orientar ou ajustar o campo de visão. Clique com o botão direito para mais opções. Espaço ou arrastar com o botão do meio desloca a vista; Alt ignora a grelha.",
   "live.plan.sketch.hint.room": "Arraste na planta para desenhar uma divisão ou o contorno de um edifício. Clique com o botão direito durante o arraste para cancelar.",
   "live.plan.sketch.hint.wall": "Clique para adicionar pontos de parede; Shift fixa a 45°. Duplo clique ou Enter termina, Retrocesso remove o último ponto, Escape cancela.",
   "live.plan.sketch.hint.area": "Clique para delimitar uma área. Clique no primeiro ponto ou prima Enter para a fechar; Retrocesso remove o último ponto.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Última hora · {count} câmaras",
   "live.navigator.refreshEvents": "Atualizar eventos",
   "live.navigator.eventsNoScope": "Nenhuma câmara neste âmbito. Escolha Todas as câmaras, uma localização com câmaras ou uma planta.",
-  "live.navigator.eventsError": "Não foi possível carregar os eventos recentes: {error}"
+  "live.navigator.eventsError": "Não foi possível carregar os eventos recentes: {error}",
+  "live.plan.menu.deleteShapes": "Eliminar {count} formas",
+  "live.plan.fovHandle": "Arraste para alargar ou estreitar o campo de visão (Shift ajusta a 15°)",
+  "live.plan.location": "Localização",
+  "live.plan.noLocation": "Sem localização",
+  "live.plan.locationHint": "Associar a planta a uma localização apresenta-a sob essa localização no Navegador.",
+  "live.plan.assignLocationPrompt": "{count} câmaras desta planta não estão atribuídas a {location}.",
+  "live.plan.assignLocation": "Atribuir a {location}",
+  "live.plan.assignLocationDone": "{count} câmaras atribuídas a {location}",
+  "live.plan.assignLocationPartial": "{done} câmaras atribuídas; {failed} falharam: {error}",
+  "live.plan.sketch.multiSelected": "{count} formas selecionadas",
+  "live.plan.sketch.multiHint": "Arraste qualquer uma para mover o grupo. Shift+clique adiciona ou remove uma forma; as setas deslocam."
 }

@@ -1192,7 +1192,7 @@
   "live.plan.sketch.undo": "元に戻す",
   "live.plan.sketch.redo": "やり直す",
   "live.plan.sketch.snap": "グリッドにスナップ",
-  "live.plan.sketch.hint.select": "図形・辺・ハンドルをドラッグして編集し、カメラのノブをドラッグして向きを変えます。右クリックで他の操作。Space または中ボタンのドラッグで表示を移動し、Alt でグリッドを無視します。",
+  "live.plan.sketch.hint.select": "図形・辺・ハンドルをドラッグして編集し、空いた場所をドラッグすると範囲選択します（Shift で追加）。カメラのノブをドラッグして向きや視野を設定します。右クリックで他の操作。Space または中ボタンのドラッグで表示を移動し、Alt でグリッドを無視します。",
   "live.plan.sketch.hint.room": "プラン上をドラッグして部屋や建物の輪郭を描きます。ドラッグ中に右クリックするとキャンセルします。",
   "live.plan.sketch.hint.wall": "クリックして壁の点を追加します。Shift で 45° 単位に固定。ダブルクリックまたは Enter で完了、Backspace で最後の点を削除、Escape でキャンセル。",
   "live.plan.sketch.hint.area": "クリックしてエリアを囲みます。最初の点をクリックするか Enter で閉じます。Backspace で最後の点を削除します。",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "過去 1 時間 · {count} 台のカメラ",
   "live.navigator.refreshEvents": "イベントを更新",
   "live.navigator.eventsNoScope": "この範囲にカメラがありません。すべてのカメラ、カメラのある場所、またはプランを選択してください。",
-  "live.navigator.eventsError": "最近のイベントを読み込めませんでした: {error}"
+  "live.navigator.eventsError": "最近のイベントを読み込めませんでした: {error}",
+  "live.plan.menu.deleteShapes": "{count} 個の図形を削除",
+  "live.plan.fovHandle": "ドラッグして視野を広げる／狭める（Shift で 15° 単位）",
+  "live.plan.location": "場所",
+  "live.plan.noLocation": "場所なし",
+  "live.plan.locationHint": "プランを場所に関連付けると、ナビゲーターでその場所の下に表示されます。",
+  "live.plan.assignLocationPrompt": "このプランの {count} 台のカメラが {location} に割り当てられていません。",
+  "live.plan.assignLocation": "{location} に割り当て",
+  "live.plan.assignLocationDone": "{count} 台のカメラを {location} に割り当てました",
+  "live.plan.assignLocationPartial": "{done} 台を割り当て、{failed} 台が失敗しました: {error}",
+  "live.plan.sketch.multiSelected": "{count} 個の図形を選択中",
+  "live.plan.sketch.multiHint": "いずれかをドラッグするとグループを移動します。Shift+クリックで図形を追加・解除し、矢印キーで微調整します。"
 }

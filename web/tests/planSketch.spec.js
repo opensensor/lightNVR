@@ -1,6 +1,11 @@
 import {
   SKETCH_LIMITS,
   aimRotation,
+  fovFromHeading,
+  reorderShapeGroup,
+  shapesBounds,
+  shapesInMarquee,
+  translateShapeGroup,
   canRemoveVertex,
   constrainAngle,
   insertShapeVertex,
@@ -169,5 +174,40 @@ describe('plan sketch geometry', () => {
     expect(wrapRotation(170, 15)).toBe(-175);
     expect(wrapRotation(-170, -15)).toBe(175);
     expect(wrapRotation(0, 180)).toBe(180);
+  });
+
+  test('marquee selects only fully enclosed shapes and groups move as one', () => {
+    const shapes = [
+      { id: 'a', type: 'rect', x: 0.1, y: 0.1, w: 0.1, h: 0.1 },
+      { id: 'b', type: 'rect', x: 0.3, y: 0.1, w: 0.1, h: 0.1 },
+      { id: 'c', type: 'wall', points: [[0.1, 0.5], [0.9, 0.5]] },
+    ];
+    expect(shapesInMarquee(shapes, { x: 0.45, y: 0.25 }, { x: 0.05, y: 0.05 })).toEqual(['a', 'b']);
+    expect(shapesInMarquee(shapes, { x: 0, y: 0 }, { x: 0.25, y: 0.6 })).toEqual(['a']);
+    expect(shapesBounds(shapes.slice(0, 2))).toEqual({ x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.2 });
+    // The group clamps at the plan edge together, keeping its spacing.
+    const moved = translateShapeGroup(shapes, ['a', 'b'], -0.5, 0.05);
+    expect(moved[0]).toMatchObject({ x: 0, y: 0.15 });
+    expect(moved[1]).toMatchObject({ x: 0.2, y: 0.15 });
+    expect(moved[2]).toBe(shapes[2]);
+    expect(translateShapeGroup(shapes, [], 0.1, 0.1)).toBe(shapes);
+  });
+
+  test('group reorder keeps relative order', () => {
+    const shapes = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
+    const ids = (list) => list.map((shape) => shape.id).join('');
+    expect(ids(reorderShapeGroup(shapes, ['c', 'a'], 'front'))).toBe('bdac');
+    expect(ids(reorderShapeGroup(shapes, ['d', 'b'], 'back'))).toBe('bdac');
+    expect(reorderShapeGroup(shapes, ['zz'], 'front')).toBe(shapes);
+  });
+
+  test('field of view follows the wedge edge drag', () => {
+    expect(fovFromHeading(0, 30)).toBe(60);
+    expect(fovFromHeading(0, -30)).toBe(60);
+    expect(fovFromHeading(170, -170)).toBe(40);
+    expect(fovFromHeading(0, 120)).toBe(180);
+    expect(fovFromHeading(0, 0)).toBe(1);
+    expect(fovFromHeading(90, 113, 5)).toBe(45);
+    expect(fovFromHeading(NaN, 10)).toBeNull();
   });
 });

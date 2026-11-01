@@ -1134,7 +1134,7 @@
   "live.plan.sketch.undo": "I-undo",
   "live.plan.sketch.redo": "I-redo",
   "live.plan.sketch.snap": "I-snap sa grid",
-  "live.plan.sketch.hint.select": "I-drag ang mga hugis, gilid, o handle para i-edit; i-drag ang knob ng camera para itutok ito. Mag-right-click para sa iba pa. Space o middle-drag para mag-pan; nilalaktawan ng Alt ang grid.",
+  "live.plan.sketch.hint.select": "I-drag ang mga hugis, gilid, o handle para i-edit; mag-drag sa bakanteng espasyo para pumili gamit ang kahon (nagdadagdag ang Shift). I-drag ang mga knob ng camera para itutok ito o itakda ang tanaw nito. Mag-right-click para sa iba pa. Space o middle-drag para mag-pan; nilalaktawan ng Alt ang grid.",
   "live.plan.sketch.hint.room": "Mag-drag sa plano para gumuhit ng kuwarto o balangkas ng gusali. Mag-right-click habang nagda-drag para kanselahin.",
   "live.plan.sketch.hint.wall": "Mag-click para magdagdag ng mga punto ng pader; ikinakandado ng Shift sa 45°. Double-click o Enter para tapusin, inaalis ng Backspace ang huling punto, kinakansela ng Escape.",
   "live.plan.sketch.hint.area": "Mag-click para balangkasin ang isang lugar. I-click ang unang punto o pindutin ang Enter para isara ito; inaalis ng Backspace ang huling punto.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Huling oras · {count} camera",
   "live.navigator.refreshEvents": "I-refresh ang mga event",
   "live.navigator.eventsNoScope": "Walang camera sa saklaw na ito. Piliin ang Lahat ng camera, isang lokasyong may camera, o isang plano.",
-  "live.navigator.eventsError": "Hindi ma-load ang mga kamakailang event: {error}"
+  "live.navigator.eventsError": "Hindi ma-load ang mga kamakailang event: {error}",
+  "live.plan.menu.deleteShapes": "Burahin ang {count} hugis",
+  "live.plan.fovHandle": "I-drag para palawakin o paliitin ang field of view (Shift para sa 15°)",
+  "live.plan.location": "Lokasyon",
+  "live.plan.noLocation": "Walang lokasyon",
+  "live.plan.locationHint": "Kapag ini-link ang plano sa isang lokasyon, lalabas ito sa ilalim ng lokasyong iyon sa Navigator.",
+  "live.plan.assignLocationPrompt": "{count} camera sa planong ito ang hindi naka-assign sa {location}.",
+  "live.plan.assignLocation": "I-assign sa {location}",
+  "live.plan.assignLocationDone": "Na-assign ang {count} camera sa {location}",
+  "live.plan.assignLocationPartial": "Na-assign ang {done} camera; {failed} ang pumalya: {error}",
+  "live.plan.sketch.multiSelected": "{count} hugis ang napili",
+  "live.plan.sketch.multiHint": "I-drag ang alinman para ilipat ang grupo. Shift-click para magdagdag o mag-alis ng hugis; inuusog ng arrow keys."
 }

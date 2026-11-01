@@ -44,7 +44,7 @@
   "live.plan.sketch.undo": "Annulla",
   "live.plan.sketch.redo": "Ripeti",
   "live.plan.sketch.snap": "Aggancia alla griglia",
-  "live.plan.sketch.hint.select": "Trascina forme, bordi o maniglie per modificarli; trascina la manopola di una telecamera per orientarla. Clic destro per altre opzioni. Spazio o trascinamento con il tasto centrale per spostare la vista; Alt ignora la griglia.",
+  "live.plan.sketch.hint.select": "Trascina forme, bordi o maniglie per modificare; trascina su uno spazio vuoto per selezionare con un riquadro (Shift aggiunge). Trascina le manopole di una telecamera per orientarla o impostarne il campo visivo. Clic destro per altre opzioni. Spazio o trascinamento con il tasto centrale per spostare la vista; Alt ignora la griglia.",
   "live.plan.sketch.hint.room": "Trascina sulla planimetria per disegnare una stanza o il perimetro di un edificio. Clic destro durante il trascinamento per annullare.",
   "live.plan.sketch.hint.wall": "Fai clic per aggiungere punti di muro; Shift blocca a 45°. Doppio clic o Enter per terminare, Backspace rimuove l'ultimo punto, Escape annulla.",
   "live.plan.sketch.hint.area": "Fai clic per delimitare un'area. Fai clic sul primo punto o premi Enter per chiuderla; Backspace rimuove l'ultimo punto.",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "Ultima ora · {count} telecamere",
   "live.navigator.refreshEvents": "Aggiorna eventi",
   "live.navigator.eventsNoScope": "Nessuna telecamera in questo ambito. Scegli Tutte le telecamere, una posizione con telecamere o una planimetria.",
-  "live.navigator.eventsError": "Impossibile caricare gli eventi recenti: {error}"
+  "live.navigator.eventsError": "Impossibile caricare gli eventi recenti: {error}",
+  "live.plan.menu.deleteShapes": "Elimina {count} forme",
+  "live.plan.fovHandle": "Trascina per allargare o restringere il campo visivo (Shift aggancia a 15°)",
+  "live.plan.location": "Posizione",
+  "live.plan.noLocation": "Nessuna posizione",
+  "live.plan.locationHint": "Collegare la planimetria a una posizione la elenca sotto quella posizione nel Navigatore.",
+  "live.plan.assignLocationPrompt": "{count} telecamere di questa planimetria non sono assegnate a {location}.",
+  "live.plan.assignLocation": "Assegna a {location}",
+  "live.plan.assignLocationDone": "{count} telecamere assegnate a {location}",
+  "live.plan.assignLocationPartial": "{done} telecamere assegnate; {failed} non riuscite: {error}",
+  "live.plan.sketch.multiSelected": "{count} forme selezionate",
+  "live.plan.sketch.multiHint": "Trascinane una qualsiasi per spostare il gruppo. Shift+clic aggiunge o rimuove una forma; le frecce spostano."
 }

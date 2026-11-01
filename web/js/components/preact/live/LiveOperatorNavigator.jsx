@@ -144,6 +144,9 @@ export function LiveOperatorNavigator({
   }, [scopedStreams, search]);
 
   const plans = plansQuery.data?.plans || EMPTY_LOCATIONS;
+  const locationNames = useMemo(() => new Map(
+    locations.map((location) => [location.uuid, location.name]),
+  ), [locations]);
   const streamsByUuid = useMemo(() => new Map(
     (streams || []).map((stream) => [stream.camera_uuid, stream]),
   ), [streams]);
@@ -157,10 +160,11 @@ export function LiveOperatorNavigator({
     return {
       uuid: plan.uuid,
       name: plan.name,
+      locationName: locationNames.get(plan.location_uuid) || '',
       cameraUuids,
       live: cameraUuids.filter((uuid) => streamsByUuid.get(uuid)?.availability === 'live').length,
     };
-  }), [plans, streamsByUuid]);
+  }), [plans, streamsByUuid, locationNames]);
   const plansByCamera = useMemo(() => {
     const result = new Map();
     for (const group of planGroups) {
@@ -453,7 +457,8 @@ export function LiveOperatorNavigator({
                   title={t('live.navigator.planScopeHint')}
                   onClick={() => selectPlanScope(group)}
                   onDblClick={() => loadPlanScope(group)}>
-                  <span className="live-location-name"><span>⌖</span><span>{group.name}</span></span>
+                  <span className="live-location-name"><span>⌖</span><span>{group.name}</span>
+                    {group.locationName && <small>{group.locationName}</small>}</span>
                   <small>{group.live}/{group.cameraUuids.length}</small>
                 </button>
               ))}
@@ -555,7 +560,10 @@ export function LiveOperatorNavigator({
                     onSurfaceChange('plan');
                   }}>
                   <strong>{plan.name}</strong>
-                  <small>{t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length })}</small>
+                  <small>{[
+                    t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length }),
+                    locationNames.get(plan.location_uuid),
+                  ].filter(Boolean).join(' · ')}</small>
                 </button>
               </div>
             );

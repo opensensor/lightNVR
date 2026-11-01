@@ -1199,7 +1199,7 @@
   "live.plan.sketch.undo": "撤销",
   "live.plan.sketch.redo": "重做",
   "live.plan.sketch.snap": "对齐网格",
-  "live.plan.sketch.hint.select": "拖动形状、边缘或控制点进行编辑；拖动摄像头的旋钮调整朝向。右键查看更多操作。按住 Space 或中键拖动可平移；Alt 可忽略网格。",
+  "live.plan.sketch.hint.select": "拖动形状、边缘或控制点进行编辑；在空白处拖动可框选（Shift 追加）。拖动摄像头的旋钮可调整朝向或视野。右键查看更多操作。按住 Space 或中键拖动可平移；Alt 可忽略网格。",
   "live.plan.sketch.hint.room": "在平面图上拖动以绘制房间或建筑轮廓。拖动时右键可取消。",
   "live.plan.sketch.hint.wall": "单击添加墙体点；Shift 锁定为 45°。双击或 Enter 完成，Backspace 删除最后一个点，Escape 取消。",
   "live.plan.sketch.hint.area": "单击勾勒区域。单击第一个点或按 Enter 闭合；Backspace 删除最后一个点。",
@@ -2689,5 +2689,16 @@
   "live.navigator.eventsScope": "最近一小时 · {count} 个摄像头",
   "live.navigator.refreshEvents": "刷新事件",
   "live.navigator.eventsNoScope": "此范围内没有摄像头。请选择“所有摄像头”、有摄像头的位置或平面图。",
-  "live.navigator.eventsError": "无法加载最近事件：{error}"
+  "live.navigator.eventsError": "无法加载最近事件：{error}",
+  "live.plan.menu.deleteShapes": "删除 {count} 个形状",
+  "live.plan.fovHandle": "拖动以扩大或缩小视野（Shift 以 15° 为步长）",
+  "live.plan.location": "位置",
+  "live.plan.noLocation": "无位置",
+  "live.plan.locationHint": "将平面图关联到位置后，它会在导航器中显示在该位置下。",
+  "live.plan.assignLocationPrompt": "此平面图上有 {count} 个摄像头未分配到 {location}。",
+  "live.plan.assignLocation": "分配到 {location}",
+  "live.plan.assignLocationDone": "已将 {count} 个摄像头分配到 {location}",
+  "live.plan.assignLocationPartial": "已分配 {done} 个摄像头；{failed} 个失败：{error}",
+  "live.plan.sketch.multiSelected": "已选择 {count} 个形状",
+  "live.plan.sketch.multiHint": "拖动其中任意一个即可移动整组。Shift+单击可添加或移除形状；方向键可微调。"
 }
