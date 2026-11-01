@@ -1500,9 +1500,12 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     bool original_enabled = config.enabled;
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
     if (enabled && cJSON_IsBool(enabled)) {
-        config.enabled = cJSON_IsTrue(enabled);
-        config_changed = true;
-        non_dynamic_config_changed = true;
+        bool new_enabled = cJSON_IsTrue(enabled);
+        if (config.enabled != new_enabled) {
+            config.enabled = new_enabled;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+        }
     }
 
     cJSON *streaming_enabled = cJSON_GetObjectItem(stream_json, "streaming_enabled");
