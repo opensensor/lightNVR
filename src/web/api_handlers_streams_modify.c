@@ -1363,33 +1363,48 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         log_info("Privacy mode %s requested for stream %s", enable_privacy ? "enable" : "disable", stream_id);
 
         sqlite3 *db = get_db_handle();
-        if (db) {
-            sqlite3_stmt *stmt;
-            const char *sql = "UPDATE streams SET privacy_mode = ? WHERE name = ?;";
-            if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-                sqlite3_bind_int(stmt, 1, enable_privacy ? 1 : 0);
-                sqlite3_bind_text(stmt, 2, stream_id, -1, SQLITE_STATIC);
-                if (sqlite3_step(stmt) != SQLITE_DONE) {
-                    log_error("Failed to set privacy mode for stream %s: %s", stream_id, sqlite3_errmsg(db));
-                } else {
-                    log_info("Successfully set privacy_mode=%d for stream %s", enable_privacy ? 1 : 0, stream_id);
-                    // If enabling privacy, stop stream processing; if disabling, restart it
-                    if (enable_privacy) {
-                        // Unregister from go2rtc so clients cannot connect
-                        go2rtc_integration_unregister_stream(stream_id);
-                        log_info("Unregistered stream %s from go2rtc due to privacy mode", stream_id);
-                    } else {
-                        // Resume: re-register with go2rtc
-                        if (go2rtc_integration_reload_stream(stream_id)) {
-                            log_info("Re-registered stream %s with go2rtc after privacy mode cleared", stream_id);
-                        } else {
-                            log_warn("Failed to re-register stream %s with go2rtc", stream_id);
-                        }
-                    }
-                }
-                sqlite3_finalize(stmt);
+        if (!db) {
+            log_error("Failed to set privacy mode for stream %s: database handle unavailable", stream_id);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 500, "Failed to update privacy mode");
+            return;
+        }
+
+        sqlite3_stmt *stmt;
+        const char *sql = "UPDATE streams SET privacy_mode = ? WHERE name = ?;";
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+            log_error("Failed to prepare privacy mode update for stream %s: %s", stream_id, sqlite3_errmsg(db));
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 500, "Failed to update privacy mode");
+            return;
+        }
+
+        sqlite3_bind_int(stmt, 1, enable_privacy ? 1 : 0);
+        sqlite3_bind_text(stmt, 2, stream_id, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            log_error("Failed to set privacy mode for stream %s: %s", stream_id, sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 500, "Failed to update privacy mode");
+            return;
+        }
+
+        log_info("Successfully set privacy_mode=%d for stream %s", enable_privacy ? 1 : 0, stream_id);
+        // If enabling privacy, stop stream processing; if disabling, restart it
+        if (enable_privacy) {
+            // Unregister from go2rtc so clients cannot connect
+            go2rtc_integration_unregister_stream(stream_id);
+            log_info("Unregistered stream %s from go2rtc due to privacy mode", stream_id);
+        } else {
+            // Resume: re-register with go2rtc
+            if (go2rtc_integration_reload_stream(stream_id)) {
+                log_info("Re-registered stream %s with go2rtc after privacy mode cleared", stream_id);
+            } else {
+                log_warn("Failed to re-register stream %s with go2rtc", stream_id);
             }
         }
+
+        sqlite3_finalize(stmt);
 
         cJSON_Delete(stream_json);
         cJSON *response = cJSON_CreateObject();
