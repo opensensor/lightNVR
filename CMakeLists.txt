@@ -82,7 +82,7 @@ set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 
 # llhttp download configuration. Avoid the LLHTTP_VERSION name because
 # pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
-set(LLHTTP_DOWNLOAD_REF "release/v9.2.1" CACHE STRING "llhttp tag/ref to download from GitHub")
+set(LLHTTP_DOWNLOAD_REF "release/v9.4.3" CACHE STRING "llhttp tag/ref to download from GitHub")
 
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
@@ -92,6 +92,10 @@ option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
 # HTTP backend: libuv + llhttp
 set(HTTP_BACKEND "libuv" CACHE STRING "HTTP server backend")
 set_property(CACHE HTTP_BACKEND PROPERTY STRINGS libuv)
+string(TOLOWER "${HTTP_BACKEND}" HTTP_BACKEND)
+if(NOT HTTP_BACKEND STREQUAL "libuv")
+    message(FATAL_ERROR "Unsupported HTTP_BACKEND='${HTTP_BACKEND}'. Only 'libuv' is currently supported.")
+endif()
 
 # Compiler flags for optimization and memory usage.  Do not override the
 # toolchain's optimization level (Buildroot supplies -Os for target builds).
@@ -393,9 +397,34 @@ if(NOT LLHTTP_FOUND)
         "src/http.c"
         "include/llhttp.h"
     )
+    # SHA-256 hashes for LLHTTP_PINNED_REF, in the same order as
+    # LLHTTP_REQUIRED_FILES.  Update both together when bumping llhttp.
+    # If LLHTTP_DOWNLOAD_REF is overridden to a different ref, the hashes
+    # cannot be known here, so downloads proceed unverified with a warning.
+    set(LLHTTP_PINNED_REF "release/v9.4.3")
+    set(LLHTTP_REQUIRED_HASHES
+        "391e7c99912abf3b1c9dd8a9c85fdeaac2663e9fa55b6f3871154d16fef8b892"
+        "0f8590206fe2f264db2825401b5fb856b979ee1363dc88b06f36dc9577afb941"
+        "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
+        "5bc82fa51b19aa8bee7d921038393fbfc74e8cc9bae0844c2d82c102fb8cfd68"
+    )
+    if(LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
+        set(LLHTTP_VERIFY_HASHES TRUE)
+    else()
+        set(LLHTTP_VERIFY_HASHES FALSE)
+    endif()
     set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
 
-    foreach(LLHTTP_FILE IN LISTS LLHTTP_REQUIRED_FILES)
+    list(LENGTH LLHTTP_REQUIRED_FILES LLHTTP_REQUIRED_FILES_LEN)
+    math(EXPR LLHTTP_REQUIRED_FILES_LAST "${LLHTTP_REQUIRED_FILES_LEN} - 1")
+    foreach(LLHTTP_INDEX RANGE 0 ${LLHTTP_REQUIRED_FILES_LAST})
+        list(GET LLHTTP_REQUIRED_FILES ${LLHTTP_INDEX} LLHTTP_FILE)
+        if(LLHTTP_VERIFY_HASHES)
+            list(GET LLHTTP_REQUIRED_HASHES ${LLHTTP_INDEX} LLHTTP_EXPECTED_HASH)
+            set(LLHTTP_HASH_ARGS EXPECTED_HASH "SHA256=${LLHTTP_EXPECTED_HASH}")
+        else()
+            set(LLHTTP_HASH_ARGS "")
+        endif()
         set(LLHTTP_LOCAL_PATH "${LLHTTP_DIR}/${LLHTTP_FILE}")
         set(LLHTTP_NEEDS_DOWNLOAD FALSE)
         set(LLHTTP_DOWNLOAD_REASON "not found")
@@ -411,6 +440,9 @@ if(NOT LLHTTP_FOUND)
 
         if(LLHTTP_NEEDS_DOWNLOAD)
             message(STATUS "llhttp ${LLHTTP_FILE} ${LLHTTP_DOWNLOAD_REASON}, downloading from GitHub...")
+            if(NOT LLHTTP_VERIFY_HASHES)
+                message(WARNING "LLHTTP_DOWNLOAD_REF='${LLHTTP_DOWNLOAD_REF}' differs from pinned '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
+            endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
             file(REMOVE "${LLHTTP_LOCAL_PATH}")
@@ -420,6 +452,7 @@ if(NOT LLHTTP_FOUND)
                 "${LLHTTP_LOCAL_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
+                ${LLHTTP_HASH_ARGS}
             )
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
             list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
