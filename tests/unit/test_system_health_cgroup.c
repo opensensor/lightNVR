@@ -299,6 +299,7 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     char sys[512];
     const system_health_observation_t *observation;
     const system_health_observation_t *discovery;
+    int rc;
 
     /* "/camera/.." would resolve to the cgroup root, whose limits are
      * planted in the fixture; it must be rejected, not followed. */
@@ -306,7 +307,8 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     fixture_paths(proc, sizeof(proc), sys, sizeof(sys), "v2dotdot");
     context.proc_root = proc;
     context.cgroup_root = sys;
-    (void)collector.collect(collector.state, &context, &sink);
+    rc = collector.collect(collector.state, &context, &sink);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
 
     discovery = find_observation(items, sink.count, "container.cgroup.discovery");
     TEST_ASSERT_NOT_NULL(discovery);
