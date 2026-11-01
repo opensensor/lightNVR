@@ -2369,17 +2369,27 @@ static void *delete_stream_worker(void *arg) {
     log_set_thread_context("StreamAPI", task->stream_id);
     log_info("Processing DELETE /api/streams/%s in worker thread", task->stream_id);
 
+    // Re-resolve the handle by name: a handle captured in the request handler
+    // is a slot pointer that may have been freed or reused by another stream
+    // (e.g. a concurrent DELETE) before this worker runs.
+    stream_handle_t stream = get_stream_by_name(task->stream_id);
+    if (!stream) {
+        log_warn("Stream %s no longer exists, nothing to delete", task->stream_id);
+        free(task);
+        return NULL;
+    }
+
     // Stop stream if it's running
-    stream_status_t status = get_stream_status(task->stream);
+    stream_status_t status = get_stream_status(stream);
     if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
-        if (stop_stream(task->stream) != 0) {
+        if (stop_stream(stream) != 0) {
             log_error("Failed to stop stream: %s", task->stream_id);
             // Continue anyway
         }
 
         // Wait for stream to stop
         int timeout = 30; // 3 seconds
-        while (get_stream_status(task->stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+        while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
             usleep(100000); // 100ms
             timeout--;
         }
@@ -2397,7 +2407,7 @@ static void *delete_stream_worker(void *arg) {
     }
 
     // Delete stream from memory
-    if (remove_stream(task->stream) != 0) {
+    if (remove_stream(stream) != 0) {
         log_error("Failed to delete stream from memory: %s", task->stream_id);
         free(task);
         return NULL;
@@ -2479,7 +2489,6 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    task->stream = stream;
     safe_strcpy(task->stream_id, stream_id, sizeof(task->stream_id), 0);
     task->permanent_delete = permanent_delete;
 
