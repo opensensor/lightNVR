@@ -137,9 +137,9 @@ void set_web_server_socket(int socket_fd) {
 
 // Async-signal-safe write to stderr
 // Note: We cast to void to suppress the unused result warning
-static void signal_safe_write(const char *msg) {
-    if (msg) {
-        (void)write(STDERR_FILENO, msg, strlen(msg));
+static void signal_safe_write(const char *msg, size_t len) {
+    if (msg && len > 0) {
+        (void)write(STDERR_FILENO, msg, len);
     }
 }
 
@@ -166,7 +166,8 @@ static void signal_handler(int sig) {
     if (shutdown_in_progress) {
         // Second signal during shutdown - force exit immediately
         // Using _exit() is async-signal-safe
-        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
+        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n",
+                         sizeof("[SIGNAL] Received signal during shutdown, forcing immediate exit\n") - 1);
         _exit(1);
     }
 
@@ -174,7 +175,8 @@ static void signal_handler(int sig) {
     shutdown_in_progress = 1;
 
     // Write to stderr (async-signal-safe)
-    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
+    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n",
+                     sizeof("[SIGNAL] Received shutdown signal, initiating shutdown...\n") - 1);
 
     // IMPORTANT: Do NOT call initiate_shutdown() here!
     // initiate_shutdown() uses pthread_mutex_lock() and log_info() which are NOT async-signal-safe
@@ -207,7 +209,8 @@ static void signal_handler(int sig) {
 // Shutdown deadlines belong to start_shutdown_watchdog_thread().
 static void alarm_handler(int sig) {
     (void)sig;
-    signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n");
+    signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n",
+                     sizeof("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n") - 1);
 }
 
 // How long a graceful shutdown gets before the watchdog force-kills the
