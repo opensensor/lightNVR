@@ -41,6 +41,13 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 /* go2rtc stubs for the privacy toggle: inactive unless fake_go2rtc is set. */
 static bool fake_go2rtc, fake_unregister_ok;
 static unsigned unregister_calls, reload_calls, sub_remove_calls, sub_register_calls;
+static unsigned restart_calls;
+bool __real_go2rtc_integration_restart_process(void);
+bool __wrap_go2rtc_integration_restart_process(void) {
+    if (!fake_go2rtc) return __real_go2rtc_integration_restart_process();
+    restart_calls++;
+    return true;
+}
 bool __real_go2rtc_stream_is_ready(void);
 bool __wrap_go2rtc_stream_is_ready(void) {
     return fake_go2rtc ? true : __real_go2rtc_stream_is_ready();
@@ -89,6 +96,7 @@ void setUp(void) {
     fake_go2rtc = false;
     fake_unregister_ok = true;
     unregister_calls = reload_calls = sub_remove_calls = sub_register_calls = 0;
+    restart_calls = 0;
     g_config.web_auth_enabled = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM streams", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, init_stream_state_manager(4));
@@ -356,6 +364,75 @@ void test_privacy_disable_reregisters_enabled_stream(void) {
     cJSON_Delete(json);
 }
 
+static void make_stream_yaml_backed(void) {
+    stream_config_t config = original_config;
+    strcpy(config.publish_url, "rtmp://a.example/live/key");
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config(config.name, &config));
+    TEST_ASSERT_EQUAL_INT(0, remove_stream(original_stream));
+    original_stream = add_stream(&config);
+    TEST_ASSERT_NOT_NULL(original_stream);
+}
+
+void test_privacy_enable_restarts_go2rtc_for_yaml_backed_stream(void) {
+    make_stream_yaml_backed();
+    fake_go2rtc = true;
+    set_privacy_body(true);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_UINT(1, unregister_calls);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(1, restart_calls,
+        "RTMP publish / override entries only drop when go2rtc.yaml is regenerated");
+}
+
+void test_privacy_disable_restarts_go2rtc_for_yaml_backed_stream(void) {
+    make_stream_yaml_backed();
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode(original_config.name, true));
+    fake_go2rtc = true;
+    set_privacy_body(false);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_UINT(1, restart_calls);
+    TEST_ASSERT_EQUAL_UINT(0, reload_calls);
+}
+
+void test_privacy_toggle_does_not_restart_go2rtc_for_api_streams(void) {
+    fake_go2rtc = true;
+    set_privacy_body(true);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_UINT(0, restart_calls);
+}
+
+static unsigned run_captured_update(const char *body) {
+    set_body(body);
+    capture_success = true;
+    handle_put_stream(&request, &response);
+    capture_success = false;
+    TEST_ASSERT_EQUAL_INT(202, response.status_code);
+    TEST_ASSERT_NOT_NULL(failed_task);
+    TEST_ASSERT_NOT_NULL(captured_worker);
+    void *task = failed_task;
+    failed_task = NULL;   /* the worker owns and frees the task */
+    fake_go2rtc = true;
+    captured_worker(task);
+    fake_go2rtc = false;
+    return restart_calls;
+}
+
+void test_publish_change_restarts_go2rtc_without_running_stream(void) {
+    /* The fixture stream is enabled but not running, so the stream-restart
+     * block is skipped; the restream change must still reach go2rtc. */
+    TEST_ASSERT_EQUAL_UINT(1, run_captured_update(
+        "{\"publish_url\":\"rtmp://a.example/live/key\"}"));
+    stream_config_t persisted = {0};
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_EQUAL_STRING("rtmp://a.example/live/key", persisted.publish_url);
+}
+
+void test_unrelated_change_does_not_restart_go2rtc(void) {
+    TEST_ASSERT_EQUAL_UINT(0, run_captured_update("{\"priority\":7}"));
+}
+
 int main(void) {
     char directory[] = "/tmp/lightnvr-put-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -380,6 +457,11 @@ int main(void) {
     RUN_TEST(test_privacy_enable_removes_sub_stream);
     RUN_TEST(test_privacy_disable_keeps_disabled_stream_unregistered);
     RUN_TEST(test_privacy_disable_reregisters_enabled_stream);
+    RUN_TEST(test_privacy_enable_restarts_go2rtc_for_yaml_backed_stream);
+    RUN_TEST(test_privacy_disable_restarts_go2rtc_for_yaml_backed_stream);
+    RUN_TEST(test_privacy_toggle_does_not_restart_go2rtc_for_api_streams);
+    RUN_TEST(test_publish_change_restarts_go2rtc_without_running_stream);
+    RUN_TEST(test_unrelated_change_does_not_restart_go2rtc);
     int result = UNITY_END();
     shutdown_database();
     unlink(path);

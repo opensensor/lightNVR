@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <errno.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
@@ -15,7 +16,39 @@
 static int saved_stderr = -1;
 static int pipe_fds[2] = {-1, -1};
 
+/* Fault injection via link-time wrapping (-Wl,--wrap=write, see
+ * tests/unit/CMakeLists.txt), the convention used by the other unit tests.
+ * signal_safe_write() is static inline, so its write() call is compiled into
+ * this object and routed through __wrap_write. Only stderr writes are counted
+ * or faulted, so unrelated output can never consume an injection. */
+static bool inject_eintr;        /* one-shot: fail the next stderr write with EINTR */
+static size_t short_write_len;   /* one-shot: if non-zero, write only this many bytes */
+static int stderr_write_calls;
+
+ssize_t __real_write(int fd, const void *buf, size_t count);
+ssize_t __wrap_write(int fd, const void *buf, size_t count) {
+    if (fd != STDERR_FILENO) {
+        return __real_write(fd, buf, count);
+    }
+    stderr_write_calls++;
+    if (inject_eintr) {
+        inject_eintr = false;
+        errno = EINTR;
+        return -1;
+    }
+    if (short_write_len > 0 && count > short_write_len) {
+        size_t len = short_write_len;
+        short_write_len = 0;
+        return __real_write(fd, buf, len);
+    }
+    return __real_write(fd, buf, count);
+}
+
 void setUp(void) {
+    inject_eintr = false;
+    short_write_len = 0;
+    stderr_write_calls = 0;
+
     TEST_ASSERT_EQUAL_INT(0, pipe(pipe_fds));
     saved_stderr = dup(STDERR_FILENO);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, saved_stderr);
@@ -77,11 +110,42 @@ void test_preserves_errno_when_stderr_is_closed(void) {
                                   "A failed write must not clobber errno");
 }
 
+void test_retries_on_eintr_and_preserves_errno(void) {
+    inject_eintr = true;
+    errno = EBUSY;
+    signal_safe_write("retry-eintr\n");
+    TEST_ASSERT_EQUAL_INT(EBUSY, errno);
+    TEST_ASSERT_FALSE_MESSAGE(inject_eintr, "EINTR injection was not consumed by signal_safe_write");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, stderr_write_calls,
+                                  "Expected one EINTR failure and one retry");
+
+    char buffer[64];
+    read_captured(buffer, sizeof(buffer));
+    TEST_ASSERT_EQUAL_STRING("retry-eintr\n", buffer);
+}
+
+void test_retries_after_short_write_and_preserves_errno(void) {
+    short_write_len = 3;
+    errno = ENOTTY;
+    signal_safe_write("short-write\n");
+    TEST_ASSERT_EQUAL_INT(ENOTTY, errno);
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(0, short_write_len,
+                                     "Short-write injection was not consumed by signal_safe_write");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, stderr_write_calls,
+                                  "Expected one short write and one write for the remainder");
+
+    char buffer[64];
+    read_captured(buffer, sizeof(buffer));
+    TEST_ASSERT_EQUAL_STRING("short-write\n", buffer);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_writes_whole_message);
     RUN_TEST(test_null_and_empty_are_noops);
     RUN_TEST(test_preserves_errno_on_success);
     RUN_TEST(test_preserves_errno_when_stderr_is_closed);
+    RUN_TEST(test_retries_on_eintr_and_preserves_errno);
+    RUN_TEST(test_retries_after_short_write_and_preserves_errno);
     return UNITY_END();
 }
