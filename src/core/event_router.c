@@ -261,11 +261,19 @@ static bool timezone_load_tzif(const char *name,
         free(bytes);
         return false;
     }
-    if (counts.time_count > 0) {
-        timezone->transitions = calloc((size_t)counts.time_count,
+    /* Re-check the bound at the allocation site so the limit is explicit
+     * here, not only inside parse_tzif_header(). */
+    if (counts.time_count < 0 ||
+        counts.time_count > ROUTER_TZ_MAX_TRANSITIONS) {
+        free(bytes);
+        return false;
+    }
+    size_t transition_count = (size_t)counts.time_count;
+    if (transition_count > 0) {
+        timezone->transitions = calloc(transition_count,
                                        sizeof(*timezone->transitions));
         timezone->transition_types = calloc(
-            (size_t)counts.time_count, sizeof(*timezone->transition_types));
+            transition_count, sizeof(*timezone->transition_types));
         if (!timezone->transitions || !timezone->transition_types) {
             free(bytes);
             timezone_clear(timezone);
