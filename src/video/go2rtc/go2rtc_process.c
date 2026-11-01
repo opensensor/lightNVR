@@ -2187,7 +2187,7 @@ static bool go2rtc_process_start_locked(int api_port) {
     // (see issue #165). The file is opened with O_TRUNC so any old content
     // is discarded.
     log_info("Regenerating go2rtc configuration file fresh at startup");
-    if (!go2rtc_process_generate_config(g_config_path, api_port)) {
+    if (!go2rtc_process_generate_config_locked(g_config_path, api_port)) {
         log_warn("Failed to regenerate go2rtc configuration at startup");
         // Continue anyway - the old config may still work
     }
@@ -2199,7 +2199,7 @@ static bool go2rtc_process_start_locked(int api_port) {
      * guarantee what go2rtc will load, so refuse to start. */
     const char *override_path = go2rtc_process_get_override_path();
     if (override_path
-        && go2rtc_process_generate_override_file(override_path) != 0) {
+        && go2rtc_process_generate_override_file_locked(override_path) != 0) {
         log_error("Refusing to start go2rtc: failed to refresh override file %s",
                   override_path);
         return false;
