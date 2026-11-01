@@ -670,11 +670,16 @@ target_link_libraries(lightnvr_lib PUBLIC
         inih_lib
         faac_lib
         ${FFMPEG_LIBRARIES}
+        ${FFMPEG_LDFLAGS}
         ${SQLITE_LIBRARIES}
+        ${SQLITE_LDFLAGS}
         ${CURL_LIBRARIES}
+        ${CURL_LDFLAGS}
         ${CJSON_LIBRARIES}
+        ${CJSON_LDFLAGS}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
+        ${SSL_LDFLAGS}
         pthread
         dl
         m
