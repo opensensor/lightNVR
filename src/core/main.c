@@ -1730,6 +1730,9 @@ cleanup:
             }
         }
 
+        log_info("Cleaning up batch delete progress...");
+        batch_delete_progress_cleanup();
+
         log_info("Shutting down database...");
         shutdown_database();
 
