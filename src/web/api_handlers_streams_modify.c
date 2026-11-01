@@ -2508,8 +2508,24 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     // This prevents blocking the web server event loop
     pthread_t thread_id;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int attr_rc = pthread_attr_init(&attr);
+    if (attr_rc != 0) {
+        log_error("Failed to initialize pthread attributes for DELETE stream worker (rc=%d)", attr_rc);
+        free(task);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start delete task");
+        return;
+    }
+
+    attr_rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (attr_rc != 0) {
+        log_error("Failed to set detached state for DELETE stream worker (rc=%d)", attr_rc);
+        pthread_attr_destroy(&attr);
+        free(task);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start delete task");
+        return;
+    }
 
     if (pthread_create(&thread_id, &attr, delete_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for DELETE stream");
