@@ -45,13 +45,13 @@ export function PaginationControls({ pagination, goToPage }) {
         {/* First page */}
         <button className={cls(1)} onClick={() => goToPage(1)} title={t('pagination.firstPage')}
                 disabled={currentPage === 1}>
-          «
+          <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">«</span>
         </button>
 
         {/* Previous */}
         <button className={INACTIVE} onClick={() => goToPage(currentPage - 1)}
                 title={t('pagination.previousPage')} disabled={currentPage === 1}>
-          ‹
+          <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span>
         </button>
 
         {/* Middle page numbers */}
@@ -65,13 +65,13 @@ export function PaginationControls({ pagination, goToPage }) {
         {/* Next */}
         <button className={INACTIVE} onClick={() => goToPage(currentPage + 1)}
                 title={t('pagination.nextPage')} disabled={currentPage === totalPages}>
-          ›
+          <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">›</span>
         </button>
 
         {/* Last page */}
         <button className={cls(totalPages)} onClick={() => goToPage(totalPages)}
                 title={t('pagination.lastPage')} disabled={currentPage === totalPages}>
-          »
+          <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">»</span>
         </button>
       </div>}
     </div>

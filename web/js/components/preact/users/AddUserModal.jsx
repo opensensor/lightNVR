@@ -200,7 +200,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                   name="is_active"
                   checked={formData.is_active}
                   onChange={handleInputChange}
-                  className="mr-2"
+                  className="me-2"
                 />
                 <span className="text-sm font-bold">{t('users.active')}</span>
               </label>
@@ -214,14 +214,14 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
                   name="password_change_locked"
                   checked={formData.password_change_locked}
                   onChange={handleInputChange}
-                  className="mr-2"
+                  className="me-2"
                   aria-describedby="password-change-locked-description"
                 />
                 <span className="text-sm font-bold">{t('users.lockPasswordChanges')}</span>
               </label>
               <p
                 id="password-change-locked-description"
-                className="text-xs text-muted-foreground mt-1 ml-6"
+                className="text-xs text-muted-foreground mt-1 ms-6"
               >
                 {t('users.lockPasswordChangesHelp')}
               </p>
@@ -253,7 +253,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
             <div className="flex justify-end mt-6">
               <button
                 type="button"
-                className="btn-secondary mr-2"
+                className="btn-secondary me-2"
                 onClick={onClose}
               >
                 {t('common.cancel')}

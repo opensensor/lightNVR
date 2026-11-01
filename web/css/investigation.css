@@ -248,7 +248,7 @@
 .investigation-action-recordings td {
     padding: 0.55rem 0.65rem;
     border-bottom: 1px solid hsl(var(--border));
-    text-align: left;
+    text-align: start;
 }
 
 .investigation-action-recordings th {
@@ -334,7 +334,7 @@
 }
 
 .investigation-subnav a + a {
-    border-left: 1px solid hsl(var(--border));
+    border-inline-start: 1px solid hsl(var(--border));
 }
 
 .investigation-subnav a.is-active {
@@ -628,7 +628,7 @@
     border-radius: 0.55rem;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
-    text-align: left;
+    text-align: start;
     scroll-snap-align: start;
     cursor: pointer;
 }
@@ -764,7 +764,7 @@
     background: transparent;
     color: hsl(var(--foreground));
     cursor: pointer;
-    text-align: left;
+    text-align: start;
 }
 
 .investigation-sample-target:hover,
@@ -837,7 +837,7 @@
 }
 
 .investigation-decoder-count {
-    margin-left: auto;
+    margin-inline-start: auto;
     padding: 0.35rem 0.55rem;
     border-radius: 999px;
     background: hsl(var(--secondary));
@@ -886,11 +886,14 @@
 
 .investigation-track-label small {
     display: block;
-    margin-left: 1.4rem;
+    margin-inline-start: 1.4rem;
     color: hsl(var(--muted-foreground));
 }
 
 .investigation-track-bar {
+    /* Time runs left to right even in RTL locales (media scrubber convention);
+       segment/cursor offsets are physical `left` percentages. */
+    direction: ltr;
     position: relative;
     height: 2.25rem;
     overflow: hidden;
@@ -1205,7 +1208,7 @@
     }
 
     .investigation-decoder-count {
-        margin-left: 0;
+        margin-inline-start: 0;
     }
 
     .investigation-player-grid {

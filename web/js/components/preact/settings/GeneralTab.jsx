@@ -133,7 +133,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
         <div data-setting-label={t('settings.threadPoolSize')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-thread-pool" class="font-medium">
             {t('settings.threadPoolSize')}
-            <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
+            <span class="ms-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
           </label>
           <div class="col-span-2">
             <input
@@ -156,7 +156,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
         <div data-setting-label={t('settings.maxStreams')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-max-streams" class="font-medium">
             {t('settings.maxStreams')}
-            <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
+            <span class="ms-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
           </label>
           <div class="col-span-2">
             <input

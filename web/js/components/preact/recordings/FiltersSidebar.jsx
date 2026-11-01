@@ -26,7 +26,7 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
+        className="w-full flex items-center justify-between px-3 py-2.5 text-start hover:bg-muted/50 transition-colors rounded-t-lg"
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground">{title}</span>
@@ -68,7 +68,7 @@ function SelectedValues({ values, onRemove, formatValue = (value) => value, empt
           title={t('recordings.removeFilterValue', { value: formatValue(value) })}
         >
           <span>{formatValue(value)}</span>
-          <span className="ml-2">×</span>
+          <span className="ms-2">×</span>
         </button>
       ))}
     </div>

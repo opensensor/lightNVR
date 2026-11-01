@@ -28,7 +28,7 @@
 }
 
 .version {
-    @apply text-xs ml-2;
+    @apply text-xs ms-2;
     color: hsl(var(--muted-foreground));
 }
 
@@ -59,7 +59,7 @@ nav a.active {
 }
 
 .user-menu span {
-    @apply mr-4;
+    @apply me-4;
 }
 
 .user-menu a {
@@ -83,7 +83,7 @@ table {
 }
 
 th, td {
-    @apply py-3 px-6 text-left border-b border-border;
+    @apply py-3 px-6 text-start border-b border-border;
 }
 
 th {

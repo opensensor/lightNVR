@@ -455,7 +455,7 @@ export function PlatesView() {
           <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
             <table className="min-w-full divide-y divide-border text-sm">
               <caption className="sr-only">{t('lpr.resultsCaption', { count: reads.length })}</caption>
-              <thead className="bg-muted/50 text-left">
+              <thead className="bg-muted/50 text-start">
                 <tr>
                   <th scope="col" className="px-3 py-2">{t('lpr.column.plate')}</th>
                   <th scope="col" className="px-3 py-2">{t('lpr.column.time')}</th>

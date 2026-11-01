@@ -129,7 +129,7 @@ export function StreamStorage({ systemInfo, formatBytes }) {
                     href={`recordings.html?stream=${encodeURIComponent(stream.name)}`}
                     className="flex items-center p-2 rounded bg-muted hover:bg-muted/70 transition-colors cursor-pointer"
                   >
-                    <div className="w-3 h-3 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: color.text }}></div>
+                    <div className="w-3 h-3 rounded-full me-2 flex-shrink-0" style={{ backgroundColor: color.text }}></div>
                     <div className="min-w-0">
                       <div className="font-medium">{stream.name}</div>
                       <div className="text-xs text-muted-foreground">

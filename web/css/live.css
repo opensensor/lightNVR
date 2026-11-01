@@ -134,7 +134,7 @@
     width: 100%;
     display: flex;
     align-items: center;
-    text-align: left;
+    text-align: start;
     gap: 0.5rem;
     border-radius: 0.4rem;
 }
@@ -563,7 +563,7 @@
     border-radius: 0.35rem;
     background: transparent;
     color: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
 }
 .live-plan-context-menu > button:hover:not(:disabled),
@@ -615,7 +615,7 @@
     position: absolute;
     z-index: 3;
     top: 0.7rem;
-    left: 0.7rem;
+    inset-inline-start: 0.7rem;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -767,7 +767,7 @@
     gap: 0.45rem;
     padding: 0.35rem 0.4rem;
     border-radius: 0.4rem;
-    text-align: left;
+    text-align: start;
     font-size: 0.75rem;
 }
 .live-plan-sketch-list button:hover,
@@ -885,7 +885,7 @@
 
 .live-plan-legend {
     position: absolute;
-    left: 0.7rem;
+    inset-inline-start: 0.7rem;
     bottom: 0.7rem;
     display: flex;
     flex-wrap: wrap;
@@ -924,7 +924,7 @@
     min-width: 0;
     overflow-y: auto;
     padding: 0.65rem;
-    border-left: 1px solid hsl(var(--border));
+    border-inline-start: 1px solid hsl(var(--border));
     background: hsl(var(--card));
 }
 
@@ -1044,7 +1044,7 @@
     gap: 0.45rem;
     padding: 0.35rem 0.4rem;
     border-radius: 0.4rem;
-    text-align: left;
+    text-align: start;
     font-size: 0.75rem;
 }
 .live-plan-camera-index button:hover,
@@ -1075,7 +1075,7 @@
     gap: 0.45rem;
     padding: 0.4rem;
     border-radius: 0.4rem;
-    text-align: left;
+    text-align: start;
 }
 .live-plan-unplaced button:hover,
 .live-plan-unplaced button.is-selected { background: hsl(var(--muted)); }
@@ -1107,7 +1107,7 @@
     .live-plan-toolbar-actions { width: 100%; flex-wrap: wrap; }
     .live-plan-workspace { grid-template-columns: 1fr; }
     .live-plan-details {
-        border-left: 0;
+        border-inline-start: 0;
         border-top: 1px solid hsl(var(--border));
     }
 }
@@ -1116,7 +1116,7 @@
     .live-plan-zoom button:nth-child(-n+4) { display: none; }
     .live-plan-canvas-wrap,
     .live-plan-canvas { min-height: 23rem; }
-    .live-plan-legend { right: 0.7rem; }
+    .live-plan-legend { inset-inline-end: 0.7rem; }
 }
 
 /* Video grid styles */
@@ -1273,7 +1273,7 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-    margin-left: auto;
+    margin-inline-start: auto;
     flex-shrink: 0;
     min-width: 85px; /* Ensure minimum width for the controls */
 }
@@ -1572,7 +1572,7 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     background: transparent;
     color: inherit;
-    text-align: left;
+    text-align: start;
 }
 
 .mobile-tile-menu button:last-child {
@@ -1736,7 +1736,7 @@ body.pseudo-native-fullscreen-active {
 .favorite-toggle {
     position: absolute;
     top: 8px;
-    right: 8px;
+    inset-inline-end: 8px;
     z-index: 25;
     width: 32px;
     height: 32px;

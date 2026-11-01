@@ -395,7 +395,7 @@ export function LiveOperatorNavigator({
     <aside className="live-operator-navigator" aria-label={t('live.navigator.title')}>
       <div className="live-navigator-heading">
         <div><strong>{t('live.navigator.title')}</strong><small>{t('live.navigator.subtitle')}</small></div>
-        <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')}>‹</button>
+        <button type="button" onClick={toggleCollapsed} title={t('live.navigator.collapse')} aria-label={t('live.navigator.collapse')}><span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">‹</span></button>
       </div>
       <div className="live-navigator-tabs" role="tablist">
         {['cameras', 'plans', 'views', ...(investigationVisible ? ['events'] : [])].map((value) => (
@@ -438,9 +438,9 @@ export function LiveOperatorNavigator({
                   {node.children.length > 0 && (
                     <span onClick={(event) => {
                       event.stopPropagation(); toggleExpanded(node.uuid);
-                    }}>{expanded.has(node.uuid) ? '▾' : '▸'}</span>
+                    }}>{expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}</span>
                   )}
-                  <span>{locationIcon(node.type)}</span><span>{node.name}</span>
+                  <span dir="ltr" className="rtl-flip inline-block">{locationIcon(node.type)}</span><span>{node.name}</span>
                 </span>
                 <small>{node.live}/{node.total}</small>
               </button>

@@ -73,7 +73,7 @@ export function RecordingStorageTiers({ summary, formatBytes, unknown }) {
         const percent = meterPercent(row.meter);
         const pressureBadge = row.pressure !== 'normal' && PRESSURE_BADGES[row.pressure];
         return (
-          <div key={row.uuid} className="pl-3 border-l-2 border-border">
+          <div key={row.uuid} data-testid="storage-tier-row" className="ps-3 border-s-2 border-border">
             <div className="flex flex-wrap justify-between gap-2 mb-1">
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="font-medium">{row.name}</span>

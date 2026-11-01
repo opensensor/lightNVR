@@ -105,10 +105,10 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-left">{t('fleet.column.location')}</th>
-              <th className="px-3 py-2 text-left">{t('fleet.organization.type')}</th>
-              <th className="px-3 py-2 text-right">{t('fleet.organization.contents')}</th>
-              <th className="px-3 py-2 text-right">{t('common.actions')}</th>
+              <th className="px-3 py-2 text-start">{t('fleet.column.location')}</th>
+              <th className="px-3 py-2 text-start">{t('fleet.organization.type')}</th>
+              <th className="px-3 py-2 text-end">{t('fleet.organization.contents')}</th>
+              <th className="px-3 py-2 text-end">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -117,15 +117,15 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
               return (
                 <tr key={location.uuid} className="hover:bg-muted/30">
                   <td className="px-3 py-2">
-                    <div className="flex items-center" style={{ paddingLeft: `${Math.min(location.depth, 8) * 1.25}rem` }}>
-                      {location.depth > 0 && <span className="mr-2 text-muted-foreground" aria-hidden="true">└</span>}
+                    <div className="flex items-center" style={{ paddingInlineStart: `${Math.min(location.depth, 8) * 1.25}rem` }}>
+                      {location.depth > 0 && <span className="rtl-flip me-2 inline-block text-muted-foreground" aria-hidden="true">└</span>}
                       <span className="font-medium">{location.name}</span>
-                      {location.is_system && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{t('fleet.organization.system')}</span>}
+                      {location.is_system && <span className="ms-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{t('fleet.organization.system')}</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{t(`fleet.locationType.${location.type}`)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-muted-foreground">{t('fleet.organization.contentCounts', { cameras: location.camera_count, children: location.child_count })}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                  <td className="whitespace-nowrap px-3 py-2 text-end text-muted-foreground">{t('fleet.organization.contentCounts', { cameras: location.camera_count, children: location.child_count })}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-end">
                     {!location.is_system && <>
                       <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ parentUuid: location.uuid })}>{t('fleet.organization.addChild')}</button>
                       <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: location })}>{t('common.edit')}</button>
@@ -253,19 +253,19 @@ function TagsTab({ tags, loading, onRefresh, t }) {
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-left">{t('fleet.organization.tagLabel')}</th>
-              <th className="px-3 py-2 text-left">{t('fleet.organization.tagDescription')}</th>
-              <th className="px-3 py-2 text-right">{t('fleet.organization.cameras')}</th>
-              <th className="px-3 py-2 text-right">{t('common.actions')}</th>
+              <th className="px-3 py-2 text-start">{t('fleet.organization.tagLabel')}</th>
+              <th className="px-3 py-2 text-start">{t('fleet.organization.tagDescription')}</th>
+              <th className="px-3 py-2 text-end">{t('fleet.organization.cameras')}</th>
+              <th className="px-3 py-2 text-end">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {sortedTags.map((tag) => (
               <tr key={tag.uuid} className="hover:bg-muted/30">
-                <td className="px-3 py-2"><span className="mr-2 inline-block h-3 w-3 rounded-full border border-border align-middle" style={{ backgroundColor: tag.color || 'transparent' }}></span><span className="font-medium">{tag.label}</span></td>
+                <td className="px-3 py-2"><span className="me-2 inline-block h-3 w-3 rounded-full border border-border align-middle" style={{ backgroundColor: tag.color || 'transparent' }}></span><span className="font-medium">{tag.label}</span></td>
                 <td className="max-w-sm truncate px-3 py-2 text-muted-foreground">{tag.description || '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{tag.camera_count}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
+                <td className="px-3 py-2 text-end tabular-nums">{tag.camera_count}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-end">
                   <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: tag })}>{t('common.edit')}</button>
                   {tags.length > 1 && <button type="button" className="px-2 py-1 text-[hsl(var(--primary))] hover:underline" onClick={() => setEditor({ item: tag, mode: 'merge' })}>{t('fleet.organization.merge')}</button>}
                   <button type="button" className="px-2 py-1 text-[hsl(var(--danger))] hover:underline" onClick={() => setDeleteCandidate(tag)}>{t('common.delete')}</button>
@@ -309,7 +309,7 @@ export function OrganizationManager({ locations, tags, loading, onRefresh, onClo
           <button type="button" className="rounded p-2 text-2xl leading-none hover:bg-muted" onClick={onClose} aria-label={t('common.close')}>×</button>
         </header>
         <div className="border-b border-border px-4 pt-3" role="tablist">
-          {['locations', 'tags'].map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={`mr-2 rounded-t-lg px-4 py-2 text-sm font-medium ${tab === value ? 'border border-b-0 border-border bg-background -mb-px' : 'text-muted-foreground'}`} onClick={() => setTab(value)}>{t(`fleet.organization.${value}`)}</button>)}
+          {['locations', 'tags'].map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={`me-2 rounded-t-lg px-4 py-2 text-sm font-medium ${tab === value ? 'border border-b-0 border-border bg-background -mb-px' : 'text-muted-foreground'}`} onClick={() => setTab(value)}>{t(`fleet.organization.${value}`)}</button>)}
         </div>
         <div className="overflow-y-auto p-4">
           {tab === 'locations'

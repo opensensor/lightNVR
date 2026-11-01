@@ -1007,7 +1007,7 @@ export function TimelinePlayer({
                 <span className="text-sm font-medium">{t('timeline.clickToEnterFullscreen')}</span>
               </div>
               <button
-                className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-lg leading-none"
+                className="absolute top-2 inset-e-2 w-7 h-7 flex items-center justify-center rounded-full text-lg leading-none"
                 style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', color: 'rgba(255, 255, 255, 0.7)' }}
                 onClick={(e) => { e.stopPropagation(); setShowFullscreenPrompt(false); }}
                 aria-label={t('timeline.exitFullscreen')}
@@ -1089,7 +1089,7 @@ export function TimelinePlayer({
         )}
 
         {/* Speed controls — pushed right */}
-        <div className="ml-auto">
+        <div className="ms-auto">
           <SpeedControls />
         </div>
       </div>

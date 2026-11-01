@@ -712,7 +712,7 @@ function InvestigationThumbnailDrilldown({
             disabled={loading || drilldown.history.length === 0}
             onClick={onBack}
           >
-            ← {t('investigation.backOneLevel')}
+            <span className="rtl-flip inline-block" aria-hidden="true">←</span> {t('investigation.backOneLevel')}
           </button>
           <button type="button" className="btn-secondary" onClick={onClose}>
             {t('common.close')}
@@ -1747,7 +1747,7 @@ export function InvestigationView() {
                   onClick={() => selectAdjacentResult(-1)}
                   title={t('investigation.previousResultShortcut')}
                 >
-                  ← {t('investigation.previousResult')}
+                  <span className="rtl-flip inline-block" aria-hidden="true">←</span> {t('investigation.previousResult')}
                 </button>
                 <button
                   type="button"
@@ -1757,7 +1757,7 @@ export function InvestigationView() {
                   onClick={() => selectAdjacentResult(1)}
                   title={t('investigation.nextResultShortcut')}
                 >
-                  {t('investigation.nextResult')} →
+                  {t('investigation.nextResult')} <span className="rtl-flip inline-block" aria-hidden="true">→</span>
                 </button>
               </div>
             </div>
@@ -1828,7 +1828,7 @@ export function InvestigationView() {
                     disabled={searchPageIndex === 0}
                     onClick={loadPreviousSearchPage}
                   >
-                    ← {t('common.previous')}
+                    <span className="rtl-flip inline-block" aria-hidden="true">←</span> {t('common.previous')}
                   </button>
                   <span>{t('investigation.pageNumber', { count: searchPageIndex + 1 })}</span>
                   <button
@@ -1837,7 +1837,7 @@ export function InvestigationView() {
                     disabled={!searchData.page?.has_more}
                     onClick={loadNextSearchPage}
                   >
-                    {t('common.next')} →
+                    {t('common.next')} <span className="rtl-flip inline-block" aria-hidden="true">→</span>
                   </button>
                 </div>
               </>

@@ -30,7 +30,7 @@ function TagChip({ tag, onRemove, readOnly = false }) {
       {!readOnly && onRemove && (
         <button
           type="button"
-          class="hover:text-destructive ml-0.5"
+          class="hover:text-destructive ms-0.5"
           onClick={(e) => { e.stopPropagation(); onRemove(tag); }}
           title={`Remove tag "${tag}"`}
         >
@@ -147,12 +147,12 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
           disabled={saving}
         />
         {showSuggestions && suggestions.length > 0 && (
-          <div class="absolute left-0 right-0 mt-1 max-h-32 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-[60]">
+          <div class="absolute inset-s-0 inset-e-0 mt-1 max-h-32 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-[60]">
             {suggestions.slice(0, 10).map(tag => (
               <button
                 key={tag}
                 type="button"
-                class="w-full text-left px-2 py-1 text-sm hover:bg-muted/70 transition-colors"
+                class="w-full text-start px-2 py-1 text-sm hover:bg-muted/70 transition-colors"
                 onClick={() => addTag(tag)}
               >
                 {tag}
@@ -333,12 +333,12 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
           disabled={saving}
         />
         {showSuggestions && suggestions.length > 0 && (
-          <div class="absolute left-0 right-0 mt-1 max-h-32 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-[60]">
+          <div class="absolute inset-s-0 inset-e-0 mt-1 max-h-32 overflow-y-auto bg-card border border-border rounded-md shadow-lg z-[60]">
             {suggestions.slice(0, 10).map(tag => (
               <button
                 key={tag}
                 type="button"
-                class="w-full text-left px-2 py-1 text-sm hover:bg-muted/70 transition-colors"
+                class="w-full text-start px-2 py-1 text-sm hover:bg-muted/70 transition-colors"
                 onClick={() => addNewTag(tag)}
               >
                 {tag}

@@ -205,7 +205,7 @@
 .skip-link:focus-visible {
   position: fixed;
   top: 1rem;
-  left: 1rem;
+  inset-inline-start: 1rem;
   width: auto;
   height: auto;
   padding: 0.5rem 1rem;
@@ -227,7 +227,7 @@
 @layer components {
   /* Status Message */
   .status-message {
-    @apply fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-card text-card-foreground transform translate-y-[-100px] opacity-0 transition-all duration-300;
+    @apply fixed top-4 inset-e-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-card text-card-foreground transform translate-y-[-100px] opacity-0 transition-all duration-300;
   }
 
   .status-message.visible {
@@ -375,6 +375,13 @@
 
 /* Utility Styles */
 @layer utilities {
+  /* Mirror direction-implying icons (back/forward, prev/next chevrons) in RTL
+   * locales. Not for media, PTZ arrows or the timeline, which stay physical.
+   * Inline elements need `inline-block` for the transform to apply. */
+  [dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
+  }
+
   .fullscreen-mode .video-container {
     @apply h-screen w-full;
   }

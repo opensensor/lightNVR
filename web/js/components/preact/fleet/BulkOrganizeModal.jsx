@@ -113,7 +113,7 @@ export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClos
           {failures.length > 0 && (
             <div className="rounded-md border border-[hsl(var(--danger)/0.45)] bg-[hsl(var(--danger)/0.08)] p-3">
               <h3 className="font-semibold">{t('fleet.bulk.failures')}</h3>
-              <ul className="mt-2 max-h-32 list-disc overflow-y-auto pl-5 text-sm">
+              <ul className="mt-2 max-h-32 list-disc overflow-y-auto ps-5 text-sm">
                 {failures.map(({ camera, error }) => <li key={camera.camera_uuid}>{camera.name}: {error}</li>)}
               </ul>
             </div>

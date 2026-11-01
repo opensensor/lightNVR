@@ -54,7 +54,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
         </svg>
       </button>
       {open && (
-        <div class="absolute right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+        <div class="absolute inset-e-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
           <div class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
             {t('recordings.visibleElements')}
           </div>
@@ -295,12 +295,12 @@ function RecordingCard({
         {/* Duration badge — live elapsed time for a still-recording segment (#482) */}
         {show('duration') && (
           inProgress ? (
-            <div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded flex items-center gap-1">
+            <div class="absolute bottom-2 inset-e-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded flex items-center gap-1">
               <span class="inline-block w-2 h-2 rounded-full bg-destructive animate-pulse" aria-hidden="true" />
               {formatUtils.formatDuration(formatUtils.liveRecordingDuration(recording))}
             </div>
           ) : (
-            <div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
+            <div class="absolute bottom-2 inset-e-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
               {formatUtils.formatDuration(recording.duration)}
             </div>
           )
@@ -308,7 +308,7 @@ function RecordingCard({
 
         {/* Selection checkbox — only visible in selection mode */}
         {canDelete && selectionMode && (
-          <div class="absolute top-2 left-2" onClick={(e) => e.stopPropagation()}>
+          <div class="absolute top-2 inset-s-2" onClick={(e) => e.stopPropagation()}>
             <label class="inline-flex cursor-pointer items-center justify-center">
               <input
                 type="checkbox"
@@ -324,7 +324,7 @@ function RecordingCard({
 
         {/* In-progress badge (#482) */}
         {inProgress && (
-          <div class="absolute top-2 right-2 px-1.5 py-0.5 bg-destructive/90 text-destructive-foreground text-xs rounded flex items-center gap-1"
+          <div class="absolute top-2 inset-e-2 px-1.5 py-0.5 bg-destructive/90 text-destructive-foreground text-xs rounded flex items-center gap-1"
                title={t('recordings.inProgressToast')}>
             <span class="inline-block w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden="true" />
             {t('recordings.inProgressBadge')}
@@ -333,7 +333,7 @@ function RecordingCard({
 
         {/* Protected badge */}
         {show('protected') && recording.protected && (
-          <div class={`absolute top-2 ${inProgress ? 'right-[5.5rem]' : 'right-2'} px-1.5 py-0.5 bg-yellow-500/90 text-white text-xs rounded flex items-center gap-0.5`}>
+          <div class={`absolute top-2 ${inProgress ? 'inset-e-[5.5rem]' : 'inset-e-2'} px-1.5 py-0.5 bg-yellow-500/90 text-white text-xs rounded flex items-center gap-0.5`}>
             <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>
@@ -355,7 +355,7 @@ function RecordingCard({
                 </span>
               </div>
               <div class="mt-1">
-                {recording.storage_state && <span class="mr-2 text-xs text-muted-foreground">{t(`settings.archive.${recording.storage_state}`)}</span>}
+                {recording.storage_state && <span class="me-2 text-xs text-muted-foreground">{t(`settings.archive.${recording.storage_state}`)}</span>}
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
                   {formatUtils.formatCaptureMethod(recording.capture_method)}
                 </span>
@@ -370,7 +370,7 @@ function RecordingCard({
                 recording.detection_labels.map((det, idx) => (
                   <span key={idx} class="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
                     {det.label}
-                    {det.count > 1 && <span class="ml-0.5 opacity-75">({det.count})</span>}
+                    {det.count > 1 && <span class="ms-0.5 opacity-75">({det.count})</span>}
                   </span>
                 ))
               ) : (
@@ -458,7 +458,7 @@ function RecordingCard({
               </button>
               {canDelete && (
                 <button
-                  class="p-1 rounded-full ml-auto"
+                  class="p-1 rounded-full ms-auto"
                   style={{ color: 'hsl(var(--danger))' }}
                   onClick={() => deleteRecording(recording)}
                   title={t('common.delete')}
@@ -538,7 +538,7 @@ export function RecordingsGrid({
           <>
             {selectionMode ? (
               <>
-                <label class="flex cursor-pointer items-center gap-2 mr-2">
+                <label class="flex cursor-pointer items-center gap-2 me-2">
                   <input
                     type="checkbox"
                     checked={selectAll}

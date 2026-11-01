@@ -59,7 +59,7 @@ function WelcomeStep() {
       <p class="text-muted-foreground mb-6 max-w-sm mx-auto">
         {t('setupWizard.welcomeIntro')}
       </p>
-      <ul class="text-left inline-block space-y-2 text-sm">
+      <ul class="text-start inline-block space-y-2 text-sm">
         {[
           `📁  ${t('setupWizard.welcomeStorage')}`,
           `⚡  ${t('setupWizard.welcomePerformance')}`,

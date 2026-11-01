@@ -39,11 +39,11 @@ export function VersionsTable({ versions }) {
       ) : (
         <div className="overflow-x-auto" data-testid="versions-table">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-muted-foreground border-b border-border">
+            <thead className="text-start text-muted-foreground border-b border-border">
               <tr>
-                <th className="py-2 pr-4 font-medium">{t('system.software')}</th>
-                <th className="py-2 pr-4 font-medium">{t('system.category')}</th>
-                <th className="py-2 pr-4 font-medium">{t('system.version')}</th>
+                <th className="py-2 pe-4 font-medium">{t('system.software')}</th>
+                <th className="py-2 pe-4 font-medium">{t('system.category')}</th>
+                <th className="py-2 pe-4 font-medium">{t('system.version')}</th>
                 <th className="py-2 font-medium">{t('system.details')}</th>
               </tr>
             </thead>
@@ -54,11 +54,11 @@ export function VersionsTable({ versions }) {
                   className="border-b border-border/60 align-top last:border-b-0"
                   data-testid="version-row"
                 >
-                  <td className="py-3 pr-4 font-medium whitespace-nowrap">{item.name}</td>
-                  <td className="py-3 pr-4 whitespace-nowrap">
+                  <td className="py-3 pe-4 font-medium whitespace-nowrap">{item.name}</td>
+                  <td className="py-3 pe-4 whitespace-nowrap">
                     <CategoryBadge category={item.category} t={t} />
                   </td>
-                  <td className="py-3 pr-4 font-mono text-xs sm:text-sm whitespace-nowrap">
+                  <td className="py-3 pe-4 font-mono text-xs sm:text-sm whitespace-nowrap">
                     {item.version || t('common.unknown')}
                   </td>
                   <td className="py-3 text-muted-foreground">{item.details || '—'}</td>

@@ -22,15 +22,15 @@
 }
 
 .toast-success {
-    @apply bg-green-500 text-white border-l-[6px] border-green-600;
+    @apply bg-green-500 text-white border-s-[6px] border-green-600;
 }
 
 .toast-error {
-    @apply bg-red-500 text-white border-l-[6px] border-red-700;
+    @apply bg-red-500 text-white border-s-[6px] border-red-700;
 }
 
 .toast-icon {
-    @apply mr-3 flex-shrink-0;
+    @apply me-3 flex-shrink-0;
 }
 
 .toast-message {
@@ -38,7 +38,7 @@
 }
 
 .toast-close {
-    @apply ml-3 cursor-pointer opacity-70 transition-opacity duration-200 flex-shrink-0 hover:opacity-100;
+    @apply ms-3 cursor-pointer opacity-70 transition-opacity duration-200 flex-shrink-0 hover:opacity-100;
 }
 
 /* SVG icons for toasts */

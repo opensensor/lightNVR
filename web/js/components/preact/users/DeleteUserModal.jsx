@@ -41,7 +41,7 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
 
         <div className="flex justify-end">
           <button
-            className="btn-secondary mr-2"
+            className="btn-secondary me-2"
             onClick={onClose}
           >
             {t('common.cancel')}

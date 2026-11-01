@@ -88,11 +88,11 @@ export function ToastContainer() {
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] z-50 flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
+      className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:inset-e-4 sm:inset-s-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] z-50 flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
     >
       {toasts.map(toast => {
         const getToastStyles = (type) => {
-          const baseStyles = 'py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium border-l-[6px]';
+          const baseStyles = 'py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium border-s-[6px]';
           const typeStyles = {
             success: { bg: 'hsl(var(--success))', fg: 'hsl(var(--success-foreground))', border: 'hsl(var(--success) / 0.8)' },
             error: { bg: 'hsl(var(--danger))', fg: 'hsl(var(--danger-foreground))', border: 'hsl(var(--danger) / 0.8)' },
@@ -111,7 +111,7 @@ export function ToastContainer() {
             style={{
               backgroundColor: styles.bg,
               color: styles.fg,
-              borderLeftColor: styles.border
+              borderInlineStartColor: styles.border
             }}
             onClick={() => removeToast(toast.id)}
           >

@@ -407,7 +407,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     await Promise.all([
       page.waitForURL('**/recordings.html**'),
-      page.getByRole('link', { name: '← Refine Selections' }).click()
+      page.getByRole('link', { name: 'Refine Selections' }).click()
     ]);
 
     await expect(page.getByRole('button', { name: '▶ Timeline (2)' })).toBeVisible();

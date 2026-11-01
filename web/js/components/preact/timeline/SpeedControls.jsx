@@ -47,7 +47,7 @@ export function SpeedControls() {
 
   return (
     <div className="flex items-center gap-0.5">
-      <span className="text-[10px] text-muted-foreground mr-0.5">{t('timeline.speed')}</span>
+      <span className="text-[10px] text-muted-foreground me-0.5">{t('timeline.speed')}</span>
       {speeds.map(speed => (
         <button
           key={`speed-${speed}`}

@@ -1536,7 +1536,7 @@ export function WebRTCVideoCell({
           style={{
             position: 'absolute',
             bottom: '10px',
-            right: '10px',
+            insetInlineEnd: '10px',
             padding: '4px 8px',
             backgroundColor: 'rgba(0, 0, 0, 0.6)',
             color: 'white',
@@ -1559,7 +1559,7 @@ export function WebRTCVideoCell({
           style={{
             position: 'absolute',
             top: '10px',
-            left: '10px',
+            insetInlineStart: '10px',
             padding: '5px 10px',
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
             color: 'white',
@@ -1626,7 +1626,7 @@ export function WebRTCVideoCell({
         style={{
           position: 'absolute',
           bottom: '10px',
-          right: '10px',
+          insetInlineEnd: '10px',
           display: 'flex',
           gap: '10px',
           zIndex: 5,
@@ -1980,7 +1980,7 @@ export function WebRTCVideoCell({
           style={{
             position: 'absolute',
             bottom: '60px',
-            right: '10px',
+            insetInlineEnd: '10px',
             backgroundColor: 'rgba(239, 68, 68, 0.9)',
             color: 'white',
             padding: '8px 12px',
@@ -2177,7 +2177,7 @@ export function WebRTCVideoCell({
           style={{
             position: 'absolute',
             top: '8px',
-            right: '8px',
+            insetInlineEnd: '8px',
             backgroundColor: 'rgba(16, 185, 129, 0.8)',
             color: 'white',
             padding: '4px 8px',

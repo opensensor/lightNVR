@@ -282,14 +282,14 @@ export function StreamCard({
 
         {/* Enabled/disabled dot overlay, top-left */}
         <span
-          class="absolute top-2 left-2 w-3 h-3 rounded-full border border-white/70 shadow"
+          class="absolute top-2 inset-s-2 w-3 h-3 rounded-full border border-white/70 shadow"
           style={{ backgroundColor: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))' }}
           title={stream.enabled ? t('common.enabled') : t('common.disabled')}
         ></span>
 
         {/* Bulk-select checkbox overlay */}
         {canModifyStreams && selectionMode && (
-          <div class="absolute top-2 right-2">
+          <div class="absolute top-2 inset-e-2">
             <label class="inline-flex cursor-pointer items-center justify-center">
               <input
                 type="checkbox"

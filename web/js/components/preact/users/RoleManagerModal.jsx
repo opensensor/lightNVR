@@ -151,14 +151,14 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.close')}</button>
         </header>
 
-        {error && <div className="m-5 rounded-md badge-danger p-3">{error} <button type="button" className="ml-2 underline" onClick={() => load()}>{t('common.retry')}</button></div>}
+        {error && <div className="m-5 rounded-md badge-danger p-3">{error} <button type="button" className="ms-2 underline" onClick={() => load()}>{t('common.retry')}</button></div>}
         {loading && roles.length === 0 ? <div className="p-10 text-center">{t('common.loading')}</div> : (
           <div className="grid min-h-0 flex-1 md:grid-cols-[18rem_1fr]">
-            <aside className="overflow-y-auto border-b border-border p-4 md:border-b-0 md:border-r">
+            <aside className="overflow-y-auto border-b border-border p-4 md:border-b-0 md:border-e">
               <button type="button" className="btn-primary mb-3 w-full" onClick={() => startNew()}>{t('access.roles.create')}</button>
               <div className="space-y-2">
                 {roles.map((role) => (
-                  <button key={role.uuid} type="button" className={`w-full rounded-md border p-3 text-left ${selectedUuid === role.uuid ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]' : 'border-border hover:bg-muted'}`} onClick={() => selectRole(role)}>
+                  <button key={role.uuid} type="button" className={`w-full rounded-md border p-3 text-start ${selectedUuid === role.uuid ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]' : 'border-border hover:bg-muted'}`} onClick={() => selectRole(role)}>
                     <span className="block font-medium">{role.name}</span>
                     <span className="mt-1 block text-xs text-muted-foreground">{t('access.roles.actionCount', { count: role.actions?.length || 0 })}{role.builtin ? ` · ${t('access.roles.builtin')}` : ''}</span>
                   </button>
@@ -197,7 +197,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
               {destructive && !draft.builtin && <p className="mt-4 rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-sm">{t('access.roles.destructiveWarning')}</p>}
 
               <footer className="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-                {draft.uuid && !draft.builtin && <button type="button" className="btn-danger mr-auto" onClick={() => setConfirmDelete(true)} disabled={saving}>{t('common.delete')}</button>}
+                {draft.uuid && !draft.builtin && <button type="button" className="btn-danger me-auto" onClick={() => setConfirmDelete(true)} disabled={saving}>{t('common.delete')}</button>}
                 {!draft.builtin && <button type="submit" className="btn-primary" disabled={saving || !draft.name.trim() || draft.actions.length === 0}>{saving ? t('common.saving') : t('common.saveChanges')}</button>}
               </footer>
             </form>

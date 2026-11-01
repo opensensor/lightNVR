@@ -213,7 +213,7 @@ function TimelineHelp({ idsMode, t }) {
         {open ? t('timeline.hideHelp') : t('timeline.howToUseTimeline')}
       </button>
       {open && (
-        <ul className="mt-1.5 ml-5 text-xs text-muted-foreground list-disc space-y-0.5">
+        <ul className="mt-1.5 ms-5 text-xs text-muted-foreground list-disc space-y-0.5">
           {!idsMode && <li>{t('timeline.help.selectStreamAndDate')}</li>}
           {idsMode && <li>{t('timeline.help.refineSelections')}</li>}
           <li>{t('timeline.help.positionCursor')}</li>
@@ -1433,6 +1433,7 @@ export function TimelinePage() {
         {/* Timeline — clicking anywhere on it should not change the keyboard-nav mode */}
         <div
           id="timeline-container"
+          dir="ltr"
           data-keyboard-nav-preserve
           className="relative w-full h-24 bg-secondary border border-input rounded-lg mb-2 overflow-hidden"
           ref={timelineContainerRef}
@@ -1501,7 +1502,7 @@ export function TimelinePage() {
         <div className="flex max-w-full overflow-x-auto whitespace-nowrap">
           <a
             href={returnUrl || 'recordings.html'}
-            className="px-3 py-1 rounded-l-md text-sm"
+            className="px-3 py-1 rounded-s-md text-sm"
             style={{
               backgroundColor: 'hsl(var(--secondary))',
               color: 'hsl(var(--secondary-foreground))'
@@ -1551,7 +1552,7 @@ export function TimelinePage() {
           </a>
           <a
             href="plates.html"
-            className="px-3 py-1 rounded-r-md text-sm"
+            className="px-3 py-1 rounded-e-md text-sm"
             style={{
               backgroundColor: 'hsl(var(--secondary))',
               color: 'hsl(var(--secondary-foreground))'
@@ -1587,7 +1588,7 @@ export function TimelinePage() {
                 onClick={() => jumpIdsDay(-1)}
                 title={t('timeline.previousSelectedDay')}
               >
-                ←
+                <span className="rtl-flip inline-block" aria-hidden="true">←</span>
               </button>
               <select
                 data-keyboard-nav-preserve
@@ -1609,7 +1610,7 @@ export function TimelinePage() {
                 onClick={() => jumpIdsDay(1)}
                 title={t('timeline.nextSelectedDay')}
               >
-                →
+                <span className="rtl-flip inline-block" aria-hidden="true">→</span>
               </button>
               <span className="text-xs text-muted-foreground">
                 {idsSelectedDayIndex === -1 ? '' : t('timeline.dayIndexOfTotal', { index: idsSelectedDayIndex + 1, total: idsAvailableDates.length })}
@@ -1617,9 +1618,9 @@ export function TimelinePage() {
               </span>
             </div>
           )}
-          <div className="ml-auto flex gap-2">
+          <div className="ms-auto flex gap-2">
             <a href={returnUrl || 'recordings.html'} data-keyboard-nav-preserve className="btn-secondary text-xs px-2 py-1">
-              ← {t('timeline.refineSelections')}
+              <span className="rtl-flip inline-block" aria-hidden="true">←</span> {t('timeline.refineSelections')}
             </a>
             <button
               data-keyboard-nav-preserve

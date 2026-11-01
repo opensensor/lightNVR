@@ -86,7 +86,7 @@ it('shows each tier against its own capacity when recordings span disk and bucke
     const text = await tiers.textContent();
     expect(text).toContain('system.storageTiers.summary{"total":"2228 GB","count":2}');
     // Hot disk first, measured against its filesystem.
-    const rows = tiers.locator('.border-l-2');
+    const rows = tiers.getByTestId('storage-tier-row');
     expect(await rows.nth(0).textContent()).toContain('NVMe');
     expect(await rows.nth(0).textContent()).toContain('230 GB / 500 GB');
     expect(await rows.nth(1).textContent()).toContain('Archive');

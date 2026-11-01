@@ -8,13 +8,13 @@ export default function LanguageSelector({ mobile = false }) {
       <img
         width="40"
         height="22"
-        className="p-0 ml-3"
+        className="p-0 ms-3"
         src={getLocalesUrl(item.code + '.png')}
         alt={`${item.code.toUpperCase()} (${item.nativeName})`}
       />
       <span
         style={menu ? { whiteSpace: 'nowrap' } : {}}
-        className={menu ? 'ml-1' : 'ml-3 mr-3'}
+        className={menu ? 'ms-1' : 'ms-3 me-3'}
       >
         {item.code.toUpperCase() + (menu ? ` (${item.nativeName})` : '')}
       </span>
@@ -45,7 +45,7 @@ export default function LanguageSelector({ mobile = false }) {
             document.activeElement.blur();
           }}
         >
-          <span style={{ whiteSpace: 'nowrap' }} className="ml-3 mr-3">{t('language.browserDefault')}</span>
+          <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
         </li>
         {availableLocales.map((item) => (
           <li
