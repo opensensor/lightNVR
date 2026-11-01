@@ -28,6 +28,7 @@ typedef struct {
     linux_cgroup_version_t version;
     char unified[512];
     char cpu[512];
+    char cpuacct[512];
     char memory[512];
     char pids[512];
 } cgroup_memberships_t;
@@ -258,9 +259,10 @@ static int parse_memberships(const char *text, cgroup_memberships_t *out) {
             copy_membership(parsed.unified, sizeof(parsed.unified), path);
         } else if (parsed.version != LINUX_CGROUP_V2) {
             parsed.version = LINUX_CGROUP_V1;
-            if (controller_list_has(controllers, "cpu") ||
-                controller_list_has(controllers, "cpuacct"))
+            if (controller_list_has(controllers, "cpu"))
                 copy_membership(parsed.cpu, sizeof(parsed.cpu), path);
+            if (controller_list_has(controllers, "cpuacct"))
+                copy_membership(parsed.cpuacct, sizeof(parsed.cpuacct), path);
             if (controller_list_has(controllers, "memory"))
                 copy_membership(parsed.memory, sizeof(parsed.memory), path);
             if (controller_list_has(controllers, "pids"))
@@ -592,7 +594,7 @@ static void sample_v1(const char *root, const cgroup_memberships_t *memberships,
     sample->cpu_max_status = effective_v1_cpu_max(
         root, memberships->cpu, &sample->cpu_max);
     sample->cpu_stat_status = read_v1_value(
-        root, memberships->cpu, "cpuacct", "cpu,cpuacct", "cpuacct.usage",
+        root, memberships->cpuacct, "cpuacct", "cpu,cpuacct", "cpuacct.usage",
         first, &cpu_usage_ns);
     if (sample->cpu_stat_status == CG_READ_OK) {
         sample->cpu_stat.usage_usec = cpu_usage_ns / 1000U;
@@ -627,14 +629,18 @@ static void sample_v1(const char *root, const cgroup_memberships_t *memberships,
     sample->memory_max_status = effective_v1_limit(
         root, memberships->memory, "memory", "memory.limit_in_bytes",
         &sample->memory_max);
-    sample->oom_status = read_v1_value(
-        root, memberships->memory, "memory", NULL, "memory.failcnt", first,
-        &sample->oom_kills);
-    sample->pids_current_status = read_v1_value(
-        root, memberships->pids, "pids", NULL, "pids.current", first,
-        &sample->pids_current);
-    sample->pids_max_status = effective_v1_limit(
-        root, memberships->pids, "pids", "pids.max", &sample->pids_max);
+    sample->oom_status = CG_READ_UNSUPPORTED;
+    sample->oom_kills = 0;
+    if (memberships->pids[0] != '\0') {
+        sample->pids_current_status = read_v1_value(
+            root, memberships->pids, "pids", NULL, "pids.current", first,
+            &sample->pids_current);
+        sample->pids_max_status = effective_v1_limit(
+            root, memberships->pids, "pids", "pids.max", &sample->pids_max);
+    } else {
+        sample->pids_current_status = CG_READ_UNSUPPORTED;
+        sample->pids_max_status = CG_READ_UNSUPPORTED;
+    }
 }
 
 static system_health_capability_t capability(cg_read_result_t result) {
@@ -792,14 +798,22 @@ static void emit_memory(linux_cgroup_state_t *state,
             append_value(sink, context, scope, metric,
                          (double)sample->memory_current,
                          SYSTEM_HEALTH_UNIT_BYTES);
-        } else if (limit_finite) {
+        } else if (i == 1U && limit_finite) {
+            append_value(sink, context, scope, metric,
+                         (double)sample->memory_max.value,
+                         SYSTEM_HEALTH_UNIT_BYTES);
+        } else if ((i == 2U || i == 3U) && limit_finite &&
+                   sample->memory_current_status == CG_READ_OK) {
             uint64_t headroom = sample->memory_current >= sample->memory_max.value
                 ? 0 : sample->memory_max.value - sample->memory_current;
-            double value = i == 1U ? (double)sample->memory_max.value
-                         : i == 2U ? (double)headroom
+            double value = i == 2U ? (double)headroom
                          : (double)headroom / (double)sample->memory_max.value;
             append_value(sink, context, scope, metric, value,
                 i == 3U ? SYSTEM_HEALTH_UNIT_RATIO : SYSTEM_HEALTH_UNIT_BYTES);
+        } else if ((i == 2U || i == 3U) &&
+                   sample->memory_current_status != CG_READ_OK) {
+            append_unavailable(sink, context, scope, metric,
+                               capability(sample->memory_current_status));
         } else {
             append_unavailable(sink, context, scope, metric,
                 combined_status == CG_READ_OK
