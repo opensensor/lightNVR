@@ -1942,6 +1942,17 @@ export function LiveBuildingPlan({
                    })}
                   onPointerDown={(event) => handleCameraPointerDown(event, marker.camera_uuid)}
                   onContextMenu={(event) => handleCameraContextMenu(event, marker.camera_uuid, stream)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.stopPropagation();
+                    if (event.key === ' ') event.preventDefault();
+                    setSelectedCameraUuid(marker.camera_uuid);
+                    if (editing) {
+                      setSelectedShapeId('');
+                    } else if (event.key === 'Enter' && stream) {
+                      onOpenCamera(stream);
+                    }
+                  }}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (suppressClickRef.current) return;
