@@ -194,9 +194,35 @@ static void timezone_clear(compiled_timezone_t *timezone) {
     memset(timezone, 0, sizeof(*timezone));
 }
 
+static bool timezone_name_is_safe(const char *name) {
+    if (!name || name[0] == '\0' || name[0] == '/') return false;
+
+    const char *component = name;
+    const char *p = name;
+    while (1) {
+        if (*p == '/' || *p == '\0') {
+            size_t len = (size_t)(p - component);
+            if (len == 0) return false; /* empty component ("//" or trailing "/") */
+            if ((len == 1 && component[0] == '.') ||
+                (len == 2 && component[0] == '.' && component[1] == '.')) {
+                return false;
+            }
+            if (*p == '\0') break;
+            component = p + 1;
+        } else if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-' ||
+                     *p == '+' || *p == '.' || *p == '/')) {
+            return false;
+        }
+        p++;
+    }
+
+    return true;
+}
+
 static bool timezone_load_tzif(const char *name,
                                compiled_timezone_t *timezone) {
     if (!name || !timezone) return false;
+    if (!timezone_name_is_safe(name)) return false;
     memset(timezone, 0, sizeof(*timezone));
     if (strcmp(name, "UTC") == 0 || strcmp(name, "Etc/UTC") == 0 ||
         strcmp(name, "GMT") == 0) {
