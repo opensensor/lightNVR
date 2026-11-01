@@ -12,12 +12,66 @@
 
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include "unity.h"
 #include "core/shutdown_coordinator.h"
 #include "core/logger.h"
 
+/* Observe entry to the real wait, without replacing it or its absolute deadline.
+ * Workers take the coordinator mutex before broadcasting/updating state, so the
+ * notification cannot precede the wait's atomic unlock. */
+static pthread_mutex_t observation_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t observation_cond = PTHREAD_COND_INITIALIZER;
+static bool observe_wait, wait_returned, observer_failed, deadline_changed;
+static unsigned wait_entries;
+static struct timespec first_deadline;
+
+int __real_pthread_cond_timedwait(pthread_cond_t *, pthread_mutex_t *,
+                                const struct timespec *);
+int __wrap_pthread_cond_timedwait(pthread_cond_t *condition, pthread_mutex_t *mutex,
+                                const struct timespec *deadline) {
+    if (observe_wait && condition == &get_shutdown_coordinator()->all_stopped_cond) {
+        pthread_mutex_lock(&observation_mutex);
+        if (wait_entries == 0) first_deadline = *deadline;
+        else if (deadline->tv_sec != first_deadline.tv_sec ||
+                 deadline->tv_nsec != first_deadline.tv_nsec) deadline_changed = true;
+        wait_entries++;
+        pthread_cond_broadcast(&observation_cond);
+        pthread_mutex_unlock(&observation_mutex);
+    }
+    return __real_pthread_cond_timedwait(condition, mutex, deadline);
+}
+
+static bool await_wait_entry(unsigned count) {
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 3;
+    pthread_mutex_lock(&observation_mutex);
+    while (wait_entries < count && !wait_returned) {
+        if (__real_pthread_cond_timedwait(&observation_cond, &observation_mutex,
+                                         &deadline) != 0) {
+            observer_failed = true;
+            break;
+        }
+    }
+    bool entered = wait_entries >= count && !observer_failed;
+    pthread_mutex_unlock(&observation_mutex);
+    return entered;
+}
+
+/* Let the worker leave even on the old implementation's premature return.
+ * Join it before any assertion can longjmp through Unity's failure path. */
+static void release_observer(void) {
+    pthread_mutex_lock(&observation_mutex);
+    wait_returned = true;
+    pthread_cond_broadcast(&observation_cond);
+    pthread_mutex_unlock(&observation_mutex);
+}
+
 /* ---- Unity boilerplate: reinit coordinator for each test ---- */
 void setUp(void) {
+    observe_wait = wait_returned = observer_failed = deadline_changed = false;
+    wait_entries = 0;
     init_shutdown_coordinator();
 }
 void tearDown(void) {
@@ -120,7 +174,7 @@ void test_wait_all_stopped_no_components_returns_immediately(void) {
 }
 
 /* After a component registers, the coordinator is no longer "all stopped", so a
- * wait must block until the timeout (and then force-stop). This is the
+ * wait must block until the timeout without inventing a stop. This is the
  * complementary guard ensuring the fast-path doesn't fire while work is live. */
 void test_wait_blocks_until_timeout_when_component_registered(void) {
     register_component("late_stopper", COMPONENT_OTHER, NULL, 50);
@@ -128,7 +182,7 @@ void test_wait_blocks_until_timeout_when_component_registered(void) {
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
-    wait_for_all_components_stopped(1);
+    bool stopped = wait_for_all_components_stopped(1);
 
     clock_gettime(CLOCK_MONOTONIC, &end);
     long elapsed_ms = (end.tv_sec - start.tv_sec) * 1000 +
@@ -137,6 +191,8 @@ void test_wait_blocks_until_timeout_when_component_registered(void) {
     /* Should have actually waited for roughly the 1s timeout, not returned
      * instantly via the fast-path. */
     TEST_ASSERT_GREATER_OR_EQUAL_INT(900, elapsed_ms);
+    TEST_ASSERT_LESS_THAN_INT(2500, elapsed_ms);
+    TEST_ASSERT_FALSE_MESSAGE(stopped, "A deadline is not graceful completion");
 }
 
 void test_wait_all_stopped_after_marking_stopped(void) {
@@ -147,13 +203,81 @@ void test_wait_all_stopped_after_marking_stopped(void) {
 }
 
 void test_wait_all_stopped_timeout_when_running(void) {
-    register_component("persistent", COMPONENT_OTHER, NULL, 1);
-    /* Component stays RUNNING → should timeout (1 second) */
-    bool result = wait_for_all_components_stopped(1);
-    /* On a fast system it times out; result may be false */
-    /* We don't assert a specific value — just that it returns */
-    (void)result;
-    TEST_PASS();
+    int id = register_component("persistent", COMPONENT_OTHER, NULL, 1);
+    int stopping = register_component("stopping", COMPONENT_OTHER, NULL, 1);
+    update_component_state(stopping, COMPONENT_STOPPING);
+    bool result = wait_for_all_components_stopped(0);
+    TEST_ASSERT_FALSE_MESSAGE(result, "Timeout must remain distinguishable from stopped");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(COMPONENT_RUNNING, get_component_state(id),
+                                 "A timeout cannot assert that a live component exited");
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPING, get_component_state(stopping));
+}
+
+static void *finish_component(void *argument) {
+    int id = *(int *)argument;
+    if (await_wait_entry(1)) update_component_state(id, COMPONENT_STOPPED);
+    return NULL;
+}
+
+void test_wait_observes_actual_component_completion(void) {
+    int id = register_component("finishes", COMPONENT_OTHER, NULL, 1);
+    pthread_t worker;
+    observe_wait = true;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, finish_component, &id));
+    bool stopped = wait_for_all_components_stopped(2);
+    release_observer();
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_FALSE(observer_failed);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT(1, wait_entries);
+    TEST_ASSERT_TRUE(stopped);
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPED, get_component_state(id));
+}
+
+typedef struct { int id; atomic_bool finished; } spurious_context_t;
+static void *wake_then_finish(void *argument) {
+    spurious_context_t *context = argument;
+    if (!await_wait_entry(1)) return NULL;
+    shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
+    pthread_mutex_lock(&coordinator->mutex);
+    pthread_cond_broadcast(&coordinator->all_stopped_cond);
+    pthread_mutex_unlock(&coordinator->mutex);
+    if (!await_wait_entry(2)) return NULL;
+    atomic_store(&context->finished, true);
+    update_component_state(context->id, COMPONENT_STOPPED);
+    return NULL;
+}
+
+void test_spurious_wake_does_not_claim_completion(void) {
+    spurious_context_t context = {
+        .id = register_component("spurious", COMPONENT_OTHER, NULL, 1),
+        .finished = false,
+    };
+    pthread_t worker;
+    observe_wait = true;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, wake_then_finish, &context));
+    bool stopped = wait_for_all_components_stopped(2);
+    bool actually_finished = atomic_load(&context.finished);
+    release_observer();
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_FALSE(observer_failed);
+    TEST_ASSERT_TRUE(stopped);
+    TEST_ASSERT_TRUE_MESSAGE(actually_finished, "Condition wake is not component completion");
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT(2, wait_entries);
+    TEST_ASSERT_FALSE_MESSAGE(deadline_changed, "Waking cannot reset the absolute deadline");
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPED, get_component_state(context.id));
+}
+
+void test_repeated_restart_reuses_stopped_slots(void) {
+    int first = -1;
+    for (int generation = 0; generation < MAX_COMPONENTS * 2; generation++) {
+        int id = register_component("restarting_recorder", COMPONENT_OTHER, NULL, 1);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, id);
+        if (generation == 0) first = id;
+        TEST_ASSERT_EQUAL_INT(first, id);
+        TEST_ASSERT_EQUAL_INT(COMPONENT_RUNNING, get_component_state(id));
+        update_component_state(id, COMPONENT_STOPPED);
+        TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
+    }
 }
 
 /* ================================================================
@@ -183,6 +307,9 @@ int main(void) {
     RUN_TEST(test_wait_blocks_until_timeout_when_component_registered);
     RUN_TEST(test_wait_all_stopped_after_marking_stopped);
     RUN_TEST(test_wait_all_stopped_timeout_when_running);
+    RUN_TEST(test_wait_observes_actual_component_completion);
+    RUN_TEST(test_repeated_restart_reuses_stopped_slots);
+    RUN_TEST(test_spurious_wake_does_not_claim_completion);
 
     int result = UNITY_END();
     shutdown_coordinator_cleanup();
