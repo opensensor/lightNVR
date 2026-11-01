@@ -193,11 +193,20 @@ static cg_read_result_t read_bounded(const char *path, char *buffer,
 
 static bool safe_membership(const char *path) {
     if (!path || path[0] != '/') return false;
-    if (strstr(path, "/../") || strcmp(path, "/..") == 0 ||
-        strstr(path, "//")) return false;
+    if (strstr(path, "//")) return false;
     for (const unsigned char *cursor = (const unsigned char *)path;
          *cursor; ++cursor) {
         if (*cursor < 0x20U || *cursor == 0x7fU) return false;
+    }
+    /* Reject any "." or ".." component, including a trailing one such as
+     * "/foo/..", so the membership can never climb out of the cgroup root. */
+    for (const char *component = path; component; ) {
+        while (*component == '/') ++component;
+        size_t length = strcspn(component, "/");
+        if ((length == 1U && component[0] == '.') ||
+            (length == 2U && component[0] == '.' && component[1] == '.'))
+            return false;
+        component = component[length] ? component + length : NULL;
     }
     return strlen(path) < 512U;
 }

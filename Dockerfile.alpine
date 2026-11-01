@@ -1,7 +1,7 @@
 # Stage 1: Build image
 ARG SQLITE_YEAR=2026
-ARG SQLITE_AUTOCONF_VERSION=3530400
-ARG LIBUV_VERSION=1.52.1
+ARG SQLITE_AUTOCONF_VERSION=3540100
+ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
 
 FROM alpine:3.24 AS builder
@@ -21,7 +21,7 @@ RUN apk update && apk add --no-cache \
     yaml-dev \
     linux-headers \
     wget ca-certificates tzdata \
-    bash
+    bash python3
 
 # Build upstream SQLite because Alpine stable can lag the latest SQLite security fixes
 RUN cd /tmp && \
