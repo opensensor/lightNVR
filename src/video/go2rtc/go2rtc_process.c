@@ -1491,6 +1491,12 @@ static void quarantine_override_file(void)
  */
 static void check_and_handle_crash_loop(void)
 {
+    if (g_last_stop_was_managed) {
+        /* Intentional lifecycle restart (e.g., config apply): do not treat as crash. */
+        g_last_stop_was_managed = 0;
+        return;
+    }
+
     if (g_last_start_time == 0) return;  /* first start, nothing to compare */
 
     time_t now = time(NULL);
