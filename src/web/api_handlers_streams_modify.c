@@ -174,6 +174,8 @@ static void redact_url_for_log(const char *url, char *out_url, size_t out_size) 
  * This function performs the actual stream update work in a background thread.
  */
 static void put_stream_worker_locked(put_stream_task_t *task) {
+    pthread_mutex_lock(&g_put_stream_update_mutex);
+
     log_set_thread_context("StreamAPI", task->stream_id);
     log_info("Processing PUT /api/streams/%s in worker thread", task->stream_id);
 
@@ -183,6 +185,7 @@ static void put_stream_worker_locked(put_stream_task_t *task) {
     if (!stream) {
         log_warn("Stream %s no longer exists, dropping queued PUT update", task->stream_id);
         put_stream_task_free(task);
+        pthread_mutex_unlock(&g_put_stream_update_mutex);
         return;
     }
 
@@ -194,6 +197,7 @@ static void put_stream_worker_locked(put_stream_task_t *task) {
     if (update_stream_config(task->stream_id, &task->config) != 0) {
         log_error("Failed to update stream configuration in database for %s", task->stream_id);
         put_stream_task_free(task);
+        pthread_mutex_unlock(&g_put_stream_update_mutex);
         return;
     }
 
