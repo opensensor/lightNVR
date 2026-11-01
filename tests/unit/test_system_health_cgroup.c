@@ -223,7 +223,6 @@ static void test_v1_separate_cpu_paths_and_optional_metrics(void) {
     char proc[512];
     char sys[512];
     const system_health_observation_t *observation;
-    system_health_capability_t memory_current_capability;
 
     TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
     fixture_paths(proc, sizeof(proc), sys, sizeof(sys), "v1separate");
@@ -256,17 +255,20 @@ static void test_v1_separate_cpu_paths_and_optional_metrics(void) {
                                    "container.memory.current_bytes");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
-    memory_current_capability = observation->capability;
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.available_bytes");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
-    TEST_ASSERT_EQUAL(memory_current_capability, observation->capability);
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.available_ratio");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
-    TEST_ASSERT_EQUAL(memory_current_capability, observation->capability);
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.oom_kills_delta");
     TEST_ASSERT_NOT_NULL(observation);
@@ -296,6 +298,7 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     char proc[512];
     char sys[512];
     const system_health_observation_t *observation;
+    const system_health_observation_t *discovery;
 
     /* "/camera/.." would resolve to the cgroup root, whose limits are
      * planted in the fixture; it must be rejected, not followed. */
@@ -304,6 +307,11 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     context.proc_root = proc;
     context.cgroup_root = sys;
     (void)collector.collect(collector.state, &context, &sink);
+
+    discovery = find_observation(items, sink.count, "container.cgroup.discovery");
+    TEST_ASSERT_NOT_NULL(discovery);
+    TEST_ASSERT_FALSE(discovery->value_valid);
+
     observation = find_observation(items, sink.count,
                                    "container.memory.available_ratio");
     TEST_ASSERT_TRUE(observation == NULL || !observation->value_valid);
