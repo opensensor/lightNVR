@@ -159,14 +159,15 @@ int init_daemon(const char *pid_file) {
     }
     log_info("Signal handlers configured");
 
-    // Block SIGPIPE to prevent crashes when writing to closed sockets
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGPIPE);
-    if (pthread_sigmask(SIG_BLOCK, &set, NULL) != 0) {
-        log_warn("Failed to block SIGPIPE: %s", strerror(errno));
+    // Ignore SIGPIPE process-wide to prevent termination on closed socket writes
+    struct sigaction sa_pipe;
+    memset(&sa_pipe, 0, sizeof(sa_pipe));
+    sa_pipe.sa_handler = SIG_IGN;
+    sigemptyset(&sa_pipe.sa_mask);
+    if (sigaction(SIGPIPE, &sa_pipe, NULL) != 0) {
+        log_warn("Failed to ignore SIGPIPE: %s", strerror(errno));
     } else {
-        log_debug("SIGPIPE blocked successfully");
+        log_debug("SIGPIPE ignored process-wide");
     }
 
     // Write PID file
@@ -260,8 +261,9 @@ int write_pid_file(const char *pid_file) {
     
     // Truncate the file to ensure we overwrite any existing content
     if (ftruncate(fd, 0) < 0) {
-        log_warn("Could not truncate PID file: %s", strerror(errno));
-        // Continue anyway
+        log_error("Failed to truncate PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
     }
     
     // Write PID to file
