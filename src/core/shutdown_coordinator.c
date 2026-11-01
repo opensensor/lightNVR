@@ -99,11 +99,32 @@ int register_component(const char *name, component_type_t type, void *context, i
 
     int count = atomic_load(&g_coordinator.component_count);
 
-    // Do not reuse numeric component IDs. Reusing slots can let stale
-    // updates from an old instance modify the state of a newly registered
-    // component that inherited the same slot index.
+    // First, try to reuse a STOPPED slot.  Dead recordings mark their slot
+    // STOPPED but the old code never freed it, so repeated restart cycles
+    // would exhaust all MAX_COMPONENTS slots.  Prefer a slot with the same
+    // name (natural for stream restarts), otherwise take any STOPPED slot.
+    // Slot reuse is intentional (covered by
+    // test_repeated_restart_reuses_stopped_slots): without it a long-running
+    // NVR with flapping cameras eventually cannot register new components.
+    int reuse_idx = -1;
+    for (int i = 0; i < count; i++) {
+        if (atomic_load(&g_coordinator.components[i].state) == COMPONENT_STOPPED) {
+            if (reuse_idx < 0) {
+                reuse_idx = i;  // remember first available STOPPED slot
+            }
+            if (strcmp(g_coordinator.components[i].name, name) == 0) {
+                reuse_idx = i;  // same-name slot is preferred
+                break;
+            }
+        }
+    }
+
     int slot;
-    if (count < MAX_COMPONENTS) {
+    if (reuse_idx >= 0) {
+        slot = reuse_idx;
+        log_info("Reusing STOPPED component slot %d (was '%s') for new component %s",
+                 slot, g_coordinator.components[slot].name, name);
+    } else if (count < MAX_COMPONENTS) {
         slot = count;
         atomic_store(&g_coordinator.component_count, count + 1);
     } else {

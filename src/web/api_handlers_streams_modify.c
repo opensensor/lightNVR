@@ -64,6 +64,7 @@ typedef struct {
     char original_url[MAX_URL_LENGTH];         // Original URL before update
     stream_protocol_t original_protocol;       // Original protocol before update
     bool original_record_audio;                // Original record_audio before update
+    bool original_enabled;                     // Original enabled flag before update
     bool config_changed;                       // Whether config changed
     bool requires_restart;                     // Whether restart is required
     bool is_running;                           // Whether stream was running
@@ -329,14 +330,16 @@ static void *put_stream_worker(void *arg) {
     // Restart stream if configuration changed and either:
     // 1. Critical parameters requiring restart were changed (URL, protocol, record_audio)
     // 2. The stream is currently running AND non-dynamic parameters changed
+    // 3. The stream was just enabled (it is not running, so (2) can't start it)
     // Note: record and streaming_enabled can be toggled dynamically without restart
     // Note: retention and PTZ settings are metadata only and don't require restart
 
     bool enabled_changed_to_true = (!task->original_enabled && task->config.enabled);
 
     if (task->config_changed && (enabled_changed_to_true || task->requires_restart || (task->is_running && task->non_dynamic_config_changed))) {
-        log_info("Restarting stream %s (requires_restart=%s, is_running=%s, non_dynamic_changed=%s)",
+        log_info("Restarting stream %s (enabled_now=%s, requires_restart=%s, is_running=%s, non_dynamic_changed=%s)",
                 task->config.name,
+                enabled_changed_to_true ? "true" : "false",
                 task->requires_restart ? "true" : "false",
                 task->is_running ? "true" : "false",
                 task->non_dynamic_config_changed ? "true" : "false");
@@ -476,6 +479,56 @@ static void *put_stream_worker(void *arg) {
  * This function is called by the multithreading system.
  */
 // put_stream_handler removed - work done via update_stream_task_func
+
+/* Validate a non-blank go2rtc_source_override shared by POST and PUT.
+ * Single-line values are URLs and are not YAML-checked; values containing a
+ * newline are treated as YAML and validated so malformed lists are rejected
+ * with line/column info instead of failing later inside go2rtc.
+ * On failure the error response is set on `res` and false is returned; the
+ * caller still owns (and must free) the request JSON that `src` points into. */
+static bool validate_go2rtc_source_override(const char *src, size_t max_size,
+                                            http_response_t *res) {
+    size_t src_len = strlen(src);
+
+    if (src_len >= max_size) {
+        log_error("go2rtc_source_override too long (%zu bytes, max %zu)",
+                  src_len, max_size - 1);
+        http_response_set_json_error(res, 413,
+            "go2rtc_source_override exceeds size limit");
+        return false;
+    }
+
+    if (strchr(src, '\n') == NULL) {
+        return true;
+    }
+
+    char err[256] = {0};
+    if (yaml_validate_str(src, src_len, err, sizeof(err)) >= 0) {
+        return true;
+    }
+
+    log_warn("Rejecting go2rtc_source_override: %s", err);
+    /* Structured 400 carrying the validator's line/column message. */
+    cJSON *response = cJSON_CreateObject();
+    if (response) {
+        cJSON_AddBoolToObject(response, "valid", false);
+        cJSON *errobj = cJSON_CreateObject();
+        if (errobj) {
+            cJSON_AddStringToObject(errobj, "message", err);
+            cJSON_AddItemToObject(response, "error", errobj);
+        }
+        char *body = cJSON_PrintUnformatted(response);
+        cJSON_Delete(response);
+        if (body) {
+            http_response_set_json(res, 400, body);
+            free(body);
+            return false;
+        }
+    }
+    http_response_set_json_error(res, 400,
+        "go2rtc_source_override is not valid YAML");
+    return false;
+}
 
 /* detection_url is user-supplied and passed to avformat_open_input in the
  * detection stream thread. Restrict the scheme to network protocols so
@@ -937,45 +990,10 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         if (!string_has_non_whitespace(src)) {
             config.go2rtc_source_override[0] = '\0';
         } else {
-            size_t src_len = strlen(src);
-
-            if (src_len >= sizeof(config.go2rtc_source_override)) {
-                log_error("go2rtc_source_override too long (%zu bytes, max %zu)",
-                          src_len, sizeof(config.go2rtc_source_override) - 1);
+            if (!validate_go2rtc_source_override(
+                    src, sizeof(config.go2rtc_source_override), res)) {
                 cJSON_Delete(stream_json);
-                http_response_set_json_error(res, 413,
-                    "go2rtc_source_override exceeds size limit");
                 return;
-            }
-
-            if (strchr(src, '\n') != NULL) {
-                char err[256] = {0};
-                int rc = yaml_validate_str(src, src_len, err, sizeof(err));
-                if (rc < 0) {
-                    log_warn("Rejecting go2rtc_source_override: %s", err);
-                    cJSON_Delete(stream_json);
-                    /* Build a structured 400 response with line/column when
-                     * the validator surfaced them in `err`. */
-                    cJSON *response = cJSON_CreateObject();
-                    if (response) {
-                        cJSON_AddBoolToObject(response, "valid", false);
-                        cJSON *errobj = cJSON_CreateObject();
-                        if (errobj) {
-                            cJSON_AddStringToObject(errobj, "message", err);
-                            cJSON_AddItemToObject(response, "error", errobj);
-                        }
-                        char *body = cJSON_PrintUnformatted(response);
-                        cJSON_Delete(response);
-                        if (body) {
-                            http_response_set_json(res, 400, body);
-                            free(body);
-                            return;
-                        }
-                    }
-                    http_response_set_json_error(res, 400,
-                        "go2rtc_source_override is not valid YAML");
-                    return;
-                }
             }
 
             safe_strcpy(config.go2rtc_source_override, src,
@@ -1321,6 +1339,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    bool original_enabled = config.enabled;
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
     if (enabled && cJSON_IsBool(enabled)) {
         config.enabled = cJSON_IsTrue(enabled);
@@ -1802,15 +1821,10 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             src = "";
         }
 
-        if (strlen(src) >= sizeof(config.go2rtc_source_override)) {
-            send_json_error(res, 400, "go2rtc_source_override exceeds maximum allowed length");
-            cJSON_Delete(root);
-            return;
-        }
-
-        if (src[0] != '\0' && !yaml_validate_str(src)) {
-            send_json_error(res, 400, "Invalid go2rtc_source_override YAML");
-            cJSON_Delete(root);
+        if (src[0] != '\0' &&
+            !validate_go2rtc_source_override(
+                src, sizeof(config.go2rtc_source_override), res)) {
+            cJSON_Delete(stream_json);
             return;
         }
 
@@ -2174,6 +2188,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     safe_strcpy(task->original_url, original_url, MAX_URL_LENGTH, 0);
     task->original_protocol = original_protocol;
     task->original_record_audio = original_record_audio;
+    task->original_enabled = original_enabled;
     task->config_changed = config_changed;
     task->requires_restart = requires_restart;
     task->is_running = is_running;
