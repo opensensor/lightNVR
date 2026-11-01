@@ -393,9 +393,21 @@ if(NOT LLHTTP_FOUND)
         "src/http.c"
         "include/llhttp.h"
     )
+    # SHA-256 hashes must be kept in the same order as LLHTTP_REQUIRED_FILES.
+    # Replace placeholder values below with the exact hashes for ${LLHTTP_DOWNLOAD_REF}.
+    set(LLHTTP_REQUIRED_HASHES
+        "REPLACE_WITH_SHA256_LLHTTP_C"
+        "REPLACE_WITH_SHA256_API_C"
+        "REPLACE_WITH_SHA256_HTTP_C"
+        "REPLACE_WITH_SHA256_LLHTTP_H"
+    )
     set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
 
-    foreach(LLHTTP_FILE IN LISTS LLHTTP_REQUIRED_FILES)
+    list(LENGTH LLHTTP_REQUIRED_FILES LLHTTP_REQUIRED_FILES_LEN)
+    math(EXPR LLHTTP_REQUIRED_FILES_LAST "${LLHTTP_REQUIRED_FILES_LEN} - 1")
+    foreach(LLHTTP_INDEX RANGE 0 ${LLHTTP_REQUIRED_FILES_LAST})
+        list(GET LLHTTP_REQUIRED_FILES ${LLHTTP_INDEX} LLHTTP_FILE)
+        list(GET LLHTTP_REQUIRED_HASHES ${LLHTTP_INDEX} LLHTTP_EXPECTED_HASH)
         set(LLHTTP_LOCAL_PATH "${LLHTTP_DIR}/${LLHTTP_FILE}")
         set(LLHTTP_NEEDS_DOWNLOAD FALSE)
         set(LLHTTP_DOWNLOAD_REASON "not found")
@@ -420,6 +432,7 @@ if(NOT LLHTTP_FOUND)
                 "${LLHTTP_LOCAL_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
+                EXPECTED_HASH "SHA256=${LLHTTP_EXPECTED_HASH}"
             )
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
             list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
