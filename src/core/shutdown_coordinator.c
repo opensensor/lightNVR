@@ -307,69 +307,20 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
         }
     }
     
-    // Wait for the condition with timeout
-    int result = pthread_cond_timedwait(&g_coordinator.all_stopped_cond, 
-                                        &g_coordinator.mutex, &timeout);
-    
+    // A condition wake is only a hint: retain the original absolute deadline
+    // until every component actually reports STOPPED or the wait fails.
+    int result = 0;
+    while (!g_coordinator.all_components_stopped && result == 0) {
+        result = pthread_cond_timedwait(&g_coordinator.all_stopped_cond,
+                                       &g_coordinator.mutex, &timeout);
+    }
     bool all_stopped = g_coordinator.all_components_stopped;
-    
-    // If we timed out, force all components to be marked as stopped
-    if (result != 0 || !all_stopped) {
-        log_warn("Timeout waiting for all components to stop, forcing all components to stopped state");
-        
-        // Force all components to be marked as stopped
-        for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
-            component_state_t state = atomic_load(&g_coordinator.components[i].state);
-            if (state != COMPONENT_STOPPED) {
-                log_warn("Forcing component %s (ID: %d) from state %d to STOPPED", 
-                         g_coordinator.components[i].name, i, state);
-                atomic_store(&g_coordinator.components[i].state, COMPONENT_STOPPED);
-                
-                // If this is a WebSocket component, try to force close it
-                if (strstr(g_coordinator.components[i].name, "websocket") != NULL) {
-                    log_warn("Forcing close of WebSocket component: %s", g_coordinator.components[i].name);
-                    // Just mark it as stopped and let the cleanup continue
-                }
-                
-                // If this is an HLS writer component, try to force close it
-                if (strstr(g_coordinator.components[i].name, "hls_writer") != NULL ||
-                    strstr(g_coordinator.components[i].name, "hls_manager") != NULL) {
-                    log_warn("Forcing close of HLS component: %s", g_coordinator.components[i].name);
-                    // We can't safely access the context here, just mark it as stopped
-                }
-            }
-        }
-        
-        // Mark all components as stopped
-        g_coordinator.all_components_stopped = true;
-        all_stopped = true;
-        
-        // Signal the condition in case any other threads are waiting
-        pthread_cond_broadcast(&g_coordinator.all_stopped_cond);
-    }
-    
     pthread_mutex_unlock(&g_coordinator.mutex);
-    
-    if (all_stopped) {
-        log_info("All components are now in stopped state");
-        return true;
-    } else {
-        // This should never happen now, but keep as a fallback
-        log_error("Failed to mark all components as stopped, this is unexpected");
-        
-        // Log which components are still not stopped
-        pthread_mutex_lock(&g_coordinator.mutex);
-        for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
-            component_state_t state = atomic_load(&g_coordinator.components[i].state);
-            if (state != COMPONENT_STOPPED) {
-                log_error("Component %s (ID: %d) is still in state %d", 
-                         g_coordinator.components[i].name, i, state);
-            }
-        }
-        pthread_mutex_unlock(&g_coordinator.mutex);
-        
-        return false;
+
+    if (!all_stopped) {
+        log_warn("Deadline or wait error before all components stopped (wait result: %d)", result);
     }
+    return all_stopped;
 }
 
 // Get the global shutdown coordinator instance

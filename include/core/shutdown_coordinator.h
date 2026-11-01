@@ -77,7 +77,9 @@ bool is_shutdown_initiated(void);
 bool is_coordinator_destroyed(void);
 
 // Wait for all components to stop (with timeout)
-// Returns true if all components stopped, false if timeout
+// While active, returns true only after all components report stopped. Timeout/wait failure
+// returns false without changing live component states; spurious wakes retain
+// the original absolute deadline.
 bool wait_for_all_components_stopped(int timeout_seconds);
 
 // Get the global shutdown coordinator instance
