@@ -144,8 +144,9 @@ int linux_cgroup_parse_cpu_stat(const char *text,
     throttled_usec = keyed_u64(text, "throttled_usec", &parsed.throttled_usec);
     if (usage != 0) return usage > 0 ? 1 : -1;
     if (periods < 0 || throttled < 0 || throttled_usec < 0) return -1;
-    parsed.throttle_present = periods == 0 && throttled == 0 &&
-                              throttled_usec == 0;
+    /* keyed_u64 returns 0 when a field is present. */
+    parsed.throttle_present =
+        (periods == 0) && (throttled == 0) && (throttled_usec == 0);
     if ((periods == 0) != (throttled == 0) ||
         (periods == 0) != (throttled_usec == 0)) return -1;
     /* Some older kernels omit all throttle accounting; preserve that fact. */
