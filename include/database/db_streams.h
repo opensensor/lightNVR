@@ -40,6 +40,14 @@ uint64_t add_stream_config(const stream_config_t *stream);
 int update_stream_config(const char *name, const stream_config_t *stream);
 
 /**
+ * Set a stream's privacy mode (the only writer of privacy_mode for an
+ * existing stream; update_stream_config() preserves the stored value).
+ *
+ * @return 0 on success, -1 on error or if the stream does not exist
+ */
+int set_stream_privacy_mode(const char *name, bool privacy_mode);
+
+/**
  * Delete a stream configuration from the database (soft delete by disabling)
  *
  * @param name Stream name to delete

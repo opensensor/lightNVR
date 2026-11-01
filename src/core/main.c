@@ -34,6 +34,7 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "core/shutdown_coordinator.h"
+#include "core/signal_safe.h"
 #include "core/curl_init.h"
 #include "core/event_bus.h"
 #include "core/event_identity.h"
@@ -121,27 +122,11 @@ bool daemon_mode = false;
 // Global flag for container mode (detected at startup)
 static bool container_mode = false;
 
-// Declare a global variable to store the web server socket
-int web_server_socket = -1;
-
 // global config
 config_t config;
 
 // Global HTTP server handle
 http_server_handle_t http_server = NULL;
-
-// Function to set the web server socket
-void set_web_server_socket(int socket_fd) {
-    web_server_socket = socket_fd;
-}
-
-// Async-signal-safe write to stderr
-// Note: We cast to void to suppress the unused result warning
-static void signal_safe_write(const char *msg) {
-    if (msg) {
-        (void)write(STDERR_FILENO, msg, strlen(msg));
-    }
-}
 
 // Improved signal handler with phased shutdown approach
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
@@ -160,8 +145,6 @@ static void signal_handler(int sig) {
     // Check if we're already shutting down
     // Use volatile sig_atomic_t to ensure visibility across signal invocations
     static volatile sig_atomic_t shutdown_in_progress = 0;
-    static volatile sig_atomic_t signal_count = 0;
-    signal_count++;
 
     if (shutdown_in_progress) {
         // Second signal during shutdown - force exit immediately
@@ -193,11 +176,8 @@ static void signal_handler(int sig) {
 
     // The dedicated shutdown watchdog owns the deadline. Process-global
     // alarm timers cannot safely implement independent thread timeouts.
-    // This handler only sets flags and closes the listening socket.
-    if (web_server_socket >= 0) {
-        close(web_server_socket);
-        web_server_socket = -1;
-    }
+    // This handler only sets flags; the HTTP server (libuv) closes its own
+    // listening socket during orderly shutdown on the main thread.
 }
 
 // Alarm signal handler -- MUST ONLY use async-signal-safe functions.
@@ -1577,13 +1557,7 @@ cleanup:
                 // Update component state
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "detection_thread_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }
@@ -1616,13 +1590,7 @@ cleanup:
             if (config.streams[i].name[0] != '\0' && config.streams[i].record) {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "mp4_writer_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }
@@ -1638,13 +1606,7 @@ cleanup:
             if (config.streams[i].name[0] != '\0') {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "hls_writer_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }
