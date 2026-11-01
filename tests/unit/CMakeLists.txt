@@ -224,7 +224,8 @@ target_link_options(test_put_stream_launch_failure PRIVATE
     "-Wl,--wrap=go2rtc_integration_unregister_stream"
     "-Wl,--wrap=go2rtc_integration_reload_stream"
     "-Wl,--wrap=go2rtc_api_remove_stream"
-    "-Wl,--wrap=go2rtc_stream_register_substream")
+    "-Wl,--wrap=go2rtc_stream_register_substream"
+    "-Wl,--wrap=go2rtc_integration_restart_process")
 set_tests_properties(test_put_stream_launch_failure PROPERTIES TIMEOUT 15)
 add_layer2_test(test_api_handlers_investigations)
 # Counts SQLite VM steps to keep investigation search bounded by its window.

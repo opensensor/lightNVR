@@ -339,6 +339,67 @@ void test_publish_block_emits_each_destination_and_skips_invalid(void) {
     remove_tree(root_dir);
 }
 
+void test_privacy_mode_streams_are_not_written_to_yaml(void) {
+    load_default_config(&g_config);
+    g_config.go2rtc_api_port = 31984;
+
+    char root_template[] = "/tmp/lightnvr-go2rtc-privacy-XXXXXX";
+    char *root_dir = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(root_dir);
+    char config_dir[256];
+    snprintf(config_dir, sizeof(config_dir), "%s/go2rtc", root_dir);
+    char db_path[256];
+    snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", root_dir);
+    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+
+    stream_config_t open_cam;
+    memset(&open_cam, 0, sizeof(open_cam));
+    snprintf(open_cam.name, sizeof(open_cam.name), "yard");
+    snprintf(open_cam.url, sizeof(open_cam.url), "rtsp://10.0.0.7/live");
+    open_cam.enabled = true;
+    snprintf(open_cam.go2rtc_source_override, sizeof(open_cam.go2rtc_source_override),
+             "rtsp://10.0.0.7/override");
+    snprintf(open_cam.publish_url, sizeof(open_cam.publish_url),
+             "rtmp://a.example/live/yard");
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&open_cam));
+
+    stream_config_t private_cam = open_cam;
+    snprintf(private_cam.name, sizeof(private_cam.name), "bedroom");
+    snprintf(private_cam.url, sizeof(private_cam.url), "rtsp://10.0.0.8/live");
+    snprintf(private_cam.go2rtc_source_override, sizeof(private_cam.go2rtc_source_override),
+             "rtsp://10.0.0.8/override");
+    snprintf(private_cam.publish_url, sizeof(private_cam.publish_url),
+             "rtmp://a.example/live/bedroom");
+    private_cam.privacy_mode = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&private_cam));
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode("bedroom", true));
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config(
+        "/bin/true", config_dir, g_config.go2rtc_api_port));
+    char config_path[PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+    char *contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(contents);
+    TEST_ASSERT_NOT_NULL(strstr(contents, "\"yard\": rtsp://10.0.0.7/override"));
+    TEST_ASSERT_NOT_NULL(strstr(contents, "rtmp://a.example/live/yard"));
+    TEST_ASSERT_NULL_MESSAGE(strstr(contents, "bedroom"),
+        "Privacy-mode stream must not be served or restreamed from go2rtc.yaml");
+    free(contents);
+
+    /* Clearing privacy brings both entries back on the next generation. */
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode("bedroom", false));
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config(
+        "/bin/true", config_dir, g_config.go2rtc_api_port));
+    contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(contents);
+    TEST_ASSERT_NOT_NULL(strstr(contents, "\"bedroom\": rtsp://10.0.0.8/override"));
+    TEST_ASSERT_NOT_NULL(strstr(contents, "rtmp://a.example/live/bedroom"));
+    free(contents);
+
+    shutdown_database();
+    remove_tree(root_dir);
+}
+
 int main(int argc, char **argv) {
     init_logger();
 
@@ -360,5 +421,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_base_config_has_no_user_override_append_block);
     RUN_TEST(test_override_helpers_are_linkable_stubs);
     RUN_TEST(test_publish_block_emits_each_destination_and_skips_invalid);
+    RUN_TEST(test_privacy_mode_streams_are_not_written_to_yaml);
     return UNITY_END();
 }
