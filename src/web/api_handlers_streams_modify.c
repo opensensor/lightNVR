@@ -170,10 +170,11 @@ static void redact_url_for_log(const char *url, char *out_url, size_t out_size) 
  *
  * This function performs the actual stream update work in a background thread.
  */
-static void put_stream_worker(put_stream_task_t *task) {
+static void *put_stream_worker(void *arg) {
+    put_stream_task_t *task = (put_stream_task_t *)arg;
     if (!task) {
         log_error("Invalid PUT stream task");
-        return;
+        return NULL;
     }
 
     log_set_thread_context("StreamAPI", task->stream_id);
@@ -2253,10 +2254,11 @@ typedef struct {
  * It handles stopping the stream, detection threads, removing from memory,
  * database deletion, and go2rtc unregistration.
  */
-static void delete_stream_worker(delete_stream_task_t *task) {
+static void *delete_stream_worker(void *arg) {
+    delete_stream_task_t *task = (delete_stream_task_t *)arg;
     if (!task) {
         log_error("Invalid DELETE stream task");
-        return;
+        return NULL;
     }
 
     log_set_thread_context("StreamAPI", task->stream_id);
@@ -2293,7 +2295,7 @@ static void delete_stream_worker(delete_stream_task_t *task) {
     if (remove_stream(task->stream) != 0) {
         log_error("Failed to delete stream from memory: %s", task->stream_id);
         free(task);
-        return;
+        return NULL;
     }
 
     // Delete the stream from the database (permanently or just disable)
@@ -2302,7 +2304,7 @@ static void delete_stream_worker(delete_stream_task_t *task) {
                 task->permanent_delete ? "permanently delete" : "disable",
                 task->stream_id);
         free(task);
-        return;
+        return NULL;
     }
 
     // Unregister stream from go2rtc
@@ -2316,6 +2318,7 @@ static void delete_stream_worker(delete_stream_task_t *task) {
             task->stream_id);
 
     free(task);
+    return NULL;
 }
 
 /**
