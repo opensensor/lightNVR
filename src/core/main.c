@@ -34,6 +34,7 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "core/shutdown_coordinator.h"
+#include "core/signal_safe.h"
 #include "core/curl_init.h"
 #include "core/event_bus.h"
 #include "core/event_identity.h"
@@ -121,27 +122,11 @@ bool daemon_mode = false;
 // Global flag for container mode (detected at startup)
 static bool container_mode = false;
 
-// Declare a global variable to store the web server socket
-int web_server_socket = -1;
-
 // global config
 config_t config;
 
 // Global HTTP server handle
 http_server_handle_t http_server = NULL;
-
-// Function to set the web server socket
-void set_web_server_socket(int socket_fd) {
-    web_server_socket = socket_fd;
-}
-
-// Async-signal-safe write to stderr
-// Note: We cast to void to suppress the unused result warning
-static void signal_safe_write(const char *msg, size_t len) {
-    if (msg && len > 0) {
-        (void)write(STDERR_FILENO, msg, len);
-    }
-}
 
 // Improved signal handler with phased shutdown approach
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
@@ -160,14 +145,11 @@ static void signal_handler(int sig) {
     // Check if we're already shutting down
     // Use volatile sig_atomic_t to ensure visibility across signal invocations
     static volatile sig_atomic_t shutdown_in_progress = 0;
-    static volatile sig_atomic_t signal_count = 0;
-    signal_count++;
 
     if (shutdown_in_progress) {
         // Second signal during shutdown - force exit immediately
         // Using _exit() is async-signal-safe
-        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n",
-                         sizeof("[SIGNAL] Received signal during shutdown, forcing immediate exit\n") - 1);
+        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
         _exit(1);
     }
 
@@ -175,8 +157,7 @@ static void signal_handler(int sig) {
     shutdown_in_progress = 1;
 
     // Write to stderr (async-signal-safe)
-    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n",
-                     sizeof("[SIGNAL] Received shutdown signal, initiating shutdown...\n") - 1);
+    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
 
     // IMPORTANT: Do NOT call initiate_shutdown() here!
     // initiate_shutdown() uses pthread_mutex_lock() and log_info() which are NOT async-signal-safe
@@ -195,11 +176,8 @@ static void signal_handler(int sig) {
 
     // The dedicated shutdown watchdog owns the deadline. Process-global
     // alarm timers cannot safely implement independent thread timeouts.
-    // This handler only sets flags and closes the listening socket.
-    if (web_server_socket >= 0) {
-        close(web_server_socket);
-        web_server_socket = -1;
-    }
+    // This handler only sets flags; the HTTP server (libuv) closes its own
+    // listening socket during orderly shutdown on the main thread.
 }
 
 // Alarm signal handler -- MUST ONLY use async-signal-safe functions.
@@ -209,8 +187,7 @@ static void signal_handler(int sig) {
 // Shutdown deadlines belong to start_shutdown_watchdog_thread().
 static void alarm_handler(int sig) {
     (void)sig;
-    signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n",
-                     sizeof("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n") - 1);
+    signal_safe_write("[SIGNAL] Stray SIGALRM caught at top level (harmless, ignored)\n");
 }
 
 // How long a graceful shutdown gets before the watchdog force-kills the

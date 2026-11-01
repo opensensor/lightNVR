@@ -27,6 +27,7 @@
 #include "core/daemon.h"
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
+#include "core/signal_safe.h"
 #include "utils/strings.h"
 
 extern _Atomic bool running; // Reference to the global variable defined in main.c
@@ -141,16 +142,6 @@ int init_daemon(const char *pid_file) {
     return fd;
 }
 
-// Async-signal-safe write helper for daemon signal handler
-static void daemon_signal_safe_write(const char *msg) {
-    // write() is async-signal-safe
-    if (msg) {
-        size_t len = 0;
-        while (msg[len] != '\0') len++;
-        write(STDERR_FILENO, msg, len);
-    }
-}
-
 // Signal handler for daemon
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
 // Only use: write(), _exit(), alarm(), close(), shutdown(), atomic operations on sig_atomic_t
@@ -159,7 +150,7 @@ static void daemon_signal_handler(int sig) {
     case SIGTERM:
     case SIGINT:
         // Use write() instead of log_info() - it's async-signal-safe
-        daemon_signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
+        signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
 
         // Set global flag to stop main loop
         // This is safe because running is declared as volatile bool
@@ -176,15 +167,6 @@ static void daemon_signal_handler(int sig) {
         // is async-signal-safe (atomic store only).
         request_background_abort();
 
-        // Also signal the web server to shut down
-        extern int web_server_socket;
-        if (web_server_socket >= 0) {
-            // shutdown() and close() are async-signal-safe
-            shutdown(web_server_socket, SHUT_RDWR);
-            close(web_server_socket);
-            web_server_socket = -1; // Update the global reference
-        }
-
         // main.c's dedicated shutdown watchdog owns the deadline. Do not
         // introduce a process-global alarm shared with unrelated threads.
         break;
@@ -192,13 +174,13 @@ static void daemon_signal_handler(int sig) {
     case SIGHUP:
         // Just write a message, don't try to reload config in signal handler
         // Config reload is NOT async-signal-safe
-        daemon_signal_safe_write("[DAEMON] Received SIGHUP signal\n");
+        signal_safe_write("[DAEMON] Received SIGHUP signal\n");
         break;
 
     case SIGALRM:
         // Compatibility for externally delivered SIGALRM; HLS cleanup no
         // longer arms alarms or changes the process signal dispositions.
-        daemon_signal_safe_write("[DAEMON] Stray SIGALRM caught at top level (harmless, ignored)\n");
+        signal_safe_write("[DAEMON] Stray SIGALRM caught at top level (harmless, ignored)\n");
         break;
 
     default:
