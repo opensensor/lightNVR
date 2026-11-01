@@ -1363,24 +1363,73 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             return;
         }
         log_info("Successfully set privacy_mode=%d for stream %s", enable_privacy ? 1 : 0, stream_id);
+
+        char sub_name[MAX_STREAM_NAME + 8];
+        snprintf(sub_name, sizeof(sub_name), "%s_sub", stream_id);
+        bool has_sub_stream = config.sub_stream_url[0] != '\0';
+        // Whether the stream is (enable) no longer / (disable) again served by go2rtc
+        bool go2rtc_applied = true;
+
         if (enable_privacy) {
-            // Unregister from go2rtc so clients cannot connect
-            go2rtc_integration_unregister_stream(stream_id);
-            log_info("Unregistered stream %s from go2rtc due to privacy mode", stream_id);
+            // Unregister the main stream and its sub-stream so clients cannot
+            // connect through either. If go2rtc is not running nothing is being
+            // served, and startup sync / the health monitor skip privacy-mode
+            // streams, so only a failure against a live go2rtc is reported.
+            if (go2rtc_stream_is_ready()) {
+                if (!go2rtc_integration_unregister_stream(stream_id)) {
+                    go2rtc_applied = false;
+                }
+                if (has_sub_stream && !go2rtc_api_remove_stream(sub_name)) {
+                    go2rtc_applied = false;
+                }
+            }
+            if (go2rtc_applied) {
+                log_info("Stream %s is no longer served by go2rtc (privacy mode)", stream_id);
+            } else {
+                log_error("Privacy mode saved for stream %s but go2rtc still serves it", stream_id);
+            }
+        } else if (!config.enabled) {
+            // A disabled stream must stay unregistered; clearing privacy only
+            // updates the saved flag. Enabling the stream registers it later.
+            log_info("Privacy mode cleared for disabled stream %s; not registering with go2rtc", stream_id);
         } else {
-            // Resume: re-register with go2rtc
+            // Resume: re-register with go2rtc. If this fails the health monitor
+            // re-adds missing enabled streams, so report it without failing.
             if (go2rtc_integration_reload_stream(stream_id)) {
                 log_info("Re-registered stream %s with go2rtc after privacy mode cleared", stream_id);
             } else {
+                go2rtc_applied = false;
                 log_warn("Failed to re-register stream %s with go2rtc", stream_id);
+            }
+            if (has_sub_stream &&
+                !go2rtc_stream_register_substream(
+                    sub_name, config.sub_stream_url,
+                    config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
+                    config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
+                    config.protocol)) {
+                go2rtc_applied = false;
+                log_warn("Failed to re-register sub-stream %s with go2rtc", sub_name);
             }
         }
 
         cJSON_Delete(stream_json);
+
+        if (enable_privacy && !go2rtc_applied) {
+            // The saved flag is on (and keeps go2rtc from re-adding the stream),
+            // but the camera is still viewable right now. Do not report success;
+            // retrying the request repeats the unregister.
+            http_response_set_json_error(
+                res, 502,
+                "Privacy mode was saved but the stream could not be removed from go2rtc; retry");
+            return;
+        }
+
         cJSON *response = cJSON_CreateObject();
         if (response) {
             cJSON_AddBoolToObject(response, "success", true);
             cJSON_AddBoolToObject(response, "privacy_mode", enable_privacy);
+            cJSON_AddBoolToObject(response, "stream_registered",
+                                  !enable_privacy && config.enabled && go2rtc_applied);
             char *response_str = cJSON_PrintUnformatted(response);
             cJSON_Delete(response);
             if (response_str) {
