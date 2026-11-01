@@ -1211,7 +1211,7 @@ int main(int argc, char *argv[]) {
                         config.streams[i].name, model_path);
             } else if (config.streams[i].detection_model[0] != '/') {
                 // Relative path, use configured models path from INI if it exists
-                const char *models_dir = (config.models_path && strlen(config.models_path) > 0)
+                const char *models_dir = config.models_path[0] != '\0'
                                              ? config.models_path
                                              : "/etc/lightnvr/models";
                 snprintf(model_path, sizeof(model_path), "%s/%s", models_dir, config.streams[i].detection_model);
