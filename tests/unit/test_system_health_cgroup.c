@@ -257,16 +257,22 @@ static void test_v1_separate_cpu_paths_and_optional_metrics(void) {
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
     memory_current_capability = observation->capability;
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.available_bytes");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
     TEST_ASSERT_EQUAL(memory_current_capability, observation->capability);
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.available_ratio");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_FALSE(observation->value_valid);
     TEST_ASSERT_EQUAL(memory_current_capability, observation->capability);
+    TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED,
+                      observation->capability);
     observation = find_observation(items, sink.count,
                                    "container.memory.oom_kills_delta");
     TEST_ASSERT_NOT_NULL(observation);
