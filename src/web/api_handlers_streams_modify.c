@@ -2345,8 +2345,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
  * @brief Structure for DELETE stream background task
  */
 typedef struct {
-    stream_handle_t stream;                    // Stream handle
-    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID
+    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID (durable key)
     bool permanent_delete;                     // Whether to permanently delete
 } delete_stream_task_t;
 
