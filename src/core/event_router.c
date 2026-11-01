@@ -194,9 +194,35 @@ static void timezone_clear(compiled_timezone_t *timezone) {
     memset(timezone, 0, sizeof(*timezone));
 }
 
+static bool timezone_name_is_safe(const char *name) {
+    if (!name || name[0] == '\0' || name[0] == '/') return false;
+
+    const char *component = name;
+    const char *p = name;
+    while (1) {
+        if (*p == '/' || *p == '\0') {
+            size_t len = (size_t)(p - component);
+            if (len == 0) return false; /* empty component ("//" or trailing "/") */
+            if ((len == 1 && component[0] == '.') ||
+                (len == 2 && component[0] == '.' && component[1] == '.')) {
+                return false;
+            }
+            if (*p == '\0') break;
+            component = p + 1;
+        } else if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-' ||
+                     *p == '+' || *p == '.' || *p == '/')) {
+            return false;
+        }
+        p++;
+    }
+
+    return true;
+}
+
 static bool timezone_load_tzif(const char *name,
                                compiled_timezone_t *timezone) {
     if (!name || !timezone) return false;
+    if (!timezone_name_is_safe(name)) return false;
     memset(timezone, 0, sizeof(*timezone));
     if (strcmp(name, "UTC") == 0 || strcmp(name, "Etc/UTC") == 0 ||
         strcmp(name, "GMT") == 0) {
@@ -780,7 +806,9 @@ static void maybe_prune_suppression_locked(int64_t now) {
 
 event_router_result_t event_router_evaluate_delivery(
     const event_envelope_t *event, event_route_delivery_plan_t *plan) {
-    if (plan) memset(plan, 0, sizeof(*plan));
+    /* Release entries from a reused plan; clear() also zeroes it. Callers
+     * must pass a zero-initialized or previously cleared plan. */
+    event_route_delivery_plan_clear(plan);
     if (!event || event_envelope_validate(event, NULL, 0) != 0) {
         return EVENT_ROUTER_ERROR;
     }
