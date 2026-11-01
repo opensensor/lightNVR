@@ -258,6 +258,18 @@ add_layer2_test(test_api_handlers_storage_targets CI_UNIT)
 add_layer2_test(test_api_handlers_storage_policies CI_UNIT)
 add_layer2_test(test_db_transactions CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_maintenance CI_UNIT CI_SANITIZER)
+add_layer2_test(test_db_backup_cleanup CI_UNIT CI_SANITIZER)
+target_link_options(test_db_backup_cleanup PRIVATE -Wl,--wrap=lstat -Wl,--wrap=fstatat
+    -Wl,--wrap=openat -Wl,--wrap=close -Wl,--wrap=fstat -Wl,--wrap=mkdirat
+    -Wl,--wrap=syscall -Wl,--wrap=unlinkat
+    -Wl,--wrap=readdir -Wl,--wrap=lightnvr_uuid_generate_v4)
+set_tests_properties(test_db_backup_cleanup PROPERTIES TIMEOUT 30)
+add_layer3_test(test_db_backup_retention_identity CI_UNIT CI_SANITIZER)
+target_link_options(test_db_backup_retention_identity PRIVATE -Wl,--wrap=stat -Wl,--wrap=fstat
+    -Wl,--wrap=openat -Wl,--wrap=close -Wl,--wrap=opendir -Wl,--wrap=closedir
+    -Wl,--wrap=readdir -Wl,--wrap=realloc -Wl,--wrap=strdup
+    -Wl,--wrap=syscall -Wl,--wrap=unlinkat)
+set_tests_properties(test_db_backup_retention_identity PROPERTIES TIMEOUT 30)
 add_layer2_test(test_db_query_builder CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_system_settings)
 add_layer2_test(test_logger_json CI_UNIT CI_SANITIZER)
