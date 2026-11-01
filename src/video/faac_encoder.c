@@ -69,8 +69,13 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
     params.rate_control = FAAC_RC_ABR;
 
     status = faac_encoder_open(&params, &adapter->enc);
-    if (status != FAAC_OK || !adapter->enc) {
+    if (status != FAAC_OK) {
         log_error("faac_encoder_open failed: %s", faac_strerror(status));
+        free(adapter);
+        return NULL;
+    }
+    if (!adapter->enc) {
+        log_error("faac_encoder_open failed: returned NULL encoder handle despite FAAC_OK");
         free(adapter);
         return NULL;
     }
