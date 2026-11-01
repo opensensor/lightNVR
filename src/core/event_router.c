@@ -780,7 +780,10 @@ static void maybe_prune_suppression_locked(int64_t now) {
 
 event_router_result_t event_router_evaluate_delivery(
     const event_envelope_t *event, event_route_delivery_plan_t *plan) {
-    if (plan) memset(plan, 0, sizeof(*plan));
+    if (plan) {
+        event_route_delivery_plan_clear(plan);
+        memset(plan, 0, sizeof(*plan));
+    }
     if (!event || event_envelope_validate(event, NULL, 0) != 0) {
         return EVENT_ROUTER_ERROR;
     }
