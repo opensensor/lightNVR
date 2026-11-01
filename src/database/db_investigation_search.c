@@ -113,10 +113,30 @@ static int build_where(const investigation_search_query_t *query,
                        bool include_cursor, bool include_spatial_predicate,
                        sql_builder_t *builder) {
     if (!query || !builder || query->camera_count < 1) return -1;
+    /*
+     * Time window. A row matches when it starts inside [start, end], or it is
+     * an external-motion interval that started earlier and is still open or
+     * ends at/after start. That OR has no usable lower bound on timestamp, so
+     * on its own SQLite walks every historical detection of the selected
+     * cameras (millions of rows on long-running installs). Derive the lower
+     * bound once instead: the earlier of start and the earliest overlapping
+     * external-motion interval (two small lookups on
+     * idx_detections_external_motion_camera_end). The OR is kept as an exact
+     * filter; the bound only lets the main scan use an index range.
+     */
     sql_append(builder, " WHERE d.camera_uuid IN (");
     append_placeholders(builder, query->camera_count);
+    sql_append(builder, ") AND d.timestamp <= ? AND d.timestamp >= MIN(?, "
+               "COALESCE((SELECT MIN(ext.timestamp) FROM detections ext "
+               "WHERE ext.source = 'external_motion' AND ext.camera_uuid IN (");
+    append_placeholders(builder, query->camera_count);
+    sql_append(builder, ") AND ext.event_end_time >= ? AND ext.timestamp < ?), ?), "
+               "COALESCE((SELECT MIN(ext.timestamp) FROM detections ext "
+               "WHERE ext.source = 'external_motion' AND ext.camera_uuid IN (");
+    append_placeholders(builder, query->camera_count);
     sql_append(builder,
-               ") AND d.timestamp <= ? AND (d.timestamp >= ? OR "
+               ") AND ext.event_end_time IS NULL AND ext.timestamp < ?), ?))"
+               " AND (d.timestamp >= ? OR "
                "(d.source = 'external_motion' AND "
                "COALESCE(d.event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?))");
     if (query->label_count > 0) {
@@ -180,16 +200,30 @@ static int bind_where(sqlite3_stmt *statement,
                       const investigation_search_query_t *query,
                       bool include_cursor, bool include_spatial_predicate,
                       int parameter) {
+    const sqlite3_int64 start = (sqlite3_int64)query->start_time;
+    /* Must mirror the time-window SQL in build_where(). */
     for (int i = 0; i < query->camera_count; i++) {
         sqlite3_bind_text(statement, parameter++, query->camera_uuids[i], -1,
                           SQLITE_STATIC);
     }
     sqlite3_bind_int64(statement, parameter++,
                        (sqlite3_int64)query->end_time);
-    sqlite3_bind_int64(statement, parameter++,
-                       (sqlite3_int64)query->start_time);
-    sqlite3_bind_int64(statement, parameter++,
-                       (sqlite3_int64)query->start_time);
+    sqlite3_bind_int64(statement, parameter++, start);   /* MIN(start, */
+    for (int i = 0; i < query->camera_count; i++) {      /* closed overlap */
+        sqlite3_bind_text(statement, parameter++, query->camera_uuids[i], -1,
+                          SQLITE_STATIC);
+    }
+    sqlite3_bind_int64(statement, parameter++, start);   /* end >= start */
+    sqlite3_bind_int64(statement, parameter++, start);   /* ts < start */
+    sqlite3_bind_int64(statement, parameter++, start);   /* COALESCE */
+    for (int i = 0; i < query->camera_count; i++) {      /* open interval */
+        sqlite3_bind_text(statement, parameter++, query->camera_uuids[i], -1,
+                          SQLITE_STATIC);
+    }
+    sqlite3_bind_int64(statement, parameter++, start);   /* ts < start */
+    sqlite3_bind_int64(statement, parameter++, start);   /* COALESCE */
+    sqlite3_bind_int64(statement, parameter++, start);   /* exact filter */
+    sqlite3_bind_int64(statement, parameter++, start);
     for (int i = 0; i < query->label_count; i++) {
         sqlite3_bind_text(statement, parameter++, query->labels[i], -1,
                           SQLITE_STATIC);
@@ -304,12 +338,18 @@ static int load_results(sqlite3 *database,
         "COALESCE(r.id, 0), CASE WHEN r.id IS NOT NULL "
         "AND r.is_complete = 1 AND r.end_time IS NOT NULL THEN 1 ELSE 0 END, "
         CAPTURE_METHOD_RESULT_SQL ", COALESCE(r.protected, 0) "
-        "FROM detections d LEFT JOIN recordings r ON r.id = "
-        ASSOCIATED_RECORDING_ID_SQL;
+        /* Page the detections first, then resolve recordings only for the
+         * returned rows: the associated-recording lookup is a correlated
+         * subquery, and joining before ORDER BY/LIMIT ran it for every
+         * detection in the range. */
+        "FROM (SELECT d.* FROM detections d";
+    static const char *suffix =
+        " ORDER BY d.timestamp DESC, d.id DESC LIMIT ?) d "
+        "LEFT JOIN recordings r ON r.id = " ASSOCIATED_RECORDING_ID_SQL
+        " ORDER BY d.timestamp DESC, d.id DESC;";
     sqlite3_stmt *statement = NULL;
     int next_parameter = prepare_with_where(
-        database, prefix, query, true, true,
-        " ORDER BY d.timestamp DESC, d.id DESC LIMIT ?;", 1, &statement);
+        database, prefix, query, true, true, suffix, 1, &statement);
     if (next_parameter < 0) return -1;
     sqlite3_bind_int(statement, next_parameter, query->limit + 1);
 
