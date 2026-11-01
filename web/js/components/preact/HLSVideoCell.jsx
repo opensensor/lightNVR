@@ -24,8 +24,9 @@ import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
+import { getNativeFullscreenElement } from './fullscreenApi.js';
 import {
-  shouldEnterFullscreenFromTap,
+  shouldToggleFullscreenFromTap,
   shouldToggleFullscreenFromDoubleClick,
 } from './useAlwaysFullscreenOnTap.js';
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
@@ -738,7 +739,8 @@ export function HLSVideoCell({
       onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
         if (mobileGestures.onClick(event)) return;
-        if (shouldEnterFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed)) {
+        if (shouldToggleFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed,
+          cellRef.current, getNativeFullscreenElement())) {
           onToggleFullscreen(stream.name, event, cellRef.current);
         }
       }}

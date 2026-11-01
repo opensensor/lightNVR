@@ -1,7 +1,7 @@
 import { getLocalesUrl, useI18n } from '../../../i18n.js';
 
 export default function LanguageSelector({ mobile = false }) {
-  const { t, locale, localePreference, setLocalePreference, availableLocales } = useI18n();
+  const { t, locale, setLocalePreference, availableLocales } = useI18n();
 
   const renderLocaleContent = (item, menu = false) => (
     <>

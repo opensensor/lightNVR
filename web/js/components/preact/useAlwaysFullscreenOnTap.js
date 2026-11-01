@@ -32,10 +32,26 @@ function isFullscreenGestureTarget(event) {
     && target.closest('button, a, input, select, textarea, [role="button"], [role="menu"]'));
 }
 
-export function shouldEnterFullscreenFromTap(event, enabled, zoomed = false, documentObject = globalThis.document) {
-  if (!enabled || zoomed || documentObject?.fullscreenElement || documentObject?.webkitFullscreenElement) {
-    return false;
-  }
+function currentFullscreenElement(documentObject) {
+  return documentObject?.fullscreenElement || documentObject?.webkitFullscreenElement || null;
+}
+
+/**
+ * With "fullscreen on single tap" enabled a tap is a toggle: it enters
+ * fullscreen and, once this tile is fullscreen, the next tap exits again.
+ * (Double-click is disabled in this mode, so without this the only way out
+ * was Escape or the toolbar button.) A tap never exits when something else
+ * owns fullscreen, and taps on controls or a zoomed tile are left alone.
+ */
+export function shouldToggleFullscreenFromTap(
+  event,
+  enabled,
+  zoomed = false,
+  cellElement = null,
+  fullscreenElement = currentFullscreenElement(globalThis.document)
+) {
+  if (!enabled || zoomed) return false;
+  if (fullscreenElement && fullscreenElement !== cellElement) return false;
   return isFullscreenGestureTarget(event);
 }
 

@@ -12,7 +12,7 @@ const TOOL_KEYS = { select: 'V', room: 'R', wall: 'W', area: 'A', label: 'L' };
 /** Floating tool strip shown over the canvas while a layout is being edited. */
 export function PlanSketchTools({
   tool, onToolChange, canUndo, canRedo, onUndo, onRedo,
-  snap, onSnapChange, shapeCount, t,
+  snap, onSnapChange, toolLock, onToolLockChange, shapeCount, t,
 }) {
   const limitReached = shapeCount >= SKETCH_LIMITS.maxShapes;
   return (
@@ -37,8 +37,13 @@ export function PlanSketchTools({
           title={`${t('live.plan.sketch.redo')} (Ctrl+Shift+Z)`}>↷</button>
         <button type="button" className={snap ? 'is-active' : ''}
           aria-pressed={snap ? 'true' : 'false'}
-          title={t('live.plan.sketch.snap')}
+          title={`${t('live.plan.sketch.snap')} (G)`}
           onClick={() => onSnapChange(!snap)}>⌗</button>
+        <button type="button" className={toolLock ? 'is-active' : ''}
+          aria-pressed={toolLock ? 'true' : 'false'}
+          aria-label={t('live.plan.sketch.toolLock')}
+          title={`${t('live.plan.sketch.toolLock')} (Q)`}
+          onClick={() => onToolLockChange(!toolLock)}>{toolLock ? '🔒' : '🔓'}</button>
       </div>
       <p className="live-plan-sketch-hint">
         {limitReached
@@ -93,16 +98,50 @@ function updatePoint(shape, index, axis, value) {
  * keyboard user select shapes without pointing at them.
  */
 export function PlanSketchInspector({
-  uid, shapes, selectedShape, t, onSelect, onChange, onDelete, onDuplicate, onDeselect,
+  uid, shapes, selectedShape, selectedIds, selectionCount = 0, t,
+  onSelect, onChange, onRecolorSelection, onDelete, onDuplicate, onDeselect,
 }) {
   const shape = selectedShape;
   const commit = (next) => {
     const normalized = normalizeShape(next);
     if (normalized) onChange(normalized);
   };
+  const multiple = selectionCount > 1;
+  const selectedList = multiple ? shapes.filter((candidate) => selectedIds?.has(candidate.id)) : [];
+  const commonTone = selectedList.length > 0 &&
+    selectedList.every((candidate) => candidate.tone === selectedList[0].tone)
+    ? selectedList[0].tone : null;
   return (
     <div className="live-plan-sketch-inspector">
-      {shape ? (
+      {multiple ? (
+        <div className="live-plan-sketch-selected">
+          <div className="live-plan-sketch-selected-head">
+            <strong>{t('live.plan.sketch.multiSelected', { count: selectionCount })}</strong>
+            <button type="button" onClick={onDeselect}>{t('live.plan.sketch.deselect')}</button>
+          </div>
+          <div className="live-plan-sketch-tones" role="group"
+            aria-label={t('live.plan.sketch.tone')}>
+            {SKETCH_TONES.map((tone) => (
+              <button key={tone} type="button" className={`tone-${tone} ${commonTone === tone ? 'is-active' : ''}`}
+                aria-pressed={commonTone === tone ? 'true' : 'false'}
+                title={t(`live.plan.sketch.tone.${tone}`)}
+                onClick={() => onRecolorSelection(tone)}>
+                <i />
+              </button>
+            ))}
+          </div>
+          <p className="live-plan-sketch-multi-hint">{t('live.plan.sketch.multiHint')}</p>
+          <div className="live-plan-sketch-actions">
+            <button type="button" onClick={onDuplicate}
+              disabled={shapes.length + selectionCount > SKETCH_LIMITS.maxShapes}>
+              {t('live.plan.sketch.duplicate')}
+            </button>
+            <button type="button" className="is-danger" onClick={onDelete}>
+              {t('live.plan.menu.deleteShapes', { count: selectionCount })}
+            </button>
+          </div>
+        </div>
+      ) : shape ? (
         <div className="live-plan-sketch-selected">
           <div className="live-plan-sketch-selected-head">
             <strong>{t(`live.plan.sketch.type.${shape.type}`)}</strong>
@@ -216,15 +255,19 @@ export function PlanSketchInspector({
           <p>{t('live.plan.sketch.noShapes')}</p>
         ) : (
           <div>
-            {shapes.map((candidate) => (
+            {shapes.map((candidate) => {
+              const isSelected = Boolean(selectedIds?.has(candidate.id));
+              return (
               <button key={candidate.id} type="button"
-                className={`tone-${candidate.tone} ${shape?.id === candidate.id ? 'is-selected' : ''}`}
-                aria-pressed={shape?.id === candidate.id ? 'true' : 'false'}
-                onClick={() => onSelect(candidate.id)}>
+                className={`tone-${candidate.tone} ${isSelected ? 'is-selected' : ''}`}
+                aria-pressed={isSelected ? 'true' : 'false'}
+                onClick={(event) => onSelect(candidate.id,
+                  event.shiftKey || event.ctrlKey || event.metaKey)}>
                 <i />
                 <span>{shapeSummary(candidate, t)}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

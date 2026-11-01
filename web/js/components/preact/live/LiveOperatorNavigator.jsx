@@ -84,7 +84,9 @@ export function LiveOperatorNavigator({
   const [busy, setBusy] = useState(false);
   const [layoutCameraScope, setLayoutCameraScope] = useState(null);
   const [selectedLayoutUuid, setSelectedLayoutUuid] = useState('');
+  const [scopePlanUuid, setScopePlanUuid] = useState('');
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
+  const [renameLayoutTarget, setRenameLayoutTarget] = useState(null);
   const [deleteLayoutTarget, setDeleteLayoutTarget] = useState(null);
 
   const workspaceQuery = useQuery({
@@ -141,6 +143,39 @@ export function LiveOperatorNavigator({
       (stream.location_path || '').toLocaleLowerCase().includes(term));
   }, [scopedStreams, search]);
 
+  const plans = plansQuery.data?.plans || EMPTY_LOCATIONS;
+  const locationNames = useMemo(() => new Map(
+    locations.map((location) => [location.uuid, location.name]),
+  ), [locations]);
+  const streamsByUuid = useMemo(() => new Map(
+    (streams || []).map((stream) => [stream.camera_uuid, stream]),
+  ), [streams]);
+  // Cameras placed on a building plan are grouped by plan too: a placement
+  // is not a fleet location assignment, so the location tree alone showed
+  // such cameras as "Unassigned".
+  const planGroups = useMemo(() => plans.map((plan) => {
+    const cameraUuids = [...new Set((plan.cameras || [])
+      .map((camera) => camera.camera_uuid)
+      .filter((uuid) => streamsByUuid.has(uuid)))];
+    return {
+      uuid: plan.uuid,
+      name: plan.name,
+      locationName: locationNames.get(plan.location_uuid) || '',
+      cameraUuids,
+      live: cameraUuids.filter((uuid) => streamsByUuid.get(uuid)?.availability === 'live').length,
+    };
+  }), [plans, streamsByUuid, locationNames]);
+  const plansByCamera = useMemo(() => {
+    const result = new Map();
+    for (const group of planGroups) {
+      for (const uuid of group.cameraUuids) {
+        if (!result.has(uuid)) result.set(uuid, []);
+        result.get(uuid).push(group.name);
+      }
+    }
+    return result;
+  }, [planGroups]);
+
   const eventsQuery = useQuery({
     queryKey: ['live-recent-events', effectiveCameraKey],
     queryFn: async ({ signal }) => {
@@ -161,6 +196,8 @@ export function LiveOperatorNavigator({
       };
     },
     enabled: enabled && investigationVisible && tab === 'events' && effectiveCameraUuids.size > 0,
+    // Surface failures promptly instead of a long silent retry.
+    retry: false,
     staleTime: 15000,
     refetchInterval: 30000,
   });
@@ -206,6 +243,7 @@ export function LiveOperatorNavigator({
     setSelectedLocation(uuid);
     setLayoutCameraScope(null);
     setSelectedLayoutUuid('');
+    setScopePlanUuid('');
   };
   const loadLocation = (uuid) => {
     const cameraUuids = [...cameraUuidsForLocation(locations, streams, uuid)];
@@ -213,7 +251,19 @@ export function LiveOperatorNavigator({
     setAvailability('live');
     setLayoutCameraScope(null);
     setSelectedLayoutUuid('');
+    setScopePlanUuid('');
     onApplyLayout({ cameraUuids, columns, rows });
+  };
+  const selectPlanScope = (group) => {
+    setSelectedLocation('');
+    setLayoutCameraScope(group.cameraUuids);
+    setSelectedLayoutUuid('');
+    setScopePlanUuid(group.uuid);
+  };
+  const loadPlanScope = (group) => {
+    selectPlanScope(group);
+    setAvailability('live');
+    onApplyLayout({ cameraUuids: group.cameraUuids, columns, rows });
   };
   const applyLayout = (layout) => {
     const cameraUuids = cameraUuidsForLiveLayout(layout);
@@ -221,6 +271,7 @@ export function LiveOperatorNavigator({
     setAvailability(layout.availability || 'live');
     setLayoutCameraScope(cameraUuids);
     setSelectedLayoutUuid(layout.uuid);
+    setScopePlanUuid('');
     onApplyLayout({
       cameraUuids,
       columns: layout.columns,
@@ -251,6 +302,55 @@ export function LiveOperatorNavigator({
       setLayoutCameraScope(cameraUuidsForLiveLayout(layout));
       setSelectedLayoutUuid(layout.uuid || '');
       showStatusMessage(t('live.navigator.layoutSaved', { name }), 'success', 2500);
+      return true;
+    } catch (error) {
+      showStatusMessage(error.message, 'error', 5000);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** Overwrite a saved view with the current grid, or rename it. */
+  const updateLayout = async (layout, { name = layout.name, fromCurrentGrid = false } = {}) => {
+    setBusy(true);
+    try {
+      const payload = fromCurrentGrid
+        ? buildLiveLayoutPayload({
+          name,
+          isShared: layout.is_shared,
+          locationUuid: selectedLocation,
+          availability,
+          columns,
+          rows,
+          streams: orderedStreams,
+        })
+        : {
+          ...buildLiveLayoutPayload({
+            name,
+            isShared: layout.is_shared,
+            locationUuid: layout.location_uuid || '',
+            availability: layout.availability,
+            columns: layout.columns,
+            rows: layout.rows,
+          }),
+          camera_slots: layout.camera_slots || [],
+        };
+      const updated = await fetchJSON(`/api/live/layouts/${layout.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, revision: layout.revision }),
+        timeout: 15000,
+        retries: 0,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['live-layouts'] });
+      if (fromCurrentGrid) {
+        setLayoutCameraScope(cameraUuidsForLiveLayout(updated));
+        setSelectedLayoutUuid(updated.uuid || layout.uuid);
+        setScopePlanUuid('');
+      }
+      showStatusMessage(fromCurrentGrid
+        ? t('live.navigator.layoutUpdated', { name })
+        : t('live.navigator.layoutRenamed', { name }), 'success', 2500);
       return true;
     } catch (error) {
       showStatusMessage(error.message, 'error', 5000);
@@ -346,6 +446,24 @@ export function LiveOperatorNavigator({
               </button>
             ))}
           </div>
+          {planGroups.length > 0 && (
+            <div className="live-location-tree live-plan-scope-list">
+              <div className="live-camera-list-heading">
+                <span>{t('live.navigator.onPlans')}</span><small>{planGroups.length}</small>
+              </div>
+              {planGroups.map((group) => (
+                <button key={group.uuid} type="button"
+                  className={`live-location-row ${scopePlanUuid === group.uuid ? 'is-selected' : ''}`}
+                  title={t('live.navigator.planScopeHint')}
+                  onClick={() => selectPlanScope(group)}
+                  onDblClick={() => loadPlanScope(group)}>
+                  <span className="live-location-name"><span>⌖</span><span>{group.name}</span>
+                    {group.locationName && <small>{group.locationName}</small>}</span>
+                  <small>{group.live}/{group.cameraUuids.length}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="live-camera-list" aria-live="polite">
             <div className="live-camera-list-heading">
               <span>{t('live.navigator.cameras')}</span><small>{visibleCameras.length}</small>
@@ -361,12 +479,16 @@ export function LiveOperatorNavigator({
                 onClick={() => {
                   setLayoutCameraScope([stream.camera_uuid]);
                   setSelectedLayoutUuid('');
+                  setScopePlanUuid('');
                   onApplyLayout({
                     cameraUuids: [stream.camera_uuid], columns: 1, rows: 1,
                   });
                 }}>
                 <span className={`live-availability-dot is-${stream.availability}`} />
-                <span><strong>{stream.name}</strong><small>{stream.location_path || t('live.navigator.unassigned')}</small></span>
+                <span><strong>{stream.name}</strong><small>{[
+                  stream.location_path || t('live.navigator.unassigned'),
+                  ...(plansByCamera.get(stream.camera_uuid) || []),
+                ].join(' · ')}</small></span>
               </button>
             ))}
             {visibleCameras.length === 0 && <p className="live-navigator-empty">{t('live.navigator.noCameras')}</p>}
@@ -376,23 +498,49 @@ export function LiveOperatorNavigator({
 
       {tab === 'views' && (
         <div className="live-navigator-panel">
+          <p className="live-plan-navigator-help">{t('live.navigator.viewsHelp')}</p>
           <button type="button" className="btn-primary live-layout-save" disabled={busy || !layoutsQuery.data?.can_modify}
             onClick={() => setSaveLayoutOpen(true)}>{t('live.navigator.saveCurrent')}</button>
-          {(layoutsQuery.data?.layouts || []).map((layout) => (
-            <div key={layout.uuid}
-              className={`live-layout-row ${selectedLayoutUuid === layout.uuid ? 'is-selected' : ''}`}>
-              <button type="button" aria-current={selectedLayoutUuid === layout.uuid ? 'true' : undefined}
-                onClick={() => applyLayout(layout)}>
-                <strong>{layout.name}</strong>
-                <small>{layout.columns}×{layout.rows} · {t(`availability.${availabilityKey(layout.availability)}`)}{layout.is_shared ? ` · ${t('live.navigator.shared')}` : ''}</small>
-              </button>
-              {layout.owned && layoutsQuery.data?.can_modify && (
-                <button type="button" className="live-layout-delete" disabled={busy}
-                  title={t('common.delete')} onClick={() => setDeleteLayoutTarget(layout)}>×</button>
-              )}
+          {layoutsQuery.data && !layoutsQuery.data.can_modify && (
+            <p className="live-navigator-empty">{t('live.navigator.viewsReadOnly')}</p>
+          )}
+          {layoutsQuery.isLoading && <p className="live-navigator-empty">{t('live.navigator.loadingLayouts')}</p>}
+          {layoutsQuery.error && (
+            <div className="live-navigator-error" role="alert">
+              <p>{t('live.navigator.layoutsError', { error: layoutsQuery.error.message })}</p>
+              <button type="button" onClick={() => layoutsQuery.refetch()}>{t('live.navigator.retry')}</button>
             </div>
-          ))}
-          {!layoutsQuery.isLoading && (layoutsQuery.data?.layouts || []).length === 0 &&
+          )}
+          {(layoutsQuery.data?.layouts || []).map((layout) => {
+            const cameraCount = cameraUuidsForLiveLayout(layout).length;
+            const editable = layout.owned && layoutsQuery.data?.can_modify;
+            const selected = selectedLayoutUuid === layout.uuid;
+            return (
+              <div key={layout.uuid}
+                className={`live-layout-row ${selected ? 'is-selected' : ''}`}>
+                <button type="button" aria-current={selected ? 'true' : undefined}
+                  onClick={() => applyLayout(layout)}>
+                  <strong>{layout.name}</strong>
+                  <small>{layout.columns}×{layout.rows} · {t('live.navigator.layoutCameraCount', { count: cameraCount })} · {t(`availability.${availabilityKey(layout.availability)}`)}{layout.is_shared ? ` · ${t('live.navigator.shared')}` : ''}</small>
+                </button>
+                {editable && (
+                  <div className="live-layout-actions">
+                    <button type="button" disabled={busy}
+                      title={t('live.navigator.updateLayoutTitle')}
+                      aria-label={t('live.navigator.updateLayoutTitle')}
+                      onClick={() => updateLayout(layout, { fromCurrentGrid: true })}>⟳</button>
+                    <button type="button" disabled={busy}
+                      title={t('live.plan.rename')} aria-label={t('live.plan.rename')}
+                      onClick={() => setRenameLayoutTarget(layout)}>✎</button>
+                    <button type="button" className="live-layout-delete" disabled={busy}
+                      title={t('common.delete')} aria-label={t('common.delete')}
+                      onClick={() => setDeleteLayoutTarget(layout)}>×</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!layoutsQuery.isLoading && !layoutsQuery.error && (layoutsQuery.data?.layouts || []).length === 0 &&
             <p className="live-navigator-empty">{t('live.navigator.noLayouts')}</p>}
         </div>
       )}
@@ -412,7 +560,10 @@ export function LiveOperatorNavigator({
                     onSurfaceChange('plan');
                   }}>
                   <strong>{plan.name}</strong>
-                  <small>{t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length })}</small>
+                  <small>{[
+                    t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length }),
+                    locationNames.get(plan.location_uuid),
+                  ].filter(Boolean).join(' · ')}</small>
                 </button>
               </div>
             );
@@ -424,16 +575,35 @@ export function LiveOperatorNavigator({
 
       {tab === 'events' && (
         <div className="live-navigator-panel live-event-list">
-          {eventsQuery.isLoading && <p className="live-navigator-empty">{t('live.navigator.loadingEvents')}</p>}
-          {(eventsQuery.data?.results || []).map((event) => (
-            <a key={event.result_id} href={investigationHref(event, selectedCameraUuids)} className="live-event-row">
-              <LiveEventThumbnail event={event} />
-              <span><strong>{event.detection?.label || event.event_type}</strong>
-                <small>{event.camera?.name} · {formatEventTime(event.start_time)}</small></span>
-            </a>
-          ))}
-          {!eventsQuery.isLoading && (eventsQuery.data?.results || []).length === 0 &&
-            <p className="live-navigator-empty">{t('live.navigator.noRecentEvents')}</p>}
+          <div className="live-camera-list-heading">
+            <span>{t('live.navigator.eventsScope', { count: effectiveCameraUuids.size })}</span>
+            <button type="button" className="live-navigator-refresh"
+              disabled={effectiveCameraUuids.size === 0 || eventsQuery.isFetching}
+              title={t('live.navigator.refreshEvents')} aria-label={t('live.navigator.refreshEvents')}
+              onClick={() => eventsQuery.refetch()}>↻</button>
+          </div>
+          {effectiveCameraUuids.size === 0 ? (
+            // A disabled query never leaves the loading state in Query v4,
+            // so an empty scope must be handled before reading isLoading.
+            <p className="live-navigator-empty">{t('live.navigator.eventsNoScope')}</p>
+          ) : eventsQuery.error ? (
+            <div className="live-navigator-error" role="alert">
+              <p>{t('live.navigator.eventsError', { error: eventsQuery.error.message })}</p>
+              <button type="button" onClick={() => eventsQuery.refetch()}>{t('live.navigator.retry')}</button>
+            </div>
+          ) : !eventsQuery.data ? (
+            <p className="live-navigator-empty">{t('live.navigator.loadingEvents')}</p>
+          ) : (eventsQuery.data.results || []).length === 0 ? (
+            <p className="live-navigator-empty">{t('live.navigator.noRecentEvents')}</p>
+          ) : (
+            eventsQuery.data.results.map((event) => (
+              <a key={event.result_id} href={investigationHref(event, selectedCameraUuids)} className="live-event-row">
+                <LiveEventThumbnail event={event} />
+                <span><strong>{event.detection?.label || event.event_type}</strong>
+                  <small>{event.camera?.name} · {formatEventTime(event.start_time)}</small></span>
+              </a>
+            ))
+          )}
         </div>
       )}
     </aside>
@@ -447,6 +617,16 @@ export function LiveOperatorNavigator({
       cancelLabel={t('common.cancel')}
       checkboxLabel={layoutsQuery.data?.can_share
         ? t('live.navigator.shareLayoutPrompt') : undefined}
+    />
+    <TextInputDialog
+      isOpen={Boolean(renameLayoutTarget)}
+      onClose={() => setRenameLayoutTarget(null)}
+      onSubmit={(name) => updateLayout(renameLayoutTarget, { name })}
+      title={t('live.navigator.renameLayout')}
+      inputLabel={t('common.name')}
+      initialValue={renameLayoutTarget?.name || ''}
+      confirmLabel={t('live.plan.rename')}
+      cancelLabel={t('common.cancel')}
     />
     <ConfirmDialog
       isOpen={Boolean(deleteLayoutTarget)}
