@@ -1346,27 +1346,37 @@ export function LiveBuildingPlan({
     if (!interaction || event.pointerId !== interaction.pointerId) return;
     interactionRef.current = null;
     setPanning(false);
+    // The browser cancelled the gesture (touch scroll/pinch, OS gesture, pen
+    // out of range): roll back any live preview without recording an undo
+    // step. Every draft-changing gesture captures `before` when it starts.
+    const cancelled = event.type === 'pointercancel';
+    if (cancelled && interaction.before) {
+      previewDraft(() => interaction.before);
+    }
     if (interaction.mode === 'draw-rect') {
       const current = drawingRef.current;
       setDrawingNow(null);
       const rect = current && interaction.moved
         ? rectFromPoints(current.start, current.current) : null;
-      if (rect && event.type !== 'pointercancel') {
+      if (rect && !cancelled) {
         addShape({
           id: createShapeId(shapeIds()), type: 'rect', tone: sketchTone,
           ...rect, filled: true,
         });
       }
     } else if (interaction.mode === 'aim' && interaction.placing) {
-      finishGesture(interaction.before);
-      setPlacementCameraUuid('');
-      setSelectedCameraUuid(interaction.cameraUuid);
+      // On cancel the placement was rolled back above; placement stays armed.
+      if (!cancelled) {
+        finishGesture(interaction.before);
+        setPlacementCameraUuid('');
+        setSelectedCameraUuid(interaction.cameraUuid);
+      }
     } else if (interaction.mode === 'marquee') {
       setMarquee(null);
       // A press without a drag falls through to the canvas click (deselect).
     } else if ((interaction.mode === 'shape' || interaction.mode === 'camera' ||
       interaction.mode === 'aim' || interaction.mode === 'fov') && interaction.moved) {
-      finishGesture(interaction.before);
+      if (!cancelled) finishGesture(interaction.before);
     }
     try {
       svgRef.current?.releasePointerCapture(event.pointerId);
@@ -1376,6 +1386,24 @@ export function LiveBuildingPlan({
   };
 
   const openBackgroundPicker = () => fileInputRef.current?.click();
+
+  /* ---- marker activation (shared by click and keyboard) ------------------ */
+
+  const activateCluster = (marker) => setPlanZoom(zoom + 1, { x: marker.x, y: marker.y });
+  const activateCamera = (cameraUuid) => {
+    setSelectedCameraUuid(cameraUuid);
+    if (editing) setSelectedShapeId('');
+  };
+  // Enter and Space activate a focused marker exactly like a click (opening a
+  // camera stays on double-click / the "Open live" button). While editing,
+  // Space is the hold-to-pan modifier and Enter finishes an in-progress wall
+  // or area, so those keys are left to the document-level shortcuts.
+  const handleMarkerKeyDown = (event, activate) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (editing && (event.key === ' ' || drawingRef.current)) return;
+    event.preventDefault();
+    activate();
+  };
 
   /* ---- right-click menus ------------------------------------------------ */
 
@@ -1815,9 +1843,12 @@ export function LiveBuildingPlan({
               toolLock={toolLock} onToolLockChange={setToolLock}
               shapeCount={draftSketch.length} t={t} />
           )}
-          <svg ref={svgRef} tabIndex="-1"
+          {/* SVG attribute names are case-sensitive: Preact writes `tabIndex`
+              verbatim onto SVG elements, which browsers ignore, so SVG nodes
+              must use the lowercase `tabindex` to be focusable. */}
+          <svg ref={svgRef} tabindex="-1"
             className={`live-plan-canvas ${panning ? 'is-panning' : ''} ${spaceHeld && !panning ? 'is-pan-ready' : ''} ${editing && sketchTool !== 'select' ? 'is-drawing' : ''} ${editing ? `is-tool-${sketchTool}` : ''} ${placementCameraUuid ? 'is-placing' : ''}`}
-            viewBox={viewBox} role="img" aria-label={`${plan.name} camera plan`}
+            viewBox={viewBox} role="group" aria-label={`${plan.name} camera plan`}
             onPointerDown={handleSurfacePointerDown}
             onPointerMove={handleSurfacePointerMove}
             onPointerUp={handleSurfacePointerEnd}
@@ -1914,14 +1945,15 @@ export function LiveBuildingPlan({
               if (marker.kind === 'cluster') {
                 return (
                   <g key={marker.camera_uuids.join(':')}
-                    className="live-plan-cluster" tabIndex="0" role="button"
+                    className="live-plan-cluster" tabindex="0" role="button"
                     aria-label={t('live.plan.clusterLabel', { count: marker.count })}
                     transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (suppressClickRef.current) return;
-                      setPlanZoom(zoom + 1, { x: marker.x, y: marker.y });
-                    }}>
+                      activateCluster(marker);
+                    }}
+                    onKeyDown={(event) => handleMarkerKeyDown(event, () => activateCluster(marker))}>
                     <circle r="27" /><text textAnchor="middle" dy="6">{marker.count}</text>
                   </g>
                 );
@@ -1933,7 +1965,7 @@ export function LiveBuildingPlan({
                 <g key={marker.camera_uuid}
                   className={`live-plan-camera is-${stream?.availability || 'never_connected'} ${selected ? 'is-selected' : ''}`}
                   transform={`translate(${markerX} ${markerY}) scale(${markerScale})`}
-                  tabIndex="0" role="button"
+                  tabindex="0" role="button"
                   aria-label={t('live.plan.markerLabel', { 
                     name: stream?.name || t('live.plan.cameraFallback'),
                     availability: availabilityLabel(stream, t),
@@ -1942,11 +1974,12 @@ export function LiveBuildingPlan({
                    })}
                   onPointerDown={(event) => handleCameraPointerDown(event, marker.camera_uuid)}
                   onContextMenu={(event) => handleCameraContextMenu(event, marker.camera_uuid, stream)}
+                  onKeyDown={(event) => handleMarkerKeyDown(
+                    event, () => activateCamera(marker.camera_uuid))}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (suppressClickRef.current) return;
-                    setSelectedCameraUuid(marker.camera_uuid);
-                    if (editing) setSelectedShapeId('');
+                    activateCamera(marker.camera_uuid);
                   }}
                   onDblClick={(event) => {
                     event.stopPropagation();

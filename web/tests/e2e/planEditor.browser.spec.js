@@ -332,3 +332,87 @@ it('widens the field of view from the wedge handle and links the plan to a locat
     await browser.close();
   }
 }, 30000);
+
+/** Browser-initiated cancel (touch scroll/pinch, OS gesture) mid-drag. */
+async function cancelPointer(page) {
+  await page.evaluate(() => {
+    document.querySelector('svg.live-plan-canvas').dispatchEvent(new PointerEvent('pointercancel', {
+      pointerId: 1, pointerType: 'mouse', bubbles: true, cancelable: false,
+    }));
+  });
+}
+
+it('rolls back a cancelled drag or camera placement without an undo step', async () => {
+  const { browser, page } = await openPlanBrowser();
+  try {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await pressTool(page, 'r');
+    await drag(page, await planPoint(page, 0.2, 0.2), await planPoint(page, 0.4, 0.4));
+    expect(await shapeCount(page, 1)).toBe(1);
+    expect(await fieldNumber(page, '-sketch-x', 20)).toBeCloseTo(20, 0);
+
+    // Start moving the room, then the browser cancels the pointer.
+    const from = await planPoint(page, 0.3, 0.3);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 90, from.y, { steps: 4 });
+    expect(await fieldNumber(page, '-sketch-x', 30)).toBeCloseTo(30, 0);
+    await cancelPointer(page);
+    await page.mouse.up();
+    expect(await fieldNumber(page, '-sketch-x', 20)).toBeCloseTo(20, 0);
+    // Only the room creation is on the undo stack.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Control+z');
+    expect(await shapeCount(page, 0)).toBe(0);
+
+    // Arming a camera adds it at the centre; the press then moves it to the
+    // pointer. A cancelled press puts it back and leaves placement armed.
+    await page.locator('.live-plan-unplaced button', { hasText: 'Front gate' }).click();
+    const marker = page.locator('g.live-plan-camera');
+    const armed = await eventually(() => marker.getAttribute('transform').catch(() => null),
+      (value) => Boolean(value));
+    const spot = await planPoint(page, 0.2, 0.8);
+    await page.mouse.move(spot.x, spot.y);
+    await page.mouse.down();
+    expect(await eventually(() => marker.getAttribute('transform'),
+      (value) => value !== armed)).not.toBe(armed);
+    await cancelPointer(page);
+    await page.mouse.up();
+    expect(await eventually(() => marker.getAttribute('transform'),
+      (value) => value === armed)).toBe(armed);
+    expect(await page.locator('svg.live-plan-canvas.is-placing').count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+}, 30000);
+
+it('activates camera markers from the keyboard without blocking edit shortcuts', async () => {
+  const { browser, page } = await openPlanBrowser();
+  try {
+    await page.locator('.live-plan-unplaced button', { hasText: 'Front gate' }).click();
+    const origin = await planPoint(page, 0.4, 0.4);
+    await page.mouse.click(origin.x, origin.y);
+    const marker = page.locator('g.live-plan-camera');
+    expect(await eventually(() => marker.count(), (value) => value === 1)).toBe(1);
+    await page.keyboard.press('Escape');
+    expect(await eventually(() => page.locator('g.live-plan-camera.is-selected').count(),
+      (value) => value === 0)).toBe(0);
+
+    // Enter on the focused marker selects it, like a click.
+    await marker.focus();
+    await page.keyboard.press('Enter');
+    expect(await eventually(() => page.locator('g.live-plan-camera.is-selected').count(),
+      (value) => value === 1)).toBe(1);
+
+    // Space with the marker focused still arms hold-to-pan in edit mode.
+    await marker.focus();
+    await page.keyboard.down(' ');
+    expect(await eventually(() => page.locator('svg.live-plan-canvas.is-pan-ready').count(),
+      (value) => value === 1)).toBe(1);
+    await page.keyboard.up(' ');
+  } finally {
+    await browser.close();
+  }
+}, 30000);
