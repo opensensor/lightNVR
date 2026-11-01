@@ -1500,9 +1500,12 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     bool original_enabled = config.enabled;
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
     if (enabled && cJSON_IsBool(enabled)) {
-        config.enabled = cJSON_IsTrue(enabled);
-        config_changed = true;
-        non_dynamic_config_changed = true;
+        bool new_enabled = cJSON_IsTrue(enabled);
+        if (config.enabled != new_enabled) {
+            config.enabled = new_enabled;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+        }
     }
 
     cJSON *streaming_enabled = cJSON_GetObjectItem(stream_json, "streaming_enabled");
@@ -2345,8 +2348,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
  * @brief Structure for DELETE stream background task
  */
 typedef struct {
-    stream_handle_t stream;                    // Stream handle
-    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID
+    char stream_id[MAX_STREAM_NAME];          // Decoded stream ID (durable key)
     bool permanent_delete;                     // Whether to permanently delete
 } delete_stream_task_t;
 
@@ -2367,17 +2369,27 @@ static void *delete_stream_worker(void *arg) {
     log_set_thread_context("StreamAPI", task->stream_id);
     log_info("Processing DELETE /api/streams/%s in worker thread", task->stream_id);
 
+    // Re-resolve the handle by name: a handle captured in the request handler
+    // is a slot pointer that may have been freed or reused by another stream
+    // (e.g. a concurrent DELETE) before this worker runs.
+    stream_handle_t stream = get_stream_by_name(task->stream_id);
+    if (!stream) {
+        log_warn("Stream %s no longer exists, nothing to delete", task->stream_id);
+        free(task);
+        return NULL;
+    }
+
     // Stop stream if it's running
-    stream_status_t status = get_stream_status(task->stream);
+    stream_status_t status = get_stream_status(stream);
     if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
-        if (stop_stream(task->stream) != 0) {
+        if (stop_stream(stream) != 0) {
             log_error("Failed to stop stream: %s", task->stream_id);
             // Continue anyway
         }
 
         // Wait for stream to stop
         int timeout = 30; // 3 seconds
-        while (get_stream_status(task->stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+        while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
             usleep(100000); // 100ms
             timeout--;
         }
@@ -2395,7 +2407,7 @@ static void *delete_stream_worker(void *arg) {
     }
 
     // Delete stream from memory
-    if (remove_stream(task->stream) != 0) {
+    if (remove_stream(stream) != 0) {
         log_error("Failed to delete stream from memory: %s", task->stream_id);
         free(task);
         return NULL;
@@ -2477,7 +2489,6 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    task->stream = stream;
     safe_strcpy(task->stream_id, stream_id, sizeof(task->stream_id), 0);
     task->permanent_delete = permanent_delete;
 
@@ -2508,8 +2519,24 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     // This prevents blocking the web server event loop
     pthread_t thread_id;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int attr_rc = pthread_attr_init(&attr);
+    if (attr_rc != 0) {
+        log_error("Failed to initialize pthread attributes for DELETE stream worker (rc=%d)", attr_rc);
+        free(task);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start delete task");
+        return;
+    }
+
+    attr_rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (attr_rc != 0) {
+        log_error("Failed to set detached state for DELETE stream worker (rc=%d)", attr_rc);
+        pthread_attr_destroy(&attr);
+        free(task);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start delete task");
+        return;
+    }
 
     if (pthread_create(&thread_id, &attr, delete_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for DELETE stream");
@@ -2838,8 +2865,26 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     // This prevents blocking the web server event loop
     pthread_t thread_id;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int attr_rc = pthread_attr_init(&attr);
+    if (attr_rc != 0) {
+        log_error("Failed to initialize pthread attributes for stream refresh");
+        free(task);
+        finish_stream_refresh(stream_name, true);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start stream refresh");
+        return;
+    }
+
+    attr_rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (attr_rc != 0) {
+        log_error("Failed to configure detached pthread attributes for stream refresh");
+        free(task);
+        finish_stream_refresh(stream_name, true);
+        free(json_str);
+        pthread_attr_destroy(&attr);
+        http_response_set_json_error(res, 500, "Failed to start stream refresh");
+        return;
+    }
 
     if (pthread_create(&thread_id, &attr, refresh_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for stream refresh");
