@@ -109,8 +109,19 @@ void init_recordings_system(void);
 // object an implicit sequentially-consistent atomic store/load.
 _Atomic bool running = true;
 
-// Global flag for restart request (set by API handler)
+// Global flag for restart request. _Atomic for the same reason as `running`:
+// it is written by the HTTP API thread (request_restart(), via
+// POST /api/system/restart) and read by the main thread after the main loop
+// exits. A plain or volatile bool would be a cross-thread data race, and the
+// sequentially-consistent stores guarantee that a thread observing
+// running == false also observes restart_requested == true.
 _Atomic bool restart_requested = false;
+
+// The signal handlers store to these _Atomic bools (and to the background-abort
+// flag). Atomics are only async-signal-safe when lock-free; a lock-based
+// fallback could deadlock if a signal lands while the lock is held.
+_Static_assert(ATOMIC_BOOL_LOCK_FREE == 2,
+               "signal handlers require lock-free atomic bool");
 
 // Store original argc/argv for restart functionality
 static int saved_argc = 0;
@@ -130,7 +141,8 @@ http_server_handle_t http_server = NULL;
 
 // Improved signal handler with phased shutdown approach
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
-// Only use: write(), _exit(), alarm(), atomic operations on sig_atomic_t
+// Only use: write(), _exit(), alarm(), volatile sig_atomic_t, and lock-free
+// C11 atomics (ATOMIC_BOOL_LOCK_FREE == 2 is asserted above)
 static void signal_handler(int sig) {
     (void)sig; // Suppress unused parameter warning
 
@@ -165,7 +177,7 @@ static void signal_handler(int sig) {
     // The main thread will call initiate_shutdown() after exiting the main loop
 
     // Set the running flag to false to trigger main loop exit
-    // This is safe because running is declared as volatile bool
+    // Safe: running is a lock-free _Atomic bool (see the _Static_assert above)
     running = false;
 
     // Also wake up any long-running background operation (e.g. a scheduled
