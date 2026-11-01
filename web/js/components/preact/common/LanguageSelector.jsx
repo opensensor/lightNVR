@@ -26,38 +26,51 @@ export default function LanguageSelector({ mobile = false }) {
 
   const currentLocale = availableLocales.find((item) => item.code === locale) || availableLocales[0];
 
+  const menuId = 'language-selector-menu';
   const inner = (
     <div className={`dropdown ${baseClasses} ${activeClass}${mobile ? ' w-full' : ''}`}>
-      <div tabIndex={0} className={`flex cursor-pointer border-0 font-medium items-center ${mobile ? 'w-full px-4 py-3' : 'py-1.5'}`}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-controls={menuId}
+        className={`flex cursor-pointer border-0 font-medium items-center ${mobile ? 'w-full px-4 py-3' : 'py-1.5'}`}
+      >
         {currentLocale && renderLocaleContent(currentLocale)}
-      </div>
+      </button>
       <ul
+        id={menuId}
         tabIndex={-1}
+        role="menu"
         className="rounded transition-colors dropdown-content menu bg-[hsl(var(--card))]"
         style={{ width: 'max-content', border: '1px solid hsl(var(--primary)/0.8)' }}
       >
-        <li
-          key="auto"
-          style={{ flexFlow: 'row nowrap' }}
-          className={`flex cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
-          onClick={() => {
-            setLocalePreference(null);
-            document.activeElement.blur();
-          }}
-        >
-          <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
-        </li>
-        {availableLocales.map((item) => (
-          <li
-            key={item.code}
-            style={{ flexFlow: 'row nowrap' }}
-            className={`flex cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
+        <li key="auto" role="none" style={{ flexFlow: 'row nowrap' }}>
+          <button
+            type="button"
+            role="menuitem"
+            className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
             onClick={() => {
-              setLocalePreference(item.code);
+              setLocalePreference(null);
               document.activeElement.blur();
             }}
           >
-            {renderLocaleContent(item, true)}
+            <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
+          </button>
+        </li>
+        {availableLocales.map((item) => (
+          <li key={item.code} role="none" style={{ flexFlow: 'row nowrap' }}>
+            <button
+              type="button"
+              role="menuitem"
+              className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
+              onClick={() => {
+                setLocalePreference(item.code);
+                document.activeElement.blur();
+              }}
+            >
+              {renderLocaleContent(item, true)}
+            </button>
           </li>
         ))}
       </ul>
