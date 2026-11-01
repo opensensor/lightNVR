@@ -260,8 +260,9 @@ int write_pid_file(const char *pid_file) {
     
     // Truncate the file to ensure we overwrite any existing content
     if (ftruncate(fd, 0) < 0) {
-        log_warn("Could not truncate PID file: %s", strerror(errno));
-        // Continue anyway
+        log_error("Failed to truncate PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
     }
     
     // Write PID to file
