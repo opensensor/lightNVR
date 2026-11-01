@@ -101,7 +101,8 @@ function SketchShape({
 }) {
   const interactive = editing;
   const groupProps = interactive ? {
-    tabIndex: 0,
+    // Lowercase: SVG attribute names are case-sensitive and `tabIndex` is ignored.
+    tabindex: 0,
     role: 'button',
     'aria-label': shapeSummary(shape, t),
     'aria-pressed': selected ? 'true' : 'false',
