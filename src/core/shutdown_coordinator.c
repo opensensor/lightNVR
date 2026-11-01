@@ -69,18 +69,23 @@ int init_shutdown_coordinator(void) {
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
-    // Atomically claim cleanup ownership to prevent double-destroy races.
+    // Atomically claim cleanup ownership to prevent duplicate cleanup work.
     // atomic_exchange returns the previous value.
     if (atomic_exchange(&g_coordinator.coordinator_destroyed, true)) {
         return;  // Already cleaned up (or cleanup in progress/completed)
     }
 
-    // Small memory barrier to ensure the flag is visible to other threads
+    // Ensure the destroyed flag publication is visible to other threads.
     __sync_synchronize();
 
-    pthread_mutex_destroy(&g_coordinator.mutex);
-    pthread_cond_destroy(&g_coordinator.all_stopped_cond);
-    log_info("Shutdown coordinator cleaned up");
+    // IMPORTANT:
+    // Do not destroy mutex/condition variable here. Other threads may have
+    // already passed pre-checks and still be about to lock/wait/signal, and
+    // destroying these objects concurrently is undefined behavior.
+    //
+    // These are process-lifetime globals; they are intentionally left intact
+    // until process termination/re-exec to avoid teardown races.
+    log_info("Shutdown coordinator marked destroyed");
 }
 
 // Check if coordinator has been destroyed
