@@ -332,7 +332,9 @@ static void *put_stream_worker(void *arg) {
     // Note: record and streaming_enabled can be toggled dynamically without restart
     // Note: retention and PTZ settings are metadata only and don't require restart
 
-    if (task->config_changed && (task->requires_restart || (task->is_running && task->non_dynamic_config_changed))) {
+    bool enabled_changed_to_true = (!task->original_enabled && task->config.enabled);
+
+    if (task->config_changed && (enabled_changed_to_true || task->requires_restart || (task->is_running && task->non_dynamic_config_changed))) {
         log_info("Restarting stream %s (requires_restart=%s, is_running=%s, non_dynamic_changed=%s)",
                 task->config.name,
                 task->requires_restart ? "true" : "false",
