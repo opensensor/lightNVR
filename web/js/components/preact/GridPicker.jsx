@@ -39,6 +39,9 @@ export function computeOptimalGrid(n) {
  *                                    greyed out and unclickable.
  */
 export function GridPicker({ cols, rows, onSelect, maxCells }) {
+  const normalizedMaxCells =
+    Number.isFinite(maxCells) && maxCells > 0 ? Math.floor(maxCells) : MAX_GRID_CELLS;
+  const effectiveMaxCells = Math.min(MAX_GRID_CELLS, normalizedMaxCells);
   const { t } = useI18n();
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
@@ -110,7 +113,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
             {Array.from({ length: gridRows }, (_, r) =>
               Array.from({ length: gridCols }, (_, c) => {
                 const cellCount   = (c + 1) * (r + 1);
-                const overLimit   = cellCount > MAX_GRID_CELLS;
+                const overLimit   = cellCount > effectiveMaxCells;
                 const highlighted = !overLimit && r < hover.r && c < hover.c;
                 const isCurrent   = !overLimit && r < rows   && c < cols;
                 return (
@@ -118,7 +121,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
                     title={overLimit
-                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
+                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: effectiveMaxCells })
                       : `${c + 1}×${r + 1}`}
                     className={`rounded-sm border transition-colors ${
                       overLimit
@@ -137,7 +140,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
             )}
           </div>
           <p className="text-xs text-center text-muted-foreground mt-2">
-            {t('live.maxStreamsPerPage', { max: MAX_GRID_CELLS })}
+            {t('live.maxStreamsPerPage', { max: effectiveMaxCells })}
           </p>
         </div>
       )}
