@@ -38,6 +38,40 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     if (capture_success) return 0;
     return EAGAIN; /* POSIX failure: callback is never scheduled. */
 }
+/* go2rtc stubs for the privacy toggle: inactive unless fake_go2rtc is set. */
+static bool fake_go2rtc, fake_unregister_ok;
+static unsigned unregister_calls, reload_calls, sub_remove_calls, sub_register_calls;
+bool __real_go2rtc_stream_is_ready(void);
+bool __wrap_go2rtc_stream_is_ready(void) {
+    return fake_go2rtc ? true : __real_go2rtc_stream_is_ready();
+}
+bool __real_go2rtc_integration_unregister_stream(const char *name);
+bool __wrap_go2rtc_integration_unregister_stream(const char *name) {
+    if (!fake_go2rtc) return __real_go2rtc_integration_unregister_stream(name);
+    unregister_calls++;
+    return fake_unregister_ok;
+}
+bool __real_go2rtc_integration_reload_stream(const char *name);
+bool __wrap_go2rtc_integration_reload_stream(const char *name) {
+    if (!fake_go2rtc) return __real_go2rtc_integration_reload_stream(name);
+    reload_calls++;
+    return true;
+}
+bool __real_go2rtc_api_remove_stream(const char *name);
+bool __wrap_go2rtc_api_remove_stream(const char *name) {
+    if (!fake_go2rtc) return __real_go2rtc_api_remove_stream(name);
+    sub_remove_calls++;
+    return true;
+}
+bool __real_go2rtc_stream_register_substream(const char *, const char *, const char *,
+                                             const char *, stream_protocol_t);
+bool __wrap_go2rtc_stream_register_substream(const char *id, const char *url,
+                                             const char *user, const char *pass,
+                                             stream_protocol_t protocol) {
+    if (!fake_go2rtc) return __real_go2rtc_stream_register_substream(id, url, user, pass, protocol);
+    sub_register_calls++;
+    return true;
+}
 void __real_free(void *);
 void __wrap_free(void *allocation) {
     if (allocation && allocation == failed_task) {
@@ -52,6 +86,9 @@ void setUp(void) {
     launch_attempts = task_frees = 0;
     failed_task = NULL;
     captured_worker = NULL;
+    fake_go2rtc = false;
+    fake_unregister_ok = true;
+    unregister_calls = reload_calls = sub_remove_calls = sub_register_calls = 0;
     g_config.web_auth_enabled = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM streams", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, init_stream_state_manager(4));
@@ -261,6 +298,64 @@ void test_stale_config_write_cannot_clear_privacy_mode(void) {
     TEST_ASSERT_EQUAL_INT(-1, set_stream_privacy_mode("no_such_stream", true));
 }
 
+static void set_privacy_body(bool enable) {
+    set_body(enable ? "{\"set_privacy_mode\":true}" : "{\"set_privacy_mode\":false}");
+}
+
+void test_privacy_enable_fails_when_go2rtc_still_serves_stream(void) {
+    fake_go2rtc = true;
+    fake_unregister_ok = false;
+    set_privacy_body(true);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_UINT(1, unregister_calls);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(502, response.status_code,
+        "Must not report success while go2rtc still serves the camera");
+    /* The saved flag stays on so sync/health monitor never re-add it. */
+    TEST_ASSERT_EQUAL_INT(1, db_int_column("privacy_mode"));
+}
+
+void test_privacy_enable_removes_sub_stream(void) {
+    stream_config_t config = original_config;
+    strcpy(config.sub_stream_url, "rtsp://127.0.0.1:1/sub");
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config(config.name, &config));
+    TEST_ASSERT_EQUAL_INT(0, remove_stream(original_stream));
+    original_stream = add_stream(&config);
+    TEST_ASSERT_NOT_NULL(original_stream);
+
+    fake_go2rtc = true;
+    set_privacy_body(true);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_UINT(1, unregister_calls);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(1, sub_remove_calls,
+        "The {name}_sub stream must be removed too");
+}
+
+void test_privacy_disable_keeps_disabled_stream_unregistered(void) {
+    disable_stream_for_test();
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode(original_config.name, true));
+    fake_go2rtc = true;
+    set_privacy_body(false);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_INT(0, db_int_column("privacy_mode"));
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, reload_calls,
+        "Clearing privacy must not make a disabled camera live");
+}
+
+void test_privacy_disable_reregisters_enabled_stream(void) {
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode(original_config.name, true));
+    fake_go2rtc = true;
+    set_privacy_body(false);
+    handle_put_stream(&request, &response);
+    TEST_ASSERT_EQUAL_INT(200, response.status_code);
+    TEST_ASSERT_EQUAL_UINT(1, reload_calls);
+    cJSON *json = cJSON_Parse((const char *)response.body);
+    TEST_ASSERT_NOT_NULL(json);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json, "stream_registered")));
+    cJSON_Delete(json);
+}
+
 int main(void) {
     char directory[] = "/tmp/lightnvr-put-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -281,6 +376,10 @@ int main(void) {
     RUN_TEST(test_privacy_toggle_with_name_accepted);
     RUN_TEST(test_queued_update_preserves_privacy_toggle);
     RUN_TEST(test_stale_config_write_cannot_clear_privacy_mode);
+    RUN_TEST(test_privacy_enable_fails_when_go2rtc_still_serves_stream);
+    RUN_TEST(test_privacy_enable_removes_sub_stream);
+    RUN_TEST(test_privacy_disable_keeps_disabled_stream_unregistered);
+    RUN_TEST(test_privacy_disable_reregisters_enabled_stream);
     int result = UNITY_END();
     shutdown_database();
     unlink(path);
