@@ -2310,8 +2310,24 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // This prevents blocking the web server event loop
     pthread_t thread_id;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int attr_rc = pthread_attr_init(&attr);
+    if (attr_rc != 0) {
+        log_error("Failed to initialize thread attributes for PUT stream (rc=%d)", attr_rc);
+        free(json_str);
+        put_stream_task_free(task);
+        http_response_set_json_error(res, 500, "Failed to start update task");
+        return;
+    }
+
+    attr_rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (attr_rc != 0) {
+        log_error("Failed to set detached thread attribute for PUT stream (rc=%d)", attr_rc);
+        pthread_attr_destroy(&attr);
+        free(json_str);
+        put_stream_task_free(task);
+        http_response_set_json_error(res, 500, "Failed to start update task");
+        return;
+    }
 
     if (pthread_create(&thread_id, &attr, put_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for PUT stream");
