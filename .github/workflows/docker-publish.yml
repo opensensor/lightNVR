@@ -172,3 +172,19 @@ jobs:
       - name: Inspect final image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+
+      # Tell the Home Assistant add-on repo a new image is live so it bumps its
+      # pin right away instead of waiting for its hourly fallback sync. The sync
+      # auto-detects the newest published tag, so re-running an older tag can't
+      # downgrade the add-on.
+      - name: Trigger Home Assistant add-on sync
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.HASSIO_ADDONS_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::notice::HASSIO_ADDONS_DISPATCH_TOKEN not set; the add-on repo will pick up ${GITHUB_REF_NAME} on its hourly sync"
+            exit 0
+          fi
+          gh workflow run sync-upstream-version.yml \
+            --repo opensensor/lightnvr-hassio-addons --ref main
