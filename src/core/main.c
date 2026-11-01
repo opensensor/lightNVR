@@ -110,7 +110,7 @@ void init_recordings_system(void);
 _Atomic bool running = true;
 
 // Global flag for restart request (set by API handler)
-volatile bool restart_requested = false;
+_Atomic bool restart_requested = false;
 
 // Store original argc/argv for restart functionality
 static int saved_argc = 0;
