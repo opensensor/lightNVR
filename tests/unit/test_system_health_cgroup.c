@@ -306,7 +306,9 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     fixture_paths(proc, sizeof(proc), sys, sizeof(sys), "v2dotdot");
     context.proc_root = proc;
     context.cgroup_root = sys;
-    (void)collector.collect(collector.state, &context, &sink);
+    /* A rejected membership is reported as an unavailable discovery
+     * observation; the collection pass itself still succeeds. */
+    TEST_ASSERT_EQUAL_INT(0, collector.collect(collector.state, &context, &sink));
 
     discovery = find_observation(items, sink.count, "container.cgroup.discovery");
     TEST_ASSERT_NOT_NULL(discovery);
