@@ -39,6 +39,19 @@ static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
 static void daemon_signal_handler(int sig);
 static int check_running_daemon(const char *pid_file);
 
+// Report child startup result to the waiting parent and close the pipe.
+static void notify_startup_status(int fd, unsigned char status) {
+    ssize_t n;
+    do {
+        n = write(fd, &status, 1);
+    } while (n < 0 && errno == EINTR);
+    if (n != 1) {
+        log_warn("Failed to report daemon startup status to parent: %s",
+                 n < 0 ? strerror(errno) : "short write");
+    }
+    close(fd);
+}
+
 // Initialize daemon - simplified version that works on all platforms including Linux 4.4
 int init_daemon(const char *pid_file) {
     // Store PID file path
@@ -77,7 +90,10 @@ int init_daemon(const char *pid_file) {
         log_info("Parent process waiting for child startup, child PID: %d", pid);
 
         unsigned char child_status = 0;
-        ssize_t n = read(status_pipe[0], &child_status, 1);
+        ssize_t n;
+        do {
+            n = read(status_pipe[0], &child_status, 1);
+        } while (n < 0 && errno == EINTR);
         close(status_pipe[0]);
 
         if (n == 1 && child_status == 1) {
@@ -97,8 +113,7 @@ int init_daemon(const char *pid_file) {
     pid_t sid = setsid();
     if (sid < 0) {
         log_error("Failed to create session: %s", strerror(errno));
-        (void)write(status_pipe[1], "\0", 1);
-        close(status_pipe[1]);
+        notify_startup_status(status_pipe[1], 0);
         return -1;
     }
     log_info("Created new session with SID: %d", sid);
@@ -153,16 +168,14 @@ int init_daemon(const char *pid_file) {
     int fd = write_pid_file(pid_file_path);
     if (fd < 0) {
         log_error("Failed to write PID file, daemon initialization failed");
-        (void)write(status_pipe[1], "\0", 1);
-        close(status_pipe[1]);
+        notify_startup_status(status_pipe[1], 0);
         return -1;
     }
 
     log_info("Daemon started successfully with PID %d", getpid());
 
     // Notify parent that daemon initialization has completed successfully
-    (void)write(status_pipe[1], "\1", 1);
-    close(status_pipe[1]);
+    notify_startup_status(status_pipe[1], 1);
 
     // Add a small delay to ensure everything is properly initialized
     usleep(100000); // 100ms
@@ -315,8 +328,7 @@ static int check_running_daemon(const char *pid_file) {
         // We got the lock, which means no other process has it
         // This is a stale PID file
         log_warn("Found stale PID file %s (not locked), removing it", pid_file);
-        remove_pid_file(fd, pid_file);
-        close(fd);
+        remove_pid_file(fd, pid_file);  // closes fd
         return 0;
     }
     
