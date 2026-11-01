@@ -2402,9 +2402,6 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    http_response_set_json(res, 202, json_str);
-    free(json_str);
-
     // Spawn background thread to perform the actual deletion work
     // This prevents blocking the web server event loop
     pthread_t thread_id;
@@ -2415,8 +2412,11 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     if (pthread_create(&thread_id, &attr, delete_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for DELETE stream");
         free(task);
+        free(json_str);
         http_response_set_json_error(res, 500, "Failed to start delete task");
     } else {
+        http_response_set_json(res, 202, json_str);
+        free(json_str);
         log_info("DELETE stream task started in worker thread for: %s", stream_id);
     }
 
