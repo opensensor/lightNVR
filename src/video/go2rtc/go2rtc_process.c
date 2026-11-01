@@ -1465,11 +1465,13 @@ static void quarantine_override_file(void)
     char *reason = malloc(sizeof(log_tail) + 512);
     if (reason) {
         snprintf(reason, sizeof(log_tail) + 512,
-                 "go2rtc crashed >= %d times within %ds of start with "
-                 "override.yaml in use. Quarantined to %s.\n\n"
+                 "go2rtc crashed >= %d times (each within %ds of start) "
+                 "within a %ds rolling window with override.yaml in use. "
+                 "Quarantined to %s.\n\n"
                  "Last %zu bytes of go2rtc.log:\n%s",
                  QUARANTINE_FAST_DEATH_COUNT,
                  FAST_DEATH_THRESHOLD_SEC,
+                 QUARANTINE_WINDOW_SEC,
                  g_override_quarantined_path,
                  strlen(log_tail), log_tail);
         if (db_set_system_setting("go2rtc_config_override_disabled_reason",
