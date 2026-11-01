@@ -1921,6 +1921,13 @@ export function LiveBuildingPlan({
                       event.stopPropagation();
                       if (suppressClickRef.current) return;
                       setPlanZoom(zoom + 1, { x: marker.x, y: marker.y });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      if (event.key === ' ') event.preventDefault();
+                      event.stopPropagation();
+                      if (suppressClickRef.current) return;
+                      setPlanZoom(zoom + 1, { x: marker.x, y: marker.y });
                     }}>
                     <circle r="27" /><text textAnchor="middle" dy="6">{marker.count}</text>
                   </g>
