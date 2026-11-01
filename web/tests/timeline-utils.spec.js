@@ -401,11 +401,11 @@ describe('timelineUtils', () => {
 
     try {
       const selectedDate = FALL_BACK_DATE;
-      const firstRepeatedHourTimestamp = dayjs.tz(`${selectedDate}T01:10:00`, 'America/New_York').unix();
-      const secondRepeatedHourTimestamp = dayjs
-        .tz(`${selectedDate}T01:10:00`, 'America/New_York')
-        .add(1, 'hour')
-        .unix();
+      // Pin each occurrence of the ambiguous 01:10 with an explicit offset.
+      // dayjs.tz() disambiguates using the *current* wall-clock offset, so it
+      // picks the EST occurrence whenever the test runs while EST is in effect.
+      const firstRepeatedHourTimestamp = dayjs(`${selectedDate}T01:10:00-04:00`).unix();
+      const secondRepeatedHourTimestamp = dayjs(`${selectedDate}T01:10:00-05:00`).unix();
 
       expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
       expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
