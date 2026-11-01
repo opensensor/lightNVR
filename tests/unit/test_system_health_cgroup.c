@@ -246,6 +246,7 @@ static void test_v1_separate_cpu_paths_and_optional_metrics(void) {
                                    "container.cpu.usage_ratio");
     TEST_ASSERT_NOT_NULL(observation);
     TEST_ASSERT_TRUE(observation->value_valid);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.5f, (float)observation->value);
 
     observation = find_observation(items, sink.count,
                                    "container.memory.limit_bytes");
