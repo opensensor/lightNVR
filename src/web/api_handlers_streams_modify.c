@@ -2218,9 +2218,6 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    http_response_set_json(res, 202, json_str);
-    free(json_str);
-
     // Spawn background thread to perform the actual update work
     // This prevents blocking the web server event loop
     pthread_t thread_id;
@@ -2230,9 +2227,12 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 
     if (pthread_create(&thread_id, &attr, put_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for PUT stream");
+        free(json_str);
         put_stream_task_free(task);
         http_response_set_json_error(res, 500, "Failed to start update task");
     } else {
+        http_response_set_json(res, 202, json_str);
+        free(json_str);
         log_info("PUT stream task started in worker thread for: %s", stream_id);
     }
 
