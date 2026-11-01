@@ -92,6 +92,10 @@ option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
 # HTTP backend: libuv + llhttp
 set(HTTP_BACKEND "libuv" CACHE STRING "HTTP server backend")
 set_property(CACHE HTTP_BACKEND PROPERTY STRINGS libuv)
+string(TOLOWER "${HTTP_BACKEND}" HTTP_BACKEND)
+if(NOT HTTP_BACKEND STREQUAL "libuv")
+    message(FATAL_ERROR "Unsupported HTTP_BACKEND='${HTTP_BACKEND}'. Only 'libuv' is currently supported.")
+endif()
 
 # Compiler flags for optimization and memory usage.  Do not override the
 # toolchain's optimization level (Buildroot supplies -Os for target builds).
