@@ -26,29 +26,27 @@ export default function LanguageSelector({ mobile = false }) {
 
   const currentLocale = availableLocales.find((item) => item.code === locale) || availableLocales[0];
 
-  const menuId = 'language-selector-menu';
   const inner = (
     <div className={`dropdown ${baseClasses} ${activeClass}${mobile ? ' w-full' : ''}`}>
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-controls={menuId}
+      {/* daisyUI focus-based dropdown: the trigger must be a focusable
+          non-<button> element, because Safari does not focus <button> on
+          click and the menu would never open there. */}
+      <div
+        tabIndex={0}
+        role="button"
+        aria-haspopup="true"
         className={`flex cursor-pointer border-0 font-medium items-center ${mobile ? 'w-full px-4 py-3' : 'py-1.5'}`}
       >
         {currentLocale && renderLocaleContent(currentLocale)}
-      </button>
+      </div>
       <ul
-        id={menuId}
         tabIndex={-1}
-        role="menu"
         className="rounded transition-colors dropdown-content menu bg-[hsl(var(--card))]"
         style={{ width: 'max-content', border: '1px solid hsl(var(--primary)/0.8)' }}
       >
-        <li key="auto" role="none" style={{ flexFlow: 'row nowrap' }}>
+        <li key="auto">
           <button
             type="button"
-            role="menuitem"
             className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
             onClick={() => {
               setLocalePreference(null);
@@ -59,10 +57,9 @@ export default function LanguageSelector({ mobile = false }) {
           </button>
         </li>
         {availableLocales.map((item) => (
-          <li key={item.code} role="none" style={{ flexFlow: 'row nowrap' }}>
+          <li key={item.code}>
             <button
               type="button"
-              role="menuitem"
               className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
               onClick={() => {
                 setLocalePreference(item.code);
