@@ -411,12 +411,23 @@ int daemon_status(const char *pid_file) {
     }
     
     // Try to lock the file
-    if (lockf(fd, F_TLOCK, 0) == 0) {
+    int lock_ret;
+    do {
+        lock_ret = lockf(fd, F_TLOCK, 0);
+    } while (lock_ret < 0 && errno == EINTR);
+
+    if (lock_ret == 0) {
         // We got the lock, which means no other process has it
         // This is a stale PID file
         log_warn("Found stale PID file %s (not locked), removing it", file_path);
         remove_pid_file(fd, file_path);
         return 0;
+    }
+
+    if (errno != EACCES && errno != EAGAIN) {
+        log_error("Failed to lock PID file %s: %s", file_path, strerror(errno));
+        close(fd);
+        return -1;
     }
     
     // File is locked by another process, read the PID
