@@ -70,7 +70,8 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
 
     status = faac_encoder_open(&params, &adapter->enc);
     if (status != FAAC_OK || !adapter->enc) {
-        log_error("faac_encoder_open failed: %s", faac_strerror(status));
+        log_error("faac_encoder_open failed: %s",
+                  status != FAAC_OK ? faac_strerror(status) : "NULL encoder handle");
         free(adapter);
         return NULL;
     }

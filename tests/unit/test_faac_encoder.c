@@ -88,9 +88,21 @@ void test_faac_he_aac_v1_uses_full_rate_sample_clock(void) {
     TEST_ASSERT_NULL(adapter);
 }
 
+void test_faac_adapter_open_rejects_unsupported_sample_rate(void) {
+    /* Passes the adapter's own checks but is below FAAC_MIN_SAMPLE_RATE, so
+     * faac_encoder_open() itself fails and the adapter must clean up. */
+    const faac_encoder_config_t config = {
+        .sample_rate = 1,
+        .num_channels = 1,
+        .object_type = FAAC_OBJ_AUTO
+    };
+    TEST_ASSERT_NULL(faac_adapter_open(&config));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_faac_encoder_flushes_buffered_audio);
     RUN_TEST(test_faac_he_aac_v1_uses_full_rate_sample_clock);
+    RUN_TEST(test_faac_adapter_open_rejects_unsupported_sample_rate);
     return UNITY_END();
 }
