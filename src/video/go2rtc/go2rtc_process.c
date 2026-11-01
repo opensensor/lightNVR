@@ -407,6 +407,10 @@ static void remove_owned_config_symlink(void) {
 #define FAST_DEATH_RING_SIZE       8
 
 static time_t g_last_start_time = 0;
+/* Set when lightNVR itself stopped a live managed go2rtc (config apply,
+ * settings change, restart).  The next start consumes it so intentional
+ * restarts are not counted as fast deaths. */
+static bool   g_last_stop_was_managed = false;
 static time_t g_fast_death_history[FAST_DEATH_RING_SIZE];
 static int    g_fast_death_history_idx = 0;
 
@@ -1465,11 +1469,13 @@ static void quarantine_override_file(void)
     char *reason = malloc(sizeof(log_tail) + 512);
     if (reason) {
         snprintf(reason, sizeof(log_tail) + 512,
-                 "go2rtc crashed >= %d times within %ds of start with "
-                 "override.yaml in use. Quarantined to %s.\n\n"
+                 "go2rtc crashed >= %d times (each within %ds of start) "
+                 "within a %ds rolling window with override.yaml in use. "
+                 "Quarantined to %s.\n\n"
                  "Last %zu bytes of go2rtc.log:\n%s",
                  QUARANTINE_FAST_DEATH_COUNT,
                  FAST_DEATH_THRESHOLD_SEC,
+                 QUARANTINE_WINDOW_SEC,
                  g_override_quarantined_path,
                  strlen(log_tail), log_tail);
         if (db_set_system_setting("go2rtc_config_override_disabled_reason",
@@ -1491,6 +1497,12 @@ static void quarantine_override_file(void)
  */
 static void check_and_handle_crash_loop(void)
 {
+    if (g_last_stop_was_managed) {
+        /* Intentional lifecycle restart (e.g., config apply): do not treat as crash. */
+        g_last_stop_was_managed = false;
+        return;
+    }
+
     if (g_last_start_time == 0) return;  /* first start, nothing to compare */
 
     time_t now = time(NULL);
@@ -2656,6 +2668,9 @@ static bool go2rtc_process_stop_locked(void) {
         log_info("Stopping verified managed go2rtc PID %d", pid);
         bool result = true;
         if (managed_process_identity_matches(pid)) {
+            /* A zombie is a crashed child we are only reaping; that is not
+             * an intentional stop and must still count toward T4b. */
+            g_last_stop_was_managed = !is_zombie_process(pid);
             signal_managed_process(pid, SIGTERM);
             if (!wait_for_process_termination(pid, 3000)) {
                 log_warn("Managed go2rtc PID %d did not stop on SIGTERM; sending SIGKILL",
@@ -2665,6 +2680,7 @@ static bool go2rtc_process_stop_locked(void) {
             }
         } else {
             // Reap a dead child, but never signal a reused/unverified PID.
+            g_last_stop_was_managed = false;
             (void)waitpid(pid, NULL, WNOHANG);
         }
         g_process_pid = -1;
@@ -2731,6 +2747,7 @@ static void go2rtc_process_cleanup_locked(void) {
     g_initialized = false;
     /* Reset T4b crash-loop bookkeeping so a fresh init starts clean. */
     g_last_start_time = 0;
+    g_last_stop_was_managed = false;
     memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
     g_fast_death_history_idx = 0;
 
