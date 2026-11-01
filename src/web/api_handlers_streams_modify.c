@@ -170,10 +170,11 @@ static void redact_url_for_log(const char *url, char *out_url, size_t out_size) 
  *
  * This function performs the actual stream update work in a background thread.
  */
-static void put_stream_worker(put_stream_task_t *task) {
+static void *put_stream_worker(void *arg) {
+    put_stream_task_t *task = (put_stream_task_t *)arg;
     if (!task) {
         log_error("Invalid PUT stream task");
-        return;
+        return NULL;
     }
 
     log_set_thread_context("StreamAPI", task->stream_id);
