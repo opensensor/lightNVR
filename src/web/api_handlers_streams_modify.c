@@ -2117,6 +2117,20 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Check if there's a request to set/clear privacy mode (lightweight toggle, no full restart)
     cJSON *privacy_request = cJSON_GetObjectItem(stream_json, "set_privacy_mode");
     if (privacy_request && cJSON_IsBool(privacy_request)) {
+        // Reject mixed updates to avoid silently discarding ordinary config fields.
+        int field_count = 0;
+        cJSON *field = NULL;
+        cJSON_ArrayForEach(field, stream_json) {
+            field_count++;
+        }
+        if (field_count > 1) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(
+                res, 400,
+                "set_privacy_mode cannot be combined with other update fields");
+            return;
+        }
+
         bool enable_privacy = cJSON_IsTrue(privacy_request);
         log_info("Privacy mode %s requested for stream %s", enable_privacy ? "enable" : "disable", stream_id);
 
