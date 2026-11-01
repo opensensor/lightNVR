@@ -1575,9 +1575,11 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 
     cJSON *priority = cJSON_GetObjectItem(stream_json, "priority");
     if (priority && cJSON_IsNumber(priority)) {
-        config.priority = priority->valueint;
-        config_changed = true;
-        non_dynamic_config_changed = true;
+        if (config.priority != priority->valueint) {
+            config.priority = priority->valueint;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+        }
     }
 
     cJSON *record = cJSON_GetObjectItem(stream_json, "record");
@@ -2123,13 +2125,11 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Update is_onvif flag based on request or URL
     bool original_is_onvif = config.is_onvif;
 
-    // Check if isOnvif flag is set in the request
+    // Check if isOnvif flag is explicitly set in the request.
+    // For PUT updates, preserve existing persisted value when omitted.
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
         config.is_onvif = cJSON_IsTrue(is_onvif);
-    } else {
-        // Fall back to URL-based detection if not explicitly set
-        config.is_onvif = (strstr(config.url, "onvif") != NULL);
     }
 
     if (original_is_onvif != config.is_onvif) {
