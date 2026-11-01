@@ -40,6 +40,18 @@ static stream_state_manager_t **stream_states = NULL;
 static int states_capacity = 0;  // allocated slot count
 static pthread_mutex_t states_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool initialized = false;
+/* Protected by states_mutex. Teardown retains registry ownership while
+ * releasing the lock for stop callbacks that need to look up their state. */
+static bool states_shutting_down = false;
+
+/* Final disposal only: both mutexes were initialized, registry ownership is
+ * exclusive, and producers/callbacks have already quiesced. This does not
+ * change the lifetime contract of pointers borrowed from registry lookups. */
+static void dispose_stream_state(stream_state_manager_t *state) {
+    pthread_mutex_destroy(&state->mutex);
+    pthread_mutex_destroy(&state->state_mutex);
+    free(state);
+}
 
 /**
  * Initialize the stream state management system
@@ -73,30 +85,34 @@ int init_stream_state_manager(int max_streams) {
  * Shutdown the stream state management system
  */
 void shutdown_stream_state_manager(void) {
-    if (!initialized) {
+    pthread_mutex_lock(&states_mutex);
+    if (!initialized || states_shutting_down) {
+        pthread_mutex_unlock(&states_mutex);
         return;
     }
+    states_shutting_down = true;
 
-    pthread_mutex_lock(&states_mutex);
-
-    // Stop and clean up all streams
+    /* The caller must quiesce request/stream producers and outstanding users
+     * of borrowed state pointers before final teardown. This guard excludes
+     * registry mutations; it does not make borrowed-pointer use concurrent
+     * with disposal safe or guarantee worker termination after a stop timeout.
+     * Keep each entry discoverable during its synchronous stop callback. */
     for (int i = 0; i < states_capacity; i++) {
         if (stream_states[i]) {
+            stream_state_manager_t *state = stream_states[i];
             // Make a local copy of the stream name for logging
             char stream_name[MAX_STREAM_NAME];
-            safe_strcpy(stream_name, stream_states[i]->name, MAX_STREAM_NAME, 0);
+            safe_strcpy(stream_name, state->name, MAX_STREAM_NAME, 0);
 
             // Stop the stream if it's active
-            if (stream_states[i]->state == STREAM_STATE_ACTIVE ||
-                stream_states[i]->state == STREAM_STATE_STARTING) {
-                stop_stream_with_state(stream_states[i], false);
+            if (state->state == STREAM_STATE_ACTIVE ||
+                state->state == STREAM_STATE_STARTING) {
+                pthread_mutex_unlock(&states_mutex);
+                stop_stream_with_state(state, false);
+                pthread_mutex_lock(&states_mutex);
             }
 
-            // Destroy mutex
-            pthread_mutex_destroy(&stream_states[i]->mutex);
-
-            // Free the state manager
-            free(stream_states[i]);
+            dispose_stream_state(state);
             stream_states[i] = NULL;
 
             log_info("Cleaned up stream state for '%s' during shutdown", stream_name);
@@ -107,6 +123,7 @@ void shutdown_stream_state_manager(void) {
     stream_states = NULL;
     states_capacity = 0;
     initialized = false;
+    states_shutting_down = false;
     pthread_mutex_unlock(&states_mutex);
 
     log_info("Stream state manager shutdown");
@@ -116,12 +133,17 @@ void shutdown_stream_state_manager(void) {
  * Create a new stream state manager
  */
 stream_state_manager_t *create_stream_state(const stream_config_t *config) {
-    if (!config || !initialized) {
+    if (!config) {
         log_error("Invalid parameters or state manager not initialized");
         return NULL;
     }
 
     pthread_mutex_lock(&states_mutex);
+    if (!initialized || states_shutting_down) {
+        pthread_mutex_unlock(&states_mutex);
+        log_error("State manager is not initialized or is shutting down");
+        return NULL;
+    }
 
     // Find an empty slot
     int slot = -1;
@@ -880,11 +902,15 @@ stream_state_manager_t *get_stream_state_by_index(int index) {
  * Remove stream state manager
  */
 int remove_stream_state(stream_state_manager_t *state) {
-    if (!state || !initialized) {
+    if (!state) {
         return -1;
     }
 
     pthread_mutex_lock(&states_mutex);
+    if (!initialized || states_shutting_down) {
+        pthread_mutex_unlock(&states_mutex);
+        return -1;
+    }
 
     // Find the state in the array
     int slot = -1;
@@ -930,12 +956,7 @@ int remove_stream_state(stream_state_manager_t *state) {
     // Remove timestamp tracker
     remove_timestamp_tracker(stream_name);
 
-    // Destroy mutexes
-    pthread_mutex_destroy(&state->mutex);
-    pthread_mutex_destroy(&state->state_mutex);
-
-    // Free the state manager
-    free(state);
+    dispose_stream_state(state);
     stream_states[slot] = NULL;
 
     pthread_mutex_unlock(&states_mutex);

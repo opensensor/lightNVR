@@ -393,6 +393,14 @@ target_link_options(test_mp4_audio_recovery PRIVATE
     "-Wl,--wrap=av_read_frame" "-Wl,--wrap=cleanup_audio_transcoder")
 add_layer3_test(test_stream_manager CI_UNIT CI_SANITIZER)
 add_layer3_test(test_stream_state CI_UNIT CI_SANITIZER)
+add_layer3_test(test_stream_state_disposal CI_UNIT CI_SANITIZER)
+target_link_options(test_stream_state_disposal PRIVATE
+    "-Wl,--wrap=pthread_mutex_destroy"
+    "-Wl,--wrap=stream_stop_hls"
+    "-Wl,--wrap=stop_mp4_recording"
+    "-Wl,--wrap=reset_timestamp_tracker"
+    "-Wl,--wrap=remove_timestamp_tracker")
+set_tests_properties(test_stream_state_disposal PROPERTIES TIMEOUT 15)
 add_layer3_test(test_packet_buffer CI_UNIT CI_SANITIZER)
 add_layer3_test(test_hls_cleanup CI_UNIT)
 target_compile_definitions(test_hls_cleanup PRIVATE
