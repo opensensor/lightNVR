@@ -57,14 +57,15 @@ static void dispose_stream_state(stream_state_manager_t *state) {
  * Initialize the stream state management system
  */
 int init_stream_state_manager(int max_streams) {
-    if (initialized) {
-        return 0;  // Already initialized
-    }
-
     if (max_streams < 1)           max_streams = 1;
     if (max_streams > MAX_STREAMS) max_streams = MAX_STREAMS;
 
     pthread_mutex_lock(&states_mutex);
+
+    if (initialized) {
+        pthread_mutex_unlock(&states_mutex);
+        return 0;  // Already initialized
+    }
 
     stream_states = (stream_state_manager_t **)calloc(max_streams, sizeof(stream_state_manager_t *));
     if (!stream_states) {
