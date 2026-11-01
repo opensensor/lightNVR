@@ -59,15 +59,6 @@ RUN mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
     printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libllhttp\nDescription: llhttp parser\nVersion: %s\nLibs: -L${libdir} -lllhttp\nCflags: -I${includedir}\n' "$LLHTTP_VERSION" > /usr/lib/pkgconfig/libllhttp.pc && \
     pkg-config --modversion libllhttp
 
-# Fetch external dependencies
-RUN mkdir -p /opt/external && \
-    # ezxml
-    cd /opt/external && \
-    git clone https://github.com/lxfontes/ezxml.git && \
-    # inih
-    cd /opt/external && \
-    git clone https://github.com/benhoyt/inih.git
-
 # Copy current directory contents into container
 WORKDIR /opt
 COPY . .
