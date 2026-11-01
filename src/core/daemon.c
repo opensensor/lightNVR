@@ -66,10 +66,10 @@ int init_daemon(const char *pid_file) {
     }
 
     log_info("Starting daemon mode with PID file: %s", pid_file_path);
-    char *cwd = getcwd(NULL, 0);
-    if (cwd != NULL) {
-        log_info("Current working directory: %s", cwd);
-        free(cwd);
+    char *startup_cwd = getcwd(NULL, 0);
+    if (startup_cwd != NULL) {
+        log_info("Current working directory: %s", startup_cwd);
+        free(startup_cwd);
     } else {
         log_warn("Current working directory unavailable: %s", strerror(errno));
     }
