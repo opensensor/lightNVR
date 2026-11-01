@@ -69,14 +69,11 @@ int init_shutdown_coordinator(void) {
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
-    // Check if already destroyed to prevent double-cleanup
-    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
-        return;  // Already cleaned up
+    // Atomically claim cleanup ownership to prevent double-destroy races.
+    // atomic_exchange returns the previous value.
+    if (atomic_exchange(&g_coordinator.coordinator_destroyed, true)) {
+        return;  // Already cleaned up (or cleanup in progress/completed)
     }
-
-    // Mark coordinator as destroyed BEFORE destroying mutex
-    // This prevents signal handlers from trying to use the mutex
-    atomic_store(&g_coordinator.coordinator_destroyed, true);
 
     // Small memory barrier to ensure the flag is visible to other threads
     __sync_synchronize();
@@ -102,29 +99,11 @@ int register_component(const char *name, component_type_t type, void *context, i
 
     int count = atomic_load(&g_coordinator.component_count);
 
-    // First, try to reuse a STOPPED slot.  Dead recordings mark their slot
-    // STOPPED but the old code never freed it, so repeated restart cycles
-    // would exhaust all MAX_COMPONENTS slots.  Prefer a slot with the same
-    // name (natural for stream restarts), otherwise take any STOPPED slot.
-    int reuse_idx = -1;
-    for (int i = 0; i < count; i++) {
-        if (atomic_load(&g_coordinator.components[i].state) == COMPONENT_STOPPED) {
-            if (reuse_idx < 0) {
-                reuse_idx = i;  // remember first available STOPPED slot
-            }
-            if (strcmp(g_coordinator.components[i].name, name) == 0) {
-                reuse_idx = i;  // same-name slot is preferred
-                break;
-            }
-        }
-    }
-
+    // Do not reuse numeric component IDs. Reusing slots can let stale
+    // updates from an old instance modify the state of a newly registered
+    // component that inherited the same slot index.
     int slot;
-    if (reuse_idx >= 0) {
-        slot = reuse_idx;
-        log_info("Reusing STOPPED component slot %d (was '%s') for new component %s",
-                 slot, g_coordinator.components[slot].name, name);
-    } else if (count < MAX_COMPONENTS) {
+    if (count < MAX_COMPONENTS) {
         slot = count;
         atomic_store(&g_coordinator.component_count, count + 1);
     } else {
