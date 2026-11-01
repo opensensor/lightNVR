@@ -340,12 +340,27 @@ static int check_running_daemon(const char *pid_file) {
     }
     
     // Try to lock the file
-    if (lockf(fd, F_TLOCK, 0) == 0) {
-        // We got the lock, which means no other process has it
-        // This is a stale PID file
-        log_warn("Found stale PID file %s (not locked), removing it", pid_file);
-        remove_pid_file(fd, pid_file);  // closes fd
-        return 0;
+    for (;;) {
+        if (lockf(fd, F_TLOCK, 0) == 0) {
+            // We got the lock, which means no other process has it
+            // This is a stale PID file
+            log_warn("Found stale PID file %s (not locked), removing it", pid_file);
+            remove_pid_file(fd, pid_file);  // closes fd
+            return 0;
+        }
+
+        if (errno == EINTR) {
+            continue; // Retry interrupted lock attempt
+        }
+
+        if (errno == EACCES || errno == EAGAIN) {
+            // File is locked by another process
+            break;
+        }
+
+        log_error("Failed to lock PID file %s: %s", pid_file, strerror(errno));
+        close(fd);
+        return -1;
     }
     
     // File is locked by another process, read the PID
