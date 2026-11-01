@@ -1358,9 +1358,13 @@ export function LiveBuildingPlan({
         });
       }
     } else if (interaction.mode === 'aim' && interaction.placing) {
-      finishGesture(interaction.before);
-      setPlacementCameraUuid('');
-      setSelectedCameraUuid(interaction.cameraUuid);
+      if (event.type === 'pointercancel') {
+        setDraft(interaction.before);
+      } else {
+        finishGesture(interaction.before);
+        setPlacementCameraUuid('');
+        setSelectedCameraUuid(interaction.cameraUuid);
+      }
     } else if (interaction.mode === 'marquee') {
       setMarquee(null);
       // A press without a drag falls through to the canvas click (deselect).
