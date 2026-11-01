@@ -153,7 +153,7 @@ static void daemon_signal_handler(int sig) {
         signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
 
         // Set global flag to stop main loop
-        // This is safe because running is declared as volatile bool
+        // This is safe because running is declared as _Atomic bool
         running = false;
 
         // Also wake up any long-running background operation (e.g. a
