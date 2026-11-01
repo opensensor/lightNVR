@@ -403,6 +403,36 @@ void test_privacy_toggle_does_not_restart_go2rtc_for_api_streams(void) {
     TEST_ASSERT_EQUAL_UINT(0, restart_calls);
 }
 
+static unsigned run_captured_update(const char *body) {
+    set_body(body);
+    capture_success = true;
+    handle_put_stream(&request, &response);
+    capture_success = false;
+    TEST_ASSERT_EQUAL_INT(202, response.status_code);
+    TEST_ASSERT_NOT_NULL(failed_task);
+    TEST_ASSERT_NOT_NULL(captured_worker);
+    void *task = failed_task;
+    failed_task = NULL;   /* the worker owns and frees the task */
+    fake_go2rtc = true;
+    captured_worker(task);
+    fake_go2rtc = false;
+    return restart_calls;
+}
+
+void test_publish_change_restarts_go2rtc_without_running_stream(void) {
+    /* The fixture stream is enabled but not running, so the stream-restart
+     * block is skipped; the restream change must still reach go2rtc. */
+    TEST_ASSERT_EQUAL_UINT(1, run_captured_update(
+        "{\"publish_url\":\"rtmp://a.example/live/key\"}"));
+    stream_config_t persisted = {0};
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name(original_config.name, &persisted));
+    TEST_ASSERT_EQUAL_STRING("rtmp://a.example/live/key", persisted.publish_url);
+}
+
+void test_unrelated_change_does_not_restart_go2rtc(void) {
+    TEST_ASSERT_EQUAL_UINT(0, run_captured_update("{\"priority\":7}"));
+}
+
 int main(void) {
     char directory[] = "/tmp/lightnvr-put-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -430,6 +460,8 @@ int main(void) {
     RUN_TEST(test_privacy_enable_restarts_go2rtc_for_yaml_backed_stream);
     RUN_TEST(test_privacy_disable_restarts_go2rtc_for_yaml_backed_stream);
     RUN_TEST(test_privacy_toggle_does_not_restart_go2rtc_for_api_streams);
+    RUN_TEST(test_publish_change_restarts_go2rtc_without_running_stream);
+    RUN_TEST(test_unrelated_change_does_not_restart_go2rtc);
     int result = UNITY_END();
     shutdown_database();
     unlink(path);

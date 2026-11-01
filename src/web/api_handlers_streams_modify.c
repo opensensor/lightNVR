@@ -427,19 +427,6 @@ static void *put_stream_worker(void *arg) {
             usleep(500000);
         }
 
-        // If the RTMP publish (restream) URL changed, regenerate go2rtc.yaml (which
-        // carries the publish: block) and restart go2rtc so it starts/stops the
-        // RTMP push. Skip if an override restart already happened above.
-        if (task->publish_changed && !task->go2rtc_override_changed) {
-            log_info("Publish URL changed for stream %s, restarting go2rtc to apply restream config", task->config.name);
-            if (go2rtc_integration_restart_process()) {
-                log_info("Successfully restarted go2rtc after publish URL change for stream %s", task->config.name);
-            } else {
-                log_error("Failed to restart go2rtc after publish URL change for stream %s", task->config.name);
-            }
-            usleep(500000);
-        }
-
         // If sub-stream URL changed, register or unregister the {name}_sub stream
         if (task->sub_stream_changed && !task->go2rtc_override_changed) {
             char sub_name[MAX_STREAM_NAME + 8];
@@ -490,6 +477,21 @@ static void *put_stream_worker(void *arg) {
         }
     } else if (task->config_changed) {
         log_info("Configuration changed for stream %s but restart not required", task->config.name);
+    }
+
+    // If the RTMP publish (restream) URL changed, regenerate go2rtc.yaml (which
+    // carries the publish: block) and restart go2rtc so it starts/stops the
+    // RTMP push. This is independent of the stream restart decision above: a
+    // restream edit must apply even when the stream is not running, and it does
+    // not need the recording pipeline restarted. Skip if an override change
+    // already restarted go2rtc (which regenerated the publish block too).
+    if (task->config_changed && task->publish_changed && !task->go2rtc_override_changed) {
+        log_info("Publish URL changed for stream %s, restarting go2rtc to apply restream config", task->config.name);
+        if (go2rtc_integration_restart_process()) {
+            log_info("Successfully restarted go2rtc after publish URL change for stream %s", task->config.name);
+        } else {
+            log_error("Failed to restart go2rtc after publish URL change for stream %s", task->config.name);
+        }
     }
 
     log_info("Successfully completed stream update for: %s", task->stream_id);
