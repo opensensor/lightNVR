@@ -104,9 +104,11 @@ void shutdown_stream_state_manager(void) {
             char stream_name[MAX_STREAM_NAME];
             safe_strcpy(stream_name, state->name, MAX_STREAM_NAME, 0);
 
-            // Stop the stream if it's active
+            // Stop/wait for stream operations before disposal, including transitional states
             if (state->state == STREAM_STATE_ACTIVE ||
-                state->state == STREAM_STATE_STARTING) {
+                state->state == STREAM_STATE_STARTING ||
+                state->state == STREAM_STATE_RECONNECTING ||
+                state->state == STREAM_STATE_STOPPING) {
                 pthread_mutex_unlock(&states_mutex);
                 stop_stream_with_state(state, false);
                 pthread_mutex_lock(&states_mutex);
