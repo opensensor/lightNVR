@@ -179,10 +179,10 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
 # Build upstream llhttp (skipped for .deb builds which use system libllhttp)
 RUN if [ "$DEB_BUILD" != "true" ]; then \
     mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/include/llhttp.h" -O /tmp/llhttp/include/llhttp.h && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/api.c" -O /tmp/llhttp/src/api.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/http.c" -O /tmp/llhttp/src/http.c && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/include/llhttp.h" -O /tmp/llhttp/include/llhttp.h && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/api.c" -O /tmp/llhttp/src/api.c && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/http.c" -O /tmp/llhttp/src/http.c && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       TARGET_CC=arm-linux-gnueabihf-gcc; \
     else \
