@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "已將 {count} 台攝影機指派到 {location}",
   "live.plan.assignLocationPartial": "已指派 {done} 台攝影機；{failed} 台失敗：{error}",
   "live.plan.sketch.multiSelected": "已選取 {count} 個形狀",
-  "live.plan.sketch.multiHint": "拖曳其中任一個即可移動整組。Shift+按一下可加入或移除形狀；方向鍵可微調。"
+  "live.plan.sketch.multiHint": "拖曳其中任一個即可移動整組。Shift+按一下可加入或移除形狀；方向鍵可微調。",
+  "system.storageTiers.title": "錄影儲存空間",
+  "system.storageTiers.summary": "{count} 個儲存目標共 {total}",
+  "system.storageTiers.class.hot": "熱",
+  "system.storageTiers.class.warm": "溫",
+  "system.storageTiers.class.cold": "冷",
+  "system.storageTiers.kind.disk": "磁碟",
+  "system.storageTiers.kind.bucket": "儲存桶",
+  "system.storageTiers.recordings": "錄影：{bytes}（{count} 個）",
+  "system.storageTiers.copies": "已驗證副本：{bytes}",
+  "system.storageTiers.diskUsage": "進度列顯示整個檔案系統的用量，而不只是錄影",
+  "system.storageTiers.budgetUsage": "進度列顯示封存預算的使用情況",
+  "system.storageTiers.noBudget": "未設定封存預算",
+  "system.storageTiers.pressure.high": "高於高水位",
+  "system.storageTiers.pressure.reserve": "低於保留空間",
+  "system.storageTiers.pressure.unavailable": "無法使用",
+  "system.storageTiers.sharedFilesystem": "與另一個儲存目標共用檔案系統"
 }

@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} Kameras {location} zugeordnet",
   "live.plan.assignLocationPartial": "{done} Kameras zugeordnet; {failed} fehlgeschlagen: {error}",
   "live.plan.sketch.multiSelected": "{count} Formen ausgewählt",
-  "live.plan.sketch.multiHint": "Eine beliebige ziehen, um die Gruppe zu verschieben. Shift-Klick fügt eine Form hinzu oder entfernt sie; Pfeiltasten verschieben."
+  "live.plan.sketch.multiHint": "Eine beliebige ziehen, um die Gruppe zu verschieben. Shift-Klick fügt eine Form hinzu oder entfernt sie; Pfeiltasten verschieben.",
+  "system.storageTiers.title": "Aufnahmespeicher",
+  "system.storageTiers.summary": "{total} auf {count} Speicherzielen",
+  "system.storageTiers.class.hot": "Heiß",
+  "system.storageTiers.class.warm": "Warm",
+  "system.storageTiers.class.cold": "Kalt",
+  "system.storageTiers.kind.disk": "Datenträger",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Aufnahmen: {bytes} ({count})",
+  "system.storageTiers.copies": "Verifizierte Kopien: {bytes}",
+  "system.storageTiers.diskUsage": "Der Balken zeigt das gesamte Dateisystem, nicht nur Aufnahmen",
+  "system.storageTiers.budgetUsage": "Der Balken zeigt die Nutzung des Archivbudgets",
+  "system.storageTiers.noBudget": "Kein Archivbudget festgelegt",
+  "system.storageTiers.pressure.high": "Über der oberen Schwelle",
+  "system.storageTiers.pressure.reserve": "Unter der Reserve",
+  "system.storageTiers.pressure.unavailable": "Nicht verfügbar",
+  "system.storageTiers.sharedFilesystem": "Teilt ein Dateisystem mit einem anderen Ziel"
 }

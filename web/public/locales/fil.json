@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "Na-assign ang {count} camera sa {location}",
   "live.plan.assignLocationPartial": "Na-assign ang {done} camera; {failed} ang pumalya: {error}",
   "live.plan.sketch.multiSelected": "{count} hugis ang napili",
-  "live.plan.sketch.multiHint": "I-drag ang alinman para ilipat ang grupo. Shift-click para magdagdag o mag-alis ng hugis; inuusog ng arrow keys."
+  "live.plan.sketch.multiHint": "I-drag ang alinman para ilipat ang grupo. Shift-click para magdagdag o mag-alis ng hugis; inuusog ng arrow keys.",
+  "system.storageTiers.title": "Storage ng recording",
+  "system.storageTiers.summary": "{total} sa {count} storage target",
+  "system.storageTiers.class.hot": "Hot",
+  "system.storageTiers.class.warm": "Warm",
+  "system.storageTiers.class.cold": "Cold",
+  "system.storageTiers.kind.disk": "Disk",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Mga recording: {bytes} ({count})",
+  "system.storageTiers.copies": "Mga na-verify na kopya: {bytes}",
+  "system.storageTiers.diskUsage": "Ipinapakita ng bar ang buong filesystem, hindi lang ang mga recording",
+  "system.storageTiers.budgetUsage": "Ipinapakita ng bar ang paggamit ng archive budget",
+  "system.storageTiers.noBudget": "Walang nakatakdang archive budget",
+  "system.storageTiers.pressure.high": "Lampas sa high watermark",
+  "system.storageTiers.pressure.reserve": "Mas mababa sa reserve",
+  "system.storageTiers.pressure.unavailable": "Hindi available",
+  "system.storageTiers.sharedFilesystem": "Kahati ng ibang target sa isang filesystem"
 }

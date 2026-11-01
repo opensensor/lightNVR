@@ -2922,5 +2922,21 @@
   "live.plan.assignLocationDone": "Assigned {count} cameras to {location}",
   "live.plan.assignLocationPartial": "Assigned {done} cameras; {failed} failed: {error}",
   "live.plan.sketch.multiSelected": "{count} shapes selected",
-  "live.plan.sketch.multiHint": "Drag any of them to move the group. Shift-click adds or removes a shape; arrow keys nudge."
+  "live.plan.sketch.multiHint": "Drag any of them to move the group. Shift-click adds or removes a shape; arrow keys nudge.",
+  "system.storageTiers.title": "Recording storage",
+  "system.storageTiers.summary": "{total} across {count} storage targets",
+  "system.storageTiers.class.hot": "Hot",
+  "system.storageTiers.class.warm": "Warm",
+  "system.storageTiers.class.cold": "Cold",
+  "system.storageTiers.kind.disk": "Disk",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Recordings: {bytes} ({count})",
+  "system.storageTiers.copies": "Verified copies: {bytes}",
+  "system.storageTiers.diskUsage": "Bar shows the whole filesystem, not only recordings",
+  "system.storageTiers.budgetUsage": "Bar shows use of the archive budget",
+  "system.storageTiers.noBudget": "No archive budget set",
+  "system.storageTiers.pressure.high": "Above high watermark",
+  "system.storageTiers.pressure.reserve": "Below reserve",
+  "system.storageTiers.pressure.unavailable": "Unavailable",
+  "system.storageTiers.sharedFilesystem": "Shares a filesystem with another target"
 }

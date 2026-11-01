@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "تم تعيين {count} كاميرات إلى {location}",
   "live.plan.assignLocationPartial": "تم تعيين {done} كاميرات؛ فشل {failed}: {error}",
   "live.plan.sketch.multiSelected": "تم تحديد {count} أشكال",
-  "live.plan.sketch.multiHint": "اسحب أيًا منها لتحريك المجموعة. Shift مع النقر يضيف شكلًا أو يزيله؛ مفاتيح الأسهم للتحريك الدقيق."
+  "live.plan.sketch.multiHint": "اسحب أيًا منها لتحريك المجموعة. Shift مع النقر يضيف شكلًا أو يزيله؛ مفاتيح الأسهم للتحريك الدقيق.",
+  "system.storageTiers.title": "تخزين التسجيلات",
+  "system.storageTiers.summary": "{total} عبر {count} أهداف تخزين",
+  "system.storageTiers.class.hot": "ساخن",
+  "system.storageTiers.class.warm": "دافئ",
+  "system.storageTiers.class.cold": "بارد",
+  "system.storageTiers.kind.disk": "قرص",
+  "system.storageTiers.kind.bucket": "حاوية",
+  "system.storageTiers.recordings": "التسجيلات: {bytes} ({count})",
+  "system.storageTiers.copies": "النسخ المتحقق منها: {bytes}",
+  "system.storageTiers.diskUsage": "يعرض الشريط نظام الملفات بالكامل وليس التسجيلات فقط",
+  "system.storageTiers.budgetUsage": "يعرض الشريط استخدام ميزانية الأرشيف",
+  "system.storageTiers.noBudget": "لم يتم تعيين ميزانية أرشيف",
+  "system.storageTiers.pressure.high": "أعلى من الحد المرتفع",
+  "system.storageTiers.pressure.reserve": "أقل من الاحتياطي",
+  "system.storageTiers.pressure.unavailable": "غير متاح",
+  "system.storageTiers.sharedFilesystem": "يشارك نظام ملفات مع هدف آخر"
 }

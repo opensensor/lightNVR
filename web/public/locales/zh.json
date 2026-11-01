@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "已将 {count} 个摄像头分配到 {location}",
   "live.plan.assignLocationPartial": "已分配 {done} 个摄像头；{failed} 个失败：{error}",
   "live.plan.sketch.multiSelected": "已选择 {count} 个形状",
-  "live.plan.sketch.multiHint": "拖动其中任意一个即可移动整组。Shift+单击可添加或移除形状；方向键可微调。"
+  "live.plan.sketch.multiHint": "拖动其中任意一个即可移动整组。Shift+单击可添加或移除形状；方向键可微调。",
+  "system.storageTiers.title": "录像存储",
+  "system.storageTiers.summary": "{count} 个存储目标共 {total}",
+  "system.storageTiers.class.hot": "热",
+  "system.storageTiers.class.warm": "温",
+  "system.storageTiers.class.cold": "冷",
+  "system.storageTiers.kind.disk": "磁盘",
+  "system.storageTiers.kind.bucket": "存储桶",
+  "system.storageTiers.recordings": "录像：{bytes}（{count} 个）",
+  "system.storageTiers.copies": "已验证副本：{bytes}",
+  "system.storageTiers.diskUsage": "进度条显示整个文件系统的用量，而不仅是录像",
+  "system.storageTiers.budgetUsage": "进度条显示归档预算的使用情况",
+  "system.storageTiers.noBudget": "未设置归档预算",
+  "system.storageTiers.pressure.high": "高于高水位线",
+  "system.storageTiers.pressure.reserve": "低于保留空间",
+  "system.storageTiers.pressure.unavailable": "不可用",
+  "system.storageTiers.sharedFilesystem": "与另一个存储目标共享文件系统"
 }

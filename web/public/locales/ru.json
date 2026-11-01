@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "Назначено камер в {location}: {count}",
   "live.plan.assignLocationPartial": "Назначено камер: {done}; с ошибкой: {failed}: {error}",
   "live.plan.sketch.multiSelected": "Выбрано фигур: {count}",
-  "live.plan.sketch.multiHint": "Перетащите любую, чтобы сдвинуть группу. Shift+щелчок добавляет или убирает фигуру; стрелки сдвигают."
+  "live.plan.sketch.multiHint": "Перетащите любую, чтобы сдвинуть группу. Shift+щелчок добавляет или убирает фигуру; стрелки сдвигают.",
+  "system.storageTiers.title": "Хранилище записей",
+  "system.storageTiers.summary": "{total} в хранилищах: {count}",
+  "system.storageTiers.class.hot": "Горячее",
+  "system.storageTiers.class.warm": "Тёплое",
+  "system.storageTiers.class.cold": "Холодное",
+  "system.storageTiers.kind.disk": "Диск",
+  "system.storageTiers.kind.bucket": "Бакет",
+  "system.storageTiers.recordings": "Записи: {bytes} ({count})",
+  "system.storageTiers.copies": "Проверенные копии: {bytes}",
+  "system.storageTiers.diskUsage": "Полоса показывает всю файловую систему, а не только записи",
+  "system.storageTiers.budgetUsage": "Полоса показывает использование бюджета архива",
+  "system.storageTiers.noBudget": "Бюджет архива не задан",
+  "system.storageTiers.pressure.high": "Выше верхнего порога",
+  "system.storageTiers.pressure.reserve": "Ниже резерва",
+  "system.storageTiers.pressure.unavailable": "Недоступно",
+  "system.storageTiers.sharedFilesystem": "Использует одну файловую систему с другим хранилищем"
 }

@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} câmeras atribuídas a {location}",
   "live.plan.assignLocationPartial": "{done} câmeras atribuídas; {failed} falharam: {error}",
   "live.plan.sketch.multiSelected": "{count} formas selecionadas",
-  "live.plan.sketch.multiHint": "Arraste qualquer uma para mover o grupo. Shift+clique adiciona ou remove uma forma; as setas deslocam."
+  "live.plan.sketch.multiHint": "Arraste qualquer uma para mover o grupo. Shift+clique adiciona ou remove uma forma; as setas deslocam.",
+  "system.storageTiers.title": "Armazenamento de gravações",
+  "system.storageTiers.summary": "{total} em {count} destinos de armazenamento",
+  "system.storageTiers.class.hot": "Quente",
+  "system.storageTiers.class.warm": "Morno",
+  "system.storageTiers.class.cold": "Frio",
+  "system.storageTiers.kind.disk": "Disco",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Gravações: {bytes} ({count})",
+  "system.storageTiers.copies": "Cópias verificadas: {bytes}",
+  "system.storageTiers.diskUsage": "A barra mostra todo o sistema de arquivos, não só as gravações",
+  "system.storageTiers.budgetUsage": "A barra mostra o uso do orçamento de arquivo",
+  "system.storageTiers.noBudget": "Nenhum orçamento de arquivo definido",
+  "system.storageTiers.pressure.high": "Acima da marca alta",
+  "system.storageTiers.pressure.reserve": "Abaixo da reserva",
+  "system.storageTiers.pressure.unavailable": "Indisponível",
+  "system.storageTiers.sharedFilesystem": "Compartilha um sistema de arquivos com outro destino"
 }

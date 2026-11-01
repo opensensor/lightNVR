@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} telecamere assegnate a {location}",
   "live.plan.assignLocationPartial": "{done} telecamere assegnate; {failed} non riuscite: {error}",
   "live.plan.sketch.multiSelected": "{count} forme selezionate",
-  "live.plan.sketch.multiHint": "Trascinane una qualsiasi per spostare il gruppo. Shift+clic aggiunge o rimuove una forma; le frecce spostano."
+  "live.plan.sketch.multiHint": "Trascinane una qualsiasi per spostare il gruppo. Shift+clic aggiunge o rimuove una forma; le frecce spostano.",
+  "system.storageTiers.title": "Archiviazione registrazioni",
+  "system.storageTiers.summary": "{total} su {count} destinazioni di archiviazione",
+  "system.storageTiers.class.hot": "Caldo",
+  "system.storageTiers.class.warm": "Tiepido",
+  "system.storageTiers.class.cold": "Freddo",
+  "system.storageTiers.kind.disk": "Disco",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Registrazioni: {bytes} ({count})",
+  "system.storageTiers.copies": "Copie verificate: {bytes}",
+  "system.storageTiers.diskUsage": "La barra mostra l'intero filesystem, non solo le registrazioni",
+  "system.storageTiers.budgetUsage": "La barra mostra l'uso del budget di archivio",
+  "system.storageTiers.noBudget": "Nessun budget di archivio impostato",
+  "system.storageTiers.pressure.high": "Sopra la soglia alta",
+  "system.storageTiers.pressure.reserve": "Sotto la riserva",
+  "system.storageTiers.pressure.unavailable": "Non disponibile",
+  "system.storageTiers.sharedFilesystem": "Condivide un filesystem con un'altra destinazione"
 }
