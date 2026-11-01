@@ -21,35 +21,40 @@
   "dependencies": {
     "@preact-signals/query": "^2.1.2",
     "@preact/compat": "^18.3.2",
-    "@sentry/browser": "^11.9.0",
+    "@sentry/browser": "^11.10.0",
     "@tailwindcss/postcss": "^4.3.3",
-    "daisyui": "^5.7.20",
+    "daisyui": "^5.7.50",
     "dayjs": "^1.11.23",
-    "hls.js": "^1.7.1",
+    "hls.js": "^1.7.4",
     "htm": "^3.1.1",
-    "preact": "^10.29.8",
+    "preact": "^11.1.1",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3",
-    "tinykeys": "^4.0.0",
+    "tinykeys": "^4.0.1",
     "webrtc-adapter": "^9.0.6"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
-    "@babel/preset-env": "^8.0.2",
-    "@prefresh/vite": "^3.0.1",
+    "@babel/core": "^8.0.10",
+    "@babel/preset-env": "^8.0.7",
+    "@prefresh/vite": "^4.0.1",
     "@sentry/vite-plugin": "^11.10.0",
     "@vitejs/plugin-legacy": "^8.2.3",
-    "autoprefixer": "^10.5.4",
-    "babel-jest": "^30.4.1",
+    "autoprefixer": "^10.6.2",
+    "babel-jest": "^30.5.2",
     "esbuild": "^0.28.2",
-    "eslint": "^9.38.0",
+    "eslint": "^10.14.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "jest": "^30.4.2",
-    "postcss": "^8.5.26",
-    "postcss-import": "^16.2.0",
-    "selenium-webdriver": "^4.47.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jest": "^30.5.2",
+    "postcss": "^8.5.32",
+    "postcss-import": "^17.0.1",
+    "selenium-webdriver": "^4.52.0",
     "vite": "^8.3.5",
     "vite-plugin-compression": "^0.5.1"
+  },
+  "overrides": {
+    "eslint-plugin-jsx-a11y": {
+      "eslint": "$eslint"
+    }
   }
 }

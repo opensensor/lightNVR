@@ -13,6 +13,9 @@ module.exports = {
   setupFilesAfterEnv: ['./tests/setup.cjs'],
   testTimeout: 30000,
   transform: {
-    '^.+\\.jsx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
-  }
+    '^.+\\.m?jsx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
+  },
+  // Preact 11 ships ES modules only; compile it (and preact/* subpaths) for
+  // Jest's CommonJS runtime instead of skipping node_modules entirely.
+  transformIgnorePatterns: ['/node_modules/(?!(preact|@preact)/)']
 };
