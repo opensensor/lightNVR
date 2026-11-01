@@ -255,7 +255,7 @@
 #status-message-container {
     position: fixed;
     top: 20px;
-    right: 20px;
+    inset-inline-end: 20px;
     z-index: 1000;
     display: flex;
     flex-direction: column;
@@ -269,8 +269,13 @@
     color: white;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateX(var(--status-slide-from, 20px));
     transition: all 0.3s ease;
+}
+
+/* Slide in from the inline-end edge, which is the left edge in RTL. */
+[dir="rtl"] .status-message {
+    --status-slide-from: -20px;
 }
 
 .status-message.show {

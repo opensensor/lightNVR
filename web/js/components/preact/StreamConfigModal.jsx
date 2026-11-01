@@ -160,7 +160,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
             </button>
           );
         })}
-        <span className="ml-auto text-xs font-semibold text-primary tabular-nums">
+        <span className="ms-auto text-xs font-semibold text-primary tabular-nums">
           {t('streamsConfig.hoursPerWeek', { count: scheduledHours })}
         </span>
       </div>
@@ -192,7 +192,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
                 type="button"
                 title={t('streamsConfig.toggleHourAllDays', { hour: hourLabel })}
                 onClick={() => toggleHour(hourIdx)}
-                className="flex-shrink-0 flex items-center justify-end pr-1.5 hover:text-primary transition-colors"
+                className="flex-shrink-0 flex items-center justify-end pe-1.5 hover:text-primary transition-colors"
                 style={{ width: '28px', height: '13px' }}
               >
                 {hourIdx % 3 === 0 && (
@@ -246,7 +246,7 @@ function AccordionSection({ title, isExpanded, onToggle, children, badge }) {
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
+        className="w-full flex items-center justify-between p-4 text-start hover:bg-muted/50 transition-colors rounded-t-lg"
       >
         <div className="flex items-center space-x-2">
           <h4 className="text-md font-semibold text-foreground">{title}</h4>
@@ -447,6 +447,7 @@ export function StreamConfigModal({
                   <input
                     type="text"
                     id="stream-url"
+                    dir="ltr"
                     name="url"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder={t('streamsConfig.streamUrlPlaceholder')}
@@ -468,6 +469,7 @@ export function StreamConfigModal({
                   <input
                     type="text"
                     id="stream-sub-url"
+                    dir="ltr"
                     name="subStreamUrl"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder={t('streamsConfig.subStreamUrlPlaceholder')}
@@ -487,6 +489,7 @@ export function StreamConfigModal({
                   <input
                     type="text"
                     id="stream-admin-url"
+                    dir="ltr"
                     name="adminUrl"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder="http://192.168.1.100/"
@@ -606,7 +609,7 @@ export function StreamConfigModal({
                     />
                     <span className="text-sm font-medium">{t('streamsConfig.onvifCamera')}</span>
                   </label>
-                  <span className="ml-2 text-xs text-muted-foreground">{t('streamsConfig.onvifCameraHelp')}</span>
+                  <span className="ms-2 text-xs text-muted-foreground">{t('streamsConfig.onvifCameraHelp')}</span>
                 </div>
 
                 {/* ONVIF Credentials - shown when ONVIF Camera is enabled */}
@@ -757,7 +760,7 @@ export function StreamConfigModal({
 
                       {/* On a Schedule sub-option — visible when continuous recording is enabled */}
                       {currentStream.record && (
-                        <div className="px-3 pb-3 ml-7 space-y-2">
+                        <div className="px-3 pb-3 ms-7 space-y-2">
                           <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit border border-transparent hover:border-primary/20">
                             <input
                               type="checkbox"
@@ -809,7 +812,7 @@ export function StreamConfigModal({
                       </div>
                     </label>
                     {currentStream.detectionEnabled && (
-                      <div className="px-3 pb-3 ml-7 space-y-2">
+                      <div className="px-3 pb-3 ms-7 space-y-2">
                         <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit">
                           <input
                             type="checkbox"
@@ -1069,6 +1072,7 @@ export function StreamConfigModal({
                         <input
                           type="text"
                           id="stream-detection-url"
+                          dir="ltr"
                           name="detectionUrl"
                           className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                           placeholder={t('streamsConfig.detectionUrlPlaceholder')}
@@ -1380,7 +1384,7 @@ export function StreamConfigModal({
 
                   <div className="rounded-lg p-4 bg-[hsl(var(--info-muted))] border border-[hsl(var(--info)_/_0.3)]">
                     <div className="flex">
-                      <svg className="w-5 h-5 mr-2 flex-shrink-0 text-[hsl(var(--info))]" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-5 h-5 me-2 flex-shrink-0 text-[hsl(var(--info))]" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                       </svg>
                       <div className="text-sm text-[hsl(var(--info-muted-foreground))]">

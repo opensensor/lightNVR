@@ -79,9 +79,9 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4 mb-4">
-      <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-4 pb-2 border-b border-border">
         <h3 className="text-lg font-semibold">{t('system.systemLogs')}</h3>
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <select
             id="log-level"
             className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"

@@ -44,7 +44,7 @@ function EventCard({ event, expanded, onToggle, onFilterAction, t }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="font-mono text-left text-sm font-semibold break-all underline decoration-dotted underline-offset-2" onClick={onFilterAction} title={t('audit.filterToAction')}>{event.action}</button>
+            <button type="button" className="font-mono text-start text-sm font-semibold break-all underline decoration-dotted underline-offset-2" onClick={onFilterAction} title={t('audit.filterToAction')}>{event.action}</button>
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${outcomeClass(event.outcome)}`}>{event.outcome}</span>
             {summary && <span className="rounded-full px-2 py-0.5 text-xs font-semibold badge-info">{formatSummaryCount(summary.count)}</span>}
           </div>
@@ -267,7 +267,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
             </div>
           </div>
 
-          {error && <div className="mb-3 rounded-md badge-danger p-3">{error} <button type="button" className="ml-2 underline" onClick={loadEvents}>{t('common.retry')}</button></div>}
+          {error && <div className="mb-3 rounded-md badge-danger p-3">{error} <button type="button" className="ms-2 underline" onClick={loadEvents}>{t('common.retry')}</button></div>}
           {!loading && !error && page.events.length === 0 && <div className="rounded-lg border border-dashed border-border p-10 text-center"><h3 className="font-semibold">{t('audit.empty')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('audit.emptyDescription')}</p></div>}
           <div className={`space-y-3 ${loading ? 'opacity-60' : ''}`} aria-live="polite" aria-busy={loading}>
             {page.events.map((event) => <EventCard key={event.uuid} event={event} expanded={expandedUuid === event.uuid} onToggle={() => setExpandedUuid((current) => current === event.uuid ? '' : event.uuid)} onFilterAction={() => filterToAction(event.action)} t={t} />)}

@@ -219,7 +219,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       style={{
         position: 'absolute',
         bottom: '60px',
-        left: '10px',
+        insetInlineStart: '10px',
         backgroundColor: 'rgba(0, 0, 0, 0.75)',
         borderRadius: '8px',
         padding: '12px',
@@ -253,7 +253,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       </div>
 
       {/* Direction pad */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '4px', justifyContent: 'center' }}>
+      <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '4px', justifyContent: 'center' }}>
         <div></div>
         <DirectionButton
           direction="up"

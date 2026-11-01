@@ -11,7 +11,7 @@ function SortButton({ field, label, state, onSort }) {
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-start hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
       onClick={() => onSort(field)}
       aria-label={`${label}${active ? `, ${state.sortOrder}` : ''}`}
     >
@@ -118,7 +118,7 @@ export function FleetTable({ cameras, state, onSort, locale, t, selectable = fal
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              {selectable && <th className="w-10 px-3 py-3 text-left">
+              {selectable && <th className="w-10 px-3 py-3 text-start">
                 <label className="inline-flex cursor-pointer items-center justify-center">
                   <input
                     type="checkbox"
@@ -130,12 +130,12 @@ export function FleetTable({ cameras, state, onSort, locale, t, selectable = fal
                   />
                 </label>
               </th>}
-              <th className="px-4 py-3 text-left"><SortButton field="name" label={t('fleet.column.camera')} state={state} onSort={onSort} /></th>
-              <th className="px-4 py-3 text-left"><SortButton field="health" label={t('fleet.column.health')} state={state} onSort={onSort} /></th>
-              <th className="px-4 py-3 text-left"><SortButton field="location" label={t('fleet.column.location')} state={state} onSort={onSort} /></th>
-              <th className="px-4 py-3 text-left">{t('fleet.column.tags')}</th>
-              <th className="px-4 py-3 text-left"><SortButton field="recording_mode" label={t('fleet.column.recording')} state={state} onSort={onSort} /></th>
-              <th className="px-4 py-3 text-right">{t('common.actions')}</th>
+              <th className="px-4 py-3 text-start"><SortButton field="name" label={t('fleet.column.camera')} state={state} onSort={onSort} /></th>
+              <th className="px-4 py-3 text-start"><SortButton field="health" label={t('fleet.column.health')} state={state} onSort={onSort} /></th>
+              <th className="px-4 py-3 text-start"><SortButton field="location" label={t('fleet.column.location')} state={state} onSort={onSort} /></th>
+              <th className="px-4 py-3 text-start">{t('fleet.column.tags')}</th>
+              <th className="px-4 py-3 text-start"><SortButton field="recording_mode" label={t('fleet.column.recording')} state={state} onSort={onSort} /></th>
+              <th className="px-4 py-3 text-end">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-card">

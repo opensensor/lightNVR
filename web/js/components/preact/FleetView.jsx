@@ -40,7 +40,7 @@ function StatCard({ label, value, tone = 'default' }) {
     danger: 'border-[hsl(var(--danger)/0.55)]',
   };
   return (
-    <div className={`rounded-lg border-l-4 bg-card p-4 shadow-sm ${tones[tone]}`}>
+    <div className={`rounded-lg border-s-4 bg-card p-4 shadow-sm ${tones[tone]}`}>
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
     </div>
@@ -56,7 +56,7 @@ function OperationalQueueCard({ queue, locale, onOpen, t }) {
   return (
     <button
       type="button"
-      className={`rounded-lg border-l-4 bg-card p-4 text-left shadow-sm transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] ${danger ? 'border-[hsl(var(--danger)/0.55)]' : 'border-[hsl(var(--warning)/0.65)]'}`}
+      className={`rounded-lg border-s-4 bg-card p-4 text-start shadow-sm transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] ${danger ? 'border-[hsl(var(--danger)/0.55)]' : 'border-[hsl(var(--warning)/0.65)]'}`}
       onClick={() => onOpen(queue)}
     >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(`fleet.queues.${queue.key}`)}</div>
@@ -286,7 +286,7 @@ export function FleetView({ onEditCamera }) {
           {isAdmin && <button type="button" className="btn-secondary" onClick={() => setShowOrganizationManager(true)}>{t('fleet.organization.manage')}</button>}
           <button type="button" className="btn-secondary" onClick={() => refetch()} disabled={isFetching}>
             <span className={isFetching ? 'inline-block animate-spin' : ''} aria-hidden="true">↻</span>
-            <span className="ml-2">{isFetching ? t('fleet.refreshing') : t('common.refresh')}</span>
+            <span className="ms-2">{isFetching ? t('fleet.refreshing') : t('common.refresh')}</span>
           </button>
         </div>
       </div>
@@ -309,14 +309,14 @@ export function FleetView({ onEditCamera }) {
       <div className="mb-4 rounded-lg border border-border bg-card p-3 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative flex-1">
-            <svg className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg className="pointer-events-none absolute inset-s-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
             </svg>
             <label className="sr-only" htmlFor="fleet-search">{t('fleet.searchLabel')}</label>
             <input
               id="fleet-search"
               type="search"
-              className="w-full rounded-md border border-input bg-background py-2.5 pl-10 pr-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+              className="w-full rounded-md border border-input bg-background py-2.5 ps-10 pe-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
               value={state.search}
               placeholder={t('fleet.searchPlaceholder')}
               onInput={(event) => updateState({ search: event.currentTarget.value })}
@@ -330,7 +330,7 @@ export function FleetView({ onEditCamera }) {
 
         <details className="mt-3 border-t border-border pt-3 lg:hidden">
           <summary className="cursor-pointer text-sm font-semibold">
-            {t('fleet.filters')} {filterCount > 0 && <span className="ml-1 rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
+            {t('fleet.filters')} {filterCount > 0 && <span className="ms-1 rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
           </summary>
           <div className="mt-4"><FleetFilters state={state} facets={facets} locations={locationRows} collections={collections} onChange={updateState} t={t} idPrefix="fleet-mobile" /></div>
         </details>
@@ -340,7 +340,7 @@ export function FleetView({ onEditCamera }) {
         <div className="sticky top-2 z-10 mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[hsl(var(--primary)/0.45)] bg-card px-4 py-3 shadow-lg">
           <span className="font-semibold">{t('fleet.selectedCount', { count: selectedCameras.size })}</span>
           <button type="button" className="btn-primary" onClick={() => setShowBulkOrganizer(true)}>{t('fleet.organizeSelected')}</button>
-          <button type="button" className="ml-auto text-sm text-muted-foreground hover:text-foreground" onClick={() => setSelectedCameras(new Map())}>{t('fleet.clearSelection')}</button>
+          <button type="button" className="ms-auto text-sm text-muted-foreground hover:text-foreground" onClick={() => setSelectedCameras(new Map())}>{t('fleet.clearSelection')}</button>
         </div>
       )}
 

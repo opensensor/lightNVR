@@ -321,7 +321,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-muted/20 p-4">
-          {validationCode && <span className="mr-auto text-xs text-[hsl(var(--danger))]">{t(`events.route.validation.${validationCode}`)}</span>}
+          {validationCode && <span className="me-auto text-xs text-[hsl(var(--danger))]">{t(`events.route.validation.${validationCode}`)}</span>}
           <button type="button" className="btn-secondary" onClick={runPreview} disabled={saving || previewing || Boolean(validationCode)}>{previewing ? t('events.route.previewing') : t('events.route.preview')}</button>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving || previewing}>{t('common.cancel')}</button>
           <button type="submit" className="btn-primary" disabled={saving || previewing || Boolean(validationCode)}>{saving ? t('common.saving') : t(creating ? 'events.route.create' : 'common.saveChanges')}</button>

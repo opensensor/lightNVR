@@ -164,7 +164,7 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
               <button
                 key={camera.camera_uuid}
                 type="button"
-                className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+                className="flex w-full items-center justify-between gap-3 px-2 py-2 text-start text-sm hover:bg-muted disabled:opacity-50"
                 disabled={selected || values.length >= 64}
                 onClick={() => addCamera(camera)}
               >
@@ -358,7 +358,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
       )}
 
       <div className="mt-3 flex items-center justify-end gap-3 border-t border-border pt-3">
-        {previewError && <span className="mr-auto text-xs text-[hsl(var(--danger))]">{previewError}</span>}
+        {previewError && <span className="me-auto text-xs text-[hsl(var(--danger))]">{previewError}</span>}
         <button type="button" className="btn-secondary" onClick={runPreview} disabled={previewing || !currentSelector || Boolean(validationError)}>{previewing ? t('collections.preview.loading') : t('collections.preview.action')}</button>
       </div>
       <SelectorPreview preview={preview} t={t} />

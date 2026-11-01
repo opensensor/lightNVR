@@ -1414,7 +1414,7 @@ export function StreamsView() {
         <h2 className="text-xl font-bold">{t('nav.streams')}</h2>
         <div className="controls flex items-center space-x-2">
           {!canModifyStreams && userRole && (
-            <span className="text-sm text-muted-foreground italic mr-2">
+            <span className="text-sm text-muted-foreground italic me-2">
               {t('streams.readOnlyInsufficientPermissions')}
             </span>
           )}
@@ -1580,7 +1580,7 @@ export function StreamsView() {
                 {isBulkWorking ? t('streams.working') : t('streams.deleteSelected')}
               </button>
               <button
-                className="ml-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="ms-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
                 onClick={exitSelectionMode}
               >
                 {t('common.cancel')}
@@ -1826,7 +1826,7 @@ export function StreamsView() {
                   {isDiscovering ? (
                     <span className="flex items-center">
                       {t('streams.discovering')}
-                      <span className="ml-1 flex space-x-1">
+                      <span className="ms-1 flex space-x-1">
                         <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
                         <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
                         <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
@@ -1840,11 +1840,11 @@ export function StreamsView() {
                 <table className="min-w-full divide-y divide-border">
                   <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.ipAddress')}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.manufacturer')}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.model')}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.status')}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.ipAddress')}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.manufacturer')}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.model')}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.status')}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
                   </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
@@ -1854,7 +1854,7 @@ export function StreamsView() {
                         {isDiscovering ? (
                           <div className="flex items-center justify-center">
                             <span>{t('streams.discoveringDevices')}</span>
-                            <span className="ml-1 flex space-x-1">
+                            <span className="ms-1 flex space-x-1">
                                 <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                                 <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                                 <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
@@ -1878,7 +1878,7 @@ export function StreamsView() {
                             </div>
                           )}
                           {alreadyAdded && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground border border-border">
+                            <span className="ms-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground border border-border">
                               {t('streams.alreadyAdded')}
                             </span>
                           )}
@@ -1913,7 +1913,7 @@ export function StreamsView() {
                             {isConnecting ? (
                               <span className="flex items-center">
                                   {t('common.loading')}
-                                  <span className="ml-1 flex space-x-1">
+                                  <span className="ms-1 flex space-x-1">
                                     <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-current rounded-full"></span>
                                     <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-current rounded-full"></span>
                                     <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-current rounded-full"></span>
@@ -1969,11 +1969,11 @@ export function StreamsView() {
                     <table className="min-w-full divide-y divide-border">
                       <thead className="bg-muted">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.name')}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.resolution')}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.encoding')}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.fps')}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
+                        <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.name')}</th>
+                        <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.resolution')}</th>
+                        <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.encoding')}</th>
+                        <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.fps')}</th>
+                        <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
                       </tr>
                       </thead>
                       <tbody className="bg-card divide-y divide-border">
@@ -2053,7 +2053,7 @@ export function StreamsView() {
                 {isAddingStream ? (
                   <span className="flex items-center">
                     {t('common.adding')}
-                    <span className="ml-1 flex space-x-1">
+                    <span className="ms-1 flex space-x-1">
                       <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
                       <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
                       <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>

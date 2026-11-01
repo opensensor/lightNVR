@@ -31,7 +31,7 @@ table {
 }
 
 th, td {
-  @apply py-3 px-6 text-left border-b border-border;
+  @apply py-3 px-6 text-start border-b border-border;
 }
 
 th {

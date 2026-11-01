@@ -25,7 +25,7 @@ import { useI18n } from '../../../i18n.js';
  * @returns {JSX.Element} TimelineControls component
  */
 export function TimelineControls() {
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
   const [canZoomIn, setCanZoomIn] = useState(true);
   const [canZoomOut, setCanZoomOut] = useState(true);
@@ -296,8 +296,9 @@ export function TimelineControls() {
         <span className="text-[11px] text-muted-foreground">{t('timeline.playFromCursor')}</span>
       </div>
 
-      {/* Current time display */}
-      <div className="flex items-center gap-1">
+      {/* Current time display. Pinned LTR like the timeline track below it:
+          "previous recording" stays on the left, pointing back in time. */}
+      <div className="flex items-center gap-1" dir="ltr">
         <button
           type="button"
           data-keyboard-nav-preserve
@@ -347,17 +348,19 @@ export function TimelineControls() {
             >
               <TagIcon className="w-3.5 h-3.5" />
               {recordingTags.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[9px] leading-[14px] text-center">
+                <span className="absolute -top-1 -inset-e-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[9px] leading-[14px] text-center">
                   {recordingTags.length}
                 </span>
               )}
             </button>
             {showTagsOverlay && (
-              <TagsOverlay
-                recording={{ id: currentRecordingId, tags: recordingTags }}
-                onClose={() => setShowTagsOverlay(false)}
-                onTagsChanged={handleTagsChanged}
-              />
+              <div dir={dir}>
+                <TagsOverlay
+                  recording={{ id: currentRecordingId, tags: recordingTags }}
+                  onClose={() => setShowTagsOverlay(false)}
+                  onTagsChanged={handleTagsChanged}
+                />
+              </div>
             )}
           </div>
         )}

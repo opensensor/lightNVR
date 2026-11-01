@@ -127,7 +127,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
                 onChange={handleThresholdChange}
                 disabled={!canModifySettings}
               />
-              <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
+              <span id="threshold-value" class="ms-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
             </div>
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultDetectionThresholdHelp')}</span>
           </div>

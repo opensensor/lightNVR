@@ -268,11 +268,11 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.close')}</button>
         </header>
         <div className="border-b border-border px-5 pt-2" role="tablist">
-          {['grants', 'test'].map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={`mr-2 rounded-t-md px-4 py-2 text-sm font-medium ${tab === value ? 'border border-b-0 border-border bg-background -mb-px' : 'text-muted-foreground'}`} onClick={() => setTab(value)}>{t(`access.policy.tab.${value}`)}</button>)}
+          {['grants', 'test'].map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={`me-2 rounded-t-md px-4 py-2 text-sm font-medium ${tab === value ? 'border border-b-0 border-border bg-background -mb-px' : 'text-muted-foreground'}`} onClick={() => setTab(value)}>{t(`access.policy.tab.${value}`)}</button>)}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          {error && <div className="rounded-md badge-danger p-3">{error} <button type="button" className="ml-2 underline" onClick={load}>{t('common.retry')}</button></div>}
+          {error && <div className="rounded-md badge-danger p-3">{error} <button type="button" className="ms-2 underline" onClick={load}>{t('common.retry')}</button></div>}
           {loading && grants.length === 0 ? <div className="p-10 text-center">{t('common.loading')}</div> : tab === 'grants' ? (
             <div className="space-y-4">
               <p className="rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-sm">{t('access.policy.scopedWarning')}</p>

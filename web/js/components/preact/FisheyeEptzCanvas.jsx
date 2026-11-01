@@ -492,7 +492,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
       )}
       {rendererError && (
         <span
-          className="absolute bottom-2 left-2 rounded bg-amber-700/90 px-2 py-1 text-xs text-white"
+          className="absolute bottom-2 inset-s-2 rounded bg-amber-700/90 px-2 py-1 text-xs text-white"
           style={{ zIndex: 8 }}
           title={rendererError}
         >

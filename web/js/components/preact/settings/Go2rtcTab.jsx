@@ -521,7 +521,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
 
                 {/* Inline warnings */}
                 {overrideValidation && Array.isArray(overrideValidation.warnings) && overrideValidation.warnings.length > 0 ? (
-                  <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ml-5 max-w-md">
+                  <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ms-5 max-w-md">
                     {overrideValidation.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -599,7 +599,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                             </div>
                           ) : null}
                           {Array.isArray(effectiveConfig.warnings) && effectiveConfig.warnings.length > 0 ? (
-                            <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ml-5">
+                            <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ms-5">
                               {effectiveConfig.warnings.map((w, i) => <li key={i}>{w}</li>)}
                             </ul>
                           ) : null}

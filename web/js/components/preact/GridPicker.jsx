@@ -94,7 +94,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
       {/* Popover */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-xl p-3 select-none"
+          className="absolute inset-e-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-xl p-3 select-none"
           onMouseLeave={() => setHover({ c: cols, r: rows })}
         >
           <p className="text-xs font-semibold text-center text-foreground mb-2 tabular-nums">

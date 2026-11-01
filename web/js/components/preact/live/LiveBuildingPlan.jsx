@@ -1771,7 +1771,7 @@ export function LiveBuildingPlan({
            })}</small>
         </div>
         <div className="live-plan-toolbar-actions">
-          <div className="live-plan-zoom" aria-label={t('live.plan.zoomAndPan')}>
+          <div className="live-plan-zoom" dir="ltr" aria-label={t('live.plan.zoomAndPan')}>
             <button type="button" onClick={() => pan(-0.12, 0)} title={t('live.plan.panLeft')}>←</button>
             <button type="button" onClick={() => pan(0, -0.12)} title={t('live.plan.panUp')}>↑</button>
             <button type="button" onClick={() => pan(0, 0.12)} title={t('live.plan.panDown')}>↓</button>

@@ -127,7 +127,7 @@ export function FleetFilters({ state, facets = {}, locations: locationCatalog = 
 
       {tags.length > 0 && (
         <FilterGroup title={t('fleet.filter.tags')}>
-          <div className="max-h-56 overflow-y-auto pr-1">
+          <div className="max-h-56 overflow-y-auto pe-1">
             {tags.map((tag) => (
               <FilterCheckbox
                 key={tag.uuid}

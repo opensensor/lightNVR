@@ -859,7 +859,7 @@ export function SettingsView() {
                   value={searchQuery}
                   onInput={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('settings.searchPlaceholder')}
-                  class="w-full p-2 pr-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
+                  class="w-full p-2 pe-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
                   aria-label={t('settings.searchLabel')}
                 />
                 {searchQuery ? (
@@ -867,7 +867,7 @@ export function SettingsView() {
                     type="button"
                     onClick={() => setSearchQuery('')}
                     aria-label={t('settings.clearSearch')}
-                    class="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                    class="absolute inset-e-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground"
                   >
                     ×
                   </button>
@@ -889,8 +889,8 @@ export function SettingsView() {
                   ? 'border-b-2 border-primary text-primary -mb-px'
                   : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent';
                 const desktopCls = isActive
-                  ? 'sm:bg-primary sm:text-primary-foreground sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-left sm:shadow-sm'
-                  : 'sm:hover:bg-muted sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-left';
+                  ? 'sm:bg-primary sm:text-primary-foreground sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-start sm:shadow-sm'
+                  : 'sm:hover:bg-muted sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-start';
                 return (
                   <button
                     key={tab.id}
@@ -920,7 +920,7 @@ export function SettingsView() {
             (sticky container + disabled-when-clean state) is new. */}
         {canModifySettings && (
           <div
-            class="sticky bottom-0 left-0 right-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.85)] bg-card border-t border-border px-4 py-3"
+            class="sticky bottom-0 inset-s-0 inset-e-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.85)] bg-card border-t border-border px-4 py-3"
             style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
           >
             <div class="flex items-center justify-end gap-3">

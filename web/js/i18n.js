@@ -159,7 +159,7 @@ async function loadTranslations(locale) {
 function notifyListeners() {
   if (typeof document !== 'undefined') {
     document.documentElement.lang = currentLocale;
-    document.documentElement.dir = RTL_LANGUAGES.has(currentLocale.split('-')[0]) ? 'rtl' : 'ltr';
+    document.documentElement.dir = getTextDirection(currentLocale);
     document.dispatchEvent?.(new CustomEvent('lightnvr:localechange', { detail: { locale: currentLocale } }));
   }
 
@@ -221,6 +221,15 @@ export async function setLocalePreference(preference) {
   return applyLocale(localePreference || getBrowserPreferredLocale());
 }
 
+/**
+ * Writing direction for a locale ('rtl' for Arabic, Hebrew, Persian, Urdu).
+ * Components that pin a region to LTR (PTZ pad, timeline track, transport
+ * controls) use this to restore the page direction for nested text UI.
+ */
+export function getTextDirection(locale = currentLocale) {
+  return RTL_LANGUAGES.has(String(locale || '').split('-')[0]) ? 'rtl' : 'ltr';
+}
+
 export function getLocale() {
   return currentLocale;
 }
@@ -270,6 +279,7 @@ export function useI18n() {
   return {
     t,
     locale: currentLocale,
+    dir: getTextDirection(currentLocale),
     localePreference,
     availableLocales: getAvailableLocales(),
     setLocalePreference,

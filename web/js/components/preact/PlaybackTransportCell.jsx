@@ -90,7 +90,7 @@ export function PlaybackTransportCell({
       />
       {fallbackUsed && (
         <span
-          className="absolute top-2 left-2 z-30 rounded bg-amber-600/90 px-2 py-1 text-xs font-semibold text-white pointer-events-none"
+          className="absolute top-2 inset-s-2 z-30 rounded bg-amber-600/90 px-2 py-1 text-xs font-semibold text-white pointer-events-none"
           title={t('live.playbackFallbackUsed', { transport: transportName(activeTransport) })}
         >
           {t('live.playbackFallbackUsed', { transport: transportName(activeTransport) })}

@@ -109,7 +109,7 @@ export function CalendarPicker({ value, onChange }) {
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
           title={t('timeline.previousDay')}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -136,7 +136,7 @@ export function CalendarPicker({ value, onChange }) {
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
           title={t('timeline.nextDay')}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -146,7 +146,7 @@ export function CalendarPicker({ value, onChange }) {
       {open && (
         <div
           className="absolute z-50 mt-1 rounded-lg border border-border bg-card text-card-foreground shadow-lg p-3 w-72"
-          style={{ left: 0 }}
+          style={{ insetInlineStart: 0 }}
         >
           {/* Month / Year header */}
           <div className="flex items-center justify-between mb-2">
@@ -154,7 +154,7 @@ export function CalendarPicker({ value, onChange }) {
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.previousMonth')}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -167,7 +167,7 @@ export function CalendarPicker({ value, onChange }) {
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.nextMonth')}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>

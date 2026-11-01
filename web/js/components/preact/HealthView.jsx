@@ -80,7 +80,7 @@ function StreamCard({ stream, expanded, onToggle }) {
              onClick={onToggle}>
             {/* Header */}
             <div class="flex items-center justify-between mb-2">
-                <h3 class="text-sm font-semibold truncate mr-2">{stream.name}</h3>
+                <h3 class="text-sm font-semibold truncate me-2">{stream.name}</h3>
                 <StatusBadge status={stream.status} />
             </div>
 
@@ -219,7 +219,7 @@ export function HealthView() {
                             <span class="font-semibold" style="color: hsl(0 84% 40%)">{streams.down}</span>
                         </div>
                     )}
-                    <div class="text-sm ml-auto">
+                    <div class="text-sm ms-auto">
                         <span class="text-muted-foreground">{t('streamHealth.storage')}:</span>{' '}
                         <span class="font-semibold text-foreground">
                             {formatBytes(storage.used_bytes)} / {formatBytes((storage.used_bytes || 0) + (storage.available_bytes || 0))}

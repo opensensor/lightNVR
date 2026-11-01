@@ -138,7 +138,7 @@ export function DayNightControl({ stream }) {
           style={{
             position: 'absolute',
             bottom: '40px',
-            right: 0,
+            insetInlineEnd: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.85)',
             borderRadius: '8px',
             padding: '8px',
@@ -165,7 +165,7 @@ export function DayNightControl({ stream }) {
                 cursor: loading || pending !== null ? 'wait' : 'pointer',
                 padding: '6px 10px',
                 fontSize: '13px',
-                textAlign: 'left',
+                textAlign: 'start',
                 opacity: pending && pending !== m ? 0.5 : 1
               }}
             >

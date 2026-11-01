@@ -85,7 +85,7 @@ function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+        <div className="absolute inset-e-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
           <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
             {t('recordings.visibleColumns')}
           </div>
@@ -182,7 +182,7 @@ export function RecordingsTable({
           )}
           {canDelete && (
             <>
-              <div className="flex items-center gap-2 mr-2">
+              <div className="flex items-center gap-2 me-2">
                 <div className="selected-count text-sm text-muted-foreground">
                   {selectedCount > 0 ?
                     t('recordings.recordingsSelectedCount', { count: selectedCount }) :
@@ -269,58 +269,58 @@ export function RecordingsTable({
                 </th>
               )}
               {isColumnVisible('stream') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('stream_name')}>
                   <div className="flex items-center">
                     {t('live.stream')}
                     {sortField === 'stream_name' && (
-                      <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                      <span className="sort-icon ms-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                     )}
                   </div>
                 </th>
               )}
               {isColumnVisible('capture_method') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.columnCaptureMethod')}
                 </th>
               )}
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+              <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('start_time')}>
                 <div className="flex items-center">
                   {t('recordings.columnStartTime')}
                   {sortField === 'start_time' && (
-                    <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                    <span className="sort-icon ms-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                   )}
                 </div>
               </th>
               {isColumnVisible('duration') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.columnDuration')}
                 </th>
               )}
               {isColumnVisible('size') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('size_bytes')}>
                   <div className="flex items-center">
                     {t('recordings.columnSize')}
                     {sortField === 'size_bytes' && (
-                      <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                      <span className="sort-icon ms-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                     )}
                   </div>
                 </th>
               )}
               {isColumnVisible('detections') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.detections')}
                 </th>
               )}
               {isColumnVisible('tags') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('live.tags')}
                 </th>
               )}
               {isColumnVisible('actions') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-3 text-start text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('common.actions')}
                 </th>
               )}
@@ -387,13 +387,13 @@ export function RecordingsTable({
                         {recording.detection_labels.map((det, idx) => (
                           <span key={idx} className="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
                             {det.label}
-                            {det.count > 1 && <span className="ml-1 opacity-75">({det.count})</span>}
+                            {det.count > 1 && <span className="ms-1 opacity-75">({det.count})</span>}
                           </span>
                         ))}
                       </div>
                     ) : recording.has_detections || recording.has_detection ? (
                       <span className="badge-success">
-                        <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-3 h-3 me-1" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
                           <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"></path>
                         </svg>

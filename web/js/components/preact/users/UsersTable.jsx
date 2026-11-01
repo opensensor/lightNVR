@@ -126,7 +126,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
             ].map(({ key, label }) => (
               <th
                 key={key}
-                className="py-3 px-6 text-left font-semibold cursor-pointer select-none hover:text-foreground"
+                className="py-3 px-6 text-start font-semibold cursor-pointer select-none hover:text-foreground"
                 onClick={() => handleSort(key)}
               >
                 <span className="inline-flex items-center gap-1">
@@ -138,7 +138,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                 </span>
               </th>
             ))}
-            <th className="py-3 px-6 text-left font-semibold">{t('common.actions')}</th>
+            <th className="py-3 px-6 text-start font-semibold">{t('common.actions')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">

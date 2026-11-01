@@ -295,7 +295,7 @@ export function Header({ version = VERSION }) {
       disabled: !canEditCurrentUser,
       onClick: openProfileModal,
       label: displayUsername,
-      classNameLi: 'ml-3',
+      classNameLi: 'ms-3',
       baseClasses: mobile ? 'text-center' : '',
     }, mobile);
   };
@@ -305,8 +305,8 @@ export function Header({ version = VERSION }) {
       id: login ? 'nav-login' : 'nav-logout',
       href: login ? "/login.html" : "/logout",
       label: login ? t('auth.login') : t('auth.logout'),
-      classNameLi: 'ml-2',
-      baseClasses: (mobile ? 'text-right ' : '') + (login ? 'login-link' : 'logout-link'),
+      classNameLi: 'ms-2',
+      baseClasses: (mobile ? 'text-end ' : '') + (login ? 'login-link' : 'logout-link'),
     }, mobile);
   };
 
@@ -329,7 +329,7 @@ export function Header({ version = VERSION }) {
             }}
           >
             <h1 className="text-xl font-bold m-0">LightNVR</h1>
-            <span className="version text-xs ml-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}</span>
+            <span className="version text-xs ms-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}</span>
           </a>
 
           {/* Desktop Navigation */}
@@ -344,7 +344,7 @@ export function Header({ version = VERSION }) {
             <ul className="flex list-none m-0 p-0 user-menu items-center">
               <LanguageSelector/>
               {demoMode && !localStorage.getItem('auth') && (
-                <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoMode')}</span>
+                <span className="me-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoMode')}</span>
               )}
               {renderUsername()}
               {authEnabled && (
@@ -384,7 +384,7 @@ export function Header({ version = VERSION }) {
                       <>
                         {demoMode && !localStorage.getItem('auth') && (
                           <li>
-                            <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoShort')}</span>
+                            <span className="me-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoShort')}</span>
                           </li>
                         )}
                         {renderUsername(true)}
