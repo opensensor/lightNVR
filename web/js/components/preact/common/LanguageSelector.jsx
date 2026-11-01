@@ -28,7 +28,15 @@ export default function LanguageSelector({ mobile = false }) {
 
   const inner = (
     <div className={`dropdown ${baseClasses} ${activeClass}${mobile ? ' w-full' : ''}`}>
-      <div tabIndex={0} className={`flex cursor-pointer border-0 font-medium items-center ${mobile ? 'w-full px-4 py-3' : 'py-1.5'}`}>
+      {/* daisyUI focus-based dropdown: the trigger must be a focusable
+          non-<button> element, because Safari does not focus <button> on
+          click and the menu would never open there. */}
+      <div
+        tabIndex={0}
+        role="button"
+        aria-haspopup="true"
+        className={`flex cursor-pointer border-0 font-medium items-center ${mobile ? 'w-full px-4 py-3' : 'py-1.5'}`}
+      >
         {currentLocale && renderLocaleContent(currentLocale)}
       </div>
       <ul
@@ -36,28 +44,30 @@ export default function LanguageSelector({ mobile = false }) {
         className="rounded transition-colors dropdown-content menu bg-[hsl(var(--card))]"
         style={{ width: 'max-content', border: '1px solid hsl(var(--primary)/0.8)' }}
       >
-        <li
-          key="auto"
-          style={{ flexFlow: 'row nowrap' }}
-          className={`flex cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
-          onClick={() => {
-            setLocalePreference(null);
-            document.activeElement.blur();
-          }}
-        >
-          <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
-        </li>
-        {availableLocales.map((item) => (
-          <li
-            key={item.code}
-            style={{ flexFlow: 'row nowrap' }}
-            className={`flex cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
+        <li key="auto">
+          <button
+            type="button"
+            className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
             onClick={() => {
-              setLocalePreference(item.code);
+              setLocalePreference(null);
               document.activeElement.blur();
             }}
           >
-            {renderLocaleContent(item, true)}
+            <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
+          </button>
+        </li>
+        {availableLocales.map((item) => (
+          <li key={item.code}>
+            <button
+              type="button"
+              className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
+              onClick={() => {
+                setLocalePreference(item.code);
+                document.activeElement.blur();
+              }}
+            >
+              {renderLocaleContent(item, true)}
+            </button>
           </li>
         ))}
       </ul>
