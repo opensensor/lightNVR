@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #define LOG_COMPONENT "FAACEncoder"
 #include "core/logger.h"
@@ -58,6 +59,12 @@ faac_adapter_t *faac_adapter_open(const faac_encoder_config_t *config) {
         br_per_ch = (config->sample_rate >= 32000) ? 64000 : 32000;
     }
     // FAAC 3 takes a whole-stream bitrate
+    if (br_per_ch > (UINT32_MAX / config->num_channels)) {
+        log_error("faac_adapter_open: requested bitrate overflow (%u per channel x %u channels)",
+                  br_per_ch, config->num_channels);
+        free(adapter);
+        return NULL;
+    }
     params.bit_rate = br_per_ch * config->num_channels;
     params.rate_control = FAAC_RC_ABR;
 
