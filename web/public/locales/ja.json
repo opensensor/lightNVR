@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} 台のカメラを {location} に割り当てました",
   "live.plan.assignLocationPartial": "{done} 台を割り当て、{failed} 台が失敗しました: {error}",
   "live.plan.sketch.multiSelected": "{count} 個の図形を選択中",
-  "live.plan.sketch.multiHint": "いずれかをドラッグするとグループを移動します。Shift+クリックで図形を追加・解除し、矢印キーで微調整します。"
+  "live.plan.sketch.multiHint": "いずれかをドラッグするとグループを移動します。Shift+クリックで図形を追加・解除し、矢印キーで微調整します。",
+  "system.storageTiers.title": "録画ストレージ",
+  "system.storageTiers.summary": "{count} 個のストレージ先に合計 {total}",
+  "system.storageTiers.class.hot": "ホット",
+  "system.storageTiers.class.warm": "ウォーム",
+  "system.storageTiers.class.cold": "コールド",
+  "system.storageTiers.kind.disk": "ディスク",
+  "system.storageTiers.kind.bucket": "バケット",
+  "system.storageTiers.recordings": "録画: {bytes}（{count} 件）",
+  "system.storageTiers.copies": "検証済みコピー: {bytes}",
+  "system.storageTiers.diskUsage": "バーは録画だけでなくファイルシステム全体の使用量を示します",
+  "system.storageTiers.budgetUsage": "バーはアーカイブ予算の使用量を示します",
+  "system.storageTiers.noBudget": "アーカイブ予算が未設定です",
+  "system.storageTiers.pressure.high": "上限しきい値を超過",
+  "system.storageTiers.pressure.reserve": "予約領域を下回っています",
+  "system.storageTiers.pressure.unavailable": "利用不可",
+  "system.storageTiers.sharedFilesystem": "別のストレージ先とファイルシステムを共有しています"
 }

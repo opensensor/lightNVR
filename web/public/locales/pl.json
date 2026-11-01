@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "Przypisano kamery do {location}: {count}",
   "live.plan.assignLocationPartial": "Przypisano kamery: {done}; nieudane: {failed}: {error}",
   "live.plan.sketch.multiSelected": "Zaznaczone kształty: {count}",
-  "live.plan.sketch.multiHint": "Przeciągnij dowolny, aby przesunąć grupę. Shift+klik dodaje lub usuwa kształt; strzałki przesuwają."
+  "live.plan.sketch.multiHint": "Przeciągnij dowolny, aby przesunąć grupę. Shift+klik dodaje lub usuwa kształt; strzałki przesuwają.",
+  "system.storageTiers.title": "Magazyn nagrań",
+  "system.storageTiers.summary": "{total} w miejscach docelowych: {count}",
+  "system.storageTiers.class.hot": "Gorący",
+  "system.storageTiers.class.warm": "Ciepły",
+  "system.storageTiers.class.cold": "Zimny",
+  "system.storageTiers.kind.disk": "Dysk",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Nagrania: {bytes} ({count})",
+  "system.storageTiers.copies": "Zweryfikowane kopie: {bytes}",
+  "system.storageTiers.diskUsage": "Pasek pokazuje cały system plików, nie tylko nagrania",
+  "system.storageTiers.budgetUsage": "Pasek pokazuje wykorzystanie budżetu archiwum",
+  "system.storageTiers.noBudget": "Brak budżetu archiwum",
+  "system.storageTiers.pressure.high": "Powyżej górnego progu",
+  "system.storageTiers.pressure.reserve": "Poniżej rezerwy",
+  "system.storageTiers.pressure.unavailable": "Niedostępne",
+  "system.storageTiers.sharedFilesystem": "Współdzieli system plików z innym miejscem docelowym"
 }

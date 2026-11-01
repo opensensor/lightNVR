@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "Призначено камер до {location}: {count}",
   "live.plan.assignLocationPartial": "Призначено камер: {done}; з помилкою: {failed}: {error}",
   "live.plan.sketch.multiSelected": "Вибрано фігур: {count}",
-  "live.plan.sketch.multiHint": "Перетягніть будь-яку, щоб зсунути групу. Shift+клацання додає або прибирає фігуру; стрілки зсувають."
+  "live.plan.sketch.multiHint": "Перетягніть будь-яку, щоб зсунути групу. Shift+клацання додає або прибирає фігуру; стрілки зсувають.",
+  "system.storageTiers.title": "Сховище записів",
+  "system.storageTiers.summary": "{total} у сховищах: {count}",
+  "system.storageTiers.class.hot": "Гаряче",
+  "system.storageTiers.class.warm": "Тепле",
+  "system.storageTiers.class.cold": "Холодне",
+  "system.storageTiers.kind.disk": "Диск",
+  "system.storageTiers.kind.bucket": "Бакет",
+  "system.storageTiers.recordings": "Записи: {bytes} ({count})",
+  "system.storageTiers.copies": "Перевірені копії: {bytes}",
+  "system.storageTiers.diskUsage": "Смуга показує всю файлову систему, а не лише записи",
+  "system.storageTiers.budgetUsage": "Смуга показує використання бюджету архіву",
+  "system.storageTiers.noBudget": "Бюджет архіву не задано",
+  "system.storageTiers.pressure.high": "Вище верхнього порогу",
+  "system.storageTiers.pressure.reserve": "Нижче резерву",
+  "system.storageTiers.pressure.unavailable": "Недоступно",
+  "system.storageTiers.sharedFilesystem": "Використовує одну файлову систему з іншим сховищем"
 }

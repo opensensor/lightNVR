@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} kamera {location} konumuna atandı",
   "live.plan.assignLocationPartial": "{done} kamera atandı; {failed} başarısız: {error}",
   "live.plan.sketch.multiSelected": "{count} şekil seçildi",
-  "live.plan.sketch.multiHint": "Grubu taşımak için herhangi birini sürükleyin. Shift-tıklama şekil ekler veya çıkarır; ok tuşları kaydırır."
+  "live.plan.sketch.multiHint": "Grubu taşımak için herhangi birini sürükleyin. Shift-tıklama şekil ekler veya çıkarır; ok tuşları kaydırır.",
+  "system.storageTiers.title": "Kayıt depolama",
+  "system.storageTiers.summary": "{count} depolama hedefinde {total}",
+  "system.storageTiers.class.hot": "Sıcak",
+  "system.storageTiers.class.warm": "Ilık",
+  "system.storageTiers.class.cold": "Soğuk",
+  "system.storageTiers.kind.disk": "Disk",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Kayıtlar: {bytes} ({count})",
+  "system.storageTiers.copies": "Doğrulanmış kopyalar: {bytes}",
+  "system.storageTiers.diskUsage": "Çubuk yalnızca kayıtları değil tüm dosya sistemini gösterir",
+  "system.storageTiers.budgetUsage": "Çubuk arşiv bütçesinin kullanımını gösterir",
+  "system.storageTiers.noBudget": "Arşiv bütçesi ayarlanmadı",
+  "system.storageTiers.pressure.high": "Yüksek eşiğin üzerinde",
+  "system.storageTiers.pressure.reserve": "Rezervin altında",
+  "system.storageTiers.pressure.unavailable": "Kullanılamıyor",
+  "system.storageTiers.sharedFilesystem": "Başka bir hedefle aynı dosya sistemini paylaşıyor"
 }

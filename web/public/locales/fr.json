@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} caméras affectées à {location}",
   "live.plan.assignLocationPartial": "{done} caméras affectées ; {failed} en échec : {error}",
   "live.plan.sketch.multiSelected": "{count} formes sélectionnées",
-  "live.plan.sketch.multiHint": "Faites glisser l'une d'elles pour déplacer le groupe. Shift+clic ajoute ou retire une forme ; les flèches déplacent."
+  "live.plan.sketch.multiHint": "Faites glisser l'une d'elles pour déplacer le groupe. Shift+clic ajoute ou retire une forme ; les flèches déplacent.",
+  "system.storageTiers.title": "Stockage des enregistrements",
+  "system.storageTiers.summary": "{total} sur {count} cibles de stockage",
+  "system.storageTiers.class.hot": "Chaud",
+  "system.storageTiers.class.warm": "Tiède",
+  "system.storageTiers.class.cold": "Froid",
+  "system.storageTiers.kind.disk": "Disque",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Enregistrements : {bytes} ({count})",
+  "system.storageTiers.copies": "Copies vérifiées : {bytes}",
+  "system.storageTiers.diskUsage": "La barre représente tout le système de fichiers, pas seulement les enregistrements",
+  "system.storageTiers.budgetUsage": "La barre représente l'utilisation du budget d'archive",
+  "system.storageTiers.noBudget": "Aucun budget d'archive défini",
+  "system.storageTiers.pressure.high": "Au-dessus du seuil haut",
+  "system.storageTiers.pressure.reserve": "Sous la réserve",
+  "system.storageTiers.pressure.unavailable": "Indisponible",
+  "system.storageTiers.sharedFilesystem": "Partage un système de fichiers avec une autre cible"
 }

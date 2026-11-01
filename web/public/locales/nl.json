@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "{count} camera's toegewezen aan {location}",
   "live.plan.assignLocationPartial": "{done} camera's toegewezen; {failed} mislukt: {error}",
   "live.plan.sketch.multiSelected": "{count} vormen geselecteerd",
-  "live.plan.sketch.multiHint": "Sleep er een om de groep te verplaatsen. Shift-klik voegt een vorm toe of verwijdert hem; pijltjestoetsen verschuiven."
+  "live.plan.sketch.multiHint": "Sleep er een om de groep te verplaatsen. Shift-klik voegt een vorm toe of verwijdert hem; pijltjestoetsen verschuiven.",
+  "system.storageTiers.title": "Opslag van opnamen",
+  "system.storageTiers.summary": "{total} over {count} opslagdoelen",
+  "system.storageTiers.class.hot": "Heet",
+  "system.storageTiers.class.warm": "Warm",
+  "system.storageTiers.class.cold": "Koud",
+  "system.storageTiers.kind.disk": "Schijf",
+  "system.storageTiers.kind.bucket": "Bucket",
+  "system.storageTiers.recordings": "Opnamen: {bytes} ({count})",
+  "system.storageTiers.copies": "Geverifieerde kopieën: {bytes}",
+  "system.storageTiers.diskUsage": "De balk toont het hele bestandssysteem, niet alleen opnamen",
+  "system.storageTiers.budgetUsage": "De balk toont het gebruik van het archiefbudget",
+  "system.storageTiers.noBudget": "Geen archiefbudget ingesteld",
+  "system.storageTiers.pressure.high": "Boven de hoge drempel",
+  "system.storageTiers.pressure.reserve": "Onder de reserve",
+  "system.storageTiers.pressure.unavailable": "Niet beschikbaar",
+  "system.storageTiers.sharedFilesystem": "Deelt een bestandssysteem met een ander doel"
 }

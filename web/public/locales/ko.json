@@ -2700,5 +2700,21 @@
   "live.plan.assignLocationDone": "카메라 {count}대를 {location}에 할당했습니다",
   "live.plan.assignLocationPartial": "{done}대 할당, {failed}대 실패: {error}",
   "live.plan.sketch.multiSelected": "도형 {count}개 선택됨",
-  "live.plan.sketch.multiHint": "아무 도형이나 드래그하면 그룹이 이동합니다. Shift+클릭으로 도형을 추가하거나 제외하고, 화살표 키로 미세 이동합니다."
+  "live.plan.sketch.multiHint": "아무 도형이나 드래그하면 그룹이 이동합니다. Shift+클릭으로 도형을 추가하거나 제외하고, 화살표 키로 미세 이동합니다.",
+  "system.storageTiers.title": "녹화 저장소",
+  "system.storageTiers.summary": "저장 대상 {count}개에 총 {total}",
+  "system.storageTiers.class.hot": "핫",
+  "system.storageTiers.class.warm": "웜",
+  "system.storageTiers.class.cold": "콜드",
+  "system.storageTiers.kind.disk": "디스크",
+  "system.storageTiers.kind.bucket": "버킷",
+  "system.storageTiers.recordings": "녹화: {bytes} ({count}개)",
+  "system.storageTiers.copies": "검증된 사본: {bytes}",
+  "system.storageTiers.diskUsage": "막대는 녹화뿐 아니라 파일 시스템 전체 사용량을 표시합니다",
+  "system.storageTiers.budgetUsage": "막대는 아카이브 예산 사용량을 표시합니다",
+  "system.storageTiers.noBudget": "아카이브 예산이 설정되지 않음",
+  "system.storageTiers.pressure.high": "상한 임계값 초과",
+  "system.storageTiers.pressure.reserve": "예약 공간 미만",
+  "system.storageTiers.pressure.unavailable": "사용할 수 없음",
+  "system.storageTiers.sharedFilesystem": "다른 대상과 파일 시스템을 공유함"
 }
