@@ -2066,6 +2066,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             publish_changed = true;
             config_changed = true;
             non_dynamic_config_changed = true;
+            restart_required = true;
             log_info("Publish (restream) URL changed for stream %s", config.name);
         }
     } else if (publish_url_put && cJSON_IsNull(publish_url_put)) {
@@ -2074,6 +2075,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             publish_changed = true;
             config_changed = true;
             non_dynamic_config_changed = true;
+            restart_required = true;
             log_info("Publish (restream) URL cleared for stream %s", config.name);
         }
     }
