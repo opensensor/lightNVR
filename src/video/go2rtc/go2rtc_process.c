@@ -1207,7 +1207,9 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
  *
  * Extracted from go2rtc_process_generate_config() by the T2 refactor.
  * Preserves the pre-refactor behavior exactly:
- *   - Skip disabled streams and streams with empty go2rtc_source_override.
+ *   - Skip disabled streams, privacy-mode streams, and streams with empty
+ *     go2rtc_source_override. A privacy-mode stream must not be served after
+ *     a go2rtc (re)start; startup sync and the health monitor skip it too.
  *   - Escape stream names for YAML double-quoted key safety.
  *   - Single-line overrides are emitted as an inline scalar.
  *   - Multi-line overrides are emitted as an indented block under the key.
@@ -1233,6 +1235,7 @@ static int write_stream_overrides(FILE *fp) {
 
     for (int i = 0; i < count; i++) {
         if (!streams[i].enabled) continue;
+        if (streams[i].privacy_mode) continue;
         if (!string_has_non_whitespace(streams[i].go2rtc_source_override)) continue;
 
         // Escape stream name for YAML double-quoted key safety
@@ -1281,8 +1284,8 @@ static int write_stream_overrides(FILE *fp) {
  *       - rtmp://.../key
  *
  * go2rtc then pushes the named stream to the RTMP/RTMPS destination (YouTube,
- * Telegram, etc.). Only enabled streams with a non-empty publish_url are
- * included. Writes nothing (not even the `publish:` key) when none are set, to
+ * Telegram, etc.). Only enabled, non-privacy-mode streams with a non-empty
+ * publish_url are included: privacy mode must also stop restreaming. Writes nothing (not even the `publish:` key) when none are set, to
  * avoid an empty mapping. See issue #455.
  *
  * @param fp Open writable FILE *.
@@ -1301,6 +1304,7 @@ static int write_publish_config(FILE *fp) {
 
     for (int i = 0; i < count; i++) {
         if (!streams[i].enabled) continue;
+        if (streams[i].privacy_mode) continue;
         if (streams[i].publish_url[0] == '\0') continue;
 
         // Re-validate: rows written before list validation existed (or edited
