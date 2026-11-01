@@ -1173,22 +1173,9 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     fclose(config_file);
     log_info("Generated go2rtc configuration file: %s", config_path);
 
-    // Print the content of the config file at DEBUG level to avoid
-    // leaking credentials from overrides into production logs.
-    FILE *read_file = fopen(config_path, "r");
-    if (read_file) {
-        char line[256];
-        log_debug("Contents of go2rtc config file:");
-        while (fgets(line, sizeof(line), read_file)) {
-            // Remove newline character
-            size_t len = strlen(line);
-            if (len > 0 && line[len-1] == '\n') {
-                line[len-1] = '\0';
-            }
-            log_debug("  %s", line);
-        }
-        fclose(read_file);
-    }
+    // Intentionally do not dump generated config contents to logs.
+    // The YAML may contain sensitive values (e.g., TURN credentials and
+    // per-stream URL credentials), and logging full contents can leak secrets.
 
     return true;
 }
