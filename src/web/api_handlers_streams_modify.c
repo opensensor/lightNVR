@@ -189,14 +189,9 @@ static void *put_stream_worker(void *arg) {
         return NULL;
     }
 
-    // privacy_mode is owned by the set_privacy_mode toggle, which writes the DB
-    // directly. The ordinary PUT path never changes it, so persist the current
-    // DB value instead of the one captured when this task was queued; otherwise
-    // a toggle that lands while the task is queued would be silently reverted.
-    stream_config_t current_db_config;
-    if (get_stream_config_by_name(task->stream_id, &current_db_config) == 0) {
-        task->config.privacy_mode = current_db_config.privacy_mode;
-    }
+    // Note: update_stream_config() never writes privacy_mode (owned by the
+    // set_privacy_mode toggle), so a toggle made while this task was queued
+    // is preserved.
 
     // Update stream configuration in database first
     if (update_stream_config(task->stream_id, &task->config) != 0) {
@@ -1362,32 +1357,22 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         bool enable_privacy = cJSON_IsTrue(privacy_request);
         log_info("Privacy mode %s requested for stream %s", enable_privacy ? "enable" : "disable", stream_id);
 
-        sqlite3 *db = get_db_handle();
-        if (db) {
-            sqlite3_stmt *stmt;
-            const char *sql = "UPDATE streams SET privacy_mode = ? WHERE name = ?;";
-            if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-                sqlite3_bind_int(stmt, 1, enable_privacy ? 1 : 0);
-                sqlite3_bind_text(stmt, 2, stream_id, -1, SQLITE_STATIC);
-                if (sqlite3_step(stmt) != SQLITE_DONE) {
-                    log_error("Failed to set privacy mode for stream %s: %s", stream_id, sqlite3_errmsg(db));
-                } else {
-                    log_info("Successfully set privacy_mode=%d for stream %s", enable_privacy ? 1 : 0, stream_id);
-                    // If enabling privacy, stop stream processing; if disabling, restart it
-                    if (enable_privacy) {
-                        // Unregister from go2rtc so clients cannot connect
-                        go2rtc_integration_unregister_stream(stream_id);
-                        log_info("Unregistered stream %s from go2rtc due to privacy mode", stream_id);
-                    } else {
-                        // Resume: re-register with go2rtc
-                        if (go2rtc_integration_reload_stream(stream_id)) {
-                            log_info("Re-registered stream %s with go2rtc after privacy mode cleared", stream_id);
-                        } else {
-                            log_warn("Failed to re-register stream %s with go2rtc", stream_id);
-                        }
-                    }
-                }
-                sqlite3_finalize(stmt);
+        if (set_stream_privacy_mode(stream_id, enable_privacy) != 0) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 500, "Failed to update privacy mode");
+            return;
+        }
+        log_info("Successfully set privacy_mode=%d for stream %s", enable_privacy ? 1 : 0, stream_id);
+        if (enable_privacy) {
+            // Unregister from go2rtc so clients cannot connect
+            go2rtc_integration_unregister_stream(stream_id);
+            log_info("Unregistered stream %s from go2rtc due to privacy mode", stream_id);
+        } else {
+            // Resume: re-register with go2rtc
+            if (go2rtc_integration_reload_stream(stream_id)) {
+                log_info("Re-registered stream %s with go2rtc after privacy mode cleared", stream_id);
+            } else {
+                log_warn("Failed to re-register stream %s with go2rtc", stream_id);
             }
         }
 

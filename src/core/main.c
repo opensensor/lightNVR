@@ -1577,13 +1577,7 @@ cleanup:
                 // Update component state
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "detection_thread_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }
@@ -1616,13 +1610,7 @@ cleanup:
             if (config.streams[i].name[0] != '\0' && config.streams[i].record) {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "mp4_writer_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }
@@ -1638,13 +1626,7 @@ cleanup:
             if (config.streams[i].name[0] != '\0') {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "hls_writer_%s", config.streams[i].name);
-                int component_id = -1;
-                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
-                        component_id = j;
-                        break;
-                    }
-                }
+                int component_id = find_component_id_by_name(component_name);
                 if (component_id >= 0) {
                     update_component_state(component_id, COMPONENT_STOPPED);
                 }

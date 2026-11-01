@@ -9,6 +9,7 @@
 #define _XOPEN_SOURCE 700
 #define _GNU_SOURCE
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,33 @@
 
 // Global shutdown coordinator instance
 static shutdown_coordinator_t g_coordinator;
+
+// Component IDs are generation * MAX_COMPONENTS + slot. Generations wrap well
+// before the product could overflow an int.
+#define MAX_COMPONENT_GENERATION (INT_MAX / MAX_COMPONENTS)
+
+static int make_component_id(int slot, int generation) {
+    return generation * MAX_COMPONENTS + slot;
+}
+
+int component_id_slot(int component_id) {
+    return component_id < 0 ? -1 : component_id % MAX_COMPONENTS;
+}
+
+// Resolve an ID to its slot if it still refers to the slot's current owner.
+// Caller holds the mutex. Returns NULL for invalid or stale IDs.
+static component_info_t *resolve_component_locked(int component_id) {
+    if (component_id < 0) {
+        return NULL;
+    }
+    int slot = component_id % MAX_COMPONENTS;
+    int generation = component_id / MAX_COMPONENTS;
+    if (slot >= atomic_load(&g_coordinator.component_count)) {
+        return NULL;
+    }
+    component_info_t *component = &g_coordinator.components[slot];
+    return component->generation == generation ? component : NULL;
+}
 
 // Independent of g_coordinator on purpose -- see header comment. Never reset
 // once set: the only callers (request_restart() and the shutdown signal
@@ -175,8 +203,13 @@ int register_component(const char *name, component_type_t type, void *context, i
         return -1;
     }
 
-    // Initialize the component slot
+    // Initialize the component slot. A reused slot gets a new generation so
+    // IDs handed to its previous owner become stale.
     component_info_t *component = &g_coordinator.components[slot];
+    if (reuse_idx >= 0) {
+        component->generation = (component->generation + 1) % MAX_COMPONENT_GENERATION;
+    }
+    int component_id = make_component_id(slot, component->generation);
     safe_strcpy(component->name, name, sizeof(component->name), 0);
     component->type = type;
     atomic_store(&component->state, COMPONENT_RUNNING);
@@ -188,10 +221,10 @@ int register_component(const char *name, component_type_t type, void *context, i
 
     pthread_mutex_unlock(&g_coordinator.mutex);
 
-    log_info("Registered component %s (ID: %d, type: %d, priority: %d)",
-             name, slot, type, priority);
+    log_info("Registered component %s (ID: %d, slot: %d, type: %d, priority: %d)",
+             name, component_id, slot, type, priority);
 
-    return slot;
+    return component_id;
 }
 
 // Update a component's state
@@ -199,22 +232,30 @@ void update_component_state(int component_id, component_state_t state) {
     // Note: state is recorded even after cleanup. The sync objects are never
     // destroyed, so this is safe, and it keeps get_component_state() and the
     // main.c component scans accurate for components that finish late.
-    if (component_id < 0 || component_id >= atomic_load(&g_coordinator.component_count)) {
-        log_error("Invalid component ID: %d", component_id);
+    //
+    // The whole update runs under the mutex so it cannot interleave with
+    // register_component() reusing the same slot.
+    pthread_mutex_lock(&g_coordinator.mutex);
+
+    component_info_t *component = resolve_component_locked(component_id);
+    if (!component) {
+        pthread_mutex_unlock(&g_coordinator.mutex);
+        if (component_id < 0 ||
+            component_id % MAX_COMPONENTS >= atomic_load(&g_coordinator.component_count)) {
+            log_error("Invalid component ID: %d", component_id);
+        } else {
+            log_debug("Ignoring state %d for stale component ID %d (slot reused)",
+                      state, component_id);
+        }
         return;
     }
 
-    component_info_t *component = &g_coordinator.components[component_id];
     atomic_store(&component->state, state);
-
     log_info("Updated component %s (ID: %d) state to %d",
              component->name, component_id, state);
 
     // If the component is now stopped, check if all components are stopped
     if (state == COMPONENT_STOPPED) {
-        pthread_mutex_lock(&g_coordinator.mutex);
-
-        // Check if all components are stopped
         bool all_stopped = true;
         for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
             if (atomic_load(&g_coordinator.components[i].state) != COMPONENT_STOPPED) {
@@ -228,19 +269,48 @@ void update_component_state(int component_id, component_state_t state) {
             pthread_cond_broadcast(&g_coordinator.all_stopped_cond);
             log_info("All components are now stopped");
         }
-
-        pthread_mutex_unlock(&g_coordinator.mutex);
     }
+
+    pthread_mutex_unlock(&g_coordinator.mutex);
 }
 
 // Get a component's state
 component_state_t get_component_state(int component_id) {
-    if (component_id < 0 || component_id >= atomic_load(&g_coordinator.component_count)) {
+    pthread_mutex_lock(&g_coordinator.mutex);
+    if (component_id < 0 ||
+        component_id % MAX_COMPONENTS >= atomic_load(&g_coordinator.component_count)) {
+        pthread_mutex_unlock(&g_coordinator.mutex);
         log_error("Invalid component ID: %d", component_id);
         return COMPONENT_STOPPED; // Return stopped as a safe default
     }
-    
-    return atomic_load(&g_coordinator.components[component_id].state);
+    component_info_t *component = resolve_component_locked(component_id);
+    // A stale ID refers to a previous owner of a reused slot, which only
+    // happens after that owner reported STOPPED.
+    component_state_t state = component ? atomic_load(&component->state) : COMPONENT_STOPPED;
+    pthread_mutex_unlock(&g_coordinator.mutex);
+    return state;
+}
+
+// Find the current ID of a component by name (latest registration wins)
+int find_component_id_by_name(const char *name) {
+    if (!name) {
+        return -1;
+    }
+    int found = -1;
+    pthread_mutex_lock(&g_coordinator.mutex);
+    int count = atomic_load(&g_coordinator.component_count);
+    for (int i = 0; i < count; i++) {
+        component_info_t *component = &g_coordinator.components[i];
+        if (strcmp(component->name, name) == 0) {
+            found = make_component_id(i, component->generation);
+            // Prefer a live registration over a STOPPED one with the same name
+            if (atomic_load(&component->state) != COMPONENT_STOPPED) {
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&g_coordinator.mutex);
+    return found;
 }
 
 // Initiate shutdown sequence

@@ -245,6 +245,22 @@ void test_queued_update_preserves_privacy_toggle(void) {
                                   "A queued PUT must not revert a privacy toggle");
 }
 
+void test_stale_config_write_cannot_clear_privacy_mode(void) {
+    /* Every in-memory setter (set_stream_recording, ...) persists via
+     * update_stream_config() with a config whose privacy_mode may be stale. */
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode(original_config.name, true));
+    stream_config_t stale = original_config;
+    stale.privacy_mode = false;
+    stale.priority = 9;
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config(stale.name, &stale));
+    TEST_ASSERT_EQUAL_INT(9, db_int_column("priority"));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, db_int_column("privacy_mode"),
+                                  "update_stream_config must not write privacy_mode");
+    TEST_ASSERT_EQUAL_INT(0, set_stream_privacy_mode(original_config.name, false));
+    TEST_ASSERT_EQUAL_INT(0, db_int_column("privacy_mode"));
+    TEST_ASSERT_EQUAL_INT(-1, set_stream_privacy_mode("no_such_stream", true));
+}
+
 int main(void) {
     char directory[] = "/tmp/lightnvr-put-launch-XXXXXX";
     if (!mkdtemp(directory)) return 1;
@@ -264,6 +280,7 @@ int main(void) {
     RUN_TEST(test_privacy_toggle_with_other_fields_rejected);
     RUN_TEST(test_privacy_toggle_with_name_accepted);
     RUN_TEST(test_queued_update_preserves_privacy_toggle);
+    RUN_TEST(test_stale_config_write_cannot_clear_privacy_mode);
     int result = UNITY_END();
     shutdown_database();
     unlink(path);
