@@ -6,48 +6,48 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <errno.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include <dlfcn.h>
 #include "unity.h"
 #include "core/signal_safe.h"
 
 static int saved_stderr = -1;
 static int pipe_fds[2] = {-1, -1};
 
-static int inject_eintr_once = 0;
-static int inject_short_once = 0;
-static size_t injected_short_count = 0;
-static int write_call_count = 0;
+/* Fault injection via link-time wrapping (-Wl,--wrap=write, see
+ * tests/unit/CMakeLists.txt), the convention used by the other unit tests.
+ * signal_safe_write() is static inline, so its write() call is compiled into
+ * this object and routed through __wrap_write. Only stderr writes are counted
+ * or faulted, so unrelated output can never consume an injection. */
+static bool inject_eintr;        /* one-shot: fail the next stderr write with EINTR */
+static size_t short_write_len;   /* one-shot: if non-zero, write only this many bytes */
+static int stderr_write_calls;
 
-ssize_t write(int fd, const void *buf, size_t count) {
-    static ssize_t (*real_write)(int, const void *, size_t) = NULL;
-    if (real_write == NULL) {
-        real_write = (ssize_t (*)(int, const void *, size_t))dlsym(RTLD_NEXT, "write");
+ssize_t __real_write(int fd, const void *buf, size_t count);
+ssize_t __wrap_write(int fd, const void *buf, size_t count) {
+    if (fd != STDERR_FILENO) {
+        return __real_write(fd, buf, count);
     }
-
-    write_call_count++;
-
-    if (inject_eintr_once) {
-        inject_eintr_once = 0;
+    stderr_write_calls++;
+    if (inject_eintr) {
+        inject_eintr = false;
         errno = EINTR;
         return -1;
     }
-
-    if (inject_short_once && count > injected_short_count && injected_short_count > 0) {
-        inject_short_once = 0;
-        return real_write(fd, buf, injected_short_count);
+    if (short_write_len > 0 && count > short_write_len) {
+        size_t len = short_write_len;
+        short_write_len = 0;
+        return __real_write(fd, buf, len);
     }
-
-    return real_write(fd, buf, count);
+    return __real_write(fd, buf, count);
 }
 
 void setUp(void) {
-    inject_eintr_once = 0;
-    inject_short_once = 0;
-    injected_short_count = 0;
-    write_call_count = 0;
+    inject_eintr = false;
+    short_write_len = 0;
+    stderr_write_calls = 0;
 
     TEST_ASSERT_EQUAL_INT(0, pipe(pipe_fds));
     saved_stderr = dup(STDERR_FILENO);
@@ -56,10 +56,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-    inject_eintr_once = 0;
-    inject_short_once = 0;
-    injected_short_count = 0;
-
     dup2(saved_stderr, STDERR_FILENO);
     close(saved_stderr);
     if (pipe_fds[0] >= 0) close(pipe_fds[0]);
@@ -115,12 +111,13 @@ void test_preserves_errno_when_stderr_is_closed(void) {
 }
 
 void test_retries_on_eintr_and_preserves_errno(void) {
-    inject_eintr_once = 1;
+    inject_eintr = true;
     errno = EBUSY;
     signal_safe_write("retry-eintr\n");
     TEST_ASSERT_EQUAL_INT(EBUSY, errno);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2, write_call_count,
-                                             "write() should be retried after EINTR");
+    TEST_ASSERT_FALSE_MESSAGE(inject_eintr, "EINTR injection was not consumed by signal_safe_write");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, stderr_write_calls,
+                                  "Expected one EINTR failure and one retry");
 
     char buffer[64];
     read_captured(buffer, sizeof(buffer));
@@ -128,13 +125,14 @@ void test_retries_on_eintr_and_preserves_errno(void) {
 }
 
 void test_retries_after_short_write_and_preserves_errno(void) {
-    inject_short_once = 1;
-    injected_short_count = 3;
+    short_write_len = 3;
     errno = ENOTTY;
     signal_safe_write("short-write\n");
     TEST_ASSERT_EQUAL_INT(ENOTTY, errno);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2, write_call_count,
-                                             "write() should be called again after a short write");
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(0, short_write_len,
+                                     "Short-write injection was not consumed by signal_safe_write");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, stderr_write_calls,
+                                  "Expected one short write and one write for the remainder");
 
     char buffer[64];
     read_captured(buffer, sizeof(buffer));
