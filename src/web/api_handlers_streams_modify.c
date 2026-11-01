@@ -2062,55 +2062,16 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
 
         if (currently_disabled) {
-            // Enable the stream by setting enabled to 1 (reuse the same handle)
-            db = get_db_handle();
-            if (db) {
-                sqlite3_stmt *stmt;
-                const char *sql = "UPDATE streams SET enabled = 1 WHERE name = ?;";
-                if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-                    sqlite3_bind_text(stmt, 1, stream_id, -1, SQLITE_STATIC);
-                    if (sqlite3_step(stmt) != SQLITE_DONE) {
-                        log_error("Failed to enable stream %s: %s", stream_id, sqlite3_errmsg(db));
-                    } else {
-                        log_info("Successfully enabled stream %s", stream_id);
-
-                        // Get the stream configuration to register with go2rtc
-                        stream_config_t stream_config;
-                        if (get_stream_config_by_name(stream_id, &stream_config) == 0) {
-                            // Use centralized function to register the stream with go2rtc
-                            if (go2rtc_integration_reload_stream(stream_id)) {
-                                log_info("Successfully registered stream %s with go2rtc", stream_id);
-                            } else {
-                                log_warn("Failed to register stream %s with go2rtc (go2rtc may not be ready)", stream_id);
-                            }
-
-                            // If detection is enabled for this stream, start the unified detection thread
-                            if (stream_config.detection_based_recording &&
-                                is_detection_recording_scheduled(&stream_config)) {
-                                // If continuous recording is also enabled, run detection in annotation-only mode
-                                bool annotation_only = stream_config.record;
-                                log_info("Starting unified detection thread for enabled stream %s (annotation_only=%s)",
-                                         stream_id, annotation_only ? "true" : "false");
-
-                                // Start unified detection thread
-                                if (start_unified_detection_thread(stream_id,
-                                                                  stream_config.detection_model,
-                                                                  stream_config.detection_threshold,
-                                                                  stream_config.pre_detection_buffer,
-                                                                  stream_config.post_detection_buffer,
-                                                                  annotation_only) != 0) {
-                                    log_warn("Failed to start unified detection thread for stream %s", stream_id);
-                                } else {
-                                    log_info("Successfully started unified detection thread for stream %s", stream_id);
-                                }
-                            }
-                        } else {
-                            log_error("Failed to get configuration for stream %s", stream_id);
-                        }
-                    }
-                    sqlite3_finalize(stmt);
-                }
-            }
+            /*
+             * IMPORTANT: do not update SQLite directly here.
+             * The stream config was loaded earlier and is later persisted by the worker;
+             * a direct DB write can be overwritten by stale config.enabled == false.
+             * Let the normal config/update worker path persist enabled=true.
+             */
+            config.enabled = true;
+            needs_config_update = true;
+            force_restart = true;
+            log_info("Enable requested for stream %s via config update path", stream_id);
         }
     }
 
