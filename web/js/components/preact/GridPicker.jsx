@@ -77,6 +77,8 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
         onClick={() => setOpen(o => !o)}
         title={t('live.selectGridLayout')}
         aria-label={t('live.gridLayoutAria', { cols, rows })}
+        aria-expanded={open}
+        aria-controls="grid-picker-popover"
       >
         {/* 2×2 grid icon */}
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
