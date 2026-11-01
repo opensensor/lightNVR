@@ -3,6 +3,8 @@ ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3540100
 ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
+ARG EZXML_COMMIT=REPLACE_WITH_EZXML_COMMIT_SHA
+ARG INIH_COMMIT=REPLACE_WITH_INIH_COMMIT_SHA
 
 FROM alpine:3.24 AS builder
 
@@ -10,6 +12,8 @@ ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
 ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
+ARG EZXML_COMMIT
+ARG INIH_COMMIT
 
 RUN apk update && apk add --no-cache \
     git cmake build-base pkgconfig \
@@ -59,14 +63,18 @@ RUN mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
     printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libllhttp\nDescription: llhttp parser\nVersion: %s\nLibs: -L${libdir} -lllhttp\nCflags: -I${includedir}\n' "$LLHTTP_VERSION" > /usr/lib/pkgconfig/libllhttp.pc && \
     pkg-config --modversion libllhttp
 
-# Fetch external dependencies
+# Fetch external dependencies (pinned for reproducible builds)
 RUN mkdir -p /opt/external && \
     # ezxml
     cd /opt/external && \
     git clone https://github.com/lxfontes/ezxml.git && \
+    git -C /opt/external/ezxml checkout --detach "$EZXML_COMMIT" && \
+    test "$(git -C /opt/external/ezxml rev-parse HEAD)" = "$EZXML_COMMIT" && \
     # inih
     cd /opt/external && \
-    git clone https://github.com/benhoyt/inih.git
+    git clone https://github.com/benhoyt/inih.git && \
+    git -C /opt/external/inih checkout --detach "$INIH_COMMIT" && \
+    test "$(git -C /opt/external/inih rev-parse HEAD)" = "$INIH_COMMIT"
 
 # Copy current directory contents into container
 WORKDIR /opt
