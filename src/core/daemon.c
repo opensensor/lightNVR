@@ -144,7 +144,8 @@ int init_daemon(const char *pid_file) {
 
 // Signal handler for daemon
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
-// Only use: write(), _exit(), alarm(), close(), shutdown(), atomic operations on sig_atomic_t
+// Only use: write(), _exit(), alarm(), volatile sig_atomic_t, and lock-free
+// C11 atomics (main.c asserts ATOMIC_BOOL_LOCK_FREE == 2)
 static void daemon_signal_handler(int sig) {
     switch (sig) {
     case SIGTERM:
@@ -153,7 +154,7 @@ static void daemon_signal_handler(int sig) {
         signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
 
         // Set global flag to stop main loop
-        // This is safe because running is declared as _Atomic bool
+        // Safe: running is a lock-free _Atomic bool (asserted in main.c)
         running = false;
 
         // Also wake up any long-running background operation (e.g. a
