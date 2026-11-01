@@ -19,6 +19,19 @@ const ptzApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pan, tilt, zoom })
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `PTZ move failed (${response.status})`;
+      if (errorText) {
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
+        } catch {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   },
 
@@ -26,6 +39,19 @@ const ptzApi = {
     const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/stop`, {
       method: 'POST'
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `PTZ stop failed (${response.status})`;
+      if (errorText) {
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
+        } catch {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   },
 
@@ -33,6 +59,19 @@ const ptzApi = {
     const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/ptz/home`, {
       method: 'POST'
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `PTZ home failed (${response.status})`;
+      if (errorText) {
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
+        } catch {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   },
 
@@ -42,6 +81,19 @@ const ptzApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `PTZ goto preset failed (${response.status})`;
+      if (errorText) {
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson?.message || errorJson?.error || errorText || errorMessage;
+        } catch {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   }
 };
