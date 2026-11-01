@@ -41,7 +41,6 @@ import {
   resizeRectCorner,
   resizeRectEdge,
   shapeBounds,
-  shapeCenter,
   sketchPayload,
   sketchShapesFromPlan,
   snapPoint,
