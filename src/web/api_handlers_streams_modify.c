@@ -184,7 +184,7 @@ static void *put_stream_worker(void *arg) {
     if (update_stream_config(task->stream_id, &task->config) != 0) {
         log_error("Failed to update stream configuration in database for %s", task->stream_id);
         put_stream_task_free(task);
-        return;
+        return NULL;
     }
 
     // Force update of stream configuration in memory to ensure it matches the database
@@ -192,7 +192,7 @@ static void *put_stream_worker(void *arg) {
     if (get_stream_config(task->stream, &updated_config) != 0) {
         log_error("Failed to refresh stream configuration from database for stream %s", task->config.name);
         put_stream_task_free(task);
-        return;
+        return NULL;
     }
 
     if (set_stream_detection_params(task->stream,
@@ -465,6 +465,7 @@ static void *put_stream_worker(void *arg) {
 
     // Clean up
     put_stream_task_free(task);
+    return NULL;
 }
 
 /**
@@ -2227,7 +2228,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    if (pthread_create(&thread_id, &attr, (void *(*)(void *))put_stream_worker, task) != 0) {
+    if (pthread_create(&thread_id, &attr, put_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for PUT stream");
         put_stream_task_free(task);
         http_response_set_json_error(res, 500, "Failed to start update task");
@@ -2411,7 +2412,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    if (pthread_create(&thread_id, &attr, (void *(*)(void *))delete_stream_worker, task) != 0) {
+    if (pthread_create(&thread_id, &attr, delete_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for DELETE stream");
         free(task);
         http_response_set_json_error(res, 500, "Failed to start delete task");
