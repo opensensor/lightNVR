@@ -172,6 +172,9 @@ static const env_config_mapping_t env_config_mappings[] = {
     // Web server settings
     {"WEB_PORT",           CONFIG_TYPE_INT,    CONFIG_OFFSET(web_port),           0,   NULL, 8080, false},
     {"WEB_BIND_IP",        CONFIG_TYPE_STRING, CONFIG_OFFSET(web_bind_ip),        32,  "0.0.0.0", 0, false},
+    {"WEB_SSL_ENABLED",    CONFIG_TYPE_BOOL,   CONFIG_OFFSET(web_ssl_enabled),    0,   NULL, 0, false},
+    {"WEB_SSL_CERT_PATH",  CONFIG_TYPE_STRING, CONFIG_OFFSET(web_ssl_cert_path),  MAX_PATH_LENGTH, "", 0, false},
+    {"WEB_SSL_KEY_PATH",   CONFIG_TYPE_STRING, CONFIG_OFFSET(web_ssl_key_path),   MAX_PATH_LENGTH, "", 0, false},
     {"WEB_AUTH_ENABLED",   CONFIG_TYPE_BOOL,   CONFIG_OFFSET(web_auth_enabled),   0,   NULL, 0, true},
     {"WEB_USERNAME",       CONFIG_TYPE_STRING, CONFIG_OFFSET(web_username),       32,  "admin", 0, false},
     {"WEB_TRUSTED_PROXY_CIDRS", CONFIG_TYPE_STRING, CONFIG_OFFSET(trusted_proxy_cidrs), WEB_TRUSTED_PROXY_CIDRS_MAX, "", 0, false},
@@ -447,6 +450,9 @@ void load_default_config(config_t *config) {
     config->web_port = 8080;
     safe_strcpy(config->web_bind_ip, "0.0.0.0", 32, 0);
     safe_strcpy(config->web_root, "/var/lib/lightnvr/www", MAX_PATH_LENGTH, 0);
+    config->web_ssl_enabled = false;
+    config->web_ssl_cert_path[0] = '\0';
+    config->web_ssl_key_path[0] = '\0';
     config->web_auth_enabled = true;
     safe_strcpy(config->web_username, "admin", 32, 0);
     // Blank means bootstrap admin/admin; db_auth_init requires first-login replacement.
@@ -979,6 +985,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->web_bind_ip, value, sizeof(config->web_bind_ip), 0);
         } else if (strcmp(name, "root") == 0) {
             safe_strcpy(config->web_root, value, MAX_PATH_LENGTH, 0);
+        } else if (strcmp(name, "ssl_enabled") == 0) {
+            config->web_ssl_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "ssl_cert_path") == 0) {
+            safe_strcpy(config->web_ssl_cert_path, value, sizeof(config->web_ssl_cert_path), 0);
+        } else if (strcmp(name, "ssl_key_path") == 0) {
+            safe_strcpy(config->web_ssl_key_path, value, sizeof(config->web_ssl_key_path), 0);
         } else if (strcmp(name, "auth_enabled") == 0) {
             config->web_auth_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "username") == 0) {
@@ -1914,6 +1926,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "port = %d\n", config->web_port);
     fprintf(file, "bind_ip = %s\n", config->web_bind_ip);
     fprintf(file, "root = %s\n", config->web_root);
+    fprintf(file, "ssl_enabled = %s  ; Serve HTTPS directly (needs a build with -DENABLE_SSL=ON)\n",
+            config->web_ssl_enabled ? "true" : "false");
+    fprintf(file, "ssl_cert_path = %s  ; PEM certificate chain, leaf first\n", config->web_ssl_cert_path);
+    fprintf(file, "ssl_key_path = %s  ; PEM private key (unencrypted)\n", config->web_ssl_key_path);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database

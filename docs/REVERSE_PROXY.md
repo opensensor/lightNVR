@@ -12,6 +12,38 @@ LightNVR's authenticated proxy serves MSE WebSockets, WebRTC signaling, HLS and 
 
 The public media prefix is always `/go2rtc`. LightNVR translates it to the configured go2rtc API port and `api.base_path`, including custom or empty base paths. Keep LightNVR authentication enabled. A dashboard session cookie also authenticates the WebSocket handshake; the camera's live-view permission is checked before connecting upstream. Cross-origin WebSocket requests are rejected, so preserve the browser's `Host` header, including any non-default port.
 
+## HTTPS without a reverse proxy
+
+LightNVR can terminate TLS itself, which is useful on a LAN-only install or an embedded device without room for a gateway. It needs a build configured with `-DENABLE_SSL=ON` (see [Building](BUILD.md#https-support)) and a PEM certificate and key:
+
+```ini
+[web]
+port = 8443
+ssl_enabled = true
+ssl_cert_path = /etc/lightnvr/tls/cert.pem
+ssl_key_path = /etc/lightnvr/tls/key.pem
+```
+
+Container deployments can set `LIGHTNVR_WEB_SSL_ENABLED`, `LIGHTNVR_WEB_SSL_CERT_PATH` and `LIGHTNVR_WEB_SSL_KEY_PATH` instead.
+
+- The port serves HTTPS only; plain `http://` requests to it are refused. There is no HTTP-to-HTTPS redirect listener.
+- TLS 1.2 and 1.3 are accepted, with mbedTLS's default cipher suites. Client certificates are not requested.
+- Session and trusted-device cookies get the `Secure` attribute while HTTPS is on.
+- MSE WebSockets (`wss://`), WebRTC signaling, HLS, snapshots and downloads all use the same port, as with HTTP. WebRTC media still flows directly between the browser and go2rtc.
+- If the certificate or key cannot be loaded, the web server does not start and the log names the file and the reason. LightNVR never falls back to HTTP.
+- The certificate is read at start-up. Restart LightNVR after renewing it.
+- Automatic certificates (ACME / Let's Encrypt) are not built in; use a reverse proxy for that, or renew with an external client and restart.
+
+A self-signed certificate for testing:
+
+```bash
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 825 \
+  -subj "/CN=nvr.local" -addext "subjectAltName=DNS:nvr.local,IP:192.168.1.10" \
+  -keyout /etc/lightnvr/tls/key.pem -out /etc/lightnvr/tls/cert.pem
+```
+
+Make sure the user LightNVR runs as can read the key, and nobody else can (`chmod 600`).
+
 ## Network placement
 
 The HTTPS gateway only needs network access to LightNVR's web port. It can run on the host, in a separate container on the same Docker network, or in the same network namespace. The examples use `127.0.0.1:8080`; use `lightnvr:8080` for a separate gateway container on the same Docker network.

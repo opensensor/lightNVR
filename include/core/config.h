@@ -276,6 +276,9 @@ typedef struct {
     int web_port;
     char web_bind_ip[32];
     char web_root[MAX_PATH_LENGTH];
+    bool web_ssl_enabled;                    // Serve HTTPS directly (requires an ENABLE_SSL build)
+    char web_ssl_cert_path[MAX_PATH_LENGTH]; // PEM certificate chain, leaf first
+    char web_ssl_key_path[MAX_PATH_LENGTH];  // PEM private key (unencrypted)
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation

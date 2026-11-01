@@ -120,7 +120,7 @@ int libuv_connection_send(libuv_connection_t *conn, char *data, size_t len,
     ctx->free_buffer = free_after_send;
     ctx->action = WRITE_ACTION_NONE;
 
-    int r = uv_write(&ctx->req, (uv_stream_t *)&conn->handle, &ctx->buf, 1, libuv_write_cb);
+    int r = libuv_connection_write(conn, &ctx->req, &ctx->buf, 1, libuv_write_cb);
     if (r != 0) {
         log_error("libuv_connection_send: Write failed: %s", uv_strerror(r));
         if (free_after_send) {
@@ -169,7 +169,7 @@ int libuv_connection_send_ex(libuv_connection_t *conn, char *data, size_t len,
     ctx->free_buffer = free_after_send;
     ctx->action = action;
 
-    int r = uv_write(&ctx->req, (uv_stream_t *)&conn->handle, &ctx->buf, 1, libuv_write_cb);
+    int r = libuv_connection_write(conn, &ctx->req, &ctx->buf, 1, libuv_write_cb);
     if (r != 0) {
         log_error("libuv_connection_send_ex: Write failed: %s", uv_strerror(r));
         if (free_after_send) {

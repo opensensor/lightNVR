@@ -124,6 +124,22 @@ Opus, AC-3) is passed through to the recording without re-encoding, and is
 **not** filtered. Live audio is never filtered. If the filter graph cannot be
 built, LightNVR logs a warning once and keeps recording unfiltered audio.
 
+### HTTPS support
+
+`ENABLE_SSL` (default `OFF`) builds TLS termination into the web server so it
+can serve HTTPS without a reverse proxy. It uses mbedTLS, which is already a
+required dependency, so no extra packages are needed:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SSL=ON ..
+```
+
+HTTPS is then turned on at runtime with `ssl_enabled`, `ssl_cert_path` and
+`ssl_key_path` in `[web]`; see
+[HTTPS without a reverse proxy](REVERSE_PROXY.md#https-without-a-reverse-proxy).
+The former `USE_MBEDTLS` and `USE_WOLFSSL` options were removed; they only
+linked libraries that nothing used.
+
 ### Embedded build profile
 
 Resource-constrained targets can select the embedded profile without changing

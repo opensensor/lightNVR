@@ -120,6 +120,12 @@ int httpd_auth_absolute_timeout_seconds(void);
 int httpd_trusted_device_lifetime_seconds(void);
 
 /**
+ * @brief Mark auth cookies Secure (set while the web server terminates TLS).
+ */
+void httpd_set_secure_cookies(bool secure);
+bool httpd_secure_cookies(void);
+
+/**
  * @brief Add or clear auth-related cookies on an HTTP response.
  */
 void httpd_add_session_cookie(http_response_t *res, const char *token);

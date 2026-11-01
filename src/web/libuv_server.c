@@ -24,6 +24,7 @@
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
+#include "web/httpd_utils.h"
 #include "web/recording_archive.h"
 #include "web/thumbnail_thread.h"
 #include "web/go2rtc_proxy_thread.h"
@@ -99,6 +100,23 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     
     // Copy configuration
     memcpy(&server->config, config, sizeof(http_server_config_t));
+
+    // Load the certificate before anything else so a bad cert or key fails
+    // closed: the server refuses to start instead of falling back to HTTP.
+    if (config->ssl_enabled) {
+        if (!libuv_tls_compiled_in()) {
+            log_warn("libuv_server_init: ssl_enabled is set but this build has no TLS "
+                     "support (rebuild with -DENABLE_SSL=ON); serving plain HTTP");
+        } else {
+            server->tls_ctx = libuv_tls_context_create(config->cert_path, config->key_path);
+            if (!server->tls_ctx) {
+                log_error("libuv_server_init: HTTPS is enabled but the certificate or key "
+                          "could not be loaded; refusing to start the web server");
+                safe_free(server);
+                return NULL;
+            }
+        }
+    }
     
     // Set up event loop
     if (existing_loop) {
@@ -127,6 +145,7 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
             uv_loop_close(server->loop);
             safe_free(server->loop);
         }
+        libuv_tls_context_free(server->tls_ctx);
         safe_free(server);
         return NULL;
     }
@@ -142,6 +161,7 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
             uv_loop_close(server->loop);
             safe_free(server->loop);
         }
+        libuv_tls_context_free(server->tls_ctx);
         safe_free(server);
         return NULL;
     }
@@ -156,18 +176,16 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
             uv_loop_close(server->loop);
             safe_free(server->loop);
         }
+        libuv_tls_context_free(server->tls_ctx);
         safe_free(server);
         return NULL;
     }
     server->handler_capacity = INITIAL_HANDLER_CAPACITY;
     server->handler_count = 0;
     
-    // TLS initialization (if enabled)
-    if (config->ssl_enabled) {
-        // TODO: Initialize TLS context with config->cert_path, config->key_path
-        log_info("libuv_server_init: TLS support requested (not yet implemented)");
-        server->tls_ctx = NULL;
-    }
+    // Session cookies get the Secure attribute only when browsers reach this
+    // server over TLS; behind a plain-HTTP listener they would be dropped.
+    httpd_set_secure_cookies(server->tls_ctx != NULL);
 
     // Initialize thumbnail thread subsystem
     if (thumbnail_thread_init(server->loop) != 0) {
@@ -181,7 +199,8 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         // Continue anyway - proxy requests will return 503
     }
 
-    log_info("libuv_server_init: Server initialized on %s:%d", config->bind_ip, config->port);
+    log_info("libuv_server_init: Server initialized on %s:%d (%s)", config->bind_ip, config->port,
+             server->tls_ctx ? "HTTPS" : "HTTP");
 
     // Cast to generic handle type (http_server_t* is compatible pointer)
     return (http_server_handle_t)server;
@@ -588,9 +607,12 @@ void libuv_server_destroy(http_server_handle_t handle) {
         safe_free(server->handlers);
     }
 
-    // Free TLS context if allocated
+    // Free TLS context if allocated. Connections, and with them every TLS
+    // session that references this config, were closed by libuv_server_stop.
     if (server->tls_ctx) {
-        // TODO: Free TLS context based on SSL library
+        libuv_tls_context_free(server->tls_ctx);
+        server->tls_ctx = NULL;
+        httpd_set_secure_cookies(false);
     }
 
     // Close and free event loop if we own it
@@ -684,8 +706,14 @@ static void on_connection(uv_stream_t *listener, int status) {
 
     log_debug("on_connection: New connection from %s", ip);
 
-    // Start reading from the connection
-    r = uv_read_start((uv_stream_t *)&conn->handle, libuv_alloc_cb, libuv_read_cb);
+    if (server->tls_ctx && libuv_tls_session_start(conn, server->tls_ctx) != 0) {
+        log_error("on_connection: Failed to start TLS session for %s", ip);
+        libuv_connection_close(conn);
+        return;
+    }
+
+    // Start reading from the connection (the TLS handshake runs from here)
+    r = libuv_connection_read_start(conn, libuv_alloc_cb, libuv_read_cb);
     if (r != 0) {
         log_error("on_connection: Failed to start reading: %s", uv_strerror(r));
         libuv_connection_close(conn);

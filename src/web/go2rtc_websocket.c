@@ -144,6 +144,24 @@ static void fail_proxy(websocket_proxy_t *proxy) {
     close_proxy(proxy);
 }
 
+/* The client side may be TLS; route its I/O through the connection's
+ * transport so the relay only ever sees plaintext WebSocket frames. */
+static bool is_client_stream(const websocket_proxy_t *proxy, const uv_stream_t *stream) {
+    return proxy->conn && stream == (const uv_stream_t *)&proxy->conn->handle;
+}
+
+static int stream_read_start(websocket_proxy_t *proxy, uv_stream_t *stream,
+                             uv_alloc_cb alloc_cb, uv_read_cb read_cb) {
+    return is_client_stream(proxy, stream)
+        ? libuv_connection_read_start(proxy->conn, alloc_cb, read_cb)
+        : uv_read_start(stream, alloc_cb, read_cb);
+}
+
+static void stream_read_stop(websocket_proxy_t *proxy, uv_stream_t *stream) {
+    if (is_client_stream(proxy, stream)) libuv_connection_read_stop(proxy->conn);
+    else uv_read_stop(stream);
+}
+
 static void allocate_read(uv_handle_t *handle, size_t suggested, uv_buf_t *buf) {
     (void)handle; (void)suggested;
     buf->base = malloc(WS_BUFFER_SIZE);
@@ -158,7 +176,8 @@ static void write_done(uv_write_t *request, int status) {
         else if (write->resume) {
             uv_read_cb callback = write->resume == (uv_stream_t *)&proxy->upstream
                 ? upstream_read : client_read;
-            if (uv_read_start(write->resume, allocate_read, callback) < 0) fail_proxy(proxy);
+            if (stream_read_start(proxy, write->resume, allocate_read, callback) < 0)
+                fail_proxy(proxy);
         }
     }
     free(write->data);
@@ -177,8 +196,11 @@ static bool relay(websocket_proxy_t *proxy, uv_stream_t *target,
     write->proxy = proxy;
     write->resume = resume;
     uv_buf_t buffer = uv_buf_init(write->data, (unsigned int)length);
-    if (resume) uv_read_stop(resume);
-    if (uv_write(&write->request, target, &buffer, 1, write_done) < 0) {
+    if (resume) stream_read_stop(proxy, resume);
+    int r = is_client_stream(proxy, target)
+        ? libuv_connection_write(proxy->conn, &write->request, &buffer, 1, write_done)
+        : uv_write(&write->request, target, &buffer, 1, write_done);
+    if (r < 0) {
         free(write->data);
         free(write);
         return false;
@@ -229,7 +251,7 @@ static void upstream_read(uv_stream_t *stream, ssize_t count, const uv_buf_t *bu
         uv_timer_stop(&proxy->timeout);
         if (!relay(proxy, (uv_stream_t *)&proxy->conn->handle, NULL,
                    proxy->headers, proxy->header_size) ||
-            uv_read_start((uv_stream_t *)&proxy->conn->handle, allocate_read, client_read) < 0) {
+            libuv_connection_read_start(proxy->conn, allocate_read, client_read) < 0) {
             close_proxy(proxy);
             free(buf->base);
             return;

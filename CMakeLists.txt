@@ -84,10 +84,8 @@ set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 # pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
 set(LLHTTP_DOWNLOAD_REF "release/v9.4.3" CACHE STRING "llhttp tag/ref to download from GitHub")
 
-# SSL/TLS options
-option(ENABLE_SSL "Enable SSL/TLS support" OFF)
-option(USE_MBEDTLS "Use mbedTLS instead of OpenSSL (if SSL is enabled)" OFF)
-option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
+# HTTPS in the built-in web server (mbedTLS, already required for ONVIF/auth)
+option(ENABLE_SSL "Build HTTPS/TLS support into the built-in web server (mbedTLS)" OFF)
 
 # HTTP backend: libuv + llhttp
 set(HTTP_BACKEND "libuv" CACHE STRING "HTTP server backend")
@@ -208,7 +206,7 @@ macro(DETECT_MBEDTLS_ONCE)
             find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
             find_library(MBEDX509_LIBRARY NAMES mbedx509)
             if(NOT MBEDTLS_INCLUDE_DIRS OR NOT MBEDTLS_LIBRARY OR NOT MBEDCRYPTO_LIBRARY OR NOT MBEDX509_LIBRARY)
-                message(FATAL_ERROR "mbedTLS is required (for ONVIF/authentication and/or SSL with USE_MBEDTLS=ON) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
+                message(FATAL_ERROR "mbedTLS is required (for ONVIF, authentication and HTTPS) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
             endif()
             set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
         endif()
@@ -216,29 +214,22 @@ macro(DETECT_MBEDTLS_ONCE)
     endif()
 endmacro()
 
-# SSL/TLS configuration
-if(ENABLE_SSL)
-    if(USE_MBEDTLS)
-        DETECT_MBEDTLS_ONCE()
-        set(SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
-        set(SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
-        message(STATUS "Using mbedTLS for SSL/TLS support")
-    elseif(USE_WOLFSSL)
-        pkg_check_modules(WOLFSSL REQUIRED wolfssl)
-        set(SSL_INCLUDE_DIRS ${WOLFSSL_INCLUDE_DIRS})
-        set(SSL_LIBRARIES ${WOLFSSL_LIBRARIES})
-        message(STATUS "Using WolfSSL for SSL/TLS support")
-    else()
-        pkg_check_modules(OPENSSL REQUIRED openssl)
-        set(SSL_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIRS})
-        set(SSL_LIBRARIES ${OPENSSL_LIBRARIES})
-        message(STATUS "Using OpenSSL for SSL/TLS support")
+# SSL/TLS configuration. The web server terminates TLS with mbedTLS, which is
+# linked unconditionally below, so ENABLE_SSL only compiles the TLS code in.
+# The former OpenSSL/WolfSSL selections linked libraries nothing used.
+foreach(_removed_ssl_option USE_MBEDTLS USE_WOLFSSL)
+    if(${_removed_ssl_option})
+        message(WARNING "${_removed_ssl_option} is no longer used: HTTPS always uses mbedTLS")
     endif()
+    unset(${_removed_ssl_option} CACHE)
+endforeach()
+set(SSL_INCLUDE_DIRS "")
+set(SSL_LIBRARIES "")
+if(ENABLE_SSL)
+    add_compile_definitions(LIGHTNVR_ENABLE_TLS=1)
+    message(STATUS "HTTPS support enabled in the web server (mbedTLS)")
 else()
-    message(STATUS "SSL/TLS support is disabled")
-    # Define empty variables for SSL
-    set(SSL_INCLUDE_DIRS "")
-    set(SSL_LIBRARIES "")
+    message(STATUS "HTTPS support is disabled (enable with -DENABLE_SSL=ON)")
 endif()
 
 # ONVIF and authentication system require mbedTLS for cryptographic functions
@@ -491,6 +482,7 @@ set(LIBUV_SERVER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_connection.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_response.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_file_serve.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_tls.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_api_handlers.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/thumbnail_thread.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/go2rtc_proxy_thread.c"
