@@ -513,8 +513,10 @@ int linux_network_collect(linux_network_state_t *state,
         snprintf(selected[index], sizeof(selected[index]), "%s", names[index]);
     }
     if (primary_present && primary_index >= selected_count && selected_count > 0) {
+        /* Copy the sysfs directory entry rather than primary_name: they are
+         * equal, but only the former is known to exist under class_path. */
         snprintf(selected[selected_count - 1U], sizeof(selected[0]), "%s",
-                 primary_name);
+                 names[primary_index]);
         for (size_t index = selected_count - 1U; index > 0 &&
              strcmp(selected[index], selected[index - 1U]) < 0; --index) {
             char swap[LINUX_NETWORK_INTERNAL_NAME_LENGTH];

@@ -212,6 +212,30 @@ static void test_v1_common_combined_controller_layout(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.8f, (float)observation->value);
 }
 
+static void test_v2_rejects_trailing_dotdot_membership(void) {
+    linux_cgroup_state_t state;
+    system_health_collector_t collector;
+    system_health_observation_t items[32];
+    system_health_observation_sink_t sink = {
+        .items = items, .capacity = 32U
+    };
+    system_health_collect_context_t context = {.monotonic_ms = 1000U};
+    char proc[512];
+    char sys[512];
+    const system_health_observation_t *observation;
+
+    /* "/camera/.." would resolve to the cgroup root, whose limits are
+     * planted in the fixture; it must be rejected, not followed. */
+    TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
+    fixture_paths(proc, sizeof(proc), sys, sizeof(sys), "v2dotdot");
+    context.proc_root = proc;
+    context.cgroup_root = sys;
+    (void)collector.collect(collector.state, &context, &sink);
+    observation = find_observation(items, sink.count,
+                                   "container.memory.available_ratio");
+    TEST_ASSERT_TRUE(observation == NULL || !observation->value_valid);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_cgroup_parsers_reject_bad_limits_and_overflow);
@@ -219,5 +243,6 @@ int main(void) {
     RUN_TEST(test_unlimited_v2_reports_host_scope_without_fake_limits);
     RUN_TEST(test_v2_uses_tighter_ancestor_limits);
     RUN_TEST(test_v1_common_combined_controller_layout);
+    RUN_TEST(test_v2_rejects_trailing_dotdot_membership);
     return UNITY_END();
 }
