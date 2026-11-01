@@ -2,9 +2,11 @@ import {
   getPtzCapabilities, savePtzPreset, setPtzHome, ptzMove, ptzStop, ptzHome, ptzGotoPreset
 } from '../js/components/preact/ptzActions.js';
 
+const originalFetch = global.fetch;
+
 describe('PTZ position actions', () => {
   afterEach(() => {
-    delete global.fetch;
+    global.fetch = originalFetch;
   });
 
   test('saves a named preset and refreshes the list for immediate use', async () => {
