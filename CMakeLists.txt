@@ -397,21 +397,34 @@ if(NOT LLHTTP_FOUND)
         "src/http.c"
         "include/llhttp.h"
     )
-    # SHA-256 hashes must be kept in the same order as LLHTTP_REQUIRED_FILES.
-    # Replace placeholder values below with the exact hashes for ${LLHTTP_DOWNLOAD_REF}.
+    # SHA-256 hashes for LLHTTP_PINNED_REF, in the same order as
+    # LLHTTP_REQUIRED_FILES.  Update both together when bumping llhttp.
+    # If LLHTTP_DOWNLOAD_REF is overridden to a different ref, the hashes
+    # cannot be known here, so downloads proceed unverified with a warning.
+    set(LLHTTP_PINNED_REF "release/v9.2.1")
     set(LLHTTP_REQUIRED_HASHES
-        "REPLACE_WITH_SHA256_LLHTTP_C"
-        "REPLACE_WITH_SHA256_API_C"
-        "REPLACE_WITH_SHA256_HTTP_C"
-        "REPLACE_WITH_SHA256_LLHTTP_H"
+        "d853660d90a48b370fc3aac5fd9ae664a79860522fbac9cf5c40f70e40af03c1"
+        "57553b6d395209ac85e0db71bd985ee5c13f7b5b151330cc88406d89561697d0"
+        "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
+        "ab2b7177ca0947897c371ead0ffd94f158be06439dc66f221f23543387bd6304"
     )
+    if(LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
+        set(LLHTTP_VERIFY_HASHES TRUE)
+    else()
+        set(LLHTTP_VERIFY_HASHES FALSE)
+    endif()
     set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
 
     list(LENGTH LLHTTP_REQUIRED_FILES LLHTTP_REQUIRED_FILES_LEN)
     math(EXPR LLHTTP_REQUIRED_FILES_LAST "${LLHTTP_REQUIRED_FILES_LEN} - 1")
     foreach(LLHTTP_INDEX RANGE 0 ${LLHTTP_REQUIRED_FILES_LAST})
         list(GET LLHTTP_REQUIRED_FILES ${LLHTTP_INDEX} LLHTTP_FILE)
-        list(GET LLHTTP_REQUIRED_HASHES ${LLHTTP_INDEX} LLHTTP_EXPECTED_HASH)
+        if(LLHTTP_VERIFY_HASHES)
+            list(GET LLHTTP_REQUIRED_HASHES ${LLHTTP_INDEX} LLHTTP_EXPECTED_HASH)
+            set(LLHTTP_HASH_ARGS EXPECTED_HASH "SHA256=${LLHTTP_EXPECTED_HASH}")
+        else()
+            set(LLHTTP_HASH_ARGS "")
+        endif()
         set(LLHTTP_LOCAL_PATH "${LLHTTP_DIR}/${LLHTTP_FILE}")
         set(LLHTTP_NEEDS_DOWNLOAD FALSE)
         set(LLHTTP_DOWNLOAD_REASON "not found")
@@ -427,6 +440,9 @@ if(NOT LLHTTP_FOUND)
 
         if(LLHTTP_NEEDS_DOWNLOAD)
             message(STATUS "llhttp ${LLHTTP_FILE} ${LLHTTP_DOWNLOAD_REASON}, downloading from GitHub...")
+            if(NOT LLHTTP_VERIFY_HASHES)
+                message(WARNING "LLHTTP_DOWNLOAD_REF='${LLHTTP_DOWNLOAD_REF}' differs from pinned '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
+            endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
             file(REMOVE "${LLHTTP_LOCAL_PATH}")
@@ -436,7 +452,7 @@ if(NOT LLHTTP_FOUND)
                 "${LLHTTP_LOCAL_PATH}"
                 SHOW_PROGRESS
                 STATUS LLHTTP_DOWNLOAD_STATUS
-                EXPECTED_HASH "SHA256=${LLHTTP_EXPECTED_HASH}"
+                ${LLHTTP_HASH_ARGS}
             )
             list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
             list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
@@ -687,16 +703,11 @@ target_link_libraries(lightnvr_lib PUBLIC
         inih_lib
         faac_lib
         ${FFMPEG_LIBRARIES}
-        ${FFMPEG_LDFLAGS}
         ${SQLITE_LIBRARIES}
-        ${SQLITE_LDFLAGS}
         ${CURL_LIBRARIES}
-        ${CURL_LDFLAGS}
         ${CJSON_LIBRARIES}
-        ${CJSON_LDFLAGS}
         ZLIB::ZLIB
         ${SSL_LIBRARIES}
-        ${SSL_LDFLAGS}
         pthread
         dl
         m
