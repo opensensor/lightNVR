@@ -57,14 +57,15 @@ static void dispose_stream_state(stream_state_manager_t *state) {
  * Initialize the stream state management system
  */
 int init_stream_state_manager(int max_streams) {
-    if (initialized) {
-        return 0;  // Already initialized
-    }
-
     if (max_streams < 1)           max_streams = 1;
     if (max_streams > MAX_STREAMS) max_streams = MAX_STREAMS;
 
     pthread_mutex_lock(&states_mutex);
+
+    if (initialized) {
+        pthread_mutex_unlock(&states_mutex);
+        return 0;  // Already initialized
+    }
 
     stream_states = (stream_state_manager_t **)calloc(max_streams, sizeof(stream_state_manager_t *));
     if (!stream_states) {
@@ -104,9 +105,11 @@ void shutdown_stream_state_manager(void) {
             char stream_name[MAX_STREAM_NAME];
             safe_strcpy(stream_name, state->name, MAX_STREAM_NAME, 0);
 
-            // Stop the stream if it's active
+            // Stop/wait for stream operations before disposal, including transitional states
             if (state->state == STREAM_STATE_ACTIVE ||
-                state->state == STREAM_STATE_STARTING) {
+                state->state == STREAM_STATE_STARTING ||
+                state->state == STREAM_STATE_RECONNECTING ||
+                state->state == STREAM_STATE_STOPPING) {
                 pthread_mutex_unlock(&states_mutex);
                 stop_stream_with_state(state, false);
                 pthread_mutex_lock(&states_mutex);
@@ -943,6 +946,11 @@ int remove_stream_state(stream_state_manager_t *state) {
         return -1;
     }
 
+    /* Claim exclusive removal ownership before dropping registry lock.
+     * This prevents concurrent remove_stream_state() calls from finding
+     * the same state while stop_stream_with_state() runs unlocked. */
+    stream_states[slot] = NULL;
+
     // Stop the stream if it's active
     if (state->state == STREAM_STATE_ACTIVE ||
         state->state == STREAM_STATE_STARTING ||
@@ -957,7 +965,6 @@ int remove_stream_state(stream_state_manager_t *state) {
     remove_timestamp_tracker(stream_name);
 
     dispose_stream_state(state);
-    stream_states[slot] = NULL;
 
     pthread_mutex_unlock(&states_mutex);
 
