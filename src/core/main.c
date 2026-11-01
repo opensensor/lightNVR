@@ -1211,12 +1211,10 @@ int main(int argc, char *argv[]) {
                         config.streams[i].name, model_path);
             } else if (config.streams[i].detection_model[0] != '/') {
                 // Relative path, use configured models path from INI if it exists
-                if (config.models_path && strlen(config.models_path) > 0) {
-                    snprintf(model_path, sizeof(model_path), "%s/%s", config.models_path, config.streams[i].detection_model);
-                } else {
-                    // Fall back to default path if INI config doesn't exist
-                    snprintf(model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.streams[i].detection_model);
-                }
+                const char *models_dir = config.models_path[0] != '\0'
+                                             ? config.models_path
+                                             : "/etc/lightnvr/models";
+                snprintf(model_path, sizeof(model_path), "%s/%s", models_dir, config.streams[i].detection_model);
 
                 // Check if file exists
                 FILE *model_file = fopen(model_path, "r");
@@ -1228,10 +1226,10 @@ int main(int argc, char *argv[]) {
                     log_error("Detection will not work properly!");
 
                     // Create the models directory if it doesn't exist
-                    if (mkdir_recursive(config.models_path)) {
+                    if (mkdir_recursive(models_dir)) {
                         log_error("Failed to create models directory: %s", strerror(errno));
                     } else {
-                        log_info("Created models directory: %s", config.models_path);
+                        log_info("Created models directory: %s", models_dir);
                     }
                 }
             } else {
