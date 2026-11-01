@@ -30,6 +30,19 @@
 #define TEST_DB_PATH "/tmp/lightnvr_unit_investigations_test.db"
 #define TEST_STORAGE_PATH "/tmp/lightnvr_unit_investigations_storage"
 
+/* Count SQLite VM steps of every finalized statement (including the search's
+ * private read-only connection) so tests can assert a query stays bounded by
+ * the search window instead of walking camera history. */
+static bool count_vm_steps;
+static long long vm_steps;
+int __real_sqlite3_finalize(sqlite3_stmt *statement);
+int __wrap_sqlite3_finalize(sqlite3_stmt *statement) {
+    if (count_vm_steps && statement) {
+        vm_steps += sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0);
+    }
+    return __real_sqlite3_finalize(statement);
+}
+
 static stream_config_t create_camera(const char *name) {
     stream_config_t stream;
     memset(&stream, 0, sizeof(stream));
@@ -1204,6 +1217,125 @@ void test_region_search_filters_boxes_and_explains_missing_metadata(void) {
     cJSON_Delete(json);
 }
 
+void test_search_includes_open_motion_started_before_range(void) {
+    const time_t range_start = 1700030000;
+    stream_config_t camera = create_camera("Open Motion Camera");
+    uint64_t event_id = insert_detection(
+        camera.camera_uuid, camera.name, range_start - 600, "motion", 1.0,
+        "", "external_motion", 0);
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "UPDATE detections SET event_end_time=NULL WHERE id=?;", -1,
+        &statement, NULL));
+    sqlite3_bind_int64(statement, 1, (sqlite3_int64)event_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    /* A closed interval that ended before the range must stay excluded. */
+    insert_detection(camera.camera_uuid, camera.name, range_start - 900,
+                     "motion", 1.0, "", "external_motion", 0);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    cJSON *json = call_search(body, 200);
+    const cJSON *results = cJSON_GetObjectItemCaseSensitive(json, "results");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(results));
+    TEST_ASSERT_EQUAL_UINT64(
+        event_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(results, 0),
+                                             "detection"),
+            "id")->valuedouble);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    cJSON_Delete(json);
+}
+
+void test_search_window_does_not_scan_camera_history(void) {
+    enum { HISTORY_ROWS = 5000 };
+    const time_t range_start = 1700040000;
+    stream_config_t camera = create_camera("Busy History Camera");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    TEST_ASSERT_NOT_EQUAL(0, recording_id);
+
+    /* Lots of older detections for the same camera, none in the window. */
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n "
+        "WHERE i < ?) "
+        "INSERT INTO detections (camera_uuid, stream_name, timestamp, label, "
+        "confidence, x, y, width, height, track_id, zone_id, source, "
+        "event_end_time) "
+        "SELECT ?, ?, ? - 100000 + i * 10, 'car', 0.9, 0.1, 0.2, 0.3, 0.4, "
+        "7, '', '', ? - 100000 + i * 10 FROM n;",
+        -1, &statement, NULL));
+    sqlite3_bind_int(statement, 1, HISTORY_ROWS);
+    sqlite3_bind_text(statement, 2, camera.camera_uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(statement, 3, camera.name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 4, (sqlite3_int64)range_start);
+    sqlite3_bind_int64(statement, 5, (sqlite3_int64)range_start);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    insert_detection(camera.camera_uuid, camera.name, range_start + 5,
+                     "person", 0.8, "", "", 0);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"limit\":20,\"include_summary\":false}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    vm_steps = 0;
+    count_vm_steps = true;
+    cJSON *json = call_search(body, 200);
+    count_vm_steps = false;
+    const long long result_steps = vm_steps;
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(
+        cJSON_GetObjectItemCaseSensitive(json, "results")));
+    TEST_ASSERT_EQUAL_UINT64(
+        recording_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(json, "results"), 0),
+            "recording_id")->valuedouble);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"summary_only\":true}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    vm_steps = 0;
+    count_vm_steps = true;
+    json = call_search(body, 200);
+    count_vm_steps = false;
+    const long long summary_steps = vm_steps;
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    cJSON_Delete(json);
+
+    /* Visiting each historical row costs several VM steps, so a query that
+     * walks the camera's history cannot stay under one step per row. */
+    char message[160];
+    snprintf(message, sizeof(message),
+             "results request used %lld VM steps for %d out-of-window rows",
+             result_steps, HISTORY_ROWS);
+    TEST_ASSERT_LESS_THAN_INT64_MESSAGE(HISTORY_ROWS, result_steps, message);
+    snprintf(message, sizeof(message),
+             "summary request used %lld VM steps for %d out-of-window rows",
+             summary_steps, HISTORY_ROWS);
+    TEST_ASSERT_LESS_THAN_INT64_MESSAGE(HISTORY_ROWS, summary_steps, message);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -1226,6 +1358,8 @@ int main(void) {
     RUN_TEST(test_search_results_and_summary_can_be_loaded_independently);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);
     RUN_TEST(test_region_search_filters_boxes_and_explains_missing_metadata);
+    RUN_TEST(test_search_includes_open_motion_started_before_range);
+    RUN_TEST(test_search_window_does_not_scan_camera_history);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

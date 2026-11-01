@@ -2091,6 +2091,14 @@ static const char migration_0089_down[] =
     "        AND v.revision=r.storage_policy_version);\n"
     "DROP INDEX idx_recordings_storage_policy_revision;";
 
+static const char migration_0090_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_detections_external_motion_camera_end\n"
+    "    ON detections(camera_uuid, event_end_time, timestamp)\n"
+    "    WHERE source = 'external_motion' AND camera_uuid IS NOT NULL;";
+
+static const char migration_0090_down[] =
+    "DROP INDEX IF EXISTS idx_detections_external_motion_camera_end;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2715,8 +2723,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0089_down,
         .is_embedded = true
     },
+    {
+        .version = "0090",
+        .description = "index_external_motion_intervals",
+        .sql_up = migration_0090_up,
+        .sql_down = migration_0090_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 89
+#define EMBEDDED_MIGRATIONS_COUNT 90
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
