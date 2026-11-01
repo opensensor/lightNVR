@@ -3,7 +3,7 @@
  * Hover over cells to preview the grid size; click to confirm.
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useId } from 'preact/hooks';
 import { useI18n } from '../../i18n.js';
 
 // Hard cap: more than 36 simultaneous HLS/MSE streams will exhaust tab memory.
@@ -44,6 +44,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
   const { t } = useI18n();
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
+  const popoverId = useId();
   const containerRef      = useRef(null);
 
   // Scale the picker grid to fit the stream count, always as a square.
@@ -77,6 +78,8 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
         onClick={() => setOpen(o => !o)}
         title={t('live.selectGridLayout')}
         aria-label={t('live.gridLayoutAria', { cols, rows })}
+        aria-expanded={open}
+        aria-controls={open ? popoverId : undefined}
       >
         {/* 2×2 grid icon */}
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
@@ -99,6 +102,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
         // the same via each cell's onFocus/onBlur, so no interaction is lost.
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
+          id={popoverId}
           className="absolute inset-e-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-xl p-3 select-none"
           role="group"
           aria-label={t('live.selectGridLayout')}
