@@ -66,7 +66,13 @@ int init_daemon(const char *pid_file) {
     }
 
     log_info("Starting daemon mode with PID file: %s", pid_file_path);
-    log_info("Current working directory: %s", getcwd(NULL, 0));
+    char *startup_cwd = getcwd(NULL, 0);
+    if (startup_cwd != NULL) {
+        log_info("Current working directory: %s", startup_cwd);
+        free(startup_cwd);
+    } else {
+        log_warn("Current working directory unavailable: %s", strerror(errno));
+    }
 
     // Create startup status pipe for parent/child handshake
     int status_pipe[2];
@@ -288,21 +294,29 @@ int write_pid_file(const char *pid_file) {
 
 // Remove PID file
 int remove_pid_file(int fd, const char *pid_file) {
-    if (fd >= 0) {
-        // Release the lock by closing the file
-        close(fd);
-    }
-
-    // Try to remove the file
+    // Remove the path while lock is still held by fd to avoid races.
     if (unlink(pid_file) != 0) {
         if (errno == ENOENT) {
             // File doesn't exist, that's fine
             log_info("PID file %s already removed", pid_file);
+            if (fd >= 0) {
+                // Release lock/descriptor after unlink attempt
+                close(fd);
+            }
             return 0;
         }
-        
+
         log_error("Failed to remove PID file %s: %s", pid_file, strerror(errno));
+        if (fd >= 0) {
+            // Ensure descriptor is closed even on failure
+            close(fd);
+        }
         return -1;
+    }
+
+    if (fd >= 0) {
+        // Release the lock by closing the file after unlink
+        close(fd);
     }
 
     log_info("Removed PID file %s", pid_file);
@@ -429,6 +443,11 @@ int daemon_status(const char *pid_file) {
     if (kill(pid, 0) == 0) {
         // Process is running
         log_info("Daemon is running with PID %d", pid);
+        return 1;
+    } else if (errno == EPERM) {
+        // Process exists, but we don't have permission to signal it.
+        // For status checks, this still means the daemon is running.
+        log_info("Daemon is running with PID %d (no permission to signal)", pid);
         return 1;
     } else {
         if (errno == ESRCH) {
