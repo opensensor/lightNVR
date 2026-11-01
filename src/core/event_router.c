@@ -599,11 +599,10 @@ static bool predicate_matches(const compiled_route_t *route,
         route->detection.has_min_confidence;
     bool has_health = route->health.condition_count > 0 ||
         route->health.severity_count > 0;
-    if (has_health) {
-        if (strcmp(event->type, HEALTH_ALERT_EVENT_TYPE) != 0 &&
-            strcmp(event->type, HEALTH_RECOVERED_EVENT_TYPE) != 0) {
-            return false;
-        }
+
+    if (strcmp(event->type, HEALTH_ALERT_EVENT_TYPE) == 0 ||
+        strcmp(event->type, HEALTH_RECOVERED_EVENT_TYPE) == 0) {
+        if (!has_health) return true;
         const cJSON *code =
             cJSON_GetObjectItemCaseSensitive(event->data, "code");
         const char *severity_value = event_severity_name(event->severity);
@@ -619,29 +618,33 @@ static bool predicate_matches(const compiled_route_t *route,
             string_matches(severity_value, route->health.severities,
                            route->health.severity_count);
     }
-    if (!has_detection) return true;
-    if (strcmp(event->type, DETECTION_EVENT_TYPE) != 0) return false;
-    const cJSON *detections =
-        cJSON_GetObjectItemCaseSensitive(event->data, "detections");
-    const cJSON *item = NULL;
-    cJSON_ArrayForEach(item, detections) {
-        const cJSON *label = cJSON_GetObjectItemCaseSensitive(item, "label");
-        const cJSON *zone = cJSON_GetObjectItemCaseSensitive(item, "zone_id");
-        const cJSON *confidence =
-            cJSON_GetObjectItemCaseSensitive(item, "confidence");
-        if (!cJSON_IsString(label) || !cJSON_IsNumber(confidence)) continue;
-        if (!string_matches(label->valuestring, route->detection.labels,
-                            route->detection.label_count) ||
-            !string_matches(cJSON_IsString(zone) ? zone->valuestring : "",
-                            route->detection.zones,
-                            route->detection.zone_count) ||
-            (route->detection.has_min_confidence &&
-             confidence->valuedouble < route->detection.min_confidence)) {
-            continue;
+
+    if (strcmp(event->type, DETECTION_EVENT_TYPE) == 0) {
+        if (!has_detection) return true;
+        const cJSON *detections =
+            cJSON_GetObjectItemCaseSensitive(event->data, "detections");
+        const cJSON *item = NULL;
+        cJSON_ArrayForEach(item, detections) {
+            const cJSON *label = cJSON_GetObjectItemCaseSensitive(item, "label");
+            const cJSON *zone = cJSON_GetObjectItemCaseSensitive(item, "zone_id");
+            const cJSON *confidence =
+                cJSON_GetObjectItemCaseSensitive(item, "confidence");
+            if (!cJSON_IsString(label) || !cJSON_IsNumber(confidence)) continue;
+            if (!string_matches(label->valuestring, route->detection.labels,
+                                route->detection.label_count) ||
+                !string_matches(cJSON_IsString(zone) ? zone->valuestring : "",
+                                route->detection.zones,
+                                route->detection.zone_count) ||
+                (route->detection.has_min_confidence &&
+                 confidence->valuedouble < route->detection.min_confidence)) {
+                continue;
+            }
+            return true;
         }
-        return true;
+        return false;
     }
-    return false;
+
+    return !has_health && !has_detection;
 }
 
 static bool schedule_matches(const compiled_route_t *route, int64_t epoch) {
