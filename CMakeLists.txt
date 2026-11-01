@@ -82,7 +82,7 @@ set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 
 # llhttp download configuration. Avoid the LLHTTP_VERSION name because
 # pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
-set(LLHTTP_DOWNLOAD_REF "release/v9.2.1" CACHE STRING "llhttp tag/ref to download from GitHub")
+set(LLHTTP_DOWNLOAD_REF "release/v9.4.3" CACHE STRING "llhttp tag/ref to download from GitHub")
 
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
@@ -401,12 +401,12 @@ if(NOT LLHTTP_FOUND)
     # LLHTTP_REQUIRED_FILES.  Update both together when bumping llhttp.
     # If LLHTTP_DOWNLOAD_REF is overridden to a different ref, the hashes
     # cannot be known here, so downloads proceed unverified with a warning.
-    set(LLHTTP_PINNED_REF "release/v9.2.1")
+    set(LLHTTP_PINNED_REF "release/v9.4.3")
     set(LLHTTP_REQUIRED_HASHES
-        "d853660d90a48b370fc3aac5fd9ae664a79860522fbac9cf5c40f70e40af03c1"
-        "57553b6d395209ac85e0db71bd985ee5c13f7b5b151330cc88406d89561697d0"
+        "391e7c99912abf3b1c9dd8a9c85fdeaac2663e9fa55b6f3871154d16fef8b892"
+        "0f8590206fe2f264db2825401b5fb856b979ee1363dc88b06f36dc9577afb941"
         "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
-        "ab2b7177ca0947897c371ead0ffd94f158be06439dc66f221f23543387bd6304"
+        "5bc82fa51b19aa8bee7d921038393fbfc74e8cc9bae0844c2d82c102fb8cfd68"
     )
     if(LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
         set(LLHTTP_VERIFY_HASHES TRUE)
