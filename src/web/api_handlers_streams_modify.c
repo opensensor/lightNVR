@@ -388,15 +388,15 @@ static void *put_stream_worker(void *arg) {
             }
         }
 
-        // If URL, protocol, record_audio, or credentials changed, update the dynamic
+        // If URL, protocol, record_audio, backchannel, or credentials changed, update the dynamic
         // go2rtc API registration. Streams with a source override are YAML-backed;
         // those changes are applied by the go2rtc process restart below instead.
         bool go2rtc_reloaded = false;
         if (!task->go2rtc_override_changed &&
             task->config.go2rtc_source_override[0] == '\0' &&
-            (url_changed || protocol_changed || record_audio_changed || task->credentials_changed)) {
+            (url_changed || protocol_changed || record_audio_changed || backchannel_changed || task->credentials_changed)) {
             go2rtc_reloaded = true;
-            log_info("URL, protocol, record_audio, or credentials changed for stream %s, updating go2rtc registration", task->config.name);
+            log_info("URL, protocol, record_audio, backchannel, or credentials changed for stream %s, updating go2rtc registration", task->config.name);
 
             if (go2rtc_integration_reload_stream_config(task->config.name, task->config.url,
                                                         task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
