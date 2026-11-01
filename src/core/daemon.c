@@ -392,11 +392,11 @@ int daemon_status(const char *pid_file) {
         return 1;
     } else {
         if (errno == ESRCH) {
-            // Process is not running, but file is locked?
-            // This is unusual, but could happen if the file is locked by another process
-            log_warn("Found stale PID file %s (locked but process %d not running), removing it", file_path, pid);
-            remove_pid_file(-1, file_path);
-            return 0;
+            // Process is not running, but the PID file is still locked by another process.
+            // Do NOT remove a locked PID file here: unlinking a locked entry can race with
+            // another instance creating a new PID file, allowing multiple daemons to coexist.
+            log_warn("PID file %s is locked but process %d is not running; leaving file in place", file_path, pid);
+            return -1;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
             return -1;
