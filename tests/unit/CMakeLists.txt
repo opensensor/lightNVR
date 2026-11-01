@@ -228,6 +228,9 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
 add_layer2_test(test_storage_manager_retention CI_UNIT)
 add_layer2_test(test_storage_target_pressure_cleanup CI_UNIT)
 add_layer2_test(test_storage_migration CI_UNIT)
+add_layer2_test(test_storage_migration_publication CI_UNIT CI_SANITIZER)
+target_link_options(test_storage_migration_publication PRIVATE -Wl,--wrap=lstat -Wl,--wrap=syscall -Wl,--wrap=unlink -Wl,--wrap=db_storage_migration_update_progress -Wl,--wrap=db_storage_migration_commit_location)
+set_tests_properties(test_storage_migration_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_storage_deletion_ledger)   # Layer 2: deletion ledger scoping, pruning, indexes
 if(ENABLE_S3_ARCHIVE)
     add_layer2_test(test_storage_archive CI_UNIT)
