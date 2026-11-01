@@ -280,6 +280,28 @@ void test_repeated_restart_reuses_stopped_slots(void) {
     }
 }
 
+void test_late_update_from_previous_owner_does_not_stop_reused_slot(void) {
+    int id = register_component("owner_a", COMPONENT_OTHER, NULL, 1);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, id);
+    TEST_ASSERT_EQUAL_INT(COMPONENT_RUNNING, get_component_state(id));
+
+    update_component_state(id, COMPONENT_STOPPED);
+    TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
+
+    int reused_id = register_component("owner_b", COMPONENT_OTHER, NULL, 1);
+    TEST_ASSERT_EQUAL_INT(id, reused_id);
+    TEST_ASSERT_EQUAL_INT(COMPONENT_RUNNING, get_component_state(reused_id));
+
+    /* Simulate a stale late update from the previous logical owner of this reused slot. */
+    update_component_state(id, COMPONENT_STOPPED);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(COMPONENT_RUNNING, get_component_state(reused_id),
+                                  "Late update from previous owner must not stop reused slot");
+
+    update_component_state(reused_id, COMPONENT_STOPPED);
+    TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
+}
+
 /* ================================================================
  * cleanup semantics (sync objects are process-lifetime)
  * ================================================================ */
