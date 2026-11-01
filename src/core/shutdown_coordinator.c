@@ -38,30 +38,54 @@ bool is_background_abort_requested(void) {
     return atomic_load(&g_background_abort_requested);
 }
 
-// Initialize the shutdown coordinator
-int init_shutdown_coordinator(void) {
-    memset(&g_coordinator, 0, sizeof(shutdown_coordinator_t));
+// The mutex and condition variable are created once and live for the whole
+// process. shutdown_coordinator_cleanup() never destroys them (another thread
+// may still be about to lock/wait/signal), so init must never re-initialize
+// them either: pthread_*_init on a live object is undefined behavior.
+// init/cleanup are only called from the main thread (or test setUp/tearDown),
+// so a plain bool is sufficient here.
+static bool g_sync_initialized = false;
+
+// Reset all non-synchronization state. Caller holds the mutex (or the mutex
+// has just been created and no other thread can see it yet).
+static void reset_coordinator_state_locked(void) {
+    memset(g_coordinator.components, 0, sizeof(g_coordinator.components));
+    atomic_store(&g_coordinator.component_count, 0);
     atomic_store(&g_coordinator.shutdown_initiated, false);
     atomic_store(&g_coordinator.coordinator_destroyed, false);
-    atomic_store(&g_coordinator.component_count, 0);
-
-    // Initialize mutex and condition variable
-    if (pthread_mutex_init(&g_coordinator.mutex, NULL) != 0) {
-        log_error("Failed to initialize shutdown coordinator mutex");
-        return -1;
-    }
-
-    if (pthread_cond_init(&g_coordinator.all_stopped_cond, NULL) != 0) {
-        log_error("Failed to initialize shutdown coordinator condition variable");
-        pthread_mutex_destroy(&g_coordinator.mutex);
-        return -1;
-    }
 
     // Start in the "all stopped" state: nothing has registered yet, so there is
     // nothing to wait for. The first register_component() flips this to false.
     // This prevents wait_for_all_components_stopped() from blocking for the full
     // timeout during shutdown when no components were ever registered.
     g_coordinator.all_components_stopped = true;
+}
+
+// Initialize (or re-initialize) the shutdown coordinator
+int init_shutdown_coordinator(void) {
+    if (!g_sync_initialized) {
+        memset(&g_coordinator, 0, sizeof(shutdown_coordinator_t));
+
+        if (pthread_mutex_init(&g_coordinator.mutex, NULL) != 0) {
+            log_error("Failed to initialize shutdown coordinator mutex");
+            return -1;
+        }
+
+        if (pthread_cond_init(&g_coordinator.all_stopped_cond, NULL) != 0) {
+            log_error("Failed to initialize shutdown coordinator condition variable");
+            pthread_mutex_destroy(&g_coordinator.mutex);
+            return -1;
+        }
+
+        g_sync_initialized = true;
+        reset_coordinator_state_locked();
+    } else {
+        // Re-init after a previous cleanup: keep the live sync objects and
+        // only reset the bookkeeping under the lock.
+        pthread_mutex_lock(&g_coordinator.mutex);
+        reset_coordinator_state_locked();
+        pthread_mutex_unlock(&g_coordinator.mutex);
+    }
 
     log_info("Shutdown coordinator initialized");
     return 0;
@@ -75,17 +99,22 @@ void shutdown_coordinator_cleanup(void) {
         return;  // Already cleaned up (or cleanup in progress/completed)
     }
 
-    // Ensure the destroyed flag publication is visible to other threads.
-    __sync_synchronize();
-
     // IMPORTANT:
-    // Do not destroy mutex/condition variable here. Other threads may have
-    // already passed pre-checks and still be about to lock/wait/signal, and
-    // destroying these objects concurrently is undefined behavior.
-    //
-    // These are process-lifetime globals; they are intentionally left intact
-    // until process termination/re-exec to avoid teardown races.
-    log_info("Shutdown coordinator marked destroyed");
+    // Do not destroy the mutex/condition variable here. Other threads may still
+    // be about to lock/wait/signal, and destroying these objects concurrently
+    // is undefined behavior. They are process-lifetime objects (see
+    // g_sync_initialized); a later init_shutdown_coordinator() reuses them.
+    if (!g_sync_initialized) {
+        return;
+    }
+
+    // Wake anyone blocked in wait_for_all_components_stopped() so they observe
+    // the destroyed flag instead of sleeping until their full timeout.
+    pthread_mutex_lock(&g_coordinator.mutex);
+    pthread_cond_broadcast(&g_coordinator.all_stopped_cond);
+    pthread_mutex_unlock(&g_coordinator.mutex);
+
+    log_info("Shutdown coordinator cleaned up");
 }
 
 // Check if coordinator has been destroyed
@@ -101,6 +130,14 @@ int register_component(const char *name, component_type_t type, void *context, i
     }
 
     pthread_mutex_lock(&g_coordinator.mutex);
+
+    // Refuse late registrations once the coordinator has been cleaned up:
+    // nobody will wait for or signal the component any more.
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        pthread_mutex_unlock(&g_coordinator.mutex);
+        log_warn("Cannot register component %s: shutdown coordinator already cleaned up", name);
+        return -1;
+    }
 
     int count = atomic_load(&g_coordinator.component_count);
 
@@ -159,11 +196,9 @@ int register_component(const char *name, component_type_t type, void *context, i
 
 // Update a component's state
 void update_component_state(int component_id, component_state_t state) {
-    // Check if coordinator has been destroyed
-    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
-        return;  // Silently ignore updates after coordinator is destroyed
-    }
-
+    // Note: state is recorded even after cleanup. The sync objects are never
+    // destroyed, so this is safe, and it keeps get_component_state() and the
+    // main.c component scans accurate for components that finish late.
     if (component_id < 0 || component_id >= atomic_load(&g_coordinator.component_count)) {
         log_error("Invalid component ID: %d", component_id);
         return;
@@ -177,11 +212,6 @@ void update_component_state(int component_id, component_state_t state) {
 
     // If the component is now stopped, check if all components are stopped
     if (state == COMPONENT_STOPPED) {
-        // Double-check coordinator isn't destroyed before locking mutex
-        if (atomic_load(&g_coordinator.coordinator_destroyed)) {
-            return;
-        }
-
         pthread_mutex_lock(&g_coordinator.mutex);
 
         // Check if all components are stopped
@@ -225,11 +255,6 @@ void initiate_shutdown(void) {
     atomic_store(&g_coordinator.shutdown_initiated, true);
 
     log_info("Shutdown sequence initiated");
-
-    // Double-check coordinator isn't destroyed before locking mutex
-    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
-        return;
-    }
 
     // Signal all components to stop in priority order
     pthread_mutex_lock(&g_coordinator.mutex);
@@ -314,14 +339,22 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
     
     // A condition wake is only a hint: retain the original absolute deadline
     // until every component actually reports STOPPED or the wait fails.
+    // shutdown_coordinator_cleanup() broadcasts the condition, so also stop
+    // waiting once the coordinator has been cleaned up.
     int result = 0;
-    while (!g_coordinator.all_components_stopped && result == 0) {
+    while (!g_coordinator.all_components_stopped && result == 0 &&
+           !atomic_load(&g_coordinator.coordinator_destroyed)) {
         result = pthread_cond_timedwait(&g_coordinator.all_stopped_cond,
                                        &g_coordinator.mutex, &timeout);
     }
     bool all_stopped = g_coordinator.all_components_stopped;
+    bool destroyed = atomic_load(&g_coordinator.coordinator_destroyed);
     pthread_mutex_unlock(&g_coordinator.mutex);
 
+    if (!all_stopped && destroyed) {
+        log_warn("Coordinator cleaned up while waiting for components; proceeding");
+        return true;  // Same contract as the destroyed pre-check above
+    }
     if (!all_stopped) {
         log_warn("Deadline or wait error before all components stopped (wait result: %d)", result);
     }

@@ -281,6 +281,61 @@ void test_repeated_restart_reuses_stopped_slots(void) {
 }
 
 /* ================================================================
+ * cleanup semantics (sync objects are process-lifetime)
+ * ================================================================ */
+
+static void *cleanup_while_waiting(void *argument) {
+    (void)argument;
+    if (await_wait_entry(1)) shutdown_coordinator_cleanup();
+    return NULL;
+}
+
+void test_cleanup_wakes_blocked_waiter(void) {
+    register_component("never_stops", COMPONENT_OTHER, NULL, 1);
+    pthread_t worker;
+    observe_wait = true;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, cleanup_while_waiting, NULL));
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    bool proceed = wait_for_all_components_stopped(10);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    release_observer();
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+
+    long elapsed_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                      (end.tv_nsec - start.tv_nsec) / 1000000;
+    TEST_ASSERT_FALSE(observer_failed);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(3000, elapsed_ms,
+                                      "Cleanup must wake waiters instead of letting them time out");
+    TEST_ASSERT_TRUE(proceed);
+}
+
+void test_register_after_cleanup_rejected(void) {
+    shutdown_coordinator_cleanup();
+    TEST_ASSERT_EQUAL_INT(-1, register_component("late", COMPONENT_OTHER, NULL, 1));
+}
+
+void test_state_recorded_after_cleanup(void) {
+    int id = register_component("late_finisher", COMPONENT_OTHER, NULL, 1);
+    shutdown_coordinator_cleanup();
+    update_component_state(id, COMPONENT_STOPPED);
+    TEST_ASSERT_EQUAL_INT(COMPONENT_STOPPED, get_component_state(id));
+}
+
+void test_reinit_after_cleanup_resets_state(void) {
+    register_component("old", COMPONENT_OTHER, NULL, 1);
+    initiate_shutdown();
+    shutdown_coordinator_cleanup();
+    TEST_ASSERT_EQUAL_INT(0, init_shutdown_coordinator());
+    TEST_ASSERT_FALSE(is_coordinator_destroyed());
+    TEST_ASSERT_FALSE(is_shutdown_initiated());
+    TEST_ASSERT_EQUAL_INT(0, atomic_load(&get_shutdown_coordinator()->component_count));
+    TEST_ASSERT_TRUE(wait_for_all_components_stopped(0));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, register_component("new", COMPONENT_OTHER, NULL, 1));
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -310,6 +365,10 @@ int main(void) {
     RUN_TEST(test_wait_observes_actual_component_completion);
     RUN_TEST(test_repeated_restart_reuses_stopped_slots);
     RUN_TEST(test_spurious_wake_does_not_claim_completion);
+    RUN_TEST(test_cleanup_wakes_blocked_waiter);
+    RUN_TEST(test_register_after_cleanup_rejected);
+    RUN_TEST(test_state_recorded_after_cleanup);
+    RUN_TEST(test_reinit_after_cleanup_resets_state);
 
     int result = UNITY_END();
     shutdown_coordinator_cleanup();
