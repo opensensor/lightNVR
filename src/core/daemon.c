@@ -39,6 +39,19 @@ static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
 static void daemon_signal_handler(int sig);
 static int check_running_daemon(const char *pid_file);
 
+// Report child startup result to the waiting parent and close the pipe.
+static void notify_startup_status(int fd, unsigned char status) {
+    ssize_t n;
+    do {
+        n = write(fd, &status, 1);
+    } while (n < 0 && errno == EINTR);
+    if (n != 1) {
+        log_warn("Failed to report daemon startup status to parent: %s",
+                 n < 0 ? strerror(errno) : "short write");
+    }
+    close(fd);
+}
+
 // Initialize daemon - simplified version that works on all platforms including Linux 4.4
 int init_daemon(const char *pid_file) {
     // Store PID file path
@@ -55,28 +68,52 @@ int init_daemon(const char *pid_file) {
     log_info("Starting daemon mode with PID file: %s", pid_file_path);
     log_info("Current working directory: %s", getcwd(NULL, 0));
 
+    // Create startup status pipe for parent/child handshake
+    int status_pipe[2];
+    if (pipe(status_pipe) != 0) {
+        log_error("Failed to create startup status pipe: %s", strerror(errno));
+        return -1;
+    }
+
     // Fork the process
     pid_t pid = fork();
     if (pid < 0) {
         log_error("Failed to fork daemon process: %s", strerror(errno));
+        close(status_pipe[0]);
+        close(status_pipe[1]);
         return -1;
     }
 
-    // Parent process exits
+    // Parent process waits for child initialization result
     if (pid > 0) {
-        log_info("Parent process exiting, child PID: %d", pid);
-        // Wait briefly to ensure child has time to start and write PID file
-        usleep(200000); // 200ms - increased from 100ms for better reliability
-        exit(EXIT_SUCCESS);
+        close(status_pipe[1]);
+        log_info("Parent process waiting for child startup, child PID: %d", pid);
+
+        unsigned char child_status = 0;
+        ssize_t n;
+        do {
+            n = read(status_pipe[0], &child_status, 1);
+        } while (n < 0 && errno == EINTR);
+        close(status_pipe[0]);
+
+        if (n == 1 && child_status == 1) {
+            log_info("Child daemon initialization succeeded, child PID: %d", pid);
+            exit(EXIT_SUCCESS);
+        }
+
+        log_error("Child daemon initialization failed, child PID: %d", pid);
+        exit(EXIT_FAILURE);
     }
 
     // Child process continues
+    close(status_pipe[0]);
     log_info("Child process starting daemon initialization, PID: %d", getpid());
 
     // Create a new session
     pid_t sid = setsid();
     if (sid < 0) {
         log_error("Failed to create session: %s", strerror(errno));
+        notify_startup_status(status_pipe[1], 0);
         return -1;
     }
     log_info("Created new session with SID: %d", sid);
@@ -131,10 +168,14 @@ int init_daemon(const char *pid_file) {
     int fd = write_pid_file(pid_file_path);
     if (fd < 0) {
         log_error("Failed to write PID file, daemon initialization failed");
+        notify_startup_status(status_pipe[1], 0);
         return -1;
     }
 
     log_info("Daemon started successfully with PID %d", getpid());
+
+    // Notify parent that daemon initialization has completed successfully
+    notify_startup_status(status_pipe[1], 1);
 
     // Add a small delay to ensure everything is properly initialized
     usleep(100000); // 100ms
@@ -287,7 +328,7 @@ static int check_running_daemon(const char *pid_file) {
         // We got the lock, which means no other process has it
         // This is a stale PID file
         log_warn("Found stale PID file %s (not locked), removing it", pid_file);
-        remove_pid_file(fd, pid_file);
+        remove_pid_file(fd, pid_file);  // closes fd
         return 0;
     }
     
@@ -320,11 +361,10 @@ static int check_running_daemon(const char *pid_file) {
         return 1;
     } else {
         if (errno == ESRCH) {
-            // Process is not running, but file is locked?
-            // This is unusual, but could happen if the file is locked by another process
-            log_warn("Found stale PID file %s (locked but process %d not running), removing it", pid_file, pid);
-            remove_pid_file(-1, pid_file);
-            return 0;
+            // Process in PID file is not running, but lock is held by another process.
+            // Do not unlink: removing a lock-held PID path can allow multiple daemon instances.
+            log_error("PID file %s is lock-held but process %d is not running; refusing to remove due to ambiguous lock ownership", pid_file, pid);
+            return -1;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
             return -1;
@@ -392,11 +432,11 @@ int daemon_status(const char *pid_file) {
         return 1;
     } else {
         if (errno == ESRCH) {
-            // Process is not running, but file is locked?
-            // This is unusual, but could happen if the file is locked by another process
-            log_warn("Found stale PID file %s (locked but process %d not running), removing it", file_path, pid);
-            remove_pid_file(-1, file_path);
-            return 0;
+            // Process is not running, but the PID file is still locked by another process.
+            // Do NOT remove a locked PID file here: unlinking a locked entry can race with
+            // another instance creating a new PID file, allowing multiple daemons to coexist.
+            log_warn("PID file %s is locked but process %d is not running; leaving file in place", file_path, pid);
+            return -1;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
             return -1;
