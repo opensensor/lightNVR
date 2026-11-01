@@ -243,6 +243,131 @@ export function rectCorners(shape) {
   ];
 }
 
+const EDGES = Object.freeze(['n', 's', 'e', 'w']);
+
+/** Drag one rect edge; the opposite edge and the other axis stay fixed. */
+export function resizeRectEdge(shape, edge, point) {
+  if (shape.type !== 'rect' || !EDGES.includes(edge)) return shape;
+  const x0 = shape.x;
+  const y0 = shape.y;
+  const x1 = shape.x + shape.w;
+  const y1 = shape.y + shape.h;
+  const a = { x: x0, y: y0 };
+  const b = { x: x1, y: y1 };
+  if (edge === 'n') a.y = point.y;
+  if (edge === 's') b.y = point.y;
+  if (edge === 'w') a.x = point.x;
+  if (edge === 'e') b.x = point.x;
+  const rect = rectFromPoints(a, b);
+  return rect ? { ...shape, ...rect } : shape;
+}
+
+/** Edge handles at the midpoint of each rect side. */
+export function rectEdges(shape) {
+  return [
+    { edge: 'n', x: shape.x + shape.w / 2, y: shape.y },
+    { edge: 's', x: shape.x + shape.w / 2, y: shape.y + shape.h },
+    { edge: 'w', x: shape.x, y: shape.y + shape.h / 2 },
+    { edge: 'e', x: shape.x + shape.w, y: shape.y + shape.h / 2 },
+  ];
+}
+
+/**
+ * Midpoints of each polyline segment (closing segment included for areas);
+ * dragging one inserts a new vertex after `index`.
+ */
+export function segmentMidpoints(shape) {
+  if (!Array.isArray(shape?.points) || shape.points.length >= SKETCH_LIMITS.maxPoints) return [];
+  const points = shape.points;
+  const count = shape.type === 'area' ? points.length : points.length - 1;
+  const result = [];
+  for (let index = 0; index < count; index++) {
+    const [ax, ay] = points[index];
+    const [bx, by] = points[(index + 1) % points.length];
+    result.push({ index, x: (ax + bx) / 2, y: (ay + by) / 2 });
+  }
+  return result;
+}
+
+export function insertShapeVertex(shape, afterIndex, point) {
+  if (!Array.isArray(shape.points) || shape.points.length >= SKETCH_LIMITS.maxPoints ||
+    afterIndex < 0 || afterIndex >= shape.points.length) return shape;
+  const points = shape.points.slice();
+  points.splice(afterIndex + 1, 0, [round4(clamp01(point.x)), round4(clamp01(point.y))]);
+  return { ...shape, points };
+}
+
+export function canRemoveVertex(shape) {
+  if (!Array.isArray(shape?.points)) return false;
+  return shape.points.length > (shape.type === 'area' ? 3 : 2);
+}
+
+export function removeShapeVertex(shape, index) {
+  if (!canRemoveVertex(shape) || index < 0 || index >= shape.points.length) return shape;
+  return { ...shape, points: shape.points.filter((_, candidate) => candidate !== index) };
+}
+
+/** Move a shape within the draw order: 'front', 'back', 'forward', 'backward'. */
+export function reorderShape(shapes, id, direction) {
+  const index = shapes.findIndex((shape) => shape.id === id);
+  if (index < 0) return shapes;
+  const next = shapes.slice();
+  const [shape] = next.splice(index, 1);
+  let target = index;
+  if (direction === 'front') target = next.length;
+  else if (direction === 'back') target = 0;
+  else if (direction === 'forward') target = Math.min(next.length, index + 1);
+  else if (direction === 'backward') target = Math.max(0, index - 1);
+  if (target === index) return shapes;
+  next.splice(target, 0, shape);
+  return next;
+}
+
+/**
+ * Constrain `point` so the segment from `origin` runs at a multiple of 45°
+ * in canvas space (the canvas is not square in plan fractions).
+ */
+export function constrainAngle(origin, point, canvas) {
+  if (!origin || !canvas?.width || !canvas?.height) return point;
+  const dx = (point.x - origin.x) * canvas.width;
+  const dy = (point.y - origin.y) * canvas.height;
+  const length = Math.hypot(dx, dy);
+  if (!length) return point;
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  // Project onto the snapped direction so the cursor's travel along it is kept.
+  const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+  return {
+    x: round4(clamp01(origin.x + (Math.cos(angle) * along) / canvas.width)),
+    y: round4(clamp01(origin.y + (Math.sin(angle) * along) / canvas.height)),
+  };
+}
+
+/**
+ * Camera heading (degrees, -180..180, 0 = east, clockwise positive because
+ * SVG y grows downward) from a placement toward a plan point. Returns null
+ * when the point is on top of the camera. `snapDegrees` rounds the heading.
+ */
+export function aimRotation(from, toward, canvas, snapDegrees = 0) {
+  if (!from || !toward || !canvas?.width || !canvas?.height) return null;
+  const dx = (toward.x - from.x) * canvas.width;
+  const dy = (toward.y - from.y) * canvas.height;
+  if (Math.hypot(dx, dy) < 1) return null;
+  let degrees = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (snapDegrees > 0) degrees = Math.round(degrees / snapDegrees) * snapDegrees;
+  if (degrees > 180) degrees -= 360;
+  if (degrees <= -180) degrees += 360;
+  return Math.round(degrees * 10) / 10;
+}
+
+/** Rotate a heading by `delta` degrees, wrapping into -180..180. */
+export function wrapRotation(rotation, delta) {
+  let next = (Number.isFinite(rotation) ? rotation : 0) + delta;
+  while (next > 180) next -= 360;
+  while (next <= -180) next += 360;
+  return Math.round(next * 10) / 10;
+}
+
 /** True when a click lands close enough to the first point to close an area. */
 export function closesPolygon(points, point, canvas, toleranceUnits = 14) {
   if (!points || points.length < 3 || !canvas?.width || !canvas?.height) return false;
@@ -300,10 +425,21 @@ export function createHistory(present) {
   return { past: [], present, future: [] };
 }
 
-export function pushHistory(history, next) {
+/**
+ * Record `next` as a new undo step. Consecutive pushes with the same
+ * `coalesceKey` inside `windowMs` (typing a label, dragging a slider,
+ * repeated arrow nudges) replace the present instead of stacking steps.
+ */
+export function pushHistory(history, next, coalesceKey = null, now = Date.now(), windowMs = 1200) {
   if (next === history.present) return history;
+  if (coalesceKey && history.coalesceKey === coalesceKey &&
+    now - history.coalesceAt <= windowMs) {
+    return { ...history, present: next, future: [], coalesceAt: now };
+  }
   const past = [...history.past, history.present].slice(-SKETCH_LIMITS.historyDepth);
-  return { past, present: next, future: [] };
+  return coalesceKey
+    ? { past, present: next, future: [], coalesceKey, coalesceAt: now }
+    : { past, present: next, future: [] };
 }
 
 export function undoHistory(history) {

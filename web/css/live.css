@@ -251,6 +251,40 @@
     color: hsl(var(--danger));
 }
 
+.live-layout-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.15rem;
+}
+
+.live-layout-actions button {
+    min-width: 2rem;
+    min-height: 2rem;
+}
+
+.live-plan-scope-list {
+    margin-top: 0.55rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid hsl(var(--border));
+}
+
+.live-camera-list-heading .live-navigator-refresh {
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    margin: -0.3rem 0;
+    text-transform: none;
+}
+
+.live-navigator-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    color: hsl(var(--danger));
+    font-size: 0.8rem;
+}
+
 .live-event-row {
     padding: 0.4rem;
     text-decoration: none;
@@ -478,8 +512,85 @@
     fill: #fff;
     stroke: var(--sketch-tone);
     stroke-width: 2.5;
-    cursor: crosshair;
+    cursor: move;
 }
+.live-plan-shape-handle.is-insert { fill: var(--sketch-tone); fill-opacity: 0.55; stroke: #fff; cursor: copy; }
+.live-plan-shape-handle.is-nw, .live-plan-shape-handle.is-se { cursor: nwse-resize; }
+.live-plan-shape-handle.is-ne, .live-plan-shape-handle.is-sw { cursor: nesw-resize; }
+.live-plan-shape-handle.is-n, .live-plan-shape-handle.is-s { cursor: ns-resize; }
+.live-plan-shape-handle.is-e, .live-plan-shape-handle.is-w { cursor: ew-resize; }
+/* Grab zones along every room edge: resize without selecting first. */
+.live-plan-shape-edge { stroke: transparent; fill: none; pointer-events: stroke; }
+.live-plan-canvas.is-tool-select .live-plan-shape-edge.is-n,
+.live-plan-canvas.is-tool-select .live-plan-shape-edge.is-s { cursor: ns-resize; }
+.live-plan-canvas.is-tool-select .live-plan-shape-edge.is-e,
+.live-plan-canvas.is-tool-select .live-plan-shape-edge.is-w { cursor: ew-resize; }
+.live-plan-canvas.is-tool-select .live-plan-shape-edge:hover { stroke: rgb(255 255 255 / 0.35); }
+/* Drawing tools draw over existing shapes instead of grabbing them. */
+.live-plan-canvas.is-drawing .live-plan-shape,
+.live-plan-canvas.is-drawing .live-plan-shape-edge { cursor: crosshair; }
+.live-plan-canvas.is-placing,
+.live-plan-canvas.is-placing .live-plan-shape { cursor: copy; }
+.live-plan-canvas.is-pan-ready,
+.live-plan-canvas.is-pan-ready * { cursor: grab !important; }
+.live-plan-canvas.is-panning,
+.live-plan-canvas.is-panning * { cursor: grabbing !important; }
+.live-plan-aim-line { stroke: #fff; stroke-width: 2; stroke-dasharray: 4 4; pointer-events: none; }
+.live-plan-aim-handle { fill: #38bdf8; stroke: #fff; stroke-width: 2.5; cursor: grab; }
+.live-plan-aim-handle:hover { fill: #7dd3fc; }
+
+.live-plan-context-menu {
+    position: fixed;
+    z-index: 60;
+    min-width: 12rem;
+    max-width: 18rem;
+    padding: 0.3rem;
+    border: 1px solid rgb(148 163 184 / 0.32);
+    border-radius: 0.5rem;
+    background: rgb(7 17 29 / 0.97);
+    color: #e2e8f0;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    font-size: 0.85rem;
+}
+.live-plan-context-menu > button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0.6rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.live-plan-context-menu > button:hover:not(:disabled),
+.live-plan-context-menu > button:focus-visible { background: rgb(56 189 248 / 0.18); outline: none; }
+.live-plan-context-menu > button:disabled { opacity: 0.45; cursor: default; }
+.live-plan-context-menu > button.is-danger { color: #fca5a5; }
+.live-plan-context-menu kbd { font: inherit; font-size: 0.75rem; opacity: 0.6; }
+.live-plan-context-separator { height: 1px; margin: 0.25rem 0.2rem; background: rgb(148 163 184 / 0.22); }
+.live-plan-context-swatches { display: flex; gap: 0.3rem; padding: 0.35rem 0.5rem; }
+.live-plan-context-swatches button {
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+}
+.live-plan-context-swatches button i {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--sketch-tone);
+}
+.live-plan-context-swatches button.is-active,
+.live-plan-context-swatches button:focus-visible { border-color: #fff; outline: none; }
 .live-plan-drawing-rect {
     fill: var(--sketch-tone);
     fill-opacity: 0.1;

@@ -12,7 +12,7 @@ const TOOL_KEYS = { select: 'V', room: 'R', wall: 'W', area: 'A', label: 'L' };
 /** Floating tool strip shown over the canvas while a layout is being edited. */
 export function PlanSketchTools({
   tool, onToolChange, canUndo, canRedo, onUndo, onRedo,
-  snap, onSnapChange, shapeCount, t,
+  snap, onSnapChange, toolLock, onToolLockChange, shapeCount, t,
 }) {
   const limitReached = shapeCount >= SKETCH_LIMITS.maxShapes;
   return (
@@ -37,8 +37,13 @@ export function PlanSketchTools({
           title={`${t('live.plan.sketch.redo')} (Ctrl+Shift+Z)`}>↷</button>
         <button type="button" className={snap ? 'is-active' : ''}
           aria-pressed={snap ? 'true' : 'false'}
-          title={t('live.plan.sketch.snap')}
+          title={`${t('live.plan.sketch.snap')} (G)`}
           onClick={() => onSnapChange(!snap)}>⌗</button>
+        <button type="button" className={toolLock ? 'is-active' : ''}
+          aria-pressed={toolLock ? 'true' : 'false'}
+          aria-label={t('live.plan.sketch.toolLock')}
+          title={`${t('live.plan.sketch.toolLock')} (Q)`}
+          onClick={() => onToolLockChange(!toolLock)}>{toolLock ? '🔒' : '🔓'}</button>
       </div>
       <p className="live-plan-sketch-hint">
         {limitReached
