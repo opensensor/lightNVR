@@ -1367,19 +1367,31 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         char sub_name[MAX_STREAM_NAME + 8];
         snprintf(sub_name, sizeof(sub_name), "%s_sub", stream_id);
         bool has_sub_stream = config.sub_stream_url[0] != '\0';
+        // Parts of this stream that live in the generated go2rtc.yaml (a source
+        // override, or an RTMP publish/restream entry) only change when go2rtc
+        // restarts and regenerates its config from the saved privacy flag.
+        bool yaml_backed =
+            (!g_config.audio_disabled && config.go2rtc_source_override[0] != '\0') ||
+            config.publish_url[0] != '\0';
         // Whether the stream is (enable) no longer / (disable) again served by go2rtc
         bool go2rtc_applied = true;
 
         if (enable_privacy) {
             // Unregister the main stream and its sub-stream so clients cannot
             // connect through either. If go2rtc is not running nothing is being
-            // served, and startup sync / the health monitor skip privacy-mode
-            // streams, so only a failure against a live go2rtc is reported.
+            // served, and config generation, startup sync and the health monitor
+            // all skip privacy-mode streams, so only a failure against a live
+            // go2rtc is reported.
             if (go2rtc_stream_is_ready()) {
                 if (!go2rtc_integration_unregister_stream(stream_id)) {
                     go2rtc_applied = false;
                 }
                 if (has_sub_stream && !go2rtc_api_remove_stream(sub_name)) {
+                    go2rtc_applied = false;
+                }
+                // Drop the YAML source override / RTMP publish entry, which an
+                // API delete does not stop.
+                if (yaml_backed && !go2rtc_integration_restart_process()) {
                     go2rtc_applied = false;
                 }
             }
@@ -1392,6 +1404,16 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             // A disabled stream must stay unregistered; clearing privacy only
             // updates the saved flag. Enabling the stream registers it later.
             log_info("Privacy mode cleared for disabled stream %s; not registering with go2rtc", stream_id);
+        } else if (yaml_backed) {
+            // Regenerate go2rtc.yaml (override / publish entries) and restart;
+            // the restart re-registers every enabled non-privacy stream,
+            // including this one and its sub-stream.
+            if (go2rtc_integration_restart_process()) {
+                log_info("Restarted go2rtc to restore stream %s after privacy mode cleared", stream_id);
+            } else {
+                go2rtc_applied = false;
+                log_warn("Failed to restart go2rtc to restore stream %s", stream_id);
+            }
         } else {
             // Resume: re-register with go2rtc. If this fails the health monitor
             // re-adds missing enabled streams, so report it without failing.
