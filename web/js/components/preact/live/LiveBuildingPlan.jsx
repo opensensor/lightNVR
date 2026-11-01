@@ -1366,7 +1366,8 @@ export function LiveBuildingPlan({
       // A press without a drag falls through to the canvas click (deselect).
     } else if ((interaction.mode === 'shape' || interaction.mode === 'camera' ||
       interaction.mode === 'aim' || interaction.mode === 'fov') && interaction.moved) {
-      finishGesture(interaction.before);
+      if (event.type === 'pointercancel') setDraft(interaction.before);
+      else finishGesture(interaction.before);
     }
     try {
       svgRef.current?.releasePointerCapture(event.pointerId);
