@@ -216,15 +216,6 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ] && \
         /opt/target-sysroot/usr/lib/pkgconfig/; \
     fi
 
-# Fetch external dependencies
-RUN mkdir -p /opt/external && \
-    # ezxml
-    cd /opt/external && \
-    git clone https://github.com/lxfontes/ezxml.git && \
-    # inih
-    cd /opt/external && \
-    git clone https://github.com/benhoyt/inih.git
-
 # LiteRT requires a build-host flatc binary while cross-compiling. Build the
 # exact FlatBuffers revision selected by LiteRT, in a layer that changes only
 # when its CMake dependency definitions change.
