@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
+#include <stdint.h>
 
 #define LOG_COMPONENT "FAACEncoder"
 #include "core/logger.h"
