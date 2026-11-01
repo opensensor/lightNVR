@@ -2838,8 +2838,26 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     // This prevents blocking the web server event loop
     pthread_t thread_id;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int attr_rc = pthread_attr_init(&attr);
+    if (attr_rc != 0) {
+        log_error("Failed to initialize pthread attributes for stream refresh");
+        free(task);
+        finish_stream_refresh(stream_name, true);
+        free(json_str);
+        http_response_set_json_error(res, 500, "Failed to start stream refresh");
+        return;
+    }
+
+    attr_rc = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (attr_rc != 0) {
+        log_error("Failed to configure detached pthread attributes for stream refresh");
+        free(task);
+        finish_stream_refresh(stream_name, true);
+        free(json_str);
+        pthread_attr_destroy(&attr);
+        http_response_set_json_error(res, 500, "Failed to start stream refresh");
+        return;
+    }
 
     if (pthread_create(&thread_id, &attr, refresh_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for stream refresh");
