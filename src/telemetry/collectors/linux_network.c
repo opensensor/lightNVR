@@ -268,7 +268,7 @@ int linux_network_select_primary(
         }
         (void)gateway;
         saw_well_formed = true;
-        if (destination != 0 || (flags & ROUTE_FLAG_UP) == 0 ||
+        if (destination != 0 || mask != 0 || (flags & ROUTE_FLAG_UP) == 0 ||
             (flags & ROUTE_FLAG_REJECT) != 0) {
             continue;
         }
