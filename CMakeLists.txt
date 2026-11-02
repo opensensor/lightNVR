@@ -204,7 +204,7 @@ endif()
 # find_library fallback's library list empty and broke the link.
 unset(MBEDTLS_DETECTION_DONE CACHE)
 macro(DETECT_MBEDTLS)
-    pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
+            find_path(MBEDTLS_INCLUDE_DIRS "version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
     if (NOT MBEDTLS_FOUND)
         find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
         find_library(MBEDTLS_LIBRARY NAMES mbedtls)
