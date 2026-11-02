@@ -46,7 +46,9 @@ set(LIGHTNVR_MAX_STREAMS "auto" CACHE STRING
 if(LIGHTNVR_MAX_STREAMS STREQUAL "auto")
     set(LIGHTNVR_RESOLVED_MAX_STREAMS ${LIGHTNVR_DEFAULT_MAX_STREAMS})
 elseif(LIGHTNVR_MAX_STREAMS MATCHES "^[0-9]+$")
-    set(LIGHTNVR_RESOLVED_MAX_STREAMS ${LIGHTNVR_MAX_STREAMS})
+    # Normalize to canonical decimal to avoid leading-zero forms (for example
+    # 08/09 invalid, 010 interpreted as octal) in downstream C definitions.
+    math(EXPR LIGHTNVR_RESOLVED_MAX_STREAMS "${LIGHTNVR_MAX_STREAMS}")
 else()
     message(FATAL_ERROR
         "LIGHTNVR_MAX_STREAMS must be 'auto' or an integer from 1 to 1024")
