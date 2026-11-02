@@ -196,21 +196,23 @@ if(ENABLE_MQTT)
     endif()
 endif()
 
-# Common mbedTLS detection logic (used both in SSL block and for ONVIF/auth)
-macro(DETECT_MBEDTLS_ONCE)
-    if(NOT MBEDTLS_DETECTION_DONE)
-        pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
-        if (NOT MBEDTLS_FOUND)
-            find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
-            find_library(MBEDTLS_LIBRARY NAMES mbedtls)
-            find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
-            find_library(MBEDX509_LIBRARY NAMES mbedx509)
-            if(NOT MBEDTLS_INCLUDE_DIRS OR NOT MBEDTLS_LIBRARY OR NOT MBEDCRYPTO_LIBRARY OR NOT MBEDX509_LIBRARY)
-                message(FATAL_ERROR "mbedTLS is required (for ONVIF, authentication and HTTPS) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
-            endif()
-            set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
+# Common mbedTLS detection logic (used for ONVIF, auth and HTTPS).
+# Runs on every configure: pkg-config and find_* results are cached, so this is
+# cheap, and it rebuilds MBEDTLS_LIBRARIES (a normal variable) each time. A
+# "detect once" cache flag used to skip it on reconfigure, which left the
+# find_library fallback's library list empty and broke the link.
+unset(MBEDTLS_DETECTION_DONE CACHE)
+macro(DETECT_MBEDTLS)
+    pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
+    if (NOT MBEDTLS_FOUND)
+        find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
+        find_library(MBEDTLS_LIBRARY NAMES mbedtls)
+        find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto)
+        find_library(MBEDX509_LIBRARY NAMES mbedx509)
+        if(NOT MBEDTLS_INCLUDE_DIRS OR NOT MBEDTLS_LIBRARY OR NOT MBEDCRYPTO_LIBRARY OR NOT MBEDX509_LIBRARY)
+            message(FATAL_ERROR "mbedTLS is required (for ONVIF, authentication and HTTPS) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
         endif()
-        set(MBEDTLS_DETECTION_DONE TRUE CACHE INTERNAL "mbedTLS detection has been performed")
+        set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
     endif()
 endmacro()
 
@@ -233,7 +235,7 @@ else()
 endif()
 
 # ONVIF and authentication system require mbedTLS for cryptographic functions
-DETECT_MBEDTLS_ONCE()
+DETECT_MBEDTLS()
 list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")

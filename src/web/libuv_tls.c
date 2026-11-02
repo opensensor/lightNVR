@@ -89,6 +89,13 @@ typedef struct libuv_tls_session {
     bool reading;               // Consumer wants plaintext
     bool handshake_done;
     bool failed;                // Stream is unusable; never touch ssl again
+
+    /* Delivers input buffered in the session when reading resumes (e.g. a
+     * pipelined request decrypted with the previous one); no new ciphertext
+     * may ever arrive to trigger it. Runs from the loop, never re-entrantly. */
+    uv_idle_t drain;
+    bool drain_init;
+    libuv_connection_t *conn;   // NULL once the session is detached
 } libuv_tls_session_t;
 
 typedef struct {
@@ -422,6 +429,28 @@ static void process_input(libuv_connection_t *conn) {
     }
 }
 
+static bool has_buffered_input(libuv_tls_session_t *s) {
+    return s->in_off < s->in_len || mbedtls_ssl_get_bytes_avail(&s->ssl) > 0;
+}
+
+static void drain_cb(uv_idle_t *handle) {
+    uv_idle_stop(handle);
+    libuv_tls_session_t *s = handle->data;
+    libuv_connection_t *conn = s->conn;
+    // session_active() also rejects a closing handle and a stopped reader.
+    if (!conn || conn->tls_session != s || !session_active(conn, s)) return;
+    process_input(conn);
+}
+
+static void schedule_drain(libuv_connection_t *conn, libuv_tls_session_t *s) {
+    if (!s->drain_init) {
+        if (uv_idle_init(conn->handle.loop, &s->drain) != 0) return;
+        s->drain.data = s;
+        s->drain_init = true;
+    }
+    uv_idle_start(&s->drain, drain_cb);
+}
+
 static void tls_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     (void)suggested_size;
     libuv_connection_t *conn = handle->data;
@@ -486,18 +515,33 @@ int libuv_tls_session_start(libuv_connection_t *conn, libuv_tls_context_t *ctx) 
         return -1;
     }
     mbedtls_ssl_set_bio(&s->ssl, s, bio_send, bio_recv, NULL);
+    s->conn = conn;
     conn->tls_session = s;
     return 0;
+}
+
+static void session_release(libuv_tls_session_t *s) {
+    mbedtls_ssl_free(&s->ssl);
+    safe_free(s->in);
+    safe_free(s->out);
+    safe_free(s);
+}
+
+static void drain_closed(uv_handle_t *handle) {
+    session_release(handle->data);
 }
 
 void libuv_tls_session_free(libuv_connection_t *conn) {
     if (!conn || !conn->tls_session) return;
     libuv_tls_session_t *s = conn->tls_session;
     conn->tls_session = NULL;
-    mbedtls_ssl_free(&s->ssl);
-    safe_free(s->in);
-    safe_free(s->out);
-    safe_free(s);
+    s->conn = NULL;
+    if (s->drain_init) {
+        // The idle handle belongs to the loop until its close callback runs.
+        uv_close((uv_handle_t *)&s->drain, drain_closed);
+        return;
+    }
+    session_release(s);
 }
 
 bool libuv_connection_is_tls(const libuv_connection_t *conn) {
@@ -547,12 +591,20 @@ int libuv_connection_read_start(libuv_connection_t *conn,
     s->read_cb = read_cb;
     s->reading = true;
     int r = uv_read_start((uv_stream_t *)&conn->handle, tls_alloc, tls_read);
-    return r == UV_EALREADY ? 0 : r;
+    if (r == UV_EALREADY) r = 0;
+    // Input decrypted or received while paused would otherwise wait for the
+    // peer to send more, which a client waiting on a response never does.
+    if (r == 0 && s->handshake_done && has_buffered_input(s)) {
+        schedule_drain(conn, s);
+    }
+    return r;
 }
 
 int libuv_connection_read_stop(libuv_connection_t *conn) {
-    if (conn->tls_session) {
-        ((libuv_tls_session_t *)conn->tls_session)->reading = false;
+    libuv_tls_session_t *s = conn->tls_session;
+    if (s) {
+        s->reading = false;
+        if (s->drain_init) uv_idle_stop(&s->drain);
     }
     return uv_read_stop((uv_stream_t *)&conn->handle);
 }

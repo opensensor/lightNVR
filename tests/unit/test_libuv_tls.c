@@ -45,6 +45,7 @@
 #include "video/go2rtc/go2rtc_api.h"
 #endif
 #include "web/httpd_utils.h"
+#include "web/libuv_connection.h"
 #include "web/libuv_server.h"
 #include "web/libuv_tls.h"
 
@@ -369,6 +370,71 @@ void test_handshake_api_request_and_keep_alive(void) {
     tls_close(&client);
 }
 
+/* Two requests in one TLS record, the first exactly filling the connection's
+ * initial receive buffer: the second stays decrypted-but-undelivered inside
+ * the TLS session while the first is handled. Resuming reads must deliver it
+ * without any further bytes from the client, which is waiting for it. */
+void test_pipelined_request_buffered_in_tls_session_is_served(void) {
+    tls_client_t client;
+    TEST_ASSERT_EQUAL_INT(0, tls_open(&client));
+
+    const size_t first_size = LIBUV_RECV_BUFFER_INITIAL;
+    char head[256];
+    size_t body_size = 0;
+    int head_length = 0;
+    // The header length depends on the digits of Content-Length; settle it.
+    for (int i = 0; i < 3; i++) {
+        head_length = snprintf(head, sizeof(head),
+            "POST /api/tls/echo HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: %zu\r\n\r\n",
+            web_port, body_size);
+        body_size = first_size - (size_t)head_length;
+    }
+    char second[256];
+    int second_length = snprintf(second, sizeof(second),
+        "GET /api/tls/hello HTTP/1.1\r\nHost: localhost:%d\r\nContent-Length: 0\r\n\r\n",
+        web_port);
+
+    size_t total = first_size + (size_t)second_length;
+    char *pipelined = malloc(total);
+    TEST_ASSERT_NOT_NULL(pipelined);
+    memcpy(pipelined, head, (size_t)head_length);
+    memset(pipelined + head_length, 'x', body_size);
+    memcpy(pipelined + first_size, second, (size_t)second_length);
+    TEST_ASSERT_EQUAL_size_t(first_size, (size_t)head_length + body_size);
+    TEST_ASSERT_TRUE(tls_send_all(&client, pipelined, total));  // One record
+    free(pipelined);
+
+    char headers[2048];
+    char body[256];
+    const char *content_length;
+    size_t size;
+
+    TEST_ASSERT_TRUE(tls_read_headers(&client, headers, sizeof(headers)));
+    TEST_ASSERT_NOT_NULL(strstr(headers, "HTTP/1.1 200"));
+    content_length = strstr(headers, "Content-Length: ");
+    TEST_ASSERT_NOT_NULL(content_length);
+    size = strtoul(content_length + 16, NULL, 10);
+    TEST_ASSERT_LESS_THAN_size_t(sizeof(body), size);
+    TEST_ASSERT_TRUE(tls_read_all(&client, body, size));
+    body[size] = '\0';
+    char expected[128];
+    snprintf(expected, sizeof(expected), "{\"length\":%zu,\"sum\":%zu}",
+             body_size, body_size * (size_t)'x');
+    TEST_ASSERT_EQUAL_STRING(expected, body);
+
+    // Before the fix this read timed out: the GET sat inside mbedTLS.
+    TEST_ASSERT_TRUE(tls_read_headers(&client, headers, sizeof(headers)));
+    TEST_ASSERT_NOT_NULL(strstr(headers, "HTTP/1.1 200"));
+    content_length = strstr(headers, "Content-Length: ");
+    TEST_ASSERT_NOT_NULL(content_length);
+    size = strtoul(content_length + 16, NULL, 10);
+    TEST_ASSERT_LESS_THAN_size_t(sizeof(body), size);
+    TEST_ASSERT_TRUE(tls_read_all(&client, body, size));
+    body[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("{\"hello\":\"tls\"}", body);
+    tls_close(&client);
+}
+
 void test_large_response_and_request_body_span_many_records(void) {
     tls_client_t client;
     TEST_ASSERT_EQUAL_INT(0, tls_open(&client));
@@ -590,6 +656,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_handshake_api_request_and_keep_alive);
+    RUN_TEST(test_pipelined_request_buffered_in_tls_session_is_served);
     RUN_TEST(test_large_response_and_request_body_span_many_records);
     RUN_TEST(test_static_file_is_served_over_tls);
     RUN_TEST(test_session_cookie_is_secure_while_tls_is_on);
