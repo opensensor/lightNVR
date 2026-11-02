@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.10)
+# 3.13: add_link_options, target_link_options and target_link_directories.
+cmake_minimum_required(VERSION 3.13)
 
 # CMake 4.0 removed compat with cmake_minimum_required(VERSION < 3.5).
 # Third-party deps fetched via LiteRT's FetchContent (e.g. neon2sse) still
@@ -100,12 +101,7 @@ endif()
 # Compiler flags for optimization and memory usage.  Do not override the
 # toolchain's optimization level (Buildroot supplies -Os for target builds).
 add_compile_options(-ffunction-sections -fdata-sections)
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.13")
-    add_link_options(-Wl,--gc-sections)
-else()
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
-endif()
+add_link_options(-Wl,--gc-sections)
 
 if(LIGHTNVR_PROFILE STREQUAL "embedded")
     add_compile_options(-Os -fomit-frame-pointer)
