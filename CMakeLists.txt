@@ -100,7 +100,12 @@ endif()
 # Compiler flags for optimization and memory usage.  Do not override the
 # toolchain's optimization level (Buildroot supplies -Os for target builds).
 add_compile_options(-ffunction-sections -fdata-sections)
-add_link_options(-Wl,--gc-sections)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.13")
+    add_link_options(-Wl,--gc-sections)
+else()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
+endif()
 
 if(LIGHTNVR_PROFILE STREQUAL "embedded")
     add_compile_options(-Os -fomit-frame-pointer)
