@@ -249,7 +249,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // Resume reading — reading was stopped before offloading the handler
     // to the thread pool. We must restart it for the next request.
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
-        uv_read_start((uv_stream_t *)&conn->handle, libuv_alloc_cb, libuv_read_cb);
+        libuv_connection_read_start(conn, libuv_alloc_cb, libuv_read_cb);
     }
 }
 
@@ -262,7 +262,7 @@ void libuv_connection_close(libuv_connection_t *conn) {
     go2rtc_websocket_disconnected(conn);
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
         // Stop reading to prevent callbacks after close starts
-        uv_read_stop((uv_stream_t *)&conn->handle);
+        libuv_connection_read_stop(conn);
         uv_close((uv_handle_t *)&conn->handle, libuv_close_cb);
     }
 }
@@ -276,6 +276,7 @@ void libuv_connection_destroy(libuv_connection_t *conn) {
     go2rtc_websocket_disconnected(conn);
     recording_archive_disconnected(conn);
     http_response_free(&conn->response);
+    libuv_tls_session_free(conn);
     
     if (conn->recv_buffer) {
         safe_free(conn->recv_buffer);
@@ -876,7 +877,7 @@ static int on_message_complete(llhttp_t *parser) {
     if (handler == handle_go2rtc_proxy ||
         strcmp(conn->request.path, "/go2rtc") == 0 ||
         strncmp(conn->request.path, "/go2rtc/", 8) == 0) {
-        uv_read_stop((uv_stream_t *)&conn->handle);
+        libuv_connection_read_stop(conn);
         if (go2rtc_proxy_thread_submit(conn, action) == 0) {
             return HPE_PAUSED;
         }
@@ -891,7 +892,7 @@ static int on_message_complete(llhttp_t *parser) {
     if (handler) {
         // Stop reading to prevent new data from arriving while the
         // handler runs on the thread pool
-        uv_read_stop((uv_stream_t *)&conn->handle);
+        libuv_connection_read_stop(conn);
 
         // Offload handler execution to libuv's thread pool
         handler_work_t *hw = safe_malloc(sizeof(handler_work_t));
@@ -932,7 +933,7 @@ static int on_message_complete(llhttp_t *parser) {
     } else {
         // No handler matched — offload static file resolution to the thread pool
         // to avoid blocking stat() calls on the event-loop thread.
-        uv_read_stop((uv_stream_t *)&conn->handle);
+        libuv_connection_read_stop(conn);
 
         handler_work_t *hw = safe_malloc(sizeof(handler_work_t));
         if (!hw) {

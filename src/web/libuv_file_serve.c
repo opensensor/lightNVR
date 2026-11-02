@@ -484,8 +484,8 @@ static void on_file_read(uv_fs_t *req) {
     }
 
     // Send this chunk and wait for completion before sending next
-    int r = uv_write(&write_ctx->req, (uv_stream_t *)&ctx->conn->handle,
-                     &write_ctx->buf, 1, on_chunk_write_complete);
+    int r = libuv_connection_write(ctx->conn, &write_ctx->req,
+                                   &write_ctx->buf, 1, on_chunk_write_complete);
     if (r != 0) {
         log_error("on_file_read: Write failed: %s", uv_strerror(r));
         safe_free(send_buf);

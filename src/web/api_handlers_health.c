@@ -75,6 +75,8 @@ static int g_health_check_interval = 10; // seconds
 static interruptible_sleep_t g_health_wake;
 static bool g_health_wake_initialized = false;
 static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health?liveness=true";
+// True when the listener terminates TLS, so the probe must speak HTTPS.
+static bool g_health_check_tls = false;
 
 // Web server thread tracking
 static pthread_t g_web_server_thread_id = 0;
@@ -145,6 +147,15 @@ static bool perform_health_check(void) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L); // 5 second timeout
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L); // 3 second connect timeout
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals
+    if (g_health_check_tls) {
+        // Loopback liveness probe of our own listener. The configured
+        // certificate is issued for the server's public name, not 127.0.0.1,
+        // and may chain to a CA curl does not know, so verifying it here
+        // would only produce false failures (and restarts). The probe sends
+        // no credentials and only reads the status code.
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -755,8 +766,13 @@ void init_health_check_system(void) {
 
     // Get the web port from config
     extern config_t config;
+    // Match the listener's effective transport: the server enables Secure
+    // cookies exactly when it terminates TLS, which also covers a build
+    // without TLS support that falls back to HTTP.
+    g_health_check_tls = httpd_secure_cookies();
     snprintf(g_health_check_url, sizeof(g_health_check_url),
-             "http://127.0.0.1:%d/api/health?liveness=true", config.web_port);
+             "%s://127.0.0.1:%d/api/health?liveness=true",
+             g_health_check_tls ? "https" : "http", config.web_port);
 
     log_info("Health check system initialized with URL: %s", g_health_check_url);
 }

@@ -1099,11 +1099,14 @@ int main(int argc, char *argv[]) {
         .web_root = config.web_root,
         .auth_enabled = config.web_auth_enabled,
         .cors_enabled = true,
-        .ssl_enabled = false,
+        .ssl_enabled = config.web_ssl_enabled,
         .max_connections = 100,
         .connection_timeout = 30,
         .daemon_mode = daemon_mode,
     };
+
+    safe_strcpy(server_config.cert_path, config.web_ssl_cert_path, sizeof(server_config.cert_path), 0);
+    safe_strcpy(server_config.key_path, config.web_ssl_key_path, sizeof(server_config.key_path), 0);
 
     // Set CORS allowed origins, methods, and headers
     safe_strcpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins), 0);

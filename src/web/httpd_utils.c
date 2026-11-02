@@ -341,6 +341,21 @@ int httpd_trusted_device_lifetime_seconds(void) {
     return (int)seconds;
 }
 
+// Written once at server start-up, read by worker threads.
+static volatile bool g_secure_cookies = false;
+
+void httpd_set_secure_cookies(bool secure) {
+    g_secure_cookies = secure;
+}
+
+bool httpd_secure_cookies(void) {
+    return g_secure_cookies;
+}
+
+static const char *cookie_secure_attribute(void) {
+    return g_secure_cookies ? "; Secure" : "";
+}
+
 void httpd_add_session_cookie(http_response_t *res, const char *token) {
     if (!res || !token || token[0] == '\0') {
         return;
@@ -348,8 +363,8 @@ void httpd_add_session_cookie(http_response_t *res, const char *token) {
 
     char cookie_header[256];
     snprintf(cookie_header, sizeof(cookie_header),
-             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, httpd_auth_absolute_timeout_seconds());
+             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s",
+             token, httpd_auth_absolute_timeout_seconds(), cookie_secure_attribute());
     http_response_add_header(res, "Set-Cookie", cookie_header);
 }
 
@@ -357,8 +372,11 @@ void httpd_clear_session_cookie(http_response_t *res) {
     if (!res) {
         return;
     }
-    http_response_add_header(res, "Set-Cookie",
-                             "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+    char cookie_header[128];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s",
+             cookie_secure_attribute());
+    http_response_add_header(res, "Set-Cookie", cookie_header);
 }
 
 void httpd_add_trusted_device_cookie(http_response_t *res, const char *token) {
@@ -369,8 +387,8 @@ void httpd_add_trusted_device_cookie(http_response_t *res, const char *token) {
 
     char cookie_header[256];
     snprintf(cookie_header, sizeof(cookie_header),
-             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, lifetime);
+             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s",
+             token, lifetime, cookie_secure_attribute());
     http_response_add_header(res, "Set-Cookie", cookie_header);
 }
 
@@ -378,8 +396,11 @@ void httpd_clear_trusted_device_cookie(http_response_t *res) {
     if (!res) {
         return;
     }
-    http_response_add_header(res, "Set-Cookie",
-                             "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+    char cookie_header[128];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s",
+             cookie_secure_attribute());
+    http_response_add_header(res, "Set-Cookie", cookie_header);
 }
 
 static bool request_allowed_during_required_password_change(

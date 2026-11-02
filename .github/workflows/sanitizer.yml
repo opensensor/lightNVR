@@ -50,7 +50,8 @@ jobs:
             -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=OFF \
-            -DENABLE_MQTT=OFF
+            -DENABLE_MQTT=OFF \
+            -DENABLE_SSL=ON
           make -j$(nproc)
           echo "Sanitizer build completed"
           ls -la bin/

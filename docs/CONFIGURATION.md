@@ -294,6 +294,9 @@ backup_verify = full
 port = 8080
 bind_ip = 0.0.0.0
 root = /var/lib/lightnvr/www
+; ssl_enabled = false
+; ssl_cert_path = /etc/lightnvr/tls/cert.pem
+; ssl_key_path = /etc/lightnvr/tls/key.pem
 auth_enabled = true
 username = admin
 ; password = ; only read when the admin account is first created
@@ -306,6 +309,9 @@ web_thread_pool_size = 8
 - `port`: Port for the web interface
 - `bind_ip`: IP address for the web interface
 - `root`: Directory containing web interface files
+- `ssl_enabled`: Serve the web interface over HTTPS instead of HTTP on `port` (default: false). Needs a build configured with `-DENABLE_SSL=ON`; a build without it logs a warning and keeps serving HTTP. See [HTTPS without a reverse proxy](REVERSE_PROXY.md#https-without-a-reverse-proxy).
+- `ssl_cert_path`: PEM certificate file, leaf certificate first, followed by any intermediates
+- `ssl_key_path`: PEM private key for that certificate (unencrypted). If either file is missing, unreadable or does not match the other, LightNVR does not start the web server; it never falls back to plain HTTP.
 - `auth_enabled`: Whether to enable authentication for the web interface
 - `username`: Username for web interface authentication
 - `password`: Password used **only** when the admin account is first created. If unset, the account is created as `admin` / `admin` — see the warning below. Once the account exists this setting is ignored; passwords live in the database and are changed from **Settings → Users**.

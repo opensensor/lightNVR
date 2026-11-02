@@ -142,7 +142,7 @@ static void archive_read_done(uv_work_t *work, int status) {
     if (!stream->headers_sent) buffers[count++] = uv_buf_init(stream->headers, (unsigned)stream->header_length);
     buffers[count++] = uv_buf_init((char *)stream->buffer, (unsigned)stream->length);
     stream->write.data = stream;
-    if (uv_write(&stream->write, (uv_stream_t *)&stream->conn->handle, buffers, count, archive_written)) {
+    if (libuv_connection_write(stream->conn, &stream->write, buffers, count, archive_written)) {
         archive_finish(stream, true); return;
     }
     stream->headers_sent = true;

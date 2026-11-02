@@ -321,6 +321,12 @@ if(YAML_FOUND)
     endif()
     target_link_libraries(test_yaml_redact ${YAML_LIBRARIES})
 endif()
+# HTTPS termination in the web server (#650); only an ENABLE_SSL build has it.
+# The go2rtc WebSocket-over-TLS case runs when go2rtc is enabled too.
+if(ENABLE_SSL)
+    add_layer3_test(test_libuv_tls CI_UNIT CI_SANITIZER)
+    set_tests_properties(test_libuv_tls PROPERTIES TIMEOUT 60)
+endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_proxy_query)

@@ -381,6 +381,30 @@ void test_auth_cookie_helpers_add_and_clear_expected_headers(void) {
     TEST_ASSERT_EQUAL_STRING("session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", res.headers[1].value);
 }
 
+void test_auth_cookies_are_secure_only_while_https_is_on(void) {
+    http_response_t res;
+    http_response_init(&res);
+    g_config.trusted_device_days = 7;
+
+    httpd_set_secure_cookies(true);
+    httpd_add_session_cookie(&res, "session-token");
+    httpd_clear_session_cookie(&res);
+    httpd_add_trusted_device_cookie(&res, "trusted-token");
+    httpd_clear_trusted_device_cookie(&res);
+    httpd_set_secure_cookies(false);
+
+    TEST_ASSERT_EQUAL_INT(4, res.num_headers);
+    for (int i = 0; i < res.num_headers; i++) {
+        size_t length = strlen(res.headers[i].value);
+        TEST_ASSERT_TRUE(length > 8);
+        TEST_ASSERT_EQUAL_STRING("; Secure", res.headers[i].value + length - 8);
+    }
+    TEST_ASSERT_EQUAL_STRING("session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure",
+                             res.headers[1].value);
+    TEST_ASSERT_FALSE(httpd_secure_cookies());
+    http_response_free(&res);
+}
+
 void test_trusted_device_cookie_helpers_honor_lifetime_setting(void) {
     http_response_t res;
     http_response_init(&res);
@@ -1133,6 +1157,7 @@ int main(void) {
     RUN_TEST(test_get_cookie_value_extracts_named_cookie);
     RUN_TEST(test_get_cookie_value_returns_error_for_missing_cookie);
     RUN_TEST(test_auth_cookie_helpers_add_and_clear_expected_headers);
+    RUN_TEST(test_auth_cookies_are_secure_only_while_https_is_on);
     RUN_TEST(test_trusted_device_cookie_helpers_honor_lifetime_setting);
     RUN_TEST(test_is_demo_mode_false_by_default);
     RUN_TEST(test_is_demo_mode_true_when_set);

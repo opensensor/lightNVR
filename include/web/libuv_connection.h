@@ -21,6 +21,7 @@
 #include <llhttp.h>
 #include <uv.h>
 #include "web/libuv_server.h"
+#include "web/libuv_tls.h"
 
 // Default buffer sizes (use size_t casts to avoid implicit widening warnings)
 #define LIBUV_RECV_BUFFER_INITIAL   ((size_t)4096)
