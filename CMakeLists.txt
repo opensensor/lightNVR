@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.10)
+# 3.13: add_link_options, target_link_options and target_link_directories.
+cmake_minimum_required(VERSION 3.13)
 
 # CMake 4.0 removed compat with cmake_minimum_required(VERSION < 3.5).
 # Third-party deps fetched via LiteRT's FetchContent (e.g. neon2sse) still
@@ -435,6 +436,12 @@ if(NOT LLHTTP_FOUND)
             if(LLHTTP_FILE_PROBE STREQUAL "")
                 set(LLHTTP_NEEDS_DOWNLOAD TRUE)
                 set(LLHTTP_DOWNLOAD_REASON "is empty")
+            elseif(LLHTTP_VERIFY_HASHES)
+                file(SHA256 "${LLHTTP_LOCAL_PATH}" LLHTTP_ACTUAL_HASH)
+                if(NOT LLHTTP_ACTUAL_HASH STREQUAL LLHTTP_EXPECTED_HASH)
+                    set(LLHTTP_NEEDS_DOWNLOAD TRUE)
+                    set(LLHTTP_DOWNLOAD_REASON "hash mismatch")
+                endif()
             endif()
         endif()
 
