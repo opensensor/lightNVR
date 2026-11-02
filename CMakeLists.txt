@@ -213,7 +213,7 @@ macro(DETECT_MBEDTLS)
         if(NOT MBEDTLS_INCLUDE_DIRS OR NOT MBEDTLS_LIBRARY OR NOT MBEDCRYPTO_LIBRARY OR NOT MBEDX509_LIBRARY)
             message(FATAL_ERROR "mbedTLS is required (for ONVIF, authentication and HTTPS) but was not found. Missing one or more of: headers (mbedtls/version.h), libmbedtls, libmbedcrypto, libmbedx509.")
         endif()
-        set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
+        set(MBEDTLS_DETECTION_DONE TRUE)
     endif()
 endmacro()
 
