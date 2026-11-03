@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Detection overlay component for LiveView
  * Renders a canvas overlay for displaying detection boxes on video streams
@@ -11,6 +10,22 @@ import { displayedVideoBox } from './useLiveDisplayMode.ts';
 import { startDetectionPolling } from '../../utils/detection-polling.ts';
 
 import { forwardRef, useImperativeHandle } from 'preact/compat';
+import type { RefObject } from 'preact';
+import type { Detection } from '../../types/core.ts';
+import type { DetectionZone, ZonesResponse } from '../../types/streams.ts';
+
+export interface DetectionOverlayProps {
+  streamName: string;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  enabled?: boolean;
+  detectionModel?: string | null;
+}
+
+/** What a ref to DetectionOverlay exposes. */
+export interface DetectionOverlayHandle {
+  getCanvasRef: () => RefObject<HTMLCanvasElement | null>;
+  getDetections: () => Detection[];
+}
 
 /**
  * DetectionOverlay component
@@ -22,15 +37,15 @@ import { forwardRef, useImperativeHandle } from 'preact/compat';
  * @param {Object} ref - Forwarded ref
  * @returns {JSX.Element} DetectionOverlay component
  */
-export const DetectionOverlay = forwardRef(({
+export const DetectionOverlay = forwardRef<DetectionOverlayHandle, DetectionOverlayProps>(({
   streamName,
   videoRef,
   enabled = false,
   detectionModel = null
 }, ref) => {
-  const [detections, setDetections] = useState([]);
-  const [zones, setZones] = useState([]);
-  const canvasRef = useRef(null);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [zones, setZones] = useState<DetectionZone[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Expose the canvas ref to parent components
   useImperativeHandle(ref, () => ({
@@ -43,7 +58,7 @@ export const DetectionOverlay = forwardRef(({
     if (!streamName) return;
     fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`)
       .then(res => res.ok ? res.json() : null)
-      .then(data => {
+      .then((data: ZonesResponse | null) => {
         if (data && data.zones && Array.isArray(data.zones)) {
           setZones(data.zones.filter(z => z.enabled));
         }
@@ -57,7 +72,7 @@ export const DetectionOverlay = forwardRef(({
 
     const canvas = canvasRef.current;
     const videoElement = videoRef.current;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
 
     // Set canvas dimensions to match the displayed video element
     canvas.width = videoElement.clientWidth;
@@ -92,12 +107,12 @@ export const DetectionOverlay = forwardRef(({
       const color = zone.color || '#3b82f6';
 
       ctx.beginPath();
-      const p0x = (zone.polygon[0].x * drawWidth) + offsetX;
-      const p0y = (zone.polygon[0].y * drawHeight) + offsetY;
+      const p0x = (zone.polygon[0]!.x * drawWidth) + offsetX;
+      const p0y = (zone.polygon[0]!.y * drawHeight) + offsetY;
       ctx.moveTo(p0x, p0y);
       for (let i = 1; i < zone.polygon.length; i++) {
-        const px = (zone.polygon[i].x * drawWidth) + offsetX;
-        const py = (zone.polygon[i].y * drawHeight) + offsetY;
+        const px = (zone.polygon[i]!.x * drawWidth) + offsetX;
+        const py = (zone.polygon[i]!.y * drawHeight) + offsetY;
         ctx.lineTo(px, py);
       }
       ctx.closePath();
@@ -226,7 +241,7 @@ export const DetectionOverlay = forwardRef(({
  * @param {number} height - Canvas height (native video height)
  * @param {Array} detections - Array of detection objects with normalized coordinates
  */
-export function drawDetectionsOnCanvas(ctx, width, height, detections) {
+export function drawDetectionsOnCanvas(ctx: CanvasRenderingContext2D | null | undefined, width: number, height: number, detections: Detection[] | null | undefined): void {
   if (!ctx || !detections || detections.length === 0) return;
 
   // Scale line width and font for native resolution
@@ -266,7 +281,7 @@ export function drawDetectionsOnCanvas(ctx, width, height, detections) {
  * @param {string} streamName - Name of the stream
  * @returns {Object} Canvas and filename for the snapshot
  */
-export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
+export function takeSnapshotWithDetections(videoRef: RefObject<HTMLVideoElement | null>, canvasRef: RefObject<HTMLCanvasElement | null>, streamName: string) {
   if (!videoRef.current || !canvasRef.current) {
     showStatusMessage(t('live.snapshotVideoUnavailable'), 'error');
     return null;
@@ -285,7 +300,7 @@ export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
     return null;
   }
 
-  const ctx = combinedCanvas.getContext('2d');
+  const ctx = combinedCanvas.getContext('2d')!;
 
   // Draw the video frame at native resolution
   ctx.drawImage(videoElement, 0, 0, combinedCanvas.width, combinedCanvas.height);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface LiveView Component
  * Preact component for the Live page. Renders a PlaybackTransportCell per
@@ -30,12 +29,24 @@ import { fetchAllStreamSummaries } from '../../utils/stream-summaries.ts';
 import { LiveOperatorNavigator } from './live/LiveOperatorNavigator.tsx';
 import { LiveBuildingPlan } from './live/LiveBuildingPlan.tsx';
 import { filterLiveNavigatorInventory } from './live/liveOperator.ts';
+import type { LiveViewVariantName } from '../../utils/live-view-url.ts';
+import type { StreamSummary } from '../../types/core.ts';
+import type { LiveOperatorFilter, LiveOperatorLayout, LiveOperatorSurface, LiveStream } from '../../types/live.ts';
+
+export interface LiveViewProps {
+  variant?: LiveViewVariantName;
+  audioDisabled?: boolean;
+  isAutoDisabled?: boolean;
+  isWebRTCDisabled?: boolean;
+  isHlsDisabled?: boolean;
+  isMseDisabled?: boolean;
+}
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
  * Defined as a function declaration so it hoists safely in the bundle.
  */
-function legacyLayoutToColsRows(layout) {
+function legacyLayoutToColsRows(layout: string): [number, number] {
   switch (layout) {
     case '1':  return [1, 1];
     case '2':  return [2, 1];
@@ -53,7 +64,7 @@ function legacyLayoutToColsRows(layout) {
  *   storage keys and a few toolbar details differ between them.
  * @returns {JSX.Element} LiveView component
  */
-export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled = false, isHlsDisabled = false, isMseDisabled = false }) {
+export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisabled = false, isWebRTCDisabled = false, isHlsDisabled = false, isMseDisabled = false }: LiveViewProps) {
   const { t } = useI18n();
   const profile = LIVE_VIEW_VARIANTS[variant] || LIVE_VIEW_VARIANTS.hls;
   const prefix = profile.storagePrefix;
@@ -86,16 +97,16 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
   const fullscreenCellStream = useFullscreenCellStream();
 
   // State for streams and layout
-  const [streams, setStreams] = useState([]);
+  const [streams, setStreams] = useState<LiveStream[]>([]);
   const [refreshGeneration, setRefreshGeneration] = useState(0);
-  const [operatorFilter, setOperatorFilter] = useState(null);
-  const [operatorSurface, setOperatorSurfaceState] = useState(() =>
+  const [operatorFilter, setOperatorFilter] = useState<LiveOperatorFilter | null>(null);
+  const [operatorSurface, setOperatorSurfaceState] = useState<LiveOperatorSurface>(() =>
     new URLSearchParams(window.location.search).get('surface') === 'plan' ? 'plan' : 'grid');
   const [selectedPlanUuid, setSelectedPlanUuidState] = useState(() =>
     new URLSearchParams(window.location.search).get('plan') ||
     localStorage.getItem('lightnvr-live-plan') || '');
 
-  const setOperatorSurface = useCallback((surface) => {
+  const setOperatorSurface = useCallback((surface: LiveOperatorSurface) => {
     const next = surface === 'plan' ? 'plan' : 'grid';
     setOperatorSurfaceState(next);
     const url = new URL(window.location.href);
@@ -103,7 +114,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
     else url.searchParams.delete('surface');
     window.history.replaceState({}, '', url);
   }, []);
-  const setSelectedPlanUuid = useCallback((uuid) => {
+  const setSelectedPlanUuid = useCallback((uuid: string) => {
     setSelectedPlanUuidState(uuid || '');
     if (uuid) localStorage.setItem('lightnvr-live-plan', uuid);
     else localStorage.removeItem('lightnvr-live-plan');
@@ -281,7 +292,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
     isLoading: isLoadingStreams,
     error: streamsError,
     refetch: refetchStreams,
-  } = useQuery({
+  } = useQuery<StreamSummary[]>({
     queryKey: ['streams', profile.queryKey],
     queryFn: ({ signal }) => fetchAllStreamSummaries({
       surface: 'live', signal,
@@ -297,7 +308,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
       setRefreshGeneration((generation) => generation + 1);
       showStatusMessage(t('live.streamsRefreshed'), 'success', 2000);
     } catch (error) {
-      showStatusMessage(t('live.refreshStreamsFailed', { message: error.message }), 'error', 5000);
+      showStatusMessage(t('live.refreshStreamsFailed', { message: (error as Error).message }), 'error', 5000);
     }
   }, [refetchStreams, t]);
   const pullToRefresh = usePullToRefresh(refreshLiveGrid, { disabled: isFullscreen });
@@ -337,7 +348,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
               setSelectedStream(streamParam);
             } else if (!selectedStream || !filteredStreams.some(stream => stream.name === selectedStream)) {
               // Otherwise use the first stream if selectedStream is not set or invalid
-              setSelectedStream(filteredStreams[0].name);
+              setSelectedStream(filteredStreams[0]!.name);
             }
           } else {
             console.warn(`No streams available for ${variant} view after filtering`);
@@ -347,7 +358,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
         } catch (error) {
           if (cancelled) return;
           console.error('Error processing streams:', error);
-          showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
+          showStatusMessage(t('live.errorProcessingStreams', { message: (error as Error).message }));
         }
       };
 
@@ -363,16 +374,19 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
   useEffect(() => {
     if (streams.length === 0) return;
 
-    const url = new URL(window.location);
+    // URL stringifies the Location; its types only accept a string or URL.
+    const url = new URL(window.location as unknown as string);
 
     // Page (1-based in URL, omit on first page)
     if (currentPage === 0) url.searchParams.delete('page');
-    else url.searchParams.set('page', currentPage + 1);
+    // searchParams.set stringifies these numbers; its types only accept a string.
+    else url.searchParams.set('page', currentPage + 1 as unknown as string);
 
     // cols/rows — omit from URL when at the default (2×2)
     if (cols !== 2 || rows !== 2) {
-      url.searchParams.set('cols', cols);
-      url.searchParams.set('rows', rows);
+      // searchParams.set stringifies these numbers; its types only accept a string.
+      url.searchParams.set('cols', cols as unknown as string);
+      url.searchParams.set('rows', rows as unknown as string);
     } else {
       url.searchParams.delete('cols');
       url.searchParams.delete('rows');
@@ -401,7 +415,8 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
   // Sync UI preference controls (group, tag, labels, controls) to URL and localStorage.
   // Runs independently of streams-loaded state so the URL is always accurate.
   useEffect(() => {
-    const url = new URL(window.location);
+    // URL stringifies the Location; its types only accept a string or URL.
+    const url = new URL(window.location as unknown as string);
 
     if (tagFilter) url.searchParams.set('tag', tagFilter);
     else url.searchParams.delete('tag');
@@ -435,11 +450,11 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
     }
   }, [collectionError, t]);
 
-  const handleToggleFavorite = useCallback(async (cameraUuid) => {
+  const handleToggleFavorite = useCallback(async (cameraUuid: string) => {
     try {
       await toggleFavorite(cameraUuid);
     } catch (error) {
-      showStatusMessage(t('live.favoriteUpdateError', { message: error.message }), 'error');
+      showStatusMessage(t('live.favoriteUpdateError', { message: (error as Error).message }), 'error');
     }
   }, [toggleFavorite, t]);
 
@@ -450,7 +465,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
    * @param {Array} candidates - Array of streams
    * @returns {Array} Playable streams
    */
-  const filterPlayableStreams = (candidates) => {
+  const filterPlayableStreams = (candidates: LiveStream[]) => {
     const filteredStreams = candidates.filter(stream => {
       if (stream.is_deleted) {
         console.log(`Stream ${stream.name} is soft deleted, filtering out`);
@@ -482,7 +497,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
 
   // Derive unique tags from playable streams for the header filter.
   const availableTags = useMemo(() => {
-    const tags = new Set();
+    const tags = new Set<string>();
     streams.forEach(s => {
       if (s.tags) {
         s.tags.split(',').forEach(t => { const trimmed = t.trim(); if (trimmed) tags.add(trimmed); });
@@ -522,7 +537,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
     handleReorderPointerCancel,
   } = useCameraOrder(tagFilteredStreams, prefix);
 
-  const applyOperatorLayout = useCallback((layout) => {
+  const applyOperatorLayout = useCallback((layout: LiveOperatorLayout) => {
     const nextCols = Math.max(1, Math.min(9, Number(layout.columns) || cols));
     const nextRows = Math.max(1, Math.min(9, Number(layout.rows) || rows));
     setCols(nextCols);
@@ -530,12 +545,12 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
     setCurrentPage(0);
     setAutoGrid(false);
     const names = (layout.cameraUuids || []).map((cameraUuid) =>
-      streams.find((stream) => stream.camera_uuid === cameraUuid)?.name).filter(Boolean);
+      streams.find((stream) => stream.camera_uuid === cameraUuid)?.name).filter(Boolean) as string[];
     setCameraOrder(names);
     if (nextCols * nextRows === 1 && names[0]) setSelectedStream(names[0]);
   }, [cols, rows, streams, setCameraOrder]);
 
-  const openPlanCamera = useCallback((stream) => {
+  const openPlanCamera = useCallback((stream: LiveStream) => {
     setOperatorSurface('grid');
     applyOperatorLayout({
       cameraUuids: [stream.camera_uuid], columns: 1, rows: 1,
@@ -584,8 +599,8 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
    * @param {Event} event - Click event
    * @param {HTMLElement} cellElement - The video cell element
    */
-  const toggleStreamFullscreen = (streamName, event, cellElement) => {
-    if (event?.currentTarget?.classList?.contains('fullscreen-btn')
+  const toggleStreamFullscreen = (streamName: string, event: Event | null | undefined, cellElement: HTMLElement | null | undefined) => {
+    if ((event?.currentTarget as Element | null | undefined)?.classList?.contains('fullscreen-btn')
         && shouldShowGestureTip('double-tap-fullscreen', 3)) {
       showStatusMessage(t('live.tipDoubleTapFullscreen'), 'info', 5000);
     }
@@ -722,7 +737,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
                 id="tag-filter"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={tagFilter}
-                onChange={(e) => { setTagFilter(e.target.value); setCurrentPage(0); }}
+                onChange={(e) => { setTagFilter((e.target as HTMLSelectElement).value); setCurrentPage(0); }}
               >
                 <option value="">{t('live.allTags')}</option>
                 {availableTags.map(tag => <option key={tag} value={tag}>#{tag}</option>)}
@@ -768,7 +783,7 @@ export function LiveView({ variant = 'hls', audioDisabled = false, isAutoDisable
                 id="stream-selector"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={selectedStream}
-                onChange={(e) => setSelectedStream(e.target.value)}
+                onChange={(e) => setSelectedStream((e.target as HTMLSelectElement).value)}
               >
                 {orderedStreams.map(stream => (
                   <option key={stream.name} value={stream.name}>{stream.name}</option>

@@ -1,11 +1,16 @@
-// @ts-nocheck
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useI18n } from '../../i18n.ts';
+import type { ApiErrorBody } from '../../types/core.ts';
+import type { ManualRecordingStatus } from '../../types/live.ts';
 
-export function ManualRecordingButton({ streamName }) {
+export interface ManualRecordingButtonProps {
+  streamName: string;
+}
+
+export function ManualRecordingButton({ streamName }: ManualRecordingButtonProps) {
   const { t } = useI18n();
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState<ManualRecordingStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const statusUrl = `/api/streams/${encodeURIComponent(streamName)}/recording`;
@@ -47,7 +52,7 @@ export function ManualRecordingButton({ streamName }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-      const data = await response.json().catch(() => ({}));
+      const data: ApiErrorBody = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || data.message || `HTTP ${response.status}`);
       }
@@ -57,7 +62,7 @@ export function ManualRecordingButton({ streamName }) {
       );
       await refresh();
     } catch (error) {
-      showStatusMessage(t('live.manualRecordingFailed', { message: error.message }), 'error', 5000);
+      showStatusMessage(t('live.manualRecordingFailed', { message: (error as Error).message }), 'error', 5000);
     } finally {
       setBusy(false);
     }

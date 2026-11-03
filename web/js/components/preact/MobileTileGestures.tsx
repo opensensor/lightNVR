@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../../i18n.ts';
 import { formatFilenameTimestamp } from '../../utils/date-utils.ts';
@@ -8,8 +7,20 @@ import {
   TILE_CHROME_TIMEOUT_MS,
   shouldIgnoreTileGestureTarget,
 } from './mobileLiveGestures.ts';
+import type { RefObject } from 'preact';
+import type { Translate } from '../../types/live.ts';
 
-function isTouchPointer(event) {
+export interface UseMobileTileGesturesOptions {
+  streamName: string;
+  cellRef: RefObject<HTMLElement | null>;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  audioEnabled: boolean;
+  onToggleAudio?: () => unknown;
+  onRequestReorder?: () => unknown;
+  disabled?: boolean;
+}
+
+function isTouchPointer(event?: Pick<PointerEvent, 'pointerType'> | null) {
   return event?.pointerType === 'touch' || event?.pointerType === 'pen';
 }
 
@@ -19,7 +30,7 @@ function isCoarsePointer() {
     && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
-function downloadCurrentFrame(video, streamName, t) {
+function downloadCurrentFrame(video: HTMLVideoElement | null, streamName: string, t: Translate) {
   if (!video?.videoWidth || !video?.videoHeight) {
     showStatusMessage(t('live.cannotTakeSnapshotVideoNotLoaded'), 'error');
     return;
@@ -58,13 +69,13 @@ export function useMobileTileGestures({
   onToggleAudio,
   onRequestReorder,
   disabled = false,
-}) {
+}: UseMobileTileGesturesOptions) {
   const { t } = useI18n();
   const [chromeVisible, setChromeVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const chromeTimerRef = useRef(null);
-  const longPressTimerRef = useRef(null);
-  const pointerRef = useRef(null);
+  const chromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const audioEnabledRef = useRef(audioEnabled);
   audioEnabledRef.current = audioEnabled;
@@ -109,14 +120,14 @@ export function useMobileTileGestures({
   }, [menuOpen]);
 
   useEffect(() => {
-    const handleOtherTileAudio = (event) => {
-      if (event.detail?.streamName !== streamName && audioEnabledRef.current) onToggleAudio?.();
+    const handleOtherTileAudio = (event: Event) => {
+      if ((event as CustomEvent<{ streamName?: string } | undefined>).detail?.streamName !== streamName && audioEnabledRef.current) onToggleAudio?.();
     };
     window.addEventListener('lightnvr:tile-audio-enabled', handleOtherTileAudio);
     return () => window.removeEventListener('lightnvr:tile-audio-enabled', handleOtherTileAudio);
   }, [onToggleAudio, streamName]);
 
-  const onPointerDown = (event) => {
+  const onPointerDown = (event: PointerEvent) => {
     revealChrome();
     if (!isTouchPointer(event)) return;
     if (event.isPrimary === false) {
@@ -142,7 +153,7 @@ export function useMobileTileGestures({
     }, LONG_PRESS_DELAY_MS);
   };
 
-  const onPointerMove = (event) => {
+  const onPointerMove = (event: PointerEvent) => {
     const pointer = pointerRef.current;
     if (!pointer || pointer.id !== event.pointerId) return;
     if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 10) clearLongPress();
@@ -150,7 +161,7 @@ export function useMobileTileGestures({
 
   const onPointerEnd = () => clearLongPress();
 
-  const onClick = (event) => {
+  const onClick = (event: MouseEvent) => {
     revealChrome();
     if (!suppressClickRef.current) return false;
     suppressClickRef.current = false;
@@ -159,8 +170,9 @@ export function useMobileTileGestures({
     return true;
   };
 
-  const onContextMenu = (event) => {
-    if (isTouchPointer(event) || suppressClickRef.current) event.preventDefault();
+  // Browsers dispatch contextmenu as a PointerEvent; Preact types it as a MouseEvent.
+  const onContextMenu = (event: MouseEvent) => {
+    if (isTouchPointer(event as PointerEvent) || suppressClickRef.current) event.preventDefault();
   };
 
   const closeMenu = () => {
@@ -173,7 +185,7 @@ export function useMobileTileGestures({
   };
 
   const takeSnapshot = () => {
-    const existingButton = cellRef.current?.querySelector('.snapshot-btn');
+    const existingButton = cellRef.current?.querySelector<HTMLElement>('.snapshot-btn');
     if (existingButton) existingButton.click();
     else downloadCurrentFrame(videoRef.current, streamName, t);
     closeMenu();
@@ -206,20 +218,27 @@ export function useMobileTileGestures({
   };
 }
 
+export interface MobileTileContextMenuProps {
+  gestures: ReturnType<typeof useMobileTileGestures>;
+  audioEnabled: boolean;
+  audioAvailable?: boolean;
+  canReorder?: boolean;
+}
+
 export function MobileTileContextMenu({
   gestures,
   audioEnabled,
   audioAvailable = true,
   canReorder = gestures.canReorder,
-}) {
+}: MobileTileContextMenuProps) {
   const { t } = useI18n();
-  const menuRef = useRef(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (gestures.menuOpen) menuRef.current?.querySelector('button')?.focus();
   }, [gestures.menuOpen]);
   if (!gestures.menuOpen) return null;
 
-  const action = (handler) => (event) => {
+  const action = (handler: () => unknown) => (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     handler();

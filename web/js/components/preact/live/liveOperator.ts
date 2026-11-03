@@ -1,26 +1,51 @@
-// @ts-nocheck
+import type { StreamAvailabilityFilter } from '../../../types/core.ts';
+import type {
+  FloorPlan,
+  FloorPlanCamera,
+  FloorPlanCanvasSize,
+  LiveLayout,
+  LiveLayoutPayload,
+  LiveLocation,
+  LiveStream,
+  LocationTreeNode,
+  PlanCoverageInput,
+  PlanMarker,
+} from '../../../types/live.ts';
+
+interface LiveLayoutPayloadOptions {
+  name: string;
+  isShared?: boolean;
+  locationUuid?: string | null;
+  availability?: string;
+  columns: number;
+  rows: number;
+  streams?: readonly LiveStream[];
+}
+
+type FloorPlanPayloadSource = Pick<FloorPlan, 'name' | 'location_uuid' | 'parent_plan_uuid' | 'canvas_width' | 'canvas_height' | 'revision'>;
+
 export const LIVE_AVAILABILITY_OPTIONS = Object.freeze([
   'live', 'offline', 'never_connected', 'disabled', 'all',
-]);
+] as const);
 
 /**
  * Stable semantic identity for a camera scope. Set identity is not suitable
  * for hook dependencies because equivalent Sets can be reconstructed while
  * async Navigator data is loading.
  */
-export function cameraUuidScopeKey(cameraUuids) {
+export function cameraUuidScopeKey(cameraUuids?: Iterable<string> | null): string {
   return [...new Set(cameraUuids || [])].sort().join(',');
 }
 
-export function locationDescendantUuids(locations, rootUuid) {
+export function locationDescendantUuids(locations: readonly LiveLocation[] | null | undefined, rootUuid?: string | null): Set<string> {
   if (!rootUuid) return new Set();
-  const children = new Map();
+  const children = new Map<string, string[]>();
   for (const location of locations || []) {
     const parent = location.parent_uuid || '';
     if (!children.has(parent)) children.set(parent, []);
-    children.get(parent).push(location.uuid);
+    children.get(parent)!.push(location.uuid);
   }
-  const result = new Set();
+  const result = new Set<string>();
   const pending = [rootUuid];
   while (pending.length > 0) {
     const uuid = pending.pop();
@@ -31,15 +56,15 @@ export function locationDescendantUuids(locations, rootUuid) {
   return result;
 }
 
-export function cameraUuidsForLocation(locations, streams, rootUuid) {
+export function cameraUuidsForLocation(locations: readonly LiveLocation[] | null | undefined, streams: readonly LiveStream[] | null | undefined, rootUuid?: string | null): Set<string> {
   if (!rootUuid) return new Set((streams || []).map((stream) => stream.camera_uuid));
   const locationUuids = locationDescendantUuids(locations, rootUuid);
   return new Set((streams || [])
-    .filter((stream) => locationUuids.has(stream.location_uuid))
+    .filter((stream) => locationUuids.has(stream.location_uuid as string))
     .map((stream) => stream.camera_uuid));
 }
 
-export function filterLiveOperatorStreams(streams, cameraUuids, availability) {
+export function filterLiveOperatorStreams(streams: readonly LiveStream[] | null | undefined, cameraUuids: Set<string> | null | undefined, availability: string): LiveStream[] {
   return (streams || []).filter((stream) =>
     (!cameraUuids || cameraUuids.has(stream.camera_uuid)) &&
     (availability === 'all' || stream.availability === availability));
@@ -50,33 +75,34 @@ export function filterLiveOperatorStreams(streams, cameraUuids, availability) {
  * that cannot currently create a video tile. Disabled cameras remain useful
  * for availability and location inspection; soft-deleted cameras do not.
  */
-export function filterLiveNavigatorInventory(streams, cameraUuids = null) {
+export function filterLiveNavigatorInventory(streams: readonly LiveStream[] | null | undefined, cameraUuids: Set<string> | null = null): LiveStream[] {
   return (streams || []).filter((stream) =>
     !stream.is_deleted &&
     (!cameraUuids || cameraUuids.has(stream.camera_uuid)));
 }
 
-export function cameraUuidsForLiveLayout(layout) {
+export function cameraUuidsForLiveLayout(layout?: Pick<LiveLayout, 'camera_slots'> | null): string[] {
   return [...new Set((layout?.camera_slots || [])
     .map((slot) => slot?.camera_uuid)
     .filter(Boolean))];
 }
 
-export function buildLocationTree(locations, streams) {
-  const byUuid = new Map();
-  const roots = [];
+export function buildLocationTree(locations: readonly LiveLocation[] | null | undefined, streams: readonly LiveStream[] | null | undefined): LocationTreeNode[] {
+  const byUuid = new Map<string, LocationTreeNode>();
+  const roots: LocationTreeNode[] = [];
   for (const location of locations || []) {
-    byUuid.set(location.uuid, { ...location, children: [], directStreams: [], total: 0, live: 0 });
+    // aggregate sets depth below, on every node reachable from a root.
+    byUuid.set(location.uuid, { ...location, children: [] as LocationTreeNode[], directStreams: [] as LiveStream[], total: 0, live: 0 } as LocationTreeNode);
   }
   for (const node of byUuid.values()) {
-    const parent = byUuid.get(node.parent_uuid);
+    const parent = byUuid.get(node.parent_uuid as string);
     if (parent) parent.children.push(node);
     else roots.push(node);
   }
   for (const stream of streams || []) {
-    byUuid.get(stream.location_uuid)?.directStreams.push(stream);
+    byUuid.get(stream.location_uuid as string)?.directStreams.push(stream);
   }
-  const aggregate = (node, depth = 0) => {
+  const aggregate = (node: LocationTreeNode, depth: number = 0): LocationTreeNode => {
     node.depth = depth;
     node.children.sort((a, b) =>
       (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
@@ -94,9 +120,9 @@ export function buildLocationTree(locations, streams) {
     .map((root) => aggregate(root));
 }
 
-export function flattenLocationTree(roots, expandedUuids = null) {
-  const rows = [];
-  const visit = (node) => {
+export function flattenLocationTree(roots: LocationTreeNode[] | null | undefined, expandedUuids: Set<string> | null = null): LocationTreeNode[] {
+  const rows: LocationTreeNode[] = [];
+  const visit = (node: LocationTreeNode) => {
     rows.push(node);
     if (!expandedUuids || expandedUuids.has(node.uuid)) node.children.forEach(visit);
   };
@@ -112,12 +138,12 @@ export function buildLiveLayoutPayload({
   columns,
   rows,
   streams = [],
-}) {
+}: LiveLayoutPayloadOptions): LiveLayoutPayload {
   return {
     name: name.trim(),
     is_shared: Boolean(isShared),
     location_uuid: locationUuid || null,
-    availability: LIVE_AVAILABILITY_OPTIONS.includes(availability) ? availability : 'live',
+    availability: LIVE_AVAILABILITY_OPTIONS.includes(availability as StreamAvailabilityFilter) ? availability : 'live',
     columns,
     rows,
     camera_slots: streams.slice(0, columns * rows).map((stream) => ({
@@ -126,7 +152,7 @@ export function buildLiveLayoutPayload({
   };
 }
 
-export function buildRecentEventsRequests(cameraUuids, nowSeconds = Math.floor(Date.now() / 1000)) {
+export function buildRecentEventsRequests(cameraUuids: Iterable<string> | null | undefined, nowSeconds: number = Math.floor(Date.now() / 1000)) {
   const uniqueUuids = [...new Set(cameraUuids || [])];
   const requests = [];
   for (let offset = 0; offset < uniqueUuids.length; offset += 64) {
@@ -145,7 +171,7 @@ export function buildRecentEventsRequests(cameraUuids, nowSeconds = Math.floor(D
   return requests;
 }
 
-export function investigationHref(event, cameraUuids = []) {
+export function investigationHref(event: { start_time?: number } | null | undefined, cameraUuids: string[] = []): string {
   const params = new URLSearchParams();
   const scoped = cameraUuids.slice(0, 16);
   if (scoped.length > 0) params.set('cameras', scoped.join(','));
@@ -156,20 +182,20 @@ export function investigationHref(event, cameraUuids = []) {
   return `/investigation.html?${params.toString()}`;
 }
 
-export function clusterFloorPlanCameras(cameras, zoom = 1) {
+export function clusterFloorPlanCameras(cameras: readonly FloorPlanCamera[] | null | undefined, zoom: number = 1): PlanMarker[] {
   const placements = cameras || [];
   if (placements.length < 24 || zoom >= 1.75) {
-    return placements.map((camera) => ({ kind: 'camera', ...camera }));
+    return placements.map((camera): PlanMarker => ({ kind: 'camera', ...camera }));
   }
   const cellSize = Math.max(0.025, 0.085 / Math.max(1, zoom));
-  const buckets = new Map();
+  const buckets = new Map<string, FloorPlanCamera[]>();
   for (const camera of placements) {
     const key = `${Math.floor(camera.x / cellSize)}:${Math.floor(camera.y / cellSize)}`;
     if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(camera);
+    buckets.get(key)!.push(camera);
   }
-  return [...buckets.values()].map((bucket) => {
-    if (bucket.length === 1) return { kind: 'camera', ...bucket[0] };
+  return [...buckets.values()].map((bucket): PlanMarker => {
+    if (bucket.length === 1) return { kind: 'camera', ...bucket[0]! };
     return {
       kind: 'cluster',
       camera_uuids: bucket.map((camera) => camera.camera_uuid),
@@ -186,7 +212,7 @@ export function clusterFloorPlanCameras(cameras, zoom = 1) {
  * backend CHECK bounds (width 400-4000, height 300-4000). Returns null for
  * aspect ratios that cannot satisfy both constraints.
  */
-export function floorPlanCanvasFromImage(width, height) {
+export function floorPlanCanvasFromImage(width: number, height: number): FloorPlanCanvasSize | null {
   if (!Number.isFinite(width) || !Number.isFinite(height) ||
     !(width > 0) || !(height > 0)) return null;
   const scale = 2000 / Math.max(width, height);
@@ -205,12 +231,12 @@ export function floorPlanCanvasFromImage(width, height) {
  * FOV clamped to the API's 1-180° range, rotation to -180-180°. Missing or
  * corrupt values fall back to the schema defaults.
  */
-export function normalizeCoverage(placement) {
+export function normalizeCoverage(placement?: PlanCoverageInput | null): { fov: number; rotation: number } {
   return {
     fov: Number.isFinite(placement?.fov)
-      ? Math.min(180, Math.max(1, placement.fov)) : 65,
+      ? Math.min(180, Math.max(1, placement!.fov!)) : 65,
     rotation: Number.isFinite(placement?.rotation)
-      ? Math.min(180, Math.max(-180, placement.rotation)) : 0,
+      ? Math.min(180, Math.max(-180, placement!.rotation!)) : 0,
   };
 }
 
@@ -219,11 +245,11 @@ export function normalizeCoverage(placement) {
  * a rotate(rotation) transform aims the centerline. Endpoints are rounded to
  * three decimals so 180° boundaries never emit degenerate float noise.
  */
-export function coverageWedgePath(fov, radius = 55) {
+export function coverageWedgePath(fov: number, radius: number = 55): string {
   const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 55;
   const { fov: degrees } = normalizeCoverage({ fov });
   const halfAngle = (degrees * Math.PI) / 360;
-  const format = (value) => {
+  const format = (value: number) => {
     const fixed = value.toFixed(3);
     return fixed === '-0.000' ? '0.000' : fixed;
   };
@@ -232,7 +258,7 @@ export function coverageWedgePath(fov, radius = 55) {
   return `M 0 0 L ${x} -${y} A ${safeRadius} ${safeRadius} 0 0 1 ${x} ${y} Z`;
 }
 
-export function floorPlanPayload(plan, cameras) {
+export function floorPlanPayload(plan: FloorPlanPayloadSource, cameras: readonly FloorPlanCamera[] | null | undefined) {
   return {
     name: plan.name,
     location_uuid: plan.location_uuid || null,

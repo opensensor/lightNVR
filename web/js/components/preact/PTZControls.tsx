@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * PTZ Controls Component
  * Pan-Tilt-Zoom controls for PTZ-enabled cameras
@@ -12,12 +11,31 @@ import {
   getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome,
   ptzMove, ptzStop, ptzHome, ptzGotoPreset
 } from './ptzActions.ts';
+import type { PtzCapabilities, PtzDirection, PtzError, PtzPreset } from '../../types/live.ts';
+
+interface DirectionButtonProps {
+  direction: PtzDirection;
+  onMouseDown: () => unknown;
+  onMouseUp: () => unknown;
+  onMouseLeave: () => unknown;
+  disabled?: boolean;
+}
+
+export interface PTZControlsProps {
+  stream?: { name: string; ptz_enabled?: boolean } | null;
+  isVisible?: boolean;
+  onClose?: () => unknown;
+  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
+  streamName?: string;
+  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
+  ptzType?: string;
+}
 
 
 /**
  * Direction button component
  */
-function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disabled }) {
+function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disabled }: DirectionButtonProps) {
   const icons = {
     up: '▲',
     down: '▼',
@@ -60,13 +78,13 @@ function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disa
 /**
  * PTZ Controls component
  */
-export function PTZControls({ stream, isVisible = true, onClose }) {
+export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsProps) {
   const { t } = useI18n();
   const [speed, setSpeed] = useState(0.5);
-  const [presets, setPresets] = useState([]);
+  const [presets, setPresets] = useState<PtzPreset[]>([]);
   const [isMoving, setIsMoving] = useState(false);
-  const [error, setError] = useState(null);
-  const [capabilities, setCapabilities] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<PtzCapabilities | null>(null);
   const [canManage, setCanManage] = useState(true);
   const [presetName, setPresetName] = useState('');
   const [showPresetForm, setShowPresetForm] = useState(false);
@@ -93,7 +111,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     return () => { active = false; };
   }, [stream?.name, stream?.ptz_enabled]);
 
-  const handleActionFailure = useCallback((err, message) => {
+  const handleActionFailure = useCallback((err: PtzError, message: string) => {
     if (err.status === 403) {
       setCanManage(false);
       setShowPresetForm(false);
@@ -103,7 +121,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     console.error(message, err);
   }, []);
 
-  const handleSavePreset = useCallback(async (event) => {
+  const handleSavePreset = useCallback(async (event: Event) => {
     event.preventDefault();
     const name = presetName.trim();
     if (!stream?.name || !name || saving) return;
@@ -114,7 +132,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       setPresetName('');
       showSuccessToast(t('live.ptzPresetSaved'));
     } catch (err) {
-      handleActionFailure(err, t(err.stage === 'refresh'
+      handleActionFailure(err as PtzError, t((err as PtzError).stage === 'refresh'
         ? 'live.ptzPresetRefreshFailed' : 'live.ptzPresetSaveFailed'));
     } finally {
       setSaving(false);
@@ -129,14 +147,14 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       setConfirmSetHome(false);
       showSuccessToast(t('live.ptzHomeSet'));
     } catch (err) {
-      handleActionFailure(err, t('live.ptzSetHomeFailed'));
+      handleActionFailure(err as PtzError, t('live.ptzSetHomeFailed'));
     } finally {
       setSaving(false);
     }
   }, [stream?.name, saving, t, handleActionFailure]);
 
   // Handle continuous move
-  const handleMoveStart = useCallback((pan, tilt, zoom) => {
+  const handleMoveStart = useCallback((pan: number, tilt: number, zoom: number) => {
     if (!stream?.name) return;
     setIsMoving(true);
     setError(null);
@@ -168,7 +186,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
       });
   }, [stream?.name, t]);
 
-  const handlePreset = useCallback((token) => {
+  const handlePreset = useCallback((token: string) => {
     if (!stream?.name) return;
     setError(null);
     
@@ -297,7 +315,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
           max="1"
           step="0.1"
           value={speed}
-          onChange={(e) => setSpeed(parseFloat(e.target.value))}
+          onChange={(e) => setSpeed(parseFloat((e.target as HTMLInputElement).value))}
           style={{ flex: 1 }}
         />
         <span style={{ color: 'white', fontSize: '11px', width: '30px' }}>{Math.round(speed * 100)}%</span>
@@ -308,7 +326,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
         <div style={{ marginTop: '4px' }}>
           <select
             aria-label={t('live.goToPreset')}
-            onChange={(e) => e.target.value && handlePreset(e.target.value)}
+            onChange={(e) => (e.target as HTMLSelectElement).value && handlePreset((e.target as HTMLSelectElement).value)}
             style={{
               width: '100%',
               padding: '6px',

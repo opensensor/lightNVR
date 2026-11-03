@@ -1,15 +1,101 @@
-// @ts-nocheck
 import {
   rectCorners, rectEdges, rectFromPoints, segmentMidpoints, shapeCenter, shapeSummary,
 } from './planSketch.ts';
+import type { SVGAttributes } from 'preact';
+import type {
+  RectEdge,
+  ShapeHandle,
+  SketchDrawing,
+  SketchPoint,
+  SketchRectShape,
+  SketchShape,
+  Translate,
+} from '../../../types/live.ts';
+
+type ShapePointerDownHandler = (event: PointerEvent, shapeId: string, handle: ShapeHandle) => unknown;
+type ShapeContextMenuHandler = (event: MouseEvent, shapeId: string, handle: ShapeHandle | null) => unknown;
+type ShapeMouseHandler = (event: MouseEvent, shapeId: string) => unknown;
+
+interface ShapeLabelProps {
+  text?: string;
+  x: number;
+  y: number;
+  className?: string;
+}
+
+interface ShapeHandlesProps {
+  shape: SketchShape;
+  width: number;
+  height: number;
+  markerScale: number;
+  onHandlePointerDown: ShapePointerDownHandler;
+  onContextMenu: ShapeContextMenuHandler;
+}
+
+interface HandleEntry {
+  key: string;
+  x: number;
+  y: number;
+  className: string;
+  handle: ShapeHandle;
+  edge?: boolean;
+  insert?: boolean;
+}
+
+interface RectEdgeZonesProps {
+  shape: SketchRectShape;
+  width: number;
+  height: number;
+  markerScale: number;
+  onHandlePointerDown: ShapePointerDownHandler;
+}
+
+interface SketchShapeProps {
+  shape: SketchShape;
+  width: number;
+  height: number;
+  editing: boolean;
+  selected: boolean;
+  showHandles: boolean;
+  markerScale: number;
+  t: Translate;
+  onPointerDown: ShapePointerDownHandler;
+  onClick: ShapeMouseHandler;
+  onDblClick: ShapeMouseHandler;
+  onContextMenu: ShapeContextMenuHandler;
+}
+
+interface DrawingPreviewProps {
+  drawing: SketchDrawing | null;
+  width: number;
+  height: number;
+  markerScale: number;
+  closable: boolean;
+}
+
+export interface PlanSketchLayerProps {
+  shapes: SketchShape[];
+  width: number;
+  height: number;
+  editing: boolean;
+  selectedShapeIds?: Set<string>;
+  markerScale: number;
+  drawing: SketchDrawing | null;
+  drawingClosable: boolean;
+  t: Translate;
+  onShapePointerDown: ShapePointerDownHandler;
+  onShapeClick: ShapeMouseHandler;
+  onShapeDblClick: ShapeMouseHandler;
+  onShapeContextMenu: ShapeContextMenuHandler;
+}
 
 const LABEL_FONT_SIZES = { sm: 14, md: 20, lg: 28 };
 
-function toPointsAttribute(points, width, height) {
+function toPointsAttribute(points: SketchPoint[], width: number, height: number) {
   return points.map(([x, y]) => `${x * width},${y * height}`).join(' ');
 }
 
-function ShapeLabel({ text, x, y, className = '' }) {
+function ShapeLabel({ text, x, y, className = '' }: ShapeLabelProps) {
   if (!text) return null;
   return (
     <text x={x} y={y} textAnchor="middle" dominantBaseline="middle"
@@ -19,9 +105,9 @@ function ShapeLabel({ text, x, y, className = '' }) {
 
 function ShapeHandles({
   shape, width, height, markerScale, onHandlePointerDown, onContextMenu,
-}) {
+}: ShapeHandlesProps) {
   const radius = 7 * markerScale;
-  const handles = [];
+  const handles: HandleEntry[] = [];
   if (shape.type === 'rect') {
     for (const edge of rectEdges(shape)) {
       handles.push({
@@ -54,12 +140,12 @@ function ShapeHandles({
     const size = insert || edge ? radius * 0.75 : radius;
     const shared = {
       className: `live-plan-shape-handle ${className}`,
-      onPointerDown: (event) => {
+      onPointerDown: (event: PointerEvent) => {
         // The handler stops propagation only when it takes the gesture, so
         // drawing tools and pans still reach the canvas.
         onHandlePointerDown(event, shape.id, handle);
       },
-      onContextMenu: (event) => onContextMenu(event, shape.id, handle),
+      onContextMenu: (event: MouseEvent) => onContextMenu(event, shape.id, handle),
     };
     if (edge) {
       return (
@@ -75,12 +161,12 @@ function ShapeHandles({
  * Invisible thick strokes along each room side so an edge can be grabbed
  * and resized directly, without selecting the room first.
  */
-function RectEdgeZones({ shape, width, height, markerScale, onHandlePointerDown }) {
+function RectEdgeZones({ shape, width, height, markerScale, onHandlePointerDown }: RectEdgeZonesProps) {
   const x0 = shape.x * width;
   const y0 = shape.y * height;
   const x1 = (shape.x + shape.w) * width;
   const y1 = (shape.y + shape.h) * height;
-  const edges = [
+  const edges: { edge: RectEdge; x1: number; y1: number; x2: number; y2: number }[] = [
     { edge: 'n', x1: x0, y1: y0, x2: x1, y2: y0 },
     { edge: 's', x1: x0, y1, x2: x1, y2: y1 },
     { edge: 'w', x1: x0, y1: y0, x2: x0, y2: y1 },
@@ -99,18 +185,18 @@ function RectEdgeZones({ shape, width, height, markerScale, onHandlePointerDown 
 function SketchShape({
   shape, width, height, editing, selected, showHandles, markerScale, t,
   onPointerDown, onClick, onDblClick, onContextMenu,
-}) {
+}: SketchShapeProps) {
   const interactive = editing;
-  const groupProps = interactive ? {
+  const groupProps: SVGAttributes<SVGGElement> = interactive ? {
     // Lowercase: SVG attribute names are case-sensitive and `tabIndex` is ignored.
     tabindex: 0,
     role: 'button',
     'aria-label': shapeSummary(shape, t),
     'aria-pressed': selected ? 'true' : 'false',
-    onPointerDown: (event) => onPointerDown(event, shape.id, { kind: 'move' }),
-    onClick: (event) => onClick(event, shape.id),
-    onDblClick: (event) => onDblClick(event, shape.id),
-    onContextMenu: (event) => onContextMenu(event, shape.id, null),
+    onPointerDown: (event: PointerEvent) => onPointerDown(event, shape.id, { kind: 'move' }),
+    onClick: (event: MouseEvent) => onClick(event, shape.id),
+    onDblClick: (event: MouseEvent) => onDblClick(event, shape.id),
+    onContextMenu: (event: MouseEvent) => onContextMenu(event, shape.id, null),
   } : {};
   let body = null;
   if (shape.type === 'rect') {
@@ -163,7 +249,7 @@ function SketchShape({
   );
 }
 
-function DrawingPreview({ drawing, width, height, markerScale, closable }) {
+function DrawingPreview({ drawing, width, height, markerScale, closable }: DrawingPreviewProps) {
   if (!drawing) return null;
   if (drawing.tool === 'room') {
     const rect = rectFromPoints(drawing.start, drawing.current);
@@ -176,7 +262,7 @@ function DrawingPreview({ drawing, width, height, markerScale, closable }) {
   }
   const committed = drawing.points || [];
   if (committed.length === 0) return null;
-  const preview = drawing.cursor ? [...committed, [drawing.cursor.x, drawing.cursor.y]] : committed;
+  const preview: SketchPoint[] = drawing.cursor ? [...committed, [drawing.cursor.x, drawing.cursor.y]] : committed;
   const radius = 6 * markerScale;
   return (
     <g className={`live-plan-drawing is-${drawing.tool}`}>
@@ -216,7 +302,7 @@ export function PlanSketchLayer({
   onShapeClick,
   onShapeDblClick,
   onShapeContextMenu,
-}) {
+}: PlanSketchLayerProps) {
   return (
     <g className={`live-plan-sketch ${editing ? 'is-editing' : ''}`}>
       {(shapes || []).map((shape) => (

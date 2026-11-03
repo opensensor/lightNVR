@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -20,10 +19,51 @@ import {
   flattenLocationTree,
   investigationHref,
 } from './liveOperator.ts';
+import type { StreamAvailabilityFilter, WorkspacesResponse } from '../../../types/core.ts';
+import type {
+  FloorPlan,
+  FloorPlansResponse,
+  LiveEvent,
+  LiveEventsResponse,
+  LiveLayout,
+  LiveLayoutsResponse,
+  LiveLocation,
+  LiveLocationsResponse,
+  LiveOperatorFilter,
+  LiveOperatorLayout,
+  LiveOperatorSurface,
+  LiveStream,
+} from '../../../types/live.ts';
 
-const EMPTY_LOCATIONS = Object.freeze([]);
+interface LiveEventThumbnailProps {
+  event: LiveEvent;
+}
 
-function LiveEventThumbnail({ event }) {
+export interface LiveOperatorNavigatorProps {
+  streams: LiveStream[];
+  orderedStreams: LiveStream[];
+  columns: number;
+  rows: number;
+  operatorSurface: LiveOperatorSurface;
+  selectedPlanUuid: string;
+  onFilterChange: (filter: LiveOperatorFilter | null) => unknown;
+  onApplyLayout: (layout: LiveOperatorLayout) => unknown;
+  onSurfaceChange: (surface: LiveOperatorSurface) => unknown;
+  onSelectPlan: (uuid: string) => unknown;
+}
+
+/** A building plan as a camera scope in the Navigator. */
+interface PlanCameraGroup {
+  uuid: string;
+  name: string;
+  locationName: string;
+  cameraUuids: string[];
+  live: number;
+}
+
+const EMPTY_LOCATIONS: readonly never[] = Object.freeze([]);
+
+function LiveEventThumbnail({ event }: LiveEventThumbnailProps) {
   const url = event.thumbnail?.status === 'available'
     ? event.thumbnail?.url : null;
   const [failed, setFailed] = useState(false);
@@ -39,21 +79,21 @@ function LiveEventThumbnail({ event }) {
   );
 }
 
-function formatEventTime(timestamp) {
+function formatEventTime(timestamp?: number) {
   if (!timestamp) return '';
   return new Intl.DateTimeFormat(undefined, {
     hour: 'numeric', minute: '2-digit', second: '2-digit',
   }).format(new Date(timestamp * 1000));
 }
 
-function locationIcon(type) {
+function locationIcon(type?: string) {
   if (type === 'building') return '▦';
   if (type === 'floor') return '≡';
   if (type === 'area') return '⌗';
   return '▸';
 }
 
-function availabilityKey(value) {
+function availabilityKey(value?: string) {
   return value === 'never_connected' ? 'neverConnected' : value;
 }
 
@@ -68,7 +108,7 @@ export function LiveOperatorNavigator({
   onApplyLayout,
   onSurfaceChange,
   onSelectPlan,
-}) {
+}: LiveOperatorNavigatorProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(() =>
@@ -76,36 +116,36 @@ export function LiveOperatorNavigator({
   const [tab, setTab] = useState('cameras');
   const [selectedLocation, setSelectedLocation] = useState(() =>
     new URLSearchParams(window.location.search).get('location') || '');
-  const [availability, setAvailability] = useState(() => {
+  const [availability, setAvailability] = useState<string>(() => {
     const stored = localStorage.getItem('lightnvr-live-availability');
-    return LIVE_AVAILABILITY_OPTIONS.includes(stored) ? stored : 'live';
+    return LIVE_AVAILABILITY_OPTIONS.includes(stored as StreamAvailabilityFilter) ? stored as string : 'live';
   });
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
-  const [layoutCameraScope, setLayoutCameraScope] = useState(null);
+  const [layoutCameraScope, setLayoutCameraScope] = useState<string[] | null>(null);
   const [selectedLayoutUuid, setSelectedLayoutUuid] = useState('');
   const [scopePlanUuid, setScopePlanUuid] = useState('');
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
-  const [renameLayoutTarget, setRenameLayoutTarget] = useState(null);
-  const [deleteLayoutTarget, setDeleteLayoutTarget] = useState(null);
+  const [renameLayoutTarget, setRenameLayoutTarget] = useState<LiveLayout | null>(null);
+  const [deleteLayoutTarget, setDeleteLayoutTarget] = useState<LiveLayout | null>(null);
 
-  const workspaceQuery = useQuery({
+  const workspaceQuery = useQuery<WorkspacesResponse>({
     queryKey: ['ui-workspaces'],
     queryFn: ({ signal }) => fetchJSON('/api/ui/workspaces', { signal }),
     staleTime: 60000,
   });
-  const locationsQuery = useQuery({
+  const locationsQuery = useQuery<LiveLocationsResponse>({
     queryKey: ['fleet-locations'],
     queryFn: ({ signal }) => fetchJSON('/api/locations', { signal }),
     staleTime: 60000,
   });
-  const layoutsQuery = useQuery({
+  const layoutsQuery = useQuery<LiveLayoutsResponse>({
     queryKey: ['live-layouts'],
     queryFn: ({ signal }) => fetchJSON('/api/live/layouts', { signal }),
     staleTime: 15000,
   });
-  const plansQuery = useQuery({
+  const plansQuery = useQuery<FloorPlansResponse>({
     queryKey: ['operator-floor-plans'],
     queryFn: ({ signal }) => fetchJSON('/api/live/plans', { signal }),
     staleTime: 15000,
@@ -115,7 +155,7 @@ export function LiveOperatorNavigator({
     workspaceQuery.data, WORKSPACE_KEYS.LIVE_NAVIGATOR);
   const investigationVisible = workspaceIsVisible(
     workspaceQuery.data, WORKSPACE_KEYS.INVESTIGATION);
-  const locations = locationsQuery.data?.locations || EMPTY_LOCATIONS;
+  const locations: readonly LiveLocation[] = locationsQuery.data?.locations || EMPTY_LOCATIONS;
   const tree = useMemo(() => buildLocationTree(locations, streams), [locations, streams]);
   const locationRows = useMemo(() => flattenLocationTree(tree, expanded), [tree, expanded]);
   const scopedCameraUuids = useMemo(() =>
@@ -144,7 +184,7 @@ export function LiveOperatorNavigator({
       (stream.location_path || '').toLocaleLowerCase().includes(term));
   }, [scopedStreams, search]);
 
-  const plans = plansQuery.data?.plans || EMPTY_LOCATIONS;
+  const plans: readonly FloorPlan[] = plansQuery.data?.plans || EMPTY_LOCATIONS;
   const locationNames = useMemo(() => new Map(
     locations.map((location) => [location.uuid, location.name]),
   ), [locations]);
@@ -154,35 +194,35 @@ export function LiveOperatorNavigator({
   // Cameras placed on a building plan are grouped by plan too: a placement
   // is not a fleet location assignment, so the location tree alone showed
   // such cameras as "Unassigned".
-  const planGroups = useMemo(() => plans.map((plan) => {
+  const planGroups = useMemo(() => plans.map((plan): PlanCameraGroup => {
     const cameraUuids = [...new Set((plan.cameras || [])
       .map((camera) => camera.camera_uuid)
       .filter((uuid) => streamsByUuid.has(uuid)))];
     return {
       uuid: plan.uuid,
       name: plan.name,
-      locationName: locationNames.get(plan.location_uuid) || '',
+      locationName: locationNames.get(plan.location_uuid as string) || '',
       cameraUuids,
       live: cameraUuids.filter((uuid) => streamsByUuid.get(uuid)?.availability === 'live').length,
     };
   }), [plans, streamsByUuid, locationNames]);
   const plansByCamera = useMemo(() => {
-    const result = new Map();
+    const result = new Map<string, string[]>();
     for (const group of planGroups) {
       for (const uuid of group.cameraUuids) {
         if (!result.has(uuid)) result.set(uuid, []);
-        result.get(uuid).push(group.name);
+        result.get(uuid)!.push(group.name);
       }
     }
     return result;
   }, [planGroups]);
 
-  const eventsQuery = useQuery({
+  const eventsQuery = useQuery<{ results: LiveEvent[] }>({
     queryKey: ['live-recent-events', effectiveCameraKey],
     queryFn: async ({ signal }) => {
       const responses = await Promise.all(buildRecentEventsRequests(
         [...effectiveCameraUuids],
-      ).map((request) => fetchJSON('/api/investigations/search', {
+      ).map((request) => fetchJSON<LiveEventsResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -232,7 +272,7 @@ export function LiveOperatorNavigator({
     setCollapsed(next);
     localStorage.setItem('lightnvr-live-navigator-collapsed', String(next));
   };
-  const toggleExpanded = (uuid) => {
+  const toggleExpanded = (uuid: string) => {
     setExpanded((current) => {
       const next = new Set(current);
       if (next.has(uuid)) next.delete(uuid);
@@ -240,13 +280,13 @@ export function LiveOperatorNavigator({
       return next;
     });
   };
-  const selectLocation = (uuid) => {
+  const selectLocation = (uuid: string) => {
     setSelectedLocation(uuid);
     setLayoutCameraScope(null);
     setSelectedLayoutUuid('');
     setScopePlanUuid('');
   };
-  const loadLocation = (uuid) => {
+  const loadLocation = (uuid: string) => {
     const cameraUuids = [...cameraUuidsForLocation(locations, streams, uuid)];
     setSelectedLocation(uuid);
     setAvailability('live');
@@ -255,18 +295,18 @@ export function LiveOperatorNavigator({
     setScopePlanUuid('');
     onApplyLayout({ cameraUuids, columns, rows });
   };
-  const selectPlanScope = (group) => {
+  const selectPlanScope = (group: PlanCameraGroup) => {
     setSelectedLocation('');
     setLayoutCameraScope(group.cameraUuids);
     setSelectedLayoutUuid('');
     setScopePlanUuid(group.uuid);
   };
-  const loadPlanScope = (group) => {
+  const loadPlanScope = (group: PlanCameraGroup) => {
     selectPlanScope(group);
     setAvailability('live');
     onApplyLayout({ cameraUuids: group.cameraUuids, columns, rows });
   };
-  const applyLayout = (layout) => {
+  const applyLayout = (layout: LiveLayout) => {
     const cameraUuids = cameraUuidsForLiveLayout(layout);
     setSelectedLocation(layout.location_uuid || '');
     setAvailability(layout.availability || 'live');
@@ -280,11 +320,11 @@ export function LiveOperatorNavigator({
     });
     showStatusMessage(t('live.navigator.layoutLoaded', { name: layout.name }), 'success', 2500);
   };
-  const saveLayout = async (name, shareRequested) => {
+  const saveLayout = async (name: string, shareRequested: boolean) => {
     const isShared = layoutsQuery.data?.can_share ? shareRequested : false;
     setBusy(true);
     try {
-      const layout = await fetchJSON('/api/live/layouts', {
+      const layout = await fetchJSON<LiveLayout>('/api/live/layouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildLiveLayoutPayload({
@@ -305,14 +345,14 @@ export function LiveOperatorNavigator({
       showStatusMessage(t('live.navigator.layoutSaved', { name }), 'success', 2500);
       return true;
     } catch (error) {
-      showStatusMessage(error.message, 'error', 5000);
+      showStatusMessage((error as Error).message, 'error', 5000);
       return false;
     } finally {
       setBusy(false);
     }
   };
   /** Overwrite a saved view with the current grid, or rename it. */
-  const updateLayout = async (layout, { name = layout.name, fromCurrentGrid = false } = {}) => {
+  const updateLayout = async (layout: LiveLayout, { name = layout.name, fromCurrentGrid = false }: { name?: string; fromCurrentGrid?: boolean } = {}) => {
     setBusy(true);
     try {
       const payload = fromCurrentGrid
@@ -336,7 +376,7 @@ export function LiveOperatorNavigator({
           }),
           camera_slots: layout.camera_slots || [],
         };
-      const updated = await fetchJSON(`/api/live/layouts/${layout.uuid}`, {
+      const updated = await fetchJSON<LiveLayout>(`/api/live/layouts/${layout.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, revision: layout.revision }),
@@ -354,13 +394,13 @@ export function LiveOperatorNavigator({
         : t('live.navigator.layoutRenamed', { name }), 'success', 2500);
       return true;
     } catch (error) {
-      showStatusMessage(error.message, 'error', 5000);
+      showStatusMessage((error as Error).message, 'error', 5000);
       return false;
     } finally {
       setBusy(false);
     }
   };
-  const deleteLayout = async (layout) => {
+  const deleteLayout = async (layout: LiveLayout) => {
     setBusy(true);
     try {
       await fetchJSON(`/api/live/layouts/${layout.uuid}`, {
@@ -376,7 +416,7 @@ export function LiveOperatorNavigator({
         setSelectedLayoutUuid('');
       }
     } catch (error) {
-      showStatusMessage(error.message, 'error', 5000);
+      showStatusMessage((error as Error).message, 'error', 5000);
     } finally {
       setBusy(false);
     }
@@ -474,8 +514,8 @@ export function LiveOperatorNavigator({
                 className="live-camera-row"
                 title={`${t('live.navigator.cameras')}: ${stream.name}`}
                 onDragStart={(event) => {
-                  event.dataTransfer.setData('application/x-lightnvr-camera', stream.camera_uuid);
-                  event.dataTransfer.effectAllowed = 'copy';
+                  event.dataTransfer!.setData('application/x-lightnvr-camera', stream.camera_uuid);
+                  event.dataTransfer!.effectAllowed = 'copy';
                 }}
                 onClick={() => {
                   setLayoutCameraScope([stream.camera_uuid]);
@@ -563,7 +603,7 @@ export function LiveOperatorNavigator({
                   <strong>{plan.name}</strong>
                   <small>{[
                     t('live.navigator.planCameraCounts', { live: liveCount, total: (plan.cameras || []).length }),
-                    locationNames.get(plan.location_uuid),
+                    locationNames.get(plan.location_uuid as string),
                   ].filter(Boolean).join(' · ')}</small>
                 </button>
               </div>
@@ -622,7 +662,7 @@ export function LiveOperatorNavigator({
     <TextInputDialog
       isOpen={Boolean(renameLayoutTarget)}
       onClose={() => setRenameLayoutTarget(null)}
-      onSubmit={(name) => updateLayout(renameLayoutTarget, { name })}
+      onSubmit={(name) => updateLayout(renameLayoutTarget!, { name })}
       title={t('live.navigator.renameLayout')}
       inputLabel={t('common.name')}
       initialValue={renameLayoutTarget?.name || ''}
@@ -632,7 +672,7 @@ export function LiveOperatorNavigator({
     <ConfirmDialog
       isOpen={Boolean(deleteLayoutTarget)}
       onClose={() => setDeleteLayoutTarget(null)}
-      onConfirm={() => deleteLayout(deleteLayoutTarget)}
+      onConfirm={() => deleteLayout(deleteLayoutTarget!)}
       title={t('common.delete')}
       message={deleteLayoutTarget
         ? t('live.navigator.deleteLayoutConfirm', { name: deleteLayoutTarget.name }) : ''}

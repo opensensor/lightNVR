@@ -1,7 +1,12 @@
-// @ts-nocheck
 import { useI18n } from '../../i18n.ts';
 
-export function TileAudioButton({ enabled, onToggle, disabled = false }) {
+export interface TileAudioButtonProps {
+  enabled: boolean;
+  onToggle?: (event: MouseEvent) => unknown;
+  disabled?: boolean;
+}
+
+export function TileAudioButton({ enabled, onToggle, disabled = false }: TileAudioButtonProps) {
   const { t } = useI18n();
   const label = t(enabled ? 'live.muteCameraAudio' : 'live.unmuteCameraAudio');
 

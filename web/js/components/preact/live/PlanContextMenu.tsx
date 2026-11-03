@@ -1,5 +1,11 @@
-// @ts-nocheck
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import type { PlanMenuState } from '../../../types/live.ts';
+
+export interface PlanContextMenuProps {
+  menu: PlanMenuState | null;
+  label: string;
+  onClose: () => void;
+}
 
 /**
  * Right-click menu for the building-plan editor. Items are
@@ -8,9 +14,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
  * It closes on outside press, Escape, wheel, resize or blur, and supports
  * arrow-key navigation like a native menu.
  */
-export function PlanContextMenu({ menu, label, onClose }) {
-  const ref = useRef(null);
-  const [position, setPosition] = useState(null);
+export function PlanContextMenu({ menu, label, onClose }: PlanContextMenuProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
   useLayoutEffect(() => {
     if (!menu || !ref.current) return;
@@ -20,7 +26,7 @@ export function PlanContextMenu({ menu, label, onClose }) {
       left: Math.max(margin, Math.min(menu.clientX, window.innerWidth - rect.width - margin)),
       top: Math.max(margin, Math.min(menu.clientY, window.innerHeight - rect.height - margin)),
     });
-    const first = ref.current.querySelector('[role="menuitem"]:not([disabled])');
+    const first = ref.current.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])');
     try {
       first?.focus({ preventScroll: true });
     } catch {
@@ -30,8 +36,8 @@ export function PlanContextMenu({ menu, label, onClose }) {
 
   useEffect(() => {
     if (!menu) return undefined;
-    const closeOnOutside = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) onClose();
+    const closeOnOutside = (event: Event) => {
+      if (ref.current && !ref.current.contains(event.target as Node | null)) onClose();
     };
     const close = () => onClose();
     document.addEventListener('pointerdown', closeOnOutside, true);
@@ -48,7 +54,7 @@ export function PlanContextMenu({ menu, label, onClose }) {
 
   if (!menu) return null;
 
-  const onKeyDown = (event) => {
+  const onKeyDown = (event: KeyboardEvent) => {
     event.stopPropagation();
     if (event.key === 'Escape' || event.key === 'Tab') {
       event.preventDefault();
@@ -58,17 +64,17 @@ export function PlanContextMenu({ menu, label, onClose }) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' &&
       event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault();
-    const items = Array.from(ref.current?.querySelectorAll('[role="menuitem"]:not([disabled])') || []);
+    const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') || []);
     if (items.length === 0) return;
-    const index = items.indexOf(document.activeElement);
+    const index = items.indexOf(document.activeElement as HTMLElement);
     let next = 0;
     if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % items.length;
     if (event.key === 'ArrowUp') next = index <= 0 ? items.length - 1 : index - 1;
     if (event.key === 'End') next = items.length - 1;
-    items[next].focus();
+    items[next]!.focus();
   };
 
-  const run = (callback) => {
+  const run = (callback: () => unknown) => {
     onClose();
     callback();
   };

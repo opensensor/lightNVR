@@ -1,12 +1,16 @@
-// @ts-nocheck
 import { useI18n } from '../../i18n.ts';
 import {
   healthStateForStream,
   recordingModesForStream,
   shouldShowLiveTileStatus,
 } from './liveTileStatus.ts';
+import type { LiveTileHealth, LiveTileStream, RecordingMode } from '../../types/live.ts';
 
-function RecordingGlyph({ modes }) {
+interface RecordingGlyphProps {
+  modes: RecordingMode[];
+}
+
+function RecordingGlyph({ modes }: RecordingGlyphProps) {
   const hasConstant = modes.includes('constant');
   const hasDetection = modes.includes('detection');
   const hasSchedule = modes.includes('schedule');
@@ -38,7 +42,11 @@ function RecordingGlyph({ modes }) {
   );
 }
 
-function HealthGlyph({ state }) {
+interface HealthGlyphProps {
+  state: LiveTileHealth;
+}
+
+function HealthGlyph({ state }: HealthGlyphProps) {
   if (state === 'healthy') {
     return (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -63,7 +71,16 @@ function HealthGlyph({ state }) {
   );
 }
 
-export function LiveTileStatus({ stream, isPlaying, isLoading, error, showLabels = true }) {
+export interface LiveTileStatusProps {
+  stream?: LiveTileStream;
+  isPlaying?: boolean;
+  isLoading?: boolean;
+  /** Truthiness only. */
+  error?: unknown;
+  showLabels?: boolean;
+}
+
+export function LiveTileStatus({ stream, isPlaying, isLoading, error, showLabels = true }: LiveTileStatusProps) {
   const { t } = useI18n();
 
   if (!shouldShowLiveTileStatus(showLabels)) return null;

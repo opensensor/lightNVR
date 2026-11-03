@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GridPicker — a popover grid-cell selector for choosing columns × rows.
  * Hover over cells to preview the grid size; click to confirm.
@@ -22,7 +21,7 @@ const DEFAULT_ROWS = 6;
  * @param {number} n
  * @returns {[number, number]}
  */
-export function computeOptimalGrid(n) {
+export function computeOptimalGrid(n: number): [number, number] {
   if (n <= 1) return [1, 1];
   const s = Math.ceil(Math.sqrt(n));
   return [s, s];
@@ -41,16 +40,23 @@ export function computeOptimalGrid(n) {
  *                                    with spare cells (e.g. 3×3 for 5 streams)
  *                                    is valid. Only MAX_GRID_CELLS is enforced.
  */
-export function GridPicker({ cols, rows, onSelect, maxCells }) {
+export interface GridPickerProps {
+  cols: number;
+  rows: number;
+  onSelect: (cols: number, rows: number) => unknown;
+  maxCells?: number;
+}
+
+export function GridPicker({ cols, rows, onSelect, maxCells }: GridPickerProps) {
   const { t } = useI18n();
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
   const popoverId = useId();
-  const containerRef      = useRef(null);
+  const containerRef      = useRef<HTMLDivElement | null>(null);
 
   // Scale the picker grid to fit the stream count, always as a square.
   // e.g. 3 streams → 2×2, 5 → 3×3, 9 → 3×3, 10 → 4×4
-  const effectiveMax = Math.min(maxCells > 0 ? maxCells : DEFAULT_COLS * DEFAULT_ROWS, MAX_GRID_CELLS);
+  const effectiveMax = Math.min((maxCells as number) > 0 ? maxCells as number : DEFAULT_COLS * DEFAULT_ROWS, MAX_GRID_CELLS);
   const gridSide = Math.max(2, Math.ceil(Math.sqrt(effectiveMax)));
   const gridCols = gridSide;
   const gridRows = gridSide;
@@ -61,8 +67,8 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
   // Close the popover on outside click
   useEffect(() => {
     if (!open) return;
-    const onDown = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node | null)) {
         setOpen(false);
       }
     };

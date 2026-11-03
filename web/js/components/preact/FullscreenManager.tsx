@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Fullscreen functionality for LiveView
  * React component for managing fullscreen mode
@@ -14,11 +13,25 @@ import {
   requestNativeFullscreen,
 } from './fullscreenApi.ts';
 
+import type { Dispatch, StateUpdater } from 'preact/hooks';
+import type { LiveStream } from '../../types/live.ts';
+
 export { exitNativeFullscreen, getNativeFullscreenElement, requestNativeFullscreen } from './fullscreenApi.ts';
 
-function onNextFullscreenChange(handler) {
+type GridNavDirection = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown' | 'Next' | 'Previous';
+
+/** Backward-compatible global set while a FullscreenManager is mounted. */
+type ToggleFullscreenGlobal = (currentIsFullscreen: boolean, setterFunc?: (value: boolean) => void) => void;
+
+declare global {
+  interface Window {
+    toggleFullscreen?: ToggleFullscreenGlobal;
+  }
+}
+
+function onNextFullscreenChange(handler: (event: Event) => void) {
   let handled = false;
-  const wrapped = (event) => {
+  const wrapped = (event: Event) => {
     if (handled) return;
     handled = true;
     document.removeEventListener('fullscreenchange', wrapped);
@@ -49,7 +62,7 @@ function onNextFullscreenChange(handler) {
  * @param {number}      cols           - Grid column count
  * @param {number}      rows           - Grid row count
  */
-function showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows) {
+function showGridOverlay(nextCell: HTMLElement, nextStreamName: string, streamsToShow: LiveStream[], cols: number, rows: number) {
   // Remove any stale overlay left from rapid navigation.
   const existing = nextCell.querySelector('.fs-grid-overlay');
   if (existing) existing.remove();
@@ -139,10 +152,10 @@ function showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows) {
 // Guard: true while a fullscreen transition is in progress.
 let _fsNavBusy = false;
 
-function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
+function navigateFullscreenGrid(direction: GridNavDirection, streamsToShow: LiveStream[], cols: number, rows: number) {
   if (_fsNavBusy) return; // drop key if transition already underway
 
-  const fullscreenEl = getNativeFullscreenElement();
+  const fullscreenEl = getNativeFullscreenElement() as HTMLElement | null;
   if (!fullscreenEl) return;
 
   // The fullscreen element is the .video-cell div (data-stream-name is on it)
@@ -158,13 +171,13 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
   // Walk one step at a time in the requested direction, wrapping around, until
   // we land on a populated cell (or exhaust all possibilities).
   const maxAttempts = cols * rows;
-  let nextCell = null;
-  let nextStreamName = null;
+  let nextCell: HTMLElement | null = null;
+  let nextStreamName: string | null = null;
   if ((direction === 'Next' || direction === 'Previous') && streamsToShow.length > 1) {
     const step = direction === 'Next' ? 1 : -1;
     const nextIndex = (currentIndex + step + streamsToShow.length) % streamsToShow.length;
-    const nextStream = streamsToShow[nextIndex];
-    const candidate = document.querySelector(
+    const nextStream = streamsToShow[nextIndex]!;
+    const candidate = document.querySelector<HTMLElement>(
       `[data-stream-name="${CSS.escape(nextStream.name)}"].video-cell`
     );
     if (candidate && candidate !== fullscreenEl) {
@@ -186,10 +199,10 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
 
     const nextIndex = nextRow * cols + nextCol;
     if (nextIndex < streamsToShow.length) {
-      const nextStream = streamsToShow[nextIndex];
+      const nextStream = streamsToShow[nextIndex]!;
       // Query the DOM for the cell; it remains in the DOM even while another
       // element is in fullscreen mode.
-      const candidate = document.querySelector(
+      const candidate = document.querySelector<HTMLElement>(
         `[data-stream-name="${CSS.escape(nextStream.name)}"].video-cell`
       );
       if (candidate && candidate !== fullscreenEl) {
@@ -211,7 +224,7 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
     if (!getNativeFullscreenElement()) {
       // Stack is fully empty — enter fullscreen for the next cell.
       requestNativeFullscreen(nextCell)
-        .then(() => showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows))
+        .then(() => showGridOverlay(nextCell, nextStreamName!, streamsToShow, cols, rows))
         .catch(err => console.warn(`Grid nav fullscreen switch failed: ${err.message}`))
         .finally(() => { _fsNavBusy = false; });
     } else {
@@ -240,11 +253,11 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
  * @returns {string|null}
  */
 export function useFullscreenCellStream() {
-  const [fullscreenStream, setFullscreenStream] = useState(null);
+  const [fullscreenStream, setFullscreenStream] = useState<string | null>(null);
 
   useEffect(() => {
     const update = () => {
-      const el = getNativeFullscreenElement();
+      const el = getNativeFullscreenElement() as HTMLElement | null;
       setFullscreenStream(el && el.dataset ? (el.dataset.streamName || null) : null);
     };
     update();
@@ -270,7 +283,7 @@ export function useFullscreenCellStream() {
  * @param {number} cols
  * @param {number} rows
  */
-export function useFullscreenGridNav(streamsToShow, cols, rows) {
+export function useFullscreenGridNav(streamsToShow: LiveStream[], cols: number, rows: number): void {
   const streamsRef = useRef(streamsToShow);
   const colsRef    = useRef(cols);
   const rowsRef    = useRef(rows);
@@ -284,7 +297,7 @@ export function useFullscreenGridNav(streamsToShow, cols, rows) {
     // before the browser's native fullscreen-controls overlay can mark the
     // event as defaultPrevented (tinykeys v3 skips events that are already
     // defaultPrevented, which caused arrow keys to be silently ignored).
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if (!getNativeFullscreenElement()) return; // only act when a cell is in native fullscreen
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
@@ -294,7 +307,7 @@ export function useFullscreenGridNav(streamsToShow, cols, rows) {
         return;
       }
 
-      let direction;
+      let direction: GridNavDirection;
       switch (e.key) {
         case 'ArrowLeft':  direction = 'ArrowLeft';  break;
         case 'ArrowRight': direction = 'ArrowRight'; break;
@@ -308,27 +321,27 @@ export function useFullscreenGridNav(streamsToShow, cols, rows) {
       navigateFullscreenGrid(direction, streamsRef.current, colsRef.current, rowsRef.current);
     };
 
-    let touchStart = null;
-    const handleTouchStart = (event) => {
-      const fullscreenElement = getNativeFullscreenElement();
+    let touchStart: { x: number; y: number; element: HTMLElement } | null = null;
+    const handleTouchStart = (event: TouchEvent) => {
+      const fullscreenElement = getNativeFullscreenElement() as HTMLElement | null;
       if (!fullscreenElement?.classList?.contains('video-cell') || event.touches?.length !== 1
           || shouldIgnoreTileGestureTarget(event.target)) {
         touchStart = null;
         return;
       }
       touchStart = {
-        x: event.touches[0].clientX,
-        y: event.touches[0].clientY,
+        x: event.touches[0]!.clientX,
+        y: event.touches[0]!.clientY,
         element: fullscreenElement,
       };
     };
 
-    const handleTouchEnd = (event) => {
+    const handleTouchEnd = (event: TouchEvent) => {
       if (!touchStart || event.changedTouches?.length !== 1) {
         touchStart = null;
         return;
       }
-      const end = event.changedTouches[0];
+      const end = event.changedTouches[0]!;
       const action = fullscreenSwipeAction(
         end.clientX - touchStart.x,
         end.clientY - touchStart.y,
@@ -376,7 +389,7 @@ export function useFullscreenManager() {
    * Exit fullscreen mode
    * @param {Event} e - Optional event object
    */
-  const exitFullscreenMode = useCallback((e) => {
+  const exitFullscreenMode = useCallback((e?: Event) => {
     // If this was called from an event, stop propagation
     if (e) {
       e.stopPropagation();
@@ -406,6 +419,11 @@ export function useFullscreenManager() {
   };
 }
 
+export interface FullscreenExitButtonProps {
+  isFullscreen: boolean;
+  onExit?: (event: MouseEvent) => unknown;
+}
+
 /**
  * FullscreenManager component
  * @param {Object} props Component props
@@ -413,7 +431,7 @@ export function useFullscreenManager() {
  * @param {Function} props.onExit Function to call when exiting fullscreen mode
  * @returns {JSX.Element} FullscreenManager component
  */
-export function FullscreenExitButton({ isFullscreen, onExit }) {
+export function FullscreenExitButton({ isFullscreen, onExit }: FullscreenExitButtonProps) {
   if (!isFullscreen) return null;
 
   return (
@@ -426,6 +444,11 @@ export function FullscreenExitButton({ isFullscreen, onExit }) {
   );
 }
 
+export interface FullscreenButtonProps {
+  isFullscreen: boolean;
+  onToggle?: (event: MouseEvent) => unknown;
+}
+
 /**
  * FullscreenButton component
  * @param {Object} props Component props
@@ -433,7 +456,7 @@ export function FullscreenExitButton({ isFullscreen, onExit }) {
  * @param {Function} props.onToggle Function to call when toggling fullscreen mode
  * @returns {JSX.Element} FullscreenButton component
  */
-export function FullscreenButton({ isFullscreen, onToggle }) {
+export function FullscreenButton({ isFullscreen, onToggle }: FullscreenButtonProps) {
   if (isFullscreen) return null;
 
   return (
@@ -459,6 +482,12 @@ export function FullscreenButton({ isFullscreen, onToggle }) {
   );
 }
 
+export interface FullscreenManagerProps {
+  isFullscreen: boolean;
+  setIsFullscreen: Dispatch<StateUpdater<boolean>>;
+  targetId?: string;
+}
+
 /**
  * FullscreenManager component
  * @param {Object} props Component props
@@ -467,7 +496,7 @@ export function FullscreenButton({ isFullscreen, onToggle }) {
  * @param {string} props.targetId ID of the element to make fullscreen
  * @returns {JSX.Element} FullscreenManager component
  */
-export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'live-page' }) {
+export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'live-page' }: FullscreenManagerProps) {
   // Handle escape key (via tinykeys) and apply/remove fullscreen CSS
   useEffect(() => {
     if (!isFullscreen) return;
@@ -500,7 +529,7 @@ export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'l
   // Register the toggleFullscreen function globally for backward compatibility
   useEffect(() => {
     // Create a wrapper function that uses the current setIsFullscreen
-    const toggleFullscreenWrapper = (currentIsFullscreen, setterFunc) => {
+    const toggleFullscreenWrapper: ToggleFullscreenGlobal = (currentIsFullscreen, setterFunc) => {
       // If setterFunc is provided, use it (for backward compatibility)
       if (typeof setterFunc === 'function') {
         setterFunc(!currentIsFullscreen);

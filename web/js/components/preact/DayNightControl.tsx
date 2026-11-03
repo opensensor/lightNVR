@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Day/Night mode control for ONVIF cameras (IR cut filter)
  *
@@ -10,6 +9,11 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { useI18n } from '../../i18n.ts';
 import { showStatusMessage } from './ToastContainer.tsx';
+import type { DayNightResponse } from '../../types/live.ts';
+
+export interface DayNightControlProps {
+  stream?: { name: string; isOnvif?: boolean } | null;
+}
 
 const MODES = ['auto', 'day', 'night'];
 
@@ -40,19 +44,19 @@ function AutoIcon() {
   );
 }
 
-export function DayNightControl({ stream }) {
+export function DayNightControl({ stream }: DayNightControlProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState(null);      // 'auto' | 'day' | 'night' | 'unknown' | null (not yet loaded)
+  const [mode, setMode] = useState<string | null>(null);      // 'auto' | 'day' | 'night' | 'unknown' | null (not yet loaded)
   const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState(null); // mode currently being applied
-  const containerRef = useRef(null);
+  const [pending, setPending] = useState<string | null>(null); // mode currently being applied
+  const containerRef = useRef<HTMLSpanElement | null>(null);
 
   // Close the popover on outside clicks
   useEffect(() => {
     if (!open) return undefined;
-    const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node | null)) {
         setOpen(false);
       }
     };
@@ -68,14 +72,14 @@ export function DayNightControl({ stream }) {
     setLoading(true);
     try {
       const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/daynight`);
-      const data = await response.json().catch(() => null);
+      const data: DayNightResponse | null = await response.json().catch(() => null);
       if (!response.ok || !data?.success) {
         throw new Error(data?.error || `HTTP ${response.status}`);
       }
       setMode(data.mode || 'unknown');
     } catch (err) {
       setMode('unknown');
-      showStatusMessage(`${t('live.dayNightLoadFailed')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.dayNightLoadFailed')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
       setLoading(false);
     }
@@ -89,7 +93,7 @@ export function DayNightControl({ stream }) {
     }
   };
 
-  const applyMode = async (nextMode) => {
+  const applyMode = async (nextMode: string) => {
     if (pending) return;
     setPending(nextMode);
     try {
@@ -98,14 +102,14 @@ export function DayNightControl({ stream }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: nextMode })
       });
-      const data = await response.json().catch(() => null);
+      const data: DayNightResponse | null = await response.json().catch(() => null);
       if (!response.ok || !data?.success) {
         throw new Error(data?.error || `HTTP ${response.status}`);
       }
       setMode(data.mode || nextMode);
       showStatusMessage(t('live.dayNightApplied', { mode: t(`live.dayNightMode_${data.mode || nextMode}`) }), 'success', 3000);
     } catch (err) {
-      showStatusMessage(`${t('live.dayNightApplyFailed')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.dayNightApplyFailed')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
       setPending(null);
     }

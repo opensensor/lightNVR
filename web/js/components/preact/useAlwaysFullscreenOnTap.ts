@@ -1,9 +1,19 @@
-// @ts-nocheck
 import { useEffect, useState } from 'preact/hooks';
+import type { Dispatch, StateUpdater } from 'preact/hooks';
+
+interface FullscreenDocumentLike {
+  fullscreenElement?: Element | null;
+  webkitFullscreenElement?: Element | null;
+}
+
+/** Tile gesture events; only `target` is read. */
+interface GestureEventLike {
+  target?: EventTarget | null;
+}
 
 export const ALWAYS_FULLSCREEN_ON_TAP_KEY = 'lightnvr-always-fullscreen-on-tap';
 
-export function readAlwaysFullscreenOnTap(storage) {
+export function readAlwaysFullscreenOnTap(storage?: Storage | null): boolean {
   try {
     const selectedStorage = storage ?? globalThis.localStorage;
     return selectedStorage?.getItem(ALWAYS_FULLSCREEN_ON_TAP_KEY) === 'true';
@@ -12,7 +22,7 @@ export function readAlwaysFullscreenOnTap(storage) {
   }
 }
 
-export function writeAlwaysFullscreenOnTap(value, storage) {
+export function writeAlwaysFullscreenOnTap(value: unknown, storage?: Storage | null): void {
   try {
     const selectedStorage = storage ?? globalThis.localStorage;
     selectedStorage?.setItem(ALWAYS_FULLSCREEN_ON_TAP_KEY, String(Boolean(value)));
@@ -21,19 +31,19 @@ export function writeAlwaysFullscreenOnTap(value, storage) {
   }
 }
 
-export function useAlwaysFullscreenOnTap() {
+export function useAlwaysFullscreenOnTap(): [boolean, Dispatch<StateUpdater<boolean>>] {
   const [enabled, setEnabled] = useState(() => readAlwaysFullscreenOnTap());
   useEffect(() => writeAlwaysFullscreenOnTap(enabled), [enabled]);
   return [enabled, setEnabled];
 }
 
-function isFullscreenGestureTarget(event) {
-  const target = event?.target;
+function isFullscreenGestureTarget(event?: GestureEventLike | null) {
+  const target = event?.target as Element | null | undefined;
   return !(target && typeof target.closest === 'function'
     && target.closest('button, a, input, select, textarea, [role="button"], [role="menu"]'));
 }
 
-function currentFullscreenElement(documentObject) {
+function currentFullscreenElement(documentObject?: FullscreenDocumentLike | null) {
   return documentObject?.fullscreenElement || documentObject?.webkitFullscreenElement || null;
 }
 
@@ -45,12 +55,12 @@ function currentFullscreenElement(documentObject) {
  * owns fullscreen, and taps on controls or a zoomed tile are left alone.
  */
 export function shouldToggleFullscreenFromTap(
-  event,
-  enabled,
-  zoomed = false,
-  cellElement = null,
-  fullscreenElement = currentFullscreenElement(globalThis.document)
-) {
+  event: GestureEventLike | null | undefined,
+  enabled: boolean,
+  zoomed: boolean = false,
+  cellElement: Element | null = null,
+  fullscreenElement: Element | null = currentFullscreenElement(globalThis.document)
+): boolean {
   if (!enabled || zoomed) return false;
   if (fullscreenElement && fullscreenElement !== cellElement) return false;
   return isFullscreenGestureTarget(event);
@@ -62,9 +72,9 @@ export function shouldToggleFullscreenFromTap(
  * second double-click can reach the shared exitFullscreen path.
  */
 export function shouldToggleFullscreenFromDoubleClick(
-  event,
-  alwaysFullscreenOnTap,
-  zoomed = false
-) {
+  event: GestureEventLike | null | undefined,
+  alwaysFullscreenOnTap: boolean,
+  zoomed: boolean = false
+): boolean {
   return !alwaysFullscreenOnTap && !zoomed && isFullscreenGestureTarget(event);
 }

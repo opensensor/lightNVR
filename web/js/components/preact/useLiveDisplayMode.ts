@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { useCallback, useEffect, useState } from 'preact/hooks';
+import type { LiveDisplayMode } from '../../types/live.ts';
 
 /**
  * Live view display mode: how each grid tile scales its stream (#619).
@@ -11,15 +11,15 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
  * The choice is persisted like the other live view preferences.
  */
 export const LIVE_DISPLAY_MODE_KEY = 'lightnvr-live-display-mode';
-export const LIVE_DISPLAY_MODES = Object.freeze(['fit', 'fill']);
+export const LIVE_DISPLAY_MODES = Object.freeze(['fit', 'fill'] as const);
 export const DEFAULT_LIVE_DISPLAY_MODE = 'fit';
 
-export function normalizeLiveDisplayMode(value) {
+export function normalizeLiveDisplayMode(value: unknown): LiveDisplayMode {
   const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
-  return LIVE_DISPLAY_MODES.includes(mode) ? mode : DEFAULT_LIVE_DISPLAY_MODE;
+  return LIVE_DISPLAY_MODES.includes(mode as LiveDisplayMode) ? mode as LiveDisplayMode : DEFAULT_LIVE_DISPLAY_MODE;
 }
 
-export function readLiveDisplayMode(storage) {
+export function readLiveDisplayMode(storage?: Storage | null): LiveDisplayMode {
   try {
     const selectedStorage = storage ?? globalThis.localStorage;
     return normalizeLiveDisplayMode(selectedStorage?.getItem(LIVE_DISPLAY_MODE_KEY));
@@ -28,7 +28,7 @@ export function readLiveDisplayMode(storage) {
   }
 }
 
-export function writeLiveDisplayMode(mode, storage) {
+export function writeLiveDisplayMode(mode: unknown, storage?: Storage | null): void {
   try {
     const selectedStorage = storage ?? globalThis.localStorage;
     selectedStorage?.setItem(LIVE_DISPLAY_MODE_KEY, normalizeLiveDisplayMode(mode));
@@ -37,11 +37,11 @@ export function writeLiveDisplayMode(mode, storage) {
   }
 }
 
-export function nextLiveDisplayMode(mode) {
+export function nextLiveDisplayMode(mode: unknown): LiveDisplayMode {
   return normalizeLiveDisplayMode(mode) === 'fit' ? 'fill' : 'fit';
 }
 
-export function objectFitForLiveDisplayMode(mode) {
+export function objectFitForLiveDisplayMode(mode: unknown): 'cover' | 'contain' {
   return normalizeLiveDisplayMode(mode) === 'fill' ? 'cover' : 'contain';
 }
 
@@ -54,7 +54,7 @@ export function objectFitForLiveDisplayMode(mode) {
  *
  * @returns {{drawWidth: number, drawHeight: number, offsetX: number, offsetY: number}}
  */
-export function displayedVideoBox(boxWidth, boxHeight, videoWidth, videoHeight, objectFit = 'contain') {
+export function displayedVideoBox(boxWidth: number, boxHeight: number, videoWidth: number, videoHeight: number, objectFit: string = 'contain') {
   if (!boxWidth || !boxHeight || !videoWidth || !videoHeight) {
     return { drawWidth: boxWidth || 0, drawHeight: boxHeight || 0, offsetX: 0, offsetY: 0 };
   }
@@ -73,9 +73,9 @@ export function displayedVideoBox(boxWidth, boxHeight, videoWidth, videoHeight, 
   return { drawWidth, drawHeight: boxHeight, offsetX: (boxWidth - drawWidth) / 2, offsetY: 0 };
 }
 
-export function useLiveDisplayMode() {
+export function useLiveDisplayMode(): [LiveDisplayMode, (next: unknown) => void] {
   const [mode, setMode] = useState(() => readLiveDisplayMode());
   useEffect(() => writeLiveDisplayMode(mode), [mode]);
-  const setDisplayMode = useCallback((next) => setMode(normalizeLiveDisplayMode(next)), []);
+  const setDisplayMode = useCallback((next: unknown) => setMode(normalizeLiveDisplayMode(next)), []);
   return [mode, setDisplayMode];
 }

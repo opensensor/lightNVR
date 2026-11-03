@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   SKETCH_LABEL_SIZES,
   SKETCH_LIMITS,
@@ -7,6 +6,53 @@ import {
   normalizeShape,
   shapeSummary,
 } from './planSketch.ts';
+import type {
+  RawSketchShape,
+  SketchAreaShape,
+  SketchRectShape,
+  SketchShape,
+  SketchTone,
+  SketchTool,
+  SketchWallShape,
+  Translate,
+} from '../../../types/live.ts';
+
+export interface PlanSketchToolsProps {
+  tool: SketchTool;
+  onToolChange: (tool: SketchTool) => unknown;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => unknown;
+  onRedo: () => unknown;
+  snap: boolean;
+  onSnapChange: (snap: boolean) => unknown;
+  toolLock: boolean;
+  onToolLockChange: (toolLock: boolean) => unknown;
+  shapeCount: number;
+  t: Translate;
+}
+
+interface PercentFieldProps {
+  id: string;
+  label: string;
+  value: number;
+  onCommit: (value: number) => unknown;
+}
+
+export interface PlanSketchInspectorProps {
+  uid: string;
+  shapes: SketchShape[];
+  selectedShape: SketchShape | null;
+  selectedIds?: Set<string>;
+  selectionCount?: number;
+  t: Translate;
+  onSelect: (shapeId: string, additive: boolean) => unknown;
+  onChange: (shape: SketchShape) => unknown;
+  onRecolorSelection: (tone: SketchTone) => unknown;
+  onDelete: () => unknown;
+  onDuplicate: () => unknown;
+  onDeselect: () => unknown;
+}
 
 const TOOL_KEYS = { select: 'V', room: 'R', wall: 'W', area: 'A', label: 'L' };
 
@@ -14,7 +60,7 @@ const TOOL_KEYS = { select: 'V', room: 'R', wall: 'W', area: 'A', label: 'L' };
 export function PlanSketchTools({
   tool, onToolChange, canUndo, canRedo, onUndo, onRedo,
   snap, onSnapChange, toolLock, onToolLockChange, shapeCount, t,
-}) {
+}: PlanSketchToolsProps) {
   const limitReached = shapeCount >= SKETCH_LIMITS.maxShapes;
   return (
     <div className="live-plan-sketch-tools" role="toolbar"
@@ -55,16 +101,16 @@ export function PlanSketchTools({
   );
 }
 
-function percentValue(fraction) {
+function percentValue(fraction: number) {
   return `${Math.round(fraction * 1000) / 10}`;
 }
 
-function parsePercent(value) {
+function parsePercent(value: string) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number / 100)) : null;
 }
 
-function PercentField({ id, label, value, onCommit }) {
+function PercentField({ id, label, value, onCommit }: PercentFieldProps) {
   return (
     <label className="live-plan-sketch-field" htmlFor={id}>
       <span>{label}</span>
@@ -78,7 +124,7 @@ function PercentField({ id, label, value, onCommit }) {
   );
 }
 
-function updateRect(shape, key, value) {
+function updateRect(shape: SketchRectShape, key: 'x' | 'y' | 'w' | 'h', value: number): SketchShape {
   const next = { ...shape };
   if (key === 'x') next.x = Math.min(value, 1 - shape.w);
   if (key === 'y') next.y = Math.min(value, 1 - shape.h);
@@ -87,7 +133,7 @@ function updateRect(shape, key, value) {
   return normalizeShape(next) || shape;
 }
 
-function updatePoint(shape, index, axis, value) {
+function updatePoint(shape: SketchWallShape | SketchAreaShape, index: number, axis: 0 | 1, value: number): SketchShape {
   const points = shape.points.map((point, candidate) => candidate === index
     ? (axis === 0 ? [value, point[1]] : [point[0], value]) : point);
   return normalizeShape({ ...shape, points }) || shape;
@@ -101,17 +147,17 @@ function updatePoint(shape, index, axis, value) {
 export function PlanSketchInspector({
   uid, shapes, selectedShape, selectedIds, selectionCount = 0, t,
   onSelect, onChange, onRecolorSelection, onDelete, onDuplicate, onDeselect,
-}) {
+}: PlanSketchInspectorProps) {
   const shape = selectedShape;
-  const commit = (next) => {
+  const commit = (next: RawSketchShape) => {
     const normalized = normalizeShape(next);
     if (normalized) onChange(normalized);
   };
   const multiple = selectionCount > 1;
   const selectedList = multiple ? shapes.filter((candidate) => selectedIds?.has(candidate.id)) : [];
   const commonTone = selectedList.length > 0 &&
-    selectedList.every((candidate) => candidate.tone === selectedList[0].tone)
-    ? selectedList[0].tone : null;
+    selectedList.every((candidate) => candidate.tone === selectedList[0]!.tone)
+    ? selectedList[0]!.tone : null;
   return (
     <div className="live-plan-sketch-inspector">
       {multiple ? (

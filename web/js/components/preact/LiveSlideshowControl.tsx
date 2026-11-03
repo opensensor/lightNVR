@@ -1,12 +1,20 @@
-// @ts-nocheck
 import { useI18n } from '../../i18n.ts';
 import { LIVE_SLIDESHOW_INTERVALS } from './useLiveSlideshow.ts';
+
+export interface LiveSlideshowControlProps {
+  enabled: boolean;
+  interval: number;
+  isSingleStream: boolean;
+  onToggle: (enabled: boolean) => unknown;
+  /** Receives the selected option's string value. */
+  onIntervalChange: (interval: string) => unknown;
+}
 
 /**
  * Slideshow toggle for the live view toolbar, with an interval picker shown
  * while it is on. In a 1x1 layout it cycles cameras; otherwise grid pages.
  */
-export function LiveSlideshowControl({ enabled, interval, isSingleStream, onToggle, onIntervalChange }) {
+export function LiveSlideshowControl({ enabled, interval, isSingleStream, onToggle, onIntervalChange }: LiveSlideshowControlProps) {
   const { t } = useI18n();
   const label = enabled
     ? t('live.slideshowStop')

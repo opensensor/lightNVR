@@ -1,6 +1,6 @@
-// @ts-nocheck
 import { useI18n } from '../../i18n.ts';
 import { LIVE_DISPLAY_MODES, normalizeLiveDisplayMode } from './useLiveDisplayMode.ts';
+import type { LiveDisplayMode } from '../../types/live.ts';
 
 const LABEL_KEYS = {
   fit: 'live.displayModeFit',
@@ -12,7 +12,11 @@ const DESCRIPTION_KEYS = {
   fill: 'live.displayModeFillDescription',
 };
 
-function DisplayModeIcon({ mode }) {
+interface DisplayModeIconProps {
+  mode: LiveDisplayMode;
+}
+
+function DisplayModeIcon({ mode }: DisplayModeIconProps) {
   if (mode === 'fill') {
     // Frame that overflows the tile: arrows pushing out of the corners.
     return (
@@ -31,12 +35,17 @@ function DisplayModeIcon({ mode }) {
   );
 }
 
+export interface LiveDisplayModeToggleProps {
+  mode: unknown;
+  onChange: (mode: LiveDisplayMode) => unknown;
+}
+
 /**
  * Fit / Fill segmented control for the live view toolbar (#619).
  * Fit keeps the whole frame visible (letterboxed); Fill fills the tile and
  * crops the frame edges.
  */
-export function LiveDisplayModeToggle({ mode, onChange }) {
+export function LiveDisplayModeToggle({ mode, onChange }: LiveDisplayModeToggleProps) {
   const { t } = useI18n();
   const current = normalizeLiveDisplayMode(mode);
   return (

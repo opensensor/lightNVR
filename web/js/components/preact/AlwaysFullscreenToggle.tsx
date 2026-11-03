@@ -1,7 +1,11 @@
-// @ts-nocheck
 import { useI18n } from '../../i18n.ts';
 
-export function AlwaysFullscreenToggle({ enabled, onChange }) {
+export interface AlwaysFullscreenToggleProps {
+  enabled: boolean;
+  onChange: (enabled: boolean) => unknown;
+}
+
+export function AlwaysFullscreenToggle({ enabled, onChange }: AlwaysFullscreenToggleProps) {
   const { t } = useI18n();
   const label = enabled
     ? t('live.alwaysFullscreenOnTapDisable')

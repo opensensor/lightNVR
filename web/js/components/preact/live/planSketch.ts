@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Pure helpers for the building-plan layout sketch: the vector rooms, walls,
  * areas and labels an operator draws on a plan instead of (or on top of) an
@@ -9,13 +8,35 @@
  * canonicalizes every shape; these limits mirror its bounds.
  */
 
+import type {
+  PlanPoint,
+  PlanRect,
+  RawSketchShape,
+  RectCorner,
+  RectEdge,
+  ShapeOrderDirection,
+  SketchAreaShape,
+  SketchBounds,
+  SketchCanvas,
+  SketchHistory,
+  SketchLabelSize,
+  SketchPoint,
+  SketchRectShape,
+  SketchShape,
+  SketchTone,
+  SketchWallShape,
+  Translate,
+} from '../../../types/live.ts';
+
+type SketchPolylineShape = SketchWallShape | SketchAreaShape;
+
 export const SKETCH_VERSION = 1;
 export const SKETCH_TONES = Object.freeze([
   'slate', 'blue', 'green', 'amber', 'red', 'violet',
-]);
-export const SKETCH_LABEL_SIZES = Object.freeze(['sm', 'md', 'lg']);
-export const SKETCH_SHAPE_TYPES = Object.freeze(['rect', 'wall', 'area', 'label']);
-export const SKETCH_TOOLS = Object.freeze(['select', 'room', 'wall', 'area', 'label']);
+] as const);
+export const SKETCH_LABEL_SIZES = Object.freeze(['sm', 'md', 'lg'] as const);
+export const SKETCH_SHAPE_TYPES = Object.freeze(['rect', 'wall', 'area', 'label'] as const);
+export const SKETCH_TOOLS = Object.freeze(['select', 'room', 'wall', 'area', 'label'] as const);
 export const SKETCH_LIMITS = Object.freeze({
   maxShapes: 400,
   maxPoints: 64,
@@ -30,26 +51,26 @@ export const SKETCH_GRID = 40;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
-function clamp01(value) {
+function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function round4(value) {
+function round4(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-function finiteUnit(value) {
-  return Number.isFinite(value) && value >= 0 && value <= 1;
+function finiteUnit(value: unknown): value is number {
+  return Number.isFinite(value) && (value as number) >= 0 && (value as number) <= 1;
 }
 
-function cleanText(value) {
+function cleanText(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.replace(/\s+/g, ' ').trim();
   if (!trimmed || CONTROL_CHARS.test(trimmed)) return '';
   return trimmed.slice(0, SKETCH_LIMITS.textMax);
 }
 
-export function createShapeId(existingIds = []) {
+export function createShapeId(existingIds: Iterable<string> = []): string {
   const taken = new Set(existingIds);
   for (let attempt = 0; attempt < 32; attempt++) {
     const candidate = `s${Date.now().toString(36)}${Math.floor(Math.random() * 46656)
@@ -59,13 +80,13 @@ export function createShapeId(existingIds = []) {
   return `s${Date.now().toString(36)}${taken.size}`;
 }
 
-function normalizePoints(points, minimum) {
+function normalizePoints(points: unknown, minimum: number): SketchPoint[] | null {
   if (!Array.isArray(points) || points.length < minimum ||
     points.length > SKETCH_LIMITS.maxPoints) return null;
-  const normalized = [];
+  const normalized: SketchPoint[] = [];
   for (const point of points) {
-    const x = Array.isArray(point) ? point[0] : point?.x;
-    const y = Array.isArray(point) ? point[1] : point?.y;
+    const x: unknown = Array.isArray(point) ? point[0] : point?.x;
+    const y: unknown = Array.isArray(point) ? point[1] : point?.y;
     if (!finiteUnit(x) || !finiteUnit(y)) return null;
     normalized.push([round4(x), round4(y)]);
   }
@@ -76,17 +97,17 @@ function normalizePoints(points, minimum) {
  * Validate one stored or drafted shape. Returns a clean copy with only the
  * known fields, or null when the shape cannot be rendered safely.
  */
-export function normalizeShape(raw) {
+export function normalizeShape(raw?: RawSketchShape | null): SketchShape | null {
   if (!raw || typeof raw !== 'object') return null;
   if (typeof raw.id !== 'string' || !ID_PATTERN.test(raw.id)) return null;
-  const tone = SKETCH_TONES.includes(raw.tone) ? raw.tone : SKETCH_TONES[0];
+  const tone = SKETCH_TONES.includes(raw.tone as SketchTone) ? raw.tone as SketchTone : SKETCH_TONES[0];
   switch (raw.type) {
     case 'rect': {
-      const { x, y, w, h } = raw;
+      const { x, y, w, h } = raw as Record<'x' | 'y' | 'w' | 'h', number>;
       if (![x, y, w, h].every(Number.isFinite) || !finiteUnit(x) || !finiteUnit(y) ||
         w < SKETCH_LIMITS.minRectSide || h < SKETCH_LIMITS.minRectSide ||
         x + w > 1 + 1e-6 || y + h > 1 + 1e-6) return null;
-      const shape = {
+      const shape: SketchRectShape = {
         id: raw.id, type: 'rect', tone,
         x: round4(x), y: round4(y),
         w: round4(Math.min(w, 1 - x)), h: round4(Math.min(h, 1 - y)),
@@ -103,7 +124,7 @@ export function normalizeShape(raw) {
     case 'area': {
       const points = normalizePoints(raw.points, 3);
       if (!points) return null;
-      const shape = { id: raw.id, type: 'area', tone, points };
+      const shape: SketchAreaShape = { id: raw.id, type: 'area', tone, points };
       const label = cleanText(raw.label);
       if (label) shape.label = label;
       return shape;
@@ -114,7 +135,7 @@ export function normalizeShape(raw) {
       return {
         id: raw.id, type: 'label', tone,
         x: round4(raw.x), y: round4(raw.y), text,
-        size: SKETCH_LABEL_SIZES.includes(raw.size) ? raw.size : 'md',
+        size: SKETCH_LABEL_SIZES.includes(raw.size as SketchLabelSize) ? raw.size as SketchLabelSize : 'md',
       };
     }
     default:
@@ -123,11 +144,11 @@ export function normalizeShape(raw) {
 }
 
 /** Shapes from an API plan object; corrupt entries are dropped, not fatal. */
-export function sketchShapesFromPlan(plan) {
+export function sketchShapesFromPlan(plan?: { sketch?: { shapes?: RawSketchShape[] } | null } | null): SketchShape[] {
   const shapes = plan?.sketch?.shapes;
   if (!Array.isArray(shapes)) return [];
-  const seen = new Set();
-  const result = [];
+  const seen = new Set<string>();
+  const result: SketchShape[] = [];
   for (const raw of shapes) {
     const shape = normalizeShape(raw);
     if (!shape || seen.has(shape.id)) continue;
@@ -139,8 +160,8 @@ export function sketchShapesFromPlan(plan) {
 }
 
 /** API payload for a draft: null clears the stored sketch. */
-export function sketchPayload(shapes) {
-  const clean = (shapes || []).map(normalizeShape).filter(Boolean)
+export function sketchPayload(shapes?: readonly RawSketchShape[] | null) {
+  const clean = ((shapes || []).map(normalizeShape).filter(Boolean) as SketchShape[])
     .slice(0, SKETCH_LIMITS.maxShapes);
   if (clean.length === 0) return null;
   return { version: SKETCH_VERSION, shapes: clean };
@@ -150,7 +171,7 @@ export function sketchPayload(shapes) {
  * Snap a plan-fraction point to the drawn grid. The grid is square in canvas
  * units, so the fraction step differs per axis on non-square canvases.
  */
-export function snapPoint(point, canvas, enabled = true) {
+export function snapPoint(point: PlanPoint, canvas?: SketchCanvas | null, enabled: boolean = true): PlanPoint {
   const x = clamp01(point.x);
   const y = clamp01(point.y);
   if (!enabled || !canvas?.width || !canvas?.height) return { x: round4(x), y: round4(y) };
@@ -162,14 +183,14 @@ export function snapPoint(point, canvas, enabled = true) {
   };
 }
 
-export function gridStep(canvas) {
+export function gridStep(canvas?: SketchCanvas | null): PlanPoint {
   return {
     x: canvas?.width ? SKETCH_GRID / canvas.width : 0.02,
     y: canvas?.height ? SKETCH_GRID / canvas.height : 0.02,
   };
 }
 
-export function shapeBounds(shape) {
+export function shapeBounds(shape: SketchShape): SketchBounds {
   if (shape.type === 'rect') {
     return { x0: shape.x, y0: shape.y, x1: shape.x + shape.w, y1: shape.y + shape.h };
   }
@@ -184,13 +205,13 @@ export function shapeBounds(shape) {
   };
 }
 
-export function shapeCenter(shape) {
+export function shapeCenter(shape: SketchShape): PlanPoint {
   const bounds = shapeBounds(shape);
   return { x: (bounds.x0 + bounds.x1) / 2, y: (bounds.y0 + bounds.y1) / 2 };
 }
 
 /** Move a shape, clamping so it stays entirely inside the plan. */
-export function translateShape(shape, dx, dy) {
+export function translateShape(shape: SketchShape, dx: number, dy: number): SketchShape {
   const bounds = shapeBounds(shape);
   const shiftX = Math.max(-bounds.x0, Math.min(1 - bounds.x1, dx));
   const shiftY = Math.max(-bounds.y0, Math.min(1 - bounds.y1, dy));
@@ -199,19 +220,19 @@ export function translateShape(shape, dx, dy) {
   }
   return {
     ...shape,
-    points: shape.points.map(([x, y]) => [round4(x + shiftX), round4(y + shiftY)]),
+    points: shape.points.map(([x, y]): SketchPoint => [round4(x + shiftX), round4(y + shiftY)]),
   };
 }
 
-export function moveShapeVertex(shape, index, point) {
+export function moveShapeVertex(shape: SketchShape, index: number, point: PlanPoint): SketchShape {
   if (!Array.isArray(shape.points) || index < 0 || index >= shape.points.length) return shape;
   const points = shape.points.slice();
   points[index] = [round4(clamp01(point.x)), round4(clamp01(point.y))];
-  return { ...shape, points };
+  return { ...shape as SketchPolylineShape, points };
 }
 
 /** Build a rectangle from two drag corners; null when it is too small. */
-export function rectFromPoints(a, b) {
+export function rectFromPoints(a: PlanPoint, b: PlanPoint): PlanRect | null {
   const x0 = clamp01(Math.min(a.x, b.x));
   const y0 = clamp01(Math.min(a.y, b.y));
   const x1 = clamp01(Math.max(a.x, b.x));
@@ -225,7 +246,7 @@ export function rectFromPoints(a, b) {
 const CORNERS = Object.freeze(['nw', 'ne', 'sw', 'se']);
 
 /** Drag one rect corner; the opposite corner stays fixed. */
-export function resizeRectCorner(shape, corner, point) {
+export function resizeRectCorner(shape: SketchShape, corner: RectCorner, point: PlanPoint): SketchShape {
   if (shape.type !== 'rect' || !CORNERS.includes(corner)) return shape;
   const anchor = {
     x: corner.includes('w') ? shape.x + shape.w : shape.x,
@@ -235,7 +256,7 @@ export function resizeRectCorner(shape, corner, point) {
   return rect ? { ...shape, ...rect } : shape;
 }
 
-export function rectCorners(shape) {
+export function rectCorners(shape: SketchRectShape): (PlanPoint & { corner: RectCorner })[] {
   return [
     { corner: 'nw', x: shape.x, y: shape.y },
     { corner: 'ne', x: shape.x + shape.w, y: shape.y },
@@ -247,7 +268,7 @@ export function rectCorners(shape) {
 const EDGES = Object.freeze(['n', 's', 'e', 'w']);
 
 /** Drag one rect edge; the opposite edge and the other axis stay fixed. */
-export function resizeRectEdge(shape, edge, point) {
+export function resizeRectEdge(shape: SketchShape, edge: RectEdge, point: PlanPoint): SketchShape {
   if (shape.type !== 'rect' || !EDGES.includes(edge)) return shape;
   const x0 = shape.x;
   const y0 = shape.y;
@@ -264,7 +285,7 @@ export function resizeRectEdge(shape, edge, point) {
 }
 
 /** Edge handles at the midpoint of each rect side. */
-export function rectEdges(shape) {
+export function rectEdges(shape: SketchRectShape): (PlanPoint & { edge: RectEdge })[] {
   return [
     { edge: 'n', x: shape.x + shape.w / 2, y: shape.y },
     { edge: 's', x: shape.x + shape.w / 2, y: shape.y + shape.h },
@@ -277,39 +298,39 @@ export function rectEdges(shape) {
  * Midpoints of each polyline segment (closing segment included for areas);
  * dragging one inserts a new vertex after `index`.
  */
-export function segmentMidpoints(shape) {
+export function segmentMidpoints(shape?: SketchShape | null): (PlanPoint & { index: number })[] {
   if (!Array.isArray(shape?.points) || shape.points.length >= SKETCH_LIMITS.maxPoints) return [];
   const points = shape.points;
   const count = shape.type === 'area' ? points.length : points.length - 1;
-  const result = [];
+  const result: (PlanPoint & { index: number })[] = [];
   for (let index = 0; index < count; index++) {
-    const [ax, ay] = points[index];
-    const [bx, by] = points[(index + 1) % points.length];
+    const [ax, ay] = points[index]!;
+    const [bx, by] = points[(index + 1) % points.length]!;
     result.push({ index, x: (ax + bx) / 2, y: (ay + by) / 2 });
   }
   return result;
 }
 
-export function insertShapeVertex(shape, afterIndex, point) {
+export function insertShapeVertex(shape: SketchShape, afterIndex: number, point: PlanPoint): SketchShape {
   if (!Array.isArray(shape.points) || shape.points.length >= SKETCH_LIMITS.maxPoints ||
     afterIndex < 0 || afterIndex >= shape.points.length) return shape;
   const points = shape.points.slice();
   points.splice(afterIndex + 1, 0, [round4(clamp01(point.x)), round4(clamp01(point.y))]);
-  return { ...shape, points };
+  return { ...shape as SketchPolylineShape, points };
 }
 
-export function canRemoveVertex(shape) {
+export function canRemoveVertex(shape?: SketchShape | null): boolean {
   if (!Array.isArray(shape?.points)) return false;
   return shape.points.length > (shape.type === 'area' ? 3 : 2);
 }
 
-export function removeShapeVertex(shape, index) {
-  if (!canRemoveVertex(shape) || index < 0 || index >= shape.points.length) return shape;
-  return { ...shape, points: shape.points.filter((_, candidate) => candidate !== index) };
+export function removeShapeVertex(shape: SketchShape, index: number): SketchShape {
+  if (!canRemoveVertex(shape) || index < 0 || index >= shape.points!.length) return shape;
+  return { ...shape as SketchPolylineShape, points: shape.points!.filter((_, candidate) => candidate !== index) };
 }
 
 /** Move a shape within the draw order: 'front', 'back', 'forward', 'backward'. */
-export function reorderShape(shapes, id, direction) {
+export function reorderShape(shapes: SketchShape[], id: string, direction: ShapeOrderDirection): SketchShape[] {
   const index = shapes.findIndex((shape) => shape.id === id);
   if (index < 0) return shapes;
   const next = shapes.slice();
@@ -320,7 +341,7 @@ export function reorderShape(shapes, id, direction) {
   else if (direction === 'forward') target = Math.min(next.length, index + 1);
   else if (direction === 'backward') target = Math.max(0, index - 1);
   if (target === index) return shapes;
-  next.splice(target, 0, shape);
+  next.splice(target, 0, shape!);
   return next;
 }
 
@@ -328,7 +349,7 @@ export function reorderShape(shapes, id, direction) {
  * Constrain `point` so the segment from `origin` runs at a multiple of 45°
  * in canvas space (the canvas is not square in plan fractions).
  */
-export function constrainAngle(origin, point, canvas) {
+export function constrainAngle(origin: PlanPoint | null | undefined, point: PlanPoint, canvas?: SketchCanvas | null): PlanPoint {
   if (!origin || !canvas?.width || !canvas?.height) return point;
   const dx = (point.x - origin.x) * canvas.width;
   const dy = (point.y - origin.y) * canvas.height;
@@ -349,7 +370,7 @@ export function constrainAngle(origin, point, canvas) {
  * SVG y grows downward) from a placement toward a plan point. Returns null
  * when the point is on top of the camera. `snapDegrees` rounds the heading.
  */
-export function aimRotation(from, toward, canvas, snapDegrees = 0) {
+export function aimRotation(from: PlanPoint | null | undefined, toward: PlanPoint | null | undefined, canvas?: SketchCanvas | null, snapDegrees: number = 0): number | null {
   if (!from || !toward || !canvas?.width || !canvas?.height) return null;
   const dx = (toward.x - from.x) * canvas.width;
   const dy = (toward.y - from.y) * canvas.height;
@@ -362,7 +383,7 @@ export function aimRotation(from, toward, canvas, snapDegrees = 0) {
 }
 
 /** Rotate a heading by `delta` degrees, wrapping into -180..180. */
-export function wrapRotation(rotation, delta) {
+export function wrapRotation(rotation: number, delta: number): number {
   let next = (Number.isFinite(rotation) ? rotation : 0) + delta;
   while (next > 180) next -= 360;
   while (next <= -180) next += 360;
@@ -370,7 +391,7 @@ export function wrapRotation(rotation, delta) {
 }
 
 /** Union bounds of several shapes, or null for an empty list. */
-export function shapesBounds(shapes) {
+export function shapesBounds(shapes?: SketchShape[] | null): SketchBounds | null {
   if (!shapes || shapes.length === 0) return null;
   return shapes.map(shapeBounds).reduce((acc, bounds) => ({
     x0: Math.min(acc.x0, bounds.x0), y0: Math.min(acc.y0, bounds.y0),
@@ -379,7 +400,7 @@ export function shapesBounds(shapes) {
 }
 
 /** Ids of shapes lying entirely inside a marquee rectangle (plan fractions). */
-export function shapesInMarquee(shapes, a, b) {
+export function shapesInMarquee(shapes: SketchShape[] | null | undefined, a: PlanPoint, b: PlanPoint): string[] {
   const x0 = Math.min(a.x, b.x);
   const y0 = Math.min(a.y, b.y);
   const x1 = Math.max(a.x, b.x);
@@ -394,7 +415,7 @@ export function shapesInMarquee(shapes, a, b) {
  * Move several shapes by one shared delta, clamped so the whole group stays
  * on the plan (shapes keep their relative positions at the edges).
  */
-export function translateShapeGroup(shapes, ids, dx, dy) {
+export function translateShapeGroup(shapes: SketchShape[], ids: string[], dx: number, dy: number): SketchShape[] {
   const selected = new Set(ids);
   const bounds = shapesBounds(shapes.filter((shape) => selected.has(shape.id)));
   if (!bounds) return shapes;
@@ -406,7 +427,7 @@ export function translateShapeGroup(shapes, ids, dx, dy) {
 }
 
 /** Bring several shapes to the front or back, keeping their relative order. */
-export function reorderShapeGroup(shapes, ids, direction) {
+export function reorderShapeGroup(shapes: SketchShape[], ids: string[], direction: ShapeOrderDirection): SketchShape[] {
   const selected = new Set(ids);
   const picked = shapes.filter((shape) => selected.has(shape.id));
   if (picked.length === 0) return shapes;
@@ -418,7 +439,7 @@ export function reorderShapeGroup(shapes, ids, direction) {
  * Field of view (1..180°) from dragging a wedge edge: twice the angle
  * between the camera heading and the pointer heading.
  */
-export function fovFromHeading(rotation, heading, snapDegrees = 0) {
+export function fovFromHeading(rotation: number, heading: number, snapDegrees: number = 0): number | null {
   if (!Number.isFinite(rotation) || !Number.isFinite(heading)) return null;
   const delta = Math.abs(wrapRotation(heading, -rotation));
   let fov = delta * 2;
@@ -427,9 +448,9 @@ export function fovFromHeading(rotation, heading, snapDegrees = 0) {
 }
 
 /** True when a click lands close enough to the first point to close an area. */
-export function closesPolygon(points, point, canvas, toleranceUnits = 14) {
+export function closesPolygon(points: SketchPoint[] | null | undefined, point: PlanPoint, canvas?: SketchCanvas | null, toleranceUnits: number = 14): boolean {
   if (!points || points.length < 3 || !canvas?.width || !canvas?.height) return false;
-  const [firstX, firstY] = points[0];
+  const [firstX, firstY] = points[0]!;
   const dx = (point.x - firstX) * canvas.width;
   const dy = (point.y - firstY) * canvas.height;
   return Math.hypot(dx, dy) <= toleranceUnits;
@@ -439,8 +460,8 @@ export function closesPolygon(points, point, canvas, toleranceUnits = 14) {
  * Turn an in-progress polyline into a shape. Double-click finishing emits a
  * duplicate trailing point, so consecutive duplicates are collapsed first.
  */
-export function finishPolyline(type, points, id, tone = SKETCH_TONES[0]) {
-  const unique = [];
+export function finishPolyline(type: 'wall' | 'area', points: SketchPoint[] | null | undefined, id: string, tone: SketchTone = SKETCH_TONES[0]): SketchShape | null {
+  const unique: SketchPoint[] = [];
   for (const point of points || []) {
     const previous = unique[unique.length - 1];
     if (previous && previous[0] === point[0] && previous[1] === point[1]) continue;
@@ -453,8 +474,8 @@ export function finishPolyline(type, points, id, tone = SKETCH_TONES[0]) {
   });
 }
 
-export function appendPolylinePoint(points, point) {
-  const next = [round4(clamp01(point.x)), round4(clamp01(point.y))];
+export function appendPolylinePoint(points: SketchPoint[], point: PlanPoint): SketchPoint[] {
+  const next: SketchPoint = [round4(clamp01(point.x)), round4(clamp01(point.y))];
   const previous = points[points.length - 1];
   if (previous && previous[0] === next[0] && previous[1] === next[1]) return points;
   if (points.length >= SKETCH_LIMITS.maxPoints) return points;
@@ -462,7 +483,7 @@ export function appendPolylinePoint(points, point) {
 }
 
 /** Human summary for shape lists and accessible names. */
-export function shapeSummary(shape, t = (key) => key) {
+export function shapeSummary(shape: SketchShape, t: Translate = (key) => key): string {
   const kind = t(`live.plan.sketch.type.${shape.type}`);
   if (shape.type === 'label') return `${kind}: ${shape.text}`;
   if (shape.label) return `${kind}: ${shape.label}`;
@@ -472,14 +493,14 @@ export function shapeSummary(shape, t = (key) => key) {
   return `${kind} · ${t('live.plan.sketch.pointCount', { count: shape.points.length })}`;
 }
 
-export function duplicateShape(shape, existingIds, canvas) {
+export function duplicateShape(shape: SketchShape, existingIds: Iterable<string>, canvas?: SketchCanvas | null): SketchShape {
   const step = gridStep(canvas);
   return translateShape({ ...shape, id: createShapeId(existingIds) }, step.x, step.y);
 }
 
 /* ---- undo / redo ------------------------------------------------------ */
 
-export function createHistory(present) {
+export function createHistory<T>(present: T): SketchHistory<T> {
   return { past: [], present, future: [] };
 }
 
@@ -488,10 +509,10 @@ export function createHistory(present) {
  * `coalesceKey` inside `windowMs` (typing a label, dragging a slider,
  * repeated arrow nudges) replace the present instead of stacking steps.
  */
-export function pushHistory(history, next, coalesceKey = null, now = Date.now(), windowMs = 1200) {
+export function pushHistory<T>(history: SketchHistory<T>, next: T, coalesceKey: string | null = null, now: number = Date.now(), windowMs: number = 1200): SketchHistory<T> {
   if (next === history.present) return history;
   if (coalesceKey && history.coalesceKey === coalesceKey &&
-    now - history.coalesceAt <= windowMs) {
+    now - history.coalesceAt! <= windowMs) {
     return { ...history, present: next, future: [], coalesceAt: now };
   }
   const past = [...history.past, history.present].slice(-SKETCH_LIMITS.historyDepth);
@@ -500,15 +521,15 @@ export function pushHistory(history, next, coalesceKey = null, now = Date.now(),
     : { past, present: next, future: [] };
 }
 
-export function undoHistory(history) {
+export function undoHistory<T>(history: SketchHistory<T>): SketchHistory<T> {
   if (history.past.length === 0) return history;
   const past = history.past.slice(0, -1);
-  const present = history.past[history.past.length - 1];
+  const present = history.past[history.past.length - 1]!;
   return { past, present, future: [history.present, ...history.future] };
 }
 
-export function redoHistory(history) {
+export function redoHistory<T>(history: SketchHistory<T>): SketchHistory<T> {
   if (history.future.length === 0) return history;
-  const [present, ...future] = history.future;
+  const [present, ...future] = history.future as [T, ...T[]];
   return { past: [...history.past, history.present], present, future };
 }
