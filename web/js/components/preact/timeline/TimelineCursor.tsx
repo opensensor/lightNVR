@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Cursor Component
  * Displays the playback cursor on the timeline
@@ -7,6 +6,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.tsx';
 import { useI18n } from '../../../i18n.ts';
+import type { TimelineDragPreview } from '../../../types/timeline.ts';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
@@ -32,13 +32,13 @@ export function TimelineCursor() {
   const [endHour, setEndHour] = useState(24);
   const [currentTime, setCurrentTime] = useState(timelineState.currentTime);
   const [selectedDate, setSelectedDate] = useState(timelineState.selectedDate);
-  const [dragPreview, setDragPreview] = useState(null);
+  const [dragPreview, setDragPreview] = useState<TimelineDragPreview | null>(null);
 
   // Refs — use refs for values read inside event-handler closures so they
   // always see the latest value without needing to re-attach listeners.
-  const cursorRef = useRef(null);
+  const cursorRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
-  const activePointerIdRef = useRef(null);
+  const activePointerIdRef = useRef<number | null>(null);
   const pointerGrabOffsetRef = useRef(0);
   // Capture playback state at drag-start so we can resume after the seek
   // (standard scrubber UX: dragging while playing should keep playing).
@@ -50,7 +50,7 @@ export function TimelineCursor() {
   endHourRef.current = endHour;
   positionRef.current = position;
 
-  const updateDragPreview = (timestamp) => {
+  const updateDragPreview = (timestamp: number | null) => {
     if (!Number.isFinite(timestamp)) {
       setDragPreview(null);
       return;
@@ -59,13 +59,13 @@ export function TimelineCursor() {
     const containingIndex = findContainingSegmentIndex(segments, timestamp);
     const segmentIndex = containingIndex !== -1
       ? containingIndex
-      : findNearestSegmentIndex(segments, timestamp);
+      : findNearestSegmentIndex(segments, timestamp as number);
     const segment = segments[segmentIndex];
     if (!segment || segment.id === null || segment.id === undefined) {
       setDragPreview(null);
       return;
     }
-    const frameIndex = getTimelinePreviewFrameIndex(segment, timestamp, 3);
+    const frameIndex = getTimelinePreviewFrameIndex(segment, timestamp as number, 3);
     const streamName = segment.stream_name || segment.stream || '';
     setDragPreview({
       frameIndex,
@@ -110,7 +110,7 @@ export function TimelineCursor() {
       });
     };
 
-    const releaseActivePointer = (pointerId) => {
+    const releaseActivePointer = (pointerId: number | null | undefined) => {
       if (pointerId === null || pointerId === undefined) {
         return;
       }
@@ -123,7 +123,7 @@ export function TimelineCursor() {
       }
     };
 
-    const handlePointerDown = (e) => {
+    const handlePointerDown = (e: PointerEvent) => {
       if (
         isDraggingRef.current ||
         !e.isPrimary ||
@@ -175,7 +175,7 @@ export function TimelineCursor() {
       document.addEventListener('pointercancel', handlePointerCancel);
     };
 
-    const handlePointerMove = (e) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!isDraggingRef.current || e.pointerId !== activePointerIdRef.current) return;
       e.preventDefault();
 
@@ -206,7 +206,7 @@ export function TimelineCursor() {
       updateDragPreview(timestamp);
     };
 
-    const finishPointerDrag = (e, cancelled = false) => {
+    const finishPointerDrag = (e: PointerEvent, cancelled = false) => {
       if (!isDraggingRef.current || e.pointerId !== activePointerIdRef.current) return;
 
       e.preventDefault();
@@ -289,8 +289,8 @@ export function TimelineCursor() {
       });
     };
 
-    const handlePointerUp = (e) => finishPointerDrag(e, false);
-    const handlePointerCancel = (e) => finishPointerDrag(e, true);
+    const handlePointerUp = (e: PointerEvent) => finishPointerDrag(e, false);
+    const handlePointerCancel = (e: PointerEvent) => finishPointerDrag(e, true);
 
     // Add event listeners
     cursor.addEventListener('pointerdown', handlePointerDown);
@@ -313,7 +313,7 @@ export function TimelineCursor() {
   }, []);
 
   // Update cursor position
-  const updateCursorPosition = (time, startHr, endHr) => {
+  const updateCursorPosition = (time: number | null, startHr: number, endHr: number) => {
     if (time === null) {
       setVisible(false);
       return;
@@ -335,7 +335,7 @@ export function TimelineCursor() {
   };
 
   // Update time display
-  const updateTimeDisplay = (time) => {
+  const updateTimeDisplay = (time: number | null) => {
     if (time === null) return;
 
     const timeDisplay = document.getElementById('time-display');
@@ -362,7 +362,7 @@ export function TimelineCursor() {
         return true;
       }
       if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
-        const t = timelineState.timelineSegments[0].start_timestamp;
+        const t = timelineState.timelineSegments[0]!.start_timestamp;
         timelineState.currentTime = t;
         timelineState.currentSegmentIndex = 0;
         timelineState.setState({});
@@ -389,7 +389,7 @@ export function TimelineCursor() {
   const ariaMinimum = dayBounds?.startTimestamp ?? 0;
   const ariaMaximum = dayBounds ? dayBounds.endTimestamp - 0.001 : 0;
   const ariaValue = Number.isFinite(currentTime)
-    ? Math.min(Math.max(currentTime, ariaMinimum), ariaMaximum)
+    ? Math.min(Math.max(currentTime as number, ariaMinimum), ariaMaximum)
     : ariaMinimum;
   const streamName = resolvePlaybackStreamName(
     timelineState.timelineSegments,

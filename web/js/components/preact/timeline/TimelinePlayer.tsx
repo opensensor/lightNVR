@@ -1,10 +1,10 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Player Component
  * Handles video playback for the timeline
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import { timelineState } from './TimelinePage.tsx';
 import {
   formatPlaybackTimeLabel,
@@ -20,6 +20,33 @@ import { FisheyeEptzCanvas } from '../FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../../utils/eptz-config.ts';
 import { resolveRecordedStreamSummary } from '../../../utils/stream-summaries.ts';
 import { loadRecordingPlayback } from '../../../utils/recording-playback.ts';
+import type { Recording, StreamSummary } from '../../../types/core.ts';
+import type {
+  TimelineDetection,
+  TimelineDetectionsResponse,
+  TimelineRecordingTagsResponse,
+  TimelineSegment,
+  TimelineState,
+} from '../../../types/timeline.ts';
+
+type VideoElementRef = RefObject<HTMLVideoElement | null> | ((node: HTMLVideoElement | null) => void) | null;
+
+export interface TimelinePlayerProps {
+  videoElementRef?: VideoElementRef;
+  autoFullscreen?: boolean;
+  streamConfig?: StreamSummary | null;
+  streamConfigs?: StreamSummary[];
+}
+
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void;
+};
+
+type VendorFullscreenElement = HTMLDivElement & {
+  webkitRequestFullscreen?: () => void;
+  msRequestFullscreen?: () => void;
+};
 
 const DETECTION_TIME_WINDOW_SECONDS = 2; // Time window (seconds) for filtering visible detections around current playback time
 const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detection overlay scaling
@@ -33,16 +60,16 @@ export function TimelinePlayer({
   autoFullscreen = false,
   streamConfig = null,
   streamConfigs = [],
-}) {
+}: TimelinePlayerProps) {
   const { t } = useI18n();
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
-  const [segments, setSegments] = useState([]);
-  const [detections, setDetections] = useState([]);
+  const [segments, setSegments] = useState<TimelineSegment[]>([]);
+  const [detections, setDetections] = useState<TimelineDetection[]>([]);
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [segmentRecordingData, setSegmentRecordingData] = useState(null);
+  const [segmentRecordingData, setSegmentRecordingData] = useState<Recording | null>(null);
   const [playbackMessage, setPlaybackMessage] = useState('');
   // When arriving from a Live View fullscreen session, show a one-time overlay
   // that lets the user re-enter fullscreen with a single click.  Browser security
@@ -87,19 +114,19 @@ export function TimelinePlayer({
   }, []);
 
   // Refs
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const videoContainerRef = useRef(null);
-  const lastTimeUpdateRef = useRef(null);
-  const lastSegmentIdRef = useRef(null);
-  const lastDetectionSegmentIdRef = useRef(null);
-  const playbackCleanupRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastTimeUpdateRef = useRef<number | null>(null);
+  const lastSegmentIdRef = useRef<string | null>(null);
+  const lastDetectionSegmentIdRef = useRef<number | null>(null);
+  const playbackCleanupRef = useRef<(() => void) | null>(null);
   const initialPausedSyncEventLoggedRef = useRef(false);
-  const lastInitialPausedSegmentIdRef = useRef(null);
+  const lastInitialPausedSegmentIdRef = useRef<number | null>(null);
   const suppressNativePlaybackSyncRef = useRef(false);
   const suppressNativePlaybackSyncTokenRef = useRef(0);
 
-  const setVideoRefs = useCallback((node) => {
+  const setVideoRefs = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
 
     if (!videoElementRef) {
@@ -140,7 +167,7 @@ export function TimelinePlayer({
   }, []);
 
   // Handle video playback based on state changes
-  const handleVideoPlayback = useCallback((state) => {
+  const handleVideoPlayback = useCallback((state: TimelineState) => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -218,7 +245,7 @@ export function TimelinePlayer({
     } else if (state.isPlaying && video.paused) {
       // Resume playback if needed
       suppressNativePlaybackSync();
-      video.play().catch(error => {
+      video.play().catch((error: Error) => {
         if (error.name === 'AbortError') {
           // play() was interrupted by a new load or pause — expected when clicking around the timeline
           console.log('Video play() interrupted, ignoring AbortError');
@@ -243,7 +270,7 @@ export function TimelinePlayer({
 
   // Subscribe to timeline state changes
   useEffect(() => {
-    const listener = state => {
+    const listener = (state: TimelineState) => {
       // Update local state
       setCurrentSegmentIndex(state.currentSegmentIndex);
       setSegments(state.timelineSegments || []);
@@ -264,7 +291,7 @@ export function TimelinePlayer({
   useEffect(() => cleanupPlayback, [cleanupPlayback]);
 
   // Load a segment
-  const loadSegment = useCallback((segment, seekTime = 0, autoplay = false) => {
+  const loadSegment = useCallback((segment: TimelineSegment, seekTime = 0, autoplay = false) => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -354,7 +381,7 @@ export function TimelinePlayer({
       // Play if needed
       if (timelineState.isPlaying) {
         suppressNativePlaybackSync();
-        video.play().catch(error => {
+        video.play().catch((error: Error) => {
           if (error.name === 'AbortError') {
             console.log('Video play() interrupted during segment load, ignoring AbortError');
             return;
@@ -393,7 +420,7 @@ export function TimelinePlayer({
 
     if (currentIdx < allSegments.length - 1) {
       const nextIndex = currentIdx + 1;
-      const nextSegment = allSegments[nextIndex];
+      const nextSegment = allSegments[nextIndex]!;
 
       // Update state — handleVideoPlayback detects the new segment ID and calls
       // loadSegment(nextSegment, 0, true), which handles the actual video work.
@@ -526,7 +553,7 @@ export function TimelinePlayer({
   };
 
   // Add a direct time display update function
-  const updateTimeDisplay = (time, segment = null) => {
+  const updateTimeDisplay = (time: number, segment: { stream?: string } | null = null) => {
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
     const streamName = segment?.stream
@@ -574,7 +601,7 @@ export function TimelinePlayer({
 
     // Fetch recording info to get stream name, timestamps, and protection status
     fetch(`/api/recordings/${segment.id}`)
-      .then(async res => {
+      .then(async (res): Promise<Recording | null> => {
         if (res.ok) {
           return res.json();
         }
@@ -618,7 +645,7 @@ export function TimelinePlayer({
             }
             return res.json();
           })
-          .then(tagData => timelineState.setState({ currentRecordingTags: tagData?.tags || [] }))
+          .then((tagData: TimelineRecordingTagsResponse | null) => timelineState.setState({ currentRecordingTags: tagData?.tags || [] }))
           .catch(() => timelineState.setState({ currentRecordingTags: [] }));
 
         if (!data.stream || !data.start_time || !data.end_time) return;
@@ -629,7 +656,7 @@ export function TimelinePlayer({
 
         return fetch(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
       })
-      .then(async res => {
+      .then(async (res): Promise<TimelineDetectionsResponse | null> => {
         if (!res) {
           return null;
         }
@@ -660,7 +687,7 @@ export function TimelinePlayer({
           setDetections([]);
         }
       })
-      .catch(err => {
+      .catch((err: unknown) => {
         console.warn('Failed to load detections for timeline segment:', err);
         setDetections([]);
       });
@@ -682,7 +709,7 @@ export function TimelinePlayer({
     canvas.width = displayWidth;
     canvas.height = displayHeight;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!detections || detections.length === 0) return;
@@ -697,7 +724,7 @@ export function TimelinePlayer({
     // Calculate letterbox offsets
     const videoAspect = videoWidth / videoHeight;
     const displayAspect = displayWidth / displayHeight;
-    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+    let drawWidth: number, drawHeight: number, offsetX = 0, offsetY = 0;
 
     if (videoAspect > displayAspect) {
       drawWidth = displayWidth;
@@ -774,7 +801,7 @@ export function TimelinePlayer({
     const container = videoContainerRef.current;
 
     const handleFullscreenChange = () => {
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
       setIsFullscreen(fullscreenElement === container);
       setTimeout(() => {
         if (detectionOverlayEnabled) {
@@ -808,16 +835,16 @@ export function TimelinePlayer({
   }, [detectionOverlayEnabled, drawTimelineDetections]);
 
   const handleToggleFullscreen = useCallback(async () => {
-    const container = videoContainerRef.current;
+    const container = videoContainerRef.current as VendorFullscreenElement | null;
     if (!container) return;
 
     try {
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
       if (fullscreenElement === container) {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-          document.webkitExitFullscreen();
+        } else if ((document as WebkitFullscreenDocument).webkitExitFullscreen) {
+          (document as WebkitFullscreenDocument).webkitExitFullscreen!();
         }
         return;
       }
@@ -833,13 +860,13 @@ export function TimelinePlayer({
       }
     } catch (error) {
       console.error('Error toggling fullscreen:', error);
-      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
+      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: (error as Error).message }), 'error');
     }
   }, [t]);
 
   // Get current segment ID
   const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
-    ? segments[currentSegmentIndex].id : null;
+    ? segments[currentSegmentIndex]!.id : null;
 
   // Delete the current segment's recording
   const handleDeleteRecording = useCallback(async () => {
@@ -858,7 +885,7 @@ export function TimelinePlayer({
       }));
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
       setShowDeleteConfirm(false);
     }
   }, [currentSegmentId, t]);
@@ -874,7 +901,7 @@ export function TimelinePlayer({
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const streamName = segmentRecordingData?.stream || 'timeline';
@@ -1042,7 +1069,7 @@ export function TimelinePlayer({
             className="w-3.5 h-3.5 accent-primary"
             checked={detectionOverlayEnabled}
             disabled={eptzEnabled}
-            onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
+            onChange={(e) => setDetectionOverlayEnabled((e.target as HTMLInputElement).checked)}
           />
           <span className="text-[11px] text-foreground">
             {t('recordings.detections')}{detections.length > 0 ? ` (${detections.length})` : ''}

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CalendarPicker - A modern, theme-aware calendar date picker for Preact.
  *
@@ -9,22 +8,28 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useI18n } from '../../../i18n.ts';
+
+interface CalendarPickerProps {
+  value?: string | null;
+  onChange: (dateString: string) => void;
+}
 
 /* ── helpers ────────────────────────────────────────────────── */
 
 /** Parse YYYY-MM-DD into local Date at midnight */
-function parseLocal(str) {
+function parseLocal(str: string): Dayjs {
   return dayjs(str);
 }
 
 /** Get calendar grid rows for a given year / month (0-indexed month). */
-function buildGrid(year, month) {
+function buildGrid(year: number, month: number): (number | null)[] {
   const first = dayjs().year(year).month(month).date(1);
   const startDay = first.day(); // 0=Sun
   const daysInMonth = first.daysInMonth();
 
-  const cells = [];
+  const cells: (number | null)[] = [];
   // leading blanks
   for (let i = 0; i < startDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -35,7 +40,7 @@ function buildGrid(year, month) {
 
 /* ── component ──────────────────────────────────────────────── */
 
-export function CalendarPicker({ value, onChange }) {
+export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
   const { t, locale } = useI18n();
   const today = dayjs().format('YYYY-MM-DD');
   const selected = value || today;
@@ -46,7 +51,7 @@ export function CalendarPicker({ value, onChange }) {
   const [viewMonth, setViewMonth] = useState(selDate.month());
   const [open, setOpen] = useState(false);
 
-  const wrapperRef = useRef(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   // Sync viewed month when value changes externally
   useEffect(() => {
@@ -58,8 +63,8 @@ export function CalendarPicker({ value, onChange }) {
   // Close on outside click
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node | null)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -84,7 +89,7 @@ export function CalendarPicker({ value, onChange }) {
   const prevDay = () => pick(parseLocal(selected).subtract(1, 'day').format('YYYY-MM-DD'));
   const nextDay = () => pick(parseLocal(selected).add(1, 'day').format('YYYY-MM-DD'));
 
-  const pick = useCallback((dateStr) => {
+  const pick = useCallback((dateStr: string) => {
     onChange(dateStr);
     setOpen(false);
   }, [onChange]);

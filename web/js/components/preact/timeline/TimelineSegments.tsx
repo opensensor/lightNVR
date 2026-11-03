@@ -1,10 +1,10 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Segments Component
  * Displays recording segments on the timeline
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
+import type { ComponentChild } from 'preact';
 import { timelineState } from './TimelinePage.tsx';
 import {
   findContainingSegmentIndex,
@@ -15,6 +15,21 @@ import {
 } from './timelineUtils.ts';
 import { formatLocalTime } from '../../../utils/date-utils.ts';
 import { useI18n } from '../../../i18n.ts';
+import type { TimelineDragPreview, TimelineDetectionInterval, TimelineSegment } from '../../../types/timeline.ts';
+
+interface TimelineSegmentsProps {
+  segments?: TimelineSegment[] | null;
+  detectionIntervals?: TimelineDetectionInterval[] | null;
+}
+
+/** Where a click or drag on the track lands. */
+interface TimelineClickTarget {
+  timestamp: number;
+  targetIndex: number;
+  positionPercent: number;
+}
+
+type TimelineSegmentsDragPreview = TimelineDragPreview & { positionPercent: number };
 
 /**
  * TimelineSegments component
@@ -23,14 +38,14 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Array} props.detectionIntervals Exact external-motion ranges
  * @returns {JSX.Element} TimelineSegments component
  */
-export function TimelineSegments({ segments: propSegments, detectionIntervals: propIntervals = [] }) {
+export function TimelineSegments({ segments: propSegments, detectionIntervals: propIntervals = [] }: TimelineSegmentsProps) {
   const { t } = useI18n();
   // Local state
   const [segments, setSegments] = useState(propSegments || []);
   const [detectionIntervals, setDetectionIntervals] = useState(propIntervals || []);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
-  const [dragPreview, setDragPreview] = useState(null);
+  const [dragPreview, setDragPreview] = useState<TimelineSegmentsDragPreview | null>(null);
   const currentSegmentIndexRef = useRef(-1);
 
   // Update segments when props change (including when cleared to empty on deletion)
@@ -45,13 +60,13 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
   }, [propIntervals]);
 
   // Refs
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const isDragging = useRef(false);
   // Capture playback state at drag-start so we can preserve it across the seek
   // (standard scrubber UX: clicking/dragging while playing keeps playing).
   const wasPlayingAtDragStartRef = useRef(false);
-  const pendingSeekRef = useRef(null);
-  const lastSegmentsRef = useRef([]);
+  const pendingSeekRef = useRef<TimelineClickTarget | null>(null);
+  const lastSegmentsRef = useRef<TimelineSegment[]>([]);
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -88,7 +103,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseDown = (e) => {
+    const handleMouseDown = (e: MouseEvent) => {
       // Handle clicks on the container, clickable area, or directly on segments
       const target = e.target;
       const isElementTarget = target instanceof Element;
@@ -118,7 +133,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       }
     };
 
-    const handleMouseMove = (e) => {
+    const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
       const pendingSeek = getTimelineClickTarget(e);
       if (!pendingSeek) return;
@@ -126,7 +141,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       showDragPreview(pendingSeek);
     };
 
-    const handleMouseUp = (event) => {
+    const handleMouseUp = (event: MouseEvent) => {
       if (!isDragging.current) {
         return;
       }
@@ -179,7 +194,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     };
   }, [startHour, endHour, segments]);
 
-  const getTimelineClickTarget = (event) => {
+  const getTimelineClickTarget = (event: MouseEvent): TimelineClickTarget | null => {
     const container = containerRef.current;
     if (!container) return null;
 
@@ -200,7 +215,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     return { timestamp: clickTimestamp, targetIndex, positionPercent: clickPercent * 100 };
   };
 
-  const showDragPreview = ({ timestamp, targetIndex, positionPercent }) => {
+  const showDragPreview = ({ timestamp, targetIndex, positionPercent }: TimelineClickTarget) => {
     const segment = segments[targetIndex];
     if (!segment || segment.id === null || segment.id === undefined) {
       setDragPreview(null);
@@ -231,11 +246,11 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
 
     // Sort + merge adjacent segments
     const sorted = [...segments].sort((a, b) => a.start_timestamp - b.start_timestamp);
-    const merged = [];
-    let cur = { ...sorted[0] };
+    const merged: TimelineSegment[] = [];
+    let cur = { ...sorted[0]! };
 
     for (let i = 1; i < sorted.length; i++) {
-      const seg = sorted[i];
+      const seg = sorted[i]!;
       // Only merge adjacent segments that share the same detection state, otherwise
       // a continuous recording collapses into one bar and the has-detection colour is
       // OR-ed across the whole span — hiding *which* periods actually had detections
@@ -255,7 +270,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     merged.push(cur);
 
     // Render each merged segment as a positioned bar
-    const rendered = [];
+    const rendered: ComponentChild[] = [];
     merged.forEach((seg, i) => {
       const visibleRange = getClippedSegmentHourRange(seg, timelineState.selectedDate);
       if (!visibleRange) return;

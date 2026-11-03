@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Speed Controls Component
  * Handles playback speed controls for the timeline
@@ -31,9 +30,9 @@ export function SpeedControls() {
   }, []);
 
   // Set playback speed
-  const setPlaybackSpeed = (speed) => {
+  const setPlaybackSpeed = (speed: number) => {
     // Update video playback rate
-    const videoPlayer = document.querySelector('#video-player video');
+    const videoPlayer = document.querySelector<HTMLVideoElement>('#video-player video');
     if (videoPlayer) {
       // Set the new playback rate
       videoPlayer.playbackRate = speed;

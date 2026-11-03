@@ -1,9 +1,27 @@
-// @ts-nocheck
 /**
  * Shared timeline helpers for choosing segments and clipping them to a day view.
  */
 
 import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import type {
+  TimelineDayBounds,
+  TimelineFlingSample,
+  TimelineHourRange,
+  TimelineRange,
+  TimelineSegment,
+} from '../../../types/timeline.ts';
+
+// Not readonly: Array.isArray narrows a readonly array to any[].
+type MaybeRanges = TimelineRange[] | null | undefined;
+type SelectedDate = string | null | undefined;
+
+interface TimelineSegmentsUrlParams {
+  streamName?: string | null;
+  cameraUuid?: string | null;
+  startTime: string;
+  endTime: string;
+}
 
 // One minute is the finest useful scale promised by UXD 03 P3.
 export const MIN_TIMELINE_VIEW_HOURS = 1 / 60;
@@ -14,16 +32,16 @@ export const TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS = 100;
 export const TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS = 120;
 
 /** Keep UUID deep links independent of historical or reused stream names. */
-export function buildTimelineSegmentsUrl({ streamName, cameraUuid, startTime, endTime }) {
+export function buildTimelineSegmentsUrl({ streamName, cameraUuid, startTime, endTime }: TimelineSegmentsUrlParams): string | null {
   if (!cameraUuid && !streamName) return null;
   const params = new URLSearchParams(cameraUuid
-    ? { camera_uuid: cameraUuid } : { stream: streamName });
+    ? { camera_uuid: cameraUuid } : { stream: streamName as string });
   params.set('start', startTime);
   params.set('end', endTime);
   return `/api/timeline/segments?${params.toString()}`;
 }
 
-export function timelineSegmentIdentity(segment) {
+export function timelineSegmentIdentity(segment: Partial<TimelineSegment> | null | undefined): string {
   if (segment?.id !== null && segment?.id !== undefined && String(segment.id) !== '') {
     return `id:${String(segment.id)}`;
   }
@@ -31,8 +49,8 @@ export function timelineSegmentIdentity(segment) {
   return `range:${streamName}:${segment?.start_timestamp ?? ''}:${segment?.end_timestamp ?? ''}`;
 }
 
-export function reconcileTimelineSegments(existing = [], incoming = []) {
-  const existingByKey = new Map(existing.map((segment) =>
+export function reconcileTimelineSegments(existing: TimelineSegment[] = [], incoming: TimelineSegment[] = []) {
+  const existingByKey = new Map<string, TimelineSegment>(existing.map((segment) =>
     [timelineSegmentIdentity(segment), segment]));
   const incomingKeys = new Set(incoming.map(timelineSegmentIdentity));
   return {
@@ -48,7 +66,7 @@ export function reconcileTimelineSegments(existing = [], incoming = []) {
   };
 }
 
-export function getTimelinePreviewFrameIndex(segment, timestamp, frameCount = 3) {
+export function getTimelinePreviewFrameIndex(segment: TimelineRange, timestamp: number, frameCount = 3): number {
   if (!Number.isFinite(timestamp) || !Number.isFinite(segment?.start_timestamp)
       || !Number.isFinite(segment?.end_timestamp) || frameCount <= 1) return 0;
   const duration = Math.max(segment.end_timestamp - segment.start_timestamp, 0.001);
@@ -56,11 +74,11 @@ export function getTimelinePreviewFrameIndex(segment, timestamp, frameCount = 3)
   return Math.round(progress * (frameCount - 1));
 }
 
-function clamp(value, min, max) {
+function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function getLocalDayStart(selectedDate) {
+function getLocalDayStart(selectedDate: SelectedDate): Dayjs | null {
   if (!selectedDate || typeof selectedDate !== 'string' || !selectedDate.includes('-')) {
     return null;
   }
@@ -69,12 +87,12 @@ function getLocalDayStart(selectedDate) {
   return localDayStart.isValid() ? localDayStart : null;
 }
 
-export function getTimelineDayLengthHours(selectedDate) {
+export function getTimelineDayLengthHours(selectedDate: SelectedDate): number {
   const bounds = getLocalDayBounds(selectedDate);
   return bounds?.durationHours ?? MAX_TIMELINE_VIEW_HOURS;
 }
 
-export function normalizeTimelineRange(startHour, endHour, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+export function normalizeTimelineRange(startHour: number, endHour: number, maxHours = MAX_TIMELINE_VIEW_HOURS): TimelineHourRange {
   const cappedMaxHours = Number.isFinite(maxHours) && maxHours > 0
     ? maxHours
     : MAX_TIMELINE_VIEW_HOURS;
@@ -91,7 +109,7 @@ export function normalizeTimelineRange(startHour, endHour, maxHours = MAX_TIMELI
   };
 }
 
-export function panTimelineRange(startHour, endHour, deltaHours, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+export function panTimelineRange(startHour: number, endHour: number, deltaHours: number, maxHours = MAX_TIMELINE_VIEW_HOURS): TimelineHourRange {
   const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
   if (!Number.isFinite(deltaHours) || deltaHours === 0) {
     return normalized;
@@ -119,13 +137,13 @@ export function panTimelineRange(startHour, endHour, deltaHours, maxHours = MAX_
  * pushing against an already-clamped range.
  */
 export function advanceTimelineFling(
-  startHour,
-  endHour,
-  velocityHoursPerMillisecond,
-  elapsedMilliseconds,
+  startHour: number,
+  endHour: number,
+  velocityHoursPerMillisecond: number,
+  elapsedMilliseconds: number,
   maxHours = MAX_TIMELINE_VIEW_HOURS,
   decayPerMillisecond = TIMELINE_FLING_DECAY_PER_MILLISECOND
-) {
+): TimelineHourRange & { velocityHoursPerMillisecond: number } {
   const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
   if (
     !Number.isFinite(velocityHoursPerMillisecond) ||
@@ -167,12 +185,12 @@ export function advanceTimelineFling(
  * at different rates produce the same velocity for the same physical motion.
  */
 export function calculateTimelineFlingVelocity(
-  samples,
-  releaseTime,
-  releasePosition,
+  samples: TimelineFlingSample[],
+  releaseTime: number,
+  releasePosition: number,
   sampleWindowMilliseconds = TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS,
   maxSampleAgeMilliseconds = TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS
-) {
+): number {
   if (
     !Array.isArray(samples) ||
     !Number.isFinite(releaseTime) ||
@@ -193,7 +211,7 @@ export function calculateTimelineFlingVelocity(
     return 0;
   }
 
-  const latestInput = points[points.length - 1];
+  const latestInput = points[points.length - 1]!;
   if (releaseTime - latestInput.time > maxSampleAgeMilliseconds) {
     return 0;
   }
@@ -205,13 +223,13 @@ export function calculateTimelineFlingVelocity(
   }
 
   const windowStart = releaseTime - sampleWindowMilliseconds;
-  let startTime = points[0].time;
-  let startPosition = points[0].position;
+  let startTime = points[0]!.time;
+  let startPosition = points[0]!.position;
 
-  if (points[0].time < windowStart) {
+  if (points[0]!.time < windowStart) {
     for (let index = 1; index < points.length; index++) {
-      const previous = points[index - 1];
-      const current = points[index];
+      const previous = points[index - 1]!;
+      const current = points[index]!;
       if (current.time < windowStart) {
         continue;
       }
@@ -238,10 +256,10 @@ export function calculateTimelineFlingVelocity(
  * stays deterministic even for adjacent recordings.
  */
 export function snapTimestampToRecordingEdge(
-  timestamp,
-  segments,
-  options = {}
-) {
+  timestamp: number,
+  segments: MaybeRanges,
+  options: { thresholdSeconds?: number; selectedDate?: string | null } = {}
+): { timestamp: number; snapped: boolean } {
   const {
     thresholdSeconds = TIMELINE_EDGE_SNAP_THRESHOLD_SECONDS,
     selectedDate = null
@@ -256,7 +274,7 @@ export function snapTimestampToRecordingEdge(
     return { timestamp, snapped: false };
   }
 
-  let nearestEdge = null;
+  let nearestEdge = null as number | null;
   let nearestDistance = Infinity;
   const dayBounds = selectedDate ? getLocalDayBounds(selectedDate) : null;
 
@@ -306,7 +324,7 @@ export function snapTimestampToRecordingEdge(
   return { timestamp: nearestEdge, snapped: true };
 }
 
-export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = null, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+export function zoomTimelineRange(startHour: number, endHour: number, zoomFactor: number, anchorHour: number | null = null, maxHours = MAX_TIMELINE_VIEW_HOURS): TimelineHourRange {
   const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
   if (!Number.isFinite(zoomFactor) || zoomFactor <= 0 || zoomFactor === 1) {
     return normalized;
@@ -318,7 +336,7 @@ export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = n
   const currentRange = normalized.endHour - normalized.startHour;
   const nextRange = clamp(currentRange * zoomFactor, MIN_TIMELINE_VIEW_HOURS, cappedMaxHours);
   const resolvedAnchorHour = clamp(
-    Number.isFinite(anchorHour) ? anchorHour : ((normalized.startHour + normalized.endHour) / 2),
+    Number.isFinite(anchorHour) ? (anchorHour as number) : ((normalized.startHour + normalized.endHour) / 2),
     normalized.startHour,
     normalized.endHour
   );
@@ -330,11 +348,11 @@ export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = n
   return normalizeTimelineRange(nextStart, nextStart + nextRange, cappedMaxHours);
 }
 
-function formatLocalDate(date) {
+function formatLocalDate(date: Dayjs): string {
   return dayjs(date).format('YYYY-MM-DD');
 }
 
-export function formatTimestampAsLocalDate(timestamp) {
+export function formatTimestampAsLocalDate(timestamp: number | null | undefined): string {
   if (timestamp === null || timestamp === undefined || !Number.isFinite(timestamp)) {
     return '';
   }
@@ -342,7 +360,7 @@ export function formatTimestampAsLocalDate(timestamp) {
   return dayjs.unix(timestamp).format('YYYY-MM-DD');
 }
 
-export function getLocalDayBounds(selectedDate) {
+export function getLocalDayBounds(selectedDate: SelectedDate): TimelineDayBounds | null {
   const dayStart = getLocalDayStart(selectedDate);
   if (!dayStart) {
     return null;
@@ -357,7 +375,7 @@ export function getLocalDayBounds(selectedDate) {
   };
 }
 
-export function formatTimestampAsClock(timestamp) {
+export function formatTimestampAsClock(timestamp: number | null | undefined): string {
   if (timestamp === null || timestamp === undefined) {
     return '';
   }
@@ -365,7 +383,7 @@ export function formatTimestampAsClock(timestamp) {
   return dayjs.unix(timestamp).format('HH:mm:ss');
 }
 
-export function formatPlaybackTimeLabel(timestamp, streamName = '') {
+export function formatPlaybackTimeLabel(timestamp: number | null | undefined, streamName = ''): string {
   const formattedTime = formatTimestampAsClock(timestamp);
   const trimmedStreamName = typeof streamName === 'string' ? streamName.trim() : '';
 
@@ -376,7 +394,7 @@ export function formatPlaybackTimeLabel(timestamp, streamName = '') {
   return trimmedStreamName ? `${trimmedStreamName} - ${formattedTime}` : formattedTime;
 }
 
-export function resolvePlaybackStreamName(segments, currentSegmentIndex, timestamp = null) {
+export function resolvePlaybackStreamName(segments: TimelineSegment[] | null | undefined, currentSegmentIndex: number, timestamp: number | null = null): string {
   if (!Array.isArray(segments) || segments.length === 0) {
     return '';
   }
@@ -400,22 +418,22 @@ export function resolvePlaybackStreamName(segments, currentSegmentIndex, timesta
       : '';
   }
 
-  const nearestIndex = findNearestSegmentIndex(segments, timestamp);
+  const nearestIndex = findNearestSegmentIndex(segments, timestamp as number);
   return nearestIndex !== -1 && typeof segments[nearestIndex]?.stream === 'string'
     ? segments[nearestIndex].stream.trim()
     : '';
 }
 
-export function segmentIntersectsDay(segment, selectedDate) {
+export function segmentIntersectsDay(segment: TimelineRange | null | undefined, selectedDate: SelectedDate): boolean {
   return getClippedSegmentHourRange(segment, selectedDate) !== null;
 }
 
-export function getAvailableDatesForSegments(segments) {
+export function getAvailableDatesForSegments(segments: MaybeRanges): string[] {
   if (!Array.isArray(segments) || segments.length === 0) {
     return [];
   }
 
-  const dates = new Set();
+  const dates = new Set<string>();
 
   segments.forEach(segment => {
     if (!segment || !Number.isFinite(segment.start_timestamp) || !Number.isFinite(segment.end_timestamp)) {
@@ -435,7 +453,7 @@ export function getAvailableDatesForSegments(segments) {
   return Array.from(dates).sort();
 }
 
-export function countSegmentsForDate(segments, selectedDate) {
+export function countSegmentsForDate(segments: MaybeRanges, selectedDate: SelectedDate): number {
   if (!Array.isArray(segments) || !selectedDate) {
     return 0;
   }
@@ -445,7 +463,7 @@ export function countSegmentsForDate(segments, selectedDate) {
   ), 0);
 }
 
-export function timelineOffsetToTimestamp(offsetHours, selectedDate) {
+export function timelineOffsetToTimestamp(offsetHours: number, selectedDate: SelectedDate): number {
   const bounds = getLocalDayBounds(selectedDate);
   if (!bounds) {
     throw new Error(`timelineOffsetToTimestamp: invalid selectedDate "${selectedDate}"`);
@@ -460,7 +478,7 @@ export function timelineOffsetToTimestamp(offsetHours, selectedDate) {
   return Math.round(bounds.startTimestamp + normalizedOffset * 3600);
 }
 
-export function timestampToTimelineOffset(timestamp, selectedDate = null) {
+export function timestampToTimelineOffset(timestamp: number | null | undefined, selectedDate: string | null = null): number | null {
   if (timestamp === null || timestamp === undefined || !Number.isFinite(timestamp)) {
     return null;
   }
@@ -474,7 +492,7 @@ export function timestampToTimelineOffset(timestamp, selectedDate = null) {
   return (timestamp - bounds.startTimestamp) / 3600;
 }
 
-export function localClockTimeToTimestamp(timeString, selectedDate) {
+export function localClockTimeToTimestamp(timeString: string, selectedDate: SelectedDate): number | null {
   if (!selectedDate || typeof timeString !== 'string') {
     return null;
   }
@@ -488,7 +506,7 @@ export function localClockTimeToTimestamp(timeString, selectedDate) {
   return timestamp.isValid() ? timestamp.unix() : null;
 }
 
-export function formatTimelineOffsetLabel(offsetHours, selectedDate) {
+export function formatTimelineOffsetLabel(offsetHours: number, selectedDate: SelectedDate): string {
   const bounds = getLocalDayBounds(selectedDate);
   if (!bounds || !Number.isFinite(offsetHours)) {
     return '';
@@ -498,7 +516,7 @@ export function formatTimelineOffsetLabel(offsetHours, selectedDate) {
   return dayjs.unix(displayTimestamp).format('H:mm');
 }
 
-export function findFirstVisibleSegmentIndex(segments, selectedDate) {
+export function findFirstVisibleSegmentIndex(segments: MaybeRanges, selectedDate: SelectedDate): number {
   if (!Array.isArray(segments) || segments.length === 0) {
     return -1;
   }
@@ -512,12 +530,12 @@ export function findFirstVisibleSegmentIndex(segments, selectedDate) {
   return -1;
 }
 
-export function segmentContainsTimestamp(segment, timestamp) {
+export function segmentContainsTimestamp(segment: TimelineRange | null | undefined, timestamp: number | null | undefined): boolean {
   if (!segment || timestamp === null || timestamp === undefined) return false;
   return timestamp >= segment.start_timestamp && timestamp <= segment.end_timestamp;
 }
 
-export function findContainingSegmentIndex(segments, timestamp) {
+export function findContainingSegmentIndex(segments: MaybeRanges, timestamp: number | null | undefined): number {
   if (!Array.isArray(segments) || segments.length === 0) return -1;
 
   let bestIndex = -1;
@@ -525,7 +543,7 @@ export function findContainingSegmentIndex(segments, timestamp) {
   let bestEnd = Infinity;
 
   for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
+    const segment = segments[i]!;
     if (!segmentContainsTimestamp(segment, timestamp)) continue;
 
     if (
@@ -541,7 +559,7 @@ export function findContainingSegmentIndex(segments, timestamp) {
   return bestIndex;
 }
 
-export function findNearestSegmentIndex(segments, timestamp) {
+export function findNearestSegmentIndex(segments: MaybeRanges, timestamp: number): number {
   if (!Array.isArray(segments) || segments.length === 0) return -1;
 
   let bestIndex = -1;
@@ -549,7 +567,7 @@ export function findNearestSegmentIndex(segments, timestamp) {
   let bestStart = Infinity;
 
   for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
+    const segment = segments[i]!;
     const distance = timestamp < segment.start_timestamp
       ? segment.start_timestamp - timestamp
       : timestamp > segment.end_timestamp
@@ -569,7 +587,7 @@ export function findNearestSegmentIndex(segments, timestamp) {
   return bestIndex;
 }
 
-export function resolveActiveSegmentIndex(segments, currentSegmentIndex, timestamp = null) {
+export function resolveActiveSegmentIndex(segments: MaybeRanges, currentSegmentIndex: number, timestamp: number | null | undefined = null): number {
   if (!Array.isArray(segments) || segments.length === 0) {
     return -1;
   }
@@ -592,7 +610,7 @@ export function resolveActiveSegmentIndex(segments, currentSegmentIndex, timesta
   return -1;
 }
 
-export function getSteppedVideoTime(currentTimeSeconds, directionSeconds, durationSeconds = Infinity) {
+export function getSteppedVideoTime(currentTimeSeconds: number, directionSeconds: number, durationSeconds = Infinity): number {
   const safeCurrentTime = Number.isFinite(currentTimeSeconds) ? currentTimeSeconds : 0;
   const safeDirection = Number.isFinite(directionSeconds) ? directionSeconds : 0;
   const nextTime = safeCurrentTime + safeDirection;
@@ -615,25 +633,25 @@ export function getSteppedVideoTime(currentTimeSeconds, directionSeconds, durati
  * `video.currentTime`, which makes Chromium's native controls flicker (#495).
  */
 export function shouldSeekPlaybackPosition(
-  currentTimelineTime,
-  previousTimelineTime,
-  segmentStartTime,
-  currentVideoTime,
+  currentTimelineTime: number | null,
+  previousTimelineTime: number | null,
+  segmentStartTime: number,
+  currentVideoTime: number,
   thresholdSeconds = 1
-) {
+): boolean {
   if (![currentTimelineTime, previousTimelineTime, segmentStartTime, currentVideoTime, thresholdSeconds]
     .every(Number.isFinite)) {
     return false;
   }
 
-  const timelineMoved = Math.abs(currentTimelineTime - previousTimelineTime) > thresholdSeconds;
-  const desiredVideoTime = currentTimelineTime - segmentStartTime;
+  const timelineMoved = Math.abs((currentTimelineTime as number) - (previousTimelineTime as number)) > thresholdSeconds;
+  const desiredVideoTime = (currentTimelineTime as number) - segmentStartTime;
   const videoNeedsSync = Math.abs(desiredVideoTime - currentVideoTime) > thresholdSeconds;
 
   return timelineMoved && videoNeedsSync;
 }
 
-export function getClippedSegmentHourRange(segment, selectedDate) {
+export function getClippedSegmentHourRange(segment: TimelineRange | null | undefined, selectedDate: SelectedDate): TimelineHourRange | null {
   const bounds = getLocalDayBounds(selectedDate);
   if (!segment || !bounds) return null;
 

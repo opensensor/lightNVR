@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Ruler Component
  * Pure display — reads timelineStartHour / timelineEndHour from global state
@@ -7,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'preact/hooks';
+import type { ComponentChild } from 'preact';
 import { timelineState } from './TimelinePage.tsx';
 import { formatTimelineOffsetLabel, getTimelineDayLengthHours } from './timelineUtils.ts';
 
@@ -30,7 +30,7 @@ export function TimelineRuler() {
   // an apparently empty ruler, so progressively switch to 30/15/5/1-minute
   // increments as the visible window narrows.
   const generateTimeMarkers = () => {
-    const markers = [];
+    const markers: ComponentChild[] = [];
     const dayLengthHours = getTimelineDayLengthHours(selectedDate);
     const visibleHours = endHour - startHour;
     if (visibleHours <= 0) {

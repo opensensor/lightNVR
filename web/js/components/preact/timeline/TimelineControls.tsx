@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Controls Component
  * Handles play/pause and zoom controls for the timeline
@@ -20,6 +19,7 @@ import {
   zoomTimelineRange
 } from './timelineUtils.ts';
 import { useI18n } from '../../../i18n.ts';
+import type { TimelineSegment, TimelineState } from '../../../types/timeline.ts';
 
 /**
  * TimelineControls component
@@ -33,13 +33,13 @@ export function TimelineControls() {
   const [timeDisplayText, setTimeDisplayText] = useState('00:00:00');
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(-1);
   const [segmentCount, setSegmentCount] = useState(0);
-  const [currentRecordingId, setCurrentRecordingId] = useState(null);
+  const [currentRecordingId, setCurrentRecordingId] = useState<number | null>(null);
   const [isProtected, setIsProtected] = useState(false);
-  const [recordingTags, setRecordingTags] = useState([]);
+  const [recordingTags, setRecordingTags] = useState<string[]>([]);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
 
   useEffect(() => {
-    const syncControlsState = (state) => {
+    const syncControlsState = (state: TimelineState) => {
       setIsPlaying(state.isPlaying);
       setSegmentCount(state.timelineSegments?.length || 0);
       setActiveSegmentIndex(resolveActiveSegmentIndex(
@@ -86,7 +86,7 @@ export function TimelineControls() {
   // Pause playback
   const pausePlayback = () => {
     timelineState.setState({ isPlaying: false });
-    const videoPlayer = document.querySelector('#video-player video');
+    const videoPlayer = document.querySelector<HTMLVideoElement>('#video-player video');
     if (videoPlayer) {
       videoPlayer.pause();
     }
@@ -104,7 +104,7 @@ export function TimelineControls() {
     }
 
     let segmentIndex = -1;
-    let segmentToPlay = null;
+    let segmentToPlay: TimelineSegment | null = null;
     let relativeTime = 0;
 
     if (timelineState.currentTime !== null) {
@@ -114,7 +114,7 @@ export function TimelineControls() {
       );
       if (containingIndex !== -1) {
         segmentIndex = containingIndex;
-        segmentToPlay = timelineState.timelineSegments[containingIndex];
+        segmentToPlay = timelineState.timelineSegments[containingIndex]!;
         relativeTime = timelineState.currentTime - segmentToPlay.start_timestamp;
       } else {
         const closestIndex = findNearestSegmentIndex(
@@ -122,7 +122,7 @@ export function TimelineControls() {
           timelineState.currentTime
         );
         segmentIndex = closestIndex;
-        segmentToPlay = timelineState.timelineSegments[closestIndex];
+        segmentToPlay = timelineState.timelineSegments[closestIndex]!;
         relativeTime = Math.max(
           0,
           Math.min(
@@ -136,11 +136,11 @@ export function TimelineControls() {
       timelineState.currentSegmentIndex < timelineState.timelineSegments.length
     ) {
       segmentIndex = timelineState.currentSegmentIndex;
-      segmentToPlay = timelineState.timelineSegments[segmentIndex];
+      segmentToPlay = timelineState.timelineSegments[segmentIndex]!;
       relativeTime = 0;
     } else {
       segmentIndex = 0;
-      segmentToPlay = timelineState.timelineSegments[0];
+      segmentToPlay = timelineState.timelineSegments[0]!;
       relativeTime = 0;
     }
 
@@ -203,7 +203,7 @@ export function TimelineControls() {
     timelineState.setState({ timelineStartHour: fs, timelineEndHour: fe });
   };
 
-  const jumpToAdjacentSegment = (direction) => {
+  const jumpToAdjacentSegment = (direction: number) => {
     const segments = timelineState.timelineSegments;
     if (!Array.isArray(segments) || segments.length === 0) {
       showStatusMessage(t('timeline.noRecordingsToNavigate'), 'warning');
@@ -225,7 +225,7 @@ export function TimelineControls() {
       return;
     }
 
-    const targetSegment = segments[targetIndex];
+    const targetSegment = segments[targetIndex]!;
     timelineState.setState({
       currentSegmentIndex: targetIndex,
       currentTime: targetSegment.start_timestamp,
@@ -260,11 +260,11 @@ export function TimelineControls() {
       );
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
     }
   };
 
-  const handleTagsChanged = (_id, newTags) => {
+  const handleTagsChanged = (_id: number, newTags: string[]) => {
     timelineState.setState({ currentRecordingTags: newTags });
   };
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Timeline Page Component
  * Main component for the timeline view
@@ -46,33 +45,62 @@ import {
   timestampToTimelineOffset,
   zoomTimelineRange
 } from './timelineUtils.ts';
+import type { t as translate } from '../../../i18n.ts';
+import type { StreamSummary } from '../../../types/core.ts';
+import type {
+  TimelineDetectionInterval,
+  TimelineFlingSample,
+  TimelineSegment,
+  TimelineSegmentsByIdsResponse,
+  TimelineSegmentsResponse,
+  TimelineState,
+} from '../../../types/timeline.ts';
+
+type Translate = typeof translate;
+type TimeoutId = ReturnType<typeof setTimeout>;
+type KeyboardNavigationMode = 'fine' | 'broad';
+
+interface TimelineHelpProps {
+  idsMode: boolean;
+  t: Translate;
+}
+
+/** A one-finger touch that may become a horizontal pan and fling. */
+interface TimelineSinglePan {
+  identifier: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  samples: TimelineFlingSample[];
+  moved: boolean;
+}
 
 const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 
 // Convert an elapsed timeline offset → Unix timestamp (seconds) for the selected local day.
-function timelineHourToTimestamp(hour, selectedDate) {
+function timelineHourToTimestamp(hour: number, selectedDate: string | null): number {
   return timelineOffsetToTimestamp(hour, selectedDate);
 }
 
 // Convert a Unix timestamp to an elapsed timeline offset for the selected local day.
-function timestampToTimelineHour(timestamp, selectedDate = null) {
+function timestampToTimelineHour(timestamp: number | null, selectedDate: string | null = null): number | null {
   return timestampToTimelineOffset(timestamp, selectedDate);
 }
 
-function isEditableKeyboardTarget(target) {
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) {
     return false;
   }
 
   const tagName = target.tagName;
-  return target.isContentEditable ||
+  return (target as HTMLElement).isContentEditable ||
     tagName === 'INPUT' ||
     tagName === 'TEXTAREA' ||
     tagName === 'SELECT';
 }
 
 // Global timeline state for child components
-const timelineState = {
+const timelineState: TimelineState = {
   streams: [],
   timelineSegments: [],
   selectedStream: null,
@@ -182,7 +210,7 @@ function parseUrlParams() {
 /**
  * Update URL parameters
  */
-function updateUrlParams(stream, date, cameraUuid) {
+function updateUrlParams(stream: string, date: string, cameraUuid: string) {
   if (!stream && !cameraUuid) return;
   const url = new URL(window.location.href);
   if (stream) url.searchParams.set('stream', stream);
@@ -199,7 +227,7 @@ function updateUrlParams(stream, date, cameraUuid) {
 /**
  * Collapsible help panel — replaces the old large static instructions block.
  */
-function TimelineHelp({ idsMode, t }) {
+function TimelineHelp({ idsMode, t }: TimelineHelpProps) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3">
@@ -244,38 +272,38 @@ export function TimelinePage() {
   const recordingIds = idsMode ? urlParams.ids : '';
 
   // State
-  const [streamsList, setStreamsList] = useState([]);
+  const [streamsList, setStreamsList] = useState<StreamSummary[]>([]);
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
   const [selectedCameraUuid, setSelectedCameraUuid] = useState(urlParams.cameraUuid);
   const [selectedDate, setSelectedDate] = useState(urlParams.date);
-  const [segments, setSegments] = useState([]);
-  const [detectionIntervals, setDetectionIntervals] = useState([]);
+  const [segments, setSegments] = useState<TimelineSegment[]>([]);
+  const [detectionIntervals, setDetectionIntervals] = useState<TimelineDetectionInterval[]>([]);
   const [idsLoading, setIdsLoading] = useState(idsMode);
-  const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
-  const [idsTimelineSegments, setIdsTimelineSegments] = useState([]);
+  const [idsSegmentInfo, setIdsSegmentInfo] = useState<TimelineSegmentsByIdsResponse | null>(null);  // metadata from IDs endpoint
+  const [idsTimelineSegments, setIdsTimelineSegments] = useState<TimelineSegment[]>([]);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [keyboardNavigationMode, setKeyboardNavigationMode] = useState(
+  const [keyboardNavigationMode, setKeyboardNavigationMode] = useState<KeyboardNavigationMode>(
     urlParams.nav === 'fine' ? 'fine' : 'broad'
   );
-  const [timelineContainer, setTimelineContainer] = useState(null);
+  const [timelineContainer, setTimelineContainer] = useState<HTMLDivElement | null>(null);
 
   // Refs
-  const timelineContainerRef = useCallback((node) => {
+  const timelineContainerRef = useCallback((node: HTMLDivElement | null) => {
     setTimelineContainer(current => current === node ? current : node);
   }, []);
   const initialLoadRef = useRef(false);
-  const flushIntervalRef = useRef(null);
+  const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initialTimeRef = useRef(urlParams.time);  // Store initial time param for auto-seek
-  const processedDataRef = useRef(null);  // Track last processed timeline data
+  const processedDataRef = useRef<TimelineSegmentsResponse | null>(null);  // Track last processed timeline data
   const selectedDateRef = useRef(urlParams.date);
-  const videoElementRef = useRef(null);
-  const pointerDownTimerRef = useRef(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+  const pointerDownTimerRef = useRef<TimeoutId | null>(null);
 
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
 
-  const jumpToAdjacentSegment = useCallback((direction) => {
+  const jumpToAdjacentSegment = useCallback((direction: number) => {
     const activeIndex = resolveActiveSegmentIndex(
       timelineState.timelineSegments,
       timelineState.currentSegmentIndex,
@@ -302,7 +330,7 @@ export function TimelinePage() {
     return true;
   }, []);
 
-  const seekCurrentVideo = useCallback((directionSeconds) => {
+  const seekCurrentVideo = useCallback((directionSeconds: number) => {
     const videoPlayer = videoElementRef.current;
     if (!(videoPlayer instanceof HTMLVideoElement)) {
       return false;
@@ -383,7 +411,7 @@ export function TimelinePage() {
   }, []);
 
   useEffect(() => {
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       // Controls marked with this attribute (speed buttons, action bar, etc.) should
       // not exit 'fine' mode — the user is adjusting playback settings, not leaving
@@ -397,7 +425,7 @@ export function TimelinePage() {
 
     // separate clicks from double clicks
     // (don't change keyboard navigation mode when double clicking)
-    const watchPointerDown = (event) => {
+    const watchPointerDown = (event: PointerEvent) => {
       if (pointerDownTimerRef.current) {
         clearTimeout(pointerDownTimerRef.current);
         pointerDownTimerRef.current = null;
@@ -416,7 +444,7 @@ export function TimelinePage() {
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
@@ -495,7 +523,7 @@ export function TimelinePage() {
       return undefined;
     }
 
-    const handleWheel = (event) => {
+    const handleWheel = (event: WheelEvent) => {
       const startHour = timelineState.timelineStartHour ?? 0;
       const endHour = timelineState.timelineEndHour ?? getTimelineDayLengthHours(timelineState.selectedDate);
       const currentRange = endHour - startHour;
@@ -560,9 +588,9 @@ export function TimelinePage() {
     let pinchActive = false;
     let lastDistance = 0;
     let lastMidX = 0;
-    let singlePan = null;
+    let singlePan: TimelineSinglePan | null = null;
     let ignoreSingleTouchUntilRelease = false;
-    let flingFrame = null;
+    let flingFrame: number | null = null;
 
     const cancelFling = () => {
       if (flingFrame !== null) {
@@ -571,7 +599,7 @@ export function TimelinePage() {
       }
     };
 
-    const startFling = (velocityHoursPerMillisecond, velocityPixelsPerMillisecond) => {
+    const startFling = (velocityHoursPerMillisecond: number, velocityPixelsPerMillisecond: number) => {
       if (
         isReduceMotionActive() ||
         Math.abs(velocityPixelsPerMillisecond) < MIN_FLING_VELOCITY_PX_PER_MS
@@ -582,7 +610,7 @@ export function TimelinePage() {
       let velocity = velocityHoursPerMillisecond;
       let previousFrameTime = performance.now();
 
-      const animate = (frameTime) => {
+      const animate = (frameTime: number) => {
         const elapsed = Math.max(frameTime - previousFrameTime, 0);
         previousFrameTime = frameTime;
 
@@ -618,16 +646,16 @@ export function TimelinePage() {
       flingFrame = window.requestAnimationFrame(animate);
     };
 
-    const distanceAndMid = (touches) => {
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
+    const distanceAndMid = (touches: TouchList) => {
+      const dx = touches[0]!.clientX - touches[1]!.clientX;
+      const dy = touches[0]!.clientY - touches[1]!.clientY;
       return {
         distance: Math.hypot(dx, dy),
-        midX: (touches[0].clientX + touches[1].clientX) / 2
+        midX: (touches[0]!.clientX + touches[1]!.clientX) / 2
       };
     };
 
-    const handleTouchStart = (event) => {
+    const handleTouchStart = (event: TouchEvent) => {
       cancelFling();
 
       if (event.touches.length === 2) {
@@ -647,7 +675,7 @@ export function TimelinePage() {
         !ignoreSingleTouchUntilRelease &&
         !target?.closest('.timeline-cursor')
       ) {
-        const touch = event.touches[0];
+        const touch = event.touches[0]!;
         const now = performance.now();
         singlePan = {
           identifier: touch.identifier,
@@ -660,7 +688,7 @@ export function TimelinePage() {
       }
     };
 
-    const handleTouchMove = (event) => {
+    const handleTouchMove = (event: TouchEvent) => {
       if (pinchActive && event.touches.length === 2) {
         event.preventDefault();
 
@@ -711,7 +739,7 @@ export function TimelinePage() {
       }
 
       const touch = Array.from(event.touches).find(
-        candidate => candidate.identifier === singlePan.identifier
+        candidate => candidate.identifier === singlePan!.identifier
       );
       if (!touch) {
         return;
@@ -744,7 +772,7 @@ export function TimelinePage() {
       singlePan.samples.push({ position: touch.clientX, time: now });
       // Retain one point before the velocity window so the helper can
       // interpolate its exact boundary without accumulating a long gesture.
-      while (singlePan.samples.length > 2 && singlePan.samples[1].time < now - 120) {
+      while (singlePan.samples.length > 2 && singlePan.samples[1]!.time < now - 120) {
         singlePan.samples.shift();
       }
 
@@ -758,7 +786,7 @@ export function TimelinePage() {
       });
     };
 
-    const handleTouchEnd = (event) => {
+    const handleTouchEnd = (event: TouchEvent) => {
       if (pinchActive) {
         pinchActive = false;
         singlePan = null;
@@ -777,7 +805,7 @@ export function TimelinePage() {
       }
 
       const endedTouch = Array.from(event.changedTouches).find(
-        touch => touch.identifier === singlePan.identifier
+        touch => touch.identifier === singlePan!.identifier
       );
       if (!endedTouch) {
         return;
@@ -834,7 +862,7 @@ export function TimelinePage() {
     idsMode ? recordingIds.split(',').map(id => id.trim()).filter(Boolean) : []
   ), [idsMode, recordingIds]);
   const selectedRecordingMap = useMemo(() => (
-    selectedIdsList.reduce((acc, id) => {
+    selectedIdsList.reduce<Record<string, boolean>>((acc, id) => {
       acc[String(id)] = true;
       return acc;
     }, {})
@@ -842,7 +870,7 @@ export function TimelinePage() {
   const selectedRecordingsForDownload = useMemo(() => {
     if (!idsMode) return [];
 
-    const seen = new Set();
+    const seen = new Set<string>();
     return idsTimelineSegments.filter(segment => {
       const key = String(segment.id);
       if (!selectedRecordingMap[key] || seen.has(key)) {
@@ -853,9 +881,9 @@ export function TimelinePage() {
     });
   }, [idsMode, idsTimelineSegments, selectedRecordingMap]);
 
-  const loadSegmentsIntoTimeline = useCallback((rawSegments, effectiveDate, options = {}) => {
+  const loadSegmentsIntoTimeline = useCallback((rawSegments: TimelineSegment[] | null | undefined, effectiveDate: string, options: { successMessage?: string | null } = {}) => {
     const { successMessage = null } = options;
-    const segmentsCopy = JSON.parse(JSON.stringify(rawSegments || []));
+    const segmentsCopy: TimelineSegment[] = JSON.parse(JSON.stringify(rawSegments || []));
 
     if (segmentsCopy.length === 0) {
       setSegments([]);
@@ -874,7 +902,7 @@ export function TimelinePage() {
 
     const dayBounds = getLocalDayBounds(effectiveDate);
     const dayLengthHours = getTimelineDayLengthHours(effectiveDate);
-    const visibleIndices = [];
+    const visibleIndices: number[] = [];
 
     // Compute auto-fit range from segments for the selected day
     let earliest = dayLengthHours;
@@ -903,13 +931,13 @@ export function TimelinePage() {
       return false;
     }
 
-    const findNearestVisibleIndex = (targetTimestamp) => {
+    const findNearestVisibleIndex = (targetTimestamp: number) => {
       let bestIndex = -1;
       let bestDistance = Infinity;
       let bestStart = Infinity;
 
       visibleIndices.forEach(index => {
-        const seg = segmentsCopy[index];
+        const seg = segmentsCopy[index]!;
         let distance = 0;
         if (targetTimestamp < seg.start_timestamp) {
           distance = seg.start_timestamp - targetTimestamp;
@@ -928,7 +956,7 @@ export function TimelinePage() {
     };
 
     // Determine initial time/segment (honour ?time= URL param)
-    let initialTime = null;
+    let initialTime: number | null = null;
     let initialSegmentIndex = -1;
     let preserveExistingPlayback = false;
 
@@ -953,7 +981,7 @@ export function TimelinePage() {
           const nearestIndex = findNearestVisibleIndex(seekTs);
           if (nearestIndex !== -1) {
             initialSegmentIndex = nearestIndex;
-            initialTime = Math.max(segmentsCopy[nearestIndex].start_timestamp, dayBounds.startTimestamp);
+            initialTime = Math.max(segmentsCopy[nearestIndex]!.start_timestamp, dayBounds!.startTimestamp);
           }
         }
       }
@@ -963,7 +991,7 @@ export function TimelinePage() {
     if (initialSegmentIndex === -1) {
       initialSegmentIndex = findFirstVisibleSegmentIndex(segmentsCopy, effectiveDate);
       if (initialSegmentIndex !== -1) {
-        initialTime = Math.max(segmentsCopy[initialSegmentIndex].start_timestamp, dayBounds.startTimestamp);
+        initialTime = Math.max(segmentsCopy[initialSegmentIndex]!.start_timestamp, dayBounds!.startTimestamp);
       }
     }
 
@@ -1070,7 +1098,7 @@ export function TimelinePage() {
         setSelectedStream(requestedStream.name);
       } else if (!selectedCameraUuid && !idsMode) {
         // Use first stream if URL stream doesn't exist
-        const firstStream = streamsData[0].name;
+        const firstStream = streamsData[0]!.name;
         console.log(`TimelinePage: Using first stream: ${firstStream}`);
         setSelectedStream(firstStream);
       }
@@ -1094,7 +1122,7 @@ export function TimelinePage() {
       try {
         const resp = await fetch(`/api/timeline/segments-by-ids?ids=${encodeURIComponent(recordingIds)}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
+        const data: TimelineSegmentsByIdsResponse = await resp.json();
         setIdsSegmentInfo(data);
 
         const segs = (data.segments || []).sort((a, b) => a.start_timestamp - b.start_timestamp);
@@ -1102,7 +1130,7 @@ export function TimelinePage() {
           const availableDates = getAvailableDatesForSegments(segs);
           const anchorDate = availableDates.includes(selectedDateRef.current)
             ? selectedDateRef.current
-            : (availableDates[0] || formatDateForInput(segs[0].start_timestamp));
+            : (availableDates[0] || formatDateForInput(segs[0]!.start_timestamp));
 
           setIdsTimelineSegments(segs);
           if (anchorDate === selectedDateRef.current) {
@@ -1125,7 +1153,7 @@ export function TimelinePage() {
       } catch (err) {
         console.error('Error fetching segments by IDs:', err);
         setIdsTimelineSegments([]);
-        showStatusMessage(t('timeline.errorLoadingSelectedRecordings', { message: err.message }), 'error');
+        showStatusMessage(t('timeline.errorLoadingSelectedRecordings', { message: (err as Error).message }), 'error');
       } finally {
         setIdsLoading(false);
       }
@@ -1141,7 +1169,7 @@ export function TimelinePage() {
 
     const effectiveDate = idsAvailableDates.includes(selectedDate)
       ? selectedDate
-      : idsAvailableDates[0];
+      : idsAvailableDates[0]!;
 
     if (effectiveDate !== selectedDate) {
       setSelectedDate(effectiveDate);
@@ -1152,7 +1180,7 @@ export function TimelinePage() {
   }, [idsMode, idsTimelineSegments, idsAvailableDates, selectedDate, loadSegmentsIntoTimeline]);
 
   // Calculate time range for timeline data
-  const getTimeRange = (date) => {
+  const getTimeRange = (date: string) => {
     return getLocalDayIsoRange(date);
   };
 
@@ -1191,9 +1219,9 @@ export function TimelinePage() {
     data: timelineData,
     isLoading: isLoadingTimeline,
     error: timelineError,
-  } = useQuery(
+  } = useQuery<TimelineSegmentsResponse>(
     ['timeline-segments', selectedStream, selectedCameraUuid, selectedDate],
-    timelineUrl,
+    timelineUrl as string,
     {
       timeout: 30000, // 30 second timeout
       retries: 2,     // Retry twice
@@ -1236,14 +1264,14 @@ export function TimelinePage() {
     if (idsMode || !timelineUrl) return;
 
     const POLL_INTERVAL_MS = 10000;
-    let fadeTimeoutId = null;
+    let fadeTimeoutId: TimeoutId | null = null;
     let cancelled = false;
 
     const pollForNewRecordings = async () => {
       try {
         const response = await fetch(timelineUrl);
         if (!response.ok) return;
-        const data = await response.json();
+        const data: TimelineSegmentsResponse = await response.json();
         const polledSegments = data.segments || [];
         setDetectionIntervals(data.detection_intervals || []);
 
@@ -1267,7 +1295,7 @@ export function TimelinePage() {
           ].sort((a, b) => a.start_timestamp - b.start_timestamp);
           setSegments(fading);
           timelineState.setState({ timelineSegments: fading });
-          clearTimeout(fadeTimeoutId);
+          clearTimeout(fadeTimeoutId as TimeoutId);
           fadeTimeoutId = setTimeout(() => {
             if (cancelled) return;
             setSegments(updated);
@@ -1301,7 +1329,7 @@ export function TimelinePage() {
     return () => {
       cancelled = true;
       clearInterval(intervalId);
-      clearTimeout(fadeTimeoutId);
+      clearTimeout(fadeTimeoutId as TimeoutId);
     };
   }, [idsMode, selectedStream, timelineUrl]);
 
@@ -1321,8 +1349,8 @@ export function TimelinePage() {
   // When a recording is deleted from the timeline player, remove it from the
   // local segments list (creates the visual gap) and advance to the next segment.
   useEffect(() => {
-    const handleTimelineDeleted = (e) => {
-      const deletedId = e.detail.id;
+    const handleTimelineDeleted = (e: Event) => {
+      const deletedId = (e as CustomEvent<{ id: number }>).detail.id;
 
       setSegments(prev => {
         const idx = prev.findIndex(s => s.id === deletedId);
@@ -1331,7 +1359,7 @@ export function TimelinePage() {
         // Advance to the next segment (or the previous if it was the last)
         if (updated.length > 0) {
           const nextIdx = Math.min(idx, updated.length - 1);
-          const nextSeg = updated[nextIdx];
+          const nextSeg = updated[nextIdx]!;
 
           timelineState.setState({
             timelineSegments: updated,
@@ -1358,15 +1386,15 @@ export function TimelinePage() {
     return () => window.removeEventListener('timeline-recording-deleted', handleTimelineDeleted);
   }, []);
 
-  const handleStreamChange = (e) => {
-    setSelectedStream(e.target.value);
+  const handleStreamChange = (e: Event) => {
+    setSelectedStream((e.target as HTMLSelectElement).value);
     setSelectedCameraUuid('');
     // Blur the select so it no longer intercepts keyboard events after the
     // selection is made, preserving the current keyboard-nav mode.
-    e.target.blur();
+    (e.target as HTMLSelectElement).blur();
   };
 
-  const handleDateChange = (newDate) => {
+  const handleDateChange = (newDate: string) => {
     if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
       setSelectedDate(newDate);
     } else {
@@ -1374,12 +1402,12 @@ export function TimelinePage() {
     }
   };
 
-  const handleIdsDayChange = useCallback((newDate) => {
+  const handleIdsDayChange = useCallback((newDate: string) => {
     if (!idsAvailableDates.includes(newDate)) return;
     setSelectedDate(newDate);
   }, [idsAvailableDates]);
 
-  const jumpIdsDay = useCallback((offset) => {
+  const jumpIdsDay = useCallback((offset: number) => {
     if (idsSelectedDayIndex === -1) return;
     const nextDate = idsAvailableDates[idsSelectedDayIndex + offset];
     if (nextDate) {
@@ -1490,7 +1518,7 @@ export function TimelinePage() {
     investigationParams.set('end', String(investigationBounds.endTimestamp));
   }
   if (Number.isFinite(timelineState.currentTime)) {
-    investigationParams.set('cursor', String(Math.floor(timelineState.currentTime)));
+    investigationParams.set('cursor', String(Math.floor(timelineState.currentTime as number)));
   }
   const investigationHref = `investigation.html?${investigationParams.toString()}`;
 
@@ -1595,7 +1623,7 @@ export function TimelinePage() {
                 data-keyboard-nav-preserve
                 className="min-w-[180px] rounded border border-border bg-background px-2 py-1 text-xs"
                 value={selectedDate}
-                onChange={(e) => handleIdsDayChange(e.target.value)}
+                onChange={(e) => handleIdsDayChange((e.target as HTMLSelectElement).value)}
               >
                 {idsAvailableDates.map((date, index) => (
                   <option key={date} value={date}>
