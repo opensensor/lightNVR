@@ -1,15 +1,22 @@
-// @ts-nocheck
 /**
  * URL utility functions for RecordingsView
  */
 
+import type { Dispatch, StateUpdater } from 'preact/hooks';
 import { formatUtils } from './formatUtils.ts';
 import { getDefaultDateRange } from '../../../utils/date-utils.ts';
+import type {
+  ActiveFilter,
+  RecordingFilters,
+  RecordingsCollectionOption,
+  RecordingsPaginationState,
+  RecordingsUrlState,
+} from '../../../types/recordings.ts';
 
 const DEFAULT_PAGE_SIZE = 20;
 const ALL_PAGE_SIZE = 'all';
 
-const parseMultiValueParam = (value) => {
+const parseMultiValueParam = (value: string | null | undefined) => {
   if (!value) return [];
 
   return [...new Set(
@@ -20,7 +27,7 @@ const parseMultiValueParam = (value) => {
   )];
 };
 
-const serializeMultiValueParam = (values) => {
+const serializeMultiValueParam = (values: string[] | null | undefined) => {
   if (!Array.isArray(values)) return '';
 
   return [...new Set(
@@ -30,7 +37,7 @@ const serializeMultiValueParam = (values) => {
   )].join(',');
 };
 
-const addMultiValue = (values, value) => {
+const addMultiValue = (values: string[] | null | undefined, value: string) => {
   const normalizedValue = typeof value === 'string' ? value.trim() : '';
   if (!normalizedValue) return Array.isArray(values) ? values : [];
 
@@ -40,12 +47,12 @@ const addMultiValue = (values, value) => {
     : [...currentValues, normalizedValue];
 };
 
-const removeMultiValue = (values, value) => {
+const removeMultiValue = (values: string[] | null | undefined, value: string) => {
   if (!Array.isArray(values)) return [];
   return values.filter((item) => item !== value);
 };
 
-const parsePaginationLimit = (value) => {
+const parsePaginationLimit = (value: string | null | undefined) => {
   if (value === ALL_PAGE_SIZE) {
     return { pageSize: DEFAULT_PAGE_SIZE, showAll: true };
   }
@@ -57,11 +64,11 @@ const parsePaginationLimit = (value) => {
   };
 };
 
-const serializePaginationLimit = (pagination = {}) => (
+const serializePaginationLimit = (pagination: Partial<Pick<RecordingsPaginationState, 'showAll' | 'pageSize'>> = {}) => (
   pagination.showAll ? ALL_PAGE_SIZE : String(pagination.pageSize || DEFAULT_PAGE_SIZE)
 );
 
-const createDefaultFilters = () => {
+const createDefaultFilters = (): RecordingFilters => {
   const { startDate, endDate } = getDefaultDateRange();
 
   return {
@@ -115,7 +122,7 @@ export const urlUtils = {
     }
     
     // Create result object
-    const result = {
+    const result: RecordingsUrlState = {
       filters: createDefaultFilters(),
       page: 1,
       limit: DEFAULT_PAGE_SIZE,
@@ -126,20 +133,20 @@ export const urlUtils = {
     
     // Date range
     if (urlParams.has('dateRange')) {
-      result.filters.dateRange = urlParams.get('dateRange');
+      result.filters.dateRange = urlParams.get('dateRange') as string;
       
       if (result.filters.dateRange === 'custom') {
         if (urlParams.has('startDate')) {
-          result.filters.startDate = urlParams.get('startDate');
+          result.filters.startDate = urlParams.get('startDate') as string;
         }
         if (urlParams.has('startTime')) {
-          result.filters.startTime = urlParams.get('startTime');
+          result.filters.startTime = urlParams.get('startTime') as string;
         }
         if (urlParams.has('endDate')) {
-          result.filters.endDate = urlParams.get('endDate');
+          result.filters.endDate = urlParams.get('endDate') as string;
         }
         if (urlParams.has('endTime')) {
-          result.filters.endTime = urlParams.get('endTime');
+          result.filters.endTime = urlParams.get('endTime') as string;
         }
       }
     }
@@ -181,7 +188,7 @@ export const urlUtils = {
 
     // Pagination
     if (urlParams.has('page')) {
-      result.page = parseInt(urlParams.get('page'), 10);
+      result.page = parseInt(urlParams.get('page') as string, 10);
     }
     if (urlParams.has('limit')) {
       const paginationLimit = parsePaginationLimit(urlParams.get('limit'));
@@ -194,10 +201,10 @@ export const urlUtils = {
     
     // Sorting
     if (urlParams.has('sort')) {
-      result.sort = urlParams.get('sort');
+      result.sort = urlParams.get('sort') as string;
     }
     if (urlParams.has('order')) {
-      result.order = urlParams.get('order');
+      result.order = urlParams.get('order') as string;
     }
     
     return result;
@@ -208,8 +215,8 @@ export const urlUtils = {
    * @param {Object} filters Current filters
    * @returns {Array} Array of active filter objects with key and label
    */
-  getActiveFiltersDisplay: (filters, collections = []) => {
-    const activeFilters = [];
+  getActiveFiltersDisplay: (filters: RecordingFilters, collections: RecordingsCollectionOption[] = []) => {
+    const activeFilters: ActiveFilter[] = [];
     
     // Check if we have any active filters
     const hasFilters = (
@@ -303,7 +310,14 @@ export const urlUtils = {
    * @param {Function} setSortField Function to update sort field
    * @param {Function} setSortDirection Function to update sort direction
    */
-  loadFiltersFromUrl: (filters, pagination, setFilters, setPagination, setSortField, setSortDirection) => {
+  loadFiltersFromUrl: (
+    filters: RecordingFilters,
+    pagination: RecordingsPaginationState,
+    setFilters: Dispatch<StateUpdater<RecordingFilters>>,
+    setPagination: Dispatch<StateUpdater<RecordingsPaginationState>>,
+    setSortField: Dispatch<StateUpdater<string>>,
+    setSortDirection: Dispatch<StateUpdater<string>>,
+  ) => {
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     
@@ -312,20 +326,20 @@ export const urlUtils = {
     
     // Date range
     if (urlParams.has('dateRange')) {
-      newFilters.dateRange = urlParams.get('dateRange');
+      newFilters.dateRange = urlParams.get('dateRange') as string;
       
       if (newFilters.dateRange === 'custom') {
         if (urlParams.has('startDate')) {
-          newFilters.startDate = urlParams.get('startDate');
+          newFilters.startDate = urlParams.get('startDate') as string;
         }
         if (urlParams.has('startTime')) {
-          newFilters.startTime = urlParams.get('startTime');
+          newFilters.startTime = urlParams.get('startTime') as string;
         }
         if (urlParams.has('endDate')) {
-          newFilters.endDate = urlParams.get('endDate');
+          newFilters.endDate = urlParams.get('endDate') as string;
         }
         if (urlParams.has('endTime')) {
-          newFilters.endTime = urlParams.get('endTime');
+          newFilters.endTime = urlParams.get('endTime') as string;
         }
       }
     }
@@ -369,7 +383,7 @@ export const urlUtils = {
     if (urlParams.has('page')) {
       setPagination(prev => ({
         ...prev,
-        currentPage: parseInt(urlParams.get('page'), 10)
+        currentPage: parseInt(urlParams.get('page') as string, 10)
       }));
     }
     if (urlParams.has('limit')) {
@@ -384,10 +398,10 @@ export const urlUtils = {
     
     // Sorting
     if (urlParams.has('sort')) {
-      setSortField(urlParams.get('sort'));
+      setSortField(urlParams.get('sort') as string);
     }
     if (urlParams.has('order')) {
-      setSortDirection(urlParams.get('order'));
+      setSortDirection(urlParams.get('order') as string);
     }
   },
   
@@ -398,7 +412,7 @@ export const urlUtils = {
    * @param {string} sortField Current sort field
    * @param {string} sortDirection Current sort direction
    */
-  updateUrlWithFilters: (filters, pagination, sortField, sortDirection) => {
+  updateUrlWithFilters: (filters: RecordingFilters, pagination: RecordingsPaginationState, sortField: string, sortDirection: string) => {
     const url = new URL(window.location.href);
 
     // Date range

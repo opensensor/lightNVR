@@ -1,16 +1,22 @@
-// @ts-nocheck
 import { useI18n } from '../../../i18n.ts';
+import type { ActiveFilter, ActiveFilterKey } from '../../../types/recordings.ts';
 
 /**
  * ActiveFilters component for RecordingsView
  */
+
+export interface ActiveFiltersProps {
+  activeFiltersDisplay: ActiveFilter[];
+  removeFilter: (key: ActiveFilterKey, value?: string) => void;
+  hasActiveFilters: boolean;
+}
 
 /**
  * ActiveFilters component
  * @param {Object} props Component props
  * @returns {JSX.Element} ActiveFilters component
  */
-export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFilters }) {
+export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFilters }: ActiveFiltersProps) {
   const { t } = useI18n();
 
   if (!hasActiveFilters) {

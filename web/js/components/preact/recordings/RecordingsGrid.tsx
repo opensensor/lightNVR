@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RecordingsGrid component for RecordingsView
  * Displays recordings as thumbnail cards in a responsive grid layout.
@@ -14,6 +13,57 @@ import {
 } from '../../../request-queue.ts';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.tsx';
 import { useI18n } from '../../../i18n.ts';
+import type {
+  RecordingListItem,
+  RecordingSelection,
+  RecordingTagsChanged,
+  RecordingsPaginationState,
+} from '../../../types/recordings.ts';
+
+interface CardConfigDropdownProps {
+  hiddenColumns: Record<string, boolean>;
+  toggleColumn: (key: string) => void;
+}
+
+interface RecordingCardProps {
+  recording: RecordingListItem;
+  playRecording: (recording: RecordingListItem) => void;
+  downloadRecording: (recording: RecordingListItem) => void;
+  deleteRecording: (recording: RecordingListItem) => void;
+  toggleProtection?: (recording: RecordingListItem) => unknown;
+  selectedRecordings: RecordingSelection;
+  toggleRecordingSelection: (recordingId: number) => void;
+  canDelete: boolean;
+  selectionMode: boolean;
+  hiddenColumns: Record<string, boolean>;
+  onTagsChanged?: RecordingTagsChanged;
+  thumbnailsPerRecording?: number;
+}
+
+export interface RecordingsGridProps {
+  collapsed: boolean;
+  toggleCollapsed: () => void;
+  recordings: RecordingListItem[];
+  selectedRecordings: RecordingSelection;
+  toggleRecordingSelection: (recordingId: number) => void;
+  selectAll: boolean;
+  toggleSelectAll: () => void;
+  getSelectedCount: () => number;
+  openDeleteModal: (mode: string) => void;
+  openDownloadModal?: () => void;
+  playRecording: (recording: RecordingListItem) => void;
+  downloadRecording: (recording: RecordingListItem) => void;
+  deleteRecording: (recording: RecordingListItem) => void;
+  toggleProtection?: (recording: RecordingListItem) => unknown;
+  pagination: Pick<RecordingsPaginationState, 'totalItems'>;
+  canDelete?: boolean;
+  clearSelections?: () => void;
+  hiddenColumns?: Record<string, boolean>;
+  toggleColumn?: (key: string) => void;
+  onTagsChanged?: RecordingTagsChanged;
+  viewSelectedInTimeline?: () => void;
+  thumbnailsPerRecording?: number;
+}
 
 /** Card elements that can be hidden via the settings cog — labels resolved via i18n in CardConfigDropdown */
 const HIDEABLE_ELEMENTS = [
@@ -28,14 +78,14 @@ const HIDEABLE_ELEMENTS = [
 /**
  * Settings cog dropdown for grid cards – mirrors ColumnConfigDropdown from RecordingsTable
  */
-function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
+function CardConfigDropdown({ hiddenColumns, toggleColumn }: CardConfigDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node | null)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
@@ -93,7 +143,7 @@ function RecordingCard({
   hiddenColumns,
   onTagsChanged,
   thumbnailsPerRecording = 3
-}) {
+}: RecordingCardProps) {
   const { t } = useI18n();
   // Mount-time frame: always index 0 (first frame, no ffmpeg seek — #364).
   // Hover cycling animates 0→1→2 when thumbnailsPerRecording === 3; in
@@ -101,10 +151,10 @@ function RecordingCard({
   const hoverFramesEnabled = thumbnailsPerRecording > 1;
   const [currentFrame, setCurrentFrame] = useState(0);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
-  const tagBtnRef = useRef(null);
+  const tagBtnRef = useRef<HTMLButtonElement | null>(null);
   const [rawIsHovering, setRawIsHovering] = useState(false);
   const isHovering = hoverFramesEnabled && rawIsHovering;
-  const setIsHovering = useCallback((nextIsHovering) => {
+  const setIsHovering = useCallback((nextIsHovering: boolean | ((prev: boolean) => boolean)) => {
     setRawIsHovering((prevIsHovering) => {
       const resolvedIsHovering =
         typeof nextIsHovering === 'function'
@@ -115,11 +165,11 @@ function RecordingCard({
     });
   }, [hoverFramesEnabled]);
   const [framesReady, setFramesReady] = useState(false); // true once frames 1+2 are loaded
-  const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
-  const intervalRef = useRef(null);
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading'); // 'loading', 'loaded', 'error'
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const preloadedRef = useRef(false);
   const imgErrorCountRef = useRef(0);
-  const hoverTimerRef = useRef(null); // debounce timer for hover
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // debounce timer for hover
 
   // A still-recording segment shows a live placeholder instead of a thumbnail:
   // the MP4 index is not finalized until the segment completes, so the
@@ -167,11 +217,11 @@ function RecordingCard({
     hoverTimerRef.current = setTimeout(() => setIsHovering(true), 200);
   }, [setIsHovering]);
   const handleMouseLeave = useCallback(() => {
-    clearTimeout(hoverTimerRef.current);
+    clearTimeout(hoverTimerRef.current as number | undefined);
     setIsHovering(false);
   }, [setIsHovering]);
   // Cleanup debounce timer on unmount
-  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+  useEffect(() => () => clearTimeout(hoverTimerRef.current as number | undefined), []);
 
   // Preload the other two frames when user first hovers (LOW priority background task).
   // Only start cycling once both frames are loaded so the <img> src never
@@ -222,7 +272,7 @@ function RecordingCard({
 
   const thumbnailUrl = `/api/recordings/thumbnail/${recording.id}/${currentFrame}`;
   const isSelected = !!selectedRecordings[recording.id];
-  const show = (key) => !hiddenColumns[key];
+  const show = (key: string) => !hiddenColumns[key];
 
   return (
     <div
@@ -505,7 +555,7 @@ export function RecordingsGrid({
   onTagsChanged,
   viewSelectedInTimeline,
   thumbnailsPerRecording = 3
-}) {
+}: RecordingsGridProps) {
   const { t } = useI18n();
   const [selectionMode, setSelectionMode] = useState(false);
   const [showBulkTags, setShowBulkTags] = useState(false);

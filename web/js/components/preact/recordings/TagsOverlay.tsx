@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * TagsOverlay component for managing tags on recordings.
  * Shows current tags, allows adding/removing, with autocomplete from existing tags.
@@ -8,11 +7,39 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { recordingsAPI } from './recordingsAPI.tsx';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { useI18n } from '../../../i18n.ts';
+import type { Recording } from '../../../types/core.ts';
+import type { RecordingSelection } from '../../../types/recordings.ts';
+
+export interface TagIconProps {
+  className?: string;
+}
+
+interface TagChipProps {
+  tag: string;
+  onRemove?: (tag: string) => unknown;
+  readOnly?: boolean;
+}
+
+export interface TagsOverlayProps {
+  /** Only id and tags are read, so TimelineControls can pass a partial recording. */
+  recording: Pick<Recording, 'id'> & { tags?: string[] };
+  onClose: () => void;
+  onTagsChanged?: (recordingId: number, newTags: string[]) => unknown;
+}
+
+export interface BulkTagsOverlayProps {
+  recordings: Array<Pick<Recording, 'id'> & { tags?: string[] }>;
+  selectedRecordings: RecordingSelection;
+  onClose: () => void;
+  onTagsChanged?: () => unknown;
+}
+
+type BulkTagState = 'all' | 'some' | 'none';
 
 /**
  * Tag icon SVG (label/tag shape)
  */
-export function TagIcon({ className = 'w-4 h-4' }) {
+export function TagIcon({ className = 'w-4 h-4' }: TagIconProps) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -24,7 +51,7 @@ export function TagIcon({ className = 'w-4 h-4' }) {
 /**
  * Small tag chip for displaying a tag
  */
-function TagChip({ tag, onRemove, readOnly = false }) {
+function TagChip({ tag, onRemove, readOnly = false }: TagChipProps) {
   return (
     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary border border-primary/20">
       {tag}
@@ -45,15 +72,15 @@ function TagChip({ tag, onRemove, readOnly = false }) {
 /**
  * Single-recording tag overlay
  */
-export function TagsOverlay({ recording, onClose, onTagsChanged }) {
+export function TagsOverlay({ recording, onClose, onTagsChanged }: TagsOverlayProps) {
   const { t } = useI18n();
-  const [tags, setTags] = useState(recording.tags || []);
+  const [tags, setTags] = useState<string[]>(recording.tags || []);
   const [inputValue, setInputValue] = useState('');
-  const [allTags, setAllTags] = useState([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef(null);
-  const overlayRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   // Load all existing tags for autocomplete
   useEffect(() => {
@@ -62,8 +89,8 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
 
   // Close on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (overlayRef.current && !overlayRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (overlayRef.current && !overlayRef.current.contains(e.target as Node | null)) {
         onClose();
       }
     };
@@ -78,7 +105,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     ? allTags.filter(t => t.toLowerCase().includes(inputValue.toLowerCase()) && !tags.includes(t))
     : allTags.filter(t => !tags.includes(t));
 
-  const addTag = useCallback(async (tag) => {
+  const addTag = useCallback(async (tag: string) => {
     const trimmed = tag.trim();
     if (!trimmed || tags.includes(trimmed)) return;
     const newTags = [...tags, trimmed];
@@ -94,7 +121,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     setSaving(false);
   }, [tags, recording.id, onTagsChanged]);
 
-  const removeTag = useCallback(async (tag) => {
+  const removeTag = useCallback(async (tag: string) => {
     const newTags = tags.filter(t => t !== tag);
     setTags(newTags);
     setSaving(true);
@@ -106,7 +133,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     setSaving(false);
   }, [tags, recording.id, onTagsChanged]);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && inputValue.trim()) {
       e.preventDefault();
       addTag(inputValue);
@@ -142,7 +169,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
           placeholder={t('recordings.addTagPlaceholder')}
           value={inputValue}
-          onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
+          onInput={(e) => { setInputValue((e.target as HTMLInputElement).value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}
           onKeyDown={handleKeyDown}
           disabled={saving}
@@ -173,15 +200,15 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
  *  - partial (some selected recordings have the tag)
  *  - unchecked (no selected recordings have the tag)
  */
-export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTagsChanged }) {
+export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTagsChanged }: BulkTagsOverlayProps) {
   const { t } = useI18n();
-  const [allTags, setAllTags] = useState([]);
-  const [tagStates, setTagStates] = useState({}); // tag -> 'all' | 'some' | 'none'
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagStates, setTagStates] = useState<Record<string, BulkTagState>>({}); // tag -> 'all' | 'some' | 'none'
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
-  const overlayRef = useRef(null);
-  const inputRef = useRef(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedIds = Object.entries(selectedRecordings)
     .filter(([_, sel]) => sel)
@@ -211,11 +238,11 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
   // Use selected IDs rather than their count so replacing a selection reconciles
   // correctly without rerunning on each newly allocated selection object.
   useEffect(() => {
-    const ids = JSON.parse(selectionKey);
+    const ids: number[] = JSON.parse(selectionKey);
     const selectedRecs = recordings.filter(recording => ids.includes(recording.id));
     setTagStates(prev => {
-      const states = {};
-      const knownTags = new Set(Object.keys(prev));
+      const states: Record<string, BulkTagState> = {};
+      const knownTags = new Set<string>(Object.keys(prev));
       selectedRecs.forEach(recording => (recording.tags || []).forEach(tag => knownTags.add(tag)));
       knownTags.forEach(tag => {
         const count = selectedRecs.filter(recording => (recording.tags || []).includes(tag)).length;
@@ -227,14 +254,14 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
 
   // Close on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (overlayRef.current && !overlayRef.current.contains(e.target)) onClose();
+    const handler = (e: MouseEvent) => {
+      if (overlayRef.current && !overlayRef.current.contains(e.target as Node | null)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  const handleTagToggle = useCallback(async (tag) => {
+  const handleTagToggle = useCallback(async (tag: string) => {
     const current = tagStates[tag] || 'none';
     setSaving(true);
     try {
@@ -258,7 +285,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     setSaving(false);
   }, [tagStates, selectedIds, selectionKey, onTagsChanged]);
 
-  const addNewTag = useCallback(async (tag) => {
+  const addNewTag = useCallback(async (tag: string) => {
     const trimmed = tag.trim();
     if (!trimmed) return;
     setSaving(true);
@@ -276,7 +303,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     setSaving(false);
   }, [selectedIds, selectionKey, allTags, onTagsChanged]);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && inputValue.trim()) { e.preventDefault(); addNewTag(inputValue); }
     else if (e.key === 'Escape') onClose();
   };
@@ -328,7 +355,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
           class="w-full text-sm px-2 py-1.5 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
           placeholder={t('recordings.addNewTagPlaceholder')}
           value={inputValue}
-          onInput={(e) => { setInputValue(e.target.value); setShowSuggestions(true); }}
+          onInput={(e) => { setInputValue((e.target as HTMLInputElement).value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}
           onKeyDown={handleKeyDown}
           disabled={saving}

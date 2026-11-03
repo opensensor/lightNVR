@@ -1,19 +1,34 @@
-// @ts-nocheck
 /**
  * BatchDownloadModal – lets the user choose sequential or ZIP batch download.
  */
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { t as translate, useI18n } from '../../i18n.ts';
+import type { Recording } from '../../types/core.ts';
+import type {
+  BatchDownloadStartResponse,
+  BatchDownloadStatusResponse,
+  RecordingSelection,
+} from '../../types/recordings.ts';
+
+/** Only id and stream are read, so the timeline can pass its own segment objects. */
+type DownloadableRecording = Pick<Recording, 'id'> & { stream?: string };
+
+export interface BatchDownloadModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  recordings?: DownloadableRecording[];
+  selectedIds?: RecordingSelection;
+}
 
 /**
  * Sequential download: trigger one download per recording with a small delay.
  * @param {Array} recordings  Full recording objects (must have .id, .stream, .start_time)
  */
-async function downloadSequential(recordings) {
+async function downloadSequential(recordings: DownloadableRecording[]) {
   showStatusMessage(translate(recordings.length === 1 ? 'recordings.startingDownloadOne' : 'recordings.startingDownloadMany', { count: recordings.length }));
   for (let i = 0; i < recordings.length; i++) {
-    const r = recordings[i];
+    const r = recordings[i]!;
     const url = `/api/recordings/download/${r.id}`;
     const a = document.createElement('a');
     a.href = url;
@@ -35,7 +50,13 @@ async function downloadSequential(recordings) {
  * @param {Function} onComplete  () => void
  * @param {Function} onError    (msg) => void
  */
-async function downloadZip(ids, filename, onProgress, onComplete, onError) {
+async function downloadZip(
+  ids: number[],
+  filename: string,
+  onProgress: (current: number, total: number) => void,
+  onComplete: () => void,
+  onError: (message: string) => void,
+) {
   try {
     const resp = await fetch('/api/recordings/batch-download', {
       method: 'POST',
@@ -43,14 +64,14 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
       body: JSON.stringify({ ids, filename }),
     });
     if (!resp.ok) throw new Error(translate('recordings.serverError', { status: resp.status }));
-    const { token, total } = await resp.json();
+    const { token, total }: BatchDownloadStartResponse = await resp.json();
 
     // Poll status
     while (true) {
       await new Promise(r => setTimeout(r, 800));
       const st = await fetch(`/api/recordings/batch-download/status/${token}`);
       if (!st.ok) throw new Error(translate('recordings.statusPollFailed'));
-      const { status, current } = await st.json();
+      const { status, current }: BatchDownloadStatusResponse = await st.json();
       onProgress(current, total);
       if (status === 'complete') break;
       if (status === 'error')   throw new Error(translate('recordings.zipCreationFailed'));
@@ -65,7 +86,7 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
     document.body.removeChild(a);
     onComplete();
   } catch (err) {
-    onError(err.message || translate('recordings.unknownError'));
+    onError((err as Error).message || translate('recordings.unknownError'));
   }
 }
 
@@ -78,7 +99,7 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
  *   recordings   {Array}   – all recording objects that are currently selected
  *   selectedIds  {Object}  – map of id → true for selected recordings
  */
-export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedIds = {} }) {
+export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedIds = {} }: BatchDownloadModalProps) {
   const { t } = useI18n();
   const [mode, setMode] = useState('zip');          // 'zip' | 'sequential'
   const [zipName, setZipName] = useState('recordings.zip');
@@ -97,7 +118,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
 
   const selected = Object.entries(selectedIds)
     .filter(([_, isSelected]) => !!isSelected)
-    .map(([id]) => recordings.find(r => String(r.id) === id) || {
+    .map(([id]): DownloadableRecording => recordings.find(r => String(r.id) === id) || {
       id: parseInt(id, 10),
       stream: 'recording'
     });
@@ -164,7 +185,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
             <input
               type="text"
               value={zipName}
-              onInput={e => setZipName(e.target.value)}
+              onInput={e => setZipName((e.target as HTMLInputElement).value)}
               placeholder="recordings.zip"
               class="w-full px-3 py-2 rounded border border-border bg-background text-sm focus:outline-none focus:ring-2"
               style={{ focusRingColor: 'hsl(var(--primary))' }}

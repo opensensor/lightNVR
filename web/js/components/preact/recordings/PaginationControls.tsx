@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { useI18n } from '../../../i18n.ts';
+import type { RecordingsPaginationState } from '../../../types/recordings.ts';
 
 /**
  * PaginationControls component for RecordingsView
@@ -7,9 +7,9 @@ import { useI18n } from '../../../i18n.ts';
  */
 
 /** Interior page numbers (excluding first & last), ±2 of current. */
-function getMiddlePages(current, total) {
+function getMiddlePages(current: number, total: number) {
   if (total <= 2) return [];
-  const pages = [];
+  const pages: number[] = [];
   for (let i = current - 2; i <= current + 2; i++) {
     if (i > 1 && i < total) pages.push(i);
   }
@@ -23,16 +23,21 @@ const INACTIVE = `${BTN} bg-secondary text-secondary-foreground border-border ho
 /** Active: highlight using primary theme token */
 const ACTIVE = `${BTN} bg-primary text-primary-foreground border-primary`;
 
+export interface PaginationControlsProps {
+  pagination: RecordingsPaginationState;
+  goToPage: (page: number) => void;
+}
+
 /**
  * PaginationControls component
  */
-export function PaginationControls({ pagination, goToPage }) {
+export function PaginationControls({ pagination, goToPage }: PaginationControlsProps) {
   const { currentPage, totalPages } = pagination;
   const middle = getMiddlePages(currentPage, totalPages);
   const showPager = totalPages > 1 && !pagination.showAll;
   const { t } = useI18n();
 
-  const cls = (p) => (p === currentPage ? ACTIVE : INACTIVE);
+  const cls = (p: number) => (p === currentPage ? ACTIVE : INACTIVE);
 
   return (
     <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-border">

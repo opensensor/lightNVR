@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Batch Delete Modal Component
  * Preact component for displaying progress of batch delete operations
@@ -9,6 +8,34 @@ import { showStatusMessage } from './ToastContainer.tsx';
 import { batchDeleteStatus } from '../../utils/batch-delete-status.ts';
 import { useQueryClient } from '../../query-client.ts';
 import { t as translate, useI18n } from '../../i18n.ts';
+import type {
+  BatchDeleteFilter,
+  BatchDeleteParams,
+  BatchDeleteProgressResponse,
+  BatchDeleteStartResponse,
+} from '../../types/recordings.ts';
+
+declare global {
+  interface Window {
+    closeBatchDeleteModal?: () => void;
+    batchDeleteRecordingsByHttpRequest?: (params: BatchDeleteParams) => Promise<BatchDeleteProgressResponse>;
+    batchDeleteRecordings?: typeof batchDeleteRecordings;
+    batchDeleteRecordingsByFilter?: typeof batchDeleteRecordingsByFilter;
+  }
+}
+
+type BatchDeletePhase = 'hidden' | 'confirm' | 'progress';
+
+interface BatchDeleteProgressState {
+  current: number;
+  total: number;
+  succeeded: number;
+  failed: number;
+  pending_deletions?: number;
+  status: string;
+  complete: boolean;
+  error?: boolean;
+}
 
 /**
  * BatchDeleteModal component
@@ -24,15 +51,15 @@ export function BatchDeleteModal() {
   const queryClient = useQueryClient();
 
   // Modal phase: 'hidden' | 'confirm' | 'progress'
-  const [phase, setPhase] = useState('hidden');
+  const [phase, setPhase] = useState<BatchDeletePhase>('hidden');
 
   // Pending delete params (stored during confirm phase, used when user clicks Proceed)
-  const pendingParamsRef = useRef(null);
-  const pendingResolveRef = useRef(null);
-  const pendingRejectRef = useRef(null);
+  const pendingParamsRef = useRef<BatchDeleteParams | null>(null);
+  const pendingResolveRef = useRef<((result: BatchDeleteProgressResponse) => void) | null>(null);
+  const pendingRejectRef = useRef<((reason: unknown) => void) | null>(null);
 
   // Progress state
-  const [progress, setProgress] = useState({
+  const [progress, setProgress] = useState<BatchDeleteProgressState>({
     current: 0,
     total: 0,
     succeeded: 0,
@@ -43,7 +70,7 @@ export function BatchDeleteModal() {
   });
 
   // Poll timer ref
-  const pollTimerRef = useRef(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRunningRef = useRef(false);
 
   /** Derive a human-readable description for the confirm dialog */
@@ -84,10 +111,10 @@ export function BatchDeleteModal() {
    * @param {Object} params - Delete parameters (ids or filter)
    * @returns {Promise<Object>} Resolves when the operation completes
    */
-  const batchDeleteRecordingsByHttpRequest = useCallback((params) => {
+  const batchDeleteRecordingsByHttpRequest = useCallback((params: BatchDeleteParams) => {
     console.log('Batch delete requested with params:', params);
 
-    return new Promise((resolve, reject) => {
+    return new Promise<BatchDeleteProgressResponse>((resolve, reject) => {
       pendingParamsRef.current = params;
       pendingResolveRef.current = resolve;
       pendingRejectRef.current = reject;
@@ -100,8 +127,9 @@ export function BatchDeleteModal() {
    */
   const proceedWithDelete = useCallback(() => {
     const params = pendingParamsRef.current;
-    const resolve = pendingResolveRef.current;
-    const reject = pendingRejectRef.current;
+    // batchDeleteRecordingsByHttpRequest sets these three together and closeModal clears them together.
+    const resolve = pendingResolveRef.current!;
+    const reject = pendingRejectRef.current!;
     if (!params) return;
 
     // Switch to progress phase
@@ -145,7 +173,7 @@ export function BatchDeleteModal() {
         }
         return response.json();
       })
-      .then(result => {
+      .then((result: BatchDeleteStartResponse) => {
         console.log('Batch delete job started:', result);
 
         if (!result.job_id) {
@@ -174,7 +202,7 @@ export function BatchDeleteModal() {
               }
               return response.json();
             })
-            .then(progressData => {
+            .then((progressData: BatchDeleteProgressResponse) => {
               console.log('Progress update:', progressData);
 
               // Update progress UI
@@ -454,7 +482,7 @@ export function BatchDeleteModal() {
  * Opens the confirmation modal — no browser confirm() used.
  * @param {Array<number>} ids - Recording IDs to delete
  */
-export function batchDeleteRecordings(ids) {
+export function batchDeleteRecordings(ids: number[]) {
   if (!ids || ids.length === 0) {
     showStatusMessage(translate('recordings.noSelectionForDeletion'), 'warning', 5000);
     return;
@@ -479,7 +507,7 @@ export function batchDeleteRecordings(ids) {
  * Opens the confirmation modal — no browser confirm() used.
  * @param {Object} filter - Filter to delete by
  */
-export function batchDeleteRecordingsByFilter(filter) {
+export function batchDeleteRecordingsByFilter(filter: BatchDeleteFilter) {
   if (!filter) {
     showStatusMessage(translate('recordings.noFilterForDeletion'), 'warning', 5000);
     return;

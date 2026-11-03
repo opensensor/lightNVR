@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * FiltersSidebar component for RecordingsView
  * Collapsible sidebar with accordion-style filter sections
@@ -19,9 +18,53 @@ import {
 } from './lazyFilterOptions.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
 import { useI18n } from '../../../i18n.ts';
+import type { ComponentChildren } from 'preact';
+import type { Dispatch, StateUpdater } from 'preact/hooks';
+import type { StreamSummary } from '../../../types/core.ts';
+import type {
+  MultiValueFilterKey,
+  ProtectedStatusFilter,
+  RecordingFilters,
+  RecordingTypeFilter,
+  RecordingsCollectionOption,
+  RecordingsPaginationState,
+  TranslateFn,
+} from '../../../types/recordings.ts';
+import type { FilterOptionsStatus } from './lazyFilterOptions.ts';
+
+interface FilterSectionProps {
+  title: ComponentChildren;
+  badge?: string | null;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children?: ComponentChildren;
+}
+
+interface SelectedValuesProps {
+  values: string[];
+  onRemove: (value: string) => void;
+  formatValue?: (value: string) => string;
+  emptyText: string;
+  t: TranslateFn;
+}
+
+export interface FiltersSidebarProps {
+  toggleCollapsed: () => void;
+  filters: RecordingFilters;
+  setFilters: Dispatch<StateUpdater<RecordingFilters>>;
+  pagination: RecordingsPaginationState;
+  setPagination: Dispatch<StateUpdater<RecordingsPaginationState>>;
+  streams: StreamSummary[];
+  collections?: RecordingsCollectionOption[];
+  applyFilters: () => unknown;
+  resetFilters: () => void;
+  handleDateRangeChange: (e: Event) => void;
+  /** RecordingsView passes this; the sidebar does not read it. */
+  setDefaultDateRange?: () => void;
+}
 
 /** Small reusable accordion section for filter groups */
-function FilterSection({ title, badge, isExpanded, onToggle, children }) {
+function FilterSection({ title, badge, isExpanded, onToggle, children }: FilterSectionProps) {
   return (
     <div className="border border-border rounded-lg mb-2">
       <button
@@ -53,7 +96,7 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
   );
 }
 
-function SelectedValues({ values, onRemove, formatValue = (value) => value, emptyText, t }) {
+function SelectedValues({ values, onRemove, formatValue = (value) => value, emptyText, t }: SelectedValuesProps) {
   if (!values.length) {
     return <p className="text-[11px] text-muted-foreground">{emptyText}</p>;
   }
@@ -89,7 +132,7 @@ const DEFAULT_SECTIONS = {
 
 const CAPTURE_METHOD_OPTIONS = ['continuous', 'scheduled', 'detection', 'motion', 'manual'];
 
-const getCountBadge = (values) => (values.length > 0 ? `${values.length} selected` : null);
+const getCountBadge = (values: string[]) => (values.length > 0 ? `${values.length} selected` : null);
 // A fresh label list is reused across sidebar mounts (collapse/expand, page
 // navigation) so the filter does not re-run the query on every visit.
 const loadDetectionLabelOptions = createCachedFilterOptionsLoader(
@@ -111,20 +154,20 @@ export function FiltersSidebar({
   applyFilters,
   resetFilters,
   handleDateRangeChange
-}) {
+}: FiltersSidebarProps) {
   const { t } = useI18n();
 
-  const [sections, setSections] = useState(() => {
+  const [sections, setSections] = useState<typeof DEFAULT_SECTIONS>(() => {
     try {
       const saved = localStorage.getItem('recordings_filters_sections');
       return saved ? { ...DEFAULT_SECTIONS, ...JSON.parse(saved) } : { ...DEFAULT_SECTIONS };
     } catch { return { ...DEFAULT_SECTIONS }; }
   });
 
-  const [availableDetectionLabels, setAvailableDetectionLabels] = useState([]);
-  const [availableTags, setAvailableTags] = useState([]);
-  const [detectionLabelsStatus, setDetectionLabelsStatus] = useState(FILTER_OPTIONS_IDLE);
-  const [recordingTagsStatus, setRecordingTagsStatus] = useState(FILTER_OPTIONS_IDLE);
+  const [availableDetectionLabels, setAvailableDetectionLabels] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [detectionLabelsStatus, setDetectionLabelsStatus] = useState<FilterOptionsStatus>(FILTER_OPTIONS_IDLE);
+  const [recordingTagsStatus, setRecordingTagsStatus] = useState<FilterOptionsStatus>(FILTER_OPTIONS_IDLE);
 
   useEffect(() => {
     if (!shouldLoadFilterOptions(sections.detectionObject, detectionLabelsStatus)) return;
@@ -150,7 +193,7 @@ export function FiltersSidebar({
       .catch(() => setRecordingTagsStatus(FILTER_OPTIONS_ERROR));
   }, [sections.tag, recordingTagsStatus]);
 
-  const toggleSection = (key) => {
+  const toggleSection = (key: keyof typeof DEFAULT_SECTIONS) => {
     const willExpand = !sections[key];
     if (willExpand && key === 'detectionObject' && detectionLabelsStatus === FILTER_OPTIONS_ERROR) {
       setDetectionLabelsStatus(FILTER_OPTIONS_IDLE);
@@ -165,14 +208,14 @@ export function FiltersSidebar({
     });
   };
 
-  const addMultiFilterValue = (key, value) => {
+  const addMultiFilterValue = (key: MultiValueFilterKey, value: string) => {
     setFilters((prev) => ({
       ...prev,
       [key]: urlUtils.addMultiValue(prev[key], value)
     }));
   };
 
-  const removeMultiFilterValue = (key, value) => {
+  const removeMultiFilterValue = (key: MultiValueFilterKey, value: string) => {
     setFilters((prev) => ({
       ...prev,
       [key]: urlUtils.removeMultiValue(prev[key], value)
@@ -235,11 +278,11 @@ export function FiltersSidebar({
                     <input type="date" id="start-date"
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.startDate}
-                      onChange={(e) => setFilters((prev) => ({ ...prev, startDate: e.target.value }))} />
+                      onChange={(e) => setFilters((prev) => ({ ...prev, startDate: (e.target as HTMLInputElement).value }))} />
                     <input type="time" id="start-time"
                       className="w-24 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.startTime}
-                      onChange={(e) => setFilters((prev) => ({ ...prev, startTime: e.target.value }))} />
+                      onChange={(e) => setFilters((prev) => ({ ...prev, startTime: (e.target as HTMLInputElement).value }))} />
                   </div>
                 </div>
                 <div>
@@ -248,11 +291,11 @@ export function FiltersSidebar({
                     <input type="date" id="end-date"
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.endDate}
-                      onChange={(e) => setFilters((prev) => ({ ...prev, endDate: e.target.value }))} />
+                      onChange={(e) => setFilters((prev) => ({ ...prev, endDate: (e.target as HTMLInputElement).value }))} />
                     <input type="time" id="end-time"
                       className="w-24 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
                       value={filters.endTime}
-                      onChange={(e) => setFilters((prev) => ({ ...prev, endTime: e.target.value }))} />
+                      onChange={(e) => setFilters((prev) => ({ ...prev, endTime: (e.target as HTMLInputElement).value }))} />
                   </div>
                 </div>
               </div>
@@ -284,14 +327,14 @@ export function FiltersSidebar({
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               defaultValue=""
               onChange={(e) => {
-                if (e.target.value) {
+                if ((e.target as HTMLSelectElement).value) {
                   setFilters((prev) => ({
                     ...prev,
                     collectionUuid: '',
-                    streamIds: urlUtils.addMultiValue(prev.streamIds, e.target.value),
+                    streamIds: urlUtils.addMultiValue(prev.streamIds, (e.target as HTMLSelectElement).value),
                   }));
                 }
-                e.target.value = '';
+                (e.target as HTMLSelectElement).value = '';
               }}
             >
               <option value="">{t('recordings.allStreams')}</option>
@@ -312,7 +355,7 @@ export function FiltersSidebar({
               id="detection-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={filters.recordingType}
-              onChange={(e) => setFilters((prev) => ({ ...prev, recordingType: e.target.value }))}
+              onChange={(e) => setFilters((prev) => ({ ...prev, recordingType: (e.target as HTMLSelectElement).value as RecordingTypeFilter }))}
             >
               <option value="all">{t('recordings.allRecordings')}</option>
               <option value="detection">{t('recordings.withDetections')}</option>
@@ -331,8 +374,8 @@ export function FiltersSidebar({
               disabled={!areFilterOptionsInteractive(detectionLabelsStatus)}
               aria-busy={detectionLabelsStatus === FILTER_OPTIONS_LOADING}
               onChange={(e) => {
-                if (e.target.value) addMultiFilterValue('detectionLabels', e.target.value);
-                e.target.value = '';
+                if ((e.target as HTMLSelectElement).value) addMultiFilterValue('detectionLabels', (e.target as HTMLSelectElement).value);
+                (e.target as HTMLSelectElement).value = '';
               }}
             >
               <option value="">
@@ -369,8 +412,8 @@ export function FiltersSidebar({
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               defaultValue=""
               onChange={(e) => {
-                if (e.target.value) addMultiFilterValue('captureMethods', e.target.value);
-                e.target.value = '';
+                if ((e.target as HTMLSelectElement).value) addMultiFilterValue('captureMethods', (e.target as HTMLSelectElement).value);
+                (e.target as HTMLSelectElement).value = '';
               }}
             >
               <option value="">{t('recordings.addCaptureMethod')}</option>
@@ -395,8 +438,8 @@ export function FiltersSidebar({
               disabled={!areFilterOptionsInteractive(recordingTagsStatus)}
               aria-busy={recordingTagsStatus === FILTER_OPTIONS_LOADING}
               onChange={(e) => {
-                if (e.target.value) addMultiFilterValue('tags', e.target.value);
-                e.target.value = '';
+                if ((e.target as HTMLSelectElement).value) addMultiFilterValue('tags', (e.target as HTMLSelectElement).value);
+                (e.target as HTMLSelectElement).value = '';
               }}
             >
               <option value="">
@@ -432,7 +475,7 @@ export function FiltersSidebar({
               id="protected-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={filters.protectedStatus}
-              onChange={(e) => setFilters((prev) => ({ ...prev, protectedStatus: e.target.value }))}
+              onChange={(e) => setFilters((prev) => ({ ...prev, protectedStatus: (e.target as HTMLSelectElement).value as ProtectedStatusFilter }))}
             >
               <option value="all">{t('common.all')}</option>
               <option value="yes">{t('recordings.protected')}</option>
@@ -447,7 +490,7 @@ export function FiltersSidebar({
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={pagination.showAll ? 'all' : pagination.pageSize.toString()}
               onChange={(e) => {
-                const paginationLimit = urlUtils.parsePaginationLimit(e.target.value);
+                const paginationLimit = urlUtils.parsePaginationLimit((e.target as HTMLSelectElement).value);
                 setPagination((prev) => ({
                   ...prev,
                   currentPage: 1,

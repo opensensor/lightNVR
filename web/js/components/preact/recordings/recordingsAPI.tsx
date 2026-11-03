@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * API functions for RecordingsView
  */
@@ -19,12 +18,47 @@ import {
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
+import type { BatchDeleteCounts, Detection, DetectionResultsResponse, Recording, StreamSummary } from '../../../types/core.ts';
+import type {
+  BatchDeleteFilter,
+  BatchDeleteParams,
+  BatchDeleteProgressResponse,
+  BatchDeleteStartResponse,
+  BatchTagsResponse,
+  DetectionLabelsResponse,
+  RecordingDetail,
+  RecordingFilters,
+  RecordingListItem,
+  RecordingSelection,
+  RecordingsListResponse,
+  RecordingsPaginationState,
+  RecordingTagsListResponse,
+  SetRecordingTagsResponse,
+} from '../../../types/recordings.ts';
+
+// BatchDeleteModal owns batchDeleteRecordingsByHttpRequest. Nothing assigns this one.
+declare global {
+  interface Window {
+    updateBatchDeleteProgress?: (progress: {
+      current: number;
+      total: number;
+      succeeded: number;
+      pending_deletions: number;
+      failed: number;
+      status: string;
+      complete: boolean;
+    }) => void;
+  }
+}
+
+type RecordingTimeFields = Pick<Recording, 'id' | 'stream' | 'start_time' | 'end_time'>;
+type ShowVideoModal = (videoUrl: string, title?: string, downloadUrl?: string) => void;
 
 // Initialize dayjs plugins
 dayjs.extend(utc);
 dayjs.extend(customParseFormat);
 
-const getRecordingStartTime = (recording) =>
+const getRecordingStartTime = (recording: RecordingListItem) =>
   recording?.start_time_unix ?? recording?.start_time;
 
 // Default timeout/retry configuration for recordings API calls
@@ -44,7 +78,7 @@ const BATCH_DELETE_POLL_MAX_ATTEMPTS = 120;  // 2 minutes max (120 * 1 second)
  * @param {number|string} value - Unix epoch (s), ISO string, or legacy UTC string
  * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
  */
-const parseRecordingTimestamp = (value) => {
+const parseRecordingTimestamp = (value: number | string | null | undefined) => {
   if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return value > 0 ? value : 0;
   // String: ISO 8601 or legacy format — dayjs.utc handles both
@@ -52,7 +86,7 @@ const parseRecordingTimestamp = (value) => {
   return parsed.isValid() ? parsed.unix() : 0;
 };
 
-const getDetectionTimeRangeParams = (recording) => {
+const getDetectionTimeRangeParams = (recording: RecordingTimeFields) => {
   const startTime = parseRecordingTimestamp(recording.start_time);
   const endTime = parseRecordingTimestamp(recording.end_time);
 
@@ -67,12 +101,12 @@ const getDetectionTimeRangeParams = (recording) => {
   });
 };
 
-const appendMultiValueParam = (params, key, values) => {
+const appendMultiValueParam = (params: URLSearchParams, key: string, values: string[]) => {
   const serializedValue = urlUtils.serializeMultiValueParam(values);
   if (serializedValue) params.append(key, serializedValue);
 };
 
-const applyDateRangeParams = (params, filters) => {
+const applyDateRangeParams = (params: URLSearchParams, filters: RecordingFilters): void => {
   if (filters.dateRange === 'custom') {
     params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
     params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
@@ -83,7 +117,7 @@ const applyDateRangeParams = (params, filters) => {
   }
 };
 
-const applyFilterParams = (params, filters) => {
+const applyFilterParams = (params: URLSearchParams, filters: RecordingFilters) => {
   if (filters.collectionUuid) params.append('collection_uuid', filters.collectionUuid);
   else appendMultiValueParam(params, 'stream', filters.streamIds);
 
@@ -104,7 +138,7 @@ const applyFilterParams = (params, filters) => {
   }
 };
 
-const buildRecordingsQueryParams = (filters, pagination, sortField, sortDirection) => {
+const buildRecordingsQueryParams = (filters: RecordingFilters, pagination: RecordingsPaginationState, sortField: string, sortDirection: string) => {
   const params = new URLSearchParams();
   params.append('page', String(pagination.showAll ? 1 : pagination.currentPage));
   params.append('limit', urlUtils.serializePaginationLimit(pagination));
@@ -115,8 +149,8 @@ const buildRecordingsQueryParams = (filters, pagination, sortField, sortDirectio
   return params;
 };
 
-const buildFilterObject = (filters) => {
-  const filter = {};
+const buildFilterObject = (filters: RecordingFilters): BatchDeleteFilter => {
+  const filter: BatchDeleteFilter = {};
 
   if (filters.dateRange === 'custom') {
     filter.start = dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString();
@@ -160,11 +194,14 @@ const buildFilterObject = (filters) => {
 
 /**
  * RecordingsAPI - Handles all API calls related to recordings
+ *
+ * Methods that call recordingsAPI itself have return annotations, or the object's
+ * inferred type would be circular.
  */
 export const recordingsAPI = {
   parseRecordingTimestamp,
 
-  getRecording: async (recordingId) => fetchJSON(`/api/recordings/${recordingId}`, {
+  getRecording: async (recordingId: number | string) => fetchJSON<RecordingDetail>(`/api/recordings/${recordingId}`, {
     timeout: DEFAULT_TIMEOUT,
     retries: 1,
     retryDelay: DEFAULT_RETRY_DELAY,
@@ -179,7 +216,7 @@ export const recordingsAPI = {
      * @returns {Object} Query result
      */
     useStreams: () => {
-      return useQuery({
+      return useQuery<StreamSummary[]>({
         queryKey: ['streams', 'recordings-summary'],
         queryFn: ({ signal }) => fetchAllStreamSummaries({ signal }),
         staleTime: 30000,
@@ -194,13 +231,13 @@ export const recordingsAPI = {
      * @param {string} sortDirection Sort direction
      * @returns {Object} Query result
      */
-    useRecordings: (filters, pagination, sortField, sortDirection) => {
+    useRecordings: (filters: RecordingFilters, pagination: RecordingsPaginationState, sortField: string, sortDirection: string) => {
       const params = buildRecordingsQueryParams(filters, pagination, sortField, sortDirection);
 
       // Create query key that includes all filter parameters
       const queryKey = ['recordings', filters, pagination, sortField, sortDirection];
 
-      return useQuery(
+      return useQuery<RecordingsListResponse>(
         queryKey,
         `/api/recordings?${params.toString()}`,
         {
@@ -223,7 +260,7 @@ export const recordingsAPI = {
     useDeleteRecording: () => {
       const queryClient = useQueryClient();
 
-      return useMutation({
+      return useMutation<unknown, Error, number>({
         mutationFn: async (recordingId) => {
           const url = `/api/recordings/${recordingId}`;
           return await fetchJSON(url, {
@@ -252,9 +289,9 @@ export const recordingsAPI = {
     useBatchDeleteRecordings: () => {
       const queryClient = useQueryClient();
 
-      return useMutation({
-        mutationFn: async (data) => {
-          const started = await fetchJSON('/api/recordings/batch-delete', {
+      return useMutation<BatchDeleteCounts, Error, BatchDeleteParams>({
+        mutationFn: async (data): Promise<BatchDeleteCounts> => {
+          const started = await fetchJSON<BatchDeleteStartResponse>('/api/recordings/batch-delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -286,7 +323,7 @@ export const recordingsAPI = {
       return data || [];
     } catch (error) {
       console.error('Error loading streams for filter:', error);
-      showStatusMessage(t('recordings.errorLoadingStreams', { message: error.message }));
+      showStatusMessage(t('recordings.errorLoadingStreams', { message: (error as Error).message }));
       return [];
     }
   },
@@ -297,7 +334,7 @@ export const recordingsAPI = {
    * @param {string} preset Preset name
    * @returns {Object} Start and end ISO 8601 strings in UTC
    */
-  getDateRangeFromPreset: (preset) => {
+  getDateRangeFromPreset: (preset: string) => {
     // Use dayjs to build date boundaries in the local timezone, then convert to UTC ISO strings.
     const startOfToday = dayjs().startOf('day');
     const endOfToday   = dayjs().endOf('day');
@@ -337,7 +374,7 @@ export const recordingsAPI = {
    * @param {string} sortDirection Sort direction
    * @returns {Promise<Object>} Recordings data and pagination info
    */
-  loadRecordings: async (filters, pagination, sortField, sortDirection) => {
+  loadRecordings: async (filters: RecordingFilters, pagination: RecordingsPaginationState, sortField: string, sortDirection: string) => {
     try {
       const params = buildRecordingsQueryParams(filters, pagination, sortField, sortDirection);
 
@@ -345,7 +382,7 @@ export const recordingsAPI = {
       console.log('API Request:', `/api/recordings?${params.toString()}`);
 
       // Fetch recordings with enhanced fetch
-      const data = await fetchJSON(`/api/recordings?${params.toString()}`, {
+      const data = await fetchJSON<RecordingsListResponse>(`/api/recordings?${params.toString()}`, {
         timeout: 30000, // 30 second timeout for potentially large data
         retries: 2,     // Retry twice
         retryDelay: 1000 // 1 second between retries
@@ -368,7 +405,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error loading recordings:', error);
-      showStatusMessage(t('recordings.errorLoadingRecordings', { message: error.message }));
+      showStatusMessage(t('recordings.errorLoadingRecordings', { message: (error as Error).message }));
       throw error;
     }
   },
@@ -378,7 +415,7 @@ export const recordingsAPI = {
    * @param {Object} recording Recording to delete
    * @returns {Promise<boolean>} Success status
    */
-  deleteRecording: async (recording) => {
+  deleteRecording: async (recording: Pick<Recording, 'id'>) => {
     try {
       await enhancedFetch(`/api/recordings/${recording.id}`, {
         method: 'DELETE',
@@ -391,7 +428,7 @@ export const recordingsAPI = {
       return true;
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage(t('recordings.errorDeletingRecording', { message: error.message }));
+      showStatusMessage(t('recordings.errorDeletingRecording', { message: (error as Error).message }));
       return false;
     }
   },
@@ -401,7 +438,7 @@ export const recordingsAPI = {
    * @param {Object} selectedRecordings Object with recording IDs as keys
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteSelectedRecordings: async (selectedRecordings) => {
+  deleteSelectedRecordings: async (selectedRecordings: RecordingSelection): Promise<BatchDeleteCounts> => {
     const selectedIds = Object.entries(selectedRecordings)
       .filter(([id, isSelected]) => isSelected)
       .map(([id]) => parseInt(id, 10));
@@ -420,7 +457,7 @@ export const recordingsAPI = {
       return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
     } catch (error) {
       console.error('Error in batch delete operation:', error);
-      showStatusMessage(t('recordings.errorBatchDelete', { message: error.message }));
+      showStatusMessage(t('recordings.errorBatchDelete', { message: (error as Error).message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -430,7 +467,7 @@ export const recordingsAPI = {
    * @param {Array<number>} selectedIds Array of recording IDs
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteSelectedRecordingsHttp: async (selectedIds) => {
+  deleteSelectedRecordingsHttp: async (selectedIds: number[]): Promise<BatchDeleteCounts> => {
     try {
       // Use the batch delete endpoint with enhanced fetch
       const response = await enhancedFetch('/api/recordings/batch-delete', {
@@ -449,7 +486,7 @@ export const recordingsAPI = {
       return await recordingsAPI.handleBatchDeleteResponse(response);
     } catch (error) {
       console.error('Error in HTTP batch delete operation:', error);
-      showStatusMessage(t('recordings.errorBatchDelete', { message: error.message }));
+      showStatusMessage(t('recordings.errorBatchDelete', { message: (error as Error).message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -459,7 +496,7 @@ export const recordingsAPI = {
    * @param {string} jobId Job ID to poll
    * @returns {Promise<Object>} Final result with success and error counts
    */
-  pollBatchDeleteProgress: async (jobId) => {
+  pollBatchDeleteProgress: async (jobId: string): Promise<BatchDeleteCounts> => {
     const maxAttempts = BATCH_DELETE_POLL_MAX_ATTEMPTS;
     const baseDelayMs = 1000;    // 1 second base delay between polls
     const maxDelayMs = 10000;    // Cap delay at 10 seconds
@@ -470,7 +507,7 @@ export const recordingsAPI = {
       // capped to avoid excessively long waits.
       const currentDelayMs = Math.min(baseDelayMs * (2 ** attempts), maxDelayMs);
       try {
-        const progress = await fetchJSON(`/api/recordings/batch-delete/progress/${jobId}`, {
+        const progress = await fetchJSON<BatchDeleteProgressResponse>(`/api/recordings/batch-delete/progress/${jobId}`, {
           method: 'GET',
           // Ensure each polling request has bounded duration and internal retries
           timeout: 10000,       // 10 seconds per request
@@ -520,7 +557,7 @@ export const recordingsAPI = {
    * @param {Object} filters Current filters
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteAllFilteredRecordings: async (filters) => {
+  deleteAllFilteredRecordings: async (filters: RecordingFilters): Promise<BatchDeleteCounts> => {
     try {
       const filter = buildFilterObject(filters);
 
@@ -544,7 +581,7 @@ export const recordingsAPI = {
         params.append('page', '1');
         params.append('limit', '1');
 
-        const data = await fetchJSON('/api/recordings?' + params.toString());
+        const data = await fetchJSON<RecordingsListResponse>('/api/recordings?' + params.toString());
         if (data?.pagination?.total) {
           totalCount = data.pagination.total;
           console.log(`Found ${totalCount} recordings matching filter`);
@@ -562,7 +599,7 @@ export const recordingsAPI = {
       return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
     } catch (error) {
       console.error('Error in delete all operation:', error);
-      showStatusMessage(t('recordings.errorDeleteAll', { message: error.message }));
+      showStatusMessage(t('recordings.errorDeleteAll', { message: (error as Error).message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -573,8 +610,8 @@ export const recordingsAPI = {
    * @param {Response} deleteResponse Response from the batch delete request
    * @returns {Promise<Object>} Result with success and error counts
    */
-  handleBatchDeleteResponse: async (deleteResponse) => {
-    const result = await deleteResponse.json();
+  handleBatchDeleteResponse: async (deleteResponse: Response): Promise<BatchDeleteCounts> => {
+    const result: BatchDeleteStartResponse = await deleteResponse.json();
 
     const finalResult = result.job_id ? await recordingsAPI.pollBatchDeleteProgress(result.job_id) : result;
     showStatusMessage(batchDeleteStatus(finalResult));
@@ -586,7 +623,7 @@ export const recordingsAPI = {
    * @param {Object} filter Filter object
    * @returns {Promise<Object>} Result with success and error counts
    */
-  deleteAllFilteredRecordingsHttp: async (filter) => {
+  deleteAllFilteredRecordingsHttp: async (filter: BatchDeleteFilter): Promise<BatchDeleteCounts> => {
     try {
       // Use the batch delete endpoint with filter and enhanced fetch
       const deleteResponse = await enhancedFetch('/api/recordings/batch-delete', {
@@ -605,7 +642,7 @@ export const recordingsAPI = {
       return await recordingsAPI.handleBatchDeleteResponse(deleteResponse);
     } catch (error) {
       console.error('Error in HTTP delete all operation:', error);
-      showStatusMessage(t('recordings.errorDeleteAll', { message: error.message }));
+      showStatusMessage(t('recordings.errorDeleteAll', { message: (error as Error).message }));
       return { succeeded: 0, failed: 0 };
     }
   },
@@ -615,7 +652,7 @@ export const recordingsAPI = {
    * @param {Object} recording Recording to check
    * @returns {Promise<boolean>} True if the recording has detections, false otherwise
    */
-  checkRecordingHasDetections: async (recording) => {
+  checkRecordingHasDetections: async (recording: RecordingTimeFields) => {
     if (!recording || !recording.id || !recording.stream || !recording.start_time || !recording.end_time) {
       return false;
     }
@@ -628,7 +665,7 @@ export const recordingsAPI = {
         return false;
       }
 
-      const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await fetchJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 10000, // 10 second timeout
         retries: 1,     // Retry once
         retryDelay: 500 // 0.5 second between retries
@@ -646,7 +683,7 @@ export const recordingsAPI = {
    * @param {Object} recording Recording to get detections for
    * @returns {Promise<Array>} Array of detections
    */
-  getRecordingDetections: async (recording) => {
+  getRecordingDetections: async (recording: RecordingTimeFields): Promise<Detection[]> => {
     if (!recording || !recording.id || !recording.stream || !recording.start_time || !recording.end_time) {
       return [];
     }
@@ -659,7 +696,7 @@ export const recordingsAPI = {
         return [];
       }
 
-      const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+      const data = await fetchJSON<DetectionResultsResponse>(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries
@@ -677,7 +714,7 @@ export const recordingsAPI = {
    * @param {Object} recording Recording to play
    * @param {Function} showVideoModal Function to show video modal
    */
-  playRecording: (recording, showVideoModal) => {
+  playRecording: (recording: RecordingListItem, showVideoModal: ShowVideoModal) => {
     console.log('Play recording clicked:', recording);
 
     // Check if recording has an id property
@@ -711,9 +748,9 @@ export const recordingsAPI = {
    * Get all unique recording tags
    * @returns {Promise<string[]>} Array of unique tags
    */
-  getAllRecordingTags: async ({ throwOnError = false } = {}) => {
+  getAllRecordingTags: async ({ throwOnError = false }: { throwOnError?: boolean } = {}) => {
     try {
-      const data = await fetchJSON('/api/recordings/tags', {
+      const data = await fetchJSON<RecordingTagsListResponse>('/api/recordings/tags', {
         timeout: 10000,
         retries: 1,
         retryDelay: 500
@@ -730,12 +767,12 @@ export const recordingsAPI = {
    * Get all unique detection labels
    * @returns {Promise<string[]>} Array of unique detection labels
    */
-  getAllDetectionLabels: async ({ throwOnError = false } = {}) => {
+  getAllDetectionLabels: async ({ throwOnError = false }: { throwOnError?: boolean } = {}) => {
     try {
       // Served by an index walk, so this normally takes milliseconds; a slow
       // disk gets one generous attempt rather than a retry that would double
       // the server-side work.
-      const data = await fetchJSON('/api/recordings/detection-labels', {
+      const data = await fetchJSON<DetectionLabelsResponse>('/api/recordings/detection-labels', {
         timeout: 15000,
         retries: 0
       });
@@ -752,9 +789,9 @@ export const recordingsAPI = {
    * @param {number} recordingId Recording ID
    * @returns {Promise<string[]>} Array of tags
    */
-  getRecordingTags: async (recordingId) => {
+  getRecordingTags: async (recordingId: number) => {
     try {
-      const data = await fetchJSON(`/api/recordings/${recordingId}/tags`, {
+      const data = await fetchJSON<RecordingTagsListResponse>(`/api/recordings/${recordingId}/tags`, {
         timeout: 10000,
         retries: 1,
         retryDelay: 500
@@ -772,9 +809,9 @@ export const recordingsAPI = {
    * @param {string[]} tags Array of tags
    * @returns {Promise<Object>} Result with id and tags
    */
-  setRecordingTags: async (recordingId, tags) => {
+  setRecordingTags: async (recordingId: number, tags: string[]) => {
     try {
-      const data = await fetchJSON(`/api/recordings/${recordingId}/tags`, {
+      const data = await fetchJSON<SetRecordingTagsResponse>(`/api/recordings/${recordingId}/tags`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags }),
@@ -785,7 +822,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error setting recording tags:', error);
-      showStatusMessage(t('recordings.errorSettingTags', { message: error.message }));
+      showStatusMessage(t('recordings.errorSettingTags', { message: (error as Error).message }));
       throw error;
     }
   },
@@ -797,9 +834,9 @@ export const recordingsAPI = {
    * @param {string[]} removeTags Tags to remove
    * @returns {Promise<Object>} Result with counts
    */
-  batchUpdateRecordingTags: async (ids, addTags = [], removeTags = []) => {
+  batchUpdateRecordingTags: async (ids: number[], addTags: string[] = [], removeTags: string[] = []) => {
     try {
-      const data = await fetchJSON('/api/recordings/batch-tags', {
+      const data = await fetchJSON<BatchTagsResponse>('/api/recordings/batch-tags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, add: addTags, remove: removeTags }),
@@ -810,7 +847,7 @@ export const recordingsAPI = {
       return data;
     } catch (error) {
       console.error('Error in batch tag update:', error);
-      showStatusMessage(t('recordings.errorUpdatingTags', { message: error.message }));
+      showStatusMessage(t('recordings.errorUpdatingTags', { message: (error as Error).message }));
       throw error;
     }
   },
@@ -819,7 +856,7 @@ export const recordingsAPI = {
    * Download recording
    * @param {Object} recording Recording to download
    */
-  downloadRecording: async (recording) => {
+  downloadRecording: async (recording: RecordingListItem) => {
     const downloadUrl = `/api/recordings/download/${recording.id}`;
     try {
       await prepareRecordingPlayback(downloadUrl, {
@@ -828,7 +865,7 @@ export const recordingsAPI = {
         onWaiting: () => showStatusMessage(t('recordings.preparingArchivedRecording')),
       });
     } catch (error) {
-      showStatusMessage(error.message || 'Unable to retrieve recording', 'error');
+      showStatusMessage((error as Error).message || 'Unable to retrieve recording', 'error');
       return;
     }
     const link = document.createElement('a');

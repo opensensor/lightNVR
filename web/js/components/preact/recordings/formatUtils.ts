@@ -1,14 +1,15 @@
-// @ts-nocheck
 /**
  * Formatting utility functions for RecordingsView
  */
 
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
+import type { Recording } from '../../../types/core.ts';
+import type { TranslateFn } from '../../../types/recordings.ts';
 
 dayjs.extend(utc);
 
-const CAPTURE_METHOD_TRANSLATIONS = {
+const CAPTURE_METHOD_TRANSLATIONS: Partial<Record<string, { key: string; fallback: string }>> = {
   continuous: {
     key: 'recordings.captureMethod.continuous',
     fallback: 'Continuous'
@@ -31,7 +32,7 @@ const CAPTURE_METHOD_TRANSLATIONS = {
   }
 };
 
-const translateWithFallback = (t, key, fallback) => {
+const translateWithFallback = (t: TranslateFn | null, key: string, fallback: string) => {
   if (typeof t !== 'function') {
     return fallback;
   }
@@ -46,7 +47,7 @@ export const formatUtils = {
    * @param {string} value Capture method value from the API
    * @returns {string} User-friendly capture method label
    */
-  formatCaptureMethod: (value, t = null) => {
+  formatCaptureMethod: (value: string | null | undefined, t: TranslateFn | null = null) => {
     const normalizedValue = typeof value === 'string' ? value.trim() : '';
     const translation = CAPTURE_METHOD_TRANSLATIONS[normalizedValue];
 
@@ -66,7 +67,7 @@ export const formatUtils = {
    * @param {number|string} value Unix epoch (s), ISO string, or legacy UTC string
    * @returns {string} Localised date/time string
    */
-  formatDateTime: (value) => {
+  formatDateTime: (value: number | string | null | undefined) => {
     if (value === null || value === undefined || value === '') return '';
 
     let d;
@@ -86,7 +87,7 @@ export const formatUtils = {
    * @param {number} seconds Duration in seconds
    * @returns {string} Formatted duration
    */
-  formatDuration: (seconds) => {
+  formatDuration: (seconds: number | null | undefined) => {
     if (seconds == null || seconds < 0) return '00:00:00';
 
     const hours = Math.floor(seconds / 3600);
@@ -107,7 +108,7 @@ export const formatUtils = {
    * @param {Object} recording Recording entry from /api/recordings
    * @returns {number} Elapsed seconds since start_time
    */
-  liveRecordingDuration: (recording) => {
+  liveRecordingDuration: (recording: Partial<Pick<Recording, 'in_progress' | 'start_time_unix'>> | null | undefined) => {
     if (!recording || !recording.in_progress) return 0;
     const start = typeof recording.start_time_unix === 'number'
       ? recording.start_time_unix
@@ -127,7 +128,7 @@ export const formatUtils = {
    *   Timeline page can prompt the user to re-enter fullscreen and pre-select 'fine' nav mode
    * @returns {string} Timeline URL with local date and time params
    */
-  getTimelineUrl: (stream, startTime, fromFullscreen = false) => {
+  getTimelineUrl: (stream: string | null | undefined, startTime: number | string | null | undefined, fromFullscreen = false) => {
     const base = `timeline.html?stream=${encodeURIComponent(stream || '')}`;
     if (startTime === null || startTime === undefined || startTime === '') return `${base}&date=&time=`;
 
@@ -151,7 +152,7 @@ export const formatUtils = {
    * @param {number} bytes Size in bytes
    * @returns {string} Formatted file size
    */
-  formatFileSize: (bytes) => {
+  formatFileSize: (bytes: number | null | undefined) => {
     // Treat null/undefined/non-number/NaN as 0 B
     if (bytes == null || typeof bytes !== 'number' || !Number.isFinite(bytes)) {
       return '0 B';

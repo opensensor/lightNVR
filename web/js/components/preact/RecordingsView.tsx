@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface RecordingsView Component
  * Preact component for the recordings page
@@ -29,6 +28,16 @@ import { urlUtils } from './recordings/urlUtils.ts';
 import { getDefaultDateRange } from '../../utils/date-utils.ts';
 
 import { validateSession } from '../../utils/auth-utils.ts';
+import type { ClientConfig, StreamSummary, UserRoleName } from '../../types/core.ts';
+import type {
+  ActiveFilter,
+  ActiveFilterKey,
+  RecordingListItem,
+  RecordingSelection,
+  RecordingsCollectionsResponse,
+  RecordingsListResponse,
+  RecordingsPaginationState,
+} from '../../types/recordings.ts';
 
 const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 const RECORDINGS_SELECTED_IDS_KEY = 'lightnvr_selected_recording_ids';
@@ -36,19 +45,19 @@ const RECORDINGS_RESTORE_SELECTION_KEY = 'lightnvr_restore_recording_selection';
 const MAX_INVESTIGATION_CAMERAS = 16;
 const MAX_INVESTIGATION_WINDOW_SECONDS = 31 * 24 * 60 * 60;
 
-function getRestoredSelectedRecordings() {
+function getRestoredSelectedRecordings(): RecordingSelection {
   try {
     if (sessionStorage.getItem(RECORDINGS_RESTORE_SELECTION_KEY) !== 'true') {
       return {};
     }
 
     const rawSelectedIds = sessionStorage.getItem(RECORDINGS_SELECTED_IDS_KEY);
-    const selectedIds = rawSelectedIds ? JSON.parse(rawSelectedIds) : [];
+    const selectedIds: unknown = rawSelectedIds ? JSON.parse(rawSelectedIds) : [];
     if (!Array.isArray(selectedIds)) {
       return {};
     }
 
-    return selectedIds.reduce((restoredSelections, id) => {
+    return selectedIds.reduce<RecordingSelection>((restoredSelections, id: unknown) => {
       if (id !== null && id !== undefined && `${id}`.length > 0) {
         restoredSelections[String(id)] = true;
       }
@@ -79,16 +88,17 @@ function clearStoredSelectedRecordings() {
 export function RecordingsView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const { data: collectionData } = useQuery(
+  const { data: collectionData } = useQuery<RecordingsCollectionsResponse>(
     ['camera-collections'], '/api/camera-collections', {}, { staleTime: 30000 }
   );
   const collections = useMemo(
     () => collectionData?.collections || [],
     [collectionData]
   );
-  const [userRole, setUserRole] = useState(null);
-  const [recordings, setRecordings] = useState([]);
-  const [streams, setStreams] = useState([]);
+  // '' marks a finished check with no valid session; undefined is a session without a role.
+  const [userRole, setUserRole] = useState<UserRoleName | '' | null | undefined>(null);
+  const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
+  const [streams, setStreams] = useState<StreamSummary[]>([]);
 
   // Initialize sort state from URL params (lazy — no double render)
   const [sortField, setSortField] = useState(() => {
@@ -119,7 +129,7 @@ export function RecordingsView() {
   };
 
   // Initialize pagination state from URL params (lazy — no double render)
-  const [pagination, setPagination] = useState(() => {
+  const [pagination, setPagination] = useState<RecordingsPaginationState>(() => {
     const p = new URLSearchParams(window.location.search);
     const paginationLimit = urlUtils.parsePaginationLimit(p.get('limit'));
     const pageFromUrl = parseInt(p.get('page') || '1', 10);
@@ -134,14 +144,14 @@ export function RecordingsView() {
     };
   });
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
-  const [activeFiltersDisplay, setActiveFiltersDisplay] = useState([]);
-  const [selectedRecordings, setSelectedRecordings] = useState(() => getRestoredSelectedRecordings());
+  const [activeFiltersDisplay, setActiveFiltersDisplay] = useState<ActiveFilter[]>([]);
+  const [selectedRecordings, setSelectedRecordings] = useState<RecordingSelection>(() => getRestoredSelectedRecordings());
   const [selectAll, setSelectAll] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
-  const [pendingDeleteRecording, setPendingDeleteRecording] = useState(null); // recording awaiting single-delete confirmation
+  const [pendingDeleteRecording, setPendingDeleteRecording] = useState<RecordingListItem | null>(null); // recording awaiting single-delete confirmation
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const recordingsTableBodyRef = useRef(null);
+  const recordingsTableBodyRef = useRef<HTMLTableSectionElement | null>(null);
 
   // View mode: 'table' or 'grid' — initialized from URL, then localStorage, then default
   const [viewMode, setViewMode] = useState(() => {
@@ -159,14 +169,14 @@ export function RecordingsView() {
   }, []);
 
   // Column visibility for table view
-  const [hiddenColumns, setHiddenColumns] = useState(() => {
+  const [hiddenColumns, setHiddenColumns] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('recordings_hidden_columns');
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
 
-  const toggleColumn = (col) => {
+  const toggleColumn = (col: string) => {
     setHiddenColumns(prev => {
       const next = { ...prev, [col]: !prev[col] };
       localStorage.setItem('recordings_hidden_columns', JSON.stringify(next));
@@ -175,7 +185,7 @@ export function RecordingsView() {
   };
 
   // Persist view mode preference
-  const handleViewModeChange = (mode) => {
+  const handleViewModeChange = (mode: string) => {
     setViewMode(mode);
     localStorage.setItem('recordings_view_mode', mode);
   };
@@ -184,7 +194,7 @@ export function RecordingsView() {
   useEffect(() => {
     fetch('/api/client-config')
       .then(res => res.json())
-      .then(data => {
+      .then((data: ClientConfig) => {
         if (data && typeof data.generate_thumbnails !== 'undefined') {
           setThumbnailsEnabled(data.generate_thumbnails);
           // If thumbnails disabled and user had grid mode saved, fall back to table
@@ -242,14 +252,14 @@ export function RecordingsView() {
   // Listen for recording changes from the Play modal so we can update the
   // list locally without a full refetch (preserves scroll/sort position).
   useEffect(() => {
-    const handleProtected = (e) => {
-      const { id, protected: isProtected } = e.detail;
+    const handleProtected = (e: Event) => {
+      const { id, protected: isProtected } = (e as CustomEvent<{ id: number; protected: boolean }>).detail;
       setRecordings(prev =>
         prev.map(r => r.id === id ? { ...r, protected: isProtected } : r)
       );
     };
-    const handleDeleted = (e) => {
-      const { id } = e.detail;
+    const handleDeleted = (e: Event) => {
+      const { id } = (e as CustomEvent<{ id: number }>).detail;
       setRecordings(prev => prev.filter(r => r.id !== id));
     };
     window.addEventListener('recording-protected', handleProtected);
@@ -260,11 +270,12 @@ export function RecordingsView() {
     };
   }, []);
 
-  // Fetch streams using preact-query
+  // Fetch streams using preact-query. useStreams declares no parameters, so these
+  // options are ignored; the cast lets the existing call compile unchanged.
   const {
     data: streamsData,
     error: streamsError
-  } = recordingsAPI.hooks.useStreams({
+  } = (recordingsAPI.hooks.useStreams as (ignoredOptions: { staleTime: number; cacheTime: number }) => ReturnType<typeof recordingsAPI.hooks.useStreams>)({
     // Streams are relatively static; avoid unnecessary refetches
     staleTime: 5 * 60 * 1000,  // 5 minutes
     cacheTime: 10 * 60 * 1000  // 10 minutes
@@ -409,7 +420,7 @@ export function RecordingsView() {
       showStatusMessage(t('recordings.refreshed'), 'success', 2000);
     } catch (error) {
       showStatusMessage(
-        t('recordings.refreshFailed', { message: error?.message || t('common.unknown') }),
+        t('recordings.refreshFailed', { message: (error as Error)?.message || t('common.unknown') }),
         'error',
         5000
       );
@@ -468,7 +479,7 @@ export function RecordingsView() {
   };
 
   // Update pagination from API response
-  const updatePaginationFromResponse = (data, currentPage) => {
+  const updatePaginationFromResponse = (data: RecordingsListResponse, currentPage: number) => {
     // Use the provided page parameter instead of the state
     currentPage = currentPage || pagination.currentPage;
 
@@ -545,8 +556,8 @@ export function RecordingsView() {
   };
 
   // Handle date range change
-  const handleDateRangeChange = (e) => {
-    const newDateRange = e.target.value;
+  const handleDateRangeChange = (e: Event) => {
+    const newDateRange = (e.target as HTMLSelectElement).value;
 
     setFilters(prev => ({
       ...prev,
@@ -597,7 +608,7 @@ export function RecordingsView() {
   };
 
   // Remove filter
-  const removeFilter = (key, value) => {
+  const removeFilter = (key: ActiveFilterKey, value?: string) => {
     switch (key) {
       case 'dateRange':
         setFilters(prev => ({
@@ -650,7 +661,7 @@ export function RecordingsView() {
   };
 
   // Sort by field — URL sync is handled by the reactive useEffect
-  const sortBy = (field) => {
+  const sortBy = (field: string) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -662,7 +673,7 @@ export function RecordingsView() {
   };
 
   // Go to page — URL sync is handled by the reactive useEffect
-  const goToPage = (page) => {
+  const goToPage = (page: number) => {
     if (page < 1 || page > pagination.totalPages) return;
     clearThumbnailQueue();
     setPagination(prev => ({ ...prev, currentPage: page }));
@@ -670,7 +681,7 @@ export function RecordingsView() {
   };
 
   // Toggle selection of a recording
-  const toggleRecordingSelection = (recordingId) => {
+  const toggleRecordingSelection = (recordingId: number) => {
     setSelectedRecordings(prev => {
       const next = { ...prev };
       if (next[recordingId]) {
@@ -717,7 +728,7 @@ export function RecordingsView() {
   };
 
   // Handle tag changes — update local state when possible, only refetch for bulk ops
-  const handleTagsChanged = (recordingId, newTags) => {
+  const handleTagsChanged = (recordingId?: number, newTags?: string[]) => {
     if (recordingId && newTags) {
       // Single recording tag change — update local state without refetching
       setRecordings(prev =>
@@ -798,7 +809,7 @@ export function RecordingsView() {
       });
       window.location.href = `investigation.html?${params.toString()}`;
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error');
+      showStatusMessage((requestError as Error).message, 'error');
     }
   };
 
@@ -806,7 +817,7 @@ export function RecordingsView() {
   const openDownloadModal = () => setIsDownloadModalOpen(true);
 
   // Open delete confirmation modal (single) or go straight to batch delete flow
-  const openDeleteModal = (mode) => {
+  const openDeleteModal = (mode: string) => {
     if (mode === 'single') {
       setDeleteMode(mode);
       setIsDeleteModalOpen(true);
@@ -837,11 +848,11 @@ export function RecordingsView() {
   };
 
   // Start a batch delete (selected or all filtered)
-  const startBatchDelete = async (mode) => {
+  const startBatchDelete = async (mode: string) => {
     const currentUrlParams = new URLSearchParams(window.location.search);
     const currentSortField = currentUrlParams.get('sort') || sortField;
     const currentSortDirection = currentUrlParams.get('order') || sortDirection;
-    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+    const currentPage = parseInt(currentUrlParams.get('page') as string, 10) || pagination.currentPage;
 
     if (mode === 'selected') {
       const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
@@ -850,7 +861,7 @@ export function RecordingsView() {
       setSelectAll(false);
       clearStoredSelectedRecordings();
 
-      if (result && result.succeeded > 0) {
+      if (result && (result.succeeded as number) > 0) {
         reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
       }
     } else {
@@ -865,7 +876,7 @@ export function RecordingsView() {
   };
 
   // Helper function to reload recordings with preserved parameters
-  const reloadRecordingsWithPreservedParams = (sortField, sortDirection, page) => {
+  const reloadRecordingsWithPreservedParams = (sortField: string, sortDirection: string, page: number) => {
     // Set the sort parameters directly
     setSortField(sortField);
     setSortDirection(sortDirection);
@@ -896,14 +907,14 @@ export function RecordingsView() {
   const { mutate: deleteRecordingMutation } = recordingsAPI.hooks.useDeleteRecording();
 
   // Delete a single recording — opens the confirmation modal instead of window.confirm()
-  const deleteRecording = (recording) => {
+  const deleteRecording = (recording: RecordingListItem) => {
     setPendingDeleteRecording(recording);
     setDeleteMode('single');
     setIsDeleteModalOpen(true);
   };
 
   // Toggle recording protection
-  const toggleProtection = async (recording) => {
+  const toggleProtection = async (recording: RecordingListItem) => {
     const newProtectedState = !recording.protected;
     try {
       const response = await fetch(`/api/recordings/${recording.id}/protect`, {
@@ -937,12 +948,12 @@ export function RecordingsView() {
       );
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
     }
   };
 
   // Play recording
-  const playRecording = (recording) => {
+  const playRecording = (recording: RecordingListItem) => {
     console.log('RecordingsView.playRecording called with:', recording);
 
     // A segment that is still recording has no finalized MP4 index yet, so
@@ -970,7 +981,7 @@ export function RecordingsView() {
   };
 
   // Download recording
-  const downloadRecording = (recording) => {
+  const downloadRecording = (recording: RecordingListItem) => {
     if (recording?.in_progress) {
       showStatusMessage(t('recordings.inProgressToast'), 'info');
       return;

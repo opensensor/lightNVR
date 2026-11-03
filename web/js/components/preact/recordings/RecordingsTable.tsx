@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RecordingsTable component for RecordingsView
  */
@@ -7,6 +6,51 @@ import { useState, useRef, useEffect } from 'preact/hooks';
 import { formatUtils } from './formatUtils.ts';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.tsx';
 import { useI18n } from '../../../i18n.ts';
+import type { RefObject } from 'preact';
+import type {
+  RecordingListItem,
+  RecordingSelection,
+  RecordingTagsChanged,
+  RecordingsPaginationState,
+} from '../../../types/recordings.ts';
+
+interface TagCellProps {
+  recording: RecordingListItem;
+  onTagsChanged?: RecordingTagsChanged;
+}
+
+interface ColumnConfigDropdownProps {
+  hiddenColumns: Record<string, boolean>;
+  toggleColumn: (key: string) => void;
+}
+
+export interface RecordingsTableProps {
+  collapsed: boolean;
+  toggleCollapsed: () => void;
+  recordings: RecordingListItem[];
+  selectedRecordings: RecordingSelection;
+  toggleRecordingSelection: (recordingId: number) => void;
+  selectAll: boolean;
+  toggleSelectAll: () => void;
+  getSelectedCount: () => number;
+  openDeleteModal: (mode: string) => void;
+  openDownloadModal?: () => void;
+  playRecording: (recording: RecordingListItem) => void;
+  downloadRecording: (recording: RecordingListItem) => void;
+  deleteRecording: (recording: RecordingListItem) => void;
+  toggleProtection?: (recording: RecordingListItem) => unknown;
+  pagination: Pick<RecordingsPaginationState, 'totalItems'>;
+  canDelete?: boolean;
+  clearSelections?: () => void;
+  hiddenColumns?: Record<string, boolean>;
+  toggleColumn?: (key: string) => void;
+  onTagsChanged?: RecordingTagsChanged;
+  viewSelectedInTimeline?: () => void;
+  sortField: string;
+  sortDirection: string;
+  sortBy: (field: string) => void;
+  recordingsTableBodyRef: RefObject<HTMLTableSectionElement | null>;
+}
 
 /** Columns that can be hidden by the user — labels resolved via i18n in ColumnConfigDropdown */
 const HIDEABLE_COLUMNS = [
@@ -22,7 +66,7 @@ const HIDEABLE_COLUMNS = [
 /**
  * Inline tag cell with overlay toggle
  */
-function TagCell({ recording, onTagsChanged }) {
+function TagCell({ recording, onTagsChanged }: TagCellProps) {
   const { t } = useI18n();
   const [showOverlay, setShowOverlay] = useState(false);
   return (
@@ -57,15 +101,15 @@ function TagCell({ recording, onTagsChanged }) {
 /**
  * Column config dropdown – gear icon that opens a checklist of hideable columns
  */
-function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
+function ColumnConfigDropdown({ hiddenColumns, toggleColumn }: ColumnConfigDropdownProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node | null)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
@@ -139,9 +183,9 @@ export function RecordingsTable({
   toggleColumn = () => {},
   onTagsChanged,
   viewSelectedInTimeline
-}) {
+}: RecordingsTableProps) {
   const { t } = useI18n();
-  const isColumnVisible = (colKey) => !hiddenColumns[colKey];
+  const isColumnVisible = (colKey: string) => !hiddenColumns[colKey];
   const [showBulkTags, setShowBulkTags] = useState(false);
   const selectedCount = getSelectedCount();
 
