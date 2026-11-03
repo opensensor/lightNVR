@@ -1,4 +1,3 @@
-// @ts-nocheck
 import '../sentry.ts';
 /**
  * LightNVR Web Interface Live View Page
@@ -15,6 +14,7 @@ import { Footer } from "../components/preact/Footer.tsx";
 import { setupSessionValidation } from '../utils/auth-utils.ts';
 import { initI18n } from '../i18n.ts';
 import { AuthGate } from '../components/preact/AuthGate.tsx';
+import type { ClientConfig } from '../types/core.ts';
 
 /**
  * Main App component. Always renders the HLS variant of the LiveView.
@@ -40,7 +40,7 @@ function App() {
                     setIsLoading(false);
                     return;
                 }
-                const settings = await response.json();
+                const settings: ClientConfig = await response.json();
                 const go2rtcOff = settings.go2rtc_enabled === false;
                 setViewFlags({
                     audioDisabled:  !!settings.audio_disabled,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import '../sentry.ts';
 /**
  * LightNVR Web Interface Streams Page

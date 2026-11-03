@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { render } from 'preact';
 
 import { PlatesView } from '../components/preact/lpr/PlatesView.tsx';

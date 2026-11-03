@@ -1,4 +1,3 @@
-// @ts-nocheck
 import '../sentry.ts';
 /**
  * LightNVR Web Interface Live View Page
@@ -17,6 +16,26 @@ import { setupSessionValidation } from '../utils/auth-utils.ts';
 import { SetupWizard } from '../components/preact/SetupWizard.tsx';
 import { AuthGate } from '../components/preact/AuthGate.tsx';
 import { initI18n } from '../i18n.ts';
+import type { ClientConfig } from '../types/core.ts';
+
+/**
+ * The camelCase fields are read by App below, but handle_get_client_config only
+ * emits the snake_case names, so they are always undefined today.
+ */
+interface IndexClientConfig extends ClientConfig {
+    go2rtcEnabled?: boolean;
+    audioDisabled?: boolean;
+    autoDisabled?: boolean;
+    webrtcDisabled?: boolean;
+    hlsDisabled?: boolean;
+    mseDisabled?: boolean;
+}
+
+/** GET /api/setup/status: api_handlers_setup.c */
+interface SetupStatusResponse {
+    complete: boolean;
+    setup_completed_at: number;
+}
 
 /**
  * Main App component. Renders the LiveView in its WebRTC-first variant unless
@@ -43,7 +62,7 @@ function App() {
                 ]);
 
                 if (settingsRes.ok) {
-                    const settings = await settingsRes.json();
+                    const settings: IndexClientConfig = await settingsRes.json();
                     // WebRTC requires go2rtc. If go2rtc is off, treat WebRTC
                     // and MSE as unavailable regardless of the user's flags.
                     // #397
@@ -62,7 +81,7 @@ function App() {
                 }
 
                 if (setupRes.ok) {
-                    const setupData = await setupRes.json();
+                    const setupData: SetupStatusResponse = await setupRes.json();
                     if (!setupData.complete) {
                         setShowWizard(true);
                     }

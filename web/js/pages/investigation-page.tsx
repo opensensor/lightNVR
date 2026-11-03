@@ -1,4 +1,3 @@
-// @ts-nocheck
 import '../sentry.ts';
 import { render } from 'preact';
 
