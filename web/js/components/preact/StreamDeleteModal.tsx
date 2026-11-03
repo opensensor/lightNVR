@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Stream Delete Modal Component
  * Preact component for the stream delete modal
@@ -7,6 +6,16 @@
 import { useState } from 'preact/hooks';
 import { AsyncButton } from './AsyncButton.tsx';
 import { useI18n } from '../../i18n.ts';
+
+export interface StreamDeleteModalProps {
+  streamId: string;
+  streamName: string;
+  onClose: () => void;
+  onDisable: (streamId: string) => unknown;
+  onDelete: (streamId: string) => unknown;
+  isDeleting?: boolean;
+  isDisabling?: boolean;
+}
 
 /**
  * StreamDeleteModal component
@@ -20,7 +29,7 @@ import { useI18n } from '../../i18n.ts';
  * @param {boolean} props.isDisabling Whether a disable operation is in progress
  * @returns {JSX.Element} StreamDeleteModal component
  */
-export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, onDelete, isDeleting = false, isDisabling = false }) {
+export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, onDelete, isDeleting = false, isDisabling = false }: StreamDeleteModalProps) {
   const { t } = useI18n();
   const [isConfirmDelete, setIsConfirmDelete] = useState(false);
   const isLoading = isDeleting || isDisabling;

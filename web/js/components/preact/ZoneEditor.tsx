@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Zone Editor Component
  * Interactive canvas-based zone configuration for detection regions
@@ -15,6 +14,30 @@ import {
   imageFractionToCanvasPoint,
   resolveImageAspect,
 } from '../../utils/zone-editor-geometry.ts';
+import type { ImageLetterbox } from '../../utils/zone-editor-geometry.ts';
+import type { ApiErrorBody } from '../../types/core.ts';
+import type { DetectionZone, ZonePoint, ZonesResponse } from '../../types/streams.ts';
+
+export interface ZoneEditorProps {
+  streamName: string;
+  streamWidth?: number;
+  streamHeight?: number;
+  zones?: DetectionZone[];
+  onZonesChange: (zones: DetectionZone[]) => void;
+  onClose: () => void;
+}
+
+/** A vertex of a zone in the zone list. */
+interface ZonePointRef {
+  zoneIndex: number;
+  pointIndex: number;
+}
+
+interface ZoneDrag {
+  zoneIndex: number;
+  startX: number;
+  startY: number;
+}
 
 /**
  * ZoneEditor Component
@@ -25,26 +48,26 @@ import {
  * shift between the placeholder and the real image on any camera whose
  * aspect ratio doesn't match the editor's canvas.
  */
-export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], onZonesChange, onClose }) {
+export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], onZonesChange, onClose }: ZoneEditorProps) {
   const { t } = useI18n();
-  const canvasRef = useRef(null);
-  const imageRef = useRef(null);
-  const snapshotTimeoutRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const snapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Where the image is actually drawn within the canvas (it may be
   // letterboxed/pillarboxed to preserve aspect ratio). Mouse handlers read
   // this to convert clicks into image-relative fractions consistently with
   // how drawCanvas() last rendered it -- see zone-editor-geometry.ts.
-  const letterboxRef = useRef({ offsetX: 0, offsetY: 0, drawWidth: 0, drawHeight: 0 });
-  const [currentZone, setCurrentZone] = useState(null);
-  const [selectedZoneIndex, setSelectedZoneIndex] = useState(null);
+  const letterboxRef = useRef<ImageLetterbox>({ offsetX: 0, offsetY: 0, drawWidth: 0, drawHeight: 0 });
+  const [currentZone, setCurrentZone] = useState<DetectionZone | null>(null);
+  const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [snapshotUrl, setSnapshotUrl] = useState(null);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const [editMode, setEditMode] = useState('draw'); // 'draw', 'edit', 'delete'
   const [zoneList, setZoneList] = useState(zones);
-  const [hoveredPoint, setHoveredPoint] = useState(null);
-  const [draggedPoint, setDraggedPoint] = useState(null); // { zoneIndex, pointIndex }
-  const [draggedZone, setDraggedZone] = useState(null); // { zoneIndex, startX, startY }
+  const [hoveredPoint, setHoveredPoint] = useState<ZonePointRef | null>(null);
+  const [draggedPoint, setDraggedPoint] = useState<ZonePointRef | null>(null); // { zoneIndex, pointIndex }
+  const [draggedZone, setDraggedZone] = useState<ZoneDrag | null>(null); // { zoneIndex, startX, startY }
   const [saveError, setSaveError] = useState('');
 
   // Load zones from the backend API
@@ -53,7 +76,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       try {
         const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
         if (response.ok) {
-          const data = await response.json();
+          const data: ZonesResponse = await response.json();
           if (data.zones && Array.isArray(data.zones)) {
             console.log('Loaded zones from API:', data.zones);
             setZoneList(data.zones);
@@ -119,7 +142,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   // Read a CSS custom property and return a usable hsl() colour string.
   // The project's theme variables are stored as bare "H S% L%" triplets so we
   // must wrap them in hsl() before passing them to a Canvas 2D context.
-  const getThemeColor = (varName, fallback) => {
+  const getThemeColor = (varName: string, fallback: string) => {
     const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
     return val ? `hsl(${val})` : fallback;
   };
@@ -130,7 +153,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     const image = imageRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     const rect = canvas.getBoundingClientRect();
 
     // Set canvas size to match display size
@@ -204,7 +227,14 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
   // Draw a single zone. `letterbox` maps a point's stored [0,1] image
   // fraction to canvas pixels -- see zone-editor-geometry.ts.
-  const drawZone = (ctx, zone, letterbox, isSelected, isDrawing = false, zoneIndex = null) => {
+  const drawZone = (
+    ctx: CanvasRenderingContext2D,
+    zone: DetectionZone,
+    letterbox: ImageLetterbox,
+    isSelected: boolean,
+    isDrawing = false,
+    zoneIndex: number | null = null
+  ) => {
     if (!zone.polygon || zone.polygon.length === 0) return;
 
     ctx.save();
@@ -294,7 +324,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   });
 
   // Handle mouse down
-  const handleMouseDown = (e) => {
+  const handleMouseDown = (e: MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -325,7 +355,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   // Handle mouse move
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (e: MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -350,7 +380,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     if (draggedPoint) {
       canvas.style.cursor = 'move';
       const newZones = [...zoneList];
-      newZones[draggedPoint.zoneIndex].polygon[draggedPoint.pointIndex] = { x, y };
+      newZones[draggedPoint.zoneIndex]!.polygon[draggedPoint.pointIndex] = { x, y };
       setZoneList(newZones);
     }
 
@@ -361,7 +391,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       const deltaY = y - draggedZone.startY;
 
       const newZones = [...zoneList];
-      const zone = newZones[draggedZone.zoneIndex];
+      const zone = newZones[draggedZone.zoneIndex]!;
 
       // Move all points by the delta
       zone.polygon = zone.polygon.map(point => ({
@@ -386,7 +416,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   // Handle canvas click (for draw and delete modes)
-  const handleCanvasClick = (e) => {
+  const handleCanvasClick = (e: MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -422,9 +452,9 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   // Find zone at point
-  const findZoneAtPoint = (x, y) => {
+  const findZoneAtPoint = (x: number, y: number) => {
     for (let i = zoneList.length - 1; i >= 0; i--) {
-      const zone = zoneList[i];
+      const zone = zoneList[i]!;
       if (isPointInPolygon({ x, y }, zone.polygon)) {
         return i;
       }
@@ -433,11 +463,11 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   // Find point near cursor (for dragging)
-  const findPointNearCursor = (x, y, threshold = 0.02) => {
+  const findPointNearCursor = (x: number, y: number, threshold = 0.02) => {
     for (let i = 0; i < zoneList.length; i++) {
-      const zone = zoneList[i];
+      const zone = zoneList[i]!;
       for (let j = 0; j < zone.polygon.length; j++) {
-        const point = zone.polygon[j];
+        const point = zone.polygon[j]!;
         const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
         if (distance < threshold) {
           return { zoneIndex: i, pointIndex: j };
@@ -448,11 +478,11 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   // Check if point is in polygon
-  const isPointInPolygon = (point, polygon) => {
+  const isPointInPolygon = (point: ZonePoint, polygon: ZonePoint[]) => {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i].x, yi = polygon[i].y;
-      const xj = polygon[j].x, yj = polygon[j].y;
+      const xi = polygon[i]!.x, yi = polygon[i]!.y;
+      const xj = polygon[j]!.x, yj = polygon[j]!.y;
       
       const intersect = ((yi > point.y) !== (yj > point.y))
         && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
@@ -488,7 +518,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
+        const errorData: ApiErrorBody = await response.json().catch(() => ({
           error: t('zoneEditor.failedToSaveZones', {
             message: t('zoneEditor.httpError', { status: response.status }),
           }),
@@ -496,7 +526,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
         throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
       }
 
-      const result = await response.json();
+      const result: unknown = await response.json();
       console.log('Zones saved successfully:', result);
 
       // Update parent component
@@ -504,14 +534,14 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       onClose();
     } catch (error) {
       console.error('Failed to save zones:', error);
-      setSaveError(t('zoneEditor.failedToSaveZones', { message: error.message }));
+      setSaveError(t('zoneEditor.failedToSaveZones', { message: (error as Error).message }));
     }
   };
 
   // Update zone property
-  const updateZoneProperty = (index, property, value) => {
+  const updateZoneProperty = (index: number, property: keyof DetectionZone, value: unknown) => {
     const newZones = [...zoneList];
-    newZones[index] = { ...newZones[index], [property]: value };
+    newZones[index] = { ...newZones[index]!, [property]: value };
     setZoneList(newZones);
   };
 
@@ -644,13 +674,13 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                 }`}
                 onClick={(event) => {
                   // Preserve the native toggle until onChange records it below.
-                  if (event.target.type !== 'checkbox') setSelectedZoneIndex(index);
+                  if ((event.target as HTMLInputElement).type !== 'checkbox') setSelectedZoneIndex(index);
                 }}
               >
                 <input
                   type="text"
                   value={zone.name}
-                  onChange={(e) => updateZoneProperty(index, 'name', e.target.value)}
+                  onChange={(e) => updateZoneProperty(index, 'name', (e.target as HTMLInputElement).value)}
                   className="w-full mb-2 px-2 py-1 border border-input rounded bg-background text-foreground"
                   placeholder={t('zoneEditor.zoneNamePlaceholder')}
                 />
@@ -660,7 +690,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                   <input
                     type="color"
                     value={zone.color || '#3b82f6'}
-                    onChange={(e) => updateZoneProperty(index, 'color', e.target.value)}
+                    onChange={(e) => updateZoneProperty(index, 'color', (e.target as HTMLInputElement).value)}
                     className="w-12 h-8 rounded cursor-pointer"
                   />
                 </div>
@@ -671,7 +701,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                       type="checkbox"
                       checked={zone.enabled}
                       onChange={(e) => {
-                        updateZoneProperty(index, 'enabled', e.target.checked);
+                        updateZoneProperty(index, 'enabled', (e.target as HTMLInputElement).checked);
                         setSelectedZoneIndex(index);
                       }}
                     />

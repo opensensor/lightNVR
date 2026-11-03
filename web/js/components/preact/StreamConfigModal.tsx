@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Stream Configuration Modal Component
  * Expanded, responsive modal with accordion sections for stream configuration
@@ -10,15 +9,57 @@ import { AsyncButton } from './AsyncButton.tsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.ts';
 import { useI18n } from '../../i18n.ts';
 import { showStatusMessage } from './ToastContainer.tsx';
+import type { ComponentChildren } from 'preact';
+import type { LiveTransport, TransportOfferings } from '../../types/core.ts';
+import type {
+  DetectionModel,
+  DetectionZone,
+  ExpandedSections,
+  StreamFormState,
+  StreamInputHandler,
+  ZonesResponse,
+} from '../../types/streams.ts';
+
+interface RecordingScheduleGridProps {
+  schedule: boolean[];
+  onChange: (schedule: boolean[]) => void;
+}
+
+interface AccordionSectionProps {
+  title: ComponentChildren;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children?: ComponentChildren;
+  badge?: ComponentChildren;
+}
+
+export interface StreamConfigModalProps {
+  isEditing: boolean;
+  isCloning?: boolean;
+  currentStream: StreamFormState;
+  detectionModels: DetectionModel[];
+  expandedSections: ExpandedSections;
+  onToggleSection: (section: keyof ExpandedSections) => void;
+  onInputChange: StreamInputHandler;
+  onThresholdChange: (event: Event) => void;
+  onTestConnection: () => void;
+  /** Returns the save promise so AsyncButton can track it. */
+  onSave: (event?: Event) => unknown;
+  onClose: () => void;
+  onRefreshModels: () => void;
+  audioDisabled?: boolean;
+  hideCredentials?: boolean;
+  transportOfferings?: TransportOfferings;
+}
 
 const primaryAccentStyle = { accentColor: 'hsl(var(--primary))' };
 const HOURS_PER_DAY = 24;
 const HOURS_PER_WEEK = 7 * HOURS_PER_DAY;
 
-const isCustomApiUrl = (url) =>
+const isCustomApiUrl = (url: unknown) =>
   typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
-const getDetectionModelSelectValue = (modelValue) => {
+const getDetectionModelSelectValue = (modelValue: string) => {
   if (!modelValue) {
     return '';
   }
@@ -29,7 +70,7 @@ const getDetectionModelSelectValue = (modelValue) => {
  * Recording Schedule Grid Component
  * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
  */
-function RecordingScheduleGrid({ schedule, onChange }) {
+function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProps) {
   const { t } = useI18n();
   const isDragging = useRef(false);
   const dragValue = useRef(true);
@@ -56,7 +97,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  const handleCellMouseDown = useCallback((e, dayIdx, hourIdx) => {
+  const handleCellMouseDown = useCallback((e: MouseEvent, dayIdx: number, hourIdx: number) => {
     e.preventDefault();
     const newVal = !schedule[dayIdx * HOURS_PER_DAY + hourIdx];
     dragValue.current = newVal;
@@ -66,14 +107,14 @@ function RecordingScheduleGrid({ schedule, onChange }) {
     onChange(s);
   }, [schedule, onChange]);
 
-  const handleCellMouseEnter = useCallback((dayIdx, hourIdx) => {
+  const handleCellMouseEnter = useCallback((dayIdx: number, hourIdx: number) => {
     if (!isDragging.current) return;
     const s = schedule.slice();
     s[dayIdx * HOURS_PER_DAY + hourIdx] = dragValue.current;
     onChange(s);
   }, [schedule, onChange]);
 
-  const toggleDay = useCallback((dayIdx) => {
+  const toggleDay = useCallback((dayIdx: number) => {
     const allOn = Array.from({ length: HOURS_PER_DAY }).every(
       (_, h) => schedule[dayIdx * HOURS_PER_DAY + h]
     );
@@ -82,7 +123,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
     onChange(s);
   }, [schedule, onChange]);
 
-  const toggleHour = useCallback((hourIdx) => {
+  const toggleHour = useCallback((hourIdx: number) => {
     const allOn = Array.from({ length: 7 }).every((_, d) => schedule[d * HOURS_PER_DAY + hourIdx]);
     const s = schedule.slice();
     for (let d = 0; d < 7; d++) s[d * HOURS_PER_DAY + hourIdx] = !allOn;
@@ -90,8 +131,8 @@ function RecordingScheduleGrid({ schedule, onChange }) {
   }, [schedule, onChange]);
 
   /** Build the boolean pattern array for a given preset key */
-  const getPresetPattern = useCallback((preset) => {
-    const p = Array(HOURS_PER_WEEK).fill(false);
+  const getPresetPattern = useCallback((preset: string) => {
+    const p: boolean[] = Array(HOURS_PER_WEEK).fill(false);
     if (preset === 'weekdays') {
       for (let d = 1; d <= 5; d++) for (let h = 0; h < HOURS_PER_DAY; h++) p[d * HOURS_PER_DAY + h] = true;
     } else if (preset === 'business') {
@@ -108,12 +149,12 @@ function RecordingScheduleGrid({ schedule, onChange }) {
   }, []);
 
   /** Check if every hour in a preset's pattern is currently enabled */
-  const isPresetActive = useCallback((presetKey) => {
+  const isPresetActive = useCallback((presetKey: string) => {
     const pattern = getPresetPattern(presetKey);
     return pattern.some(Boolean) && pattern.every((on, i) => !on || schedule[i]);
   }, [schedule, getPresetPattern]);
 
-  const applyPreset = useCallback((preset) => {
+  const applyPreset = useCallback((preset: string) => {
     // Absolute presets — always replace the entire schedule
     if (preset === 'all') { onChange(Array(HOURS_PER_WEEK).fill(true)); return; }
     if (preset === 'none') { onChange(Array(HOURS_PER_WEEK).fill(false)); return; }
@@ -241,7 +282,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
 /**
  * Accordion Section Component
  */
-function AccordionSection({ title, isExpanded, onToggle, children, badge }) {
+function AccordionSection({ title, isExpanded, onToggle, children, badge }: AccordionSectionProps) {
   return (
     <div className="border border-border rounded-lg mb-3">
       <button
@@ -294,10 +335,10 @@ export function StreamConfigModal({
   audioDisabled = false,
   hideCredentials = false,
   transportOfferings = { webrtc: true, mse: true, hls: true }
-}) {
+}: StreamConfigModalProps) {
   const { t } = useI18n();
   const [showZoneEditor, setShowZoneEditor] = useState(false);
-  const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
+  const [detectionZones, setDetectionZones] = useState<DetectionZone[]>(currentStream.detectionZones || []);
 
   // Keep a ref to onInputChange so the zones-load effect never needs it as a
   // dependency. If we put onInputChange in the dependency array, calling it
@@ -336,7 +377,7 @@ export function StreamConfigModal({
       try {
         const response = await fetch(`/api/streams/${encodeURIComponent(currentStream.name)}/zones`);
         if (response.ok) {
-          const data = await response.json();
+          const data: ZonesResponse = await response.json();
           if (data.zones && Array.isArray(data.zones)) {
             setDetectionZones(data.zones);
             // Use ref so we always call the latest callback without making it
@@ -357,7 +398,7 @@ export function StreamConfigModal({
         }
       } catch (error) {
         console.error('Error loading zones:', error);
-        const errorMessage = (error && error.message) ? error.message : String(error || '');
+        const errorMessage = ((error as Error) && (error as Error).message) ? (error as Error).message : String(error || '');
         showStatusMessage(
           t('streamsConfig.zonesLoadError', { errorMessage }),
           'error'
@@ -368,7 +409,7 @@ export function StreamConfigModal({
     loadZones();
   }, [isEditing, currentStream.name]);
 
-  const handleZonesChange = (zones) => {
+  const handleZonesChange = (zones: DetectionZone[]) => {
     setDetectionZones(zones);
     // Update currentStream with new zones
     onInputChange({ target: { name: 'detectionZones', value: zones } });
@@ -584,10 +625,10 @@ export function StreamConfigModal({
                     {t('streamsConfig.playbackTransportHelp')}
                   </p>
                   {(() => {
-                    const required = {
+                    const required = ({
                       webrtc_only: ['webrtc'], mse_only: ['mse'], hls_only: ['hls'],
                       webrtc_then_mse: ['webrtc', 'mse'], mse_then_hls: ['mse', 'hls'],
-                    }[currentStream.playbackTransport] || [];
+                    } as Partial<Record<string, LiveTransport[]>>)[currentStream.playbackTransport] || [];
                     const unavailable = required.filter((name) => !transportOfferings[name]);
                     return unavailable.length > 0 ? (
                       <p className="mt-1 text-xs text-warning" role="alert">
@@ -1659,7 +1700,7 @@ export function StreamConfigModal({
                   id="go2rtc-source-override"
                   name="go2rtcSourceOverride"
                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
-                  rows="4"
+                  rows={4}
                   placeholder={"rtsp://admin:pass@camera/stream#transport=tcp\n\nOr multi-source:\n- rtsp://admin:pass@camera/main#transport=tcp\n- ffmpeg:camera1#video=h264#hardware"}
                   value={currentStream.go2rtcSourceOverride || ''}
                   onChange={onInputChange}

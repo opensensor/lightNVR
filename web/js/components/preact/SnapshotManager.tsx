@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Snapshot functionality for LiveView
  * React component for managing snapshots
@@ -9,13 +8,31 @@ import { showSnapshotPreview } from './UI.tsx';
 import { formatFilenameTimestamp } from '../../utils/date-utils.ts';
 import { useI18n } from '../../i18n.ts';
 
+declare global {
+  interface Window {
+    /** Registered by SnapshotManager while it is mounted. */
+    takeSnapshot?: (streamId: string, event?: Event) => void;
+  }
+}
+
+interface SnapshotData {
+  canvas: HTMLCanvasElement | null;
+  fileName: string | null;
+}
+
+export interface SnapshotButtonProps {
+  streamId: string;
+  streamName: string;
+  onSnapshot?: (event: MouseEvent) => unknown;
+}
+
 /**
  * Custom hook for snapshot functionality
  * @returns {Object} Snapshot functions and state
  */
 export function useSnapshotManager() {
   const { t } = useI18n();
-  const [snapshotData, setSnapshotData] = useState({
+  const [snapshotData, setSnapshotData] = useState<SnapshotData>({
     canvas: null,
     fileName: null
   });
@@ -25,20 +42,20 @@ export function useSnapshotManager() {
    * @param {string} streamId - ID of the stream
    * @param {Event} event - Optional click event
    */
-  const takeSnapshot = useCallback((streamId, event) => {
+  const takeSnapshot = useCallback((streamId: string, event?: Event) => {
     console.log(`Taking snapshot of stream with ID: ${streamId}`);
 
     // Find the stream by ID or name
     const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
-    let streamName;
+    let streamName: string | null | undefined;
 
     if (streamElement) {
       // Get the stream name from the data attribute
       streamName = streamElement.getAttribute('data-name');
     } else if (event) {
       // If we can't find by data-id, try to find from the event target
-      const clickedButton = event.currentTarget || event.target;
-      const videoCell = clickedButton ? clickedButton.closest('.video-cell') : null;
+      const clickedButton = (event.currentTarget || event.target) as Element | null;
+      const videoCell = clickedButton ? clickedButton.closest<HTMLElement>('.video-cell') : null;
 
       if (videoCell) {
         streamName = videoCell.dataset.streamName;
@@ -53,7 +70,7 @@ export function useSnapshotManager() {
 
     // Find the video element
     const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
+    const videoElement = document.getElementById(videoElementId) as HTMLVideoElement | null;
     if (!videoElement) {
       console.error('Video element not found for stream:', streamName);
       return;
@@ -72,7 +89,7 @@ export function useSnapshotManager() {
     }
 
     // Draw the current frame to the canvas
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
     try {
@@ -93,7 +110,7 @@ export function useSnapshotManager() {
       showStatusMessage(t('live.snapshotTakenSuccessfully'));
     } catch (error) {
       console.error('Error creating snapshot:', error);
-      showStatusMessage(t('live.failedToCreateSnapshotWithMessage', { message: error.message }));
+      showStatusMessage(t('live.failedToCreateSnapshotWithMessage', { message: (error as Error).message }));
     }
   }, [t]);
 
@@ -184,11 +201,11 @@ export function SnapshotManager() {
  * @param {Function} props.onSnapshot Optional custom snapshot handler
  * @returns {JSX.Element} SnapshotButton component
  */
-export function SnapshotButton({ streamId, streamName, onSnapshot }) {
+export function SnapshotButton({ streamId, streamName, onSnapshot }: SnapshotButtonProps) {
   const { t } = useI18n();
   const { takeSnapshot } = useSnapshotManager();
 
-  const handleClick = (event) => {
+  const handleClick = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
 

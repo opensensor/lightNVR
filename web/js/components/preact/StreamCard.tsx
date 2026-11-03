@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface StreamCard Component
  *
@@ -27,13 +26,32 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { AsyncButton } from './AsyncButton.tsx';
+import type { t as translate } from '../../i18n.ts';
+import type { StreamListItem } from '../../types/streams.ts';
+
+type Translate = typeof translate;
+
+export interface StreamCardProps {
+  stream: StreamListItem;
+  canModifyStreams: boolean;
+  shouldHideCredentials: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: (event: Event, name: string) => void;
+  onEdit: (name: string) => unknown;
+  onClone: (name: string) => unknown;
+  onOpenDelete: (stream: StreamListItem) => void;
+  onEnable: (name: string) => unknown;
+  onDisable: (name: string) => unknown;
+  t: Translate;
+}
 
 const MAX_CONCURRENT_SNAPSHOTS = 8;
 let activeSnapshotRequests = 0;
-const snapshotWaiters = [];
+const snapshotWaiters: Array<() => void> = [];
 
 function acquireSnapshotSlot() {
-  return new Promise((resolve) => {
+  return new Promise<() => void>((resolve) => {
     const grant = () => {
       activeSnapshotRequests += 1;
       let released = false;
@@ -59,8 +77,11 @@ function acquireSnapshotSlot() {
  * @param {Object} stream
  * @returns {string[]} e.g. ['Constant', 'Detection'] or ['Schedule'] or []
  */
-export function collectRecordingModes(stream, t) {
-  const modes = [];
+export function collectRecordingModes(
+  stream: Pick<StreamListItem, 'record' | 'record_on_schedule' | 'detection_based_recording'>,
+  t?: Translate
+) {
+  const modes: string[] = [];
   // `record` is the canonical constant-recording flag. When
   // `record_on_schedule` is true the scheduled window governs when
   // recording runs — surface that distinctly from a pure "always on"
@@ -84,7 +105,7 @@ export function collectRecordingModes(stream, t) {
  * This is the camera-source transport. Browser playback (HLS/MSE/WebRTC)
  * is stored separately in stream.playback_transport and edited in the modal.
  */
-function protocolLabel(stream) {
+function protocolLabel(stream: { protocol?: number | string }) {
   const p = stream.protocol;
   if (p === 0 || p === '0') return 'TCP';
   if (p === 1 || p === '1') return 'UDP';
@@ -95,10 +116,10 @@ function protocolLabel(stream) {
  * Overall status → badge colour/label lookup. Mirrors the existing
  * table's `statusColor` / `statusLabel` switch (StreamsView pre-T5).
  */
-function statusBadge(stream, t) {
+function statusBadge(stream: Pick<StreamListItem, 'status'>, t?: Translate) {
   const s = stream.status;
   let color = 'hsl(var(--muted-foreground))';
-  let label = s || (t ? t('common.unknown') : 'Unknown');
+  let label: string = s || (t ? t('common.unknown') : 'Unknown');
   switch (s) {
     case 'Running':
       color = 'hsl(var(--success))';
@@ -134,7 +155,7 @@ function statusBadge(stream, t) {
  * Build the snapshot URL (go2rtc frame proxy). Returns null if we can't
  * form a URL (no window in SSR/test environments).
  */
-function buildSnapshotUrl(streamName) {
+function buildSnapshotUrl(streamName: string) {
   if (typeof window === 'undefined' || !streamName) return null;
   // Cache-bust so cards refresh the frame whenever the page mounts.
   const ts = Date.now();
@@ -145,7 +166,7 @@ function buildSnapshotUrl(streamName) {
  * Neutral snapshot placeholder — used when go2rtc has no frame yet or
  * the <img> errors out.
  */
-function SnapshotPlaceholder({ label }) {
+function SnapshotPlaceholder({ label }: { label: string }) {
   return (
     <div class="w-full aspect-video bg-muted flex items-center justify-center text-muted-foreground text-xs">
       <div class="flex flex-col items-center gap-1">
@@ -191,11 +212,11 @@ export function StreamCard({
   onEnable,
   onDisable,
   t
-}) {
+}: StreamCardProps) {
   const [snapshotBroken, setSnapshotBroken] = useState(false);
-  const [snapshotUrl, setSnapshotUrl] = useState(null);
-  const snapshotContainerRef = useRef(null);
-  const snapshotReleaseRef = useRef(null);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const snapshotContainerRef = useRef<HTMLDivElement | null>(null);
+  const snapshotReleaseRef = useRef<(() => void) | null>(null);
 
   // Keep the granted URL stable across renders. Generate a new URL only
   // when a request acquires a slot, including after a camera is re-enabled.
@@ -515,7 +536,7 @@ export function StreamCard({
  * toggle. Shared by the mobile `<details>` disclosure and the
  * always-visible desktop block.
  */
-function DetailsBlock({ stream, t }) {
+function DetailsBlock({ stream, t }: { stream: StreamListItem; t: Translate }) {
   return (
     <div class="space-y-1.5">
       <div class="flex items-start gap-1.5">

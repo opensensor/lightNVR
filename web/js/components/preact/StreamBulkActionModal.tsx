@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Stream Bulk Action Modal Component
  * Confirmation modal for bulk disable / bulk delete of streams.
@@ -6,6 +5,15 @@
 
 import { useI18n } from '../../i18n.ts';
 import { AsyncButton } from './AsyncButton.tsx';
+import type { StreamBulkAction } from '../../types/streams.ts';
+
+export interface StreamBulkActionModalProps {
+  action: StreamBulkAction;
+  streamNames: string[];
+  onClose: () => void;
+  onConfirm: () => unknown;
+  isWorking: boolean;
+}
 
 /**
  * StreamBulkActionModal component
@@ -16,7 +24,7 @@ import { AsyncButton } from './AsyncButton.tsx';
  * @param {Function} props.onConfirm                  Called when the user confirms
  * @param {boolean}  props.isWorking                  Whether the operation is in progress
  */
-export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm, isWorking }) {
+export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm, isWorking }: StreamBulkActionModalProps) {
   const { t } = useI18n();
   const count = streamNames.length;
   const isDelete = action === 'delete';
