@@ -446,7 +446,6 @@ export function Header({ version = VERSION }: { version?: string }) {
           formData={profileFormData}
           handleInputChange={handleProfileInputChange}
           handleEditUser={handleProfileSave}
-          handleClearLoginLockout={undefined}
           onClose={closeProfileModal}
           title={t('auth.editProfileTitle')}
           submitLabel={isSavingProfile ? t('common.saving') : t('common.saveChanges')}

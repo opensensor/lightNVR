@@ -20,82 +20,82 @@ web/
 ├── css/                              # Stylesheets
 ├── js/
 │   ├── pages/                        # Page-level entry points
-│   │   ├── index-page.jsx            # Live view
-│   │   ├── recordings-page.jsx       # Recording browser
-│   │   ├── streams-page.jsx          # Stream management
-│   │   ├── settings-page.jsx         # System settings
-│   │   ├── system-page.jsx           # System info and logs
-│   │   ├── users-page.jsx            # User management
-│   │   ├── timeline-page.jsx         # Timeline playback
-│   │   ├── hls-page.jsx              # Direct HLS viewer
-│   │   └── login-page.jsx            # Authentication
+│   │   ├── index-page.tsx            # Live view
+│   │   ├── recordings-page.tsx       # Recording browser
+│   │   ├── streams-page.tsx          # Stream management
+│   │   ├── settings-page.tsx         # System settings
+│   │   ├── system-page.tsx           # System info and logs
+│   │   ├── users-page.tsx            # User management
+│   │   ├── timeline-page.tsx         # Timeline playback
+│   │   ├── hls-page.tsx              # Direct HLS viewer
+│   │   └── login-page.tsx            # Authentication
 │   ├── components/
 │   │   └── preact/                   # Preact components
-│   │       ├── LiveView.jsx          # Live camera grid
-│   │       ├── WebRTCVideoCell.jsx   # WebRTC video player
-│   │       ├── HLSVideoCell.jsx      # HLS video player
-│   │       ├── MSEVideoCell.jsx      # MSE video player
-│   │       ├── RecordingsView.jsx    # Recording browser
-│   │       ├── StreamsView.jsx       # Stream list
-│   │       ├── StreamConfigModal.jsx # Stream config with zones
-│   │       ├── StreamDeleteModal.jsx # Stream deletion
-│   │       ├── SettingsView.jsx      # System settings
-│   │       ├── SystemView.jsx        # System info dashboard
-│   │       ├── UsersView.jsx         # User management
-│   │       ├── LoginView.jsx         # Login form
-│   │       ├── ZoneEditor.jsx        # Detection zone editor
-│   │       ├── DetectionOverlay.jsx  # Detection overlay
-│   │       ├── PTZControls.jsx       # Pan-Tilt-Zoom controls
-│   │       ├── ThemeCustomizer.jsx   # Theme/dark mode
-│   │       ├── SnapshotManager.jsx   # Camera snapshots
-│   │       ├── FullscreenManager.jsx # Fullscreen video
-│   │       ├── BatchDeleteModal.jsx  # Batch recording delete
-│   │       ├── Toast.jsx / ToastContainer.jsx  # Notifications
-│   │       ├── Header.jsx / Footer.jsx         # Layout
-│   │       ├── LoadingIndicator.jsx  # Loading spinner
-│   │       ├── UI.jsx                # Shared UI primitives
+│   │       ├── LiveView.tsx          # Live camera grid
+│   │       ├── WebRTCVideoCell.tsx   # WebRTC video player
+│   │       ├── HLSVideoCell.tsx      # HLS video player
+│   │       ├── MSEVideoCell.tsx      # MSE video player
+│   │       ├── RecordingsView.tsx    # Recording browser
+│   │       ├── StreamsView.tsx       # Stream list
+│   │       ├── StreamConfigModal.tsx # Stream config with zones
+│   │       ├── StreamDeleteModal.tsx # Stream deletion
+│   │       ├── SettingsView.tsx      # System settings
+│   │       ├── SystemView.tsx        # System info dashboard
+│   │       ├── UsersView.tsx         # User management
+│   │       ├── LoginView.tsx         # Login form
+│   │       ├── ZoneEditor.tsx        # Detection zone editor
+│   │       ├── DetectionOverlay.tsx  # Detection overlay
+│   │       ├── PTZControls.tsx       # Pan-Tilt-Zoom controls
+│   │       ├── ThemeCustomizer.tsx   # Theme/dark mode
+│   │       ├── SnapshotManager.tsx   # Camera snapshots
+│   │       ├── FullscreenManager.tsx # Fullscreen video
+│   │       ├── BatchDeleteModal.tsx  # Batch recording delete
+│   │       ├── Toast.tsx / ToastContainer.tsx  # Notifications
+│   │       ├── Header.tsx / Footer.tsx         # Layout
+│   │       ├── LoadingIndicator.tsx  # Loading spinner
+│   │       ├── UI.tsx                # Shared UI primitives
 │   │       ├── recordings/           # Recording sub-components
-│   │       │   ├── ActiveFilters.jsx
-│   │       │   ├── FiltersSidebar.jsx
-│   │       │   ├── PaginationControls.jsx
-│   │       │   ├── RecordingsTable.jsx
-│   │       │   ├── formatUtils.js
-│   │       │   ├── recordingsAPI.jsx
-│   │       │   └── urlUtils.js
+│   │       │   ├── ActiveFilters.tsx
+│   │       │   ├── FiltersSidebar.tsx
+│   │       │   ├── PaginationControls.tsx
+│   │       │   ├── RecordingsTable.tsx
+│   │       │   ├── formatUtils.ts
+│   │       │   ├── recordingsAPI.tsx
+│   │       │   └── urlUtils.ts
 │   │       ├── system/               # System sub-components
-│   │       │   ├── LogsView.jsx / LogsPoller.jsx
-│   │       │   ├── MemoryStorage.jsx
-│   │       │   ├── NetworkInfo.jsx
-│   │       │   ├── StreamStorage.jsx / StreamsInfo.jsx
-│   │       │   ├── SystemControls.jsx / SystemInfo.jsx
-│   │       │   ├── RestartModal.jsx
-│   │       │   └── SystemUtils.js
+│   │       │   ├── LogsView.tsx / LogsPoller.tsx
+│   │       │   ├── MemoryStorage.tsx
+│   │       │   ├── NetworkInfo.tsx
+│   │       │   ├── StreamStorage.tsx / StreamsInfo.tsx
+│   │       │   ├── SystemControls.tsx / SystemInfo.tsx
+│   │       │   ├── RestartModal.tsx
+│   │       │   └── SystemUtils.ts
 │   │       ├── timeline/             # Timeline sub-components
-│   │       │   ├── TimelinePage.jsx
-│   │       │   ├── TimelinePlayer.jsx
-│   │       │   ├── TimelineSegments.jsx
-│   │       │   ├── TimelineRuler.jsx
-│   │       │   ├── TimelineCursor.jsx
-│   │       │   ├── TimelineControls.jsx
-│   │       │   └── SpeedControls.jsx
+│   │       │   ├── TimelinePage.tsx
+│   │       │   ├── TimelinePlayer.tsx
+│   │       │   ├── TimelineSegments.tsx
+│   │       │   ├── TimelineRuler.tsx
+│   │       │   ├── TimelineCursor.tsx
+│   │       │   ├── TimelineControls.tsx
+│   │       │   └── SpeedControls.tsx
 │   │       └── users/                # User sub-components
-│   │           ├── UsersTable.jsx
-│   │           ├── AddUserModal.jsx
-│   │           ├── EditUserModal.jsx
-│   │           ├── DeleteUserModal.jsx
-│   │           ├── ApiKeyModal.jsx
-│   │           ├── TotpSetupModal.jsx
-│   │           └── UserRoles.js
+│   │           ├── UsersTable.tsx
+│   │           ├── AddUserModal.tsx
+│   │           ├── EditUserModal.tsx
+│   │           ├── DeleteUserModal.tsx
+│   │           ├── ApiKeyModal.tsx
+│   │           ├── TotpSetupModal.tsx
+│   │           └── UserRoles.ts
 │   ├── utils/                        # Utility modules
-│   │   ├── auth-utils.js
-│   │   ├── dom-utils.js
-│   │   ├── settings-utils.js
+│   │   ├── auth-utils.ts
+│   │   ├── dom-utils.ts
+│   │   ├── settings-utils.ts
 │   │   ├── theme-init.js
-│   │   └── url-utils.js
+│   │   └── url-utils.ts
 │   ├── lib/                          # Third-party libraries
-│   ├── fetch-utils.js                # HTTP fetch helpers
-│   ├── query-client.js               # @tanstack/query client
-│   ├── url-param-handler.js          # URL parameter management
+│   ├── fetch-utils.ts                # HTTP fetch helpers
+│   ├── query-client.ts               # @tanstack/query client
+│   ├── url-param-handler.ts          # URL parameter management
 │   └── version.js                    # Version info
 └── *.html                            # HTML entry points
 ```
@@ -212,7 +212,7 @@ State management uses a combination of Preact hooks and @tanstack/query:
 
 ### Data Fetching with Preact Query
 
-The `query-client.js` module provides custom hooks that wrap @tanstack/query with `enhancedFetch` (automatic timeout, retries, auth redirect on 401):
+The `query-client.ts` module provides custom hooks that wrap @tanstack/query with `enhancedFetch` (automatic timeout, retries, auth redirect on 401):
 
 - `useQuery(key, url, options)` — Declarative data fetching with caching
 - `useMutation(options)` — For POST/PUT/DELETE operations
@@ -223,7 +223,7 @@ The `query-client.js` module provides custom hooks that wrap @tanstack/query wit
 ### Example: Fetching Streams
 
 ```javascript
-import { useQuery, useQueryClient } from '../../query-client.js';
+import { useQuery, useQueryClient } from '../../query-client.ts';
 
 const { data, isLoading, error } = useQuery(
   ['streams'], '/api/streams',
@@ -254,8 +254,8 @@ const saveMutation = useMutation({
 
 The frontend communicates with the backend through a layered fetch architecture:
 
-1. **`fetch-utils.js`** — `enhancedFetch()` wraps the native Fetch API with timeouts, retries, abort controller support, and automatic 401 → login redirect. `fetchJSON()` adds JSON parsing.
-2. **`query-client.js`** — Wraps `enhancedFetch` in @tanstack/query hooks for declarative data fetching with caching and automatic background refetching.
+1. **`fetch-utils.ts`** — `enhancedFetch()` wraps the native Fetch API with timeouts, retries, abort controller support, and automatic 401 → login redirect. `fetchJSON()` adds JSON parsing.
+2. **`query-client.ts`** — Wraps `enhancedFetch` in @tanstack/query hooks for declarative data fetching with caching and automatic background refetching.
 3. **Components** — Use `useQuery` / `useMutation` hooks for all server communication. Direct `fetch()` calls are avoided in favor of the query hooks.
 
 Session cookies (`credentials: 'same-origin'`) are automatically included in all requests.

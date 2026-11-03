@@ -60,9 +60,7 @@ export default [
         'ts-check': false,
         'ts-expect-error': 'allow-with-description',
         'ts-ignore': true,
-        // Allowed until the migration closes: every file starts with this
-        // header after the rename, and each domain removes it as it is typed.
-        'ts-nocheck': false,
+        'ts-nocheck': true,
       }],
     },
   },

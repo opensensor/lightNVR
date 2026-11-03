@@ -12,6 +12,7 @@
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
+    // Needed while web/js/utils/theme-init.js stays .js; see web/VITE.md.
     "allowJs": true,
     "checkJs": false,
     "skipLibCheck": true

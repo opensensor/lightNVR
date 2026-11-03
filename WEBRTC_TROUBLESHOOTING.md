@@ -34,7 +34,7 @@ The WebRTC client code was missing the `onicecandidate` event handler. This mean
 
 ## Fixes Implemented
 
-### 1. Added ICE Candidate Handling (web/js/components/preact/WebRTCVideoCell.jsx)
+### 1. Added ICE Candidate Handling (web/js/components/preact/WebRTCVideoCell.tsx)
 
 ```javascript
 // Handle ICE candidates - critical for NAT traversal
@@ -266,7 +266,7 @@ external_ip = YOUR.EXTERNAL.IP.ADDRESS
    `[go2rtc]` section of `lightnvr.ini`, or the `WEBRTC_CONNECTION_TIMEOUT_MS` /
    `WEBRTC_ICE_RECOVERY_TIMEOUT_MS` environment variables, then restart. These are
    read by the web client from `/api/settings`, so the stock Docker image honours
-   them — no source edit of `WebRTCVideoCell.jsx` required.
+   them — no source edit of `WebRTCVideoCell.tsx` required.
 
 ### Issue: IPv6 addresses causing problems
 
@@ -311,7 +311,7 @@ log_level = 3  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
 
 ## Files Modified
 
-1. `web/js/components/preact/WebRTCVideoCell.jsx` - Client-side WebRTC handling
+1. `web/js/components/preact/WebRTCVideoCell.tsx` - Client-side WebRTC handling
 2. `src/video/go2rtc/go2rtc_process.c` - go2rtc configuration generation
 3. `src/web/api_handlers_go2rtc_proxy.c` - WebRTC config API endpoint
 

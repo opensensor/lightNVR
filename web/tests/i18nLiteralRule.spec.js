@@ -139,9 +139,9 @@ describe('TypeScript lint settings', () => {
     expect(errorsFor(messages, '@typescript-eslint/no-explicit-any')).toHaveLength(1);
   });
 
-  test('ts-nocheck stays allowed until the migration closes', () => {
+  test('ts-nocheck is an error', () => {
     const messages = lint(MODULE_TS, '// @ts-nocheck\nexport const value = 1;\n');
-    expect(errorsFor(messages, '@typescript-eslint/ban-ts-comment')).toEqual([]);
+    expect(errorsFor(messages, '@typescript-eslint/ban-ts-comment')).toHaveLength(1);
   });
 
   test('ts-ignore is an error', () => {

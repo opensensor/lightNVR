@@ -50,7 +50,7 @@
 /* ---------------------------------------------------------------------------
  * Reduce-motion rule
  * Driven by <html data-reduce-motion="true"> set by
- * web/js/utils/reduceMotion.js on boot (and on preference change).
+ * web/js/utils/reduceMotion.ts on boot (and on preference change).
  * The utility resolves 'auto' against `prefers-reduced-motion: reduce` so
  * users who only have the OS setting still get the reduction by default.
  *
