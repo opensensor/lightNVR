@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * DetectionTab — Detection models path, API URL / request format / backend, default detection
  * threshold (used when a stream enables detection-based recording).
@@ -6,7 +5,13 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-export function DetectionTab({ settings, handleInputChange, handleThresholdChange, canModifySettings, t }) {
+import type { SettingsTabProps } from '../../../types/settings.ts';
+
+interface DetectionTabProps extends SettingsTabProps {
+  handleThresholdChange: (e: Event) => void;
+}
+
+export function DetectionTab({ settings, handleInputChange, handleThresholdChange, canModifySettings, t }: DetectionTabProps) {
   const isDoods2 = settings.apiDetectionFormat === 'doods2';
   return (
     <div class="space-y-6">

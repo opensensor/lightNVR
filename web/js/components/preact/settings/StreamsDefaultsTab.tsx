@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StreamsDefaultsTab — Default pre/post buffer and buffer strategy defaults
  * applied to newly-created streams.
@@ -6,7 +5,9 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-export function StreamsDefaultsTab({ settings, handleInputChange, canModifySettings, t }) {
+import type { SettingsTabProps } from '../../../types/settings.ts';
+
+export function StreamsDefaultsTab({ settings, handleInputChange, canModifySettings, t }: SettingsTabProps) {
   return (
     <div class="space-y-6">
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">

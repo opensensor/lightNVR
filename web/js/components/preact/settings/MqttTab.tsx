@@ -1,11 +1,12 @@
-// @ts-nocheck
 /**
  * MqttTab — MQTT broker settings plus Home Assistant MQTT auto-discovery.
  *
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
+import type { SettingsTabProps } from '../../../types/settings.ts';
+
+export function MqttTab({ settings, handleInputChange, canModifySettings, t }: SettingsTabProps) {
   return (
     <div class="space-y-6">
       <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface SettingsView Component
  *
@@ -40,6 +39,16 @@ import {
   healthSettingsToPayload,
   validateHealthSettings,
 } from './settings/HealthTab.tsx';
+import type { DateInput } from '../../utils/date-utils.ts';
+import type {
+  AuthSessionsResponse,
+  SaveSettingsResponse,
+  SettingsFieldChange,
+  SettingsFieldTarget,
+  SettingsFormState,
+  SettingsResponse,
+  TrustedDevicesResponse,
+} from '../../types/settings.ts';
 
 /**
  * Tab definitions. `id` is the URL hash fragment ("#general", "#go2rtc", …).
@@ -78,9 +87,9 @@ function readTabFromHash() {
  */
 export function SettingsView() {
   const { t } = useI18n();
-  const [userRole, setUserRole] = useState(null);
-  const [restartNotice, setRestartNotice] = useState(null);
-  const [settings, setSettings] = useState({
+  const [userRole, setUserRole] = useState<string | null | undefined>(null);
+  const [restartNotice, setRestartNotice] = useState<string | null>(null);
+  const [settings, setSettings] = useState<SettingsFormState>({
     logLevel: '2',
     syslogEnabled: false,
     syslogIdent: 'lightnvr',
@@ -176,14 +185,14 @@ export function SettingsView() {
 
   // Baseline snapshot of the last-loaded/saved settings, used for dirty detection.
   // The save button is disabled until `settings` differs from this reference.
-  const baselineRef = useRef(null);
+  const baselineRef = useRef<SettingsFormState | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
   // Active tab (synced to window.location.hash) and search query.
   const [activeTab, setActiveTab] = useState(readTabFromHash);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const firstMatchScrolledRef = useRef(false);
 
   // Fetch user role on mount
@@ -201,7 +210,7 @@ export function SettingsView() {
 
   // UXD T4 — Reduce Motion preference.
   const [reduceMotionPref, setReduceMotionPrefState] = useState(() => getReduceMotionPref());
-  const handleReduceMotionChange = (value) => {
+  const handleReduceMotionChange = (value: string) => {
     const normalized = setReduceMotionPref(value);
     setReduceMotionPrefState(normalized);
     applyReduceMotion();
@@ -217,7 +226,7 @@ export function SettingsView() {
     data: settingsData,
     isLoading,
     refetch
-  } = useQuery(
+  } = useQuery<SettingsResponse>(
     ['settings'],
     '/api/settings',
     {
@@ -228,10 +237,10 @@ export function SettingsView() {
   );
 
   // Save settings mutation
-  const saveSettingsMutation = useMutation({
+  const saveSettingsMutation = useMutation<SaveSettingsResponse, Error, Record<string, unknown>>({
     mutationKey: ['saveSettings'],
     mutationFn: async (mappedSettings) => {
-      return await fetchJSON('/api/settings', {
+      return await fetchJSON<SaveSettingsResponse>('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mappedSettings),
@@ -265,7 +274,7 @@ export function SettingsView() {
     isLoading: authSessionsLoading,
     isError: authSessionsIsError,
     error: authSessionsError
-  } = useQuery(['auth-sessions'], '/api/auth/sessions', {
+  } = useQuery<AuthSessionsResponse>(['auth-sessions'], '/api/auth/sessions', {
     timeout: 10000,
     retries: 1,
     retryDelay: 1000
@@ -277,13 +286,13 @@ export function SettingsView() {
     isLoading: trustedDevicesLoading,
     isError: trustedDevicesIsError,
     error: trustedDevicesError
-  } = useQuery(['trusted-devices'], '/api/auth/trusted-devices', {
+  } = useQuery<TrustedDevicesResponse>(['trusted-devices'], '/api/auth/trusted-devices', {
     timeout: 10000,
     retries: 1,
     retryDelay: 1000
   });
 
-  const revokeSessionMutation = useMutation({
+  const revokeSessionMutation = useMutation<unknown, Error, number>({
     mutationKey: ['revokeSession'],
     mutationFn: async (sessionId) => fetchJSON(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -295,7 +304,7 @@ export function SettingsView() {
     }
   });
 
-  const revokeTrustedDeviceMutation = useMutation({
+  const revokeTrustedDeviceMutation = useMutation<unknown, Error, number>({
     mutationKey: ['revokeTrustedDevice'],
     mutationFn: async (deviceId) => fetchJSON(`/api/auth/trusted-devices/${deviceId}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -307,7 +316,7 @@ export function SettingsView() {
     }
   });
 
-  const formatTimestamp = (timestamp) => {
+  const formatTimestamp = (timestamp: DateInput) => {
     if (!timestamp) return t('settings.notAvailable');
     return formatLocalDateTime(timestamp);
   };
@@ -339,7 +348,7 @@ export function SettingsView() {
       dbPath: settingsData.db_path || '',
       dbBackupIntervalMinutes: settingsData.db_backup_interval_minutes?.toString() || '0',
       dbBackupRetentionCount: settingsData.db_backup_retention_count?.toString() || '6',
-      dbBackupVerify: ['full', 'quick', 'off'].includes(settingsData.db_backup_verify) ? settingsData.db_backup_verify : 'full',
+      dbBackupVerify: ['full', 'quick', 'off'].includes(settingsData.db_backup_verify as string) ? settingsData.db_backup_verify as string : 'full',
       dbPostBackupScript: settingsData.db_post_backup_script || '',
       webPort: settingsData.web_port?.toString() || '',
       webBindIp: settingsData.web_bind_ip?.toString() || '0.0.0.0',
@@ -433,7 +442,7 @@ export function SettingsView() {
     }
     let dirty = false;
     for (const key of Object.keys(settings)) {
-      if (settings[key] !== base[key]) {
+      if (settings[key as keyof SettingsFormState] !== base[key as keyof SettingsFormState]) {
         dirty = true;
         break;
       }
@@ -470,12 +479,12 @@ export function SettingsView() {
       max_storage_size: (parseInt(settings.maxStorage, 10) || 0) * 1024 * 1024 * 1024,
       retention_days: parseInt(settings.retention, 10),
       auto_delete_oldest: settings.autoDelete,
-      storage_min_free_pct: Number.isNaN(parseInt(settings.minFreePct, 10)) ? 10 : parseInt(settings.minFreePct, 10),
-      storage_pressure_warning_pct: parseFloat(settings.pressureWarningPct),
-      storage_pressure_critical_pct: parseFloat(settings.pressureCriticalPct),
-      storage_pressure_emergency_pct: parseFloat(settings.pressureEmergencyPct),
+      storage_min_free_pct: Number.isNaN(parseInt(settings.minFreePct as string, 10)) ? 10 : parseInt(settings.minFreePct as string, 10),
+      storage_pressure_warning_pct: parseFloat(settings.pressureWarningPct as string),
+      storage_pressure_critical_pct: parseFloat(settings.pressureCriticalPct as string),
+      storage_pressure_emergency_pct: parseFloat(settings.pressureEmergencyPct as string),
       generate_thumbnails: settings.generateThumbnails,
-      thumbnails_per_recording: parseInt(settings.thumbnailsPerRecording, 10) === 1 ? 1 : 3,
+      thumbnails_per_recording: parseInt(settings.thumbnailsPerRecording as string, 10) === 1 ? 1 : 3,
       db_path: settings.dbPath,
       db_backup_interval_minutes: Number.isNaN(parsedDbBackupIntervalMinutes) ? 0 : parsedDbBackupIntervalMinutes,
       db_backup_retention_count: Number.isNaN(parsedDbBackupRetentionCount) ? 0 : parsedDbBackupRetentionCount,
@@ -509,12 +518,12 @@ export function SettingsView() {
       api_detection_format: settings.apiDetectionFormat,
       api_detection_detector_name: settings.apiDetectionDetectorName,
       default_detection_threshold: settings.defaultDetectionThreshold,
-      pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
-      post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
+      pre_detection_buffer: parseInt(settings.defaultPreBuffer as string, 10),
+      post_detection_buffer: parseInt(settings.defaultPostBuffer as string, 10),
       default_playback_transport: settings.defaultPlaybackTransport,
-      detection_grace_period: parseInt(settings.detectionGracePeriod, 10),
+      detection_grace_period: parseInt(settings.detectionGracePeriod as string, 10),
       detection_engine_enabled: !!settings.detectionEngineEnabled,
-      detection_engine_threads: parseInt(settings.detectionEngineThreads, 10) || 1,
+      detection_engine_threads: parseInt(settings.detectionEngineThreads as string, 10) || 1,
       detection_engine_delegate: settings.detectionEngineDelegate || 'xnnpack',
       go2rtc_enabled: settings.go2rtcEnabled,
       go2rtc_binary_path: settings.go2rtcBinaryPath,
@@ -556,22 +565,22 @@ export function SettingsView() {
   };
 
   // Shared input handlers (passed to every tab via props).
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleInputChange = (e: Event | SettingsFieldChange) => {
+    const { name, value, type, checked } = e.target as SettingsFieldTarget;
     setSettings(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
   };
 
-  const handleThresholdChange = (e) => {
-    const value = parseInt(e.target.value, 10);
+  const handleThresholdChange = (e: Event) => {
+    const value = parseInt((e.target as HTMLInputElement).value, 10);
     setSettings(prev => ({ ...prev, defaultDetectionThreshold: value }));
   };
 
   // Tab → hash sync.  Keep `history.replaceState` calls so reloads + shared
   // links preserve position without stacking history entries.
-  const selectTab = (id) => {
+  const selectTab = (id: string) => {
     if (!VALID_TAB_IDS.has(id)) return;
     setActiveTab(id);
     try {
@@ -619,7 +628,7 @@ export function SettingsView() {
       return;
     }
 
-    let firstMatch = null;
+    let firstMatch = null as Element | null;
     nodes.forEach((node) => {
       const label = (node.getAttribute('data-setting-label') || '').toLowerCase();
       const matches = label.includes(query);
@@ -645,7 +654,7 @@ export function SettingsView() {
       // Scroll into view after a tick so tab switch has landed.
       setTimeout(() => {
         try {
-          firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstMatch!.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (_err) {
           /* no-op for non-DOM env */
         }
@@ -699,7 +708,7 @@ export function SettingsView() {
   }
 
   // ---- Admin render: tabs + search + sticky save ----
-  const renderTabPanel = (tab) => {
+  const renderTabPanel = (tab: { id: string }) => {
     const hidden = tab.id !== activeTab;
     // We keep every panel mounted so the search scan can walk labels across
     // all tabs; CSS-hide the inactive ones.  `data-tab-panel` lets the search
@@ -858,7 +867,7 @@ export function SettingsView() {
                 <input
                   type="search"
                   value={searchQuery}
-                  onInput={(e) => setSearchQuery(e.target.value)}
+                  onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
                   placeholder={t('settings.searchPlaceholder')}
                   class="w-full p-2 pe-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
                   aria-label={t('settings.searchLabel')}

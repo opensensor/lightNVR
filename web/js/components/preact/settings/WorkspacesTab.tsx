@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState } from 'preact/hooks';
 import { fetchJSON, useMutation, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -6,6 +5,9 @@ import {
   WORKSPACE_KEYS,
   workspaceVisibilityFromResponse,
 } from '../../../utils/workspace-preferences.ts';
+import type { WorkspaceKey } from '../../../utils/workspace-preferences.ts';
+import type { WorkspacesResponse } from '../../../types/core.ts';
+import type { Translate } from '../../../types/settings.ts';
 
 const WORKSPACE_TRANSLATION_KEYS = Object.freeze({
   [WORKSPACE_KEYS.LIVE_NAVIGATOR]: {
@@ -18,9 +20,13 @@ const WORKSPACE_TRANSLATION_KEYS = Object.freeze({
   },
 });
 
-export function WorkspacesTab({ t }) {
+interface WorkspacesTabProps {
+  t: Translate;
+}
+
+export function WorkspacesTab({ t }: WorkspacesTabProps) {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useQuery(
+  const { data, isLoading, error } = useQuery<WorkspacesResponse>(
     ['ui-workspaces'],
     '/api/ui/workspaces',
     { timeout: 10000, retries: 1 }
@@ -31,9 +37,9 @@ export function WorkspacesTab({ t }) {
     if (data) setVisibility(workspaceVisibilityFromResponse(data));
   }, [data]);
 
-  const mutation = useMutation({
+  const mutation = useMutation<WorkspacesResponse, Error, Partial<Record<string, boolean>>>({
     mutationKey: ['save-ui-workspaces'],
-    mutationFn: (workspaces) => fetchJSON('/api/ui/workspaces', {
+    mutationFn: (workspaces) => fetchJSON<WorkspacesResponse>('/api/ui/workspaces', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspaces }),
@@ -54,7 +60,7 @@ export function WorkspacesTab({ t }) {
     },
   });
 
-  const toggle = (key, visible) => {
+  const toggle = (key: string, visible: boolean) => {
     const next = { ...visibility, [key]: visible };
     setVisibility(next);
     mutation.mutate({ [key]: visible });
@@ -73,7 +79,7 @@ export function WorkspacesTab({ t }) {
       ) : (
         <div className="divide-y divide-border rounded-md border border-border">
           {(data?.workspaces || []).map((workspace) => {
-            const translationKeys = WORKSPACE_TRANSLATION_KEYS[workspace.key];
+            const translationKeys = (WORKSPACE_TRANSLATION_KEYS as Partial<Record<string, { label: string; description: string }>>)[workspace.key as string];
             const label = translationKeys ? t(translationKeys.label) : workspace.label;
             const description = translationKeys
               ? t(translationKeys.description) : workspace.description;
@@ -90,9 +96,9 @@ export function WorkspacesTab({ t }) {
                 <input
                   type="checkbox"
                   className="h-5 w-5 shrink-0 rounded border-input"
-                  checked={visibility[workspace.key] !== false}
+                  checked={visibility[workspace.key as WorkspaceKey] !== false}
                   disabled={!workspace.configurable || mutation.isPending}
-                  onChange={(event) => toggle(workspace.key, event.currentTarget.checked)}
+                  onChange={(event) => toggle(workspace.key as string, event.currentTarget.checked)}
                   aria-label={t('workspaces.showWorkspace', { name: label })}
                 />
               </label>

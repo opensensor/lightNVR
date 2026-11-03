@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Helpers that explain whether a storage target can ever receive recordings.
  *
@@ -9,12 +8,19 @@
  * target" imply footage will land there (#621).
  */
 
-const DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid', 'migration_target_uuid'];
-const POOL_KEYS = ['primary_pool_uuid', 'replication_pool_uuid'];
+import type { StoragePolicyEditorState, StoragePolicy, StoragePool, StorageTarget } from '../../../types/settings.ts';
+
+/** Read from a saved policy or from the policy editor's form values. */
+type ArchiveTriggerValues = Partial<Pick<StoragePolicyEditorState, 'migration_after_days' | 'archive_after_seconds' | 'archive_protected' | 'archive_on_pressure'>> & {
+  migration_target_uuid?: string | null;
+};
+
+const DIRECT_TARGET_KEYS = ['primary_target_uuid', 'fallback_target_uuid', 'migration_target_uuid'] as const;
+const POOL_KEYS = ['primary_pool_uuid', 'replication_pool_uuid'] as const;
 
 /** Set of target UUIDs that at least one enabled policy can route to. */
-export function referencedTargetUuids(policies = [], pools = []) {
-  const referenced = new Set();
+export function referencedTargetUuids(policies: readonly StoragePolicy[] | null = [], pools: readonly StoragePool[] | null = []): Set<string> {
+  const referenced = new Set<string>();
   const poolMembers = new Map(
     (pools || []).map((pool) => [
       pool?.uuid,
@@ -35,14 +41,14 @@ export function referencedTargetUuids(policies = [], pools = []) {
 }
 
 /** The default target always receives recordings; others need a policy. */
-export function targetIsRouted(target, referenced) {
+export function targetIsRouted(target: StorageTarget | null | undefined, referenced: Set<string> | null | undefined): boolean {
   if (!target) return false;
   if (target.is_default) return true;
   return !!referenced && referenced.has(target.uuid);
 }
 
 /** Mirrors the lifecycle scheduler: a move needs one of these triggers. */
-export function policyHasArchiveTrigger(values) {
+export function policyHasArchiveTrigger(values: ArchiveTriggerValues | null | undefined): boolean {
   const after = Number(values?.migration_after_days);
   const archiveAfter = Number(values?.archive_after_seconds ?? -1);
   return (Number.isFinite(after) && after > 0)
@@ -52,6 +58,6 @@ export function policyHasArchiveTrigger(values) {
 }
 
 /** True when the editor names an archive target that nothing will ever move to. */
-export function archiveTargetWithoutTrigger(values) {
+export function archiveTargetWithoutTrigger(values: ArchiveTriggerValues | null | undefined): boolean {
   return !!values?.migration_target_uuid && !policyHasArchiveTrigger(values);
 }

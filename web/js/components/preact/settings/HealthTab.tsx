@@ -1,4 +1,17 @@
-// @ts-nocheck
+import type { ComponentChildren } from 'preact';
+import type {
+  HealthCondition,
+  HealthConditionOverride,
+  HealthConditionOverrides,
+  HealthNumericField,
+  HealthSettingsResponse,
+  HealthSettingsState,
+  SetSettings,
+  SettingsFormState,
+  SettingsTabProps,
+  Translate,
+} from '../../../types/settings.ts';
+
 const fieldClass = 'mt-1 w-full min-h-11 rounded border border-input bg-background p-2 text-foreground disabled:cursor-not-allowed disabled:opacity-60';
 
 export const HEALTH_SETTINGS_DEFAULTS = Object.freeze({
@@ -14,7 +27,7 @@ export const HEALTH_SETTINGS_DEFAULTS = Object.freeze({
   healthIncidentRetentionDays: '90',
 });
 
-export const HEALTH_LIMITS = Object.freeze({
+export const HEALTH_LIMITS: Readonly<Record<HealthNumericField, readonly [number, number]>> = Object.freeze({
   healthFastIntervalSeconds: [5, 60],
   healthNormalIntervalSeconds: [15, 600],
   healthSlowIntervalSeconds: [60, 3600],
@@ -23,7 +36,7 @@ export const HEALTH_LIMITS = Object.freeze({
   healthIncidentRetentionDays: [7, 3650],
 });
 
-export function healthSettingsFromResponse(response = {}) {
+export function healthSettingsFromResponse(response: HealthSettingsResponse = {}) {
   return {
     healthEnabled: response.health_enabled !== false,
     healthProfile: response.health_profile || HEALTH_SETTINGS_DEFAULTS.healthProfile,
@@ -40,7 +53,7 @@ export function healthSettingsFromResponse(response = {}) {
   };
 }
 
-export function healthSettingsToPayload(settings) {
+export function healthSettingsToPayload(settings: HealthSettingsState) {
   return {
     health_enabled: Boolean(settings.healthEnabled),
     health_profile: settings.healthProfile,
@@ -59,33 +72,33 @@ export function healthSettingsToPayload(settings) {
 const DWELL_MAX_SECONDS = 604800;
 const OVERRIDE_PROFILES = new Set(['balanced', 'conservative', 'disabled']);
 
-function wholeNumber(value) {
+function wholeNumber(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
 }
 
-function effectiveConditions(settings) {
+function effectiveConditions(settings: HealthSettingsState): HealthCondition[] {
   return Array.isArray(settings?.healthEffectivePolicy?.conditions)
     ? settings.healthEffectivePolicy.conditions.filter((condition) => condition?.code)
     : [];
 }
 
-function overrideConditions(settings) {
+function overrideConditions(settings: HealthSettingsState): HealthConditionOverride[] {
   return Array.isArray(settings?.healthConditionOverrides?.conditions)
     ? settings.healthConditionOverrides.conditions
     : [];
 }
 
-export function validateHealthSettings(settings) {
-  const errors = [];
+export function validateHealthSettings(settings: HealthSettingsState): string[] {
+  const errors: string[] = [];
   if (!['balanced', 'conservative', 'disabled'].includes(settings.healthProfile))
     errors.push('profile');
   if (!['auto', 'smartctl', 'disabled'].includes(settings.healthHardwareProvider))
     errors.push('provider');
-  const values = {};
+  const values = {} as Record<HealthNumericField, number | null>;
   Object.entries(HEALTH_LIMITS).forEach(([field, [minimum, maximum]]) => {
-    const value = wholeNumber(settings[field]);
-    values[field] = value;
+    const value = wholeNumber(settings[field as HealthNumericField]);
+    values[field as HealthNumericField] = value;
     if (value === null || value < minimum || value > maximum) errors.push(field);
   });
   if (values.healthFastIntervalSeconds !== null &&
@@ -98,7 +111,7 @@ export function validateHealthSettings(settings) {
     errors.push('ordered');
 
   const registry = new Map(effectiveConditions(settings).map((condition) => [condition.code, condition]));
-  const seen = new Set();
+  const seen = new Set<string>();
   const overrides = overrideConditions(settings);
   if (settings?.healthConditionOverrides?.version !== 1 || overrides.length > registry.size)
     errors.push('overrides');
@@ -119,7 +132,7 @@ export function validateHealthSettings(settings) {
       errors.push('overrides');
       return;
     }
-    const thresholds = ['warning', 'critical', 'recovery'].map((key) => Number(override[key]));
+    const thresholds = (['warning', 'critical', 'recovery'] as const).map((key) => Number(override[key])) as [number, number, number];
     if (thresholds.some((value) => !Number.isFinite(value))) {
       errors.push('thresholds');
       return;
@@ -131,7 +144,7 @@ export function validateHealthSettings(settings) {
       ? !(thresholds[1] < thresholds[0] && thresholds[0] < thresholds[2])
       : !(thresholds[2] < thresholds[0] && thresholds[0] < thresholds[1]))
       errors.push('thresholdOrder');
-    const dwell = ['warning_for_seconds', 'critical_for_seconds', 'recovery_for_seconds']
+    const dwell = (['warning_for_seconds', 'critical_for_seconds', 'recovery_for_seconds'] as const)
       .map((key) => wholeNumber(override[key]));
     if (dwell.some((value) => value === null || value < 0 || value > DWELL_MAX_SECONDS) ||
         dwell[0] === 0 || dwell[2] === 0)
@@ -140,13 +153,18 @@ export function validateHealthSettings(settings) {
   return [...new Set(errors)];
 }
 
-export function conditionOverrideMode(overrides, code) {
+export function conditionOverrideMode(overrides: HealthConditionOverrides | null | undefined, code: string): string {
   const override = (overrides?.conditions || []).find((item) => item.code === code);
   if (!override) return 'default';
   return override.profile || 'custom';
 }
 
-export function updateConditionOverride(overrides, condition, mode, changes = {}) {
+export function updateConditionOverride(
+  overrides: HealthConditionOverrides | null | undefined,
+  condition: HealthCondition,
+  mode: string,
+  changes: Partial<HealthConditionOverride> = {},
+): HealthConditionOverrides {
   const current = Array.isArray(overrides?.conditions) ? overrides.conditions : [];
   const remaining = current.filter((item) => item.code !== condition.code);
   if (mode === 'default') return { version: 1, conditions: remaining };
@@ -167,7 +185,13 @@ export function updateConditionOverride(overrides, condition, mode, changes = {}
   };
 }
 
-function Setting({ label, help, children }) {
+interface SettingProps {
+  label: string;
+  help?: string;
+  children?: ComponentChildren;
+}
+
+function Setting({ label, help, children }: SettingProps) {
   return (
     <div class="settings-item" data-setting-label={`${label} ${help || ''}`}>
       <label class="block text-sm font-medium">
@@ -179,7 +203,16 @@ function Setting({ label, help, children }) {
   );
 }
 
-function NumericSetting({ name, settings, onChange, disabled, label, help }) {
+interface NumericSettingProps {
+  name: HealthNumericField;
+  settings: SettingsFormState;
+  onChange: SettingsTabProps['handleInputChange'];
+  disabled: boolean;
+  label: string;
+  help?: string;
+}
+
+function NumericSetting({ name, settings, onChange, disabled, label, help }: NumericSettingProps) {
   const [minimum, maximum] = HEALTH_LIMITS[name];
   return (
     <Setting label={label} help={help}>
@@ -188,14 +221,22 @@ function NumericSetting({ name, settings, onChange, disabled, label, help }) {
   );
 }
 
-function ConditionOverride({ condition, overrides, disabled, onChange, t }) {
+interface ConditionOverrideProps {
+  condition: HealthCondition;
+  overrides: HealthConditionOverrides;
+  disabled: boolean;
+  onChange: (next: HealthConditionOverrides) => void;
+  t: Translate;
+}
+
+function ConditionOverride({ condition, overrides, disabled, onChange, t }: ConditionOverrideProps) {
   const mode = conditionOverrideMode(overrides, condition.code);
   const explicit = (overrides.conditions || []).find((item) => item.code === condition.code);
   const custom = mode === 'custom' ? explicit : null;
   const supportsThresholds = condition.warning !== undefined;
-  const setMode = (nextMode) => onChange(updateConditionOverride(
+  const setMode = (nextMode: string) => onChange(updateConditionOverride(
     overrides, condition, nextMode));
-  const setCustom = (field, value) => onChange(updateConditionOverride(
+  const setCustom = (field: string, value: string) => onChange(updateConditionOverride(
     overrides, condition, 'custom', { ...custom, [field]: Number(value) }));
   const thresholdMax = condition.unit === 'ratio' ? 1 : undefined;
   const thresholdMin = condition.unit === 'ratio' ? 0 : undefined;
@@ -219,12 +260,12 @@ function ConditionOverride({ condition, overrides, disabled, onChange, t }) {
         </Setting>
         {custom && (
           <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {['warning', 'critical', 'recovery'].map((field) => (
+            {(['warning', 'critical', 'recovery'] as const).map((field) => (
               <Setting key={field} label={t(`settings.health.${field}`)} help={condition.unit}>
                 <input class={fieldClass} type="number" min={thresholdMin} max={thresholdMax} step="any" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
               </Setting>
             ))}
-            {['warning_for_seconds', 'critical_for_seconds', 'recovery_for_seconds'].map((field) => (
+            {(['warning_for_seconds', 'critical_for_seconds', 'recovery_for_seconds'] as const).map((field) => (
               <Setting key={field} label={t(`settings.health.${field}`)}>
                 <input class={fieldClass} type="number" min="0" max={DWELL_MAX_SECONDS} step="1" value={custom[field]} disabled={disabled} onInput={(event) => setCustom(field, event.currentTarget.value)} />
               </Setting>
@@ -236,7 +277,13 @@ function ConditionOverride({ condition, overrides, disabled, onChange, t }) {
   );
 }
 
-export function HealthTab({ settings, setSettings, handleInputChange, canModifySettings, validationErrors = [], serverError, t }) {
+interface HealthTabProps extends SettingsTabProps {
+  setSettings: SetSettings;
+  validationErrors?: string[];
+  serverError?: string;
+}
+
+export function HealthTab({ settings, setSettings, handleInputChange, canModifySettings, validationErrors = [], serverError, t }: HealthTabProps) {
   const disabled = !canModifySettings;
   const conditions = effectiveConditions(settings);
   const overrides = settings.healthConditionOverrides || { version: 1, conditions: [] };
@@ -245,7 +292,7 @@ export function HealthTab({ settings, setSettings, handleInputChange, canModifyS
     ...HEALTH_SETTINGS_DEFAULTS,
     healthConditionOverrides: { version: 1, conditions: [] },
   }));
-  const setOverrides = (next) => setSettings((current) => ({
+  const setOverrides = (next: HealthConditionOverrides) => setSettings((current) => ({
     ...current,
     healthConditionOverrides: next,
   }));

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AppearanceTab — ThemeCustomizer + the UXD T4 Reduce Motion toggle.
  *
@@ -11,8 +10,16 @@
 
 import { ThemeCustomizer } from '../ThemeCustomizer.tsx';
 import { REDUCE_MOTION_VALUES } from '../../../utils/reduceMotion.ts';
+import type { ReduceMotionPref } from '../../../utils/reduceMotion.ts';
+import type { Translate } from '../../../types/settings.ts';
 
-export function AppearanceTab({ reduceMotionPref, handleReduceMotionChange, t }) {
+interface AppearanceTabProps {
+  reduceMotionPref: ReduceMotionPref;
+  handleReduceMotionChange: (value: string) => void;
+  t: Translate;
+}
+
+export function AppearanceTab({ reduceMotionPref, handleReduceMotionChange, t }: AppearanceTabProps) {
   return (
     <div class="space-y-6">
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">

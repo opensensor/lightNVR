@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GeneralTab — General settings (log level, syslog, web port/bind IP,
  * web thread pool, max streams, rerun setup wizard).
@@ -9,8 +8,13 @@
 import { useState } from 'preact/hooks';
 
 import { showStatusMessage } from '../ToastContainer.tsx';
+import type { SettingsTabProps } from '../../../types/settings.ts';
 
-export function GeneralTab({ settings, handleInputChange, canModifySettings, restartNotice, t }) {
+interface GeneralTabProps extends SettingsTabProps {
+  restartNotice: string | null;
+}
+
+export function GeneralTab({ settings, handleInputChange, canModifySettings, restartNotice, t }: GeneralTabProps) {
   const [isResettingWizard, setIsResettingWizard] = useState(false);
   return (
     <div class="space-y-6">
@@ -196,7 +200,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
                   if (!res.ok) throw new Error(`HTTP ${res.status}`);
                   window.location.href = 'index.html';
                 } catch (err) {
-                  showStatusMessage(t('settings.resetWizardError', { message: err.message }), 'error');
+                  showStatusMessage(t('settings.resetWizardError', { message: (err as Error).message }), 'error');
                   setIsResettingWizard(false);
                 }
               }}

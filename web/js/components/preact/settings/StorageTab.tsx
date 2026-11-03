@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StorageTab — Storage path, HLS path, retention, auto-delete, thumbnails,
  * DB path + backup schedule + post-backup script.
@@ -12,6 +11,70 @@ import { showStatusMessage } from '../ToastContainer.tsx';
 import { archiveTargetWithoutTrigger, referencedTargetUuids, targetIsRouted } from './storageTargetRouting.ts';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
+import type {
+  FleetLocationsResponse,
+  FleetTagsResponse,
+  SettingsTabProps,
+  StorageArchiveDeletion,
+  StorageArchiveResponse,
+  StorageComplianceResponse,
+  StorageMigrationJob,
+  StorageMigrationsResponse,
+  StoragePoliciesResponse,
+  StoragePolicy,
+  StoragePolicyApplyPreview,
+  StoragePolicyApplyResult,
+  StoragePolicyEditorState,
+  StoragePolicyPayload,
+  StoragePolicyPreview,
+  StoragePool,
+  StoragePoolEditorState,
+  StoragePoolPayload,
+  StoragePoolsResponse,
+  StorageTarget,
+  StorageTargetEditorState,
+  StorageTargetHealth,
+  StorageTargetPayload,
+  StorageTargetProbeResponse,
+  StorageTargetsResponse,
+  Translate,
+} from '../../../types/settings.ts';
+import type { FleetSelector, LocationLike, TagLike } from '../../../types/fleet.ts';
+
+interface StoragePanelProps {
+  canModifySettings: boolean;
+  t: Translate;
+}
+
+interface StorageTranslateProps {
+  t: Translate;
+}
+
+interface StorageTargetEditorProps {
+  value: StorageTargetEditorState;
+  onChange: (next: StorageTargetEditorState) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  busy: boolean;
+  t: Translate;
+}
+
+interface StoragePolicyEditorProps {
+  value: StoragePolicyEditorState;
+  targets: StorageTarget[];
+  pools: StoragePool[];
+  onChange: (next: StoragePolicyEditorState) => void;
+  onSelectorChange: (selector: FleetSelector | null, error: string) => void;
+  onCancel: () => void;
+  onPreview: () => void;
+  onSave: () => void;
+  busy: boolean;
+  previewing: boolean;
+  saving: boolean;
+  locations: LocationLike[];
+  tags: TagLike[];
+  t: Translate;
+}
 
 const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
 
@@ -30,12 +93,12 @@ const EMPTY_TARGET = {
   archival_window_end: '00:00',
 };
 
-function minutesToTime(value) {
+function minutesToTime(value: number | undefined) {
   const minutes = Math.max(0, Math.min(1439, Number(value) || 0));
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-function timeToMinutes(value) {
+function timeToMinutes(value: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(value || '');
   if (!match) return null;
   const hours = Number(match[1]);
@@ -43,7 +106,7 @@ function timeToMinutes(value) {
   return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
 }
 
-function formatBytes(value) {
+function formatBytes(value: number | undefined) {
   const bytes = Number(value) || 0;
   if (bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
@@ -51,21 +114,21 @@ function formatBytes(value) {
   return `${(bytes / (1024 ** exponent)).toFixed(exponent >= 3 ? 1 : 0)} ${units[exponent]}`;
 }
 
-function statusClass(status) {
+function statusClass(status: string | undefined) {
   if (status === 'healthy') return 'badge-success';
   if (status === 'degraded') return 'badge-warning';
   if (status === 'unavailable') return 'badge-danger';
   return 'bg-muted text-muted-foreground';
 }
 
-function pressureClass(pressure) {
+function pressureClass(pressure: string | undefined) {
   if (pressure === 'reserve') return 'badge-danger';
   if (pressure === 'high') return 'badge-warning';
   if (pressure === 'normal') return 'badge-success';
   return 'bg-muted text-muted-foreground';
 }
 
-function migrationStateClass(state) {
+function migrationStateClass(state: string) {
   if (state === 'completed') return 'badge-success';
   if (state === 'failed') return 'badge-danger';
   if (state === 'retry_wait' || state === 'cleanup_pending') return 'badge-warning';
@@ -73,7 +136,7 @@ function migrationStateClass(state) {
   return 'badge-info';
 }
 
-function targetToEditor(target) {
+function targetToEditor(target: StorageTarget): StorageTargetEditorState {
   return {
     target_type: target.target_type || 'filesystem',
     endpoint: target.endpoint || '', region: target.region || '', bucket: target.bucket || '',
@@ -98,11 +161,11 @@ function targetToEditor(target) {
   };
 }
 
-function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
+function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }: StorageTargetEditorProps) {
   const editing = !!value.uuid;
   const objectTarget = value.target_type === 's3';
   const rootLocked = (editing && objectTarget) || value.is_default || Number(value.recording_count) > 0 || Number(value.replica_count) > 0;
-  const set = (key, next) => onChange({ ...value, [key]: next });
+  const set = (key: keyof StorageTargetEditorState, next: string | boolean) => onChange({ ...value, [key]: next });
   return (
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mb-4">
       <h4 class="font-semibold mb-1">{t(editing ? 'settings.storageTargets.edit' : 'settings.storageTargets.add')}</h4>
@@ -116,10 +179,12 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
         </select>
       </label>
       {objectTarget && <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        {['endpoint', 'region', 'bucket', 'credential_ref'].map((field) => <label key={field} class="text-sm font-medium">
+        {(['endpoint', 'region', 'bucket', 'credential_ref'] as const).map((field) => <label key={field} class="text-sm font-medium">
           <span class="block mb-1">{t(`settings.archive.${field}`)}</span>
           <input class="w-full p-2 border border-input rounded bg-background" value={value[field] || ''}
-            onInput={(event) => set(field, event.currentTarget.value)} disabled={busy || (editing && field !== 'credential_ref')} autoComplete="off" spellCheck={false} />
+            onInput={(event) => set(field, event.currentTarget.value)} disabled={busy || (editing && field !== 'credential_ref')} autoComplete="off"
+            // @ts-expect-error Preact types only lowercase `spellcheck`; the camelCase attribute is kept as written (logged in T11).
+            spellCheck={false} />
         </label>)}
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.archive.budget')}</span>
           <input type="number" min="0" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.archive_budget_gb}
@@ -186,18 +251,18 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
   );
 }
 
-function StorageTargetsPanel({ canModifySettings, t }) {
-  const { data, isLoading, isError, error, refetch } = useQuery(
+function StorageTargetsPanel({ canModifySettings, t }: StoragePanelProps) {
+  const { data, isLoading, isError, error, refetch } = useQuery<StorageTargetsResponse>(
     ['storage-targets'],
     '/api/storage-targets',
     { cache: 'no-store', timeout: 15000, retries: 1 },
     { staleTime: 10000 },
   );
-  const policiesQuery = useQuery(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const [editor, setEditor] = useState(null);
+  const policiesQuery = useQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const [editor, setEditor] = useState<StorageTargetEditorState | null>(null);
   const [busyKey, setBusyKey] = useState('');
-  const [deleteTargetCandidate, setDeleteTargetCandidate] = useState(null);
+  const [deleteTargetCandidate, setDeleteTargetCandidate] = useState<StorageTarget | null>(null);
   const targets = data?.targets || [];
   // Only judge routing once both lists have loaded; otherwise every target
   // would flash the "not routed" note while the policies are still in flight.
@@ -205,28 +270,28 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   const routedTargets = referencedTargetUuids(policiesQuery.data?.policies, poolsQuery.data?.pools);
 
   const saveTarget = async () => {
-    const reserveGb = Number(editor.reserve_gb);
-    const low = Number(editor.low_watermark_pct);
-    const high = Number(editor.high_watermark_pct);
-    const migrationMbps = Number(editor.migration_mbps);
-    const windowStart = timeToMinutes(editor.archival_window_start);
-    const windowEnd = timeToMinutes(editor.archival_window_end);
+    const reserveGb = Number(editor!.reserve_gb);
+    const low = Number(editor!.low_watermark_pct);
+    const high = Number(editor!.high_watermark_pct);
+    const migrationMbps = Number(editor!.migration_mbps);
+    const windowStart = timeToMinutes(editor!.archival_window_start);
+    const windowEnd = timeToMinutes(editor!.archival_window_end);
     if (!Number.isFinite(reserveGb) || reserveGb < 0 || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high >= 100 || low >= high || !Number.isFinite(migrationMbps) || migrationMbps < 0 || (migrationMbps > 0 && migrationMbps * 1000000 / 8 < 65536) || windowStart === null || windowEnd === null) {
       showStatusMessage(t('settings.storageTargets.invalidThresholds'), 'error');
       return;
     }
-    setBusyKey(editor.uuid || 'new');
+    setBusyKey(editor!.uuid || 'new');
     try {
-      const payload = {
-        target_type: editor.target_type || 'filesystem',
-        endpoint: (editor.endpoint || '').trim(), region: (editor.region || '').trim(),
-        bucket: (editor.bucket || '').trim(), credential_ref: (editor.credential_ref || '').trim(),
-        archive_budget_bytes: Math.round(Number(editor.archive_budget_gb || 0) * 1024 ** 3),
-        name: editor.name.trim(),
-        root_path: editor.root_path.trim(),
-        enabled: editor.enabled,
-        mount_required: editor.mount_required,
-        storage_class: editor.storage_class,
+      const payload: StorageTargetPayload = {
+        target_type: editor!.target_type || 'filesystem',
+        endpoint: (editor!.endpoint || '').trim(), region: (editor!.region || '').trim(),
+        bucket: (editor!.bucket || '').trim(), credential_ref: (editor!.credential_ref || '').trim(),
+        archive_budget_bytes: Math.round(Number(editor!.archive_budget_gb || 0) * 1024 ** 3),
+        name: editor!.name.trim(),
+        root_path: editor!.root_path.trim(),
+        enabled: editor!.enabled,
+        mount_required: editor!.mount_required,
+        storage_class: editor!.storage_class,
         reserve_bytes: Math.round(reserveGb * (1024 ** 3)),
         low_watermark_pct: low,
         high_watermark_pct: high,
@@ -234,9 +299,9 @@ function StorageTargetsPanel({ canModifySettings, t }) {
         archival_window_start_minute: windowStart,
         archival_window_end_minute: windowEnd,
       };
-      if (editor.uuid) payload.revision = editor.revision;
-      await fetchJSON(editor.uuid ? `/api/storage-targets/${encodeURIComponent(editor.uuid)}` : '/api/storage-targets', {
-        method: editor.uuid ? 'PUT' : 'POST',
+      if (editor!.uuid) payload.revision = editor!.revision;
+      await fetchJSON(editor!.uuid ? `/api/storage-targets/${encodeURIComponent(editor!.uuid)}` : '/api/storage-targets', {
+        method: editor!.uuid ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         timeout: 120000,
@@ -244,18 +309,18 @@ function StorageTargetsPanel({ canModifySettings, t }) {
       });
       await refetch();
       setEditor(null);
-      showStatusMessage(t(editor.uuid ? 'settings.storageTargets.updated' : 'settings.storageTargets.created'), 'success');
+      showStatusMessage(t(editor!.uuid ? 'settings.storageTargets.updated' : 'settings.storageTargets.created'), 'success');
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error', 7000);
+      showStatusMessage((requestError as Error).message, 'error', 7000);
     } finally {
       setBusyKey('');
     }
   };
 
-  const probeTarget = async (target) => {
+  const probeTarget = async (target: StorageTarget) => {
     setBusyKey(target.uuid);
     try {
-      const probed = await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
+      const probed = await fetchJSON<StorageTargetProbeResponse>(`/api/storage-targets/${encodeURIComponent(target.uuid)}/probe`, { method: 'POST', timeout: 30000, retries: 0 });
       await refetch();
       const status = probed?.health?.status;
       if (status && status !== 'healthy') {
@@ -266,20 +331,20 @@ function StorageTargetsPanel({ canModifySettings, t }) {
       }
     } catch (requestError) {
       await refetch();
-      showStatusMessage(requestError.message, 'error', 7000);
+      showStatusMessage((requestError as Error).message, 'error', 7000);
     } finally {
       setBusyKey('');
     }
   };
 
-  const deleteTarget = async (target) => {
+  const deleteTarget = async (target: StorageTarget) => {
     setBusyKey(target.uuid);
     try {
       await fetchJSON(`/api/storage-targets/${encodeURIComponent(target.uuid)}?revision=${encodeURIComponent(target.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await refetch();
       showStatusMessage(t('settings.storageTargets.deleted'), 'success');
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error', 7000);
+      showStatusMessage((requestError as Error).message, 'error', 7000);
     } finally {
       setBusyKey('');
     }
@@ -299,10 +364,10 @@ function StorageTargetsPanel({ canModifySettings, t }) {
       </div>
       {editor && <div class="mt-4"><StorageTargetEditor value={editor} onChange={setEditor} onCancel={() => setEditor(null)} onSave={saveTarget} busy={busyKey === (editor.uuid || 'new')} t={t} /></div>}
       {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
-      {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageTargets.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch}>{t('common.retry')}</button></div>}
+      {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageTargets.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch as () => unknown}>{t('common.retry')}</button></div>}
       {!isLoading && !isError && <div class="divide-y divide-border mt-4">
         {targets.map((target) => {
-          const health = target.health || {};
+          const health: StorageTargetHealth = target.health || {};
           const objectStorage = target.target_type === 's3';
           const cannotDelete = target.is_default || Number(target.recording_count) > 0 || Number(target.replica_count) > 0;
           return (
@@ -343,7 +408,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
       <ConfirmDialog
         isOpen={Boolean(deleteTargetCandidate)}
         onClose={() => setDeleteTargetCandidate(null)}
-        onConfirm={() => deleteTarget(deleteTargetCandidate)}
+        onConfirm={() => deleteTarget(deleteTargetCandidate!)}
         title={t('settings.storageTargets.title')}
         message={deleteTargetCandidate ? t('settings.storageTargets.deleteConfirm', { name: deleteTargetCandidate.name }) : ''}
         confirmLabel={t('common.delete')}
@@ -354,36 +419,36 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
 }
 
-function StoragePoolsPanel({ canModifySettings, t }) {
-  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
-  const [editor, setEditor] = useState(null);
+function StoragePoolsPanel({ canModifySettings, t }: StoragePanelProps) {
+  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const [editor, setEditor] = useState<StoragePoolEditorState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [deletePoolCandidate, setDeletePoolCandidate] = useState(null);
+  const [deletePoolCandidate, setDeletePoolCandidate] = useState<StoragePool | null>(null);
   const pools = poolsQuery.data?.pools || [];
   const targets = targetsQuery.data?.targets || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
   const openNew = () => setEditor({ name: '', strategy: 'most_free', enabled: true, members: [] });
-  const openEdit = (pool) => setEditor({ ...pool, members: (pool.members || []).map((member) => member.target_uuid) });
-  const toggleMember = (uuid) => setEditor((current) => ({ ...current, members: current.members.includes(uuid) ? current.members.filter((item) => item !== uuid) : [...current.members, uuid] }));
+  const openEdit = (pool: StoragePool) => setEditor({ ...pool, members: (pool.members || []).map((member) => member.target_uuid) });
+  const toggleMember = (uuid: string) => setEditor((current) => ({ ...current!, members: current!.members.includes(uuid) ? current!.members.filter((item) => item !== uuid) : [...current!.members, uuid] }));
   const save = async () => {
     setBusy(true);
     try {
-      const payload = { name: editor.name.trim(), strategy: editor.strategy, enabled: editor.enabled, members: editor.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
-      if (editor.uuid) payload.revision = editor.revision;
-      await fetchJSON(editor.uuid ? `/api/storage-pools/${encodeURIComponent(editor.uuid)}` : '/api/storage-pools', { method: editor.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      const payload: StoragePoolPayload = { name: editor!.name.trim(), strategy: editor!.strategy, enabled: editor!.enabled, members: editor!.members.map((target_uuid, position) => ({ target_uuid, position, weight: 1 })) };
+      if (editor!.uuid) payload.revision = editor!.revision;
+      await fetchJSON(editor!.uuid ? `/api/storage-pools/${encodeURIComponent(editor!.uuid)}` : '/api/storage-pools', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await poolsQuery.refetch();
       setEditor(null);
-      showStatusMessage(t(editor.uuid ? 'settings.storagePools.updated' : 'settings.storagePools.created'), 'success');
-    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusy(false); }
+      showStatusMessage(t(editor!.uuid ? 'settings.storagePools.updated' : 'settings.storagePools.created'), 'success');
+    } catch (requestError) { showStatusMessage((requestError as Error).message, 'error', 7000); } finally { setBusy(false); }
   };
-  const remove = async (pool) => {
+  const remove = async (pool: StoragePool) => {
     setBusy(true);
     try {
       await fetchJSON(`/api/storage-pools/${encodeURIComponent(pool.uuid)}?revision=${encodeURIComponent(pool.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await poolsQuery.refetch();
       showStatusMessage(t('settings.storagePools.deleted'), 'success');
-    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusy(false); }
+    } catch (requestError) { showStatusMessage((requestError as Error).message, 'error', 7000); } finally { setBusy(false); }
   };
   const loading = poolsQuery.isLoading || targetsQuery.isLoading;
   const error = poolsQuery.error || targetsQuery.error;
@@ -399,26 +464,26 @@ function StoragePoolsPanel({ canModifySettings, t }) {
     {error && <p class="py-6 text-sm text-[hsl(var(--danger))]">{error.message}</p>}
     {!loading && !error && <div class="divide-y divide-border">{pools.map((pool) => <article key={pool.uuid} class="py-4 first:pt-4 last:pb-0"><div class="flex justify-between gap-3"><div><div class="flex items-center gap-2"><h4 class="font-semibold">{pool.name}</h4><span class={`rounded-full px-2 py-0.5 text-xs ${pool.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(pool.enabled ? 'settings.storagePools.active' : 'settings.storagePools.inactive')}</span></div><p class="text-xs text-muted-foreground mt-1">{t(`settings.storagePools.strategyValue.${pool.strategy}`)} · {(pool.members || []).map((member) => targetNames.get(member.target_uuid) || member.target_uuid).join(' → ')}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(pool)} disabled={busy || !!editor}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => setDeletePoolCandidate(pool)} disabled={busy}>{t('common.delete')}</button></div>}</div></article>)}</div>}
     {!loading && !error && pools.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePools.empty')}</p>}
-    <ConfirmDialog isOpen={Boolean(deletePoolCandidate)} onClose={() => setDeletePoolCandidate(null)} onConfirm={() => remove(deletePoolCandidate)} title={t('settings.storagePools.title')} message={deletePoolCandidate ? t('settings.storagePools.deleteConfirm', { name: deletePoolCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
+    <ConfirmDialog isOpen={Boolean(deletePoolCandidate)} onClose={() => setDeletePoolCandidate(null)} onConfirm={() => remove(deletePoolCandidate!)} title={t('settings.storagePools.title')} message={deletePoolCandidate ? t('settings.storagePools.deleteConfirm', { name: deletePoolCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
   </div>;
 }
 
-function StorageArchivePanel({ t }) {
-  const { data, isLoading, isError, error, refetch } = useQuery(
+function StorageArchivePanel({ t }: StorageTranslateProps) {
+  const { data, isLoading, isError, error, refetch } = useQuery<StorageArchiveResponse>(
     ['storage-archive'], '/api/storage-archive', { cache: 'no-store', timeout: 15000, retries: 0 },
     { staleTime: 5000, refetchInterval: 15000 },
   );
   const [busy, setBusy] = useState('');
-  const retry = async (job) => {
+  const retry = async (job: StorageArchiveDeletion) => {
     setBusy(job.uuid);
     try {
       await fetchJSON('/api/storage-archive/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deletion_uuid: job.uuid }), retries: 0 });
       await refetch();
-    } catch (failure) { showStatusMessage(failure.message, 'error'); }
+    } catch (failure) { showStatusMessage((failure as Error).message, 'error'); }
     finally { setBusy(''); }
   };
   return <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-    <div class="flex items-center justify-between gap-3"><h3 class="text-lg font-semibold">{t('settings.archive.operations')}</h3><button type="button" class="btn-secondary" onClick={refetch}>{t('common.refresh')}</button></div>
+    <div class="flex items-center justify-between gap-3"><h3 class="text-lg font-semibold">{t('settings.archive.operations')}</h3><button type="button" class="btn-secondary" onClick={refetch as () => unknown}>{t('common.refresh')}</button></div>
     {isLoading && <p>{t('common.loading')}</p>}
     {isError && <p class="text-sm text-[hsl(var(--danger))]">{error?.message}</p>}
     {data && <>
@@ -439,8 +504,8 @@ function StorageArchivePanel({ t }) {
   </div>;
 }
 
-function StorageMigrationJobsPanel({ t }) {
-  const { data, isLoading, isError, error, refetch } = useQuery(
+function StorageMigrationJobsPanel({ t }: StorageTranslateProps) {
+  const { data, isLoading, isError, error, refetch } = useQuery<StorageMigrationsResponse>(
     ['storage-migrations'],
     '/api/storage-migrations',
     { cache: 'no-store', timeout: 15000, retries: 1 },
@@ -448,14 +513,14 @@ function StorageMigrationJobsPanel({ t }) {
   );
   const jobs = data?.jobs || [];
   const [busyKey, setBusyKey] = useState('');
-  const actOnJob = async (job, action) => {
+  const actOnJob = async (job: StorageMigrationJob, action: 'cancel' | 'retry') => {
     setBusyKey(job.uuid);
     try {
       await fetchJSON(`/api/storage-migrations/${encodeURIComponent(job.uuid)}/${action}`, { method: 'POST', timeout: 15000, retries: 0 });
       await refetch();
       showStatusMessage(t(action === 'cancel' ? 'settings.storageMigrations.cancelled' : 'settings.storageMigrations.retried'), 'success');
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error', 7000);
+      showStatusMessage((requestError as Error).message, 'error', 7000);
       await refetch();
     } finally { setBusyKey(''); }
   };
@@ -466,10 +531,10 @@ function StorageMigrationJobsPanel({ t }) {
           <h3 class="text-lg font-semibold">{t('settings.storageMigrations.title')}</h3>
           <p class="text-sm text-muted-foreground mt-1">{t('settings.storageMigrations.description')}</p>
         </div>
-        <button type="button" class="btn-secondary shrink-0" onClick={refetch}>{t('common.refresh')}</button>
+        <button type="button" class="btn-secondary shrink-0" onClick={refetch as () => unknown}>{t('common.refresh')}</button>
       </div>
       {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
-      {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageMigrations.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch}>{t('common.retry')}</button></div>}
+      {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageMigrations.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch as () => unknown}>{t('common.retry')}</button></div>}
       {!isLoading && !isError && jobs.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storageMigrations.empty')}</p>}
       {!isLoading && !isError && jobs.length > 0 && <div class="divide-y divide-border">
         {jobs.map((job) => {
@@ -502,8 +567,8 @@ function StorageMigrationJobsPanel({ t }) {
   );
 }
 
-function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
-  const set = (key, next) => onChange({ ...value, [key]: next });
+function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }: StoragePolicyEditorProps) {
+  const set = (key: keyof StoragePolicyEditorState, next: string | boolean) => onChange({ ...value, [key]: next });
   const captureTargets = targets.filter((target) => target.target_type !== 's3');
   const fallbackTargets = captureTargets.filter((target) => target.uuid !== value.primary_target_uuid);
   const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
@@ -511,7 +576,7 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
     <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
       <div><h4 class="font-semibold">{t(value.uuid ? 'settings.storagePolicies.edit' : 'settings.storagePolicies.add')}</h4><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.editorHelp')}</p></div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength="127" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength={127} value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{captureTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primaryPool')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_pool_uuid || ''} onChange={(event) => set('primary_pool_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.exactTarget')}</option>{pools.map((pool) => <option key={pool.uuid} value={pool.uuid}>{pool.name}</option>)}</select></label>
@@ -528,12 +593,12 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
       <fieldset class="rounded border border-border p-3 my-3">
         <legend class="px-1 font-semibold">{t('settings.archive.policy')}</legend>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {['archive_after_seconds', 'hot_residency_seconds'].map((field) => <label key={field} class="text-sm font-medium">
+          {(['archive_after_seconds', 'hot_residency_seconds'] as const).map((field) => <label key={field} class="text-sm font-medium">
             <span class="block mb-1">{t(`settings.archive.${field}`)}</span>
             <input type="number" min="-1" max="2147483647" step="1" class="w-full p-2 border border-input rounded bg-background"
               value={value[field] ?? -1} onInput={(event) => set(field, event.currentTarget.value)} disabled={busy} />
           </label>)}
-          {['archive_protected', 'archive_on_pressure'].map((field) => <label key={field} class="touch-target flex items-center gap-2 text-sm">
+          {(['archive_protected', 'archive_on_pressure'] as const).map((field) => <label key={field} class="touch-target flex items-center gap-2 text-sm">
             <input type="checkbox" checked={!!value[field]} onChange={(event) => set(field, event.currentTarget.checked)} disabled={busy} />
             {t(`settings.archive.${field}`)}
           </label>)}
@@ -554,25 +619,25 @@ function StoragePolicyEditor({ value, targets, pools, onChange, onSelectorChange
   );
 }
 
-function StoragePoliciesPanel({ canModifySettings, t }) {
-  const policiesQuery = useQuery(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
-  const poolsQuery = useQuery(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const locationsQuery = useQuery(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
-  const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
-  const [editor, setEditor] = useState(null);
+function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
+  const policiesQuery = useQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const locationsQuery = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
+  const tagsQuery = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
+  const [editor, setEditor] = useState<StoragePolicyEditorState | null>(null);
   const [busyKey, setBusyKey] = useState('');
-  const [deletePolicyCandidate, setDeletePolicyCandidate] = useState(null);
-  const [applyPreview, setApplyPreview] = useState(null);
-  const applyExisting = async (policy, preview) => {
+  const [deletePolicyCandidate, setDeletePolicyCandidate] = useState<StoragePolicy | null>(null);
+  const [applyPreview, setApplyPreview] = useState<StoragePolicyApplyPreview | null>(null);
+  const applyExisting = async (policy: StoragePolicy, preview: boolean) => {
     setBusyKey(policy.uuid);
     try {
-      const result = await fetchJSON(`/api/storage-policies/${policy.uuid}/apply`, {
+      const result = await fetchJSON<StoragePolicyApplyResult>(`/api/storage-policies/${policy.uuid}/apply`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: policy.revision, preview }), retries: 0,
       });
       if (preview) setApplyPreview({ policy, ...result });
       else { setApplyPreview(null); showStatusMessage(t('settings.archive.applied'), 'success'); }
-    } catch (failure) { showStatusMessage(failure.message, 'error'); }
+    } catch (failure) { showStatusMessage((failure as Error).message, 'error'); }
     finally { setBusyKey(''); }
   };
   const policies = policiesQuery.data?.policies || [];
@@ -580,32 +645,32 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
   const pools = poolsQuery.data?.pools || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
   const poolNames = new Map(pools.map((pool) => [pool.uuid, pool.name]));
-  const onSelectorChange = useCallback((selector, error) => {
+  const onSelectorChange = useCallback((selector: FleetSelector | null, error: string) => {
     setEditor((current) => current ? { ...current, selector, selector_error: error, preview: null, preview_key: '', preview_request_key: '' } : current);
   }, []);
-  const updateEditor = useCallback((next) => setEditor({ ...next, preview: null, preview_key: '', preview_request_key: '' }), []);
+  const updateEditor = useCallback((next: StoragePolicyEditorState) => setEditor({ ...next, preview: null, preview_key: '', preview_request_key: '' }), []);
 
   const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', primary_pool_uuid: '', fallback_mode: 'default', fallback_target_uuid: '', minimum_retention_days: '0', desired_retention_days: '0', maximum_retention_days: '0', required_copy_count: '1', replication_pool_uuid: '', migration_after_days: '0', migration_target_uuid: '', archive_after_seconds: '-1', hot_residency_seconds: '-1', archive_protected: false, archive_on_pressure: false, pressure_priority: '100', preview: null });
-  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), primary_pool_uuid: policy.primary_pool_uuid || '', fallback_target_uuid: policy.fallback_target_uuid || '', minimum_retention_days: String(policy.minimum_retention_days || 0), desired_retention_days: String(policy.desired_retention_days || 0), maximum_retention_days: String(policy.maximum_retention_days || 0), required_copy_count: String(policy.required_copy_count || 1), replication_pool_uuid: policy.replication_pool_uuid || '', migration_after_days: String(policy.migration_after_days || 0), migration_target_uuid: policy.migration_target_uuid || '', pressure_priority: String(policy.pressure_priority ?? 100), selector_error: '', preview: null });
-  const policyPayload = () => {
-    const priority = Number(editor.priority);
+  const openEdit = (policy: StoragePolicy) => setEditor({ ...policy, priority: String(policy.priority), primary_pool_uuid: policy.primary_pool_uuid || '', fallback_target_uuid: policy.fallback_target_uuid || '', minimum_retention_days: String(policy.minimum_retention_days || 0), desired_retention_days: String(policy.desired_retention_days || 0), maximum_retention_days: String(policy.maximum_retention_days || 0), required_copy_count: String(policy.required_copy_count || 1), replication_pool_uuid: policy.replication_pool_uuid || '', migration_after_days: String(policy.migration_after_days || 0), migration_target_uuid: policy.migration_target_uuid || '', pressure_priority: String(policy.pressure_priority ?? 100), selector_error: '', preview: null });
+  const policyPayload = (): StoragePolicyPayload | null => {
+    const priority = Number(editor!.priority);
     if (!Number.isInteger(priority) || priority < -1000000 || priority > 1000000) {
       showStatusMessage(t('settings.storagePolicies.invalidPriority'), 'error');
       return null;
     }
-    const minimum = Number(editor.minimum_retention_days); const desired = Number(editor.desired_retention_days); const maximum = Number(editor.maximum_retention_days); const copies = Number(editor.required_copy_count); const migrationAfter = Number(editor.migration_after_days); const pressurePriority = Number(editor.pressure_priority);
-    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor.migration_target_uuid)) {
+    const minimum = Number(editor!.minimum_retention_days); const desired = Number(editor!.desired_retention_days); const maximum = Number(editor!.maximum_retention_days); const copies = Number(editor!.required_copy_count); const migrationAfter = Number(editor!.migration_after_days); const pressurePriority = Number(editor!.pressure_priority);
+    if (![minimum, desired, maximum, copies, migrationAfter, pressurePriority].every(Number.isInteger) || minimum < 0 || (desired > 0 && desired < minimum) || (maximum > 0 && ((desired > 0 && desired > maximum) || minimum > maximum)) || copies < 1 || copies > 8 || (copies > 1 && !editor!.replication_pool_uuid) || migrationAfter < 0 || (migrationAfter > 0 && !editor!.migration_target_uuid)) {
       showStatusMessage(t('settings.storagePolicies.invalidLifecycle'), 'error');
       return null;
     }
-    if (archiveTargetWithoutTrigger(editor)) {
+    if (archiveTargetWithoutTrigger(editor!)) {
       // Passes server validation but the lifecycle scheduler never selects
       // anything for it, so nothing would ever be moved.
       showStatusMessage(t('settings.storagePolicies.archiveNoTrigger'), 'error', 9000);
       return null;
     }
-    const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, primary_pool_uuid: editor.primary_pool_uuid || null, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor.migration_target_uuid || null, archive_after_seconds: Number(editor.archive_after_seconds ?? -1), hot_residency_seconds: Number(editor.hot_residency_seconds ?? -1), archive_protected: !!editor.archive_protected, archive_on_pressure: !!editor.archive_on_pressure, pressure_priority: pressurePriority };
-    if (editor.uuid) { payload.uuid = editor.uuid; payload.revision = editor.revision; }
+    const payload: StoragePolicyPayload = { name: editor!.name.trim(), enabled: editor!.enabled, priority, selector: editor!.selector, primary_target_uuid: editor!.primary_target_uuid, primary_pool_uuid: editor!.primary_pool_uuid || null, fallback_mode: editor!.fallback_mode, fallback_target_uuid: editor!.fallback_mode === 'target' ? editor!.fallback_target_uuid : null, minimum_retention_days: minimum, desired_retention_days: desired, maximum_retention_days: maximum, required_copy_count: copies, replication_pool_uuid: copies > 1 ? editor!.replication_pool_uuid : null, migration_after_days: migrationAfter, migration_target_uuid: editor!.migration_target_uuid || null, archive_after_seconds: Number(editor!.archive_after_seconds ?? -1), hot_residency_seconds: Number(editor!.hot_residency_seconds ?? -1), archive_protected: !!editor!.archive_protected, archive_on_pressure: !!editor!.archive_on_pressure, pressure_priority: pressurePriority };
+    if (editor!.uuid) { payload.uuid = editor!.uuid; payload.revision = editor!.revision; }
     return payload;
   };
   const previewPolicy = async () => {
@@ -615,35 +680,35 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
     setEditor((current) => current ? { ...current, preview: null, preview_key: '', preview_request_key: requestKey } : current);
     setBusyKey('preview');
     try {
-      const preview = await fetchJSON('/api/storage-policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      const preview = await fetchJSON<StoragePolicyPreview>('/api/storage-policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview, preview_key: requestKey, preview_request_key: '' } : current);
     } catch (requestError) {
       setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview_request_key: '' } : current);
-      showStatusMessage(requestError.message, 'error', 7000);
+      showStatusMessage((requestError as Error).message, 'error', 7000);
     } finally { setBusyKey(''); }
   };
   const savePolicy = async () => {
     const payload = policyPayload();
-    if (!payload || !editor.preview || editor.preview_key !== JSON.stringify(payload)) return;
-    setBusyKey(editor.uuid || 'new');
+    if (!payload || !editor!.preview || editor!.preview_key !== JSON.stringify(payload)) return;
+    setBusyKey(editor!.uuid || 'new');
     try {
       delete payload.uuid;
-      await fetchJSON(editor.uuid ? `/api/storage-policies/${encodeURIComponent(editor.uuid)}` : '/api/storage-policies', { method: editor.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      await fetchJSON(editor!.uuid ? `/api/storage-policies/${encodeURIComponent(editor!.uuid)}` : '/api/storage-policies', { method: editor!.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await policiesQuery.refetch();
       setEditor(null);
-      showStatusMessage(t(editor.uuid ? 'settings.storagePolicies.updated' : 'settings.storagePolicies.created'), 'success');
+      showStatusMessage(t(editor!.uuid ? 'settings.storagePolicies.updated' : 'settings.storagePolicies.created'), 'success');
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error', 7000);
-      if (requestError.status === 409) await policiesQuery.refetch();
+      showStatusMessage((requestError as Error).message, 'error', 7000);
+      if ((requestError as Error & { status?: number }).status === 409) await policiesQuery.refetch();
     } finally { setBusyKey(''); }
   };
-  const deletePolicy = async (policy) => {
+  const deletePolicy = async (policy: StoragePolicy) => {
     setBusyKey(policy.uuid);
     try {
       await fetchJSON(`/api/storage-policies/${encodeURIComponent(policy.uuid)}?revision=${encodeURIComponent(policy.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
       await policiesQuery.refetch();
       showStatusMessage(t('settings.storagePolicies.deleted'), 'success');
-    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusyKey(''); }
+    } catch (requestError) { showStatusMessage((requestError as Error).message, 'error', 7000); } finally { setBusyKey(''); }
   };
   const loading = policiesQuery.isLoading || targetsQuery.isLoading || poolsQuery.isLoading || locationsQuery.isLoading || tagsQuery.isLoading;
   const error = policiesQuery.error || targetsQuery.error || poolsQuery.error || locationsQuery.error || tagsQuery.error;
@@ -654,7 +719,7 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
       {editor && <StoragePolicyEditor value={editor} targets={targets} pools={pools} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={updateEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onPreview={previewPolicy} onSave={savePolicy} busy={!!busyKey} previewing={busyKey === 'preview'} saving={busyKey === (editor.uuid || 'new')} t={t} />}
       {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
       {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), poolsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
-      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: policy.primary_pool_uuid ? poolNames.get(policy.primary_pool_uuid) || policy.primary_pool_uuid : targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{t('settings.storagePolicies.lifecycleSummary', { minimum: policy.minimum_retention_days, desired: policy.desired_retention_days, maximum: policy.maximum_retention_days, copies: policy.required_copy_count })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-secondary" onClick={() => applyExisting(policy, true)} disabled={!!busyKey}>{t('settings.archive.reviewExisting')}</button><button type="button" class="btn-danger" onClick={() => setDeletePolicyCandidate(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: policy.primary_pool_uuid ? poolNames.get(policy.primary_pool_uuid) || policy.primary_pool_uuid : targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{t('settings.storagePolicies.lifecycleSummary', { minimum: policy.minimum_retention_days, desired: policy.desired_retention_days, maximum: policy.maximum_retention_days, copies: policy.required_copy_count })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid as string) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-secondary" onClick={() => applyExisting(policy, true)} disabled={!!busyKey}>{t('settings.archive.reviewExisting')}</button><button type="button" class="btn-danger" onClick={() => setDeletePolicyCandidate(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
       {!loading && !error && policies.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePolicies.empty')}</p>}
       {applyPreview && <div class="mt-4 rounded border border-border p-4" role="region" aria-label={t('settings.archive.reviewExisting')}>
         <p>{t('settings.archive.applySummary', { count: applyPreview.recordings, bytes: formatBytes(applyPreview.bytes), expired: applyPreview.past_new_retention_limit })}</p>
@@ -663,20 +728,20 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
         <div class="mt-3 flex gap-2"><button type="button" class="btn-danger" onClick={() => applyExisting(applyPreview.policy, false)} disabled={!!busyKey || applyPreview.unfinished_transfers > 0 || !applyPreview.recordings}>{t('settings.archive.apply')}</button>
           <button type="button" class="btn-secondary" onClick={() => setApplyPreview(null)}>{t('common.cancel')}</button></div>
       </div>}
-      <ConfirmDialog isOpen={Boolean(deletePolicyCandidate)} onClose={() => setDeletePolicyCandidate(null)} onConfirm={() => deletePolicy(deletePolicyCandidate)} title={t('settings.storagePolicies.title')} message={deletePolicyCandidate ? t('settings.storagePolicies.deleteConfirm', { name: deletePolicyCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
+      <ConfirmDialog isOpen={Boolean(deletePolicyCandidate)} onClose={() => setDeletePolicyCandidate(null)} onConfirm={() => deletePolicy(deletePolicyCandidate!)} title={t('settings.storagePolicies.title')} message={deletePolicyCandidate ? t('settings.storagePolicies.deleteConfirm', { name: deletePolicyCandidate.name }) : ''} confirmLabel={t('common.delete')} cancelLabel={t('common.cancel')} variant="danger" />
     </div>
   );
 }
 
-function StorageCompliancePanel({ t }) {
-  const { data, isLoading, isError, error, refetch } = useQuery(
+function StorageCompliancePanel({ t }: StorageTranslateProps) {
+  const { data, isLoading, isError, error, refetch } = useQuery<StorageComplianceResponse>(
     ['storage-compliance'], '/api/storage-compliance',
     { cache: 'no-store', timeout: 20000, retries: 1 },
     { staleTime: 30000, refetchInterval: 60000 },
   );
-  const formatDays = (value) => value == null ? t('settings.storageCompliance.unknown') : t('settings.storageCompliance.days', { days: Number(value).toFixed(1) });
+  const formatDays = (value: number | null | undefined) => value == null ? t('settings.storageCompliance.unknown') : t('settings.storageCompliance.days', { days: Number(value).toFixed(1) });
   return <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storageCompliance.title')}>
-    <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storageCompliance.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storageCompliance.description')}</p></div><button type="button" class="btn-secondary" onClick={refetch}>{t('common.refresh')}</button></div>
+    <div class="flex items-start justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storageCompliance.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storageCompliance.description')}</p></div><button type="button" class="btn-secondary" onClick={refetch as () => unknown}>{t('common.refresh')}</button></div>
     {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
     {isError && <p class="py-6 text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageCompliance.loadError')}</p>}
     {!isLoading && !isError && <>
@@ -685,12 +750,12 @@ function StorageCompliancePanel({ t }) {
       <div class="overflow-x-auto mt-2"><table class="w-full text-sm"><thead><tr class="text-start text-xs uppercase text-muted-foreground"><th class="py-2 pe-3">{t('settings.storageCompliance.target')}</th><th class="py-2 pe-3">{t('settings.storageCompliance.dailyRate')}</th><th class="py-2 pe-3">{t('settings.storageCompliance.toHigh')}</th><th class="py-2 pe-3">{t('settings.storageCompliance.expected')}</th><th class="py-2">{t('settings.storageCompliance.confidence')}</th></tr></thead><tbody>{(data?.targets || []).map((target) => <tr key={target.target_uuid} class="border-t border-border"><td class="py-2 pe-3 font-medium">{target.target_name}</td><td class="py-2 pe-3">{formatBytes(target.observed_daily_bytes)}/{t('settings.storageCompliance.day')}</td><td class="py-2 pe-3">{formatDays(target.days_to_high_watermark)}</td><td class="py-2 pe-3">{formatDays(target.expected_retention_days)}</td><td class="py-2">{target.confidence}</td></tr>)}</tbody></table></div>
       <h4 class="font-semibold mt-5">{t('settings.storageCompliance.policyCompliance')}</h4>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-2">{(data?.policies || []).map((policy) => <article key={policy.policy_uuid} class={`rounded-md border p-3 ${policy.active_violation_count ? 'border-amber-400/70 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'}`}><div class="flex justify-between gap-3"><h5 class="font-semibold">{policy.policy_name}</h5><span class={`rounded-full px-2 py-0.5 text-xs ${policy.active_violation_count ? 'badge-warning' : 'badge-success'}`}>{policy.active_violation_count ? t('settings.storageCompliance.violationCount', { count: policy.active_violation_count }) : t('settings.storageCompliance.compliant')}</span></div><p class="text-xs text-muted-foreground mt-2">{t('settings.storageCompliance.policyForecast', { achieved: formatDays(policy.achieved_retention_days), expected: formatDays(policy.expected_retention_days), desired: policy.desired_retention_days })}</p>{policy.copy_deficit_recordings > 0 && <p class="text-xs text-[hsl(var(--danger))] mt-1">{t('settings.storageCompliance.copyDeficits', { count: policy.copy_deficit_recordings })}</p>}</article>)}</div>
-      {(data?.active_violations || []).length > 0 && <><h4 class="font-semibold mt-5">{t('settings.storageCompliance.activeViolations')}</h4><div class="divide-y divide-border mt-2">{data.active_violations.map((violation) => <div key={violation.uuid} class="py-2 text-sm"><span class="font-medium">{violation.policy_name}</span> · <span class="text-amber-700 dark:text-amber-300">{t(`settings.storageCompliance.type.${violation.type}`)}</span><p class="text-xs text-muted-foreground mt-0.5">{violation.details}</p></div>)}</div></>}
+      {(data?.active_violations || []).length > 0 && <><h4 class="font-semibold mt-5">{t('settings.storageCompliance.activeViolations')}</h4><div class="divide-y divide-border mt-2">{data!.active_violations!.map((violation) => <div key={violation.uuid} class="py-2 text-sm"><span class="font-medium">{violation.policy_name}</span> · <span class="text-amber-700 dark:text-amber-300">{t(`settings.storageCompliance.type.${violation.type}`)}</span><p class="text-xs text-muted-foreground mt-0.5">{violation.details}</p></div>)}</div></>}
     </>}
   </div>;
 }
 
-export function StorageTab({ settings, handleInputChange, canModifySettings, t }) {
+export function StorageTab({ settings, handleInputChange, canModifySettings, t }: SettingsTabProps) {
   return (
     <div class="space-y-6">
       {canModifySettings && <StorageTargetsPanel canModifySettings={canModifySettings} t={t} />}

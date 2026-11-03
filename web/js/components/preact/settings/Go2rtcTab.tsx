@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Go2rtcTab — go2rtc integration settings + the override editor.
  *
@@ -13,6 +12,17 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
+import type {
+  Go2rtcEffectiveConfig,
+  Go2rtcOverrideStatus,
+  Go2rtcOverrideValidation,
+  SetSettings,
+  SettingsTabProps,
+} from '../../../types/settings.ts';
+
+interface Go2rtcTabProps extends SettingsTabProps {
+  setSettings: SetSettings;
+}
 
 // Max UTF-8 byte length for the override — matches the server cap.
 const GO2RTC_OVERRIDE_MAX_BYTES = 65535;
@@ -69,7 +79,7 @@ const KNOWN_GO2RTC_SECTIONS = [
   ['app', 'Module enable/disable (modules list)'],
 ];
 
-function formatBytes(n) {
+function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
   return `${(n / 1024).toFixed(1)} KB`;
 }
@@ -79,21 +89,21 @@ function formatBytes(n) {
 // otherwise let the UI report "within limit" while the save is rejected
 // with HTTP 413. TextEncoder is universally available in modern browsers.
 const TEXT_ENCODER = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
-function utf8ByteLength(s) {
+function utf8ByteLength(s: string) {
   if (!s) return 0;
   if (TEXT_ENCODER) return TEXT_ENCODER.encode(s).length;
   return unescape(encodeURIComponent(s)).length;
 }
 
-export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }) {
+export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifySettings, t }: Go2rtcTabProps) {
   // ---------- T9 — go2rtc override validation, preview, presets ----------
-  const [overrideValidation, setOverrideValidation] = useState(null); // null | { valid, error?, warnings, libyaml_available, skipped }
+  const [overrideValidation, setOverrideValidation] = useState<Go2rtcOverrideValidation | null>(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
-  const [effectiveConfig, setEffectiveConfig] = useState(null);
+  const [effectiveConfig, setEffectiveConfig] = useState<Go2rtcEffectiveConfig | null>(null);
   const [effectiveConfigOpen, setEffectiveConfigOpen] = useState(false);
   const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
-  const [overrideStatus, setOverrideStatus] = useState(null);
-  const overrideValidateTimerRef = useRef(null);
+  const [overrideStatus, setOverrideStatus] = useState<Go2rtcOverrideStatus | null>(null);
+  const overrideValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -107,10 +117,10 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     };
   }, []);
 
-  const validateOverride = async (yaml) => {
+  const validateOverride = async (yaml: string) => {
     if (isMountedRef.current) setOverrideValidating(true);
     try {
-      const result = await fetchJSON('/api/settings/go2rtc/validate', {
+      const result = await fetchJSON<Go2rtcOverrideValidation>('/api/settings/go2rtc/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ override: yaml || '' }),
@@ -125,12 +135,12 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     }
   };
 
-  const handleOverrideBlur = (e) => {
+  const handleOverrideBlur = (e: Event) => {
     if (overrideValidateTimerRef.current) {
       clearTimeout(overrideValidateTimerRef.current);
     }
-    const liveValue = (e && e.target && typeof e.target.value === 'string')
-      ? e.target.value
+    const liveValue = (e && e.target && typeof (e.target as HTMLTextAreaElement).value === 'string')
+      ? (e.target as HTMLTextAreaElement).value
       : settings.go2rtcConfigOverride;
     overrideValidateTimerRef.current = setTimeout(
       () => validateOverride(liveValue),
@@ -138,7 +148,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     );
   };
 
-  const handleOverrideChange = (e) => {
+  const handleOverrideChange = (e: Event) => {
     setOverrideValidation(null);
     handleInputChange(e);
   };
@@ -153,8 +163,8 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
        * quarantine state so that when override.yaml is empty, the user
        * can see WHY instead of just seeing "(none)" (see #394). */
       const [cfg, status] = await Promise.all([
-        fetchJSON('/api/system/go2rtc/effective-config'),
-        fetchJSON('/api/system/go2rtc/override-status').catch(() => null),
+        fetchJSON<Go2rtcEffectiveConfig>('/api/system/go2rtc/effective-config'),
+        fetchJSON<Go2rtcOverrideStatus>('/api/system/go2rtc/override-status').catch(() => null),
       ]);
       if (isMountedRef.current) {
         setEffectiveConfig(cfg);
@@ -170,7 +180,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   /* Summarize the override-status response into a single, actionable
    * line.  Priorities are in order of "most likely to explain why the
    * user's override isn't applying". */
-  const describeOverrideStatus = (s) => {
+  const describeOverrideStatus = (s: Go2rtcOverrideStatus | null) => {
     if (!s) return null;
     if (s.quarantine_active) {
       return {
@@ -238,15 +248,15 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
     return null;
   };
 
-  const handleInsertPreset = (e) => {
-    const idx = parseInt(e.target.value, 10);
-    e.target.value = '';
+  const handleInsertPreset = (e: Event) => {
+    const idx = parseInt((e.target as HTMLSelectElement).value, 10);
+    (e.target as HTMLSelectElement).value = '';
     if (Number.isNaN(idx) || idx < 0 || idx >= OVERRIDE_PRESETS.length) return;
     const preset = OVERRIDE_PRESETS[idx];
     setSettings(prev => {
       const cur = prev.go2rtcConfigOverride || '';
       const sep = (cur && !cur.endsWith('\n')) ? '\n' : '';
-      return { ...prev, go2rtcConfigOverride: cur + sep + preset.yaml };
+      return { ...prev, go2rtcConfigOverride: cur + sep + preset!.yaml };
     });
     setOverrideValidation(null);
   };
@@ -474,7 +484,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                         onClick={() => {
                           setSettings(prev => ({
                             ...prev,
-                            go2rtcConfigOverride: prev.go2rtcOverrideQuarantined,
+                            go2rtcConfigOverride: prev.go2rtcOverrideQuarantined as string,
                           }));
                           setOverrideValidation(null);
                         }}
@@ -490,7 +500,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   id="setting-go2rtc-config-override"
                   name="go2rtcConfigOverride"
                   class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
-                  rows="8"
+                  rows={8}
                   value={settings.go2rtcConfigOverride}
                   onChange={handleOverrideChange}
                   onBlur={handleOverrideBlur}

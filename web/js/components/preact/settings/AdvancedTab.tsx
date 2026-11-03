@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AdvancedTab — settings that don't belong in the first-hop tabs:
  * memory optimization (buffer size, swap file/size), WebRTC TURN relay,
@@ -7,7 +6,9 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-export function AdvancedTab({ settings, handleInputChange, canModifySettings, t }) {
+import type { SettingsTabProps } from '../../../types/settings.ts';
+
+export function AdvancedTab({ settings, handleInputChange, canModifySettings, t }: SettingsTabProps) {
   return (
     <div class="space-y-6">
       {/* Memory optimization */}

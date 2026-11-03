@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AuthTab — Authentication, session/device management, WebRTC toggle,
  * trusted-proxy allowlist, MFA enforcement, login rate limiting.
@@ -12,6 +11,28 @@
  */
 
 import { AsyncButton } from '../AsyncButton.tsx';
+import type { DateInput } from '../../../utils/date-utils.ts';
+import type {
+  AuthSessionsResponse,
+  RevokeMutation,
+  SettingsFormState,
+  SettingsTabProps,
+  TrustedDevicesResponse,
+} from '../../../types/settings.ts';
+
+interface AuthTabProps extends SettingsTabProps {
+  authSessionsData: AuthSessionsResponse | undefined;
+  authSessionsLoading: boolean;
+  authSessionsIsError: boolean;
+  authSessionsError: Error | null;
+  revokeSessionMutation: RevokeMutation;
+  trustedDevicesData: TrustedDevicesResponse | undefined;
+  trustedDevicesLoading: boolean;
+  trustedDevicesIsError: boolean;
+  trustedDevicesError: Error | null;
+  revokeTrustedDeviceMutation: RevokeMutation;
+  formatTimestamp: (timestamp: DateInput) => string;
+}
 
 export function AuthTab({
   settings,
@@ -29,7 +50,7 @@ export function AuthTab({
   trustedDevicesError,
   revokeTrustedDeviceMutation,
   formatTimestamp,
-}) {
+}: AuthTabProps) {
   return (
     <div class="space-y-6">
       {/* Authentication & access */}
@@ -80,7 +101,7 @@ export function AuthTab({
             { key: 'mseDisabled',    id: 'setting-mse-enabled',    label: t('settings.viewMethodMse') },
           ];
           const enabledTransportCount = viewMethods.filter(
-            m => !m.isPolicy && !settings[m.key]
+            m => !m.isPolicy && !settings[m.key as keyof SettingsFormState]
           ).length;
           return (
             <div data-setting-label={t('settings.enabledViewMethods')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
@@ -93,15 +114,15 @@ export function AuthTab({
                       id={m.id}
                       class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ accentColor: 'hsl(var(--primary))' }}
-                      checked={!settings[m.key]}
+                      checked={!settings[m.key as keyof SettingsFormState]}
                       onChange={(e) => handleInputChange({
-                        target: { name: m.key, type: 'checkbox', checked: !e.target.checked }
+                        target: { name: m.key, type: 'checkbox', checked: !(e.target as HTMLInputElement).checked }
                       })}
                       /* Block the user from unchecking the last concrete method
                          client-side; backend also rejects this, but disabling
                          the control avoids an error round-trip. */
                       disabled={!canModifySettings || (
-                        !m.isPolicy && enabledTransportCount === 1 && !settings[m.key]
+                        !m.isPolicy && enabledTransportCount === 1 && !settings[m.key as keyof SettingsFormState]
                       )}
                     />
                     <span class="text-sm">{m.label}</span>
@@ -166,7 +187,7 @@ export function AuthTab({
             <textarea
               id="setting-trusted-proxy-cidrs"
               name="trustedProxyCidrs"
-              rows="3"
+              rows={3}
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.trustedProxyCidrs}
               onChange={handleInputChange}
