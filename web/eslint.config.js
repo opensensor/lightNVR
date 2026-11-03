@@ -1,10 +1,9 @@
 /**
  * ESLint configuration for the LightNVR web UI.
  *
- * Adds eslint-plugin-jsx-a11y (recommended ruleset) as part of the WCAG 2.2 AA
- * audit in https://github.com/opensensor/lightNVR/issues/647. All rules start
- * in warn mode so CI reports violations without failing the build; switch rules
- * to error as each finding category in the issue is closed.
+ * eslint-plugin-jsx-a11y's recommended ruleset came from the WCAG 2.2 AA audit in
+ * https://github.com/opensensor/lightNVR/issues/647. Its findings are closed, so
+ * the rules fail lint. Suppress a rule only on the specific element, with a reason.
  */
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -13,9 +12,18 @@ import noLiteralUiString from './eslint-rules/no-literal-ui-string.js';
 
 const recommendedRules = jsxA11y.flatConfigs.recommended.rules;
 
-const a11yWarnRules = Object.fromEntries(
-  Object.keys(recommendedRules).map((name) => [name, 'warn']),
-);
+// Keep the preset's severity and options. control-has-associated-label is off in
+// the preset but finds unnamed buttons and links, so it is enabled here. Its preset
+// options exclude inputs, which it can't resolve through an external <label>.
+const a11yRules = {
+  ...recommendedRules,
+  'jsx-a11y/control-has-associated-label': [
+    'error',
+    { ...recommendedRules['jsx-a11y/control-has-associated-label'][1], depth: 5 },
+  ],
+  // Labels in this UI commonly nest their text a few elements deep.
+  'jsx-a11y/label-has-associated-control': ['error', { depth: 5 }],
+};
 
 export default [
   {
@@ -39,7 +47,7 @@ export default [
       },
     },
     rules: {
-      ...a11yWarnRules,
+      ...a11yRules,
       // The plugin is registered only so pre-existing targeted
       // eslint-disable-next-line comments referencing react-hooks rules
       // resolve; its rules stay off while this config tracks the a11y audit.

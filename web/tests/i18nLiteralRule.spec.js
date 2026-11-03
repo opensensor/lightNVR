@@ -156,10 +156,10 @@ describe('TypeScript lint settings', () => {
     expect(errorsFor(explained, '@typescript-eslint/ban-ts-comment')).toEqual([]);
   });
 
-  test('a11y rules stay on for TSX as warnings', () => {
+  test('a11y rules stay on for TSX as errors', () => {
     const alt = lint('js/pages/LintProbe.tsx', 'export const C = () => <img src="a.png" />;\n')
       .filter((message) => message.ruleId === 'jsx-a11y/alt-text');
-    expect(alt.map((message) => message.severity)).toEqual([1]);
+    expect(alt.map((message) => message.severity)).toEqual([2]);
   });
 
   test('TS syntax parses in .ts and .tsx, and angle-bracket casts only in .ts', () => {
