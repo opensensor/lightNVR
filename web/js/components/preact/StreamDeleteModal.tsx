@@ -6,6 +6,7 @@
 import { useState } from 'preact/hooks';
 import { AsyncButton } from './AsyncButton.tsx';
 import { useI18n } from '../../i18n.ts';
+import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 export interface StreamDeleteModalProps {
   streamId: string;
@@ -33,6 +34,7 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
   const { t } = useI18n();
   const [isConfirmDelete, setIsConfirmDelete] = useState(false);
   const isLoading = isDeleting || isDisabling;
+  useEscapeKey(() => { if (!isLoading) onClose(); });
 
   // Show delete confirmation step
   const showDeleteConfirmation = () => {

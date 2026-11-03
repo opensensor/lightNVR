@@ -8,6 +8,7 @@ import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
 import type { ApiErrorBody, User } from '../../../types/core.ts';
 import type { GetAuthHeaders, TotpSetupResponse, TotpStatusResponse } from '../../../types/users.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 export interface TotpSetupModalProps {
   user: Pick<User, 'id' | 'username'>;
@@ -26,6 +27,7 @@ export interface TotpSetupModalProps {
  * @returns {JSX.Element} TOTP setup modal
  */
 export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: TotpSetupModalProps) {
+  useEscapeKey(onClose);
   const [step, setStep] = useState('loading'); // 'loading', 'status', 'setup', 'verify', 'enabled'
   const [otpauthUri, setOtpauthUri] = useState('');
   const [secret, setSecret] = useState('');

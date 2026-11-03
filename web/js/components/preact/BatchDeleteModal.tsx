@@ -14,6 +14,7 @@ import type {
   BatchDeleteProgressResponse,
   BatchDeleteStartResponse,
 } from '../../types/recordings.ts';
+import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 declare global {
   interface Window {
@@ -367,6 +368,11 @@ export function BatchDeleteModal() {
   };
 
   // If hidden, don't render anything
+  useEscapeKey(() => {
+    if (phase === 'confirm') cancelConfirm();
+    else if (progress.complete) closeModal();
+  }, phase !== 'hidden');
+
   if (phase === 'hidden') {
     return null;
   }

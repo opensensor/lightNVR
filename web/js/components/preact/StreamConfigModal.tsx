@@ -19,6 +19,7 @@ import type {
   StreamInputHandler,
   ZonesResponse,
 } from '../../types/streams.ts';
+import { inlineSideOfArrow } from '../../utils/a11y.ts';
 
 interface RecordingScheduleGridProps {
   schedule: boolean[];
@@ -70,10 +71,12 @@ const getDetectionModelSelectValue = (modelValue: string) => {
  * Recording Schedule Grid Component
  * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
  */
-function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProps) {
+export function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProps) {
   const { t } = useI18n();
   const isDragging = useRef(false);
   const dragValue = useRef(true);
+  const cellsRef = useRef<HTMLDivElement | null>(null);
+  const [focusedCell, setFocusedCell] = useState({ day: 0, hour: 0 });
 
   const DAYS = [
     t('streamsConfig.sunShort'),
@@ -113,6 +116,28 @@ function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProp
     s[dayIdx * HOURS_PER_DAY + hourIdx] = dragValue.current;
     onChange(s);
   }, [schedule, onChange]);
+
+  const handleCellKeyDown = (e: KeyboardEvent, dayIdx: number, hourIdx: number) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      const s = schedule.slice();
+      s[dayIdx * HOURS_PER_DAY + hourIdx] = !schedule[dayIdx * HOURS_PER_DAY + hourIdx];
+      onChange(s);
+      return;
+    }
+    const side = inlineSideOfArrow(e.key);
+    let day = dayIdx;
+    let hour = hourIdx;
+    if (side) day += side === 'end' ? 1 : -1;
+    else if (e.key === 'ArrowDown') hour += 1;
+    else if (e.key === 'ArrowUp') hour -= 1;
+    else return;
+    e.preventDefault();
+    day = Math.min(Math.max(day, 0), DAYS.length - 1);
+    hour = Math.min(Math.max(hour, 0), HOURS_PER_DAY - 1);
+    setFocusedCell({ day, hour });
+    cellsRef.current?.querySelector<HTMLElement>(`[data-schedule-cell="${day}-${hour}"]`)?.focus();
+  };
 
   const toggleDay = useCallback((dayIdx: number) => {
     const allOn = Array.from({ length: HOURS_PER_DAY }).every(
@@ -227,6 +252,7 @@ function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProp
           </div>
 
           {/* Hour rows */}
+          <div ref={cellsRef} role="group" aria-label={t('streamsConfig.onASchedule')}>
           {HOURS.map((hourLabel, hourIdx) => (
             <div key={hourIdx} className="flex items-center" style={{ height: '13px', marginBottom: '1px' }}>
               {/* Hour label — clickable to toggle row */}
@@ -245,9 +271,16 @@ function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProp
               {DAYS.map((_, dayIdx) => {
                 const isActive = !!schedule[dayIdx * HOURS_PER_DAY + hourIdx];
                 return (
-                  <div /* eslint-disable-line jsx-a11y/no-static-element-interactions -- drag-to-paint grid; keyboard users have the day, hour, and preset buttons */
+                  <div
                     key={dayIdx}
-                    className={`flex-1 rounded-sm cursor-pointer transition-colors ${
+                    role="checkbox"
+                    aria-checked={isActive}
+                    aria-label={`${DAYS[dayIdx]} ${hourLabel}`}
+                    data-schedule-cell={`${dayIdx}-${hourIdx}`}
+                    tabIndex={focusedCell.day === dayIdx && focusedCell.hour === hourIdx ? 0 : -1}
+                    onFocus={() => setFocusedCell({ day: dayIdx, hour: hourIdx })}
+                    onKeyDown={(e) => handleCellKeyDown(e, dayIdx, hourIdx)}
+                    className={`flex-1 rounded-sm cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                       isActive
                         ? 'bg-primary/70 hover:bg-primary'
                         : 'bg-muted/40 hover:bg-muted/80'
@@ -260,6 +293,7 @@ function RecordingScheduleGrid({ schedule, onChange }: RecordingScheduleGridProp
               })}
             </div>
           ))}
+          </div>
 
           {/* Legend */}
           <div className="flex items-center justify-end gap-3 mt-2 pt-2 border-t border-border/50">

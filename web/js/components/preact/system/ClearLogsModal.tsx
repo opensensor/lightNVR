@@ -6,6 +6,7 @@
 import { useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { useI18n } from '../../../i18n.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 export interface ClearLogsModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export interface ClearLogsModalProps {
 export function ClearLogsModal({ isOpen, onClose, onConfirm }: ClearLogsModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const { t } = useI18n();
+  useEscapeKey(onClose, isOpen);
 
   if (!isOpen) return null;
 

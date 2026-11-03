@@ -1,6 +1,7 @@
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
 import type { User } from '../../../types/core.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 export interface DeleteUserModalProps {
   currentUser: Pick<User, 'username'>;
@@ -22,6 +23,7 @@ export interface DeleteUserModalProps {
  */
 export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }: DeleteUserModalProps) {
   const { t } = useI18n();
+  useEscapeKey(onClose);
 
   // Direct delete handler — wrapped in Promise.resolve so AsyncButton can
   // observe pending state whether the parent uses mutate or mutateAsync.

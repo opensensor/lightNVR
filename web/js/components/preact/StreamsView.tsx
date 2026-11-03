@@ -55,6 +55,7 @@ import type {
   StreamTestRequest,
   StreamTestResponse,
 } from '../../types/streams.ts';
+import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 declare global {
   interface Window {
@@ -115,6 +116,8 @@ export function StreamsView() {
   const [modalVisible, setModalVisible] = useState(false);
   const [onvifModalVisible, setOnvifModalVisible] = useState(false);
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
+  useEscapeKey(() => setOnvifModalVisible(false), onvifModalVisible);
+  useEscapeKey(() => setShowCustomNameInput(false), showCustomNameInput);
   const [isAddingStream, setIsAddingStream] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<OnvifDevice[]>([]);
   const [deviceProfiles, setDeviceProfiles] = useState<OnvifProfile[]>([]);

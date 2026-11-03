@@ -6,6 +6,7 @@
 import { useI18n } from '../../i18n.ts';
 import { AsyncButton } from './AsyncButton.tsx';
 import type { StreamBulkAction } from '../../types/streams.ts';
+import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 export interface StreamBulkActionModalProps {
   action: StreamBulkAction;
@@ -26,6 +27,7 @@ export interface StreamBulkActionModalProps {
  */
 export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm, isWorking }: StreamBulkActionModalProps) {
   const { t } = useI18n();
+  useEscapeKey(() => { if (!isWorking) onClose(); });
   const count = streamNames.length;
   const isDelete = action === 'delete';
   const isEnable = action === 'enable';

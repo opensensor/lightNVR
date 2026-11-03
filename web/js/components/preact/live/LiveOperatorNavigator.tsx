@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.tsx';
@@ -34,6 +34,7 @@ import type {
   LiveOperatorSurface,
   LiveStream,
 } from '../../../types/live.ts';
+import { inlineSideOfArrow } from '../../../utils/a11y.ts';
 
 interface LiveEventThumbnailProps {
   event: LiveEvent;
@@ -121,6 +122,7 @@ export function LiveOperatorNavigator({
     return LIVE_AVAILABILITY_OPTIONS.includes(stored as StreamAvailabilityFilter) ? stored as string : 'live';
   });
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const didAutoExpand = useRef(false);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [layoutCameraScope, setLayoutCameraScope] = useState<string[] | null>(null);
@@ -257,9 +259,11 @@ export function LiveOperatorNavigator({
   }, [enabled, selectedLocation, availability, operatorFilter, onFilterChange]);
 
   useEffect(() => {
-    if (tree.length === 0 || expanded.size > 0) return;
+    // First load only, so collapsing the last open location stays collapsed.
+    if (tree.length === 0 || didAutoExpand.current) return;
+    didAutoExpand.current = true;
     setExpanded(new Set(tree.map((node) => node.uuid)));
-  }, [tree, expanded.size]);
+  }, [tree]);
 
   useEffect(() => {
     if (operatorSurface === 'plan') setTab('plans');
@@ -473,11 +477,20 @@ export function LiveOperatorNavigator({
               <button key={node.uuid} type="button"
                 className={`live-location-row ${selectedLocation === node.uuid && layoutCameraScope === null ? 'is-selected' : ''}`}
                 style={{ '--location-depth': node.depth }}
+                aria-expanded={node.children.length > 0 ? expanded.has(node.uuid) : undefined}
+                onKeyDown={(event) => {
+                  if (node.children.length === 0) return;
+                  const side = inlineSideOfArrow(event.key);
+                  if ((side === 'end' && !expanded.has(node.uuid)) || (side === 'start' && expanded.has(node.uuid))) {
+                    event.preventDefault();
+                    toggleExpanded(node.uuid);
+                  }
+                }}
                 onClick={() => selectLocation(node.uuid)}
                 onDblClick={() => loadLocation(node.uuid)}>
                 <span className="live-location-name">
                   {node.children.length > 0 && (
-                    <span /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- nested in a button, so it cannot be a control itself; keyboard expansion is a known gap */ onClick={(event) => {
+                    <span aria-hidden="true" onClick={(event) => {
                       event.stopPropagation(); toggleExpanded(node.uuid);
                     }}>{expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}</span>
                   )}

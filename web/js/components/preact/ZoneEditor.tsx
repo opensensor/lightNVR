@@ -667,11 +667,16 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
             )}
 
             {zoneList.map((zone, index) => (
-              <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- row click only mirrors the controls inside; keyboard row selection is a known gap */
+              <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut; keyboard focus entering the row selects it too */
                 key={zone.id}
                 className={`mb-3 p-3 rounded border ${
                   index === selectedZoneIndex ? 'border-primary bg-primary/10' : 'border-border'
                 }`}
+                aria-current={index === selectedZoneIndex ? 'true' : undefined}
+                onFocusIn={(event: FocusEvent) => {
+                  // Keyboard only: re-rendering on pointer focus would break the first checkbox toggle.
+                  if ((event.target as HTMLElement).matches(':focus-visible')) setSelectedZoneIndex(index);
+                }}
                 onClick={(event) => {
                   // Preserve the native toggle until onChange records it below.
                   if ((event.target as HTMLInputElement).type !== 'checkbox') setSelectedZoneIndex(index);

@@ -13,6 +13,7 @@ import type {
   InvestigationTimeline,
   Translate,
 } from '../../../types/investigation.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 export interface InvestigationBookmarksProps {
   timeline: InvestigationTimeline | null;
@@ -51,6 +52,7 @@ export function InvestigationBookmarks({
     setError('');
     setConfirmDelete(null);
   };
+  useEscapeKey(close, mode !== null);
 
   const showSave = () => {
     setTitle('');

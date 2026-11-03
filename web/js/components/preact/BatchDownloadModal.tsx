@@ -10,6 +10,7 @@ import type {
   BatchDownloadStatusResponse,
   RecordingSelection,
 } from '../../types/recordings.ts';
+import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 /** Only id and stream are read, so the timeline can pass its own segment objects. */
 type DownloadableRecording = Pick<Recording, 'id'> & { stream?: string };
@@ -104,6 +105,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
   const [mode, setMode] = useState('zip');          // 'zip' | 'sequential'
   const [zipName, setZipName] = useState('recordings.zip');
   const [busy, setBusy] = useState(false);
+  useEscapeKey(() => { if (!busy) onClose(); }, isOpen);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState('');
 

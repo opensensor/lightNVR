@@ -19,6 +19,7 @@ import type {
   SetSettings,
   SettingsTabProps,
 } from '../../../types/settings.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 interface Go2rtcTabProps extends SettingsTabProps {
   setSettings: SetSettings;
@@ -101,6 +102,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const [overrideValidating, setOverrideValidating] = useState(false);
   const [effectiveConfig, setEffectiveConfig] = useState<Go2rtcEffectiveConfig | null>(null);
   const [effectiveConfigOpen, setEffectiveConfigOpen] = useState(false);
+  useEscapeKey(() => setEffectiveConfigOpen(false), effectiveConfigOpen);
   const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState<Go2rtcOverrideStatus | null>(null);
   const overrideValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

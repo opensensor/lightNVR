@@ -289,6 +289,15 @@ function RecordingCard({
         onClick={() => playRecording(recording)}
         title={inProgress ? t('recordings.inProgressToast') : undefined}
       >
+        {!show('actions') && (
+          <button
+            type="button"
+            class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:inset-e-2 focus:z-10 rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
+            onClick={(e) => { e.stopPropagation(); playRecording(recording); }}
+          >
+            {t('recordings.play')}
+          </button>
+        )}
         {inProgress ? (
           <div class="w-full h-full flex flex-col items-center justify-center gap-2 text-destructive">
             <span class="relative flex h-3 w-3" aria-hidden="true">
