@@ -10,7 +10,7 @@
 import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
-import { REDUCE_MOTION_STORAGE_KEY, REDUCE_MOTION_VALUES, getReduceMotionPref } from '../../js/utils/reduceMotion.js';
+import { REDUCE_MOTION_STORAGE_KEY, REDUCE_MOTION_VALUES, getReduceMotionPref } from '../../js/utils/reduceMotion.ts';
 
 class FakeNode {
   parentNode: FakeNode | null = null;

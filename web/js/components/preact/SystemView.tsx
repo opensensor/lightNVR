@@ -1,0 +1,393 @@
+// @ts-nocheck
+/**
+ * LightNVR Web Interface SystemView Component
+ * Preact component for the system page
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { showStatusMessage } from './ToastContainer.tsx';
+import { ContentLoader } from './LoadingIndicator.tsx';
+import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
+import { validateSession } from '../../utils/auth-utils.ts';
+import { useI18n } from '../../i18n.ts';
+
+// Import system components
+import { SystemControls } from './system/SystemControls.tsx';
+import { SystemInfo } from './system/SystemInfo.tsx';
+import { MemoryStorage } from './system/MemoryStorage.tsx';
+import { StreamStorage } from './system/StreamStorage.tsx';
+import { StorageHealth } from './system/StorageHealth.tsx';
+import { NetworkInfo } from './system/NetworkInfo.tsx';
+import { SystemHealth } from './system/SystemHealth.tsx';
+import { StreamsInfo } from './system/StreamsInfo.tsx';
+import { WebServiceInfo } from './system/WebServiceInfo.tsx';
+import { VersionsTable } from './system/VersionsTable.tsx';
+import { LogsView } from './system/LogsView.tsx';
+import { LogsPoller } from './system/LogsPoller.tsx';
+import { ClearLogsModal } from './system/ClearLogsModal.tsx';
+
+// Import utility functions
+import { formatBytes, formatUptime, log_level_meets_minimum } from './system/SystemUtils.ts';
+
+/**
+ * SystemView component
+ * @returns {JSX.Element} SystemView component
+ */
+export function SystemView() {
+  const { t } = useI18n();
+
+  // Define all state variables first
+  const [systemInfo, setSystemInfo] = useState({
+    version: '',
+    uptime: '',
+    cpu: {
+      model: '',
+      cores: 0,
+      usage: 0
+    },
+    memory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    go2rtcMemory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    detectorMemory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    systemMemory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    disk: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    systemDisk: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    network: {
+      interfaces: []
+    },
+    streams: {
+      active: 0,
+      total: 0
+    },
+    recordings: {
+      count: 0,
+      size: 0
+    },
+    versions: {
+      items: []
+    }
+  });
+  const [logs, setLogs] = useState([]);
+  const [logLevel, setLogLevel] = useState(() => localStorage.getItem('lightnvr_system_logLevel') || 'debug');
+  const logLevelRef = useRef(localStorage.getItem('lightnvr_system_logLevel') || 'debug');
+  const [logCount, setLogCount] = useState(100);
+  const [pollingInterval, setPollingInterval] = useState(() => {
+    const saved = localStorage.getItem('lightnvr_system_pollingInterval');
+    return saved ? parseInt(saved, 10) : 5000;
+  });
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [showClearLogsModal, setShowClearLogsModal] = useState(false);
+  const [hasData, setHasData] = useState(false);
+  const [activeTab, setActiveTab] = useState('system');
+
+  // User role state for permission-based UI
+  const [userRole, setUserRole] = useState(null);
+
+  // Fetch user role on mount
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const result = await validateSession();
+        if (result.valid && result.role) {
+          setUserRole(result.role);
+        } else {
+          setUserRole('');
+        }
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole('');
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  // Role is still loading if null
+  const roleLoading = userRole === null;
+  // Only admin can restart/shutdown system; default to false while loading
+  const canControlSystem = !roleLoading && userRole === 'admin';
+  // Operational health endpoints require the same system-admin permission.
+  const canViewSystemHealth = canControlSystem;
+
+  // Define all query hooks next
+  const {
+    data: systemInfoData,
+    isLoading
+  } = useQuery(
+    ['systemInfo'],
+    '/api/system/info',
+    {
+      timeout: 15000,
+      retries: 2,
+      retryDelay: 1000
+    }
+  );
+
+  // Define all mutation hooks next
+  const clearLogsMutation = useMutation({
+    mutationKey: ['clearLogs'],
+    mutationFn: async () => {
+      return await fetchJSON('/api/system/logs/clear', {
+        method: 'POST',
+        timeout: 10000,
+        retries: 1
+      });
+    },
+    onSuccess: () => {
+      showStatusMessage(t('system.logsCleared'));
+      setLogs([]);
+    },
+    onError: (error) => {
+      console.error('Error clearing logs:', error);
+      showStatusMessage(t('system.logsClearError', { message: error.message }));
+    }
+  });
+
+  // Then define all handler functions
+  const handleSetLogLevel = (newLevel) => {
+    console.log(`SystemView: Setting log level from ${logLevel} to ${newLevel}`);
+    setLogLevel(newLevel);
+    logLevelRef.current = newLevel;
+    localStorage.setItem('lightnvr_system_logLevel', newLevel);
+  };
+
+  const handleSetPollingInterval = (newInterval) => {
+    setPollingInterval(newInterval);
+    localStorage.setItem('lightnvr_system_pollingInterval', String(newInterval));
+  };
+
+  // useCallback with [] because it only reads logLevelRef.current (a ref, not state),
+  // giving a stable reference that won't trigger downstream effects on every render.
+  const handleLogsReceived = useCallback((newLogs) => {
+    console.log('SystemView received new logs:', newLogs.length);
+    const currentLogLevel = logLevelRef.current;
+    const filteredLogs = newLogs.filter(log => log_level_meets_minimum(log.level, currentLogLevel));
+    setLogs(filteredLogs);
+  }, []);
+
+  // Update hasData based on systemInfoData
+  useEffect(() => {
+    if (systemInfoData) {
+      setHasData(true);
+    }
+  }, [systemInfoData]);
+
+  // Restart system mutation
+  const restartSystemMutation = useMutation({
+    mutationFn: async () => {
+      return await fetchJSON('/api/system/restart', {
+        method: 'POST',
+        timeout: 30000, // 30 second timeout for system restart
+        retries: 0      // No retries for system restart
+      });
+    },
+    onMutate: () => {
+      setIsRestarting(true);
+      showStatusMessage(t('system.restartingSystem'));
+    },
+    onSuccess: () => {
+      showStatusMessage(t('system.systemRestartingWait'));
+      // Don't auto-reload here - let the RestartModal handle reconnection detection
+    },
+    onError: (error) => {
+      console.error('Error restarting system:', error);
+      // Only show error and reset state if it's not a network error
+      // (network errors are expected during restart)
+      if (error.message && !error.message.includes('fetch') && !error.message.includes('network')) {
+        showStatusMessage(t('system.restartError', { message: error.message }));
+        setIsRestarting(false);
+      }
+      // Otherwise, the restart was likely initiated successfully and the server is shutting down
+    }
+  });
+
+  // Update systemInfo state when data is loaded
+  useEffect(() => {
+    if (systemInfoData) {
+      setSystemInfo(systemInfoData);
+    }
+  }, [systemInfoData]);
+
+  // Component cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log('SystemView component unmounting');
+    };
+  }, []);
+
+  // Clear logs function
+  const clearLogs = () => {
+    setShowClearLogsModal(true);
+  };
+
+  const handleClearLogsConfirm = () => {
+    clearLogsMutation.mutate();
+  };
+
+  // Restart system function (called when user confirms in modal)
+  const handleRestartConfirm = () => {
+    restartSystemMutation.mutate();
+  };
+
+  // Component initialization
+  useEffect(() => {
+    console.log('SystemView component initialized');
+  }, []);
+
+  return (
+    <section id="system-page" className="page">
+      <SystemControls
+        onRestartConfirm={handleRestartConfirm}
+        isRestarting={isRestarting}
+        canControlSystem={canControlSystem}
+      />
+
+      <div className="mb-4 border-b border-border" role="tablist" aria-label={t('system.sections')}>
+          <div className="flex gap-2">
+            {canViewSystemHealth && (
+              <button
+                type="button"
+                id="health-tab"
+                role="tab"
+                data-testid="health-tab"
+                aria-selected={activeTab === 'health'}
+                aria-controls="health-panel"
+                className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === 'health'
+                    ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setActiveTab('health')}
+              >
+                {t('system.health.tab')}
+              </button>
+            )}
+            <button
+              type="button"
+              id="system-tab"
+              role="tab"
+              data-testid="system-tab"
+              aria-selected={activeTab === 'system'}
+              aria-controls="system-panel"
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'system'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab('system')}
+            >
+              {t('system.system')}
+            </button>
+            <button
+              type="button"
+              id="versions-tab"
+              role="tab"
+              data-testid="versions-tab"
+              aria-selected={activeTab === 'versions'}
+              aria-controls="versions-panel"
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'versions'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab('versions')}
+            >
+              {t('system.versions')}
+            </button>
+          </div>
+      </div>
+
+      {activeTab === 'health' && canViewSystemHealth ? (
+        <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
+          <SystemHealth />
+        </div>
+      ) : (
+        <ContentLoader
+          isLoading={isLoading}
+          hasData={hasData}
+          loadingMessage={t('system.loadingSystemInformation')}
+          emptyMessage={t('system.systemInformationUnavailable')}
+        >
+          {activeTab === 'system' ? (
+          <div role="tabpanel" id="system-panel" aria-labelledby="system-tab">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
+              <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
+              <StorageHealth formatBytes={formatBytes} />
+            </div>
+
+            <div className="mb-4">
+              <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <NetworkInfo systemInfo={systemInfo} />
+              <WebServiceInfo systemInfo={systemInfo} />
+            </div>
+
+            <LogsView
+              logs={logs}
+              logLevel={logLevel}
+              logCount={logCount}
+              pollingInterval={pollingInterval}
+              setLogLevel={handleSetLogLevel}
+              setLogCount={setLogCount}
+              setPollingInterval={handleSetPollingInterval}
+              loadLogs={() => {
+                // Trigger a manual log refresh
+                console.log('Manually triggering log refresh');
+                const event = new CustomEvent('refresh-logs');
+                window.dispatchEvent(event);
+              }}
+              clearLogs={clearLogs}
+            />
+
+            <LogsPoller
+              logLevel={logLevel}
+              logCount={logCount}
+              pollingInterval={pollingInterval}
+              onLogsReceived={handleLogsReceived}
+            />
+          </div>
+        ) : (
+          <div role="tabpanel" id="versions-panel" aria-labelledby="versions-tab">
+            <VersionsTable versions={systemInfo.versions} />
+          </div>
+          )}
+        </ContentLoader>
+      )}
+
+      <ClearLogsModal
+        isOpen={showClearLogsModal}
+        onClose={() => setShowClearLogsModal(false)}
+        onConfirm={handleClearLogsConfirm}
+      />
+    </section>
+  );
+}

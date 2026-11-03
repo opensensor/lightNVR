@@ -2,7 +2,7 @@ import {
   healthStateForStream,
   recordingModesForStream,
   shouldShowLiveTileStatus,
-} from '../js/components/preact/liveTileStatus.js';
+} from '../js/components/preact/liveTileStatus.ts';
 
 describe('live tile status helpers', () => {
   test('preserves every recording mode in display order', () => {

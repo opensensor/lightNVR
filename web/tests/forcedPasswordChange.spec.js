@@ -1,4 +1,4 @@
-import { validateForcedPasswordChange } from '../js/components/preact/forcedPasswordChange.js';
+import { validateForcedPasswordChange } from '../js/components/preact/forcedPasswordChange.ts';
 
 describe('forced password change validation', () => {
   test('requires the current password', () => {

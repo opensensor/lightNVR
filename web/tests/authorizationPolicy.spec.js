@@ -8,7 +8,7 @@ import {
   policyResponseToDraft,
   roleHasDestructiveActions,
   validatePolicyDraft,
-} from '../js/components/preact/users/authorizationPolicy.js';
+} from '../js/components/preact/users/authorizationPolicy.ts';
 
 describe('authorization policy UI helpers', () => {
   const roles = new Set(['viewer', 'operator']);

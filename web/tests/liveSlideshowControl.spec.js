@@ -9,7 +9,7 @@ const { buildSync } = require('esbuild');
 function loadControl() {
   const output = buildSync({
     absWorkingDir: path.resolve(__dirname, '..'),
-    entryPoints: ['js/components/preact/LiveSlideshowControl.jsx'],
+    entryPoints: ['js/components/preact/LiveSlideshowControl.tsx'],
     bundle: true,
     format: 'cjs',
     platform: 'node',
@@ -17,11 +17,11 @@ function loadControl() {
     jsxImportSource: 'preact',
     write: false,
     logLevel: 'silent',
-    external: ['*/i18n.js'],
+    external: ['*/i18n.ts'],
   }).outputFiles[0].text;
   const loaded = { exports: {} };
   const i18nStub = { useI18n: () => ({ t: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key) }) };
-  const requireWithStub = (id) => (id.endsWith('i18n.js') ? i18nStub : require(id));
+  const requireWithStub = (id) => (id.endsWith('i18n.ts') ? i18nStub : require(id));
   Function('module', 'exports', 'require', output)(loaded, loaded.exports, requireWithStub);
   return loaded.exports;
 }

@@ -1,30 +1,30 @@
-import { recordingsAPI } from '../js/components/preact/recordings/recordingsAPI.jsx';
+import { recordingsAPI } from '../js/components/preact/recordings/recordingsAPI.tsx';
 
-jest.mock('../js/components/preact/ToastContainer.jsx', () => ({
+jest.mock('../js/components/preact/ToastContainer.tsx', () => ({
   showStatusMessage: jest.fn()
 }));
 
-jest.mock('../js/i18n.js', () => {
+jest.mock('../js/i18n.ts', () => {
   const english = require('../public/locales/en.json');
   return {
     t: (key, params = {}) => (english[key] || key).replace(/\{([^}]+)\}/g, (_, name) => String(params[name] ?? '')),
   };
 });
 
-jest.mock('../js/fetch-utils.js', () => ({
+jest.mock('../js/fetch-utils.ts', () => ({
   fetchJSON: jest.fn(),
   enhancedFetch: jest.fn()
 }));
 
-jest.mock('../js/query-client.js', () => ({
+jest.mock('../js/query-client.ts', () => ({
   useQuery: jest.fn(),
   useMutation: jest.fn(),
   useQueryClient: jest.fn(),
   usePostMutation: jest.fn()
 }));
 
-const { fetchJSON, enhancedFetch } = require('../js/fetch-utils.js');
-const { showStatusMessage } = require('../js/components/preact/ToastContainer.jsx');
+const { fetchJSON, enhancedFetch } = require('../js/fetch-utils.ts');
+const { showStatusMessage } = require('../js/components/preact/ToastContainer.tsx');
 
 describe('recordingsAPI', () => {
   beforeEach(() => {
@@ -281,7 +281,7 @@ describe('recordingsAPI', () => {
 });
 
 describe('archive batch deletion outcomes', () => {
-  const { useMutation, useQueryClient } = require('../js/query-client.js');
+  const { useMutation, useQueryClient } = require('../js/query-client.ts');
   beforeEach(() => {
     jest.clearAllMocks();
     fetchJSON.mockReset();

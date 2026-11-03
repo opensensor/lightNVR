@@ -11,7 +11,7 @@ import {
   groupDecisionModes,
   modesByAction,
   summaryDetails,
-} from '../js/components/preact/users/auditHistory.js';
+} from '../js/components/preact/users/auditHistory.ts';
 
 describe('audit history UI helpers', () => {
   test('builds a compact paginated query and trims exact filters', () => {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { urlUtils } from '../../web/js/components/preact/recordings/urlUtils.js';
+import { urlUtils } from '../../web/js/components/preact/recordings/urlUtils.ts';
 
 const setWindowLocation = (url: string) => {
   (globalThis as any).window = {

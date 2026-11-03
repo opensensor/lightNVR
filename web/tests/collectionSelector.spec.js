@@ -5,7 +5,7 @@ import {
   parseCollectionSelector,
   updateCollectionRuleType,
   validateCollectionSelectorJson,
-} from '../js/components/preact/fleet/collectionSelector.js';
+} from '../js/components/preact/fleet/collectionSelector.ts';
 
 describe('camera collection selector builder', () => {
   test('creates an all selector when no complete rules exist', () => {

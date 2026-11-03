@@ -5,7 +5,7 @@ import {
   isEptzEnabled,
   parseEptzConfig,
   serializeEptzConfig,
-} from '../js/utils/eptz-config.js';
+} from '../js/utils/eptz-config.ts';
 
 describe('fisheye ePTZ configuration', () => {
   test('uses an empty string as the disabled representation', () => {

@@ -4,7 +4,7 @@ import {
   parseRetryAfterMilliseconds,
   queueThumbnailLoad,
   shouldRetryThumbnailRequest,
-} from '../js/request-queue.js';
+} from '../js/request-queue.ts';
 
 describe('thumbnail request admission', () => {
   afterEach(() => {

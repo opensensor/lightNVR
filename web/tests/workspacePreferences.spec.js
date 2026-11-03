@@ -3,7 +3,7 @@ import {
   WORKSPACE_KEYS,
   workspaceIsVisible,
   workspaceVisibilityFromResponse,
-} from '../js/utils/workspace-preferences.js';
+} from '../js/utils/workspace-preferences.ts';
 
 describe('workspace preferences', () => {
   test('defaults new workspaces on so upgrades remain discoverable', () => {

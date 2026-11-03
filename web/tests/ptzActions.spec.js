@@ -1,6 +1,6 @@
 import {
   getPtzCapabilities, savePtzPreset, setPtzHome, ptzMove, ptzStop, ptzHome, ptzGotoPreset
-} from '../js/components/preact/ptzActions.js';
+} from '../js/components/preact/ptzActions.ts';
 
 const originalFetch = global.fetch;
 

@@ -2,7 +2,7 @@ import {
   DEFAULT_ICE_GATHERING_TIMEOUT_MS,
   ICE_GATHER_OUTCOME,
   waitForIceGathering,
-} from '../js/utils/webrtc-ice-gathering.js';
+} from '../js/utils/webrtc-ice-gathering.ts';
 
 function fakePeerConnection(initialState = 'gathering') {
   const listeners = {};

@@ -1,4 +1,4 @@
-import { enhancedFetch } from '../js/fetch-utils.js';
+import { enhancedFetch } from '../js/fetch-utils.ts';
 
 const okResponse = { ok: true, status: 200, statusText: 'OK' };
 

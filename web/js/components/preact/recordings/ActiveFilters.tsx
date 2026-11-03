@@ -1,0 +1,35 @@
+// @ts-nocheck
+import { useI18n } from '../../../i18n.ts';
+
+/**
+ * ActiveFilters component for RecordingsView
+ */
+
+/**
+ * ActiveFilters component
+ * @param {Object} props Component props
+ * @returns {JSX.Element} ActiveFilters component
+ */
+export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFilters }) {
+  const { t } = useI18n();
+
+  if (!hasActiveFilters) {
+    return null;
+  }
+
+  return (
+    <div id="active-filters"
+         className="active-filters mb-4 p-3 rounded-lg flex flex-wrap gap-2 bg-muted">
+      <span className="text-xs font-medium text-muted-foreground self-center">{t('recordings.activeFilters')}:</span>
+      {activeFiltersDisplay.map((filter, index) => (
+        <div key={index} className="filter-tag">
+          <span>{filter.label}</span>
+          <button className="ms-2 text-secondary-foreground hover:text-foreground"
+                  onClick={() => removeFilter(filter.key, filter.value)}>
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}

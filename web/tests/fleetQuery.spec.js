@@ -10,7 +10,7 @@ import {
   readFleetUrlState,
   toggleFleetValue,
   writeFleetUrlState,
-} from '../js/components/preact/fleet/fleetQuery.js';
+} from '../js/components/preact/fleet/fleetQuery.ts';
 
 describe('fleet query state', () => {
   test('builds an all selector for an unfiltered fleet', () => {

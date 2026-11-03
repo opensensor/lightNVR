@@ -4,7 +4,7 @@
  * has no JSX transform), the app modules around it are stubbed, and
  * preact/hooks is replaced with a small deps-aware shim. The view is re-run as
  * a "component" until its state settles and the returned vnode tree is
- * inspected; handlers are called directly with fake events. lprSearch.js is
+ * inspected; handlers are called directly with fake events. lprSearch.ts is
  * bundled for real, so requests go through the mocked global fetch.
  */
 const path = require('path');
@@ -71,7 +71,7 @@ function ConfirmDialog() { return null; }
 function loadPlatesView() {
   const output = buildSync({
     absWorkingDir: path.resolve(__dirname, '..'),
-    entryPoints: ['js/components/preact/lpr/PlatesView.jsx'],
+    entryPoints: ['js/components/preact/lpr/PlatesView.tsx'],
     bundle: true,
     format: 'cjs',
     platform: 'node',
@@ -81,24 +81,24 @@ function loadPlatesView() {
     logLevel: 'silent',
     external: [
       'preact/hooks',
-      '*/query-client.js',
-      '*/i18n.js',
-      '*/fetch-utils.js',
-      '*/stream-summaries.js',
-      '*/ModalDialog.jsx',
-      '*/ToastContainer.jsx',
+      '*/query-client.ts',
+      '*/i18n.ts',
+      '*/fetch-utils.ts',
+      '*/stream-summaries.ts',
+      '*/ModalDialog.tsx',
+      '*/ToastContainer.tsx',
     ],
   }).outputFiles[0].text;
   const stubs = {
     'preact/hooks': hooksShim,
-    'query-client.js': { useQuery },
-    'i18n.js': {
+    'query-client.ts': { useQuery },
+    'i18n.ts': {
       useI18n: () => ({ t: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key) }),
     },
-    'fetch-utils.js': { handleAuthenticationFailure },
-    'stream-summaries.js': { fetchAllStreamSummaries },
-    'ModalDialog.jsx': { ConfirmDialog },
-    'ToastContainer.jsx': { showStatusMessage },
+    'fetch-utils.ts': { handleAuthenticationFailure },
+    'stream-summaries.ts': { fetchAllStreamSummaries },
+    'ModalDialog.tsx': { ConfirmDialog },
+    'ToastContainer.tsx': { showStatusMessage },
   };
   const requireWithStubs = (id) => {
     const stub = Object.keys(stubs).find((suffix) => id === suffix || id.endsWith(`/${suffix}`));

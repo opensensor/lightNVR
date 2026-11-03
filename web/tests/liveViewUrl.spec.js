@@ -1,7 +1,7 @@
 import {
   buildLiveViewHref,
   resolveForcedLiveTransport,
-} from '../js/utils/live-view-url.js';
+} from '../js/utils/live-view-url.ts';
 
 describe('live view links', () => {
   test('preserves collection and layout filters between playback modes', () => {

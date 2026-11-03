@@ -1,0 +1,709 @@
+// @ts-nocheck
+/**
+ * Zone Editor Component
+ * Interactive canvas-based zone configuration for detection regions
+ */
+
+import { useState, useRef, useEffect } from 'preact/hooks';
+import { getGo2rtcBaseUrl } from '../../utils/settings-utils.ts';
+import { nowMilliseconds } from '../../utils/date-utils.ts';
+import { useI18n } from '../../i18n.ts';
+import { AlertDialog } from './common/ModalDialog.tsx';
+import {
+  computeImageLetterbox,
+  canvasPointToImageFraction,
+  imageFractionToCanvasPoint,
+  resolveImageAspect,
+} from '../../utils/zone-editor-geometry.ts';
+
+/**
+ * ZoneEditor Component
+ * Allows users to draw and edit detection zones on a stream preview.
+ * `streamWidth`/`streamHeight` (the stream's configured resolution) are
+ * used to letterbox consistently with the real snapshot even while it's
+ * still loading or failed to load -- without them, zones would appear to
+ * shift between the placeholder and the real image on any camera whose
+ * aspect ratio doesn't match the editor's canvas.
+ */
+export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], onZonesChange, onClose }) {
+  const { t } = useI18n();
+  const canvasRef = useRef(null);
+  const imageRef = useRef(null);
+  const snapshotTimeoutRef = useRef(null);
+  // Where the image is actually drawn within the canvas (it may be
+  // letterboxed/pillarboxed to preserve aspect ratio). Mouse handlers read
+  // this to convert clicks into image-relative fractions consistently with
+  // how drawCanvas() last rendered it -- see zone-editor-geometry.ts.
+  const letterboxRef = useRef({ offsetX: 0, offsetY: 0, drawWidth: 0, drawHeight: 0 });
+  const [currentZone, setCurrentZone] = useState(null);
+  const [selectedZoneIndex, setSelectedZoneIndex] = useState(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [snapshotUrl, setSnapshotUrl] = useState(null);
+  const [snapshotError, setSnapshotError] = useState(false);
+  const [editMode, setEditMode] = useState('draw'); // 'draw', 'edit', 'delete'
+  const [zoneList, setZoneList] = useState(zones);
+  const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [draggedPoint, setDraggedPoint] = useState(null); // { zoneIndex, pointIndex }
+  const [draggedZone, setDraggedZone] = useState(null); // { zoneIndex, startX, startY }
+  const [saveError, setSaveError] = useState('');
+
+  // Load zones from the backend API
+  useEffect(() => {
+    const loadZones = async () => {
+      try {
+        const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.zones && Array.isArray(data.zones)) {
+            console.log('Loaded zones from API:', data.zones);
+            setZoneList(data.zones);
+          }
+        } else {
+          console.warn('Failed to load zones:', response.status);
+        }
+      } catch (error) {
+        console.error('Error loading zones:', error);
+      }
+    };
+
+    if (streamName) {
+      loadZones();
+    }
+  }, [streamName]);
+
+  // Load snapshot for the stream
+  useEffect(() => {
+    if (streamName) {
+      // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
+      const loadSnapshot = async () => {
+        try {
+          const go2rtcBaseUrl = await getGo2rtcBaseUrl();
+          // Add cache-busting parameter to force fresh snapshot
+          const timestamp = nowMilliseconds();
+          const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          console.log('Loading snapshot from:', url);
+          setSnapshotUrl(url);
+        } catch (err) {
+          console.warn('Failed to get go2rtc URL, using origin proxy:', err);
+          const timestamp = nowMilliseconds();
+          const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          setSnapshotUrl(url);
+        }
+      };
+
+      loadSnapshot();
+
+      // Set a timeout to show canvas anyway after 10 seconds
+      const timeout = setTimeout(() => {
+        snapshotTimeoutRef.current = null;
+        console.warn('Snapshot not loaded, showing canvas without background');
+        setImageLoaded(true);
+        setSnapshotError(true);
+      }, 10000);
+      snapshotTimeoutRef.current = timeout;
+
+      return () => {
+        clearTimeout(timeout);
+        if (snapshotTimeoutRef.current === timeout) snapshotTimeoutRef.current = null;
+      };
+    }
+  }, [streamName]);
+
+  const clearSnapshotTimeout = () => {
+    if (snapshotTimeoutRef.current !== null) {
+      clearTimeout(snapshotTimeoutRef.current);
+      snapshotTimeoutRef.current = null;
+    }
+  };
+
+  // Read a CSS custom property and return a usable hsl() colour string.
+  // The project's theme variables are stored as bare "H S% L%" triplets so we
+  // must wrap them in hsl() before passing them to a Canvas 2D context.
+  const getThemeColor = (varName, fallback) => {
+    const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return val ? `hsl(${val})` : fallback;
+  };
+
+  // Draw zones on canvas
+  const drawCanvas = () => {
+    const canvas = canvasRef.current;
+    const image = imageRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+
+    // Set canvas size to match display size
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Pick an aspect ratio to letterbox against: the loaded snapshot when
+    // available, otherwise the stream's configured resolution, so zones
+    // stay in the same place whether or not the snapshot is currently
+    // showing (see zone-editor-geometry.ts).
+    const imageAspect = resolveImageAspect(image, imageLoaded, snapshotError, streamWidth, streamHeight);
+    const letterbox = imageAspect
+      ? computeImageLetterbox(canvas.width, canvas.height, imageAspect)
+      : { offsetX: 0, offsetY: 0, drawWidth: canvas.width, drawHeight: canvas.height };
+    letterboxRef.current = letterbox;
+
+    // Draw the image if loaded
+    if (image && imageLoaded && !snapshotError) {
+      // Draw black background for letterboxing/pillarboxing
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the image with proper aspect ratio
+      ctx.drawImage(image, letterbox.offsetX, letterbox.offsetY, letterbox.drawWidth, letterbox.drawHeight);
+    } else {
+      // No snapshot to draw: fill the full canvas (including any bars the
+      // letterbox above leaves outside the image area) with the theme's
+      // card colour, then draw the placeholder grid only within the image
+      // area itself, so the layout matches where the real image will sit
+      // once it loads.
+      ctx.fillStyle = getThemeColor('--card', '#ffffff');
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(letterbox.offsetX, letterbox.offsetY, letterbox.drawWidth, letterbox.drawHeight);
+      ctx.clip();
+
+      // Draw grid using the current theme's border colour
+      ctx.strokeStyle = getThemeColor('--border', '#e5e7eb');
+      ctx.lineWidth = 1;
+      for (let i = letterbox.offsetX; i < letterbox.offsetX + letterbox.drawWidth; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(i, letterbox.offsetY);
+        ctx.lineTo(i, letterbox.offsetY + letterbox.drawHeight);
+        ctx.stroke();
+      }
+      for (let i = letterbox.offsetY; i < letterbox.offsetY + letterbox.drawHeight; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(letterbox.offsetX, i);
+        ctx.lineTo(letterbox.offsetX + letterbox.drawWidth, i);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draw existing zones
+    zoneList.forEach((zone, index) => {
+      const isSelected = index === selectedZoneIndex;
+      drawZone(ctx, zone, letterboxRef.current, isSelected, false, index);
+    });
+
+    // Draw current zone being drawn
+    if (currentZone && currentZone.polygon.length > 0) {
+      drawZone(ctx, currentZone, letterboxRef.current, true, true, null);
+    }
+  };
+
+  // Draw a single zone. `letterbox` maps a point's stored [0,1] image
+  // fraction to canvas pixels -- see zone-editor-geometry.ts.
+  const drawZone = (ctx, zone, letterbox, isSelected, isDrawing = false, zoneIndex = null) => {
+    if (!zone.polygon || zone.polygon.length === 0) return;
+
+    ctx.save();
+
+    // Draw polygon
+    ctx.beginPath();
+    zone.polygon.forEach((point, i) => {
+      const { x, y } = imageFractionToCanvasPoint(point.x, point.y, letterbox);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+
+    if (!isDrawing) {
+      ctx.closePath();
+    }
+
+    // Fill with semi-transparent color; fall back to the theme primary colour
+    const color = zone.color || getThemeColor('--primary', '#6366f1');
+    ctx.fillStyle = isSelected ? `${color}40` : `${color}20`;
+    ctx.fill();
+
+    // Stroke
+    ctx.strokeStyle = isSelected ? color : `${color}80`;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.stroke();
+
+    // Draw points
+    zone.polygon.forEach((point, i) => {
+      const { x, y } = imageFractionToCanvasPoint(point.x, point.y, letterbox);
+
+      // Check if this point is being hovered or dragged
+      const isHovered = hoveredPoint && hoveredPoint.zoneIndex === zoneIndex && hoveredPoint.pointIndex === i;
+      const isDragged = draggedPoint && draggedPoint.zoneIndex === zoneIndex && draggedPoint.pointIndex === i;
+
+      ctx.beginPath();
+      ctx.arc(x, y, (isHovered || isDragged) ? 8 : (isSelected ? 6 : 4), 0, 2 * Math.PI);
+      ctx.fillStyle = (isHovered || isDragged) ? '#ffffff' : (isSelected ? color : '#ffffff');
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = (isHovered || isDragged) ? 3 : 2;
+      ctx.stroke();
+    });
+
+    // Draw zone label
+    if (zone.name && zone.polygon.length > 0) {
+      const avgX = zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length;
+      const avgY = zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length;
+      const { x: centerX, y: centerY } = imageFractionToCanvasPoint(avgX, avgY, letterbox);
+
+      ctx.fillStyle = color;
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Draw text background
+      const textMetrics = ctx.measureText(zone.name);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(centerX - textMetrics.width / 2 - 4, centerY - 10, textMetrics.width + 8, 20);
+
+      ctx.fillStyle = color;
+      ctx.fillText(zone.name, centerX, centerY);
+    }
+
+    ctx.restore();
+  };
+
+  // Redraw canvas when zones or image changes
+  useEffect(() => {
+    drawCanvas();
+  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, snapshotError, hoveredPoint, draggedPoint, draggedZone,
+      streamWidth, streamHeight]);
+
+  // Redraw on resize too: the canvas is `w-full h-full` in a responsive
+  // modal, so a window/container resize changes getBoundingClientRect()
+  // without touching any state above -- without this, letterboxRef stays
+  // stale (computed for the old size) until some unrelated state change
+  // happens to trigger a redraw, and clicks in that window map incorrectly.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => drawCanvas());
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  });
+
+  // Handle mouse down
+  const handleMouseDown = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
+
+    if (editMode === 'edit') {
+      // Check if clicking on a point to drag
+      const point = findPointNearCursor(x, y);
+      if (point) {
+        setDraggedPoint(point);
+        setSelectedZoneIndex(point.zoneIndex);
+        return;
+      }
+
+      // Check if clicking inside a zone to drag the whole zone
+      const clickedZoneIndex = findZoneAtPoint(x, y);
+      if (clickedZoneIndex !== null) {
+        setDraggedZone({ zoneIndex: clickedZoneIndex, startX: x, startY: y });
+        setSelectedZoneIndex(clickedZoneIndex);
+        return;
+      }
+
+      // Otherwise deselect
+      setSelectedZoneIndex(null);
+    }
+  };
+
+  // Handle mouse move
+  const handleMouseMove = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
+
+    // Update cursor style based on hover
+    if (editMode === 'edit' && !draggedPoint && !draggedZone) {
+      const point = findPointNearCursor(x, y);
+      if (point) {
+        canvas.style.cursor = 'move';
+        setHoveredPoint(point);
+      } else {
+        const zoneIndex = findZoneAtPoint(x, y);
+        canvas.style.cursor = zoneIndex !== null ? 'grab' : 'default';
+        setHoveredPoint(null);
+      }
+    }
+
+    // Handle point dragging
+    if (draggedPoint) {
+      canvas.style.cursor = 'move';
+      const newZones = [...zoneList];
+      newZones[draggedPoint.zoneIndex].polygon[draggedPoint.pointIndex] = { x, y };
+      setZoneList(newZones);
+    }
+
+    // Handle zone dragging
+    if (draggedZone) {
+      canvas.style.cursor = 'grabbing';
+      const deltaX = x - draggedZone.startX;
+      const deltaY = y - draggedZone.startY;
+
+      const newZones = [...zoneList];
+      const zone = newZones[draggedZone.zoneIndex];
+
+      // Move all points by the delta
+      zone.polygon = zone.polygon.map(point => ({
+        x: Math.max(0, Math.min(1, point.x + deltaX)),
+        y: Math.max(0, Math.min(1, point.y + deltaY))
+      }));
+
+      setZoneList(newZones);
+      // Update start position for next move
+      setDraggedZone({ ...draggedZone, startX: x, startY: y });
+    }
+  };
+
+  // Handle mouse up
+  const handleMouseUp = () => {
+    setDraggedPoint(null);
+    setDraggedZone(null);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.style.cursor = 'default';
+    }
+  };
+
+  // Handle canvas click (for draw and delete modes)
+  const handleCanvasClick = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = canvasPointToImageFraction(
+      e.clientX - rect.left, e.clientY - rect.top, letterboxRef.current);
+
+    if (editMode === 'draw') {
+      // Add point to current zone
+      if (!currentZone) {
+        setCurrentZone({
+          id: `zone_${nowMilliseconds()}`,
+          name: t('zoneEditor.zoneNumber', { number: zoneList.length + 1 }),
+          polygon: [{ x, y }],
+          enabled: true,
+          color: '#3b82f6'
+        });
+      } else {
+        setCurrentZone({
+          ...currentZone,
+          polygon: [...currentZone.polygon, { x, y }]
+        });
+      }
+    } else if (editMode === 'delete') {
+      // Delete zone
+      const clickedZoneIndex = findZoneAtPoint(x, y);
+      if (clickedZoneIndex !== null) {
+        const newZones = zoneList.filter((_, i) => i !== clickedZoneIndex);
+        setZoneList(newZones);
+        setSelectedZoneIndex(null);
+      }
+    }
+  };
+
+  // Find zone at point
+  const findZoneAtPoint = (x, y) => {
+    for (let i = zoneList.length - 1; i >= 0; i--) {
+      const zone = zoneList[i];
+      if (isPointInPolygon({ x, y }, zone.polygon)) {
+        return i;
+      }
+    }
+    return null;
+  };
+
+  // Find point near cursor (for dragging)
+  const findPointNearCursor = (x, y, threshold = 0.02) => {
+    for (let i = 0; i < zoneList.length; i++) {
+      const zone = zoneList[i];
+      for (let j = 0; j < zone.polygon.length; j++) {
+        const point = zone.polygon[j];
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < threshold) {
+          return { zoneIndex: i, pointIndex: j };
+        }
+      }
+    }
+    return null;
+  };
+
+  // Check if point is in polygon
+  const isPointInPolygon = (point, polygon) => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      
+      const intersect = ((yi > point.y) !== (yj > point.y))
+        && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  // Complete current zone
+  const completeZone = () => {
+    if (currentZone && currentZone.polygon.length >= 3) {
+      setZoneList([...zoneList, currentZone]);
+      setCurrentZone(null);
+      setSelectedZoneIndex(zoneList.length);
+    }
+  };
+
+  // Cancel current zone
+  const cancelZone = () => {
+    setCurrentZone(null);
+  };
+
+  // Save zones
+  const handleSave = async () => {
+    try {
+      // Save zones to the backend API
+      const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ zones: zoneList }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          error: t('zoneEditor.failedToSaveZones', {
+            message: t('zoneEditor.httpError', { status: response.status }),
+          }),
+        }));
+        throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
+      }
+
+      const result = await response.json();
+      console.log('Zones saved successfully:', result);
+
+      // Update parent component
+      onZonesChange(zoneList);
+      onClose();
+    } catch (error) {
+      console.error('Failed to save zones:', error);
+      setSaveError(t('zoneEditor.failedToSaveZones', { message: error.message }));
+    }
+  };
+
+  // Update zone property
+  const updateZoneProperty = (index, property, value) => {
+    const newZones = [...zoneList];
+    newZones[index] = { ...newZones[index], [property]: value };
+    setZoneList(newZones);
+  };
+
+  return <>
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+      <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex justify-between items-center p-6 border-b border-border">
+          <div>
+            <h3 className="text-2xl font-bold">{t('zoneEditor.title')}</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {t('zoneEditor.subtitle', { streamName })}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted"
+            aria-label={t('common.close')}
+            title={t('common.close')}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden flex">
+          {/* Canvas Area */}
+          <div className="flex-1 p-6 flex flex-col">
+            <div className="flex-1 relative bg-muted rounded-lg overflow-hidden">
+              {snapshotUrl && (
+                <img
+                  ref={imageRef}
+                  src={snapshotUrl}
+                  alt={t('zoneEditor.streamPreviewAlt')}
+                  className="hidden"
+                  crossOrigin="anonymous"
+                  onLoad={() => {
+                    clearSnapshotTimeout();
+                    console.log('✅ Snapshot loaded successfully');
+                    setImageLoaded(true);
+                    setSnapshotError(false);
+                    drawCanvas();
+                  }}
+                  onError={(e) => {
+                    clearSnapshotTimeout();
+                    console.error('❌ Failed to load snapshot:', e);
+                    console.error('Snapshot URL was:', snapshotUrl);
+                    setSnapshotError(true);
+                    setImageLoaded(true); // Show canvas anyway
+                  }}
+                />
+              )}
+              <canvas
+                ref={canvasRef}
+                onClick={handleCanvasClick}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                className="w-full h-full cursor-crosshair"
+                style={{ display: imageLoaded ? 'block' : 'none', minHeight: '400px' }}
+              />
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center flex-col space-y-2">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                  <p className="text-muted-foreground">{t('zoneEditor.loadingSnapshot')}</p>
+                  <p className="text-xs text-muted-foreground">{t('zoneEditor.usingGo2rtcSnapshotApi')}</p>
+                </div>
+              )}
+              {imageLoaded && snapshotError && (
+                <div className="absolute top-4 inset-s-4 bg-[hsl(var(--warning-muted))] border border-[hsl(var(--warning))] text-[hsl(var(--warning-muted-foreground))] px-3 py-2 rounded text-sm">
+                  ⚠️ {t('zoneEditor.snapshotUnavailable')}
+                </div>
+              )}
+            </div>
+
+            {/* Toolbar */}
+            <div className="mt-4 flex items-center justify-between bg-muted p-3 rounded-lg">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setEditMode('draw')}
+                  className={`px-4 py-2 rounded ${editMode === 'draw' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+                >
+                  ✏️ {t('zoneEditor.drawZone')}
+                </button>
+                <button
+                  onClick={() => setEditMode('edit')}
+                  className={`px-4 py-2 rounded ${editMode === 'edit' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+                >
+                  ✋ {t('zoneEditor.selectZone')}
+                </button>
+                <button
+                  onClick={() => setEditMode('delete')}
+                  className={`px-4 py-2 rounded ${editMode === 'delete' ? 'bg-[hsl(var(--danger))] text-[hsl(var(--danger-foreground))]' : 'bg-background'}`}
+                >
+                  🗑️ {t('common.delete')}
+                </button>
+              </div>
+              
+              {currentZone && (
+                <div className="flex space-x-2">
+                  <button onClick={completeZone} className="btn-success">
+                    {t('zoneEditor.completeZoneWithPoints', { count: currentZone.polygon.length })}
+                  </button>
+                  <button onClick={cancelZone} className="btn-secondary">
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar - Zone List */}
+          <div className="w-80 border-s border-border p-6 overflow-y-auto">
+            <h4 className="font-semibold mb-4">{t('zoneEditor.zonesCount', { count: zoneList.length })}</h4>
+            
+            {zoneList.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t('zoneEditor.noZonesDefined')}
+              </p>
+            )}
+
+            {zoneList.map((zone, index) => (
+              <div
+                key={zone.id}
+                className={`mb-3 p-3 rounded border ${
+                  index === selectedZoneIndex ? 'border-primary bg-primary/10' : 'border-border'
+                }`}
+                onClick={(event) => {
+                  // Preserve the native toggle until onChange records it below.
+                  if (event.target.type !== 'checkbox') setSelectedZoneIndex(index);
+                }}
+              >
+                <input
+                  type="text"
+                  value={zone.name}
+                  onChange={(e) => updateZoneProperty(index, 'name', e.target.value)}
+                  className="w-full mb-2 px-2 py-1 border border-input rounded bg-background text-foreground"
+                  placeholder={t('zoneEditor.zoneNamePlaceholder')}
+                />
+                
+                <div className="flex items-center space-x-2 mb-2">
+                  <label className="text-sm">{t('zoneEditor.color')}</label>
+                  <input
+                    type="color"
+                    value={zone.color || '#3b82f6'}
+                    onChange={(e) => updateZoneProperty(index, 'color', e.target.value)}
+                    className="w-12 h-8 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2 mb-2">
+                  <label className="inline-flex cursor-pointer items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={zone.enabled}
+                      onChange={(e) => {
+                        updateZoneProperty(index, 'enabled', e.target.checked);
+                        setSelectedZoneIndex(index);
+                      }}
+                    />
+                    <span className="text-sm">{t('common.enabled')}</span>
+                  </label>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {t('zoneEditor.pointsCount', { count: zone.polygon.length })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end space-x-3 p-6 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            {t('common.cancel')}
+          </button>
+          <button onClick={handleSave} className="btn-primary">
+            {t('zoneEditor.saveZones')}
+          </button>
+        </div>
+      </div>
+    </div>
+    <AlertDialog
+      isOpen={Boolean(saveError)}
+      onClose={() => setSaveError('')}
+      title={t('zoneEditor.title')}
+      message={saveError}
+      closeLabel={t('common.close')}
+    />
+  </>;
+}

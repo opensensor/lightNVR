@@ -32,7 +32,7 @@ import {
   segmentIntersectsDay,
   snapTimestampToRecordingEdge,
   timelineSegmentIdentity
-} from '../js/components/preact/timeline/timelineUtils.js';
+} from '../js/components/preact/timeline/timelineUtils.ts';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);

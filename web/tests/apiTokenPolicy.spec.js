@@ -5,7 +5,7 @@ import {
   selectableTokenActions,
   toggleTokenAction,
   validateTokenDraft,
-} from '../js/components/preact/users/apiTokenPolicy.js';
+} from '../js/components/preact/users/apiTokenPolicy.ts';
 
 describe('scoped API token UI helpers', () => {
   const actions = [

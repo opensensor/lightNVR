@@ -569,44 +569,44 @@ The frontend is a multi-page application with Preact components, built with Vite
 - **@tanstack/query** for data fetching and caching
 
 Key pages (`web/js/pages/`):
-- `index-page.jsx`: Live view entry point
-- `recordings-page.jsx`: Recording browser
-- `streams-page.jsx`: Stream management
-- `settings-page.jsx`: System settings
-- `system-page.jsx`: System information and logs
-- `users-page.jsx`: User management
-- `timeline-page.jsx`: Timeline playback
-- `hls-page.jsx`: Direct HLS viewer
-- `login-page.jsx`: Authentication
+- `index-page.tsx`: Live view entry point
+- `recordings-page.tsx`: Recording browser
+- `streams-page.tsx`: Stream management
+- `settings-page.tsx`: System settings
+- `system-page.tsx`: System information and logs
+- `users-page.tsx`: User management
+- `timeline-page.tsx`: Timeline playback
+- `hls-page.tsx`: Direct HLS viewer
+- `login-page.tsx`: Authentication
 
 Key components (`web/js/components/preact/`):
-- `LiveView.jsx`: Live camera grid with WebRTC/HLS/MSE
-- `WebRTCVideoCell.jsx`, `HLSVideoCell.jsx`, `MSEVideoCell.jsx`: Video player cells
-- `RecordingsView.jsx`: Recording browser and playback
+- `LiveView.tsx`: Live camera grid with WebRTC/HLS/MSE
+- `WebRTCVideoCell.tsx`, `HLSVideoCell.tsx`, `MSEVideoCell.tsx`: Video player cells
+- `RecordingsView.tsx`: Recording browser and playback
 - `recordings/`: Modular recordings sub-components (filters, table, pagination)
-- `StreamConfigModal.jsx`: Stream configuration with detection zones
-- `StreamsView.jsx`: Stream list and management
-- `SettingsView.jsx`: System settings
-- `SystemView.jsx`: System information dashboard
+- `StreamConfigModal.tsx`: Stream configuration with detection zones
+- `StreamsView.tsx`: Stream list and management
+- `SettingsView.tsx`: System settings
+- `SystemView.tsx`: System information dashboard
 - `system/`: System sub-components (logs, memory, streams info, controls)
 - `timeline/`: Timeline player components (segments, ruler, cursor, controls)
-- `UsersView.jsx`: User management
+- `UsersView.tsx`: User management
 - `users/`: User sub-components (add/edit/delete modals, TOTP setup, API keys)
-- `ZoneEditor.jsx`: Detection zone polygon editor
-- `DetectionOverlay.jsx`: Detection result overlay on video
-- `PTZControls.jsx`: Pan-Tilt-Zoom camera controls
-- `ThemeCustomizer.jsx`: Theme selection and dark mode
-- `Toast.jsx`, `ToastContainer.jsx`: Notification system
-- `SnapshotManager.jsx`: Camera snapshot capture
-- `FullscreenManager.jsx`: Fullscreen video management
-- `UI.jsx`: Shared UI primitives
+- `ZoneEditor.tsx`: Detection zone polygon editor
+- `DetectionOverlay.tsx`: Detection result overlay on video
+- `PTZControls.tsx`: Pan-Tilt-Zoom camera controls
+- `ThemeCustomizer.tsx`: Theme selection and dark mode
+- `Toast.tsx`, `ToastContainer.tsx`: Notification system
+- `SnapshotManager.tsx`: Camera snapshot capture
+- `FullscreenManager.tsx`: Fullscreen video management
+- `UI.tsx`: Shared UI primitives
 
 Utilities (`web/js/utils/`):
-- `auth-utils.js`: Authentication helpers
-- `dom-utils.js`: DOM manipulation utilities
-- `settings-utils.js`: Settings management
+- `auth-utils.ts`: Authentication helpers
+- `dom-utils.ts`: DOM manipulation utilities
+- `settings-utils.ts`: Settings management
 - `theme-init.js`: Theme initialization
-- `url-utils.js`: URL parameter handling
+- `url-utils.ts`: URL parameter handling
 
 ## Configuration System
 

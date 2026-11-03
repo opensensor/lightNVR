@@ -15,7 +15,7 @@ export class StreamsPage extends BasePage {
   }
 
   get addStreamButton(): Locator {
-    // Use specific ID from StreamsView.jsx
+    // Use specific ID from StreamsView.tsx
     return this.page.locator('#add-stream-btn, button:has-text("Add Stream")').first();
   }
 

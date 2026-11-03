@@ -33,7 +33,7 @@ async function openZoneBrowser() {
       loader: 'jsx',
       contents: `
   import {h,render} from 'preact';
-  import {ZoneEditor} from './js/components/preact/ZoneEditor.jsx';
+  import {ZoneEditor} from './js/components/preact/ZoneEditor.tsx';
   const zones=${JSON.stringify(fixtureZones)};
   window.calls={saved:[],closed:0,events:[],requests:[]};
   window.fetch=async(url,options={})=>{if(options.method==='POST'){window.calls.requests.push({url,method:options.method,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})};}return{ok:true,json:async()=>{window.zonesLoaded=true;return{zones};}};};
@@ -50,7 +50,7 @@ async function openZoneBrowser() {
       name: 'fixture',
       setup(builder) {
         builder.onResolve({
-          filter: /(?:i18n|settings-utils)\.js$/
+          filter: /(?:i18n|settings-utils)\.ts$/
         }, args => ({
           path: args.path,
           namespace: 'fixture'

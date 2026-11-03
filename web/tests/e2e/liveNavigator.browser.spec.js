@@ -22,8 +22,8 @@ async function openNavigator() {
       loader: 'jsx',
       contents: `
   import { h, render } from 'preact';
-  import { QueryClient, QueryClientProvider } from './js/query-client.js';
-  import { LiveOperatorNavigator } from './js/components/preact/live/LiveOperatorNavigator.jsx';
+  import { QueryClient, QueryClientProvider } from './js/query-client.ts';
+  import { LiveOperatorNavigator } from './js/components/preact/live/LiveOperatorNavigator.tsx';
   const streams = ${JSON.stringify(streams)};
   window.calls = { searches: 0, layoutPuts: [], applied: [] };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -67,7 +67,7 @@ async function openNavigator() {
     plugins: [{
       name: 'fixture',
       setup(builder) {
-        builder.onResolve({ filter: /(?:\/i18n|ToastContainer)\.jsx?$/ }, (args) => ({
+        builder.onResolve({ filter: /(?:\/i18n|ToastContainer)\.tsx?$/ }, (args) => ({
           path: args.path, namespace: 'fixture',
         }));
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({

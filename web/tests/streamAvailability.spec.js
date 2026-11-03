@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   getInitialStreamAvailability,
   hasStreamSummaryFilters,
-} from '../js/utils/stream-availability.js';
+} from '../js/utils/stream-availability.ts';
 
 describe('stream Configuration availability (#582)', () => {
   test('shows all streams by default and honors explicit URL filters', () => {
@@ -38,7 +38,7 @@ describe('stream Configuration availability (#582)', () => {
 
   test('keeps the availability picker outside the empty-result loader', () => {
     const source = fs.readFileSync(
-      path.resolve(__dirname, '../js/components/preact/StreamsView.jsx'),
+      path.resolve(__dirname, '../js/components/preact/StreamsView.tsx'),
       'utf8'
     );
     const picker = source.indexOf('id="streams-availability"');

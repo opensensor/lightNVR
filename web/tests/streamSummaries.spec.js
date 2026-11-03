@@ -1,7 +1,7 @@
 import {
   fetchAllStreamSummaries,
   resolveRecordedStreamSummary,
-} from '../js/utils/stream-summaries.js';
+} from '../js/utils/stream-summaries.ts';
 
 describe('stream summary pagination', () => {
   afterEach(() => jest.restoreAllMocks());

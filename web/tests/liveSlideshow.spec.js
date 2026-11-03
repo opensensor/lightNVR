@@ -7,7 +7,7 @@ import {
   readLiveSlideshow,
   slideshowSlideCount,
   writeLiveSlideshow,
-} from '../js/components/preact/useLiveSlideshow.js';
+} from '../js/components/preact/useLiveSlideshow.ts';
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));

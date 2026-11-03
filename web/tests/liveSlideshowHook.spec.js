@@ -68,7 +68,7 @@ const {
   LIVE_SLIDESHOW_INTERVAL_KEY,
   LIVE_SLIDESHOW_KEY,
   useLiveSlideshow,
-} = require('../js/components/preact/useLiveSlideshow.js');
+} = require('../js/components/preact/useLiveSlideshow.ts');
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));

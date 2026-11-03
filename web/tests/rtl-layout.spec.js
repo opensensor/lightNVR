@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getTextDirection } from '../js/i18n.js';
+import { getTextDirection } from '../js/i18n.ts';
 
 // RTL layout support (#657). The UI uses logical utilities (ms-/me-/ps-/pe-,
 // inset-s-/inset-e-, text-start/end, rounded-s/e, border-s/e) so it mirrors
@@ -15,21 +15,21 @@ const PHYSICAL_CLASS = /(?<=^|[\s"'`{(:])-?(?:m[lr]|p[lr]|left|right|rounded-(?:
 
 // Files whose geometry maps to time or camera motion, so it must not mirror.
 const PHYSICAL_FILES = new Set([
-  'js/components/preact/PTZControls.jsx',
-  'js/components/preact/DetectionOverlay.jsx',
-  'js/components/preact/timeline/TimelineRuler.jsx',
-  'js/components/preact/timeline/TimelineCursor.jsx',
-  'js/components/preact/timeline/TimelineSegments.jsx',
+  'js/components/preact/PTZControls.tsx',
+  'js/components/preact/DetectionOverlay.tsx',
+  'js/components/preact/timeline/TimelineRuler.tsx',
+  'js/components/preact/timeline/TimelineCursor.tsx',
+  'js/components/preact/timeline/TimelineSegments.tsx',
 ]);
 
 // Remaining intentional physical utilities: "file|class" -> occurrences.
 const ALLOWED = new Map([
-  ['js/components/preact/recordings/RecordingsGrid.jsx|left-1/2', 1],
-  ['js/components/preact/ToastContainer.jsx|left-1/2', 1],
-  ['js/components/preact/UI.jsx|left-0', 1],
-  ['js/components/preact/timeline/TimelinePlayer.jsx|left-0', 1],
+  ['js/components/preact/recordings/RecordingsGrid.tsx|left-1/2', 1],
+  ['js/components/preact/ToastContainer.tsx|left-1/2', 1],
+  ['js/components/preact/UI.tsx|left-0', 1],
+  ['js/components/preact/timeline/TimelinePlayer.tsx|left-0', 1],
   // Inline hint inside the dir="ltr" timeline track.
-  ['js/components/preact/timeline/TimelinePage.jsx|right-2', 1],
+  ['js/components/preact/timeline/TimelinePage.tsx|right-2', 1],
   ['css/components.css|left-1/2', 1],
   ['css/live.css|left-1/2', 1],
   ['css/base.css|left-0', 1],

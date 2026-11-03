@@ -36,8 +36,8 @@ async function openPanel(targetsResponse) {
       loader: 'jsx',
       contents: `
   import { h, render } from 'preact';
-  import { QueryClient, QueryClientProvider } from './js/query-client.js';
-  import { MemoryStorage } from './js/components/preact/system/MemoryStorage.jsx';
+  import { QueryClient, QueryClientProvider } from './js/query-client.ts';
+  import { MemoryStorage } from './js/components/preact/system/MemoryStorage.tsx';
   const targets = ${JSON.stringify(targetsResponse)};
   window.fetch = async (url) => String(url) === '/api/storage-targets'
     ? new Response(JSON.stringify(targets.body), { status: targets.status, headers: { 'Content-Type': 'application/json' } })
@@ -58,7 +58,7 @@ async function openPanel(targetsResponse) {
     plugins: [{
       name: 'fixture',
       setup(builder) {
-        builder.onResolve({ filter: /\/i18n\.js$/ }, (args) => ({ path: args.path, namespace: 'fixture' }));
+        builder.onResolve({ filter: /\/i18n\.ts$/ }, (args) => ({ path: args.path, namespace: 'fixture' }));
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
           contents: "export const t=(key,params)=>params?key+JSON.stringify(params):key;export const useI18n=()=>({t});",
           loader: 'js',
