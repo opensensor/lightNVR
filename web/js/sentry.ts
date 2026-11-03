@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as Sentry from '@sentry/browser';
 
 Sentry.init({

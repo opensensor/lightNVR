@@ -1,6 +1,22 @@
-// @ts-nocheck
+import type { ApiErrorBody } from '../types/core.ts';
+
+export interface PrepareRecordingPlaybackOptions {
+  signal?: AbortSignal;
+  onWaiting?: () => void;
+  compatibility?: boolean;
+}
+
+export interface LoadRecordingPlaybackCallbacks {
+  onPreparing?: () => void;
+  onReady?: () => void;
+  onError?: (error: Error) => void;
+}
+
 /** Prepare a compatibility copy only after the browser rejects the original. */
-export async function prepareRecordingPlayback(videoUrl, { signal, onWaiting = () => {}, compatibility = true } = {}) {
+export async function prepareRecordingPlayback(
+  videoUrl: string,
+  { signal, onWaiting = () => {}, compatibility = true }: PrepareRecordingPlaybackOptions = {},
+): Promise<string> {
   const url = new URL(videoUrl, globalThis.location?.href || 'http://localhost');
   if (!/^\/api\/recordings\/(play|download)\/\d+$/.test(url.pathname)) return videoUrl;
   url.searchParams.set('transcode', compatibility ? '1' : '0');
@@ -13,15 +29,15 @@ export async function prepareRecordingPlayback(videoUrl, { signal, onWaiting = (
     signal?.throwIfAborted();
     if (response.status === 200) return playbackUrl;
     if (response.status !== 202) {
-      const error = await response.json().catch(() => ({}));
+      const error = (await response.json().catch(() => ({}))) as ApiErrorBody;
       throw new Error(error.error || 'Unable to prepare recording for playback. Please try again later.');
     }
     onWaiting();
     const retryAfter = Number(response.headers.get('Retry-After')) || 2;
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const abort = () => {
         clearTimeout(timer);
-        reject(signal.reason);
+        reject(signal!.reason); // Only reachable through signal's own abort handling below.
       };
       const timer = setTimeout(() => {
         signal?.removeEventListener('abort', abort);
@@ -38,9 +54,9 @@ export async function prepareRecordingPlayback(videoUrl, { signal, onWaiting = (
  * error; network errors and aborted loads must not start an expensive encode.
  * The returned cleanup owns both media loading and any fallback polling.
  */
-export function loadRecordingPlayback(video, videoUrl, {
+export function loadRecordingPlayback(video: HTMLVideoElement, videoUrl: string, {
   onPreparing = () => {}, onReady = () => {}, onError = () => {},
-} = {}) {
+}: LoadRecordingPlaybackCallbacks = {}): () => void {
   const controller = new AbortController();
   let fallbackStarted = false;
   let sourcePreparationStarted = false;
@@ -65,7 +81,7 @@ export function loadRecordingPlayback(video, videoUrl, {
       video.src = url;
       video.load();
     } catch (error) {
-      if (!controller.signal.aborted) onError(error);
+      if (!controller.signal.aborted) onError(error as Error);
     }
   };
   video.addEventListener('error', handleError);

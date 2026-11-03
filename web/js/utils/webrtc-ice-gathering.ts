@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Bounded ICE gathering helper for the go2rtc HTTP signaling flow.
  *
@@ -16,7 +15,9 @@ export const ICE_GATHER_OUTCOME = {
   COMPLETE: 'complete',
   TIMEOUT: 'timeout',
   ABORTED: 'aborted',
-};
+} as const;
+
+export type IceGatherOutcome = (typeof ICE_GATHER_OUTCOME)[keyof typeof ICE_GATHER_OUTCOME];
 
 /**
  * Wait for a peer connection's ICE gathering to complete, bounded by a
@@ -29,11 +30,11 @@ export const ICE_GATHER_OUTCOME = {
  * @returns {Promise<string>} Resolves with one of ICE_GATHER_OUTCOME values.
  */
 export function waitForIceGathering(
-  pc,
-  timeoutMs = DEFAULT_ICE_GATHERING_TIMEOUT_MS,
-  abortSignal = null
-) {
-  return new Promise((resolve) => {
+  pc: RTCPeerConnection | null | undefined,
+  timeoutMs: number = DEFAULT_ICE_GATHERING_TIMEOUT_MS,
+  abortSignal: AbortSignal | null = null
+): Promise<IceGatherOutcome> {
+  return new Promise<IceGatherOutcome>((resolve) => {
     if (!pc || pc.iceGatheringState === 'complete') {
       resolve(ICE_GATHER_OUTCOME.COMPLETE);
       return;
@@ -48,7 +49,7 @@ export function waitForIceGathering(
     }
 
     let settled = false;
-    const finish = (outcome) => {
+    const finish = (outcome: IceGatherOutcome) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -68,8 +69,8 @@ export function waitForIceGathering(
     const timer = setTimeout(() => finish(ICE_GATHER_OUTCOME.TIMEOUT), timeoutMs);
     // Under Node (unit tests) setTimeout returns a Timeout object; unref it so
     // a pending gather bound never keeps the test process alive.
-    if (typeof timer === 'object' && typeof timer.unref === 'function') {
-      timer.unref();
+    if (typeof timer === 'object' && typeof (timer as { unref?: unknown }).unref === 'function') {
+      (timer as { unref: () => void }).unref();
     }
     pc.addEventListener('icegatheringstatechange', onStateChange);
     if (abortSignal) {

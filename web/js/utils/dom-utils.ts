@@ -1,15 +1,23 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface DOM Utilities
  * Provides abstracted methods for DOM manipulation to avoid direct DOM access
  */
+
+export interface CreateElementOptions {
+  attributes?: Record<string, string>;
+  properties?: Record<string, unknown>;
+  textContent?: string;
+  innerHTML?: string;
+  className?: string;
+  children?: Node[];
+}
 
 /**
  * Get an element by its ID
  * @param {string} id - Element ID
  * @returns {HTMLElement|null} - The element or null if not found
  */
-export function getElementById(id) {
+export function getElementById(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
@@ -19,8 +27,8 @@ export function getElementById(id) {
  * @param {HTMLElement} [parent=document] - Parent element to query within
  * @returns {HTMLElement|null} - The element or null if not found
  */
-export function querySelector(selector, parent = document) {
-  return parent.querySelector(selector);
+export function querySelector(selector: string, parent: ParentNode = document): HTMLElement | null {
+  return parent.querySelector<HTMLElement>(selector);
 }
 
 /**
@@ -29,8 +37,8 @@ export function querySelector(selector, parent = document) {
  * @param {HTMLElement} [parent=document] - Parent element to query within
  * @returns {NodeList} - List of matching elements
  */
-export function querySelectorAll(selector, parent = document) {
-  return parent.querySelectorAll(selector);
+export function querySelectorAll(selector: string, parent: ParentNode = document): NodeListOf<HTMLElement> {
+  return parent.querySelectorAll<HTMLElement>(selector);
 }
 
 /**
@@ -45,7 +53,10 @@ export function querySelectorAll(selector, parent = document) {
  * @param {Array} [options.children=[]] - Child elements to append
  * @returns {HTMLElement} - The created element
  */
-export function createElement(tagName, options = {}) {
+export function createElement<K extends keyof HTMLElementTagNameMap>(
+  tagName: K,
+  options: CreateElementOptions = {},
+): HTMLElementTagNameMap[K] {
   const element = document.createElement(tagName);
   
   // Set attributes
@@ -58,7 +69,8 @@ export function createElement(tagName, options = {}) {
   // Set properties
   if (options.properties) {
     Object.entries(options.properties).forEach(([key, value]) => {
-      element[key] = value;
+      // options.properties writes arbitrary named properties, chosen by the caller.
+      (element as unknown as Record<string, unknown>)[key] = value;
     });
   }
   
@@ -93,7 +105,7 @@ export function createElement(tagName, options = {}) {
  * @param {HTMLElement} child - Child element to append
  * @returns {HTMLElement} - The appended child element
  */
-export function appendChild(parent, child) {
+export function appendChild<T extends Node>(parent: Node, child: T): T {
   return parent.appendChild(child);
 }
 
@@ -103,7 +115,7 @@ export function appendChild(parent, child) {
  * @param {HTMLElement} child - Child element to remove
  * @returns {HTMLElement} - The removed child element
  */
-export function removeChild(parent, child) {
+export function removeChild<T extends Node>(parent: Node, child: T): T {
   return parent.removeChild(child);
 }
 
@@ -114,7 +126,12 @@ export function removeChild(parent, child) {
  * @param {Function} listener - Event listener function
  * @param {Object} [options] - Event listener options
  */
-export function addEventListener(element, eventType, listener, options) {
+export function addEventListener(
+  element: EventTarget,
+  eventType: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | AddEventListenerOptions,
+): void {
   element.addEventListener(eventType, listener, options);
 }
 
@@ -125,7 +142,12 @@ export function addEventListener(element, eventType, listener, options) {
  * @param {Function} listener - Event listener function
  * @param {Object} [options] - Event listener options
  */
-export function removeEventListener(element, eventType, listener, options) {
+export function removeEventListener(
+  element: EventTarget,
+  eventType: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | EventListenerOptions,
+): void {
   element.removeEventListener(eventType, listener, options);
 }
 
@@ -134,7 +156,7 @@ export function removeEventListener(element, eventType, listener, options) {
  * @param {HTMLElement} element - Element to add class to
  * @param {string} className - Class name to add
  */
-export function addClass(element, className) {
+export function addClass(element: Element, className: string): void {
   element.classList.add(className);
 }
 
@@ -143,7 +165,7 @@ export function addClass(element, className) {
  * @param {HTMLElement} element - Element to remove class from
  * @param {string} className - Class name to remove
  */
-export function removeClass(element, className) {
+export function removeClass(element: Element, className: string): void {
   element.classList.remove(className);
 }
 
@@ -154,7 +176,7 @@ export function removeClass(element, className) {
  * @param {boolean} [force] - Force add or remove
  * @returns {boolean} - Whether the class is now present
  */
-export function toggleClass(element, className, force) {
+export function toggleClass(element: Element, className: string, force?: boolean): boolean {
   return element.classList.toggle(className, force);
 }
 
@@ -164,7 +186,7 @@ export function toggleClass(element, className, force) {
  * @param {string} className - Class name to check for
  * @returns {boolean} - Whether the element has the class
  */
-export function hasClass(element, className) {
+export function hasClass(element: Element, className: string): boolean {
   return element.classList.contains(className);
 }
 
@@ -173,7 +195,7 @@ export function hasClass(element, className) {
  * @param {HTMLElement} element - Element to set text content on
  * @param {string} text - Text content to set
  */
-export function setTextContent(element, text) {
+export function setTextContent(element: Node, text: string): void {
   element.textContent = text;
 }
 
@@ -182,7 +204,7 @@ export function setTextContent(element, text) {
  * @param {HTMLElement} element - Element to set inner HTML on
  * @param {string} html - HTML content to set
  */
-export function setInnerHTML(element, html) {
+export function setInnerHTML(element: Element, html: string): void {
   element.innerHTML = html;
 }
 
@@ -190,7 +212,7 @@ export function setInnerHTML(element, html) {
  * Get the body element
  * @returns {HTMLElement} - The body element
  */
-export function getBodyElement() {
+export function getBodyElement(): HTMLElement {
   return document.body;
 }
 
@@ -199,7 +221,7 @@ export function getBodyElement() {
  * @param {HTMLElement} element - Element to append to body
  * @returns {HTMLElement} - The appended element
  */
-export function appendToBody(element) {
+export function appendToBody<T extends Node>(element: T): T {
   return document.body.appendChild(element);
 }
 
@@ -208,7 +230,7 @@ export function appendToBody(element) {
  * @param {HTMLElement} element - Element to remove from body
  * @returns {HTMLElement} - The removed element
  */
-export function removeFromBody(element) {
+export function removeFromBody<T extends Node>(element: T): T {
   return document.body.removeChild(element);
 }
 
@@ -217,7 +239,7 @@ export function removeFromBody(element) {
  * @param {string} url - URL to download
  * @param {string} [filename] - Filename for the download
  */
-export function triggerDownload(url, filename) {
+export function triggerDownload(url: string, filename?: string): void {
   const link = createElement('a', {
     attributes: {
       href: url,
@@ -234,7 +256,7 @@ export function triggerDownload(url, filename) {
  * Show a loading indicator on an element
  * @param {HTMLElement} element - Element to show loading on
  */
-export function showLoading(element) {
+export function showLoading(element: HTMLElement | null | undefined): void {
   if (!element) return;
 
   // Add loading class
@@ -258,7 +280,7 @@ export function showLoading(element) {
  * Hide loading indicator on an element
  * @param {HTMLElement} element - Element to hide loading from
  */
-export function hideLoading(element) {
+export function hideLoading(element: HTMLElement | null | undefined): void {
   if (!element) return;
 
   // Remove loading class

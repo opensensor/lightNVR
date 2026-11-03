@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Navigation Utilities
  * Helper functions for reliable navigation from Preact event handlers.
@@ -11,7 +10,7 @@
  * @param {Event} [event] Event that triggered the navigation
  * @returns {boolean} Always false to simplify onClick usage
  */
-export function forceNavigation(href, event) {
+export function forceNavigation(href: string | null | undefined, event?: Event | null): boolean {
   if (event) {
     event.preventDefault();
     event.stopPropagation();

@@ -1,13 +1,23 @@
-// @ts-nocheck
 /**
  * Player Telemetry - Client-side QoE metrics collection
  * Tracks TTFF, rebuffer events, and sends to POST /api/telemetry/player
  */
 
+import type { LiveTransport } from '../types/core.ts';
+
+export interface PlayerTelemetry {
+    recordFirstFrame(): void;
+    recordRebufferStart(): void;
+    recordRebufferEnd(): void;
+    recordResolutionSwitch(): void;
+    updateRtt(rttMs: number): void;
+    destroy(): void;
+}
+
 const SEND_INTERVAL_MS = 30000; // Send every 30 seconds
 let sessionCounter = 0;
 
-export function createPlayerTelemetry(streamName, transport) {
+export function createPlayerTelemetry(streamName: string, transport: LiveTransport): PlayerTelemetry {
     const sessionId = `${Date.now()}-${++sessionCounter}`;
     const mountTime = performance.now();
     let ttffMs = 0;
@@ -16,7 +26,7 @@ export function createPlayerTelemetry(streamName, transport) {
     let rebufferStart = 0;
     let resolutionSwitches = 0;
     let webrtcRttMs = 0;
-    let sendTimer = null;
+    let sendTimer: ReturnType<typeof setInterval> | null = null;
     let destroyed = false;
 
     function send() {
@@ -82,7 +92,7 @@ export function createPlayerTelemetry(streamName, transport) {
         },
 
         /** Call with RTT value from WebRTC stats */
-        updateRtt(rttMs) {
+        updateRtt(rttMs: number) {
             webrtcRttMs = rttMs;
         },
 

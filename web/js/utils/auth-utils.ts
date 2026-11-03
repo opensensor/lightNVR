@@ -1,16 +1,17 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Authentication Utilities
  * Helper functions for managing authentication state and session validation
  */
 
 import { enhancedFetch } from '../fetch-utils.ts';
+import type {} from '../types/global.d.ts';
+import type { AuthVerifyResponse, SessionInfo, SessionUser } from '../types/core.ts';
 
 /**
  * Check if user has authentication credentials stored
  * @returns {boolean} - True if auth credentials exist
  */
-export function hasAuthCredentials() {
+export function hasAuthCredentials(): boolean {
   const auth = localStorage.getItem('auth');
   const sessionCookie = document.cookie.split('; ').find(row => row.startsWith('session='));
   return !!(auth || sessionCookie);
@@ -20,7 +21,7 @@ export function hasAuthCredentials() {
  * Get authentication headers for API requests
  * @returns {Object} - Headers object with Authorization if available
  */
-export function getAuthHeaders() {
+export function getAuthHeaders(): Record<string, string> {
   const auth = localStorage.getItem('auth');
   return auth ? { 'Authorization': 'Basic ' + auth } : {};
 }
@@ -28,7 +29,7 @@ export function getAuthHeaders() {
 /**
  * Clear all authentication state
  */
-export function clearAuthState() {
+export function clearAuthState(): void {
   // Clear localStorage
   localStorage.removeItem('auth');
 
@@ -42,7 +43,7 @@ export function clearAuthState() {
  * Validate current session by making a lightweight API call
  * @returns {Promise<{valid: boolean, id?: number, username?: string, email?: string, role?: string, role_id?: number, is_active?: boolean, password_change_locked?: boolean, must_change_password?: boolean, demo_mode?: boolean, authenticated?: boolean}>} - Session info
  */
-export async function validateSession() {
+export async function validateSession(): Promise<SessionInfo> {
   try {
     // Use enhancedFetch with skipAuthRedirect to avoid triggering the global 401 handler
     // We want to handle the validation result ourselves
@@ -52,7 +53,7 @@ export async function validateSession() {
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as AuthVerifyResponse;
       // In demo mode, the server returns authenticated: false but demo_mode: true
       // We treat this as a valid session with viewer-level access
       const isDemoMode = data.demo_mode === true;
@@ -79,7 +80,7 @@ export async function validateSession() {
     return { valid: false };
   } catch (error) {
     // If we get a 401 or other error, session is invalid
-    console.debug('Session validation failed:', error.message);
+    console.debug('Session validation failed:', (error as Error).message);
     return { valid: false };
   }
 }
@@ -88,7 +89,7 @@ export async function validateSession() {
  * Check if demo mode is enabled
  * @returns {boolean} - True if in demo mode
  */
-export function isDemoMode() {
+export function isDemoMode(): boolean {
   return window._demoMode === true;
 }
 
@@ -96,7 +97,7 @@ export function isDemoMode() {
  * Get user info from session
  * @returns {Promise<{username: string, role: string, role_id: number}|null>} - User info or null
  */
-export async function getUserInfo() {
+export async function getUserInfo(): Promise<SessionUser | null> {
   const session = await validateSession();
   if (session.valid) {
     return {
@@ -117,7 +118,7 @@ export async function getUserInfo() {
  * Check if user has admin role
  * @returns {Promise<boolean>}
  */
-export async function isAdmin() {
+export async function isAdmin(): Promise<boolean> {
   const session = await validateSession();
   return session.valid && session.role === 'admin';
 }
@@ -126,7 +127,7 @@ export async function isAdmin() {
  * Check if user has viewer role (most restrictive)
  * @returns {Promise<boolean>}
  */
-export async function isViewer() {
+export async function isViewer(): Promise<boolean> {
   const session = await validateSession();
   return session.valid && session.role === 'viewer';
 }
@@ -135,7 +136,7 @@ export async function isViewer() {
  * Check if we're currently on the login page
  * @returns {boolean} - True if on login page
  */
-export function isOnLoginPage() {
+export function isOnLoginPage(): boolean {
   return window.location.pathname.includes('login.html');
 }
 
@@ -143,7 +144,7 @@ export function isOnLoginPage() {
  * Redirect to login page with optional reason
  * @param {string} reason - Reason for redirect (optional)
  */
-export function redirectToLogin(reason = null) {
+export function redirectToLogin(reason: string | null = null): void {
   if (isOnLoginPage()) {
     return; // Already on login page
   }
@@ -167,7 +168,7 @@ export function redirectToLogin(reason = null) {
  * @param {number} intervalMs - Interval in milliseconds (default: 5 minutes)
  * @returns {number|null} - Interval ID that can be used to clear the interval, or null if not setup
  */
-export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
+export function setupSessionValidation(intervalMs: number = 5 * 60 * 1000): ReturnType<typeof setInterval> | null {
   // Don't setup validation on login page
   if (isOnLoginPage()) {
     console.debug('Skipping session validation setup on login page');

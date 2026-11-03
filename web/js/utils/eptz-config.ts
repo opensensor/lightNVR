@@ -1,5 +1,41 @@
-// @ts-nocheck
-export const DEFAULT_EPTZ_CONFIG = Object.freeze({
+/** The JSON document stored in a stream's eptz_config field. */
+export interface EptzConfigDocument {
+  version: 1;
+  projection: 'equidistant';
+  mount: 'ceiling';
+  centerX: number;
+  centerY: number;
+  radius: number;
+  fov: number;
+  rotation: number;
+  defaultYaw: number;
+  defaultTilt: number;
+  defaultViewFov: number;
+}
+
+export interface EptzConfig extends EptzConfigDocument {
+  enabled: boolean;
+}
+
+export interface EptzFormFields {
+  eptzEnabled: boolean;
+  eptzCenterX: number;
+  eptzCenterY: number;
+  eptzRadius: number;
+  eptzFov: number;
+  eptzRotation: number;
+  eptzDefaultYaw: number;
+  eptzDefaultTilt: number;
+  eptzDefaultViewFov: number;
+}
+
+/** Numeric fields may hold raw form input; parseEptzConfig clamps or defaults them. */
+export type EptzFormInput = { [K in keyof EptzFormFields]?: unknown };
+
+/** Input to serializeEptzConfig: numeric fields are normalized the same way. */
+export type EptzConfigInput = { [K in keyof EptzConfig]?: unknown };
+
+export const DEFAULT_EPTZ_CONFIG: Readonly<EptzConfigDocument> = Object.freeze({
   version: 1,
   projection: 'equidistant',
   mount: 'ceiling',
@@ -13,18 +49,18 @@ export const DEFAULT_EPTZ_CONFIG = Object.freeze({
   defaultViewFov: 75,
 });
 
-const clamp = (value, minimum, maximum, fallback) => {
+const clamp = (value: unknown, minimum: number, maximum: number, fallback: number): number => {
   const number = Number(value);
   return Number.isFinite(number)
     ? Math.min(maximum, Math.max(minimum, number))
     : fallback;
 };
 
-export function parseEptzConfig(raw) {
+export function parseEptzConfig(raw: unknown): EptzConfig {
   if (!raw) return { enabled: false, ...DEFAULT_EPTZ_CONFIG };
 
   try {
-    const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, unknown> | null;
     if (!value || value.version !== 1 || value.projection !== 'equidistant' ||
         value.mount !== 'ceiling') {
       return { enabled: false, ...DEFAULT_EPTZ_CONFIG };
@@ -46,7 +82,7 @@ export function parseEptzConfig(raw) {
   }
 }
 
-export function serializeEptzConfig(value) {
+export function serializeEptzConfig(value: EptzConfigInput | null | undefined): string {
   if (!value?.enabled) return '';
   const normalized = parseEptzConfig({
     ...DEFAULT_EPTZ_CONFIG,
@@ -59,11 +95,11 @@ export function serializeEptzConfig(value) {
   return JSON.stringify(document);
 }
 
-export function isEptzEnabled(raw) {
+export function isEptzEnabled(raw: unknown): boolean {
   return parseEptzConfig(raw).enabled;
 }
 
-export function eptzFormFields(raw) {
+export function eptzFormFields(raw: unknown): EptzFormFields {
   const config = parseEptzConfig(raw);
   return {
     eptzEnabled: config.enabled,
@@ -78,7 +114,7 @@ export function eptzFormFields(raw) {
   };
 }
 
-export function eptzConfigFromForm(stream) {
+export function eptzConfigFromForm(stream: EptzFormInput): EptzConfigInput {
   return {
     enabled: !!stream.eptzEnabled,
     centerX: stream.eptzCenterX,

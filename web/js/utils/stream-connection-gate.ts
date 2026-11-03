@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Stream Connection Gate — bounds concurrent stream connection attempts.
  *
@@ -32,7 +31,31 @@ export const GatePriority = {
   HIGH: 0,    // user-initiated (manual retry, single-stream view)
   NORMAL: 1,  // streams the backend reports healthy
   LOW: 2      // streams already known to be offline/reconnecting
-};
+} as const;
+
+export type GatePriorityLevel = (typeof GatePriority)[keyof typeof GatePriority];
+
+export interface GateRunOptions {
+  /** GatePriority level. */
+  priority?: number;
+  /** Per-attempt timeout override. */
+  timeoutMs?: number;
+  /** Caller signal: cancels the attempt whether queued or running. */
+  signal?: AbortSignal | null;
+}
+
+interface GateItem {
+  fn: (signal: AbortSignal) => unknown;
+  priority: number;
+  timeoutMs: number;
+  signal: AbortSignal | null | undefined;
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  seq: number;
+  controller: AbortController | null;
+  timedOut: boolean;
+  onAbort: (() => void) | null;
+}
 
 /** Error name used when an attempt is killed by the gate's timeout. */
 const GATE_TIMEOUT_NAME = 'GateTimeoutError';
@@ -43,8 +66,8 @@ const GATE_TIMEOUT_NAME = 'GateTimeoutError';
  * @param {Error} err
  * @returns {boolean}
  */
-export function isGateTimeout(err) {
-  return !!err && err.name === GATE_TIMEOUT_NAME;
+export function isGateTimeout(err: unknown): boolean {
+  return !!err && (err as Error).name === GATE_TIMEOUT_NAME;
 }
 
 /**
@@ -54,16 +77,22 @@ export function isGateTimeout(err) {
  * @param {Error} err
  * @returns {boolean}
  */
-export function isGateAbort(err) {
-  return !!err && err.name === 'AbortError';
+export function isGateAbort(err: unknown): boolean {
+  return !!err && (err as Error).name === 'AbortError';
 }
 
-function makeAbortError() {
+function makeAbortError(): DOMException {
   return new DOMException('Connection attempt aborted', 'AbortError');
 }
 
 export class StreamConnectionGate {
-  constructor(maxConcurrent = 6, attemptTimeoutMs = 10000) {
+  declare maxConcurrent: number;
+  declare attemptTimeoutMs: number;
+  declare activeCount: number;
+  declare queue: GateItem[];
+  declare _seq: number;
+
+  constructor(maxConcurrent: number = 6, attemptTimeoutMs: number = 10000) {
     this.maxConcurrent = maxConcurrent;
     this.attemptTimeoutMs = attemptTimeoutMs;
     this.activeCount = 0;
@@ -85,15 +114,18 @@ export class StreamConnectionGate {
    * @returns {Promise<any>} resolves/rejects with fn's result; rejects with
    *   a GateTimeoutError-named error on timeout, AbortError on caller abort
    */
-  run(fn, { priority = GatePriority.NORMAL, timeoutMs = this.attemptTimeoutMs, signal } = {}) {
-    return new Promise((resolve, reject) => {
+  run<T>(
+    fn: (signal: AbortSignal) => T | PromiseLike<T>,
+    { priority = GatePriority.NORMAL, timeoutMs = this.attemptTimeoutMs, signal }: GateRunOptions = {},
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       if (signal && signal.aborted) {
         reject(makeAbortError());
         return;
       }
 
-      const item = {
-        fn, priority, timeoutMs, signal, resolve, reject,
+      const item: GateItem = {
+        fn, priority, timeoutMs, signal, resolve: resolve as (value: unknown) => void, reject,
         seq: this._seq++,
         controller: null,
         timedOut: false,
@@ -118,7 +150,7 @@ export class StreamConnectionGate {
   }
 
   /** Cancel an item: drop it if queued, abort it if running. */
-  _cancel(item) {
+  _cancel(item: GateItem): void {
     const idx = this.queue.indexOf(item);
     if (idx !== -1) {
       this.queue.splice(idx, 1);
@@ -130,9 +162,9 @@ export class StreamConnectionGate {
     }
   }
 
-  _pump() {
+  _pump(): void {
     while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
-      const item = this.queue.shift();
+      const item = this.queue.shift()!;
       this.activeCount++;
 
       const controller = new AbortController();
@@ -187,7 +219,7 @@ export const streamConnectionGate = new StreamConnectionGate(6, 10000);
  * @param {string} status - stream.status from /api/streams ('Running', 'Error', ...)
  * @returns {number} GatePriority level
  */
-export function priorityForStreamStatus(status) {
+export function priorityForStreamStatus(status: string | null | undefined): GatePriorityLevel {
   if (status === 'Error' || status === 'Reconnecting') {
     return GatePriority.LOW;
   }

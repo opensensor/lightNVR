@@ -1,14 +1,37 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Fetch Utilities
  * Enhanced fetch API with timeout, cancellation, and retry capabilities
  */
 
+import type {} from './types/global.d.ts';
+import type { ApiErrorBody } from './types/core.ts';
+
+/** Options for enhancedFetch and fetchJSON: fetch's own plus retry behavior. */
+export interface EnhancedFetchOptions extends RequestInit {
+  /** Per-attempt timeout in milliseconds. A falsy value disables it. */
+  timeout?: number;
+  retries?: number;
+  retryDelay?: number;
+  /** Opt out of the redirect to the login page on a 401. */
+  skipAuthRedirect?: boolean;
+}
+
+/**
+ * What the catch block in enhancedFetch reads from a caught value. Only
+ * HTTPError has `status`; on other errors it is undefined at runtime, and the
+ * comparisons below are then false.
+ */
+interface FetchFailure {
+  status: number;
+  message: string;
+  name: string;
+}
+
 /**
  * Clear authentication state and redirect to login
  * @param {string} reason - Reason for redirect (optional)
  */
-export function handleAuthenticationFailure(reason = 'Session expired') {
+export function handleAuthenticationFailure(reason: string = 'Session expired'): void {
   console.warn(`Authentication failure: ${reason}`);
 
   // Clear all auth-related storage
@@ -31,7 +54,7 @@ export function handleAuthenticationFailure(reason = 'Session expired') {
  * @param {Error} error - The error to check
  * @returns {boolean} - True if this is an auth error
  */
-function isAuthenticationError(error) {
+function isAuthenticationError(error: FetchFailure) {
   // Check if error status is 401 or message contains 401
   return error.status === 401 || (error.message && error.message.includes('401'));
 }
@@ -40,7 +63,10 @@ function isAuthenticationError(error) {
  * Custom HTTP error class with status code
  */
 class HTTPError extends Error {
-  constructor(status, statusText, message) {
+  declare status: number;
+  declare statusText: string;
+
+  constructor(status: number, statusText: string, message?: string) {
     super(message || `HTTP error ${status}: ${statusText}`);
     this.name = 'HTTPError';
     this.status = status;
@@ -48,13 +74,15 @@ class HTTPError extends Error {
   }
 }
 
+export type { HTTPError };
+
 /**
  * Enhanced fetch function with timeout, retries and error handling
  * @param {string} url - URL to fetch
  * @param {Object} options - Fetch options
  * @returns {Promise<Response>} - Fetch response
  */
-export async function enhancedFetch(url, options = {}) {
+export async function enhancedFetch(url: string, options: EnhancedFetchOptions = {}): Promise<Response> {
   const {
     timeout = 30000,
     retries = 1,
@@ -76,7 +104,7 @@ export async function enhancedFetch(url, options = {}) {
 
   const method = (fetchOptions.method || 'GET').toUpperCase();
   const canRetryTimeout = method === 'GET' || method === 'HEAD';
-  let lastError;
+  let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (externalSignal?.aborted) throw new Error('Request was cancelled');
@@ -115,7 +143,7 @@ export async function enhancedFetch(url, options = {}) {
       if (!response.ok) {
         let errorMessage = response.statusText;
         try {
-          const errorBody = await response.json();
+          const errorBody = (await response.json()) as ApiErrorBody | null;
           if (errorBody && errorBody.error) errorMessage = errorBody.error;
         } catch (parseError) {
           console.debug('Could not parse error response body:', parseError);
@@ -127,15 +155,15 @@ export async function enhancedFetch(url, options = {}) {
     } catch (error) {
       console.error(`enhancedFetch error (attempt ${attempt + 1}/${retries + 1}):`, error);
       if (externalSignal?.aborted) throw new Error('Request was cancelled');
-      if (isAuthenticationError(error) ||
-          (error.status >= 400 && error.status < 500)) {
+      if (isAuthenticationError(error as FetchFailure) ||
+          ((error as FetchFailure).status >= 400 && (error as FetchFailure).status < 500)) {
         throw error;
       }
       if (timeoutController.signal.aborted) {
         lastError = new Error('Request timed out');
         // A mutation may have completed even when its response never arrived.
         if (!canRetryTimeout) throw lastError;
-      } else if (error.name === 'AbortError') {
+      } else if ((error as FetchFailure).name === 'AbortError') {
         throw error;
       } else {
         lastError = error;
@@ -161,7 +189,7 @@ export async function enhancedFetch(url, options = {}) {
  * @param {...AbortSignal} signals - Signals to combine
  * @returns {AbortSignal} - Combined signal
  */
-function combineSignals(...signals) {
+function combineSignals(...signals: AbortSignal[]): AbortSignal {
   if (typeof AbortSignal.any === 'function') return AbortSignal.any(signals);
 
   const controller = new AbortController();
@@ -197,13 +225,14 @@ export function createRequestController() {
  * Fetch JSON data with enhanced fetch
  * @param {string} url - The URL to fetch
  * @param {Object} options - Fetch options
- * @returns {Promise<any>} - Parsed JSON data
+ * @returns {Promise<T>} - Parsed JSON data. T is the caller's claim about the
+ *   response; it is not validated. The default of unknown forces narrowing.
  */
-export async function fetchJSON(url, options = {}) {
+export async function fetchJSON<T = unknown>(url: string, options: EnhancedFetchOptions = {}): Promise<T> {
   try {
     const response = await enhancedFetch(url, options);
     console.log('fetchJSON: Parsing JSON response from', url);
-    const data = await response.json();
+    const data: T = await response.json();
     return data;
   } catch (error) {
     console.error('fetchJSON: Error fetching or parsing JSON from', url, ':', error);

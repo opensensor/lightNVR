@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR URL Utilities
  * Helper functions for URL manipulation and credential obfuscation
@@ -18,7 +17,9 @@
  * obfuscateUrlCredentials('rtsp://192.168.1.100:554/stream')
  * // Returns: 'rtsp://192.168.1.100:554/stream' (unchanged)
  */
-export function obfuscateUrlCredentials(url) {
+export function obfuscateUrlCredentials(url: string): string;
+export function obfuscateUrlCredentials(url: string | null | undefined): string | null | undefined;
+export function obfuscateUrlCredentials(url: string | null | undefined): string | null | undefined {
   if (!url || typeof url !== 'string') {
     return url;
   }
@@ -50,7 +51,7 @@ export function obfuscateUrlCredentials(url) {
  * @param {string} url - The URL to check
  * @returns {boolean} - True if the URL contains credentials
  */
-export function urlHasCredentials(url) {
+export function urlHasCredentials(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return false;
   }
@@ -67,7 +68,7 @@ export function urlHasCredentials(url) {
  * @param {boolean} isDemoMode - Whether demo mode is enabled
  * @returns {boolean} - True if credentials should be hidden
  */
-export function shouldHideCredentials(userRole, isDemoMode) {
+export function shouldHideCredentials(userRole: string | null | undefined, isDemoMode: boolean): boolean {
   // Hide credentials in demo mode or for viewer role
   return isDemoMode || userRole === 'viewer';
 }
@@ -80,7 +81,17 @@ export function shouldHideCredentials(userRole, isDemoMode) {
  * @param {boolean} isDemoMode - Whether demo mode is enabled
  * @returns {string} - The URL, obfuscated if necessary
  */
-export function conditionallyObfuscateUrl(url, userRole, isDemoMode) {
+export function conditionallyObfuscateUrl(url: string, userRole: string | null | undefined, isDemoMode: boolean): string;
+export function conditionallyObfuscateUrl(
+  url: string | null | undefined,
+  userRole: string | null | undefined,
+  isDemoMode: boolean,
+): string | null | undefined;
+export function conditionallyObfuscateUrl(
+  url: string | null | undefined,
+  userRole: string | null | undefined,
+  isDemoMode: boolean,
+): string | null | undefined {
   if (shouldHideCredentials(userRole, isDemoMode)) {
     return obfuscateUrlCredentials(url);
   }

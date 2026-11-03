@@ -1,10 +1,18 @@
-// @ts-nocheck
 import dayjs from 'dayjs';
+import type { Dayjs, ManipulateType } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 
 dayjs.extend(utc);
 
-function toDayjs(value, { assumeUtc = false } = {}) {
+/** Anything toDayjs accepts. Numbers below 1e11 in magnitude are Unix seconds, others milliseconds. */
+export type DateInput = string | number | Date | Dayjs | null | undefined;
+
+export interface DateParseOptions {
+  /** Parse strings as UTC and convert the result to local time. */
+  assumeUtc?: boolean;
+}
+
+function toDayjs(value: DateInput, { assumeUtc = false }: DateParseOptions = {}): Dayjs | null {
   if (value === null || value === undefined || value === '') {
     return null;
   }
@@ -48,55 +56,55 @@ function toDayjs(value, { assumeUtc = false } = {}) {
   return null;
 }
 
-export function nowMilliseconds() {
+export function nowMilliseconds(): number {
   return dayjs().valueOf();
 }
 
-export function currentDateInputValue() {
+export function currentDateInputValue(): string {
   return dayjs().format('YYYY-MM-DD');
 }
 
-export function formatDateForInput(value = dayjs()) {
+export function formatDateForInput(value: DateInput = dayjs()): string {
   const parsedValue = toDayjs(value);
   return parsedValue ? parsedValue.format('YYYY-MM-DD') : '';
 }
 
-export function shiftDateInputValue(value, amount, unit = 'day') {
+export function shiftDateInputValue(value: DateInput, amount: number, unit: ManipulateType = 'day'): string {
   const parsedValue = toDayjs(value);
   return parsedValue ? parsedValue.add(amount, unit).format('YYYY-MM-DD') : '';
 }
 
-export function formatDisplayDate(value) {
+export function formatDisplayDate(value: DateInput): string {
   const parsedValue = toDayjs(value);
   return parsedValue ? parsedValue.format('ddd, MMM D, YYYY') : '';
 }
 
-export function formatLocalDateTime(value, options = {}) {
+export function formatLocalDateTime(value: DateInput, options: DateParseOptions = {}): string {
   const parsedValue = toDayjs(value, options);
   return parsedValue ? parsedValue.format('YYYY-MM-DD HH:mm:ss') : '';
 }
 
-export function formatLocalTime(value = dayjs(), options = {}) {
+export function formatLocalTime(value: DateInput = dayjs(), options: DateParseOptions = {}): string {
   const parsedValue = toDayjs(value, options);
   return parsedValue ? parsedValue.format('HH:mm:ss') : '';
 }
 
-export function toUnixSeconds(value, options = {}) {
+export function toUnixSeconds(value: DateInput, options: DateParseOptions = {}): number {
   const parsedValue = toDayjs(value, options);
   return parsedValue ? parsedValue.unix() : 0;
 }
 
-export function toEpochMilliseconds(value, options = {}) {
+export function toEpochMilliseconds(value: DateInput, options: DateParseOptions = {}): number {
   const parsedValue = toDayjs(value, options);
   return parsedValue ? parsedValue.valueOf() : 0;
 }
 
-export function formatFilenameTimestamp(value = dayjs()) {
+export function formatFilenameTimestamp(value: DateInput = dayjs()): string {
   const parsedValue = toDayjs(value);
   return parsedValue ? parsedValue.utc().format('YYYY-MM-DDTHH-mm-ss-SSS[Z]') : 'unknown-time';
 }
 
-export function getLocalDayIsoRange(value) {
+export function getLocalDayIsoRange(value: DateInput): { startTime: string; endTime: string } {
   const parsedValue = toDayjs(value);
   if (!parsedValue) {
     return { startTime: '', endTime: '' };
@@ -109,7 +117,7 @@ export function getLocalDayIsoRange(value) {
   };
 }
 
-export function getDefaultDateRange(daysBack = 0) {
+export function getDefaultDateRange(daysBack: number = 0): { endDate: string; startDate: string } {
   const endDate = dayjs();
   return {
     endDate: endDate.format('YYYY-MM-DD'),
@@ -117,6 +125,6 @@ export function getDefaultDateRange(daysBack = 0) {
   };
 }
 
-export function getCurrentYear() {
+export function getCurrentYear(): number {
   return dayjs().year();
 }

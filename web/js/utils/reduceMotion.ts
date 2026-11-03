@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Reduce-motion preference utility for LightNVR.
  *
@@ -22,20 +21,21 @@
  */
 
 export const REDUCE_MOTION_STORAGE_KEY = 'lightnvr.reduceMotion';
-export const REDUCE_MOTION_VALUES = Object.freeze(['auto', 'on', 'off']);
-const DEFAULT_PREF = 'auto';
+export type ReduceMotionPref = 'auto' | 'on' | 'off';
+export const REDUCE_MOTION_VALUES: readonly ReduceMotionPref[] = Object.freeze(['auto', 'on', 'off']);
+const DEFAULT_PREF: ReduceMotionPref = 'auto';
 
 /**
  * Read the user's stored preference. Returns one of REDUCE_MOTION_VALUES.
  * Any unknown / missing value falls back to 'auto'.
  * @returns {'auto' | 'on' | 'off'}
  */
-export function getReduceMotionPref() {
+export function getReduceMotionPref(): ReduceMotionPref {
   try {
     if (typeof localStorage === 'undefined') return DEFAULT_PREF;
     const stored = localStorage.getItem(REDUCE_MOTION_STORAGE_KEY);
-    if (REDUCE_MOTION_VALUES.includes(stored)) {
-      return stored;
+    if (REDUCE_MOTION_VALUES.includes(stored as ReduceMotionPref)) {
+      return stored as ReduceMotionPref;
     }
     return DEFAULT_PREF;
   } catch (_err) {
@@ -49,8 +49,8 @@ export function getReduceMotionPref() {
  * should call applyReduceMotion() right after.
  * @param {'auto' | 'on' | 'off'} value
  */
-export function setReduceMotionPref(value) {
-  const normalized = REDUCE_MOTION_VALUES.includes(value) ? value : DEFAULT_PREF;
+export function setReduceMotionPref(value: string): ReduceMotionPref {
+  const normalized = REDUCE_MOTION_VALUES.includes(value as ReduceMotionPref) ? value as ReduceMotionPref : DEFAULT_PREF;
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(REDUCE_MOTION_STORAGE_KEY, normalized);
@@ -66,7 +66,7 @@ export function setReduceMotionPref(value) {
  * Exported separately for components that want to show an "effective" state.
  * @returns {boolean} true when motion should be reduced
  */
-export function isReduceMotionActive() {
+export function isReduceMotionActive(): boolean {
   const pref = getReduceMotionPref();
   if (pref === 'on') return true;
   if (pref === 'off') return false;
@@ -85,7 +85,7 @@ export function isReduceMotionActive() {
  * key off it. Safe to call multiple times (idempotent).
  * @returns {boolean} the effective state that was applied
  */
-export function applyReduceMotion() {
+export function applyReduceMotion(): boolean {
   const active = isReduceMotionActive();
   try {
     if (typeof document !== 'undefined' && document.documentElement) {
@@ -100,7 +100,7 @@ export function applyReduceMotion() {
 // Keep the effective state synced with OS-level changes when the user has
 // selected 'auto'. Safe in SSR/Jest where matchMedia may be missing.
 let _mediaListenerInstalled = false;
-export function installReduceMotionMediaListener() {
+export function installReduceMotionMediaListener(): void {
   if (_mediaListenerInstalled) return;
   try {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;

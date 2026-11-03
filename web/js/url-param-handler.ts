@@ -1,11 +1,10 @@
-// @ts-nocheck
 /**
  * URL Parameter Handler
  * This script ensures that URL parameters are properly preserved when the page is reloaded
  */
 
 // Function to run when the page loads
-function handleUrlParams() {
+function handleUrlParams(): void {
   // Get current URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   
@@ -16,7 +15,7 @@ function handleUrlParams() {
     // Create a function to check and update the detection filter
     const updateDetectionFilter = () => {
       // Try to find the detection filter dropdown
-      const detectionFilter = document.getElementById('detection-filter');
+      const detectionFilter = document.getElementById('detection-filter') as HTMLSelectElement | null;
       if (detectionFilter) {
         // Set the filter to 'detection' if it's not already
         if (detectionFilter.value !== 'detection') {

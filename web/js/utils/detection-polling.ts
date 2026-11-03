@@ -1,4 +1,15 @@
-// @ts-nocheck
+import type { DetectionResultsResponse } from '../types/core.ts';
+
+export interface DetectionPollingOptions {
+  streamName: string;
+  /** Checked before each request. When false, the poll waits for the next tick. */
+  canPoll: () => boolean;
+  onResults: (data: DetectionResultsResponse) => void;
+  onError: (error: unknown) => void;
+  pollingInterval?: number;
+  requestTimeout?: number;
+}
+
 /** Poll stored detection results without accumulating overlapping requests. */
 export function startDetectionPolling({
   streamName,
@@ -7,10 +18,10 @@ export function startDetectionPolling({
   onError,
   pollingInterval = 1000,
   requestTimeout = 5000,
-}) {
+}: DetectionPollingOptions): () => void {
   let stopped = false;
-  let timer = null;
-  let controller = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let controller: AbortController | null = null;
   let errors = 0;
   let interval = pollingInterval;
 
@@ -29,7 +40,7 @@ export function startDetectionPolling({
       if (!response.ok) {
         throw new Error(`Failed to fetch detection results: ${response.status}`);
       }
-      const data = await response.json();
+      const data = (await response.json()) as DetectionResultsResponse;
       if (!stopped) {
         errors = 0;
         interval = pollingInterval;
@@ -52,7 +63,7 @@ export function startDetectionPolling({
   timer = setTimeout(poll, interval);
   return () => {
     stopped = true;
-    clearTimeout(timer);
+    clearTimeout(timer!);
     controller?.abort();
   };
 }

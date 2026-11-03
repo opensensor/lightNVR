@@ -1,8 +1,8 @@
-// @ts-nocheck
 /** Keep accepted-but-pending deletions distinct from completed cleanup and failures. */
 import { t } from '../i18n.ts';
+import type { BatchDeleteCounts } from '../types/core.ts';
 
-export function batchDeleteStatus(result) {
+export function batchDeleteStatus(result: BatchDeleteCounts): string {
   const succeeded = result.succeeded || 0;
   const failed = result.failed || 0;
   const pending = result.pending_deletions || 0;

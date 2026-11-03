@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState } from 'preact/hooks';
 import {
   applyReduceMotion,
@@ -8,8 +7,25 @@ import {
 export const DEFAULT_LOCALE = 'en';
 export const AUTO_LOCALE = 'auto';
 
+export interface LocaleInfo {
+  code: string;
+  name: string;
+  nativeName: string;
+}
+
+export interface LocaleManifest {
+  locales: LocaleInfo[];
+}
+
+export type TextDirection = 'ltr' | 'rtl';
+
+/** Placeholder values for t(). null and undefined render as an empty string. */
+export type TranslationParams = Record<string, unknown>;
+
+type TranslationTable = Record<string, string>;
+
 const LOCALE_STORAGE_KEY = 'lightnvr-locale-preference';
-const FALLBACK_MANIFEST = {
+const FALLBACK_MANIFEST: LocaleManifest = {
   locales: [
     { code: 'en', name: 'English', nativeName: 'English' },
     { code: 'es', name: 'Spanish', nativeName: 'Español' },
@@ -33,25 +49,25 @@ const FALLBACK_MANIFEST = {
 };
 
 let manifest = FALLBACK_MANIFEST;
-let manifestPromise = null;
-let initPromise = null;
-let currentLocale = DEFAULT_LOCALE;
-let localePreference = null;
+let manifestPromise: Promise<LocaleManifest> | null = null;
+let initPromise: Promise<string> | null = null;
+let currentLocale: string = DEFAULT_LOCALE;
+let localePreference: string | null = null;
 const RTL_LANGUAGES = new Set(['ar', 'he', 'fa', 'ur']);
-let translations = {};
+let translations: TranslationTable = {};
 let languageChangeListenerRegistered = false;
-let translationsCache = new Map();
+let translationsCache = new Map<string, Promise<TranslationTable | null>>();
 
-const listeners = new Set();
+const listeners = new Set<() => void>();
 
-export function getLocalesUrl(fileName) {
+export function getLocalesUrl(fileName: string): string {
   const origin = typeof window !== 'undefined' && window.location?.origin
     ? window.location.origin
     : 'http://localhost';
   return new URL(`/locales/${fileName}`, origin).toString();
 }
 
-function normalizeLocaleCode(value) {
+function normalizeLocaleCode(value: unknown): string {
   return typeof value === 'string' ? value.trim().replace('_', '-') : '';
 }
 
@@ -60,14 +76,14 @@ function getLocaleCandidates() {
     return [DEFAULT_LOCALE];
   }
 
-  const candidates = Array.isArray(navigator.languages) && navigator.languages.length > 0
+  const candidates: readonly string[] = Array.isArray(navigator.languages) && navigator.languages.length > 0
     ? navigator.languages
     : [navigator.language || DEFAULT_LOCALE];
 
   return candidates.map(normalizeLocaleCode).filter(Boolean);
 }
 
-export function resolveSupportedLocale(candidates) {
+export function resolveSupportedLocale(candidates: string | readonly string[] | null | undefined): string {
   const supportedLocales = getAvailableLocales().map((locale) => locale.code);
   const supportedLower = new Map(supportedLocales.map((locale) => [locale.toLowerCase(), locale]));
   const values = Array.isArray(candidates) ? candidates : [candidates];
@@ -79,7 +95,7 @@ export function resolveSupportedLocale(candidates) {
     }
 
     // Browsers may identify Filipino preferences with the Tagalog code.
-    const candidateLanguage = candidate.split('-')[0].toLowerCase();
+    const candidateLanguage = candidate.split('-')[0]!.toLowerCase();
     const baseLanguage = candidateLanguage === 'tl' ? 'fil' : candidateLanguage;
     const baseMatch = supportedLocales.find((locale) => locale.toLowerCase().split('-')[0] === baseLanguage);
     if (baseMatch) {
@@ -103,7 +119,7 @@ function getStoredLocalePreference() {
   }
 }
 
-function persistLocalePreference(preference) {
+function persistLocalePreference(preference: string | null): void {
   try {
     if (preference) {
       localStorage.setItem(LOCALE_STORAGE_KEY, preference);
@@ -120,7 +136,7 @@ async function loadManifest() {
     manifestPromise = fetch(getLocalesUrl('manifest.json'), { cache: 'no-cache' })
       .then((response) => response.ok ? response.json() : FALLBACK_MANIFEST)
       .catch(() => FALLBACK_MANIFEST)
-      .then((data) => {
+      .then((data: LocaleManifest | null) => {
         manifest = data?.locales?.length ? data : FALLBACK_MANIFEST;
         return manifest;
       });
@@ -129,7 +145,7 @@ async function loadManifest() {
   return manifestPromise;
 }
 
-async function fetchTranslations(locale) {
+async function fetchTranslations(locale: string) {
   if (translationsCache.has(locale)) {
     return translationsCache.get(locale);
   }
@@ -142,7 +158,7 @@ async function fetchTranslations(locale) {
   return request;
 }
 
-async function loadTranslations(locale) {
+async function loadTranslations(locale: string): Promise<TranslationTable> {
   const fallbackTranslations = await fetchTranslations(DEFAULT_LOCALE) || {};
 
   if (locale === DEFAULT_LOCALE) {
@@ -167,7 +183,7 @@ function notifyListeners() {
   listeners.forEach((listener) => listener());
 }
 
-async function applyLocale(locale) {
+async function applyLocale(locale: string): Promise<string> {
   currentLocale = locale;
   translations = await loadTranslations(locale);
   notifyListeners();
@@ -215,7 +231,7 @@ export async function initI18n() {
   return initPromise;
 }
 
-export async function setLocalePreference(preference) {
+export async function setLocalePreference(preference?: string | null): Promise<string> {
   await loadManifest();
   localePreference = preference ? resolveSupportedLocale(preference) : null;
   persistLocalePreference(localePreference);
@@ -227,8 +243,8 @@ export async function setLocalePreference(preference) {
  * Components that pin a region to LTR (PTZ pad, timeline track, transport
  * controls) use this to restore the page direction for nested text UI.
  */
-export function getTextDirection(locale = currentLocale) {
-  return RTL_LANGUAGES.has(String(locale || '').split('-')[0]) ? 'rtl' : 'ltr';
+export function getTextDirection(locale: string | null | undefined = currentLocale): TextDirection {
+  return RTL_LANGUAGES.has(String(locale || '').split('-')[0]!) ? 'rtl' : 'ltr';
 }
 
 export function getLocale() {
@@ -243,15 +259,18 @@ export function getAvailableLocales() {
   return manifest.locales || FALLBACK_MANIFEST.locales;
 }
 
-export function t(key, params = {}) {
+export function t(key: string, params?: TranslationParams): string;
+/** @deprecated t() has no fallback argument. A string here is not used as the text; see StreamsView.tsx. */
+export function t(key: string, ignored: string): string;
+export function t(key: string, params: TranslationParams | string = {}): string {
   const template = translations[key] || key;
-  return template.replace(/\{([^}]+)\}/g, (_, name) => {
-    const value = params[name.trim()];
+  return template.replace(/\{([^}]+)\}/g, (_, name: string) => {
+    const value = (params as TranslationParams)[name.trim()];
     return value === undefined || value === null ? '' : String(value);
   });
 }
 
-export function subscribeToLocaleChange(listener) {
+export function subscribeToLocaleChange(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Pure coordinate math for ZoneEditor.tsx.
  *
@@ -11,6 +10,13 @@
  * ZoneEditor's own mouse capture and redraw consistent with that.
  */
 
+export interface ImageLetterbox {
+  offsetX: number;
+  offsetY: number;
+  drawWidth: number;
+  drawHeight: number;
+}
+
 /**
  * Computes where an image is drawn within a canvas of a possibly different
  * aspect ratio, preserving the image's aspect ratio ("contain" fit).
@@ -20,13 +26,13 @@
  * @param {number} imageAspect - image.naturalWidth / image.naturalHeight
  * @returns {{offsetX: number, offsetY: number, drawWidth: number, drawHeight: number}}
  */
-export function computeImageLetterbox(canvasWidth, canvasHeight, imageAspect) {
+export function computeImageLetterbox(canvasWidth: number, canvasHeight: number, imageAspect: number | null | undefined): ImageLetterbox {
   if (!canvasWidth || !canvasHeight || !imageAspect) {
     return { offsetX: 0, offsetY: 0, drawWidth: canvasWidth || 0, drawHeight: canvasHeight || 0 };
   }
 
   const canvasAspect = canvasWidth / canvasHeight;
-  let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+  let drawWidth: number, drawHeight: number, offsetX = 0, offsetY = 0;
 
   if (imageAspect > canvasAspect) {
     // Image is wider than the canvas: letterboxing (bars on top/bottom).
@@ -54,7 +60,7 @@ export function computeImageLetterbox(canvasWidth, canvasHeight, imageAspect) {
  * @param {{offsetX: number, offsetY: number, drawWidth: number, drawHeight: number}} letterbox
  * @returns {{x: number, y: number}}
  */
-export function canvasPointToImageFraction(canvasX, canvasY, letterbox) {
+export function canvasPointToImageFraction(canvasX: number, canvasY: number, letterbox: ImageLetterbox): { x: number; y: number } {
   const { offsetX, offsetY, drawWidth, drawHeight } = letterbox;
   if (!drawWidth || !drawHeight) return { x: 0, y: 0 };
 
@@ -84,12 +90,19 @@ export function canvasPointToImageFraction(canvasX, canvasY, letterbox) {
  * @param {number} [fallbackHeight] - the stream's configured height
  * @returns {number|null}
  */
-export function resolveImageAspect(image, imageLoaded, snapshotError, fallbackWidth, fallbackHeight) {
+export function resolveImageAspect(
+  image: { naturalWidth: number; naturalHeight: number } | null | undefined,
+  imageLoaded: boolean,
+  snapshotError: boolean,
+  fallbackWidth?: number,
+  fallbackHeight?: number,
+): number | null {
   if (image && imageLoaded && !snapshotError && image.naturalWidth > 0 && image.naturalHeight > 0) {
     return image.naturalWidth / image.naturalHeight;
   }
-  if (fallbackWidth > 0 && fallbackHeight > 0) {
-    return fallbackWidth / fallbackHeight;
+  // A missing fallback compares false with 0 and falls through to null.
+  if ((fallbackWidth as number) > 0 && (fallbackHeight as number) > 0) {
+    return (fallbackWidth as number) / (fallbackHeight as number);
   }
   return null;
 }
@@ -104,7 +117,7 @@ export function resolveImageAspect(image, imageLoaded, snapshotError, fallbackWi
  * @param {{offsetX: number, offsetY: number, drawWidth: number, drawHeight: number}} letterbox
  * @returns {{x: number, y: number}}
  */
-export function imageFractionToCanvasPoint(fractionX, fractionY, letterbox) {
+export function imageFractionToCanvasPoint(fractionX: number, fractionY: number, letterbox: ImageLetterbox): { x: number; y: number } {
   const { offsetX, offsetY, drawWidth, drawHeight } = letterbox;
   return {
     x: fractionX * drawWidth + offsetX,

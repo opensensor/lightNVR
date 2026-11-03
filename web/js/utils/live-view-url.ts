@@ -1,5 +1,6 @@
-// @ts-nocheck
-export function buildLiveViewHref(path, currentSearch = '', mode = '') {
+import type { LiveTransport, TransportOfferings } from '../types/core.ts';
+
+export function buildLiveViewHref(path: string, currentSearch: string = '', mode: string = ''): string {
   const params = new URLSearchParams(currentSearch);
   if (mode) params.set('mode', mode);
   else params.delete('mode');
@@ -7,7 +8,7 @@ export function buildLiveViewHref(path, currentSearch = '', mode = '') {
   return query ? `${path}?${query}` : path;
 }
 
-const FORCED_LIVE_TRANSPORTS = new Set(['webrtc', 'mse', 'hls']);
+const FORCED_LIVE_TRANSPORTS = new Set<string | null>(['webrtc', 'mse', 'hls']);
 
 /**
  * Resolve a page-level playback override. The default live URL has no mode and
@@ -16,15 +17,15 @@ const FORCED_LIVE_TRANSPORTS = new Set(['webrtc', 'mse', 'hls']);
  * transport. Legacy hls.html URLs imply an explicit HLS selection.
  */
 export function resolveForcedLiveTransport(
-  pathname = '',
-  currentSearch = '',
-  { autoDisabled = false, offerings = {} } = {}
-) {
+  pathname: string = '',
+  currentSearch: string = '',
+  { autoDisabled = false, offerings = {} }: { autoDisabled?: boolean; offerings?: TransportOfferings } = {}
+): LiveTransport | null {
   const mode = new URLSearchParams(currentSearch).get('mode');
-  if (FORCED_LIVE_TRANSPORTS.has(mode)) return mode;
+  if (FORCED_LIVE_TRANSPORTS.has(mode)) return mode as LiveTransport;
   if (pathname.endsWith('/hls.html')) return 'hls';
   if (autoDisabled) {
-    return ['webrtc', 'mse', 'hls'].find(
+    return (['webrtc', 'mse', 'hls'] as const).find(
       (transport) => offerings[transport] !== false
     ) || null;
   }
@@ -52,11 +53,30 @@ export const LIVE_VIEW_VARIANTS = {
     streamLabelKey: 'nav.streams',
     fullscreenTitleKey: 'timeline.fullscreen',
   },
-};
+} as const;
+
+export type LiveViewVariantName = keyof typeof LIVE_VIEW_VARIANTS;
 
 /** Variant that index.html renders: WebRTC-first unless WebRTC is disabled. */
-export function resolveLiveViewVariant({ webrtcDisabled = false } = {}) {
+export function resolveLiveViewVariant({ webrtcDisabled = false }: { webrtcDisabled?: boolean } = {}): LiveViewVariantName {
   return webrtcDisabled ? 'hls' : 'webrtc';
+}
+
+export interface LiveTransportTab {
+  id: 'auto' | LiveTransport;
+  labelKey: string;
+  active: boolean;
+  href: string;
+}
+
+export interface LiveTransportTabOptions {
+  forcedTransport?: LiveTransport | null;
+  currentSearch?: string;
+  autoDisabled?: boolean;
+  webrtcDisabled?: boolean;
+  hlsDisabled?: boolean;
+  mseDisabled?: boolean;
+  go2rtcAvailable?: boolean;
 }
 
 /**
@@ -72,7 +92,7 @@ export function getLiveTransportTabs({
   hlsDisabled = false,
   mseDisabled = false,
   go2rtcAvailable = false,
-} = {}) {
+}: LiveTransportTabOptions = {}): LiveTransportTab[] {
   return [
     !autoDisabled && {
       id: 'auto', labelKey: 'live.autoShort', active: forcedTransport === null,
@@ -90,5 +110,5 @@ export function getLiveTransportTabs({
       id: 'mse', labelKey: 'live.mseShort', active: forcedTransport === 'mse',
       href: buildLiveViewHref('/hls.html', currentSearch, 'mse'),
     },
-  ].filter(Boolean);
+  ].filter(Boolean) as LiveTransportTab[];
 }

@@ -1,5 +1,10 @@
-// @ts-nocheck
 import { fetchJSON } from '../fetch-utils.ts';
+import type {
+  StreamAvailabilityFilter,
+  StreamSummariesResponse,
+  StreamSummary,
+  StreamSurface,
+} from '../types/core.ts';
 
 const STREAM_SUMMARY_PAGE_SIZE = 100;
 
@@ -8,10 +13,16 @@ const STREAM_SUMMARY_PAGE_SIZE = 100;
  * unbounded response. Selector and live surfaces still need the complete set,
  * so they walk fixed-size pages; Stream Configuration renders a single page.
  */
-export async function fetchAllStreamSummaries({ surface = 'admin', availability = 'all', signal } = {}) {
-  const streams = [];
+export async function fetchAllStreamSummaries(
+  { surface = 'admin', availability = 'all', signal }: {
+    surface?: StreamSurface;
+    availability?: StreamAvailabilityFilter;
+    signal?: AbortSignal;
+  } = {},
+): Promise<StreamSummary[]> {
+  const streams: StreamSummary[] = [];
   let page = 1;
-  let totalPages;
+  let totalPages: number;
   do {
     const params = new URLSearchParams({
       summary: 'true',
@@ -22,7 +33,7 @@ export async function fetchAllStreamSummaries({ surface = 'admin', availability 
       sort_order: 'asc',
       availability,
     });
-    const response = await fetchJSON(`/api/streams?${params.toString()}`, {
+    const response = await fetchJSON<StreamSummariesResponse | null>(`/api/streams?${params.toString()}`, {
       signal,
       timeout: 15000,
       retries: 1,
@@ -39,19 +50,19 @@ export async function fetchAllStreamSummaries({ surface = 'admin', availability 
  * authoritative because stream names can be changed after a recording was
  * captured; the name remains a compatibility fallback for legacy recordings.
  */
-export function resolveRecordedStreamSummary(
-  streams,
-  { cameraUuid = '', streamName = '' } = {},
-) {
+export function resolveRecordedStreamSummary<T extends { camera_uuid?: string | null; name?: string }>(
+  streams: readonly T[] | null | undefined,
+  { cameraUuid = '', streamName = '' }: { cameraUuid?: string | null; streamName?: string | null } = {},
+): T | null {
   if (!Array.isArray(streams)) return null;
 
   if (cameraUuid) {
-    const byCameraUuid = streams.find((stream) => stream?.camera_uuid === cameraUuid);
+    const byCameraUuid = streams.find((stream: T) => stream?.camera_uuid === cameraUuid);
     if (byCameraUuid) return byCameraUuid;
   }
 
   if (streamName) {
-    return streams.find((stream) => stream?.name === streamName) || null;
+    return streams.find((stream: T) => stream?.name === streamName) || null;
   }
 
   return null;

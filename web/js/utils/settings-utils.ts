@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Settings Utilities
  * Provides cached access to server settings for frontend components
@@ -6,22 +5,23 @@
 
 import { fetchJSON } from '../fetch-utils.ts';
 import { nowMilliseconds } from './date-utils.ts';
+import type { ClientConfig } from '../types/core.ts';
 
 // Cache for settings
-let settingsCache = null;
+let settingsCache: ClientConfig | null = null;
 let settingsCacheTime = 0;
 const CACHE_TTL = 60000; // 1 minute cache TTL
 
 // In-flight promise deduplication: prevents N concurrent callers from each
 // firing a separate /api/client-config request before the first response returns.
-let settingsInflight = null;
+let settingsInflight: Promise<ClientConfig> | null = null;
 
 /**
  * Fetch settings from the server with caching
  * @param {boolean} forceRefresh - Force refresh the cache
  * @returns {Promise<Object>} - Settings object
  */
-export async function getSettings(forceRefresh = false) {
+export async function getSettings(forceRefresh: boolean = false): Promise<ClientConfig> {
   const now = nowMilliseconds();
 
   // Return cached settings if still valid
@@ -35,7 +35,7 @@ export async function getSettings(forceRefresh = false) {
     return settingsInflight;
   }
 
-  settingsInflight = fetchJSON('/api/client-config', {
+  settingsInflight = fetchJSON<ClientConfig>('/api/client-config', {
     timeout: 10000,
     retries: 1,
     retryDelay: 500
@@ -65,7 +65,7 @@ export async function getSettings(forceRefresh = false) {
  * Get the go2rtc API port from settings
  * @returns {Promise<number>} - go2rtc API port
  */
-export async function getGo2rtcApiPort() {
+export async function getGo2rtcApiPort(): Promise<number> {
   const settings = await getSettings();
   return settings.go2rtc_api_port || 1984; // Default to 1984 if not set
 }
@@ -74,12 +74,12 @@ export async function getGo2rtcApiPort() {
  * HTTP media signaling uses LightNVR's fixed public proxy prefix. The server
  * translates this to any overridden upstream go2rtc api.base_path.
  */
-export async function getGo2rtcBaseUrl() {
+export async function getGo2rtcBaseUrl(): Promise<string> {
   return `${window.location.origin}/go2rtc`;
 }
 
 /** Get the same-origin WebSocket base URL for MSE streaming. */
-export async function getGo2rtcWebSocketUrl() {
+export async function getGo2rtcWebSocketUrl(): Promise<string> {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/go2rtc`;
 }
@@ -96,7 +96,7 @@ const DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS = 5000;
  * env vars, or the settings API without rebuilding the web bundle.
  * @returns {Promise<{connectionMs: number, iceRecoveryMs: number}>}
  */
-export async function getWebRTCTimeouts() {
+export async function getWebRTCTimeouts(): Promise<{ connectionMs: number; iceRecoveryMs: number }> {
   try {
     const settings = await getSettings();
     const connectionMs = Number(settings.webrtc_connection_timeout_ms);
@@ -119,7 +119,7 @@ export async function getWebRTCTimeouts() {
  * Get default settings (used as fallback)
  * @returns {Object} - Default settings object
  */
-function getDefaultSettings() {
+function getDefaultSettings(): ClientConfig {
   return {
     go2rtc_enabled: true,
     go2rtc_api_port: 1984,
@@ -139,7 +139,7 @@ function getDefaultSettings() {
 }
 
 // Cache for go2rtc availability check
-let go2rtcAvailableCache = null;
+let go2rtcAvailableCache: boolean | null = null;
 let go2rtcAvailableCacheTime = 0;
 // 5-minute TTL: go2rtc doesn't go up/down during normal viewing sessions.
 // A short TTL caused false-negative health checks when go2rtc was busy serving
@@ -148,7 +148,7 @@ let go2rtcAvailableCacheTime = 0;
 const GO2RTC_CACHE_TTL = 300000;
 
 // In-flight promise deduplication for go2rtc availability checks
-let go2rtcAvailableInflight = null;
+let go2rtcAvailableInflight: Promise<boolean> | null = null;
 
 /**
  * Check if go2rtc is available and responding
@@ -158,7 +158,7 @@ let go2rtcAvailableInflight = null;
  * @param {boolean} forceRefresh - Force refresh the cache
  * @returns {Promise<boolean>} - true if go2rtc is available
  */
-export async function isGo2rtcAvailable(forceRefresh = false) {
+export async function isGo2rtcAvailable(forceRefresh: boolean = false): Promise<boolean> {
   const now = nowMilliseconds();
 
   // Return cached result if still valid
@@ -188,11 +188,11 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
       // go2rtc under load (e.g. 60+ simultaneous HLS streams) may be slow to
       // respond to health checks even though it is serving streams correctly.
       if (go2rtcAvailableCache === true) {
-        console.warn(`go2rtc health check failed (${error.message}) but was previously available — assuming still up`);
+        console.warn(`go2rtc health check failed (${(error as Error).message}) but was previously available — assuming still up`);
         go2rtcAvailableCacheTime = nowMilliseconds(); // reset TTL so we don't spam retries
         return true;
       }
-      console.warn('go2rtc is not available:', error.message);
+      console.warn('go2rtc is not available:', (error as Error).message);
       go2rtcAvailableCache = false;
       go2rtcAvailableCacheTime = nowMilliseconds();
       return false;
@@ -209,7 +209,7 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
  * This checks the configuration setting (not runtime availability)
  * @returns {Promise<boolean>} - true if go2rtc is enabled in settings
  */
-export async function isGo2rtcEnabled() {
+export async function isGo2rtcEnabled(): Promise<boolean> {
   const settings = await getSettings();
   // Default to true for backward compatibility
   return settings.go2rtc_enabled !== undefined ? settings.go2rtc_enabled : true;
@@ -221,7 +221,7 @@ export async function isGo2rtcEnabled() {
  * instead of go2rtc's HLS, even when go2rtc is running.
  * @returns {Promise<boolean>} - true if force native HLS is enabled
  */
-export async function isForceNativeHls() {
+export async function isForceNativeHls(): Promise<boolean> {
   const settings = await getSettings();
   return settings.go2rtc_force_native_hls === true;
 }
@@ -229,7 +229,7 @@ export async function isForceNativeHls() {
 /**
  * Clear the settings cache
  */
-export function clearSettingsCache() {
+export function clearSettingsCache(): void {
   settingsCache = null;
   settingsCacheTime = 0;
   settingsInflight = null;

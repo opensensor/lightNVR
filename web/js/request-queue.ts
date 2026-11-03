@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Request Queue - Limits concurrent requests to prevent server overload
  *
@@ -30,13 +29,37 @@ export const Priority = {
   HIGH: 0,    // Visible content, user-initiated
   NORMAL: 1,  // Default priority
   LOW: 2      // Preloading, background tasks
-};
+} as const;
+
+export type PriorityLevel = (typeof Priority)[keyof typeof Priority];
+
+interface QueueItem {
+  requestFn: () => Promise<unknown>;
+  priority: number;
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  timestamp: number;
+}
+
+/** Thumbnail fetch failure, with what the retry logic needs from the response. */
+export interface ThumbnailLoadError extends Error {
+  status?: number;
+  retryAfter?: string | null;
+}
 
 /**
  * Request Queue class
  */
 export class RequestQueue {
-  constructor(maxConcurrent = 4, startDelay = 0, debug = false) {
+  declare maxConcurrent: number;
+  declare activeCount: number;
+  declare queue: QueueItem[];
+  declare startDelay: number;
+  declare lastStartTime: number;
+  declare debug: boolean;
+  declare requestCounter: number;
+
+  constructor(maxConcurrent: number = 4, startDelay: number = 0, debug: boolean = false) {
     this.maxConcurrent = maxConcurrent;
     this.activeCount = 0;
     this.queue = [];
@@ -46,7 +69,7 @@ export class RequestQueue {
     this.requestCounter = 0;
   }
 
-  _log(...args) {
+  _log(...args: unknown[]): void {
     if (this.debug) {
       console.log('[RequestQueue]', ...args);
     }
@@ -58,12 +81,12 @@ export class RequestQueue {
    * @param {number} priority - Priority level (lower = higher priority)
    * @returns {Promise} - Promise that resolves when request completes
    */
-  enqueue(requestFn, priority = Priority.NORMAL) {
-    return new Promise((resolve, reject) => {
-      const item = {
+  enqueue<T>(requestFn: () => Promise<T>, priority: number = Priority.NORMAL): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const item: QueueItem = {
         requestFn,
         priority,
-        resolve,
+        resolve: resolve as (value: unknown) => void,
         reject,
         timestamp: nowMilliseconds()
       };
@@ -86,7 +109,7 @@ export class RequestQueue {
   /**
    * Process the queue - start requests up to maxConcurrent
    */
-  _processQueue() {
+  _processQueue(): void {
     // Don't process if already at max concurrency or queue is empty
     if (this.activeCount >= this.maxConcurrent || this.queue.length === 0) {
       return;
@@ -107,7 +130,7 @@ export class RequestQueue {
     }
 
     // Start the next request
-    const item = this.queue.shift();
+    const item = this.queue.shift()!;
     const requestId = ++this.requestCounter;
     this.activeCount++;
 
@@ -147,7 +170,7 @@ export class RequestQueue {
   /**
    * Clear all pending requests
    */
-  clear() {
+  clear(): void {
     this.queue.forEach(item => {
       item.reject(new Error('Queue cleared'));
     });
@@ -167,16 +190,16 @@ export class RequestQueue {
  */
 export const thumbnailQueue = new RequestQueue(2, 100, false);
 
-const loadedThumbnailUrls = new Set();
-const pendingThumbnailLoads = new Map();
+const loadedThumbnailUrls = new Set<string>();
+const pendingThumbnailLoads = new Map<string, Promise<string>>();
 const MAX_REMEMBERED_THUMBNAILS = 512;
 let thumbnailQueueGeneration = 0;
 
-function rememberLoadedThumbnail(url) {
+function rememberLoadedThumbnail(url: string): void {
   loadedThumbnailUrls.delete(url);
   loadedThumbnailUrls.add(url);
   if (loadedThumbnailUrls.size > MAX_REMEMBERED_THUMBNAILS) {
-    loadedThumbnailUrls.delete(loadedThumbnailUrls.values().next().value);
+    loadedThumbnailUrls.delete(loadedThumbnailUrls.values().next().value!);
   }
 }
 
@@ -185,10 +208,10 @@ function rememberLoadedThumbnail(url) {
  * observable. The successful response is stored in the browser HTTP cache;
  * rendering the card's img element then reuses that response.
  */
-async function loadImage(url) {
+async function loadImage(url: string): Promise<string> {
   const response = await fetch(url, { credentials: 'same-origin' });
   if (!response.ok) {
-    const error = new Error(`Failed to load thumbnail (${response.status}): ${url}`);
+    const error: ThumbnailLoadError = new Error(`Failed to load thumbnail (${response.status}): ${url}`);
     error.status = response.status;
     error.retryAfter = response.headers?.get?.('Retry-After') || null;
     throw error;
@@ -197,7 +220,7 @@ async function loadImage(url) {
   return url;
 }
 
-export function parseRetryAfterMilliseconds(value, now = Date.now()) {
+export function parseRetryAfterMilliseconds(value: string | null | undefined, now: number = Date.now()): number | null {
   if (!value) return null;
   const seconds = Number(value);
   if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
@@ -207,7 +230,7 @@ export function parseRetryAfterMilliseconds(value, now = Date.now()) {
   return Math.max(0, retryAt - now);
 }
 
-export function shouldRetryThumbnailRequest(error) {
+export function shouldRetryThumbnailRequest(error: { status?: number } | null | undefined): boolean {
   if (!error?.status) return true;
   return [408, 429, 502, 503, 504].includes(error.status);
 }
@@ -226,25 +249,25 @@ export function shouldRetryThumbnailRequest(error) {
  * @param {number}  maxRetries - Maximum number of retry attempts (default 3)
  * @returns {Promise<string>}  - Promise that resolves with the URL when loaded
  */
-export function queueThumbnailLoad(url, priority = Priority.NORMAL, maxRetries = 3) {
+export function queueThumbnailLoad(url: string, priority: number = Priority.NORMAL, maxRetries: number = 3): Promise<string> {
   if (loadedThumbnailUrls.has(url)) {
     return Promise.resolve(url);
   }
   if (pendingThumbnailLoads.has(url)) {
-    return pendingThumbnailLoads.get(url);
+    return pendingThumbnailLoads.get(url)!;
   }
 
   let attempt = 0;
   const generation = thumbnailQueueGeneration;
 
-  const tryLoad = () => {
+  const tryLoad = (): Promise<string> => {
     if (generation !== thumbnailQueueGeneration) {
       return Promise.reject(new Error('Thumbnail queue cleared'));
     }
     return thumbnailQueue.enqueue(() => loadImage(url), priority);
   };
 
-  const retryWithBackoff = (err) => {
+  const retryWithBackoff = (err: ThumbnailLoadError): Promise<string> => {
     attempt++;
     if (generation !== thumbnailQueueGeneration ||
         attempt > maxRetries || !shouldRetryThumbnailRequest(err)) {
@@ -252,10 +275,10 @@ export function queueThumbnailLoad(url, priority = Priority.NORMAL, maxRetries =
     }
     const serverDelay = parseRetryAfterMilliseconds(err.retryAfter);
     const delay = serverDelay ?? Math.min(2000 * Math.pow(2, attempt - 1), 10000);
-    return new Promise((resolve) => setTimeout(resolve, delay)).then(tryLoad).catch(retryWithBackoff);
+    return new Promise<void>((resolve) => setTimeout(resolve, delay)).then(tryLoad).catch(retryWithBackoff);
   };
 
-  const pending = tryLoad()
+  const pending: Promise<string> = tryLoad()
     .catch(retryWithBackoff)
     .then((loadedUrl) => {
       rememberLoadedThumbnail(loadedUrl);
@@ -271,14 +294,14 @@ export function queueThumbnailLoad(url, priority = Priority.NORMAL, maxRetries =
 }
 
 /** Forget a successful preload after the rendered img reports a cache miss. */
-export function invalidateThumbnailLoad(url) {
+export function invalidateThumbnailLoad(url: string): void {
   loadedThumbnailUrls.delete(url);
 }
 
 /**
  * Clear the thumbnail queue (call when navigating away from recordings page)
  */
-export function clearThumbnailQueue() {
+export function clearThumbnailQueue(): void {
   thumbnailQueueGeneration++;
   thumbnailQueue.clear();
   pendingThumbnailLoads.clear();

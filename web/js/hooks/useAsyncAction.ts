@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useAsyncAction — shared hook for wrapping async handlers with pending/error
  * state and an idempotency guard.
@@ -28,26 +27,29 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
+export interface AsyncAction<TArgs extends unknown[], TResult> {
+  run: (...args: TArgs) => Promise<TResult>;
+  pending: boolean;
+  error: Error | null;
+  lastSuccess: number | null;
+  reset: () => void;
+}
+
 /**
- * @template TArgs, TResult
- * @param {(...args: TArgs) => Promise<TResult>} fn - async handler to wrap.
- * @returns {{
- *   run: (...args: TArgs) => Promise<TResult | undefined>,
- *   pending: boolean,
- *   error: Error | null,
- *   lastSuccess: number | null,
- *   reset: () => void,
- * }}
+ * @param fn - handler to wrap. Usually async; a synchronous return or throw is
+ *   handled the same way as a resolved or rejected promise.
  */
-export function useAsyncAction(fn) {
+export function useAsyncAction<TArgs extends unknown[], TResult>(
+  fn: (...args: TArgs) => TResult | PromiseLike<TResult>,
+): AsyncAction<TArgs, TResult> {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState(null);
-  const [lastSuccess, setLastSuccess] = useState(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [lastSuccess, setLastSuccess] = useState<number | null>(null);
 
   // Keep the in-flight promise in a ref so concurrent `run` calls can share
   // it without triggering a re-render, and so the idempotency check isn't
   // fooled by batched state updates.
-  const inFlightRef = useRef(null);
+  const inFlightRef = useRef<Promise<TResult> | null>(null);
   // Track whether the component is still mounted before committing state.
   const mountedRef = useRef(true);
   // Always call the freshest `fn` captured by the latest render.
@@ -61,7 +63,7 @@ export function useAsyncAction(fn) {
     };
   }, []);
 
-  const run = useCallback((...args) => {
+  const run = useCallback((...args: TArgs): Promise<TResult> => {
     // Idempotency: a second invocation while pending is a no-op that returns
     // the original promise so callers can still `await` it.
     if (inFlightRef.current) {
@@ -71,10 +73,10 @@ export function useAsyncAction(fn) {
     setPending(true);
     setError(null);
 
-    let promise;
+    let promise: Promise<TResult>;
     try {
       const result = fnRef.current(...args);
-      promise = Promise.resolve(result);
+      promise = Promise.resolve(result) as Promise<TResult>;
     } catch (sync) {
       // Handle synchronous throws from non-async handlers.
       promise = Promise.reject(sync);
@@ -90,7 +92,7 @@ export function useAsyncAction(fn) {
         inFlightRef.current = null;
         return value;
       },
-      (err) => {
+      (err: unknown) => {
         const normalized = err instanceof Error ? err : new Error(String(err));
         if (mountedRef.current) {
           setPending(false);

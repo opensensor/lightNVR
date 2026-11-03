@@ -1,7 +1,6 @@
-// @ts-nocheck
 /** Classify server failures without exposing RTSP credentials, URLs or commands.
  * Only transient signaling failures should consume the HTTP retry budget. */
-export function classifyLiveVideoError(value) {
+export function classifyLiveVideoError(value: unknown): { key: string; retryable: boolean } {
   const message = String(value || '');
   if (/dial tcp|no route to host|connection refused|host is unreachable|network is unreachable|i\/o timeout/i.test(message)) {
     return { key: 'live.cannotConnectToSource', retryable: false };
@@ -22,15 +21,21 @@ export function classifyLiveVideoError(value) {
 }
 
 /** Metadata and audio playback alone are not a successfully decoded video. */
-export function hasDecodedVideo(video) {
+export function hasDecodedVideo(video: HTMLVideoElement | null | undefined): boolean {
   return !!video && video.videoWidth > 0 && video.readyState >= 2 && !video.paused;
 }
 
-export function h264ReceiverCodecs(capabilities) {
+export function h264ReceiverCodecs(capabilities: RTCRtpCapabilities | null | undefined): RTCRtpCodec[] {
   return (capabilities?.codecs || []).filter(codec => codec.mimeType?.toLowerCase() === 'video/h264');
 }
 
-export function shouldRetryWithH264({ alreadyRetried, codec, useSubStream = false }) {
+export function shouldRetryWithH264(
+  { alreadyRetried, codec, useSubStream = false }: {
+    alreadyRetried?: boolean;
+    codec?: string | null;
+    useSubStream?: boolean;
+  },
+): boolean {
   // A codec hint describes the main stream only. Unknown/substream codecs can
   // also negotiate HEVC, so allow one compatibility attempt for those cases.
   return !alreadyRetried && (useSubStream || String(codec || '').toLowerCase() !== 'h264');
