@@ -1,10 +1,23 @@
-// @ts-nocheck
 /**
  * License plate (LPR) search helpers.
  *
  * Plate text is sensitive: these helpers never persist filters or results and
  * never place a plate in a URL. Callers keep filter state in memory only.
  */
+
+import type {
+  LprAction,
+  LprDeniedActions,
+  LprExportOutcome,
+  LprFilters,
+  LprRead,
+  LprRequestOptions,
+  LprResponseOutcome,
+  LprSearchBody,
+  LprSearchOutcome,
+  LprValidationError,
+} from '../../../types/investigation.ts';
+import type { StreamSummary } from '../../../types/core.ts';
 
 export const LPR_DEFAULT_LIMIT = 50;
 export const LPR_SEARCH_LIMIT_MAX = 100;
@@ -17,10 +30,10 @@ export const LPR_PLATE_QUERY_MIN_CHARACTERS = 2;
 export const LPR_PARTIAL_QUERY_MIN_CHARACTERS = 3;
 export const LPR_DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-const pad = (value) => String(value).padStart(2, '0');
+const pad = (value: number) => String(value).padStart(2, '0');
 
 /** Format epoch milliseconds for a datetime-local input in the browser zone. */
-export function toDateTimeLocalValue(milliseconds) {
+export function toDateTimeLocalValue(milliseconds: number) {
   if (!Number.isFinite(milliseconds)) return '';
   const date = new Date(milliseconds);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -28,7 +41,7 @@ export function toDateTimeLocalValue(milliseconds) {
 }
 
 /** Parse a datetime-local value as local time; returns epoch ms or null. */
-export function parseDateTimeLocalValue(value) {
+export function parseDateTimeLocalValue(value: unknown) {
   if (typeof value !== 'string' || !value) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   if (!match) return null;
@@ -40,7 +53,7 @@ export function parseDateTimeLocalValue(value) {
   return Number.isFinite(date.getTime()) ? date.getTime() : null;
 }
 
-export function createLprFilters(now = Date.now()) {
+export function createLprFilters(now = Date.now()): LprFilters {
   return {
     cameraUuid: '',
     start: toDateTimeLocalValue(now - LPR_DEFAULT_WINDOW_MS),
@@ -51,7 +64,7 @@ export function createLprFilters(now = Date.now()) {
   };
 }
 
-function canonicalPlateLength(plate) {
+function canonicalPlateLength(plate: string) {
   return plate.replace(/[^A-Za-z0-9]/g, '').length;
 }
 
@@ -59,8 +72,8 @@ function canonicalPlateLength(plate) {
  * Validate filters before they reach the server, which answers every
  * malformed query with the same generic 400. Returns translation descriptors.
  */
-export function validateLprFilters(filters) {
-  const errors = [];
+export function validateLprFilters(filters: Partial<LprFilters> | null | undefined) {
+  const errors: LprValidationError[] = [];
   if (!filters?.cameraUuid) {
     errors.push({ field: 'camera', key: 'lpr.validation.cameraRequired' });
   }
@@ -89,7 +102,7 @@ export function validateLprFilters(filters) {
 
   const plate = String(filters?.plate ?? '').trim();
   if (plate) {
-    if (!['exact', 'partial'].includes(filters?.match)) {
+    if (!['exact', 'partial'].includes(filters?.match as string)) {
       errors.push({ field: 'match', key: 'lpr.validation.match' });
     }
     // eslint-disable-next-line no-control-regex
@@ -118,8 +131,11 @@ export function validateLprFilters(filters) {
 }
 
 /** Build the POST body for /api/lpr/search or /api/lpr/export. */
-export function buildLprSearchBody(filters, { exporting = false } = {}) {
-  const body = {
+export function buildLprSearchBody(
+  filters: LprFilters,
+  { exporting = false }: { exporting?: boolean } = {},
+) {
+  const body: LprSearchBody = {
     camera_uuid: filters.cameraUuid,
     start_at: parseDateTimeLocalValue(filters.start),
     end_at: parseDateTimeLocalValue(filters.end),
@@ -133,9 +149,9 @@ export function buildLprSearchBody(filters, { exporting = false } = {}) {
   return body;
 }
 
-async function readErrorMessage(response) {
+async function readErrorMessage(response: Response) {
   try {
-    const data = await response.json();
+    const data: { error?: unknown } | null = await response.json();
     return typeof data?.error === 'string' ? data.error : '';
   } catch {
     return '';
@@ -146,7 +162,7 @@ async function readErrorMessage(response) {
  * Map an LPR API response to an outcome the view can render without toasts:
  * ok | forbidden | invalid | not_found | unavailable | unauthorized | error.
  */
-export async function classifyLprResponse(response) {
+export async function classifyLprResponse(response: Response): Promise<LprResponseOutcome> {
   if (response.ok) return { outcome: 'ok' };
   const message = await readErrorMessage(response);
   switch (response.status) {
@@ -159,7 +175,12 @@ export async function classifyLprResponse(response) {
   }
 }
 
-function postJson(fetchImpl, url, body, signal) {
+function postJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  body: LprSearchBody,
+  signal: AbortSignal | undefined,
+) {
   return fetchImpl(url, {
     method: 'POST',
     credentials: 'same-origin',
@@ -169,22 +190,31 @@ function postJson(fetchImpl, url, body, signal) {
   });
 }
 
-export async function searchLprReads(body, { fetchImpl = globalThis.fetch, signal } = {}) {
+export async function searchLprReads(
+  body: LprSearchBody,
+  { fetchImpl = globalThis.fetch, signal }: LprRequestOptions = {},
+): Promise<LprSearchOutcome> {
   const response = await postJson(fetchImpl, '/api/lpr/search', body, signal);
   const result = await classifyLprResponse(response);
   if (result.outcome !== 'ok') return result;
-  const data = await response.json();
+  const data: { reads?: LprRead[] } | null = await response.json();
   return { outcome: 'ok', reads: Array.isArray(data?.reads) ? data.reads : [] };
 }
 
-export async function exportLprReads(body, { fetchImpl = globalThis.fetch, signal } = {}) {
+export async function exportLprReads(
+  body: LprSearchBody,
+  { fetchImpl = globalThis.fetch, signal }: LprRequestOptions = {},
+): Promise<LprExportOutcome> {
   const response = await postJson(fetchImpl, '/api/lpr/export', body, signal);
   const result = await classifyLprResponse(response);
   if (result.outcome !== 'ok') return result;
   return { outcome: 'ok', blob: await response.blob() };
 }
 
-export async function deleteLprRead(readId, { fetchImpl = globalThis.fetch } = {}) {
+export async function deleteLprRead(
+  readId: string,
+  { fetchImpl = globalThis.fetch }: Pick<LprRequestOptions, 'fetchImpl'> = {},
+) {
   const response = await fetchImpl(`/api/lpr/reads/${encodeURIComponent(readId)}`, {
     method: 'DELETE',
     credentials: 'same-origin',
@@ -196,8 +226,11 @@ export async function deleteLprRead(readId, { fetchImpl = globalThis.fetch } = {
  * Per-camera action availability. The API offers no capability probe, so an
  * action stays visible until the server refuses it with 403 for that camera.
  */
-export function lprActionsFor(deniedActions, cameraUuid) {
-  const denied = deniedActions?.[cameraUuid] || {};
+export function lprActionsFor(
+  deniedActions: LprDeniedActions | null | undefined,
+  cameraUuid: string,
+) {
+  const denied: Partial<Record<LprAction, boolean>> = deniedActions?.[cameraUuid] || {};
   return {
     canSearch: !denied.search,
     canExport: !denied.export,
@@ -205,7 +238,11 @@ export function lprActionsFor(deniedActions, cameraUuid) {
   };
 }
 
-export function denyLprAction(deniedActions, cameraUuid, action) {
+export function denyLprAction(
+  deniedActions: LprDeniedActions | null | undefined,
+  cameraUuid: string,
+  action: LprAction,
+): LprDeniedActions {
   return {
     ...deniedActions,
     [cameraUuid]: { ...(deniedActions?.[cameraUuid] || {}), [action]: true },
@@ -218,11 +255,14 @@ export function denyLprAction(deniedActions, cameraUuid, action) {
  * compatibility fallback for reads without either identity.
  * The plate itself is never part of the link.
  */
-export function lprTimelineHref(read, streams = []) {
+export function lprTimelineHref(
+  read: LprRead | null | undefined,
+  streams: Array<Pick<StreamSummary, 'camera_uuid' | 'name'>> = [],
+) {
   const observedAt = Number(read?.observed_at);
   if (!Number.isFinite(observedAt)) return null;
   const current = Array.isArray(streams)
-    ? streams.find((stream) => stream?.camera_uuid && stream.camera_uuid === read.camera_uuid)
+    ? streams.find((stream) => stream?.camera_uuid && stream.camera_uuid === read!.camera_uuid)
     : null;
   const streamName = current?.name || read?.stream_name;
   const recordingId = Number(read?.recording_id);
@@ -241,8 +281,8 @@ export function lprTimelineHref(read, streams = []) {
   return `timeline.html?${params.toString()}`;
 }
 
-export function formatLprConfidence(confidence) {
+export function formatLprConfidence(confidence: number | null | undefined) {
   // The server stores confidence normalized to 0..1.
   if (!Number.isFinite(confidence)) return '';
-  return `${Math.round(confidence * 100)}%`;
+  return `${Math.round(confidence! * 100)}%`;
 }

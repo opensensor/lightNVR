@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { fetchJSON } from '../../../query-client.ts';
@@ -10,11 +9,27 @@ import {
   parseDateTimeLocal,
   summarizeInvestigationActionPreview,
 } from './investigationUtils.ts';
+import type {
+  BatchDownloadJob,
+  BatchDownloadStatus,
+  BatchProtectResponse,
+  InvestigationActionSelection,
+  InvestigationPreview,
+  InvestigationResult,
+  InvestigationTimeline,
+  Translate,
+} from '../../../types/investigation.ts';
+
+export interface InvestigationActionsProps {
+  timeline: InvestigationTimeline | null;
+  selectedResult: InvestigationResult | null;
+  t: Translate;
+}
 
 const DOWNLOAD_POLL_INTERVAL_MS = 800;
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
-function defaultArchiveName(startTime) {
+function defaultArchiveName(startTime: number) {
   const date = new Date(startTime * 1000);
   const stamp = Number.isFinite(date.getTime())
     ? date.toISOString().replace(/[:]/g, '-').replace(/\.\d{3}Z$/, 'Z')
@@ -22,7 +37,7 @@ function defaultArchiveName(startTime) {
   return `investigation-${stamp}.zip`;
 }
 
-function triggerArchiveDownload(token, filename) {
+function triggerArchiveDownload(token: string, filename: string) {
   const link = document.createElement('a');
   link.href = `/api/recordings/batch-download/result/${encodeURIComponent(token)}`;
   link.download = filename;
@@ -31,18 +46,18 @@ function triggerArchiveDownload(token, filename) {
   document.body.removeChild(link);
 }
 
-export function InvestigationActions({ timeline, selectedResult, t }) {
+export function InvestigationActions({ timeline, selectedResult, t }: InvestigationActionsProps) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState('investigation');
   const [startInput, setStartInput] = useState('');
   const [endInput, setEndInput] = useState('');
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState<InvestigationPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
   const [outcome, setOutcome] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const previewController = useRef(null);
+  const previewController = useRef<AbortController | null>(null);
 
   useEffect(() => () => previewController.current?.abort(), []);
 
@@ -51,10 +66,13 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
     [preview],
   );
 
-  const selectionFor = (nextScope) =>
+  const selectionFor = (nextScope: string) =>
     investigationActionSelection(timeline, selectedResult, nextScope);
 
-  const requestPreview = async (selection, preserveOutcome = false) => {
+  const requestPreview = async (
+    selection: InvestigationActionSelection | null,
+    preserveOutcome = false,
+  ) => {
     if (!selection) return;
     previewController.current?.abort();
     const controller = new AbortController();
@@ -64,7 +82,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
     setError('');
     if (!preserveOutcome) setOutcome('');
     try {
-      const data = await fetchJSON('/api/investigations/recordings/preview', {
+      const data = await fetchJSON<InvestigationPreview>('/api/investigations/recordings/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,13 +96,13 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
       });
       setPreview(data);
     } catch (requestError) {
-      if (!controller.signal.aborted) setError(requestError.message);
+      if (!controller.signal.aborted) setError((requestError as Error).message);
     } finally {
       if (!controller.signal.aborted) setLoadingPreview(false);
     }
   };
 
-  const applyScope = (nextScope, load = true) => {
+  const applyScope = (nextScope: string, load = true) => {
     const selection = selectionFor(nextScope);
     if (!selection) return;
     setScope(nextScope);
@@ -106,19 +124,19 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
     setError('');
   };
 
-  const refreshPreview = (event) => {
+  const refreshPreview = (event?: Event) => {
     event?.preventDefault();
     const base = selectionFor(scope);
     const startTime = parseDateTimeLocal(startInput);
     const endTime = parseDateTimeLocal(endInput);
     if (!base || !Number.isFinite(startTime) || !Number.isFinite(endTime) ||
-        endTime <= startTime || startTime < timeline.start_time ||
-        endTime > timeline.end_time) {
+        endTime! <= startTime! || startTime! < timeline!.start_time ||
+        endTime! > timeline!.end_time) {
       setPreview(null);
       setError(t('investigation.actions.invalidRange'));
       return;
     }
-    void requestPreview({ ...base, startTime, endTime });
+    void requestPreview({ ...base, startTime: startTime!, endTime: endTime! });
   };
 
   const protectRecordings = async () => {
@@ -127,7 +145,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
     setError('');
     setOutcome('');
     try {
-      const result = await fetchJSON('/api/recordings/batch-protect', {
+      const result = await fetchJSON<BatchProtectResponse>('/api/recordings/batch-protect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,10 +163,10 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
       const startTime = parseDateTimeLocal(startInput);
       const endTime = parseDateTimeLocal(endInput);
       if (base && Number.isFinite(startTime) && Number.isFinite(endTime)) {
-        await requestPreview({ ...base, startTime, endTime }, true);
+        await requestPreview({ ...base, startTime: startTime!, endTime: endTime! }, true);
       }
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as Error).message);
     } finally {
       setBusyAction('');
     }
@@ -162,7 +180,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
     setProgress({ current: 0, total: summary.recordingCount });
     const filename = defaultArchiveName(preview.start_time);
     try {
-      const job = await fetchJSON('/api/recordings/batch-download', {
+      const job = await fetchJSON<BatchDownloadJob>('/api/recordings/batch-download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,7 +194,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
       while (Date.now() < deadline) {
         await new Promise((resolve) =>
           window.setTimeout(resolve, DOWNLOAD_POLL_INTERVAL_MS));
-        const status = await fetchJSON(
+        const status = await fetchJSON<BatchDownloadStatus>(
           `/api/recordings/batch-download/status/${encodeURIComponent(job.token)}`,
           { timeout: 15000, retries: 0 },
         );
@@ -195,7 +213,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
       }
       throw new Error(t('investigation.actions.downloadTimedOut'));
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as Error).message);
     } finally {
       setBusyAction('');
     }
@@ -270,12 +288,12 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                   <input
                     type="datetime-local"
                     step="1"
-                    min={formatDateTimeLocal(timeline.start_time, true)}
-                    max={formatDateTimeLocal(timeline.end_time, true)}
+                    min={formatDateTimeLocal(timeline!.start_time, true)}
+                    max={formatDateTimeLocal(timeline!.end_time, true)}
                     value={startInput}
                     disabled={Boolean(busyAction)}
                     onInput={(event) => {
-                      setStartInput(event.target.value);
+                      setStartInput((event.target as HTMLInputElement).value);
                       setPreview(null);
                       setOutcome('');
                     }}
@@ -286,12 +304,12 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                   <input
                     type="datetime-local"
                     step="1"
-                    min={formatDateTimeLocal(timeline.start_time, true)}
-                    max={formatDateTimeLocal(timeline.end_time, true)}
+                    min={formatDateTimeLocal(timeline!.start_time, true)}
+                    max={formatDateTimeLocal(timeline!.end_time, true)}
                     value={endInput}
                     disabled={Boolean(busyAction)}
                     onInput={(event) => {
-                      setEndInput(event.target.value);
+                      setEndInput((event.target as HTMLInputElement).value);
                       setPreview(null);
                       setOutcome('');
                     }}

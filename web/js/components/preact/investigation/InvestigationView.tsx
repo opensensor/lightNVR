@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { fetchJSON, useQuery } from '../../../query-client.ts';
@@ -33,6 +32,102 @@ import {
   thumbnailWindowForResult,
   videoContentBox,
 } from './investigationUtils.ts';
+import type { StreamSummary } from '../../../types/core.ts';
+import type {
+  InvestigationHistogramData,
+  InvestigationRegion,
+  InvestigationRegionMatch,
+  InvestigationResult,
+  InvestigationSearchContext,
+  InvestigationSearchFilters,
+  InvestigationSearchRequestFilters,
+  InvestigationSearchResponse,
+  InvestigationSegment,
+  InvestigationSegmentAtResponse,
+  InvestigationThumbnailData,
+  InvestigationThumbnailSample,
+  InvestigationTimeline,
+  InvestigationTimelineTrack,
+  RegionCoordinateName,
+  RegionPoint,
+  RegionRectangle,
+  ThumbnailDrilldown,
+  ThumbnailWindow,
+  Translate,
+} from '../../../types/investigation.ts';
+import type { TargetedMouseEvent, TargetedPointerEvent } from 'preact';
+
+/** Prefixed fullscreen APIs for Safari. Intersected so a global declaration cannot conflict. */
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+type WebkitFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>;
+};
+type WebkitFullscreenVideo = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+};
+
+interface InvestigationPlayerProps {
+  track: InvestigationTimelineTrack;
+  cursor: number;
+  playing: boolean;
+  speed: number;
+  primary: boolean;
+  streamConfig: StreamSummary | null;
+  region: InvestigationRegion | null;
+  drawingRegion: boolean;
+  onRegionChange: (rectangle: RegionRectangle | null) => void;
+  onRegionComplete: () => void;
+  onMakePrimary: () => void;
+  onPlayingChange: (playing: boolean) => void;
+  onSeek: (value: number) => void;
+  t: Translate;
+}
+
+interface InvestigationTrackProps {
+  track: InvestigationTimelineTrack;
+  startTime: number;
+  endTime: number;
+  cursor: number;
+  active: boolean;
+  onToggleActive: () => void;
+  onSeek: (value: number) => void;
+  t: Translate;
+}
+
+interface InvestigationHistogramProps {
+  histogram: InvestigationHistogramData | null | undefined;
+  startTime: number;
+  endTime: number;
+  onSeek: (value: number) => void;
+  t: Translate;
+}
+
+interface InvestigationResultCardProps {
+  result: InvestigationResult;
+  selected: boolean;
+  onSelect: () => void;
+  t: Translate;
+}
+
+interface InvestigationSampleThumbnailProps {
+  sample: InvestigationThumbnailSample;
+  onSelect: () => void;
+  t: Translate;
+}
+
+interface InvestigationThumbnailDrilldownProps {
+  drilldown: ThumbnailDrilldown;
+  data: InvestigationThumbnailData | null;
+  loading: boolean;
+  error: string;
+  onSelect: (sample: InvestigationThumbnailSample, index: number) => void;
+  onBack: () => void;
+  onClose: () => void;
+  t: Translate;
+}
 
 function initialTimeState() {
   const params = new URLSearchParams(window.location.search);
@@ -46,7 +141,7 @@ function initialTimeState() {
   return { start, end };
 }
 
-function initialSearchFilters() {
+function initialSearchFilters(): InvestigationSearchFilters {
   const params = new URLSearchParams(window.location.search);
   return {
     eventType: params.get('event') || '',
@@ -77,21 +172,21 @@ function InvestigationPlayer({
   onPlayingChange,
   onSeek,
   t,
-}) {
-  const videoRef = useRef(null);
-  const videoShellRef = useRef(null);
-  const videoFrameRef = useRef(null);
+}: InvestigationPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoShellRef = useRef<HTMLDivElement | null>(null);
+  const videoFrameRef = useRef<HTMLDivElement | null>(null);
   const cursorRef = useRef(cursor);
   const playbackRef = useRef({ playing, speed });
   playbackRef.current = { playing, speed };
   const mediaLoadingRef = useRef(true);
-  const regionAnchorRef = useRef(null);
+  const regionAnchorRef = useRef<RegionPoint | null>(null);
   const coverageSegment = findSegmentAt(track.segments, cursor);
-  const [resolvedSegment, setResolvedSegment] = useState(null);
-  const [resolvedGap, setResolvedGap] = useState(null);
+  const [resolvedSegment, setResolvedSegment] = useState<InvestigationSegment | null>(null);
+  const [resolvedGap, setResolvedGap] = useState<{ start: number; end: number } | null>(null);
   const segment = track.aggregated ? resolvedSegment : coverageSegment;
   const cursorSecond = Math.floor(cursor);
-  const [status, setStatus] = useState(coverageSegment ? 'loading' : 'gap');
+  const [status, setStatus] = useState<string>(coverageSegment ? 'loading' : 'gap');
   const [videoDimensions, setVideoDimensions] = useState({ width: 16, height: 9 });
   const [frameDimensions, setFrameDimensions] = useState({ width: 16, height: 9 });
   // Region metadata is stored in raw-frame coordinates. Keep that workflow on
@@ -148,7 +243,7 @@ function InvestigationPlayer({
 
     const controller = new AbortController();
     setStatus('loading');
-    fetchJSON('/api/investigations/segment-at', {
+    fetchJSON<InvestigationSegmentAtResponse>('/api/investigations/segment-at', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -286,18 +381,18 @@ function InvestigationPlayer({
     const shell = videoShellRef.current;
     if (!shell) return;
     const fullscreenElement = document.fullscreenElement ||
-      document.webkitFullscreenElement;
+      (document as WebkitFullscreenDocument).webkitFullscreenElement;
     try {
       if (fullscreenElement === shell) {
-        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        const exit = document.exitFullscreen || (document as WebkitFullscreenDocument).webkitExitFullscreen;
         await exit?.call(document);
         return;
       }
-      const request = shell.requestFullscreen || shell.webkitRequestFullscreen;
+      const request = shell.requestFullscreen || (shell as WebkitFullscreenElement).webkitRequestFullscreen;
       if (request) {
         await request.call(shell);
-      } else if (videoRef.current?.webkitEnterFullscreen) {
-        videoRef.current.webkitEnterFullscreen();
+      } else if ((videoRef.current as WebkitFullscreenVideo | null)?.webkitEnterFullscreen) {
+        (videoRef.current as WebkitFullscreenVideo).webkitEnterFullscreen!();
       }
     } catch (error) {
       console.warn('Could not toggle investigation player fullscreen', error);
@@ -308,7 +403,7 @@ function InvestigationPlayer({
     frameDimensions.width, frameDimensions.height,
     videoDimensions.width, videoDimensions.height,
   );
-  const pointFromEvent = (event) => {
+  const pointFromEvent = (event: TargetedPointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return null;
     return {
@@ -316,7 +411,7 @@ function InvestigationPlayer({
       y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
     };
   };
-  const finishRegion = (event) => {
+  const finishRegion = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (!regionAnchorRef.current) return;
     const point = pointFromEvent(event);
     const rectangle = normalizedRegionRectangle(regionAnchorRef.current, point);
@@ -452,7 +547,7 @@ function InvestigationPlayer({
               step="0.1"
               value={Math.max(segment.start_time, Math.min(segment.end_time, cursor))}
               aria-label={t('investigation.sharedCursor')}
-              onInput={(event) => onSeek(Number(event.target.value))}
+              onInput={(event) => onSeek(Number((event.target as HTMLInputElement).value))}
             />
             <time>
               {formatUtils.formatDuration(Math.max(0, cursor - segment.start_time))}
@@ -479,14 +574,14 @@ function InvestigationTrack({
   onToggleActive,
   onSeek,
   t,
-}) {
+}: InvestigationTrackProps) {
   const cursorPercent = Math.max(
     0,
     Math.min(100, ((cursor - startTime) / Math.max(endTime - startTime, 1)) * 100),
   );
   const hasFootage = Boolean(findSegmentAt(track.segments, cursor));
 
-  const seekFromPointer = (event) => {
+  const seekFromPointer = (event: TargetedMouseEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
     onSeek(startTime + ratio * (endTime - startTime));
@@ -507,7 +602,7 @@ function InvestigationTrack({
       <div
         className="investigation-track-bar"
         role="slider"
-        tabIndex="0"
+        tabIndex={0}
         aria-label={`${track.name} ${t('investigation.timeline')}`}
         aria-valuemin={startTime}
         aria-valuemax={endTime}
@@ -536,7 +631,7 @@ function InvestigationTrack({
   );
 }
 
-function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }) {
+function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }: InvestigationHistogramProps) {
   const buckets = histogram?.buckets || [];
   const duration = Math.max(endTime - startTime, 1);
   const maximum = Math.max(1, ...buckets.map((bucket) => bucket.count));
@@ -574,7 +669,7 @@ function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }) {
   );
 }
 
-function InvestigationResultCard({ result, selected, onSelect, t }) {
+function InvestigationResultCard({ result, selected, onSelect, t }: InvestigationResultCardProps) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnailAvailable = result.thumbnail?.status === 'available' &&
     result.thumbnail?.url && !thumbnailFailed;
@@ -626,7 +721,7 @@ function InvestigationResultCard({ result, selected, onSelect, t }) {
   );
 }
 
-function InvestigationSampleThumbnail({ sample, onSelect, t }) {
+function InvestigationSampleThumbnail({ sample, onSelect, t }: InvestigationSampleThumbnailProps) {
   const url = sample.thumbnail?.url || '';
   const [loadState, setLoadState] = useState(url ? 'loading' : 'unavailable');
   const [retryCount, setRetryCount] = useState(0);
@@ -694,7 +789,7 @@ function InvestigationThumbnailDrilldown({
   onBack,
   onClose,
   t,
-}) {
+}: InvestigationThumbnailDrilldownProps) {
   return (
     <section className="investigation-thumbnail-drilldown">
       <header>
@@ -754,35 +849,35 @@ export function InvestigationView() {
   const initialFilters = useMemo(initialSearchFilters, []);
   const [startTime, setStartTime] = useState(initialTimes.start);
   const [endTime, setEndTime] = useState(initialTimes.end);
-  const [selectedCameraUuids, setSelectedCameraUuids] = useState([]);
-  const [timeline, setTimeline] = useState(null);
+  const [selectedCameraUuids, setSelectedCameraUuids] = useState<string[]>([]);
+  const [timeline, setTimeline] = useState<InvestigationTimeline | null>(null);
   const [cursor, setCursor] = useState(initialTimes.start);
-  const [activeCameraUuids, setActiveCameraUuids] = useState([]);
-  const [primaryCameraUuid, setPrimaryCameraUuid] = useState(null);
+  const [activeCameraUuids, setActiveCameraUuids] = useState<string[]>([]);
+  const [primaryCameraUuid, setPrimaryCameraUuid] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [playbackMode, setPlaybackMode] = useState('wall-clock');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchFilters, setSearchFilters] = useState(initialFilters);
-  const [searchData, setSearchData] = useState(null);
+  const [searchData, setSearchData] = useState<InvestigationSearchResponse | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [searchPageCursors, setSearchPageCursors] = useState([null]);
+  const [searchPageCursors, setSearchPageCursors] = useState<Array<string | null>>([null]);
   const [searchPageIndex, setSearchPageIndex] = useState(0);
-  const [selectedResultId, setSelectedResultId] = useState(null);
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const [drawingRegion, setDrawingRegion] = useState(false);
-  const [thumbnailDrilldown, setThumbnailDrilldown] = useState(null);
-  const [thumbnailData, setThumbnailData] = useState(null);
+  const [thumbnailDrilldown, setThumbnailDrilldown] = useState<ThumbnailDrilldown | null>(null);
+  const [thumbnailData, setThumbnailData] = useState<InvestigationThumbnailData | null>(null);
   const [thumbnailLoading, setThumbnailLoading] = useState(false);
   const [thumbnailError, setThumbnailError] = useState('');
   const initialSelectionApplied = useRef(false);
   const initialQueryLoaded = useRef(false);
-  const requestController = useRef(null);
-  const searchRequestController = useRef(null);
-  const searchSummaryController = useRef(null);
-  const thumbnailRequestController = useRef(null);
-  const lastUrlCursor = useRef(null);
+  const requestController = useRef<AbortController | null>(null);
+  const searchRequestController = useRef<AbortController | null>(null);
+  const searchSummaryController = useRef<AbortController | null>(null);
+  const thumbnailRequestController = useRef<AbortController | null>(null);
+  const lastUrlCursor = useRef<number | null>(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } =
     useQuery({
@@ -813,17 +908,17 @@ export function InvestigationView() {
   }, [streams]);
 
   const loadSearchPage = useCallback(async (
-    pageCursor = null,
+    pageCursor: string | null = null,
     pageIndex = 0,
-    pageCursors = [null],
-    searchContext = null,
+    pageCursors: Array<string | null> = [null],
+    searchContext: InvestigationSearchContext | null = null,
   ) => {
     const cameraUuids = searchContext?.cameraUuids ||
       (timeline?.tracks || []).map((track) => track.camera_uuid);
     const searchStart = searchContext?.startTime ?? timeline?.start_time;
     const searchEnd = searchContext?.endTime ?? timeline?.end_time;
     if (cameraUuids.length === 0 || !Number.isFinite(searchStart) ||
-        !Number.isFinite(searchEnd) || searchEnd <= searchStart) return;
+        !Number.isFinite(searchEnd) || searchEnd! <= searchStart!) return;
     const minimumConfidence = searchFilters.minConfidence === ''
       ? null : Number(searchFilters.minConfidence);
     if (minimumConfidence !== null &&
@@ -839,7 +934,7 @@ export function InvestigationView() {
     setSearchLoading(true);
     setSearchError('');
     try {
-      const filters = {};
+      const filters: InvestigationSearchRequestFilters = {};
       if (searchFilters.eventType) filters.event_types = [searchFilters.eventType];
       if (searchFilters.location) filters.locations = [searchFilters.location];
       if (searchFilters.label) filters.labels = [searchFilters.label];
@@ -868,15 +963,15 @@ export function InvestigationView() {
         } : undefined;
       const searchRequest = {
         camera_uuids: cameraUuids,
-        start_time: Math.floor(searchStart),
-        end_time: Math.floor(searchEnd),
+        start_time: Math.floor(searchStart!),
+        end_time: Math.floor(searchEnd!),
         filters,
         region: activeRegion,
         cursor: pageCursor,
         limit: 24,
         include_summary: false,
       };
-      const data = await fetchJSON('/api/investigations/search', {
+      const data = await fetchJSON<InvestigationSearchResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(searchRequest),
@@ -895,7 +990,7 @@ export function InvestigationView() {
       searchSummaryController.current?.abort();
       const summaryController = new AbortController();
       searchSummaryController.current = summaryController;
-      void fetchJSON('/api/investigations/search', {
+      void fetchJSON<InvestigationSearchResponse>('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -958,7 +1053,7 @@ export function InvestigationView() {
       }
       window.history.replaceState({}, '', url);
     } catch (requestError) {
-      if (!controller.signal.aborted) setSearchError(requestError.message);
+      if (!controller.signal.aborted) setSearchError((requestError as Error).message);
     } finally {
       if (!controller.signal.aborted) setSearchLoading(false);
     }
@@ -985,7 +1080,7 @@ export function InvestigationView() {
     setError('');
     setPlaying(false);
     try {
-      const data = await fetchJSON('/api/investigations/timeline', {
+      const data = await fetchJSON<InvestigationTimeline>('/api/investigations/timeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1006,8 +1101,8 @@ export function InvestigationView() {
       const requestedPrimary = params.get('primary');
       const requestedPrimaryExists = tracks.some((track) =>
         track.camera_uuid === requestedPrimary);
-      if (requestedPrimaryExists && !nextActive.includes(requestedPrimary)) {
-        nextActive = [...nextActive.slice(0, -1), requestedPrimary];
+      if (requestedPrimaryExists && !nextActive.includes(requestedPrimary as string)) {
+        nextActive = [...nextActive.slice(0, -1), requestedPrimary as string];
       }
       setActiveCameraUuids(nextActive);
       const nextPrimary = requestedPrimaryExists
@@ -1016,7 +1111,7 @@ export function InvestigationView() {
       const requestedCursor = Number(params.get('cursor'));
       const firstSegmentStart = tracks
         .flatMap((track) => track.segments || [])
-        .reduce((earliest, segment) =>
+        .reduce<number | null>((earliest, segment) =>
           earliest === null || segment.start_time < earliest
             ? segment.start_time : earliest, null);
       const nextCursor = Number.isFinite(requestedCursor) &&
@@ -1040,7 +1135,7 @@ export function InvestigationView() {
         endTime: data.end_time,
       });
     } catch (requestError) {
-      if (!controller.signal.aborted) setError(requestError.message);
+      if (!controller.signal.aborted) setError((requestError as Error).message);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -1111,7 +1206,7 @@ export function InvestigationView() {
     window.history.replaceState({}, '', url);
   }, [primaryCameraUuid, timeline]);
 
-  const toggleSelectedCamera = (cameraUuid) => {
+  const toggleSelectedCamera = (cameraUuid: string) => {
     if (selectedCameraUuids.includes(cameraUuid) &&
         searchFilters.region?.cameraUuid === cameraUuid) {
       setDrawingRegion(false);
@@ -1130,7 +1225,7 @@ export function InvestigationView() {
     });
   };
 
-  const toggleActiveCamera = (cameraUuid) => {
+  const toggleActiveCamera = (cameraUuid: string) => {
     setActiveCameraUuids((current) => {
       if (current.includes(cameraUuid)) {
         const next = current.filter((uuid) => uuid !== cameraUuid);
@@ -1151,9 +1246,9 @@ export function InvestigationView() {
   const selectedResultIndex = searchResults.findIndex((result) =>
     result.result_id === selectedResultId);
   const selectedResult = selectedResultIndex >= 0
-    ? searchResults[selectedResultIndex] : null;
+    ? searchResults[selectedResultIndex]! : null;
 
-  const selectResult = useCallback((result) => {
+  const selectResult = useCallback((result: InvestigationResult | null | undefined) => {
     if (!result || !timeline) return;
     setDrawingRegion(false);
     setSelectedResultId(result.result_id);
@@ -1173,7 +1268,7 @@ export function InvestigationView() {
     setPrimaryCameraUuid(cameraUuid);
   }, [timeline]);
 
-  const selectAdjacentResult = useCallback((direction) => {
+  const selectAdjacentResult = useCallback((direction: number) => {
     const index = adjacentInvestigationResultIndex(
       searchResults, selectedResultId, direction,
     );
@@ -1181,8 +1276,8 @@ export function InvestigationView() {
   }, [searchResults, selectedResultId, selectResult]);
 
   useEffect(() => {
-    const handleKeyDown = (event) => {
-      const target = event.target;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
       if (target?.matches?.('input, select, textarea, button') ||
           target?.isContentEditable) return;
       if (event.key === '[') {
@@ -1197,23 +1292,28 @@ export function InvestigationView() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectAdjacentResult]);
 
-  const setSearchFilter = (name, value) => {
+  const setSearchFilter = <K extends keyof InvestigationSearchFilters>(
+    name: K,
+    value: InvestigationSearchFilters[K],
+  ) => {
     setSearchFilters((current) => ({ ...current, [name]: value }));
   };
 
-  const setRegionRectangle = useCallback((rectangle) => {
+  // Both callers require a primary track: the full-frame button is disabled without
+  // one, and only the primary player draws.
+  const setRegionRectangle = useCallback((rectangle: RegionRectangle | null) => {
     setSearchFilters((current) => ({
       ...current,
       region: rectangle ? {
         ...rectangle,
-        cameraUuid: primaryCameraUuid,
+        cameraUuid: primaryCameraUuid as string,
         match: current.region?.match || 'center',
         minIntersection: current.region?.minIntersection || 0.25,
       } : null,
     }));
   }, [primaryCameraUuid]);
 
-  const setRegionCoordinate = (name, percentValue) => {
+  const setRegionCoordinate = (name: RegionCoordinateName, percentValue: string) => {
     const value = Number(percentValue) / 100;
     if (!Number.isFinite(value)) return;
     setSearchFilters((current) => {
@@ -1244,7 +1344,7 @@ export function InvestigationView() {
   };
 
   const loadThumbnailSamples = useCallback(async (
-    cameraUuid, sampleStart, sampleEnd, history = [],
+    cameraUuid: string, sampleStart: number, sampleEnd: number, history: ThumbnailWindow[] = [],
   ) => {
     thumbnailRequestController.current?.abort();
     const controller = new AbortController();
@@ -1260,7 +1360,7 @@ export function InvestigationView() {
     setThumbnailLoading(true);
     setThumbnailError('');
     try {
-      const data = await fetchJSON('/api/investigations/thumbnail-samples', {
+      const data = await fetchJSON<InvestigationThumbnailData>('/api/investigations/thumbnail-samples', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1280,7 +1380,7 @@ export function InvestigationView() {
       url.searchParams.set('drill_end', String(nextDrilldown.endTime));
       window.history.replaceState({}, '', url);
     } catch (requestError) {
-      if (!controller.signal.aborted) setThumbnailError(requestError.message);
+      if (!controller.signal.aborted) setThumbnailError((requestError as Error).message);
     } finally {
       if (!controller.signal.aborted) setThumbnailLoading(false);
     }
@@ -1305,7 +1405,7 @@ export function InvestigationView() {
     );
   };
 
-  const selectThumbnailSample = (sample, index) => {
+  const selectThumbnailSample = (sample: InvestigationThumbnailSample, index: number) => {
     if (!thumbnailDrilldown || !thumbnailData || !timeline) return;
     setPlaying(false);
     setCursor(Math.max(
@@ -1336,7 +1436,7 @@ export function InvestigationView() {
 
   const backThumbnailDrilldown = () => {
     if (!thumbnailDrilldown || thumbnailDrilldown.history.length === 0) return;
-    const previous = thumbnailDrilldown.history[thumbnailDrilldown.history.length - 1];
+    const previous = thumbnailDrilldown.history[thumbnailDrilldown.history.length - 1]!;
     void loadThumbnailSamples(
       thumbnailDrilldown.cameraUuid,
       previous.startTime,
@@ -1369,7 +1469,7 @@ export function InvestigationView() {
         Number.isFinite(sampleEnd) && sampleEnd > sampleStart &&
         sampleStart >= timeline.start_time && sampleEnd <= timeline.end_time) {
       setPrimaryCameraUuid(cameraUuid);
-      void loadThumbnailSamples(cameraUuid, sampleStart, sampleEnd, []);
+      void loadThumbnailSamples(cameraUuid as string, sampleStart, sampleEnd, []);
       return;
     }
     const url = new URL(window.location.href);
@@ -1444,7 +1544,7 @@ export function InvestigationView() {
                 type="datetime-local"
                 value={formatDateTimeLocal(startTime)}
                 onInput={(event) => {
-                  const value = parseDateTimeLocal(event.target.value);
+                  const value = parseDateTimeLocal((event.target as HTMLInputElement).value);
                   if (value !== null) setStartTime(value);
                 }}
               />
@@ -1455,7 +1555,7 @@ export function InvestigationView() {
                 type="datetime-local"
                 value={formatDateTimeLocal(endTime)}
                 onInput={(event) => {
-                  const value = parseDateTimeLocal(event.target.value);
+                  const value = parseDateTimeLocal((event.target as HTMLInputElement).value);
                   if (value !== null) setEndTime(value);
                 }}
               />
@@ -1470,7 +1570,7 @@ export function InvestigationView() {
             <span>{t('investigation.eventType')}</span>
             <select
               value={searchFilters.eventType}
-              onChange={(event) => setSearchFilter('eventType', event.target.value)}
+              onChange={(event) => setSearchFilter('eventType', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyEventType')}</option>
               {(searchData?.facets?.event_types || []).map((facet) => (
@@ -1484,7 +1584,7 @@ export function InvestigationView() {
             <span>{t('investigation.location')}</span>
             <select
               value={searchFilters.location}
-              onChange={(event) => setSearchFilter('location', event.target.value)}
+              onChange={(event) => setSearchFilter('location', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyLocation')}</option>
               {(searchData?.facets?.locations || []).map((facet) => (
@@ -1498,7 +1598,7 @@ export function InvestigationView() {
             <span>{t('investigation.objectLabel')}</span>
             <select
               value={searchFilters.label}
-              onChange={(event) => setSearchFilter('label', event.target.value)}
+              onChange={(event) => setSearchFilter('label', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyLabel')}</option>
               {(searchData?.facets?.labels || []).map((facet) => (
@@ -1512,7 +1612,7 @@ export function InvestigationView() {
             <span>{t('investigation.zone')}</span>
             <select
               value={searchFilters.zone}
-              onChange={(event) => setSearchFilter('zone', event.target.value)}
+              onChange={(event) => setSearchFilter('zone', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyZone')}</option>
               {(searchData?.facets?.zones || []).map((facet) => (
@@ -1526,7 +1626,7 @@ export function InvestigationView() {
             <span>{t('investigation.source')}</span>
             <select
               value={searchFilters.source}
-              onChange={(event) => setSearchFilter('source', event.target.value)}
+              onChange={(event) => setSearchFilter('source', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anySource')}</option>
               {(searchData?.facets?.sources || []).map((facet) => (
@@ -1540,7 +1640,7 @@ export function InvestigationView() {
             <span>{t('investigation.captureMethod')}</span>
             <select
               value={searchFilters.captureMethod}
-              onChange={(event) => setSearchFilter('captureMethod', event.target.value)}
+              onChange={(event) => setSearchFilter('captureMethod', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyCaptureMethod')}</option>
               {(searchData?.facets?.capture_methods || []).map((facet) => (
@@ -1554,7 +1654,7 @@ export function InvestigationView() {
             <span>{t('investigation.recordingTag')}</span>
             <select
               value={searchFilters.recordingTag}
-              onChange={(event) => setSearchFilter('recordingTag', event.target.value)}
+              onChange={(event) => setSearchFilter('recordingTag', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyRecordingTag')}</option>
               {(searchData?.facets?.recording_tags || []).map((facet) => (
@@ -1568,7 +1668,7 @@ export function InvestigationView() {
             <span>{t('investigation.protection')}</span>
             <select
               value={searchFilters.protection}
-              onChange={(event) => setSearchFilter('protection', event.target.value)}
+              onChange={(event) => setSearchFilter('protection', (event.target as HTMLSelectElement).value)}
             >
               <option value="">{t('investigation.anyProtection')}</option>
               {(searchData?.facets?.protection || []).map((facet) => (
@@ -1587,7 +1687,7 @@ export function InvestigationView() {
               step="0.05"
               placeholder="0.00"
               value={searchFilters.minConfidence}
-              onInput={(event) => setSearchFilter('minConfidence', event.target.value)}
+              onInput={(event) => setSearchFilter('minConfidence', (event.target as HTMLInputElement).value)}
             />
           </label>
           <button
@@ -1613,7 +1713,7 @@ export function InvestigationView() {
             </div>
             {searchFilters.region && (
               <>
-                {[
+                {([
                   ['x', 'investigation.regionLeft', 0,
                     (1 - searchFilters.region.width) * 100],
                   ['y', 'investigation.regionTop', 0,
@@ -1622,7 +1722,7 @@ export function InvestigationView() {
                     (1 - searchFilters.region.x) * 100],
                   ['height', 'investigation.regionHeight', 1,
                     (1 - searchFilters.region.y) * 100],
-                ].map(([name, label, minimum, maximum]) => (
+                ] as Array<[RegionCoordinateName, string, number, number]>).map(([name, label, minimum, maximum]) => (
                   <label className="investigation-region-coordinate" key={name}>
                     <span>{t(label)}</span>
                     <input
@@ -1630,8 +1730,8 @@ export function InvestigationView() {
                       min={minimum}
                       max={maximum}
                       step="0.1"
-                      value={Math.round(searchFilters.region[name] * 1000) / 10}
-                      onInput={(event) => setRegionCoordinate(name, event.target.value)}
+                      value={Math.round(searchFilters.region![name] * 1000) / 10}
+                      onInput={(event) => setRegionCoordinate(name, (event.target as HTMLInputElement).value)}
                     />
                   </label>
                 ))}
@@ -1640,8 +1740,8 @@ export function InvestigationView() {
                   <select
                     value={searchFilters.region.match}
                     onChange={(event) => setSearchFilter('region', {
-                      ...searchFilters.region,
-                      match: event.target.value,
+                      ...searchFilters.region!,
+                      match: (event.target as HTMLSelectElement).value as InvestigationRegionMatch,
                     })}
                   >
                     <option value="center">{t('investigation.regionMatch.center')}</option>
@@ -1661,10 +1761,10 @@ export function InvestigationView() {
                       step="1"
                       value={Math.round(searchFilters.region.minIntersection * 100)}
                       onInput={(event) => {
-                        const value = Number(event.target.value);
+                        const value = Number((event.target as HTMLInputElement).value);
                         if (Number.isFinite(value) && value >= 1 && value <= 100) {
                           setSearchFilter('region', {
-                            ...searchFilters.region,
+                            ...searchFilters.region!,
                             minIntersection: value / 100,
                           });
                         }
@@ -1855,7 +1955,7 @@ export function InvestigationView() {
             aria-label={t('investigation.sharedCursor')}
             onInput={(event) => {
               setPlaying(false);
-              setCursor(Number(event.target.value));
+              setCursor(Number((event.target as HTMLInputElement).value));
             }}
           />
 
@@ -1927,14 +2027,14 @@ export function InvestigationView() {
             </button>
             <label>
               <span>{t('investigation.mode')}</span>
-              <select value={playbackMode} onChange={(event) => setPlaybackMode(event.target.value)}>
+              <select value={playbackMode} onChange={(event) => setPlaybackMode((event.target as HTMLSelectElement).value)}>
                 <option value="wall-clock">{t('investigation.wallClock')}</option>
                 <option value="skip-common-gaps">{t('investigation.skipCommonGaps')}</option>
               </select>
             </label>
             <label>
               <span>{t('investigation.speed')}</span>
-              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
+              <select value={speed} onChange={(event) => setSpeed(Number((event.target as HTMLSelectElement).value))}>
                 <option value="0.5">0.5×</option>
                 <option value="1">1×</option>
                 <option value="2">2×</option>

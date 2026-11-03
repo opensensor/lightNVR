@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState } from 'preact/hooks';
 
 import { fetchJSON } from '../../../query-client.ts';
@@ -6,8 +5,25 @@ import {
   buildInvestigationBookmarkPayload,
   investigationBookmarkUrl,
 } from './investigationUtils.ts';
+import type {
+  InvestigationBookmark,
+  InvestigationBookmarksResponse,
+  InvestigationResult,
+  InvestigationSearchFilters,
+  InvestigationTimeline,
+  Translate,
+} from '../../../types/investigation.ts';
 
-function formatBookmarkRange(bookmark) {
+export interface InvestigationBookmarksProps {
+  timeline: InvestigationTimeline | null;
+  cursor: number;
+  primaryCameraUuid: string | null;
+  searchFilters: InvestigationSearchFilters;
+  selectedResult: InvestigationResult | null;
+  t: Translate;
+}
+
+function formatBookmarkRange(bookmark: InvestigationBookmark) {
   const start = new Date(bookmark.start_time * 1000).toLocaleString();
   const end = new Date(bookmark.end_time * 1000).toLocaleString();
   return `${start} – ${end}`;
@@ -20,14 +36,14 @@ export function InvestigationBookmarks({
   searchFilters,
   selectedResult,
   t,
-}) {
-  const [mode, setMode] = useState(null);
+}: InvestigationBookmarksProps) {
+  const [mode, setMode] = useState<'save' | 'list' | null>(null);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
-  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarks, setBookmarks] = useState<InvestigationBookmark[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const close = () => {
     if (loading) return;
@@ -48,19 +64,19 @@ export function InvestigationBookmarks({
     setLoading(true);
     setError('');
     try {
-      const data = await fetchJSON('/api/investigation-bookmarks', {
+      const data = await fetchJSON<InvestigationBookmarksResponse>('/api/investigation-bookmarks', {
         timeout: 15000,
         retries: 1,
       });
       setBookmarks(data.bookmarks || []);
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
-  const save = async (event) => {
+  const save = async (event: Event) => {
     event.preventDefault();
     const payload = buildInvestigationBookmarkPayload({
       title,
@@ -87,13 +103,13 @@ export function InvestigationBookmarks({
       });
       setMode(null);
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
-  const remove = async (bookmark) => {
+  const remove = async (bookmark: InvestigationBookmark) => {
     if (confirmDelete !== bookmark.uuid) {
       setConfirmDelete(bookmark.uuid);
       return;
@@ -111,7 +127,7 @@ export function InvestigationBookmarks({
       setBookmarks((current) => current.filter((item) => item.uuid !== bookmark.uuid));
       setConfirmDelete(null);
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as Error).message);
     } finally {
       setLoading(false);
     }
@@ -167,19 +183,19 @@ export function InvestigationBookmarks({
                   <input
                     autoFocus
                     type="text"
-                    maxLength="127"
+                    maxLength={127}
                     required
                     value={title}
-                    onInput={(event) => setTitle(event.target.value)}
+                    onInput={(event) => setTitle((event.target as HTMLInputElement).value)}
                   />
                 </label>
                 <label>
                   <span>{t('investigation.bookmarks.note')}</span>
                   <textarea
-                    rows="4"
-                    maxLength="2047"
+                    rows={4}
+                    maxLength={2047}
                     value={note}
-                    onInput={(event) => setNote(event.target.value)}
+                    onInput={(event) => setNote((event.target as HTMLTextAreaElement).value)}
                   />
                 </label>
                 <div className="investigation-bookmark-dialog-actions">

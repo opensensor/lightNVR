@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { useQuery } from '../../../query-client.ts';
@@ -20,13 +19,23 @@ import {
   searchLprReads,
   validateLprFilters,
 } from './lprSearch.ts';
+import type {
+  LprAttributes,
+  LprDeniedActions,
+  LprField,
+  LprFilters,
+  LprRead,
+  LprResponseOutcome,
+  LprValidationError,
+  Translate,
+} from '../../../types/investigation.ts';
 
 const INPUT_CLASS = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground '
   + 'focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const LABEL_CLASS = 'mb-1 block text-sm font-medium';
 const SUBNAV_LINK_CLASS = 'shrink-0 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors sm:px-4';
 
-function formatObservedAt(milliseconds) {
+function formatObservedAt(milliseconds: number) {
   if (!Number.isFinite(milliseconds)) return '—';
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
@@ -34,8 +43,8 @@ function formatObservedAt(milliseconds) {
   }).format(new Date(milliseconds));
 }
 
-function readDetails(read) {
-  const attributes = read.attributes || {};
+function readDetails(read: LprRead) {
+  const attributes: Partial<LprAttributes> = read.attributes || {};
   return {
     confidence: formatLprConfidence(read.confidence),
     direction: attributes.direction || '',
@@ -49,7 +58,7 @@ function handleUnauthorized() {
   }
 }
 
-function outcomeMessage(t, result) {
+function outcomeMessage(t: Translate, result: LprResponseOutcome) {
   switch (result.outcome) {
     case 'invalid': return t('lpr.error.invalid');
     case 'unavailable': return t('lpr.error.unavailable');
@@ -58,7 +67,7 @@ function outcomeMessage(t, result) {
   }
 }
 
-function FieldErrors({ id, errors, t }) {
+function FieldErrors({ id, errors, t }: { id: string; errors: LprValidationError[]; t: Translate }) {
   if (!errors.length) return null;
   return (
     <p id={id} className="mt-1 text-xs text-red-600 dark:text-red-400">
@@ -70,15 +79,15 @@ function FieldErrors({ id, errors, t }) {
 export function PlatesView() {
   const { t } = useI18n();
   const [filters, setFilters] = useState(() => createLprFilters());
-  const [submittedErrors, setSubmittedErrors] = useState([]);
-  const [reads, setReads] = useState(null);
+  const [submittedErrors, setSubmittedErrors] = useState<LprValidationError[]>([]);
+  const [reads, setReads] = useState<LprRead[] | null>(null);
   const [searchedCameraUuid, setSearchedCameraUuid] = useState('');
   const [searching, setSearching] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [requestError, setRequestError] = useState('');
-  const [deniedActions, setDeniedActions] = useState({});
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
-  const searchController = useRef(null);
+  const [deniedActions, setDeniedActions] = useState<LprDeniedActions>({});
+  const [deleteCandidate, setDeleteCandidate] = useState<LprRead | null>(null);
+  const searchController = useRef<AbortController | null>(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } = useQuery({
     queryKey: ['lpr-streams', 'summary', 'lpr'],
@@ -91,7 +100,7 @@ export function PlatesView() {
   // Default to the first visible camera once the list arrives.
   useEffect(() => {
     if (!filters.cameraUuid && cameras.length) {
-      setFilters((current) => ({ ...current, cameraUuid: cameras[0].camera_uuid }));
+      setFilters((current) => ({ ...current, cameraUuid: cameras[0]!.camera_uuid }));
     }
   }, [cameras, filters.cameraUuid]);
 
@@ -101,12 +110,12 @@ export function PlatesView() {
     setReads(null);
   }, []);
 
-  const errorsFor = (field) => submittedErrors.filter((error) => error.field === field);
+  const errorsFor = (field: LprField) => submittedErrors.filter((error) => error.field === field);
   const actions = lprActionsFor(deniedActions, searchedCameraUuid);
-  const cameraName = (uuid) => cameras.find((camera) => camera.camera_uuid === uuid)?.name;
+  const cameraName = (uuid: string) => cameras.find((camera) => camera.camera_uuid === uuid)?.name;
 
-  const updateFilter = (name) => (event) => {
-    const { value } = event.currentTarget;
+  const updateFilter = (name: keyof LprFilters) => (event: Event) => {
+    const { value } = event.currentTarget as HTMLInputElement | HTMLSelectElement;
     setFilters((current) => ({ ...current, [name]: value }));
   };
 
@@ -116,7 +125,7 @@ export function PlatesView() {
     return errors.length === 0;
   };
 
-  const handleSearch = async (event) => {
+  const handleSearch = async (event: Event) => {
     event.preventDefault();
     setRequestError('');
     if (!validate()) return;
@@ -142,7 +151,7 @@ export function PlatesView() {
       setReads(null);
       setRequestError(outcomeMessage(t, result));
     } catch (error) {
-      if (error?.name !== 'AbortError') setRequestError(t('lpr.error.generic'));
+      if ((error as Error | null)?.name !== 'AbortError') setRequestError(t('lpr.error.generic'));
     } finally {
       if (searchController.current === controller) {
         searchController.current = null;
@@ -184,7 +193,7 @@ export function PlatesView() {
     }
   };
 
-  const handleDelete = async (read) => {
+  const handleDelete = async (read: LprRead) => {
     try {
       const result = await deleteLprRead(read.id);
       if (result.outcome === 'ok' || result.outcome === 'not_found') {
@@ -202,7 +211,7 @@ export function PlatesView() {
     }
   };
 
-  const describedBy = (field) => (errorsFor(field).length ? `lpr-${field}-error` : undefined);
+  const describedBy = (field: LprField) => (errorsFor(field).length ? `lpr-${field}-error` : undefined);
   const exportVisible = Boolean(filters.cameraUuid)
     && lprActionsFor(deniedActions, filters.cameraUuid).canExport;
 
@@ -316,6 +325,7 @@ export function PlatesView() {
               value={filters.plate}
               onInput={updateFilter('plate')}
               autoComplete="off"
+              // @ts-expect-error Preact types only `spellcheck`. Kept as written; it has no effect at runtime (see the T10 log).
               spellCheck={false}
               placeholder={t('lpr.platePlaceholder')}
               aria-labelledby="lpr-plate-label"

@@ -1,8 +1,27 @@
-// @ts-nocheck
+import type {
+  BookmarkFilterInput,
+  BookmarkFilters,
+  BookmarkRepresentativeResult,
+  InvestigationActionSelection,
+  InvestigationBookmark,
+  InvestigationBookmarkPayload,
+  InvestigationHistogramBucket,
+  InvestigationPreview,
+  InvestigationRegion,
+  InvestigationRegionMatch,
+  InvestigationResult,
+  InvestigationTimeline,
+  InvestigationTimelineTrack,
+  RegionPoint,
+  RegionRectangle,
+  RepresentativeResultSource,
+  ThumbnailWindow,
+} from '../../../types/investigation.ts';
+
 export const MAX_INVESTIGATION_CAMERAS = 16;
 export const MAX_ACTIVE_INVESTIGATION_PLAYERS = 4;
 
-export function investigationPlayerAspectRatio(width, height) {
+export function investigationPlayerAspectRatio(width: unknown, height: unknown) {
   const normalizedWidth = Number(width);
   const normalizedHeight = Number(height);
   if (!Number.isFinite(normalizedWidth) || normalizedWidth <= 0 ||
@@ -14,13 +33,16 @@ export function investigationPlayerAspectRatio(width, height) {
 
 const REGION_MATCHES = new Set(['center', 'intersects', 'minimum_intersection']);
 
-function roundedRegionValue(value) {
+function roundedRegionValue(value: number) {
   return Math.round(value * 10000) / 10000;
 }
 
-export function bookmarkFiltersFromState(filters = {}) {
-  const saved = {};
-  const fields = [
+export function bookmarkFiltersFromState(filters: BookmarkFilterInput = {}) {
+  const saved: BookmarkFilters = {};
+  const fields: Array<[
+    'eventType' | 'location' | 'label' | 'zone' | 'source' | 'captureMethod' | 'recordingTag' | 'protection',
+    'event_type' | 'location' | 'label' | 'zone' | 'source' | 'capture_method' | 'recording_tag' | 'protection',
+  ]> = [
     ['eventType', 'event_type'],
     ['location', 'location'],
     ['label', 'label'],
@@ -55,15 +77,17 @@ export function bookmarkFiltersFromState(filters = {}) {
   return saved;
 }
 
-export function bookmarkRepresentativeResult(result) {
+export function bookmarkRepresentativeResult(
+  result: RepresentativeResultSource | null | undefined,
+) {
   if (!result) return null;
-  const saved = {};
-  [
+  const saved: BookmarkRepresentativeResult = {};
+  ([
     'result_id', 'camera_uuid', 'start_time', 'end_time', 'event_type',
     'recording_id', 'detection_id', 'label',
-  ].forEach((key) => {
+  ] as Array<keyof RepresentativeResultSource>).forEach((key) => {
     if (typeof result[key] === 'string' || Number.isFinite(result[key])) {
-      saved[key] = result[key];
+      saved[key] = result[key] as string | number;
     }
   });
   return Object.keys(saved).length > 0 ? saved : null;
@@ -77,7 +101,15 @@ export function buildInvestigationBookmarkPayload({
   primaryCameraUuid,
   searchFilters,
   selectedResult,
-}) {
+}: {
+  title: unknown;
+  note: unknown;
+  timeline: InvestigationTimeline | null | undefined;
+  cursor: number;
+  primaryCameraUuid: string | null | undefined;
+  searchFilters?: BookmarkFilterInput;
+  selectedResult?: RepresentativeResultSource | null;
+}): InvestigationBookmarkPayload | null {
   if (!timeline || !Array.isArray(timeline.tracks) ||
       timeline.tracks.length === 0 || !primaryCameraUuid) return null;
   return {
@@ -93,7 +125,11 @@ export function buildInvestigationBookmarkPayload({
   };
 }
 
-export function investigationActionSelection(timeline, selectedResult, scope) {
+export function investigationActionSelection(
+  timeline: InvestigationTimeline | null | undefined,
+  selectedResult: InvestigationResult | null | undefined,
+  scope: string,
+): InvestigationActionSelection | null {
   if (!timeline || !Array.isArray(timeline.tracks) ||
       !Number.isFinite(timeline.start_time) ||
       !Number.isFinite(timeline.end_time) ||
@@ -126,7 +162,9 @@ export function investigationActionSelection(timeline, selectedResult, scope) {
   } : null;
 }
 
-export function summarizeInvestigationActionPreview(preview) {
+export function summarizeInvestigationActionPreview(
+  preview: Pick<InvestigationPreview, 'recordings'> | null | undefined,
+) {
   const recordings = Array.isArray(preview?.recordings)
     ? preview.recordings : [];
   const unprotected = recordings.filter((recording) => !recording.protected);
@@ -147,7 +185,13 @@ export function summarizeInvestigationActionPreview(preview) {
   };
 }
 
-export function investigationBookmarkUrl(bookmark, baseUrl) {
+export function investigationBookmarkUrl(
+  bookmark: Pick<
+    InvestigationBookmark,
+    'camera_uuids' | 'start_time' | 'end_time' | 'cursor_time' | 'primary_camera_uuid' | 'filters'
+  >,
+  baseUrl?: string,
+) {
   const url = new URL(baseUrl || window.location.href);
   [
     'stream', 'cameras', 'start', 'end', 'cursor', 'primary',
@@ -160,7 +204,7 @@ export function investigationBookmarkUrl(bookmark, baseUrl) {
   url.searchParams.set('end', String(bookmark.end_time));
   url.searchParams.set('cursor', String(bookmark.cursor_time));
   url.searchParams.set('primary', bookmark.primary_camera_uuid);
-  const filters = bookmark.filters || {};
+  const filters: BookmarkFilters = bookmark.filters || {};
   const queryFields = {
     event: filters.event_type,
     location: filters.location,
@@ -193,7 +237,12 @@ export function investigationBookmarkUrl(bookmark, baseUrl) {
   return url.toString();
 }
 
-export function videoContentBox(containerWidth, containerHeight, videoWidth, videoHeight) {
+export function videoContentBox(
+  containerWidth: number,
+  containerHeight: number,
+  videoWidth: number,
+  videoHeight: number,
+) {
   if (![containerWidth, containerHeight, videoWidth, videoHeight]
     .every((value) => Number.isFinite(value) && value > 0)) {
     return { left: 0, top: 0, width: 1, height: 1 };
@@ -208,7 +257,10 @@ export function videoContentBox(containerWidth, containerHeight, videoWidth, vid
   return { left: (1 - width) / 2, top: 0, width, height: 1 };
 }
 
-export function normalizedRegionRectangle(anchor, point) {
+export function normalizedRegionRectangle(
+  anchor: RegionPoint | null | undefined,
+  point: RegionPoint | null | undefined,
+): RegionRectangle | null {
   if (!anchor || !point ||
       ![anchor.x, anchor.y, point.x, point.y].every(Number.isFinite)) return null;
   const x = Math.max(0, Math.min(1, Math.min(anchor.x, point.x)));
@@ -223,29 +275,34 @@ export function normalizedRegionRectangle(anchor, point) {
   };
 }
 
-export function parseInvestigationRegion(params) {
+export function parseInvestigationRegion(
+  params: URLSearchParams | null | undefined,
+): InvestigationRegion | null {
   if (!params?.get) return null;
   const cameraUuid = params.get('region_camera') || '';
   const values = (params.get('region_rect') || '').split(',').map(Number);
-  const match = params.get('region_match') || 'center';
+  const match = (params.get('region_match') || 'center') as InvestigationRegionMatch;
   const minIntersection = Number(params.get('region_min') || 0.25);
   if (cameraUuid.length !== 36 || values.length !== 4 ||
       !values.every(Number.isFinite) || !REGION_MATCHES.has(match) ||
       !Number.isFinite(minIntersection) || minIntersection <= 0 ||
       minIntersection > 1) return null;
-  const [x, y, width, height] = values;
+  const [x, y, width, height] = values as [number, number, number, number];
   if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
       x + width > 1 || y + height > 1) return null;
   return { cameraUuid, x, y, width, height, match, minIntersection };
 }
 
-export function findSegmentAt(segments, timestamp) {
+export function findSegmentAt<T extends { start_time: number; end_time: number }>(
+  segments: T[] | null | undefined,
+  timestamp: number,
+): T | null {
   if (!Array.isArray(segments) || !Number.isFinite(timestamp)) return null;
   let low = 0;
   let high = segments.length - 1;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
-    const segment = segments[middle];
+    const segment = segments[middle]!;
     if (timestamp < segment.start_time) {
       high = middle - 1;
     } else if (timestamp > segment.end_time) {
@@ -257,9 +314,13 @@ export function findSegmentAt(segments, timestamp) {
   return null;
 }
 
-export function nextAvailableTimestamp(tracks, activeCameraUuids, timestamp) {
+export function nextAvailableTimestamp(
+  tracks: InvestigationTimelineTrack[] | null | undefined,
+  activeCameraUuids: string[] | null | undefined,
+  timestamp: number,
+) {
   const active = new Set(activeCameraUuids || []);
-  let next = null;
+  let next: number | null = null;
   for (const track of tracks || []) {
     if (!active.has(track.camera_uuid)) continue;
     for (const segment of track.segments || []) {
@@ -280,6 +341,14 @@ export function advanceInvestigationCursor({
   mode,
   tracks,
   activeCameraUuids,
+}: {
+  cursor: number;
+  elapsedSeconds: number;
+  speed: number;
+  endTime: number;
+  mode: string;
+  tracks?: InvestigationTimelineTrack[] | null;
+  activeCameraUuids?: string[] | null;
 }) {
   const candidate = Math.min(endTime, cursor + elapsedSeconds * speed);
   if (mode !== 'skip-common-gaps') return candidate;
@@ -294,7 +363,11 @@ export function advanceInvestigationCursor({
   );
 }
 
-export function segmentTrackPosition(segment, startTime, endTime) {
+export function segmentTrackPosition(
+  segment: { start_time: number; end_time: number },
+  startTime: number,
+  endTime: number,
+) {
   const duration = Math.max(endTime - startTime, 1);
   const clippedStart = Math.max(segment.start_time, startTime);
   const clippedEnd = Math.min(segment.end_time, endTime);
@@ -304,12 +377,20 @@ export function segmentTrackPosition(segment, startTime, endTime) {
   };
 }
 
-export function histogramEventTime(bucket) {
+export function histogramEventTime(bucket: InvestigationHistogramBucket): number;
+export function histogramEventTime(
+  bucket: InvestigationHistogramBucket | null | undefined,
+): number | undefined;
+export function histogramEventTime(bucket: InvestigationHistogramBucket | null | undefined) {
   return Number.isFinite(bucket?.event_time)
-    ? bucket.event_time : bucket?.start_time;
+    ? bucket!.event_time : bucket?.start_time;
 }
 
-export function adjacentInvestigationResultIndex(results, selectedResultId, direction) {
+export function adjacentInvestigationResultIndex(
+  results: Array<{ result_id: string }> | null | undefined,
+  selectedResultId: string | null | undefined,
+  direction: number,
+) {
   if (!Array.isArray(results) || results.length === 0) return -1;
   const step = direction < 0 ? -1 : 1;
   const selectedIndex = results.findIndex((result) =>
@@ -319,7 +400,12 @@ export function adjacentInvestigationResultIndex(results, selectedResultId, dire
   return nextIndex >= 0 && nextIndex < results.length ? nextIndex : -1;
 }
 
-export function narrowThumbnailWindow(samples, selectedIndex, startTime, endTime) {
+export function narrowThumbnailWindow(
+  samples: Array<{ timestamp: number }> | null | undefined,
+  selectedIndex: number,
+  startTime: number,
+  endTime: number,
+): ThumbnailWindow | null {
   if (!Array.isArray(samples) || samples.length < 2 ||
       !Number.isInteger(selectedIndex) || selectedIndex < 0 ||
       selectedIndex >= samples.length || !Number.isFinite(startTime) ||
@@ -338,7 +424,11 @@ export function narrowThumbnailWindow(samples, selectedIndex, startTime, endTime
   return { startTime: narrowedStart, endTime: narrowedEnd };
 }
 
-export function thumbnailWindowForResult(result, timelineStart, timelineEnd) {
+export function thumbnailWindowForResult(
+  result: Pick<InvestigationResult, 'start_time' | 'end_time'> | null | undefined,
+  timelineStart: number,
+  timelineEnd: number,
+): ThumbnailWindow | null {
   if (!result || !Number.isFinite(timelineStart) ||
       !Number.isFinite(timelineEnd) || timelineEnd <= timelineStart) return null;
   const eventStart = Number(result.start_time);
@@ -350,7 +440,7 @@ export function thumbnailWindowForResult(result, timelineStart, timelineEnd) {
   return endTime > startTime ? { startTime, endTime } : null;
 }
 
-export function formatDateTimeLocal(timestamp, includeSeconds = false) {
+export function formatDateTimeLocal(timestamp: number, includeSeconds = false) {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp * 1000);
   const offset = date.getTimezoneOffset() * 60 * 1000;
@@ -358,12 +448,12 @@ export function formatDateTimeLocal(timestamp, includeSeconds = false) {
     .slice(0, includeSeconds ? 19 : 16);
 }
 
-export function parseDateTimeLocal(value) {
+export function parseDateTimeLocal(value: string) {
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : null;
 }
 
-export function formatCursorTime(timestamp) {
+export function formatCursorTime(timestamp: number) {
   if (!Number.isFinite(timestamp)) return '—';
   return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
