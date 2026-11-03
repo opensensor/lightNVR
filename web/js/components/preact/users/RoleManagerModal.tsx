@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -9,10 +8,25 @@ import {
   groupActionsByCategory,
   roleHasDestructiveActions,
 } from './authorizationPolicy.ts';
+import type {
+  ApiRequestError,
+  AuthorizationAction,
+  AuthorizationActionsResponse,
+  AuthorizationRole,
+  AuthorizationRoleMutationResponse,
+  AuthorizationRolesResponse,
+  GetAuthHeaders,
+  RoleDraft,
+} from '../../../types/users.ts';
+
+export interface RoleManagerModalProps {
+  onClose: () => void;
+  getAuthHeaders: GetAuthHeaders;
+}
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 
-function roleToDraft(role) {
+function roleToDraft(role: Partial<RoleDraft> | null | undefined): RoleDraft {
   return {
     uuid: role?.uuid || '',
     name: role?.name || '',
@@ -22,13 +36,13 @@ function roleToDraft(role) {
   };
 }
 
-export function RoleManagerModal({ onClose, getAuthHeaders }) {
+export function RoleManagerModal({ onClose, getAuthHeaders }: RoleManagerModalProps) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [roles, setRoles] = useState([]);
-  const [actions, setActions] = useState([]);
+  const [roles, setRoles] = useState<AuthorizationRole[]>([]);
+  const [actions, setActions] = useState<AuthorizationAction[]>([]);
   const [policyVersion, setPolicyVersion] = useState(0);
   const [selectedUuid, setSelectedUuid] = useState('');
   const [draft, setDraft] = useState(roleToDraft(null));
@@ -39,8 +53,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
     setError('');
     try {
       const [actionResponse, roleResponse] = await Promise.all([
-        fetchJSON('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
       ]);
       const loadedRoles = roleResponse.roles || [];
       const nextUuid = preferredUuid && loadedRoles.some((role) => role.uuid === preferredUuid)
@@ -52,7 +66,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
       setSelectedUuid(nextUuid);
       setDraft(roleToDraft(loadedRoles.find((role) => role.uuid === nextUuid)));
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as ApiRequestError).message);
     } finally {
       setLoading(false);
     }
@@ -60,7 +74,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape' && !saving) onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !saving) onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, saving]);
@@ -71,11 +85,11 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
     [draft.actions, actions]
   );
 
-  const selectRole = (role) => {
+  const selectRole = (role: AuthorizationRole) => {
     setSelectedUuid(role.uuid);
     setDraft(roleToDraft(role));
   };
-  const startNew = (source = null) => {
+  const startNew = (source: RoleDraft | null = null) => {
     setSelectedUuid('');
     setDraft({
       ...roleToDraft(source),
@@ -84,7 +98,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
       builtin: false,
     });
   };
-  const toggleAction = (key) => {
+  const toggleAction = (key: string) => {
     setDraft((current) => ({
       ...current,
       actions: current.actions.includes(key)
@@ -93,12 +107,12 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
     }));
   };
 
-  const saveRole = async (event) => {
+  const saveRole = async (event: Event) => {
     event.preventDefault();
     if (draft.builtin || !draft.name.trim() || draft.actions.length === 0) return;
     setSaving(true);
     try {
-      const response = await fetchJSON(
+      const response = await fetchJSON<AuthorizationRoleMutationResponse>(
         draft.uuid ? `/api/authorization/roles/${encodeURIComponent(draft.uuid)}` : '/api/authorization/roles',
         {
           method: draft.uuid ? 'PUT' : 'POST',
@@ -116,8 +130,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
       showStatusMessage(t(draft.uuid ? 'access.roles.updated' : 'access.roles.created'), 'success');
       await load(response.role?.uuid || draft.uuid);
     } catch (requestError) {
-      showStatusMessage(t('access.roles.saveError', { message: requestError.message }), 'error', 8000);
-      if (requestError.status === 409) await load(draft.uuid);
+      showStatusMessage(t('access.roles.saveError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
+      if ((requestError as ApiRequestError).status === 409) await load(draft.uuid);
     } finally {
       setSaving(false);
     }
@@ -137,8 +151,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
       showStatusMessage(t('access.roles.deleted'), 'success');
       await load();
     } catch (requestError) {
-      showStatusMessage(t('access.roles.deleteError', { message: requestError.message }), 'error', 8000);
-      if (requestError.status === 409) await load(draft.uuid);
+      showStatusMessage(t('access.roles.deleteError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
+      if ((requestError as ApiRequestError).status === 409) await load(draft.uuid);
     } finally {
       setSaving(false);
     }
@@ -173,8 +187,8 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
                 {draft.uuid && <button type="button" className="btn-secondary" onClick={() => startNew(draft)}>{t('access.roles.clone')}</button>}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium">{t('common.name')}<input className={`${fieldClasses} mt-1`} value={draft.name} maxLength="127" disabled={draft.builtin} onInput={(event) => setDraft({ ...draft, name: event.currentTarget.value })} required /></label>
-                <label className="text-sm font-medium sm:col-span-2">{t('common.description')}<textarea className={`${fieldClasses} mt-1`} rows="2" maxLength="255" disabled={draft.builtin} value={draft.description} onInput={(event) => setDraft({ ...draft, description: event.currentTarget.value })}></textarea></label>
+                <label className="text-sm font-medium">{t('common.name')}<input className={`${fieldClasses} mt-1`} value={draft.name} maxLength={127} disabled={draft.builtin} onInput={(event) => setDraft({ ...draft, name: event.currentTarget.value })} required /></label>
+                <label className="text-sm font-medium sm:col-span-2">{t('common.description')}<textarea className={`${fieldClasses} mt-1`} rows={2} maxLength={255} disabled={draft.builtin} value={draft.description} onInput={(event) => setDraft({ ...draft, description: event.currentTarget.value })}></textarea></label>
               </div>
 
               <div className="mt-5 space-y-5">

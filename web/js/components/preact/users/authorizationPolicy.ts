@@ -1,12 +1,21 @@
-// @ts-nocheck
-export const ALL_CAMERAS_SELECTOR = {
+import type {
+  AccessScopeType,
+  AuthorizationAction,
+  AuthorizationActionGroup,
+  CameraSelector,
+  DraftGrant,
+  PolicyDraft,
+  UserPolicyResponse,
+} from '../../../types/users.ts';
+
+export const ALL_CAMERAS_SELECTOR: CameraSelector = {
   version: 1,
   expression: { op: 'all' },
 };
 
 let nextDraftGrantId = 1;
 
-export function createDraftGrant(roleUuid = '', scopeType = 'all') {
+export function createDraftGrant(roleUuid = '', scopeType: AccessScopeType = 'all'): DraftGrant {
   return {
     draftId: `grant-${nextDraftGrantId++}`,
     roleUuid,
@@ -17,7 +26,7 @@ export function createDraftGrant(roleUuid = '', scopeType = 'all') {
   };
 }
 
-export function policyResponseToDraft(response) {
+export function policyResponseToDraft(response: UserPolicyResponse | null | undefined): PolicyDraft {
   return {
     // Legacy principals are migrated server-side at startup. Treat an old or
     // incomplete response as policy so the editor cannot recreate legacy mode.
@@ -36,9 +45,14 @@ export function policyResponseToDraft(response) {
   };
 }
 
-export function validatePolicyDraft(mode, grants, roleUuids = null, collectionUuids = null) {
+export function validatePolicyDraft(
+  mode: string,
+  grants: DraftGrant[] | null | undefined,
+  roleUuids: Set<string> | null = null,
+  collectionUuids: Set<string> | null = null
+) {
   if (mode !== 'policy') return 'invalid_mode';
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const grant of grants || []) {
     if (!grant.roleUuid || (roleUuids && !roleUuids.has(grant.roleUuid))) {
       return 'missing_role';
@@ -63,7 +77,7 @@ export function validatePolicyDraft(mode, grants, roleUuids = null, collectionUu
   return '';
 }
 
-export function buildPolicyPayload(mode, grants, policyVersion) {
+export function buildPolicyPayload(mode: string, grants: DraftGrant[] | null | undefined, policyVersion: number) {
   return {
     expected_policy_version: policyVersion,
     mode,
@@ -78,24 +92,24 @@ export function buildPolicyPayload(mode, grants, policyVersion) {
   };
 }
 
-export function groupActionsByCategory(actions = []) {
-  const grouped = new Map();
+export function groupActionsByCategory(actions: AuthorizationAction[] = []): AuthorizationActionGroup[] {
+  const grouped = new Map<string, AuthorizationAction[]>();
   for (const action of actions) {
     const category = action.category || 'Other';
     if (!grouped.has(category)) grouped.set(category, []);
-    grouped.get(category).push(action);
+    grouped.get(category)!.push(action);
   }
   return [...grouped.entries()].map(([category, items]) => ({ category, actions: items }));
 }
 
-export function roleHasDestructiveActions(roleActions = [], actionCatalog = []) {
+export function roleHasDestructiveActions(roleActions: string[] = [], actionCatalog: AuthorizationAction[] = []) {
   const destructive = new Set(
     actionCatalog.filter((action) => action.destructive).map((action) => action.key)
   );
   return roleActions.some((key) => destructive.has(key));
 }
 
-export function actionRequiresCamera(actionKey, actionCatalog = []) {
+export function actionRequiresCamera(actionKey: string, actionCatalog: AuthorizationAction[] = []) {
   return actionCatalog.find((action) => action.key === actionKey)?.camera_scoped === true;
 }
 
@@ -104,11 +118,11 @@ export function actionRequiresCamera(actionKey, actionCatalog = []) {
 // the UI can say so instead of implying a boundary that is not applied. Treat a
 // missing flag as enforced so an older server does not paint every action as a
 // gap.
-export function actionIsEnforced(action) {
+export function actionIsEnforced(action: Pick<AuthorizationAction, 'enforced'> | null | undefined) {
   return action?.enforced !== false;
 }
 
-export function unenforcedActionKeys(roleActions = [], actionCatalog = []) {
+export function unenforcedActionKeys(roleActions: string[] | null | undefined = [], actionCatalog: AuthorizationAction[] = []) {
   const unenforced = new Set(
     actionCatalog.filter((action) => !actionIsEnforced(action)).map((action) => action.key)
   );

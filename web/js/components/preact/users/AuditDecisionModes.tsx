@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -9,13 +8,20 @@ import {
   groupDecisionModes,
   modesByAction,
 } from './auditHistory.ts';
+import type { ApiRequestError, AuditSettings, GetAuthHeaders } from '../../../types/users.ts';
 
-export function AuditDecisionModes({ settings, getAuthHeaders, onSaved }) {
+export interface AuditDecisionModesProps {
+  settings: AuditSettings | null;
+  getAuthHeaders: GetAuthHeaders;
+  onSaved: (response: AuditSettings) => unknown;
+}
+
+export function AuditDecisionModes({ settings, getAuthHeaders, onSaved }: AuditDecisionModesProps) {
   const { t } = useI18n();
   const entries = useMemo(() => settings?.allowed_decision_modes || [], [settings]);
   const original = useMemo(() => modesByAction(entries), [entries]);
   const groups = useMemo(() => groupDecisionModes(entries), [entries]);
-  const [draft, setDraft] = useState(original);
+  const [draft, setDraft] = useState<Record<string, string>>(original);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { setDraft(original); }, [original]);
@@ -29,7 +35,7 @@ export function AuditDecisionModes({ settings, getAuthHeaders, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetchJSON('/api/audit/settings', {
+      const response = await fetchJSON<AuditSettings>('/api/audit/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ allowed_decision_modes: changes }),
@@ -39,7 +45,7 @@ export function AuditDecisionModes({ settings, getAuthHeaders, onSaved }) {
       onSaved(response);
       showStatusMessage(t('audit.modesSaved'), 'success');
     } catch (requestError) {
-      showStatusMessage(t('audit.modesError', { message: requestError.message }), 'error', 8000);
+      showStatusMessage(t('audit.modesError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
     } finally {
       setSaving(false);
     }

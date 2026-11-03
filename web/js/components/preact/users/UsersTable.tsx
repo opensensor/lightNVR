@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Users Table Component
  */
@@ -7,6 +6,16 @@ import { useState, useMemo, useCallback } from 'preact/hooks';
 import { getUserRoleLabel } from './UserRoles.ts';
 import { formatLocalDateTime } from '../../../utils/date-utils.ts';
 import { useI18n } from '../../../i18n.ts';
+import type { User } from '../../../types/core.ts';
+
+export interface UsersTableProps {
+  users: User[];
+  onEdit: (user: User) => void;
+  onDelete: (user: User) => void;
+  onApiKey: (user: User) => void;
+  onMfa: (user: User) => void;
+  onAccess: (user: User) => void;
+}
 
 /**
  * Users Table Component
@@ -19,17 +28,17 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Function} props.onAccess - Function to manage scoped access
  * @returns {JSX.Element} Users table
  */
-export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess }) {
+export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess }: UsersTableProps) {
   const { t } = useI18n();
 
   const normalizedUsers = Array.isArray(users) ? users : [];
   const NO_SORT_COLUMN = '';
 
   // Sorting state
-  const [sortColumn, setSortColumn] = useState(NO_SORT_COLUMN);
+  const [sortColumn, setSortColumn] = useState<string>(NO_SORT_COLUMN);
   const [sortDirection, setSortDirection] = useState('asc');
 
-  const handleSort = (column) => {
+  const handleSort = (column: string) => {
     if (sortColumn === column) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -79,31 +88,31 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
   }, [normalizedUsers, sortColumn, sortDirection]);
 
   // Create memoized handlers for each button to maintain stable references
-  const handleEdit = useCallback((user, e) => {
+  const handleEdit = useCallback((user: User, e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onEdit(user);
   }, [onEdit]);
 
-  const handleDelete = useCallback((user, e) => {
+  const handleDelete = useCallback((user: User, e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onDelete(user);
   }, [onDelete]);
 
-  const handleApiKey = useCallback((user, e) => {
+  const handleApiKey = useCallback((user: User, e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onApiKey(user);
   }, [onApiKey]);
 
-  const handleMfa = useCallback((user, e) => {
+  const handleMfa = useCallback((user: User, e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onMfa(user);
   }, [onMfa]);
 
-  const handleAccess = useCallback((user, e) => {
+  const handleAccess = useCallback((user: User, e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onAccess(user);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -14,16 +13,64 @@ import {
   policyResponseToDraft,
   validatePolicyDraft,
 } from './authorizationPolicy.ts';
+import type { User } from '../../../types/core.ts';
+import type {
+  AccessCollection,
+  AccessCollectionsResponse,
+  AccessLocation,
+  AccessLocationsResponse,
+  AccessScopeType,
+  AccessTag,
+  AccessTagsResponse,
+  ApiRequestError,
+  AuthorizationAction,
+  AuthorizationActionsResponse,
+  AuthorizationRole,
+  AuthorizationRolesResponse,
+  AuthorizationSimulationResult,
+  CameraSelector,
+  DraftGrant,
+  GetAuthHeaders,
+  Translate,
+  UserPolicyResponse,
+} from '../../../types/users.ts';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 
-function policyFingerprint(mode, grants) {
+interface GrantEditorProps {
+  grant: DraftGrant;
+  roles: AuthorizationRole[];
+  collections: AccessCollection[];
+  locations: AccessLocation[];
+  tags: AccessTag[];
+  onChange: (draftId: string, changes: Partial<DraftGrant>) => void;
+  onSelectorChange: (draftId: string, selector: CameraSelector | null, error: string) => void;
+  onRemove: (draftId: string) => void;
+  t: Translate;
+  requestHeaders: Record<string, string>;
+}
+
+interface SimulationPanelProps {
+  user: Pick<User, 'id' | 'username'>;
+  actions: AuthorizationAction[];
+  dirty: boolean;
+  getAuthHeaders: GetAuthHeaders;
+  t: Translate;
+}
+
+export interface AccessPolicyModalProps {
+  user: Pick<User, 'id' | 'username'>;
+  onClose: () => void;
+  getAuthHeaders: GetAuthHeaders;
+}
+
+function policyFingerprint(mode: string, grants: DraftGrant[]) {
   return JSON.stringify(buildPolicyPayload(mode, grants, 0));
 }
 
-function GrantEditor({ grant, roles, collections, locations, tags, onChange, onSelectorChange, onRemove, t, requestHeaders }) {
+function GrantEditor({ grant, roles, collections, locations, tags, onChange, onSelectorChange, onRemove, t, requestHeaders }: GrantEditorProps) {
   const handleSelectorChange = useCallback(
-    (selector, error) => onSelectorChange(grant.draftId, selector, error),
+    (selector: CameraSelector | null, error: string) => onSelectorChange(grant.draftId, selector, error),
     [grant.draftId, onSelectorChange]
   );
   const selectedRole = roles.find((role) => role.uuid === grant.roleUuid);
@@ -41,7 +88,7 @@ function GrantEditor({ grant, roles, collections, locations, tags, onChange, onS
           <label className="text-sm font-medium">
             {t('access.policy.scope')}
             <select className={`${fieldClasses} mt-1`} value={grant.scopeType} onChange={(event) => onChange(grant.draftId, {
-              scopeType: event.currentTarget.value,
+              scopeType: event.currentTarget.value as AccessScopeType,
               selector: event.currentTarget.value === 'selector' ? (grant.selector || ALL_CAMERAS_SELECTOR) : null,
               collectionUuid: event.currentTarget.value === 'collection' ? grant.collectionUuid : '',
               selectorError: '',
@@ -85,11 +132,11 @@ function GrantEditor({ grant, roles, collections, locations, tags, onChange, onS
   );
 }
 
-function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }) {
+function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }: SimulationPanelProps) {
   const [actionKey, setActionKey] = useState(actions[0]?.key || 'live.view');
-  const [cameraUuids, setCameraUuids] = useState([]);
+  const [cameraUuids, setCameraUuids] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState<AuthorizationSimulationResult | null>(null);
   const [error, setError] = useState('');
   const groups = useMemo(() => groupActionsByCategory(actions), [actions]);
   const cameraScoped = actionRequiresCamera(actionKey, actions);
@@ -106,9 +153,9 @@ function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }) {
     setError('');
     setResult(null);
     try {
-      const body = { user_id: user.id, action: actionKey };
+      const body: { user_id: number; action: string; camera_uuid?: string | undefined } = { user_id: user.id, action: actionKey };
       if (cameraScoped) body.camera_uuid = cameraUuids[0];
-      setResult(await fetchJSON('/api/authorization/simulate', {
+      setResult(await fetchJSON<AuthorizationSimulationResult>('/api/authorization/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(body),
@@ -116,7 +163,7 @@ function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }) {
         retries: 0,
       }));
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as ApiRequestError).message);
     } finally {
       setRunning(false);
     }
@@ -134,7 +181,7 @@ function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }) {
       {cameraScoped && (
         <div>
           <p className="mb-1 text-sm font-medium">{t('access.test.camera')}</p>
-          <CameraValuePicker values={cameraUuids} onChange={(values) => setCameraUuids(values.slice(-1))} idPrefix="access-simulation-camera" t={t} requestHeaders={getAuthHeaders()} />
+          <CameraValuePicker values={cameraUuids} onChange={(values: string[]) => setCameraUuids(values.slice(-1))} idPrefix="access-simulation-camera" t={t} requestHeaders={getAuthHeaders()} />
         </div>
       )}
       <div className="flex justify-end"><button type="button" className="btn-primary" onClick={simulate} disabled={running || dirty || (cameraScoped && cameraUuids.length === 0)}>{running ? t('access.test.running') : t('access.test.run')}</button></div>
@@ -150,24 +197,24 @@ function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }) {
   );
 }
 
-export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
+export function AccessPolicyModal({ user, onClose, getAuthHeaders }: AccessPolicyModalProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState('grants');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
   const [error, setError] = useState('');
-  const [roles, setRoles] = useState([]);
-  const [actions, setActions] = useState([]);
-  const [collections, setCollections] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [tags, setTags] = useState([]);
+  const [roles, setRoles] = useState<AuthorizationRole[]>([]);
+  const [actions, setActions] = useState<AuthorizationAction[]>([]);
+  const [collections, setCollections] = useState<AccessCollection[]>([]);
+  const [locations, setLocations] = useState<AccessLocation[]>([]);
+  const [tags, setTags] = useState<AccessTag[]>([]);
   const [mode, setMode] = useState('policy');
   const [policyVersion, setPolicyVersion] = useState(0);
-  const [grants, setGrants] = useState([]);
+  const [grants, setGrants] = useState<DraftGrant[]>([]);
   const [savedFingerprint, setSavedFingerprint] = useState('');
 
-  const applyPolicyResponse = useCallback((response) => {
+  const applyPolicyResponse = useCallback((response: UserPolicyResponse) => {
     const draft = policyResponseToDraft(response);
     setMode(draft.mode);
     setPolicyVersion(draft.policyVersion);
@@ -180,12 +227,12 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     setError('');
     try {
       const [actionResponse, roleResponse, policyResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
-        fetchJSON('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessCollectionsResponse>('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessLocationsResponse>('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessTagsResponse>('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
       ]);
       setActions(actionResponse.actions || []);
       setRoles(roleResponse.roles || []);
@@ -194,7 +241,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
       setTags(tagResponse.tags || []);
       applyPolicyResponse(policyResponse);
     } catch (requestError) {
-      setError(requestError.message);
+      setError((requestError as ApiRequestError).message);
     } finally {
       setLoading(false);
     }
@@ -202,7 +249,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape' && !saving) onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !saving) onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, saving]);
@@ -219,13 +266,13 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     [mode, grants, roles, collections]
   );
 
-  const updateGrant = useCallback((draftId, changes) => {
+  const updateGrant = useCallback((draftId: string, changes: Partial<DraftGrant>) => {
     setGrants((current) => current.map((grant) => grant.draftId === draftId ? { ...grant, ...changes } : grant));
   }, []);
-  const updateSelector = useCallback((draftId, selector, selectorError) => {
+  const updateSelector = useCallback((draftId: string, selector: CameraSelector | null, selectorError: string) => {
     updateGrant(draftId, { selector, selectorError });
   }, [updateGrant]);
-  const removeGrant = useCallback((draftId) => {
+  const removeGrant = useCallback((draftId: string) => {
     setGrants((current) => current.filter((grant) => grant.draftId !== draftId));
   }, []);
   const addGrant = () => setGrants((current) => [
@@ -233,7 +280,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     createDraftGrant(roles[0]?.uuid || '', 'all'),
   ]);
 
-  const save = async ({ skipEmptyConfirmation = false } = {}) => {
+  const save = async ({ skipEmptyConfirmation = false }: { skipEmptyConfirmation?: boolean } = {}) => {
     if (validationCode) {
       showStatusMessage(t(`access.policy.validation.${validationCode}`), 'error', 7000);
       return;
@@ -244,7 +291,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     }
     setSaving(true);
     try {
-      const response = await fetchJSON(`/api/authorization/users/${encodeURIComponent(user.id)}`, {
+      const response = await fetchJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(buildPolicyPayload(mode, grants, policyVersion)),
@@ -254,8 +301,8 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
       applyPolicyResponse(response);
       showStatusMessage(t('access.policy.saved'), 'success');
     } catch (requestError) {
-      showStatusMessage(t('access.policy.saveError', { message: requestError.message }), 'error', 8000);
-      if (requestError.status === 409) await load();
+      showStatusMessage(t('access.policy.saveError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
+      if ((requestError as ApiRequestError).status === 409) await load();
     } finally {
       setSaving(false);
     }
@@ -290,7 +337,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
 
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
           <span className="text-xs text-muted-foreground">{t('access.policy.version', { version: policyVersion })}{dirty ? ` · ${t('access.policy.unsaved')}` : ''}</span>
-          <div className="flex gap-2"><button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.cancel')}</button><button type="button" className="btn-primary" onClick={save} disabled={saving || loading || policyVersion < 1 || !dirty || Boolean(validationCode)}>{saving ? t('common.saving') : t('common.saveChanges')}</button></div>
+          <div className="flex gap-2"><button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>{t('common.cancel')}</button><button type="button" className="btn-primary" onClick={save as () => unknown} disabled={saving || loading || policyVersion < 1 || !dirty || Boolean(validationCode)}>{saving ? t('common.saving') : t('common.saveChanges')}</button></div>
         </footer>
       </section>
       <ConfirmDialog

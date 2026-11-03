@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Add User Modal Component
  */
@@ -7,6 +6,14 @@ import { USER_ROLE_KEYS } from './UserRoles.ts';
 import { useEffect, useRef } from 'preact/hooks';
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
+import type { UserFormData } from '../../../types/users.ts';
+
+export interface AddUserModalProps {
+  formData: UserFormData;
+  handleInputChange: (e: Event) => void;
+  handleAddUser: (e: Event) => unknown;
+  onClose: () => void;
+}
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -28,9 +35,9 @@ const FOCUSABLE_SELECTOR_QUERY = FOCUSABLE_SELECTORS.join(',');
  * @param {Function} props.onClose - Function to close the modal
  * @returns {JSX.Element} Add user modal
  */
-export function AddUserModal({ formData, handleInputChange, handleAddUser, onClose }) {
-  const dialogRef = useRef(null);
-  const firstFieldRef = useRef(null);
+export function AddUserModal({ formData, handleInputChange, handleAddUser, onClose }: AddUserModalProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const firstFieldRef = useRef<HTMLInputElement | null>(null);
   const backdropPointerDownRef = useRef(false);
   const { t } = useI18n();
 
@@ -42,19 +49,19 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   // Direct submit handler. Returns the add-user promise so the
   // <AsyncButton> below can track pending state (#399 / PRD UXD_01 §5.1).
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     return Promise.resolve(handleAddUser(e));
   };
 
   // Stop click propagation on modal content
-  const stopPropagation = (e) => {
+  const stopPropagation = (e: Event) => {
     e.stopPropagation();
   };
 
   // Handle keyboard interactions within the dialog (Escape to close, Tab to trap focus)
-  const handleDialogKeyDown = (e) => {
+  const handleDialogKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape' || e.key === 'Esc') {
       e.stopPropagation();
       onClose();
@@ -63,7 +70,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
     if (e.key === 'Tab' && dialogRef.current) {
       const focusableElements = Array.from(
-        dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR_QUERY)
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR_QUERY)
       ).filter(
         (el) => el.getAttribute('aria-hidden') !== 'true'
       );
@@ -72,8 +79,8 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
         return;
       }
 
-      const firstEl = focusableElements[0];
-      const lastEl = focusableElements[focusableElements.length - 1];
+      const firstEl = focusableElements[0]!;
+      const lastEl = focusableElements[focusableElements.length - 1]!;
       const current = document.activeElement;
 
       if (!e.shiftKey && current === lastEl) {
@@ -95,11 +102,11 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
     }
   }, []);
 
-  const handleBackdropMouseDown = (e) => {
+  const handleBackdropMouseDown = (e: MouseEvent) => {
     backdropPointerDownRef.current = e.target === e.currentTarget;
   };
 
-  const handleBackdropClick = (e) => {
+  const handleBackdropClick = (e: MouseEvent) => {
     if (backdropPointerDownRef.current && e.target === e.currentTarget) {
       onClose();
     }

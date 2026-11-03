@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * TOTP MFA Setup Modal Component
  */
@@ -7,6 +6,15 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import QRCode from 'qrcode';
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
+import type { ApiErrorBody, User } from '../../../types/core.ts';
+import type { GetAuthHeaders, TotpSetupResponse, TotpStatusResponse } from '../../../types/users.ts';
+
+export interface TotpSetupModalProps {
+  user: Pick<User, 'id' | 'username'>;
+  onClose: () => void;
+  onSuccess?: () => unknown;
+  getAuthHeaders: GetAuthHeaders;
+}
 
 /**
  * TOTP Setup Modal Component
@@ -17,17 +25,17 @@ import { AsyncButton } from '../AsyncButton.tsx';
  * @param {Function} props.getAuthHeaders - Function to get auth headers
  * @returns {JSX.Element} TOTP setup modal
  */
-export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
+export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: TotpSetupModalProps) {
   const [step, setStep] = useState('loading'); // 'loading', 'status', 'setup', 'verify', 'enabled'
   const [otpauthUri, setOtpauthUri] = useState('');
   const [secret, setSecret] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { t } = useI18n();
 
-  const stopPropagation = (e) => e.stopPropagation();
+  const stopPropagation = (e: Event) => e.stopPropagation();
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -35,7 +43,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         headers: getAuthHeaders()
       });
       if (res.ok) {
-        const data = await res.json();
+        const data: TotpStatusResponse = await res.json();
         setTotpEnabled(data.totp_enabled);
         setStep('status');
       } else {
@@ -61,7 +69,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         width: 256,
         margin: 2,
         color: { dark: '#000000', light: '#ffffff' }
-      }).catch(err => console.error('QR Code error:', err));
+      }).catch((err: unknown) => console.error('QR Code error:', err));
     }
   }, [otpauthUri, step]);
 
@@ -73,12 +81,12 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
       });
       if (res.ok) {
-        const data = await res.json();
+        const data: TotpSetupResponse = await res.json();
         setOtpauthUri(data.otpauth_uri);
         setSecret(data.secret);
         setStep('setup');
       } else {
-        const data = await res.json();
+        const data: ApiErrorBody = await res.json();
         setError(data.error || t('users.mfaSetupFailed'));
       }
     } catch (err) {
@@ -86,7 +94,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
     }
   };
 
-  const handleVerify = async (e) => {
+  const handleVerify = async (e: Event) => {
     e.preventDefault();
     setError('');
     if (verifyCode.length !== 6) {
@@ -103,7 +111,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         setStep('enabled');
         if (onSuccess) onSuccess();
       } else {
-        const data = await res.json();
+        const data: ApiErrorBody = await res.json();
         setError(data.error || t('users.invalidVerificationCode'));
         setVerifyCode('');
       }
@@ -124,7 +132,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         setStep('status');
         if (onSuccess) onSuccess();
       } else {
-        const data = await res.json();
+        const data: ApiErrorBody = await res.json();
         setError(data.error || t('users.disableMfaFailed'));
       }
     } catch (err) {
@@ -199,8 +207,8 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
                 placeholder="000000"
                 value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                maxLength="6"
+                onChange={(e) => setVerifyCode((e.target as HTMLInputElement).value.replace(/[^0-9]/g, '').slice(0, 6))}
+                maxLength={6}
                 autoFocus
                 required
               />

@@ -1,6 +1,12 @@
-// @ts-nocheck
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
+import type { User } from '../../../types/core.ts';
+
+export interface DeleteUserModalProps {
+  currentUser: Pick<User, 'username'>;
+  handleDeleteUser: () => unknown;
+  onClose: () => void;
+}
 
 /**
  * Delete User Modal Component
@@ -14,12 +20,12 @@ import { AsyncButton } from '../AsyncButton.tsx';
  * @param {Function} props.onClose - Function to close the modal
  * @returns {JSX.Element} Delete user modal
  */
-export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
+export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }: DeleteUserModalProps) {
   const { t } = useI18n();
 
   // Direct delete handler — wrapped in Promise.resolve so AsyncButton can
   // observe pending state whether the parent uses mutate or mutateAsync.
-  const handleDeleteClick = (e) => {
+  const handleDeleteClick = (e: Event) => {
     if (e && typeof e.stopPropagation === 'function') {
       e.stopPropagation(); // Stop event from bubbling up
     }
@@ -27,7 +33,7 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
   };
 
   // Stop click propagation on modal content
-  const stopPropagation = (e) => {
+  const stopPropagation = (e: Event) => {
     e.stopPropagation();
   };
 

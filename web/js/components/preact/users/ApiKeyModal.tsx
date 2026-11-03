@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { formatLocalDateTime } from '../../../utils/date-utils.ts';
@@ -17,10 +16,64 @@ import {
   toggleTokenAction,
   validateTokenDraft,
 } from './apiTokenPolicy.ts';
+import type { User } from '../../../types/core.ts';
+import type {
+  AccessCollection,
+  AccessCollectionsResponse,
+  AccessLocation,
+  AccessLocationsResponse,
+  AccessScopeType,
+  AccessTag,
+  AccessTagsResponse,
+  ApiRequestError,
+  ApiToken,
+  ApiTokenConfirmation,
+  ApiTokenCreateResponse,
+  ApiTokensResponse,
+  AuthorizationAction,
+  AuthorizationActionsResponse,
+  CameraSelector,
+  GetAuthHeaders,
+  LegacyApiKeyResponse,
+  RevealedSecret,
+  TokenDraft,
+  Translate,
+} from '../../../types/users.ts';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 
-function SecretReveal({ revealed, copied, confirmed, onCopy, onConfirmChange, onDone, t }) {
+interface SecretRevealProps {
+  revealed: RevealedSecret;
+  copied: boolean;
+  confirmed: boolean;
+  onCopy: () => unknown;
+  onConfirmChange: (confirmed: boolean) => void;
+  onDone: () => void;
+  t: Translate;
+}
+
+interface ActionPickerProps {
+  actions: AuthorizationAction[];
+  selected: string[];
+  onToggle: (key: string) => void;
+  t: Translate;
+}
+
+interface TokenCardProps {
+  token: ApiToken;
+  collections: AccessCollection[];
+  revoking: boolean;
+  onRevoke: (token: ApiToken) => void;
+  t: Translate;
+}
+
+export interface ApiKeyModalProps {
+  currentUser: Pick<User, 'id' | 'username'>;
+  getAuthHeaders: GetAuthHeaders;
+  onClose: () => void;
+}
+
+function SecretReveal({ revealed, copied, confirmed, onCopy, onConfirmChange, onDone, t }: SecretRevealProps) {
   const scoped = revealed.kind === 'scoped';
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
@@ -67,7 +120,7 @@ function SecretReveal({ revealed, copied, confirmed, onCopy, onConfirmChange, on
   );
 }
 
-function ActionPicker({ actions, selected, onToggle, t }) {
+function ActionPicker({ actions, selected, onToggle, t }: ActionPickerProps) {
   const groups = useMemo(() => groupActionsByCategory(actions), [actions]);
   return (
     <div className="space-y-3">
@@ -89,7 +142,7 @@ function ActionPicker({ actions, selected, onToggle, t }) {
   );
 }
 
-function TokenCard({ token, collections, revoking, onRevoke, t }) {
+function TokenCard({ token, collections, revoking, onRevoke, t }: TokenCardProps) {
   const status = getTokenStatus(token);
   const collection = collections.find((item) => item.uuid === token.scope?.collection_uuid);
   const scopeLabel = token.scope?.type === 'collection'
@@ -120,35 +173,35 @@ function TokenCard({ token, collections, revoking, onRevoke, t }) {
   );
 }
 
-export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
+export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }: ApiKeyModalProps) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [tokens, setTokens] = useState([]);
-  const [actions, setActions] = useState([]);
-  const [collections, setCollections] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [draft, setDraft] = useState(createTokenDraft);
+  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const [actions, setActions] = useState<AuthorizationAction[]>([]);
+  const [collections, setCollections] = useState<AccessCollection[]>([]);
+  const [locations, setLocations] = useState<AccessLocation[]>([]);
+  const [tags, setTags] = useState<AccessTag[]>([]);
+  const [draft, setDraft] = useState<TokenDraft>(createTokenDraft);
   const [creating, setCreating] = useState(false);
   const [revokingUuid, setRevokingUuid] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [legacyGenerating, setLegacyGenerating] = useState(false);
-  const [revealed, setRevealed] = useState(null);
+  const [revealed, setRevealed] = useState<RevealedSecret | null>(null);
   const [secretCopied, setSecretCopied] = useState(false);
   const [secretConfirmed, setSecretConfirmed] = useState(false);
-  const [confirmation, setConfirmation] = useState(null);
+  const [confirmation, setConfirmation] = useState<ApiTokenConfirmation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
       const [actionResponse, tokenResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
-        fetchJSON('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<ApiTokensResponse>(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessCollectionsResponse>('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessLocationsResponse>('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON<AccessTagsResponse>('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
       ]);
       setActions(selectableTokenActions(actionResponse.actions || []));
       setTokens(tokenResponse.tokens || []);
@@ -156,7 +209,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
       setLocations(locationResponse.locations || []);
       setTags(tagResponse.tags || []);
     } catch (error) {
-      setLoadError(error.message);
+      setLoadError((error as ApiRequestError).message);
     } finally {
       setLoading(false);
     }
@@ -164,7 +217,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const handleKey = (event) => {
+    const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !revealed && !creating && !legacyGenerating) onClose();
     };
     window.addEventListener('keydown', handleKey);
@@ -182,8 +235,8 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   );
   const inactiveCount = tokens.length - tokens.filter((token) => getTokenStatus(token) === 'active').length;
 
-  const updateDraft = (changes) => setDraft((current) => ({ ...current, ...changes }));
-  const updateSelector = useCallback((selector, selectorError) => {
+  const updateDraft = (changes: Partial<TokenDraft>) => setDraft((current) => ({ ...current, ...changes }));
+  const updateSelector = useCallback((selector: CameraSelector | null, selectorError: string) => {
     setDraft((current) => ({ ...current, selector, selectorError }));
   }, []);
 
@@ -194,7 +247,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
     }
     setCreating(true);
     try {
-      const response = await fetchJSON(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, {
+      const response = await fetchJSON<ApiTokenCreateResponse>(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(buildTokenPayload(draft)),
@@ -212,13 +265,13 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
       setDraft(createTokenDraft());
       showStatusMessage(t('tokens.createdSuccess'), 'success');
     } catch (error) {
-      showStatusMessage(t('tokens.createError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('tokens.createError', { message: (error as ApiRequestError).message }), 'error', 8000);
     } finally {
       setCreating(false);
     }
   };
 
-  const revokeToken = async (token) => {
+  const revokeToken = async (token: ApiToken) => {
     setRevokingUuid(token.uuid);
     try {
       await fetchJSON(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens/${encodeURIComponent(token.uuid)}`, {
@@ -231,7 +284,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
       setTokens((current) => current.map((item) => item.uuid === token.uuid ? { ...item, revoked_at: revokedAt } : item));
       showStatusMessage(t('tokens.revokedSuccess'), 'success');
     } catch (error) {
-      showStatusMessage(t('tokens.revokeError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('tokens.revokeError', { message: (error as ApiRequestError).message }), 'error', 8000);
     } finally {
       setRevokingUuid('');
     }
@@ -240,7 +293,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
   const generateLegacyKey = async () => {
     setLegacyGenerating(true);
     try {
-      const response = await fetchJSON(`/api/auth/users/${encodeURIComponent(currentUser.id)}/api-key`, {
+      const response = await fetchJSON<LegacyApiKeyResponse>(`/api/auth/users/${encodeURIComponent(currentUser.id)}/api-key`, {
         method: 'POST',
         headers: getAuthHeaders(),
         timeout: 20000,
@@ -254,7 +307,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
       setRevealed({ kind: 'legacy', secret: response.api_key });
       showStatusMessage(t('tokens.legacy.createdSuccess'), 'success');
     } catch (error) {
-      showStatusMessage(t('tokens.legacy.createError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('tokens.legacy.createError', { message: (error as ApiRequestError).message }), 'error', 8000);
     } finally {
       setLegacyGenerating(false);
     }
@@ -262,7 +315,7 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
 
   const copySecret = async () => {
     try {
-      await navigator.clipboard.writeText(revealed.secret);
+      await navigator.clipboard.writeText(revealed!.secret);
       setSecretCopied(true);
       showStatusMessage(t('tokens.secret.copySuccess'), 'success');
     } catch (error) {
@@ -300,14 +353,14 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }) {
                   <section className="space-y-4 rounded-lg border border-border p-4">
                     <div><h3 className="text-lg font-semibold">{t('tokens.createTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('tokens.createDescription')}</p></div>
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                      <label className="text-sm font-medium">{t('tokens.name')}<input className={`${fieldClasses} mt-1`} maxLength="127" value={draft.description} placeholder={t('tokens.namePlaceholder')} onInput={(event) => updateDraft({ description: event.currentTarget.value })} /></label>
+                      <label className="text-sm font-medium">{t('tokens.name')}<input className={`${fieldClasses} mt-1`} maxLength={127} value={draft.description} placeholder={t('tokens.namePlaceholder')} onInput={(event) => updateDraft({ description: event.currentTarget.value })} /></label>
                       <label className="text-sm font-medium">{t('tokens.expiry')}<select className={`${fieldClasses} mt-1`} value={draft.expiryDays} onChange={(event) => updateDraft({ expiryDays: Number(event.currentTarget.value) })}>{TOKEN_EXPIRY_OPTIONS.map((days) => <option key={days} value={days}>{t('tokens.expiryDays', { days })}</option>)}</select></label>
                     </div>
 
                     <div><h4 className="text-sm font-semibold">{t('tokens.actions')}</h4><p className="mb-2 mt-1 text-xs text-muted-foreground">{t('tokens.actionsHelp')}</p><ActionPicker actions={actions} selected={draft.actionKeys} onToggle={(key) => updateDraft({ actionKeys: toggleTokenAction(draft.actionKeys, key) })} t={t} /></div>
 
                     <div>
-                      <label className="text-sm font-medium">{t('tokens.scope.label')}<select className={`${fieldClasses} mt-1`} value={draft.scopeType} onChange={(event) => updateDraft({ scopeType: event.currentTarget.value, collectionUuid: '', selector: DEFAULT_TOKEN_SELECTOR, selectorError: '' })}><option value="all">{t('tokens.scope.all')}</option><option value="collection">{t('tokens.scope.collection')}</option><option value="selector">{t('tokens.scope.selector')}</option></select></label>
+                      <label className="text-sm font-medium">{t('tokens.scope.label')}<select className={`${fieldClasses} mt-1`} value={draft.scopeType} onChange={(event) => updateDraft({ scopeType: event.currentTarget.value as AccessScopeType, collectionUuid: '', selector: DEFAULT_TOKEN_SELECTOR, selectorError: '' })}><option value="all">{t('tokens.scope.all')}</option><option value="collection">{t('tokens.scope.collection')}</option><option value="selector">{t('tokens.scope.selector')}</option></select></label>
                       {draft.scopeType === 'collection' && <label className="mt-3 block text-sm font-medium">{t('tokens.scope.chooseCollection')}<select className={`${fieldClasses} mt-1`} value={draft.collectionUuid} onChange={(event) => updateDraft({ collectionUuid: event.currentTarget.value })}><option value="">{t('access.policy.chooseCollection')}</option>{collections.map((collection) => <option key={collection.uuid} value={collection.uuid}>{collection.name} ({collection.effective_count})</option>)}</select></label>}
                       {draft.scopeType === 'selector' && <div className="mt-3"><CollectionSelectorBuilder key="api-token-selector" idPrefix="api-token-selector" initialSelector={draft.selector} locations={locations} tags={tags} allowCameraSelection requestHeaders={getAuthHeaders()} onChange={updateSelector} t={t} /></div>}
                     </div>

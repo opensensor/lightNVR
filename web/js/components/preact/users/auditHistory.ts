@@ -1,5 +1,14 @@
-// @ts-nocheck
-export const EMPTY_AUDIT_FILTERS = Object.freeze({
+import type {
+  AuditDecisionModeEntry,
+  AuditDecisionModeGroup,
+  AuditEvent,
+  AuditEventsPage,
+  AuditFilters,
+  AuditQueryFilters,
+  AuditSummaryDetails,
+} from '../../../types/users.ts';
+
+export const EMPTY_AUDIT_FILTERS: Readonly<AuditFilters> = Object.freeze({
   principalUserId: '',
   action: '',
   outcome: '',
@@ -10,7 +19,7 @@ export const EMPTY_AUDIT_FILTERS = Object.freeze({
   until: '',
 });
 
-function unixTimestamp(value) {
+function unixTimestamp(value: string | number | undefined) {
   if (!value) return 0;
   if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
   const milliseconds = new Date(value).getTime();
@@ -19,12 +28,12 @@ function unixTimestamp(value) {
     : 0;
 }
 
-export function buildAuditQuery(filters = {}, page = 1, pageSize = 50) {
+export function buildAuditQuery(filters: AuditQueryFilters = {}, page: number | string = 1, pageSize: number | string = 50) {
   const params = new URLSearchParams();
-  params.set('page', String(Math.max(1, Number.parseInt(page, 10) || 1)));
-  params.set('page_size', String(Math.max(1, Number.parseInt(pageSize, 10) || 50)));
+  params.set('page', String(Math.max(1, Number.parseInt(page as string, 10) || 1)));
+  params.set('page_size', String(Math.max(1, Number.parseInt(pageSize as string, 10) || 50)));
 
-  const textFilters = [
+  const textFilters: [string, string | undefined][] = [
     ['principal_user_id', filters.principalUserId],
     ['action', filters.action],
     ['outcome', filters.outcome],
@@ -44,13 +53,13 @@ export function buildAuditQuery(filters = {}, page = 1, pageSize = 50) {
   return params.toString();
 }
 
-export function auditDateRangeIsValid(filters = {}) {
+export function auditDateRangeIsValid(filters: AuditQueryFilters = {}) {
   const since = unixTimestamp(filters.since);
   const until = unixTimestamp(filters.until);
   return since === 0 || until === 0 || since <= until;
 }
 
-export function auditPageBounds(page) {
+export function auditPageBounds(page: Partial<AuditEventsPage> | null | undefined) {
   const total = Number(page?.total) || 0;
   const count = Number(page?.count) || 0;
   const pageNumber = Math.max(1, Number(page?.page) || 1);
@@ -60,7 +69,7 @@ export function auditPageBounds(page) {
   return { start, end: start + count - 1, total };
 }
 
-export function auditOutcomeTone(outcome) {
+export function auditOutcomeTone(outcome: string) {
   if (outcome === 'success' || outcome === 'allowed') return 'success';
   if (outcome === 'error') return 'danger';
   if (outcome === 'denied' || outcome === 'failure') return 'warning';
@@ -70,9 +79,9 @@ export function auditOutcomeTone(outcome) {
 export const AUDIT_DECISION_MODES = Object.freeze(['record', 'summarize', 'off']);
 export const AUDIT_SUMMARY_EVENT_TYPE = 'authorization.summary';
 
-export function groupDecisionModes(modes = []) {
-  const groups = [];
-  const byCategory = new Map();
+export function groupDecisionModes(modes: AuditDecisionModeEntry[] = []) {
+  const groups: AuditDecisionModeGroup[] = [];
+  const byCategory = new Map<string, AuditDecisionModeGroup>();
   modes.forEach((entry) => {
     if (!entry || !entry.action) return;
     const category = entry.category || '';
@@ -81,19 +90,19 @@ export function groupDecisionModes(modes = []) {
       byCategory.set(category, group);
       groups.push(group);
     }
-    byCategory.get(category).actions.push(entry);
+    byCategory.get(category)!.actions.push(entry);
   });
   return groups;
 }
 
-export function modesByAction(modes = []) {
+export function modesByAction(modes: AuditDecisionModeEntry[] = []): Record<string, string> {
   return Object.fromEntries(
-    modes.filter((entry) => entry && entry.action).map((entry) => [entry.action, entry.mode])
+    modes.filter((entry) => entry && entry.action).map((entry): [string, string] => [entry.action, entry.mode])
   );
 }
 
-export function changedDecisionModes(original = {}, draft = {}) {
-  const changes = {};
+export function changedDecisionModes(original: Record<string, string> = {}, draft: Record<string, string> = {}) {
+  const changes: Record<string, string> = {};
   Object.entries(draft).forEach(([action, mode]) => {
     if (AUDIT_DECISION_MODES.includes(mode) && original[action] !== mode) {
       changes[action] = mode;
@@ -102,7 +111,7 @@ export function changedDecisionModes(original = {}, draft = {}) {
   return changes;
 }
 
-export function summaryDetails(event) {
+export function summaryDetails(event: Pick<AuditEvent, 'details'> | null | undefined): AuditSummaryDetails | null {
   const details = event?.details;
   if (!details || details.event_type !== AUDIT_SUMMARY_EVENT_TYPE) return null;
   const count = Number(details.count);
@@ -114,12 +123,12 @@ export function summaryDetails(event) {
   };
 }
 
-export function formatSummaryCount(count, locale = 'en-US') {
+export function formatSummaryCount(count: number, locale = 'en-US') {
   return `×${new Intl.NumberFormat(locale).format(Number(count) || 0)}`;
 }
 
-function formatDateTimeLocal(date) {
-  const pad = (value) => String(value).padStart(2, '0');
+function formatDateTimeLocal(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
     `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -132,7 +141,7 @@ function formatDateTimeLocal(date) {
  * datetime-local format the since input already uses. Leaves an existing
  * since value alone, and does nothing while no event type is selected.
  */
-export function defaultSinceForEventType(draftFilters = {}, now = new Date()) {
+export function defaultSinceForEventType(draftFilters: Partial<Pick<AuditFilters, 'eventType' | 'since'>> = {}, now = new Date()) {
   if (!draftFilters.eventType || draftFilters.since) return draftFilters.since || '';
   return formatDateTimeLocal(new Date(now.getTime() - 24 * 60 * 60 * 1000));
 }

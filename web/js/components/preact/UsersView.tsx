@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Users View Component
  * Preact component for the user management page
@@ -20,6 +19,23 @@ import { TotpSetupModal } from './users/TotpSetupModal.tsx';
 import { AccessPolicyModal } from './users/AccessPolicyModal.tsx';
 import { RoleManagerModal } from './users/RoleManagerModal.tsx';
 import { AuditHistoryModal } from './users/AuditHistoryModal.tsx';
+import type { ComponentChildren } from 'preact';
+import type { User } from '../../types/core.ts';
+import type {
+  ApiRequestError,
+  ClearLoginLockoutResponse,
+  UserFormData,
+  UsersResponse,
+  UserWritePayload,
+} from '../../types/users.ts';
+
+type UsersModal = 'add' | 'edit' | 'delete' | 'apiKey' | 'totp' | 'access' | 'roles' | 'audit';
+
+/*
+ * selectedUser below is non-null wherever it carries `!`: each openXModal sets it
+ * together with its activeModal value, and the 'roles' and 'audit' modals, which
+ * clear it, do not read it.
+ */
 
 /**
  * UsersView component
@@ -29,13 +45,13 @@ export function UsersView() {
   const { t } = useI18n();
 
   // State for modal visibility
-  const [activeModal, setActiveModal] = useState(null); // add, edit, delete, apiKey, totp, access, roles, audit, or null
+  const [activeModal, setActiveModal] = useState<UsersModal | null>(null); // add, edit, delete, apiKey, totp, access, roles, audit, or null
 
   // State for the user targeted by the active management modal.
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // Form state for adding/editing users
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UserFormData>({
     username: '',
     password: '',
     email: '',
@@ -49,7 +65,7 @@ export function UsersView() {
    * Get auth headers for requests
    * @returns {Object} Headers object with Authorization if available
    */
-  const getAuthHeaders = useCallback(() => {
+  const getAuthHeaders = useCallback((): Record<string, string> => {
     const auth = localStorage.getItem('auth');
     return auth ? { 'Authorization': 'Basic ' + auth } : {};
   }, []);
@@ -60,7 +76,7 @@ export function UsersView() {
     isLoading: loading,
     error,
     refetch: refetchUsers
-  } = useQuery(
+  } = useQuery<UsersResponse, ApiRequestError>(
     ['users'],
     '/api/auth/users',
     {
@@ -75,7 +91,7 @@ export function UsersView() {
   // Extract users array from response
   const users = usersData?.users || [];
 
-  const renderPageHeader = (actionButton = null) => (
+  const renderPageHeader = (actionButton: ComponentChildren = null) => (
     <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
       <h2 className="text-xl font-semibold">{t('users.userManagement')}</h2>
       {actionButton}
@@ -101,8 +117,8 @@ export function UsersView() {
    * Handle form input changes
    * @param {Event} e - Input change event
    */
-  const handleInputChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
+  const handleInputChange = useCallback((e: Event) => {
+    const { name, value, type, checked } = e.target as HTMLInputElement;
 
     setFormData(prevData => ({
       ...prevData,
@@ -111,7 +127,7 @@ export function UsersView() {
   }, []);
 
   // Add user mutation
-  const addUserMutation = useMutation({
+  const addUserMutation = useMutation<unknown, Error, UserWritePayload>({
     mutationFn: async (userData) => {
       return await fetchJSON('/api/auth/users', {
         method: 'POST',
@@ -140,7 +156,7 @@ export function UsersView() {
   });
 
   // Edit user mutation
-  const editUserMutation = useMutation({
+  const editUserMutation = useMutation<unknown, Error, { userId: number; userData: UserWritePayload }>({
     mutationFn: async ({ userId, userData }) => {
       return await fetchJSON(`/api/auth/users/${userId}`, {
         method: 'PUT',
@@ -169,7 +185,7 @@ export function UsersView() {
   });
 
   // Delete user mutation
-  const deleteUserMutation = useMutation({
+  const deleteUserMutation = useMutation<unknown, Error, number>({
     mutationFn: async (userId) => {
       return await fetchJSON(`/api/auth/users/${userId}`, {
         method: 'DELETE',
@@ -193,9 +209,9 @@ export function UsersView() {
     }
   });
 
-  const clearLoginLockoutMutation = useMutation({
+  const clearLoginLockoutMutation = useMutation<ClearLoginLockoutResponse, Error, number>({
     mutationFn: async (userId) => {
-      return await fetchJSON(`/api/auth/users/${userId}/login-lockout/clear`, {
+      return await fetchJSON<ClearLoginLockoutResponse>(`/api/auth/users/${userId}/login-lockout/clear`, {
         method: 'POST',
         headers: getAuthHeaders(),
         timeout: 15000,
@@ -222,11 +238,11 @@ export function UsersView() {
    * can disable the submit button + show a spinner while the POST is in
    * flight, preventing the #399 rapid-tap duplicate-save bug.
    */
-  const handleAddUser = useCallback((e) => {
+  const handleAddUser = useCallback((e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     console.log('Adding user:', formData.username);
-    const userData = {
+    const userData: UserWritePayload = {
       ...formData,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
@@ -239,17 +255,17 @@ export function UsersView() {
    * Returns the mutation's promise so the EditUserModal's <AsyncButton>
    * can lock the submit button while the PUT is in flight (#399).
    */
-  const handleEditUser = useCallback((e) => {
+  const handleEditUser = useCallback((e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
-    console.log('Editing user:', selectedUser.id, selectedUser.username);
-    const userData = {
+    console.log('Editing user:', selectedUser!.id, selectedUser!.username);
+    const userData: UserWritePayload = {
       ...formData,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
-    if (selectedUser.authorization_mode === 'policy') delete userData.role;
+    if (selectedUser!.authorization_mode === 'policy') delete userData.role;
     return editUserMutation.mutateAsync({
-      userId: selectedUser.id,
+      userId: selectedUser!.id,
       userData
     });
   }, [selectedUser, formData, editUserMutation]);
@@ -260,8 +276,8 @@ export function UsersView() {
    * DELETE is in flight (#399 / PRD UXD_01 §5.1 / T1).
    */
   const handleDeleteUser = useCallback(() => {
-    console.log('Deleting user:', selectedUser.id, selectedUser.username);
-    return deleteUserMutation.mutateAsync(selectedUser.id);
+    console.log('Deleting user:', selectedUser!.id, selectedUser!.username);
+    return deleteUserMutation.mutateAsync(selectedUser!.id);
   }, [selectedUser, deleteUserMutation]);
 
   const handleClearLoginLockout = useCallback(() => {
@@ -275,7 +291,7 @@ export function UsersView() {
    * Open the edit modal for a user
    * @param {Object} user - User to edit
    */
-  const openEditModal = useCallback((user) => {
+  const openEditModal = useCallback((user: User) => {
     setSelectedUser(user);
     setFormData({
       username: user.username,
@@ -293,7 +309,7 @@ export function UsersView() {
    * Open the delete modal for a user
    * @param {Object} user - User to delete
    */
-  const openDeleteModal = useCallback((user) => {
+  const openDeleteModal = useCallback((user: User) => {
     setSelectedUser(user);
     setActiveModal('delete');
   }, []);
@@ -302,7 +318,7 @@ export function UsersView() {
    * Open API access management for a user.
    * @param {Object} user - User whose tokens should be managed
    */
-  const openApiKeyModal = useCallback((user) => {
+  const openApiKeyModal = useCallback((user: User) => {
     setSelectedUser(user);
     setActiveModal('apiKey');
   }, []);
@@ -311,12 +327,12 @@ export function UsersView() {
    * Open the TOTP MFA modal for a user
    * @param {Object} user - User to configure TOTP for
    */
-  const openTotpModal = useCallback((user) => {
+  const openTotpModal = useCallback((user: User) => {
     setSelectedUser(user);
     setActiveModal('totp');
   }, []);
 
-  const openAccessModal = useCallback((user) => {
+  const openAccessModal = useCallback((user: User) => {
     setSelectedUser(user);
     setActiveModal('access');
   }, []);
@@ -463,20 +479,20 @@ export function UsersView() {
 
       {activeModal === 'edit' && (
         <EditUserModal
-          currentUser={selectedUser}
+          currentUser={selectedUser!}
           formData={formData}
           handleInputChange={handleInputChange}
           handleEditUser={handleEditUser}
           handleClearLoginLockout={handleClearLoginLockout}
           isClearingLoginLockout={clearLoginLockoutMutation.isPending}
-          showRoleField={selectedUser.authorization_mode !== 'policy'}
+          showRoleField={selectedUser!.authorization_mode !== 'policy'}
           onClose={closeModal}
         />
       )}
 
       {activeModal === 'delete' && (
         <DeleteUserModal
-          currentUser={selectedUser}
+          currentUser={selectedUser!}
           handleDeleteUser={handleDeleteUser}
           onClose={closeModal}
         />
@@ -484,7 +500,7 @@ export function UsersView() {
 
       {activeModal === 'apiKey' && (
         <ApiKeyModal
-          currentUser={selectedUser}
+          currentUser={selectedUser!}
           getAuthHeaders={getAuthHeaders}
           onClose={closeModal}
         />
@@ -492,7 +508,7 @@ export function UsersView() {
 
       {activeModal === 'totp' && (
         <TotpSetupModal
-          user={selectedUser}
+          user={selectedUser!}
           onClose={closeModal}
           onSuccess={refetchUsers}
           getAuthHeaders={getAuthHeaders}

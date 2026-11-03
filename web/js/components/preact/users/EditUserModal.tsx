@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Edit User Modal Component
  */
@@ -7,6 +6,27 @@ import { USER_ROLE_KEYS } from './UserRoles.ts';
 import { useEffect, useRef } from 'preact/hooks';
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
+import type { User } from '../../../types/core.ts';
+import type { UserFormData } from '../../../types/users.ts';
+
+export interface EditUserModalProps {
+  currentUser: Pick<User, 'username'>;
+  formData: UserFormData;
+  handleInputChange: (e: Event) => void;
+  handleEditUser: (e: Event) => unknown;
+  /** Only read by the button that showClearLoginLockoutButton shows. */
+  handleClearLoginLockout?: (() => void) | undefined;
+  isClearingLoginLockout?: boolean | undefined;
+  onClose: () => void;
+  title?: string;
+  submitLabel?: string;
+  showPasswordField?: boolean;
+  showRoleField?: boolean;
+  showActiveField?: boolean;
+  showPasswordLockField?: boolean;
+  showAllowedLoginCidrsField?: boolean;
+  showClearLoginLockoutButton?: boolean;
+}
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -43,9 +63,9 @@ export function EditUserModal({
   showPasswordLockField = true,
   showAllowedLoginCidrsField = true,
   showClearLoginLockoutButton = true,
-}) {
-  const modalRef = useRef(null);
-  const previousFocusedElementRef = useRef(null);
+}: EditUserModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
   const backdropPointerDownRef = useRef(false);
   const { t } = useI18n();
 
@@ -59,13 +79,13 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   useEffect(() => {
     // Remember previously focused element
-    previousFocusedElementRef.current = document.activeElement;
+    previousFocusedElementRef.current = document.activeElement as HTMLElement | null;
 
     const modalNode = modalRef.current;
     if (modalNode) {
-      const focusableElements = modalNode.querySelectorAll(FOCUSABLE_SELECTORS);
+      const focusableElements = modalNode.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS);
       if (focusableElements.length > 0) {
-        focusableElements[0].focus();
+        focusableElements[0]!.focus();
       } else {
         modalNode.setAttribute('tabindex', '-1');
         modalNode.focus();
@@ -81,7 +101,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
     };
   }, []);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
       onClose();
@@ -93,13 +113,13 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
       if (!modalNode) {
         return;
       }
-      const focusable = Array.from(modalNode.querySelectorAll(FOCUSABLE_SELECTORS));
+      const focusable = Array.from(modalNode.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS));
       if (focusable.length === 0) {
         return;
       }
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
       const current = document.activeElement;
 
       if (!e.shiftKey && current === last) {
@@ -114,22 +134,22 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   // Direct submit handler. Returns the edit-user promise so the
   // <AsyncButton> below can track pending state (#399 / PRD UXD_01 §5.1).
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     return Promise.resolve(handleEditUser(e));
   };
 
   // Stop click propagation on modal content
-  const stopPropagation = (e) => {
+  const stopPropagation = (e: Event) => {
     e.stopPropagation();
   };
 
-  const handleBackdropMouseDown = (e) => {
+  const handleBackdropMouseDown = (e: MouseEvent) => {
     backdropPointerDownRef.current = e.target === e.currentTarget;
   };
 
-  const handleBackdropClick = (e) => {
+  const handleBackdropClick = (e: MouseEvent) => {
     if (backdropPointerDownRef.current && e.target === e.currentTarget) {
       onClose();
     }

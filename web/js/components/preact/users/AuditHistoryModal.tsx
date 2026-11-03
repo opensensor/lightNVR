@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { enhancedFetch } from '../../../fetch-utils.ts';
@@ -15,17 +14,41 @@ import {
   formatSummaryCount,
   summaryDetails,
 } from './auditHistory.ts';
+import type { User } from '../../../types/core.ts';
+import type {
+  ApiRequestError,
+  AuditEvent,
+  AuditEventsPage,
+  AuditFilters,
+  AuditSettings,
+  GetAuthHeaders,
+  Translate,
+} from '../../../types/users.ts';
+
+interface EventCardProps {
+  event: AuditEvent;
+  expanded: boolean;
+  onToggle: () => void;
+  onFilterAction: () => void;
+  t: Translate;
+}
+
+export interface AuditHistoryModalProps {
+  users?: Pick<User, 'id' | 'username'>[];
+  onClose: () => void;
+  getAuthHeaders: GetAuthHeaders;
+}
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
-const EMPTY_PAGE = { page: 1, page_size: 50, count: 0, total: 0, events: [] };
+const EMPTY_PAGE: AuditEventsPage = { page: 1, page_size: 50, count: 0, total: 0, events: [] };
 
-function formatTimestamp(timestamp) {
+function formatTimestamp(timestamp: number | null | undefined) {
   if (!timestamp) return '—';
   const date = new Date(Number(timestamp) * 1000);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
-function outcomeClass(outcome) {
+function outcomeClass(outcome: string) {
   const tone = auditOutcomeTone(outcome);
   return tone === 'success'
     ? 'badge-success'
@@ -36,7 +59,7 @@ function outcomeClass(outcome) {
         : 'badge-info';
 }
 
-function EventCard({ event, expanded, onToggle, onFilterAction, t }) {
+function EventCard({ event, expanded, onToggle, onFilterAction, t }: EventCardProps) {
   const summary = summaryDetails(event);
   const target = [event.target_type, event.target_uuid].filter(Boolean).join(' · ') || t('audit.noTarget');
   const actor = event.principal_username || t('audit.unauthenticated');
@@ -74,10 +97,10 @@ function EventCard({ event, expanded, onToggle, onFilterAction, t }) {
   );
 }
 
-export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
+export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: AuditHistoryModalProps) {
   const { t } = useI18n();
-  const [draftFilters, setDraftFilters] = useState({ ...EMPTY_AUDIT_FILTERS });
-  const [filters, setFilters] = useState({ ...EMPTY_AUDIT_FILTERS });
+  const [draftFilters, setDraftFilters] = useState<AuditFilters>({ ...EMPTY_AUDIT_FILTERS });
+  const [filters, setFilters] = useState<AuditFilters>({ ...EMPTY_AUDIT_FILTERS });
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(EMPTY_PAGE);
@@ -86,7 +109,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
   const [expandedUuid, setExpandedUuid] = useState('');
   const [retentionDays, setRetentionDays] = useState(365);
   const [retentionDraft, setRetentionDraft] = useState('365');
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState<AuditSettings | null>(null);
   const [savingRetention, setSavingRetention] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSequence = useRef(0);
@@ -101,7 +124,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
     setLoading(true);
     setError('');
     try {
-      const response = await fetchJSON(`/api/audit/events?${queryString}`, {
+      const response = await fetchJSON<Partial<AuditEventsPage>>(`/api/audit/events?${queryString}`, {
         headers: getAuthHeaders(),
         cache: 'no-store',
         timeout: 20000,
@@ -111,7 +134,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
         setPage({ ...EMPTY_PAGE, ...response, events: response?.events || [] });
       }
     } catch (requestError) {
-      if (sequence === requestSequence.current) setError(requestError.message);
+      if (sequence === requestSequence.current) setError((requestError as ApiRequestError).message);
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
@@ -119,22 +142,22 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => {
-    fetchJSON('/api/audit/settings', {
+    fetchJSON<AuditSettings>('/api/audit/settings', {
       headers: getAuthHeaders(), cache: 'no-store', timeout: 15000, retries: 0,
     }).then((loadedSettings) => {
       setSettings(loadedSettings);
       const days = Number(loadedSettings?.retention_days) || 365;
       setRetentionDays(days);
       setRetentionDraft(String(days));
-    }).catch((requestError) => setError(requestError.message));
+    }).catch((requestError: unknown) => setError((requestError as ApiRequestError).message));
   }, [getAuthHeaders]);
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape' && !savingRetention && !exporting) onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !savingRetention && !exporting) onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, savingRetention, exporting]);
 
-  const applyFilters = (event) => {
+  const applyFilters = (event: Event) => {
     event.preventDefault();
     if (!auditDateRangeIsValid(draftFilters)) {
       showStatusMessage(t('audit.invalidDateRange'), 'error');
@@ -151,14 +174,14 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
     setPageNumber(1);
     setExpandedUuid('');
   };
-  const updateDraft = (name, value) => setDraftFilters((current) => {
-    const next = { ...current, [name]: value };
+  const updateDraft = (name: keyof AuditFilters, value: string) => setDraftFilters((current) => {
+    const next: AuditFilters = { ...current, [name]: value };
     if (name === 'eventType') {
       next.since = defaultSinceForEventType({ eventType: value, since: current.since });
     }
     return next;
   });
-  const filterToAction = (action) => {
+  const filterToAction = (action: string) => {
     const next = { ...filters, action };
     setDraftFilters(next);
     setFilters(next);
@@ -174,7 +197,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
     }
     setSavingRetention(true);
     try {
-      const response = await fetchJSON('/api/audit/settings', {
+      const response = await fetchJSON<AuditSettings>('/api/audit/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ retention_days: days }),
@@ -187,7 +210,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
       showStatusMessage(t('audit.retentionSaved', { count: response.pruned_events || 0 }), 'success');
       await loadEvents();
     } catch (requestError) {
-      showStatusMessage(t('audit.retentionError', { message: requestError.message }), 'error', 8000);
+      showStatusMessage(t('audit.retentionError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
     } finally {
       setSavingRetention(false);
     }
@@ -210,7 +233,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }) {
       URL.revokeObjectURL(url);
       showStatusMessage(t('audit.exported'), 'success');
     } catch (requestError) {
-      showStatusMessage(t('audit.exportError', { message: requestError.message }), 'error', 8000);
+      showStatusMessage(t('audit.exportError', { message: (requestError as ApiRequestError).message }), 'error', 8000);
     } finally {
       setExporting(false);
     }
