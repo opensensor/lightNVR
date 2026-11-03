@@ -110,6 +110,7 @@ export function StreamStorage({ systemInfo, formatBytes }: StreamStorageProps) {
                     className="h-2.5 block hover:opacity-70 transition-opacity cursor-pointer"
                     style={{ width: `${stream.slicePercent}%`, backgroundColor: color.text }}
                     title={t('system.viewRecordingsForStream', { stream: stream.name })}
+                    aria-label={t('system.viewRecordingsForStream', { stream: stream.name })}
                   ></a>
                 );
               })}

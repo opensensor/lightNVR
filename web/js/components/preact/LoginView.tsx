@@ -417,7 +417,7 @@ export function LoginView() {
                   maxLength={6}
                   pattern="[0-9]{6}"
                   autoComplete="one-time-code"
-                  autoFocus
+                  /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus
                   required
               />
             </div>

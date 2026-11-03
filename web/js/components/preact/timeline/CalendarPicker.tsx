@@ -114,6 +114,7 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
           onClick={prevDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
           title={t('timeline.previousDay')}
+          aria-label={t('timeline.previousDay')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -141,6 +142,7 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
           onClick={nextDay}
           className="p-2 rounded border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
           title={t('timeline.nextDay')}
+          aria-label={t('timeline.nextDay')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -159,6 +161,7 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
             <button type="button" onClick={prevMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.previousMonth')}
+              aria-label={t('timeline.previousMonth')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -172,6 +175,7 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
             <button type="button" onClick={nextMonth}
               className="p-1 rounded hover:bg-accent transition-colors"
               title={t('timeline.nextMonth')}
+              aria-label={t('timeline.nextMonth')}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="rtl-flip" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

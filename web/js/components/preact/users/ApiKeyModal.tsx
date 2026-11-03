@@ -325,8 +325,8 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }: ApiKeyModa
 
   const closeAllowed = !revealed && !creating && !legacyGenerating;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={() => closeAllowed && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="api-access-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
+    <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={() => closeAllowed && onClose()}>
+      <section /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- only keeps clicks inside the dialog from reaching the backdrop */ role="dialog" aria-modal="true" aria-labelledby="api-access-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div><h2 id="api-access-title" className="text-xl font-bold">{t('tokens.title', { username: currentUser.username })}</h2><p className="mt-1 text-sm text-muted-foreground">{t('tokens.description')}</p></div>
           {!revealed && <button type="button" className="btn-secondary" onClick={onClose} disabled={!closeAllowed}>{t('common.close')}</button>}

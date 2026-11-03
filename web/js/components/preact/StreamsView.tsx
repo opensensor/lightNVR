@@ -1598,7 +1598,9 @@ export function StreamsView() {
                 className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
                 style={{borderColor: 'hsl(var(--success))', color: 'hsl(var(--success))', background: 'transparent'}}
                 onMouseOver={e => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
+                onFocus={e => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
                 onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                onBlur={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 disabled={isBulkWorking || selectedStreams.size === 0}
                 onClick={handleBulkEnable}
               >
@@ -1615,7 +1617,9 @@ export function StreamsView() {
                 className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
                 style={{borderColor: 'hsl(var(--danger))', color: 'hsl(var(--danger))', background: 'transparent'}}
                 onMouseOver={e => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
+                onFocus={e => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
                 onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                onBlur={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 disabled={isBulkWorking || selectedStreams.size === 0}
                 onClick={handleBulkDelete}
               >
@@ -1834,7 +1838,7 @@ export function StreamsView() {
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{t('streams.onvifCameraDiscovery')}</h3>
-              <span className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</span>
+              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</button>
             </div>
             <div className="p-4">
               <div className="mb-4 p-3 bg-muted/50 rounded-lg">
@@ -2061,7 +2065,7 @@ export function StreamsView() {
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{t('streams.streamName')}</h3>
-              <span className="text-2xl cursor-pointer" onClick={() => setShowCustomNameInput(false)}>×</span>
+              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer" onClick={() => setShowCustomNameInput(false)}>×</button>
             </div>
             <div className="p-4">
               <div className="mb-4">

@@ -114,13 +114,13 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
   };
 
   return (
-    <div
+    <div role="presentation"
       className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
       onMouseDown={handleBackdropMouseDown}
       onClick={handleBackdropClick}
     >
       <div className="flex min-h-full items-center justify-center">
-        <div
+        <div /* eslint-disable-line jsx-a11y/no-noninteractive-element-interactions -- only keeps clicks inside the dialog from reaching the backdrop */
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-user-modal-title"

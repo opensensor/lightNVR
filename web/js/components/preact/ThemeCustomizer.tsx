@@ -115,6 +115,8 @@ export function ThemeCustomizer() {
         </div>
         <button
           onClick={toggleDarkMode}
+          aria-label={t('appearance.darkMode')}
+          aria-pressed={isDark}
           class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
           style={{
             backgroundColor: isDark ? 'hsl(var(--primary))' : 'hsl(var(--muted))'

@@ -477,7 +477,7 @@ export function LiveOperatorNavigator({
                 onDblClick={() => loadLocation(node.uuid)}>
                 <span className="live-location-name">
                   {node.children.length > 0 && (
-                    <span onClick={(event) => {
+                    <span /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- nested in a button, so it cannot be a control itself; keyboard expansion is a known gap */ onClick={(event) => {
                       event.stopPropagation(); toggleExpanded(node.uuid);
                     }}>{expanded.has(node.uuid) ? '▾' : <span dir="ltr" className="rtl-flip inline-block" aria-hidden="true">▸</span>}</span>
                   )}

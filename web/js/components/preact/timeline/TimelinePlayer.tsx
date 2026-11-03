@@ -28,6 +28,7 @@ import type {
   TimelineSegment,
   TimelineState,
 } from '../../../types/timeline.ts';
+import { clickOnActivationKey } from '../../../utils/a11y.ts';
 
 type VideoElementRef = RefObject<HTMLVideoElement | null> | ((node: HTMLVideoElement | null) => void) | null;
 
@@ -948,7 +949,7 @@ export function TimelinePlayer({
           className="relative w-full bg-black rounded-lg shadow-md"
           style={isFullscreen ? { width: '100vw', height: '100vh' } : { aspectRatio: '16/9' }}
         >
-          <video
+          <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
               ref={setVideoRefs}
               className="w-full h-full object-contain"
               controls={!eptzEnabled}
@@ -1019,7 +1020,7 @@ export function TimelinePlayer({
           {/* Fullscreen prompt — shown when arriving from a Live View fullscreen session.
               Clicking the overlay is the user gesture needed for requestFullscreen(). */}
           {showFullscreenPrompt && (
-            <div
+            <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey}
               className="absolute inset-0 flex items-center justify-center cursor-pointer rounded-lg"
               style={{ zIndex: 10, backgroundColor: 'rgba(0, 0, 0, 0.65)' }}
               onClick={async () => {

@@ -255,7 +255,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
         <div className="space-y-6 overflow-y-auto p-5">
           <section>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label={t('common.name')}><input className={fieldClasses} value={draft.name} maxLength={127} autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
+              <Field label={t('common.name')}><input className={fieldClasses} value={draft.name} maxLength={127} /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
               <Field label={t('events.route.destination')} help={t('events.route.destinationHelp')}>
                 <select className={fieldClasses} value={draft.destination} onChange={(event) => update({ destination: event.currentTarget.value })}>
                   {destinations.map((destination) => <option key={destination.key} value={destination.key} disabled={destination.managed && destination.enabled === false}>{destination.name}{destination.enabled === false ? ` — ${t('common.disabled')}` : ''}</option>)}

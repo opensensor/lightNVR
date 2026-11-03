@@ -2,6 +2,7 @@
  * Fullscreen functionality for LiveView
  * React component for managing fullscreen mode
  */
+import { t } from '../../i18n.ts';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { tinykeys } from 'tinykeys';
 import { fullscreenSwipeAction, shouldIgnoreTileGestureTarget } from './mobileLiveGestures.ts';
@@ -462,6 +463,7 @@ export function FullscreenButton({ isFullscreen, onToggle }: FullscreenButtonPro
   return (
     <button 
       id="fullscreen-btn"
+      aria-label={t('live.toggleFullscreen')}
       className="fullscreen-btn px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
       onClick={onToggle}
     >

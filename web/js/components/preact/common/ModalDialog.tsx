@@ -95,7 +95,7 @@ function ModalShell({
   };
 
   return createPortal(
-    <div
+    <div role="presentation"
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
       data-keyboard-nav-preserve
       onMouseDown={handleBackdropMouseDown}

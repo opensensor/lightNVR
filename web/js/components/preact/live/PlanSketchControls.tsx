@@ -172,6 +172,7 @@ export function PlanSketchInspector({
               <button key={tone} type="button" className={`tone-${tone} ${commonTone === tone ? 'is-active' : ''}`}
                 aria-pressed={commonTone === tone ? 'true' : 'false'}
                 title={t(`live.plan.sketch.tone.${tone}`)}
+                aria-label={t(`live.plan.sketch.tone.${tone}`)}
                 onClick={() => onRecolorSelection(tone)}>
                 <i />
               </button>
@@ -200,6 +201,7 @@ export function PlanSketchInspector({
               <button key={tone} type="button" className={`tone-${tone} ${shape.tone === tone ? 'is-active' : ''}`}
                 aria-pressed={shape.tone === tone ? 'true' : 'false'}
                 title={t(`live.plan.sketch.tone.${tone}`)}
+                aria-label={t(`live.plan.sketch.tone.${tone}`)}
                 onClick={() => commit({ ...shape, tone })}>
                 <i />
               </button>

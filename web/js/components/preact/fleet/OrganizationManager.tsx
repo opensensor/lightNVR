@@ -64,7 +64,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }: LocationEdi
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">
           {t('common.name')}
-          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
+          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
         </label>
         <label className="text-sm font-medium">
           {t('fleet.organization.type')}
@@ -230,7 +230,7 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }: TagEditorProps) {
       {merging ? (
         <label className="block text-sm font-medium">
           {t('fleet.organization.mergeInto')}
-          <select className={`${fieldClasses} mt-1`} value={form.target_uuid} required autoFocus onChange={(event) => setForm({ ...form, target_uuid: event.currentTarget.value })}>
+          <select className={`${fieldClasses} mt-1`} value={form.target_uuid} required /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onChange={(event) => setForm({ ...form, target_uuid: event.currentTarget.value })}>
             <option value="">{t('fleet.organization.chooseTag')}</option>
             {tags.filter((tag) => tag.uuid !== item!.uuid).map((tag) => <option key={tag.uuid} value={tag.uuid}>{tag.label} ({tag.camera_count})</option>)}
           </select>
@@ -240,7 +240,7 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }: TagEditorProps) {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">
             {t('fleet.organization.tagLabel')}
-            <input className={`${fieldClasses} mt-1`} value={form.label} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, label: event.currentTarget.value })} />
+            <input className={`${fieldClasses} mt-1`} value={form.label} maxLength={127} required /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onInput={(event) => setForm({ ...form, label: event.currentTarget.value })} />
           </label>
           <label className="text-sm font-medium">
             {t('fleet.organization.color')}
@@ -350,7 +350,7 @@ export function OrganizationManager({ locations, tags, loading, onRefresh, onClo
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="organization-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl">
         <header className="flex items-start justify-between border-b border-border p-4">
           <div>

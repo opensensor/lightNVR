@@ -133,7 +133,9 @@ export function DayNightControl({ stream }: DayNightControlProps) {
           transition: 'background-color 0.2s ease'
         }}
         onMouseOver={(e) => !open && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+        onFocus={(e) => !open && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
         onMouseOut={(e) => !open && (e.currentTarget.style.backgroundColor = 'transparent')}
+        onBlur={(e) => !open && (e.currentTarget.style.backgroundColor = 'transparent')}
       >
         <CurrentIcon />
       </button>

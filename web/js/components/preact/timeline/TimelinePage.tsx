@@ -1537,7 +1537,9 @@ export function TimelinePage() {
               color: 'hsl(var(--secondary-foreground))'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
             onClick={() => { try { localStorage.setItem('recordings_view_mode', 'table'); } catch(e) {} }}
           >
             {t('recordings.table')}
@@ -1550,7 +1552,9 @@ export function TimelinePage() {
               color: 'hsl(var(--secondary-foreground))'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
             onClick={() => { try { localStorage.setItem('recordings_view_mode', 'grid'); } catch(e) {} }}
           >
             {t('recordings.grid')}
@@ -1563,7 +1567,9 @@ export function TimelinePage() {
               color: idsMode ? 'hsl(var(--secondary-foreground))' : 'hsl(var(--primary-foreground))'
             }}
             onMouseOver={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
+            onFocus={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
             onMouseOut={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
+            onBlur={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
           >
             {t('nav.timeline')}
           </a>
@@ -1575,7 +1581,9 @@ export function TimelinePage() {
               color: 'hsl(var(--secondary-foreground))'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
           >
             {t('nav.investigation')}
           </a>
@@ -1587,7 +1595,9 @@ export function TimelinePage() {
               color: 'hsl(var(--secondary-foreground))'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
           >
             {t('nav.plates')}
           </a>

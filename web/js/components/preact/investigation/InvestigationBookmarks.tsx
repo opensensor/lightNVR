@@ -181,7 +181,7 @@ export function InvestigationBookmarks({
                 <label>
                   <span>{t('investigation.bookmarks.title')}</span>
                   <input
-                    autoFocus
+                    /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus
                     type="text"
                     maxLength={127}
                     required

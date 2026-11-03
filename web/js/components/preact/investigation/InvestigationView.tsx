@@ -451,7 +451,7 @@ function InvestigationPlayer({
           {/* No native controls: the page's own bar below is the only control
               bar, so the recording is not shown with two sets (#568). */}
           {segment ? (
-            <video
+            <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
               ref={videoRef}
               muted={!primary}
               playsInline

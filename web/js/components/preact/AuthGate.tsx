@@ -91,7 +91,7 @@ export function RequiredPasswordChange({ session }: { session: SessionInfo }) {
               value={currentPassword}
               onInput={(event) => setCurrentPassword(event.currentTarget.value)}
               disabled={saving}
-              autoFocus
+              /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus
             />
           </div>
 

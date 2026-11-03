@@ -81,7 +81,7 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }: Even
             <h3 className="mb-3 font-semibold">{t('events.destination.identity')}</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label={t('common.name')}>
-                <input className={fieldClasses} value={draft.name} maxLength={127} autoFocus onInput={(event) => update({ name: event.currentTarget.value })} />
+                <input className={fieldClasses} value={draft.name} maxLength={127} /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onInput={(event) => update({ name: event.currentTarget.value })} />
               </Field>
               <label className="touch-target flex cursor-pointer items-center gap-3 self-end rounded-md border border-border bg-muted/20 px-3 py-2.5 text-sm">
                 <input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />

@@ -300,7 +300,7 @@ export function Header({ version = VERSION }: { version?: string }) {
     const isDisabled = item.disabled === true;
     return (
         <li className={mobile ? "" : item.classNameLi ? item.classNameLi : "mx-1"}>
-          <a
+          <a /* eslint-disable-line jsx-a11y/anchor-is-valid -- href is removed on purpose while the item is disabled */
               href={isDisabled ? undefined : item.href}
               id={item.id}
               title={item.title}

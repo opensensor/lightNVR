@@ -221,6 +221,7 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }: SnapshotBut
     <button
       className="snapshot-btn"
       title={t('timeline.takeSnapshot')}
+      aria-label={t('timeline.takeSnapshot')}
       data-id={streamId}
       data-name={streamName}
       onClick={handleClick}
@@ -241,7 +242,13 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }: SnapshotBut
       onMouseOver={(event) => {
         event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
       }}
+      onFocus={(event) => {
+        event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+      }}
       onMouseOut={(event) => {
+        event.currentTarget.style.backgroundColor = 'transparent';
+      }}
+      onBlur={(event) => {
         event.currentTarget.style.backgroundColor = 'transparent';
       }}
     >

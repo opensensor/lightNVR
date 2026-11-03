@@ -173,7 +173,9 @@ const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
         style={closeButtonStyle} 
         onClick={handleRemove}
         onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+        onFocus={(e) => e.currentTarget.style.opacity = '1'}
         onMouseOut={(e) => e.currentTarget.style.opacity = '0.7'}
+        onBlur={(e) => e.currentTarget.style.opacity = '0.7'}
       >
         ×
       </button>

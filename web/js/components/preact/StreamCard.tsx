@@ -279,7 +279,7 @@ export function StreamCard({
       data-stream={stream.name}
     >
       {/* Snapshot — clickable to toggle selection when in selection mode */}
-      <div
+      <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut for the selection checkbox in this card */
         ref={snapshotContainerRef}
         class={`relative w-full aspect-video bg-muted flex-shrink-0 ${
           selectionMode ? 'cursor-pointer' : ''
@@ -413,7 +413,9 @@ export function StreamCard({
               class="p-1.5 rounded-md min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
               style={{ color: 'hsl(var(--primary))' }}
               onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; }}
+              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; }}
               onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               href={stream.admin_url}
               target="_blank"
               rel="noopener noreferrer"
@@ -433,7 +435,9 @@ export function StreamCard({
               class="p-1.5 rounded-md min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
               style={{ color: 'hsl(var(--primary))' }}
               onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; }}
+              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; }}
               onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               onClick={() => onEdit(stream.name)}
               title={t('common.edit')}
               aria-label={t('common.edit')}
@@ -450,7 +454,9 @@ export function StreamCard({
               class="p-1.5 rounded-md min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
               style={{ color: 'hsl(var(--success))' }}
               onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'; }}
+              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'; }}
               onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               onClick={() => onClone(stream.name)}
               title={t('streams.cloneStream')}
               aria-label={t('streams.cloneStream')}
@@ -509,7 +515,9 @@ export function StreamCard({
               class="p-1.5 rounded-md min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
               style={{ color: 'hsl(var(--danger))' }}
               onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'; }}
+              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'; }}
               onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               onClick={() => onOpenDelete(stream)}
               title={t('common.delete')}
               aria-label={t('common.delete')}

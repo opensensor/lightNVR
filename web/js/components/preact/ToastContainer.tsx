@@ -127,7 +127,7 @@ export function ToastContainer() {
         const styles = getToastStyles(toast.type);
 
         return (
-          <div
+          <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut; toasts dismiss themselves */
             key={toast.id}
             className={styles.baseStyles}
             style={{

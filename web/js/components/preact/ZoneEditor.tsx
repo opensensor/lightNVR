@@ -667,7 +667,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
             )}
 
             {zoneList.map((zone, index) => (
-              <div
+              <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- row click only mirrors the controls inside; keyboard row selection is a known gap */
                 key={zone.id}
                 className={`mb-3 p-3 rounded border ${
                   index === selectedZoneIndex ? 'border-primary bg-primary/10' : 'border-border'

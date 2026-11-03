@@ -754,7 +754,7 @@ export function MSEVideoCell({
   }, [stream?.name, retryCount]);
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut; the tile toolbar has a keyboard-reachable fullscreen button */
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
@@ -795,7 +795,7 @@ export function MSEVideoCell({
       }}
     >
       {/* Video element */}
-      <video
+      <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
         id={`video-${streamId.replace(/\s+/g, '-')}`}
         className="video-element"
         ref={videoRef}
@@ -1009,6 +1009,7 @@ export function MSEVideoCell({
           {canControlPrivacy && <button
             type="button"
             title={t('live.pauseForPrivacy')}
+            aria-label={t('live.pauseForPrivacy')}
             onClick={() => setShowPrivacyConfirm(true)}
             style={{
               padding: '8px 12px',

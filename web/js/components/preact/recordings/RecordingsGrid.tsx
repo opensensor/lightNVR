@@ -19,6 +19,7 @@ import type {
   RecordingTagsChanged,
   RecordingsPaginationState,
 } from '../../../types/recordings.ts';
+import { clickOnActivationKey } from '../../../utils/a11y.ts';
 
 interface CardConfigDropdownProps {
   hiddenColumns: Record<string, boolean>;
@@ -97,6 +98,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }: CardConfigDropdownP
         class="p-1.5 rounded hover:bg-muted/70 transition-colors"
         onClick={() => setOpen(o => !o)}
         title={t('recordings.configureElements')}
+        aria-label={t('recordings.configureElements')}
       >
         <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -282,7 +284,7 @@ function RecordingCard({
       onMouseLeave={handleMouseLeave}
     >
       {/* Thumbnail area */}
-      <div
+      <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut for the Play action button */
         class="relative aspect-video bg-muted overflow-hidden"
         onClick={() => playRecording(recording)}
         title={inProgress ? t('recordings.inProgressToast') : undefined}
@@ -312,7 +314,7 @@ function RecordingCard({
             <span class="text-xs mt-2 opacity-50">{t('common.loading')}</span>
           </div>
         ) : (
-          <div
+          <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey}
             class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50 cursor-pointer"
             onClick={(e) => { e.stopPropagation(); loadThumbnail(); }}
             title={t('recordings.clickToRetry')}
@@ -359,7 +361,7 @@ function RecordingCard({
 
         {/* Selection checkbox — only visible in selection mode */}
         {canDelete && selectionMode && (
-          <div class="absolute top-2 inset-s-2" onClick={(e) => e.stopPropagation()}>
+          <div role="presentation" class="absolute top-2 inset-s-2" onClick={(e) => e.stopPropagation()}>
             <label class="inline-flex cursor-pointer items-center justify-center">
               <input
                 type="checkbox"
@@ -468,6 +470,7 @@ function RecordingCard({
                 style={{ color: 'hsl(var(--primary))' }}
                 onClick={() => playRecording(recording)}
                 title={t('recordings.play')}
+                aria-label={t('recordings.play')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -478,6 +481,7 @@ function RecordingCard({
                 style={{ color: 'hsl(var(--success))' }}
                 onClick={() => downloadRecording(recording)}
                 title={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
+                aria-label={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -488,6 +492,7 @@ function RecordingCard({
                 style={{ color: 'hsl(var(--info))' }}
                 href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
                 title={t('live.viewInTimeline')}
+                aria-label={t('live.viewInTimeline')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
@@ -513,6 +518,7 @@ function RecordingCard({
                   style={{ color: 'hsl(var(--danger))' }}
                   onClick={() => deleteRecording(recording)}
                   title={t('common.delete')}
+                  aria-label={t('common.delete')}
                 >
                   <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -578,6 +584,7 @@ export function RecordingsGrid({
             onClick={toggleCollapsed}
             className="p-1.5 rounded hover:bg-muted/70 transition-colors"
             title={t('recordings.showFilters')}
+            aria-label={t('recordings.showFilters')}
           >
             <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

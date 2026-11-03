@@ -247,6 +247,7 @@ export function FiltersSidebar({
           onClick={toggleCollapsed}
           className="p-1.5 rounded hover:bg-muted/70 transition-colors"
           title={t('recordings.hideFilters')}
+          aria-label={t('recordings.hideFilters')}
         >
           <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

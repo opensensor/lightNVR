@@ -11,6 +11,7 @@ import type {
     StreamHealthHistoryResponse,
     StreamHealthResponse,
 } from '../../types/system.ts';
+import { clickOnActivationKey } from '../../utils/a11y.ts';
 
 interface BadgeColors {
     bg: string;
@@ -96,7 +97,7 @@ function StreamCard({ stream, expanded, onToggle }: StreamCardProps) {
     const expectedFps = stream.expected_fps ?? stream.configured_fps ?? 30;
 
     return (
-        <div class="bg-card text-card-foreground rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow"
+        <div role="button" tabIndex={0} onKeyDown={clickOnActivationKey} aria-expanded={expanded} class="bg-card text-card-foreground rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow"
              onClick={onToggle}>
             {/* Header */}
             <div class="flex items-center justify-between mb-2">

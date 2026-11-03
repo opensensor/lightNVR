@@ -482,10 +482,10 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }: FisheyeE
         style={{ zIndex: 2, pointerEvents: 'none', opacity: rendererReady ? 1 : 0 }}
       />
       {rendererReady && (
-        <div
+        <div /* eslint-disable-line jsx-a11y/no-noninteractive-element-interactions -- interactive pan and zoom surface with its own key handler */
           className="absolute inset-0 outline-none"
           role="application"
-          tabIndex={0}
+          /* eslint-disable-line jsx-a11y/no-noninteractive-tabindex -- interactive pan and zoom surface with its own key handler */ tabIndex={0}
           aria-label={t('live.eptzCanvasLabel')}
           title={t('live.eptzCanvasHint')}
           style={{ zIndex: 3, touchAction: 'none', cursor: 'grab' }}

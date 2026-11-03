@@ -91,7 +91,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }: Colle
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">
           {t('common.name')}
-          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
+          <input className={`${fieldClasses} mt-1`} value={form.name} maxLength={127} required /* eslint-disable-line jsx-a11y/no-autofocus -- moves focus to the first field of a newly opened dialog or step */ autoFocus onInput={(event) => setForm({ ...form, name: event.currentTarget.value })} />
         </label>
         <label className="text-sm font-medium">
           {t('collections.type')}
@@ -256,7 +256,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget && !editorLoading) onClose(); }}>
+    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget && !editorLoading) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="collections-title" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl">
         <header className="flex items-start justify-between border-b border-border p-4">
           <div><h2 id="collections-title" className="text-xl font-bold">{t('collections.title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('collections.subtitle')}</p></div>

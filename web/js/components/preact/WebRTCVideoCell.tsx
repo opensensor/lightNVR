@@ -1448,7 +1448,7 @@ export function WebRTCVideoCell({
   }, [stream?.name]);
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut; the tile toolbar has a keyboard-reachable fullscreen button */
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
@@ -1493,7 +1493,7 @@ export function WebRTCVideoCell({
       }}
     >
       {/* Video element */}
-      <video
+      <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
         id={`video-${streamId.replace(/\s+/g, '-')}`}
         className="video-element"
         ref={videoRef}
@@ -1713,6 +1713,7 @@ export function WebRTCVideoCell({
         {canControlPrivacy && <button
           type="button"
           title={t('live.pauseForPrivacy')}
+          aria-label={t('live.pauseForPrivacy')}
           onClick={() => setShowPrivacyConfirm(true)}
           style={{
             backgroundColor: 'transparent',
@@ -1727,7 +1728,9 @@ export function WebRTCVideoCell({
             justifyContent: 'center'
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+          onFocus={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18.36 6.64A9 9 0 1 1 5.64 17.36"/>
@@ -1750,7 +1753,9 @@ export function WebRTCVideoCell({
               transition: 'background-color 0.2s ease'
             }}
             onMouseOver={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onFocus={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
             onMouseOut={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'transparent')}
+            onBlur={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             {/* Speaker icon - different icon based on muted state */}
             {audioEnabled ? (
@@ -1812,7 +1817,9 @@ export function WebRTCVideoCell({
                 position: 'relative'
               }}
               onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+              onFocus={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
               onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
+              onBlur={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               {/* Microphone icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1864,7 +1871,9 @@ export function WebRTCVideoCell({
               transition: 'background-color 0.2s ease'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             {showDetections ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1895,7 +1904,9 @@ export function WebRTCVideoCell({
               transition: 'background-color 0.2s ease'
             }}
             onMouseOver={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onFocus={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
             onMouseOut={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'transparent')}
+            onBlur={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             {/* PTZ/Joystick icon */}
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1923,7 +1934,9 @@ export function WebRTCVideoCell({
               transition: 'background-color 0.2s ease'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+            onFocus={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             {/* Refresh/reload icon */}
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1952,7 +1965,9 @@ export function WebRTCVideoCell({
             transition: 'background-color 0.2s ease'
           }}
           onMouseOver={(event) => (event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+          onFocus={(event) => (event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
           onMouseOut={(event) => (event.currentTarget.style.backgroundColor = 'transparent')}
+          onBlur={(event) => (event.currentTarget.style.backgroundColor = 'transparent')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 640 640" fill="white" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M320 128C426 128 512 214 512 320C512 426 426 512 320 512C254.8 512 197.1 479.5 162.4 429.7C152.3 415.2 132.3 411.7 117.8 421.8C103.3 431.9 99.8 451.9 109.9 466.4C156.1 532.6 233 576 320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C234.3 64 158.5 106.1 112 170.7L112 144C112 126.3 97.7 112 80 112C62.3 112 48 126.3 48 144L48 256C48 273.7 62.3 288 80 288L104.6 288C105.1 288 105.6 288 106.1 288L192.1 288C209.8 288 224.1 273.7 224.1 256C224.1 238.3 209.8 224 192.1 224L153.8 224C186.9 166.6 249 128 320 128zM344 216C344 202.7 333.3 192 320 192C306.7 192 296 202.7 296 216L296 320C296 326.4 298.5 332.5 303 337L375 409C384.4 418.4 399.6 418.4 408.9 409C418.2 399.6 418.3 384.4 408.9 375.1L343.9 310.1L343.9 216z"/>
@@ -1962,6 +1977,7 @@ export function WebRTCVideoCell({
         <button
           className="fullscreen-btn"
           title={t('live.toggleFullscreen')}
+          aria-label={t('live.toggleFullscreen')}
           data-id={streamId}
           data-name={stream.name}
           onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
@@ -1974,7 +1990,9 @@ export function WebRTCVideoCell({
             cursor: 'pointer'
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+          onFocus={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
@@ -2103,7 +2121,9 @@ export function WebRTCVideoCell({
                 pointerEvents: 'auto'
               }}
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+              onFocus={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+              onBlur={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             >
               {autoRetryCountdown !== null && autoRetryCountdown > 0
                 ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })

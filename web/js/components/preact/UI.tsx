@@ -144,7 +144,7 @@ export function DeleteConfirmationModal(props: DeleteConfirmationModalProps) {
   };
 
   return (
-    <div
+    <div role="presentation"
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
       onKeyDown={handleKeyDown}
@@ -232,7 +232,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
   if (!isOpen) return null;
 
   return createPortal(
-    <div
+    <div role="presentation"
       ref={modalRef}
       id="snapshot-preview-modal"
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
@@ -839,7 +839,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
     : formatUtils.formatDuration(currentPlaybackSeconds);
 
   return createPortal(
-    <div
+    <div role="presentation"
       ref={modalRef}
       id="video-preview-modal"
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
@@ -868,7 +868,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
                 ? 'relative w-screen h-screen bg-black'
                 : 'relative w-full aspect-video bg-black overflow-hidden md:h-full md:aspect-auto'}
             >
-              <video
+              <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
                 ref={videoRef}
                 className="w-full h-full object-contain"
                 controls
