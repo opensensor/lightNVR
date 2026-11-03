@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MSEVideoCell Component
  * A self-contained component for displaying an MSE (Media Source Extensions) video stream
@@ -35,6 +34,21 @@ import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestur
 import { TileAudioButton } from './TileAudioButton.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
+import type {
+  GateSettle,
+  Go2rtcWsMessage,
+  HandledGateError,
+  LiveTransportCellProps,
+  VendorFullscreenDocument,
+} from '../../types/live-transport.ts';
+
+declare global {
+  interface Window {
+    /** Safari's MediaSource for iOS and battery-managed playback. */
+    ManagedMediaSource?: typeof MediaSource;
+  }
+}
 
 /**
  * MSEVideoCell component
@@ -57,20 +71,20 @@ export function MSEVideoCell({
   mobileGesturesDisabled = false,
   audioDisabled = false,
   onTransportFailure
-}) {
+}: LiveTransportCellProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
   // Component state
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
   // Auto-retry tracking (separate from manual retryCount to avoid infinite loops)
   const autoRetryCountRef = useRef(0);
-  const autoRetryTimeoutRef = useRef(null);
+  const autoRetryTimeoutRef = useRef<number | null>(null);
   const MAX_AUTO_RETRIES = 3; // auto-retry up to 3 times before showing error
 
   // Track previous stream status so we can detect transitions to 'Running'
@@ -92,25 +106,25 @@ export function MSEVideoCell({
   const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
-  const videoRef = useRef(null);
-  const cellRef = useRef(null);
-  const detectionOverlayRef = useRef(null);
-  const wsRef = useRef(null);
-  const mediaSourceRef = useRef(null);
-  const sourceBufferRef = useRef(null);
-  const bufferRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const detectionOverlayRef = useRef<DetectionOverlayHandle | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const sourceBufferRef = useRef<SourceBuffer | null>(null);
+  const bufferRef = useRef<Uint8Array | null>(null);
   const bufferLenRef = useRef(0);
-  const reconnectTimeoutRef = useRef(null);
-  const initTimeoutRef = useRef(null);
-  const dataHandlerRef = useRef(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const initTimeoutRef = useRef<number | null>(null);
+  const dataHandlerRef = useRef<((data: ArrayBuffer) => void) | null>(null);
   // Pending stream-connection-gate settle callbacks ({resolve, reject}) —
   // resolved on first media, rejected on WS error/close/abort so the gate
   // slot always frees.
-  const gateSettleRef = useRef(null);
+  const gateSettleRef = useRef<GateSettle | null>(null);
   const [forceH264, setForceH264] = useState(false);
   useEffect(() => setForceH264(false), [stream?.name, useSubStream]);
   // Cell-scoped abort: cancels a queued/in-flight gated attempt on unmount
-  const cellAbortRef = useRef(null);
+  const cellAbortRef = useRef<AbortController | null>(null);
   const handleMobileAudioToggle = () => {
     if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
@@ -156,7 +170,7 @@ export function MSEVideoCell({
    * @param {Function} isSupported - MediaSource.isTypeSupported function
    * @returns {string} Comma-separated list of supported codecs
    */
-  const getCodecs = (isSupported) => {
+  const getCodecs = (isSupported: (type: string) => boolean) => {
     return CODECS
       .filter(codec => !forceH264 || !codec.startsWith('hvc1.'))
       .filter(codec => !audioDisabled || !['mp4a.', 'flac', 'opus'].some(prefix => codec.startsWith(prefix)))
@@ -184,7 +198,7 @@ export function MSEVideoCell({
    * Settle the pending stream-connection-gate promise (if any).
    * @param {Error} [err] - reject with this error; resolve when omitted
    */
-  const settleGate = (err) => {
+  const settleGate = (err?: Error) => {
     const settle = gateSettleRef.current;
     if (!settle) return;
     gateSettleRef.current = null;
@@ -224,7 +238,7 @@ export function MSEVideoCell({
       await streamConnectionGate.run((signal) => {
         // Settled by handleMessage (first media = resolve), handleWsError /
         // handleClose (reject), or the abort listener below.
-        const connected = new Promise((resolve, reject) => {
+        const connected = new Promise<void>((resolve, reject) => {
           gateSettleRef.current = { resolve, reject };
         });
 
@@ -260,19 +274,19 @@ export function MSEVideoCell({
         // need to handle the case where WS opens after sourceopen
         if (window.ManagedMediaSource && ms instanceof window.ManagedMediaSource) {
           ms.addEventListener('sourceopen', sendCodecs, { once: true });
-          videoRef.current.disableRemotePlayback = true;
-          videoRef.current.srcObject = ms;
+          videoRef.current!.disableRemotePlayback = true;
+          videoRef.current!.srcObject = ms;
         } else {
           ms.addEventListener('sourceopen', () => {
-            URL.revokeObjectURL(videoRef.current.src);
+            URL.revokeObjectURL(videoRef.current!.src);
             sendCodecs();
           }, { once: true });
-          videoRef.current.src = URL.createObjectURL(ms);
-          videoRef.current.srcObject = null;
+          videoRef.current!.src = URL.createObjectURL(ms);
+          videoRef.current!.srcObject = null;
         }
 
         // Start playback
-        videoRef.current.play().catch(() => {
+        videoRef.current!.play().catch(() => {
           if (videoRef.current && !videoRef.current.muted) {
             videoRef.current.muted = true;
             videoRef.current.play().catch(() => {});
@@ -301,7 +315,7 @@ export function MSEVideoCell({
         signal: cellSignal
       });
     } catch (err) {
-      if (isGateAbort(err) || err?.handled) {
+      if (isGateAbort(err) || (err as HandledGateError | null)?.handled) {
         // Unmounted/superseded, or already surfaced by a WS handler
         return;
       }
@@ -315,7 +329,7 @@ export function MSEVideoCell({
         return;
       }
       console.error(`[MSE ${stream.name}] Init error:`, err);
-      setError(err.message || t('live.failedToInitializeMseStream'));
+      setError((err as Error).message || t('live.failedToInitializeMseStream'));
       setIsLoading(false);
     }
   };
@@ -324,14 +338,14 @@ export function MSEVideoCell({
    * Handle JSON messages from WebSocket
    * Matches go2rtc's onmessage['mse'] handler pattern.
    */
-  const handleMessage = (msg, ms, MediaSourceClass) => {
+  const handleMessage = (msg: Go2rtcWsMessage, ms: MediaSource, MediaSourceClass: typeof MediaSource) => {
     if (msg.type !== 'mse') {
       if (msg.type === 'error') {
         const failure = classifyLiveVideoError(msg.value);
         setError(t(failure.key));
         setIsLoading(false);
         // Free the gate slot; mark handled so initMSE doesn't re-report it
-        const gateErr = new Error(t(failure.key));
+        const gateErr: HandledGateError = new Error(t(failure.key));
         gateErr.handled = true;
         settleGate(gateErr);
       }
@@ -380,7 +394,7 @@ export function MSEVideoCell({
       });
 
       // Wire up binary data handler using closure over sb/buf/bufLen
-      dataHandlerRef.current = (data) => {
+      dataHandlerRef.current = (data: ArrayBuffer) => {
         if (sb.updating || bufLen > 0) {
           const b = new Uint8Array(data);
           buf.set(b, bufLen);
@@ -405,7 +419,7 @@ export function MSEVideoCell({
       }
       setError(t('live.failedToCreateMediaBuffer'));
       setIsLoading(false);
-      const gateErr = new Error('SourceBuffer error');
+      const gateErr: HandledGateError = new Error('SourceBuffer error');
       gateErr.handled = true;
       settleGate(gateErr);
     }
@@ -415,7 +429,7 @@ export function MSEVideoCell({
    * Handle binary video data from WebSocket
    * Delegates to the closure-based handler set up in handleMessage.
    */
-  const handleBinaryData = (data) => {
+  const handleBinaryData = (data: ArrayBuffer) => {
     if (dataHandlerRef.current) {
       dataHandlerRef.current(data);
     }
@@ -428,7 +442,7 @@ export function MSEVideoCell({
    */
   const handleWsError = () => {
     // Free the gate slot; retry scheduling below owns recovery from here
-    const gateErr = new Error('WebSocket error');
+    const gateErr: HandledGateError = new Error('WebSocket error');
     gateErr.handled = true;
     settleGate(gateErr);
 
@@ -454,7 +468,7 @@ export function MSEVideoCell({
    */
   const handleClose = () => {
     // Free the gate slot if the socket closed before any media arrived
-    const gateErr = new Error('WebSocket closed before media');
+    const gateErr: HandledGateError = new Error('WebSocket closed before media');
     gateErr.handled = true;
     settleGate(gateErr);
 
@@ -489,7 +503,7 @@ export function MSEVideoCell({
 
     // Free any pending gate slot for this attempt
     {
-      const gateErr = new Error('Connection attempt cleaned up');
+      const gateErr: HandledGateError = new Error('Connection attempt cleaned up');
       gateErr.handled = true;
       settleGate(gateErr);
     }
@@ -562,7 +576,7 @@ export function MSEVideoCell({
       setShowPrivacyConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.pauseForPrivacy')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.pauseForPrivacy')}: ${(err as Error).message}`, 'error', 5000);
       setShowPrivacyConfirm(false);
     } finally {
       setIsTogglingEnabled(false);
@@ -584,7 +598,7 @@ export function MSEVideoCell({
       setPrivacyActive(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.resumeStream')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.resumeStream')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
       setIsTogglingEnabled(false);
     }
@@ -608,7 +622,7 @@ export function MSEVideoCell({
     const canvas = document.createElement('canvas');
     canvas.width = videoElement.videoWidth;
     canvas.height = videoElement.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
 
     // Draw video frame at native resolution
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -1079,7 +1093,7 @@ export function MSEVideoCell({
             type="button"
             className="timeline-btn"
             onClick={(event) => {
-              const fromFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+              const fromFullscreen = !!(document.fullscreenElement || (document as VendorFullscreenDocument).webkitFullscreenElement);
               forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString(), fromFullscreen), event);
             }}
             style={{

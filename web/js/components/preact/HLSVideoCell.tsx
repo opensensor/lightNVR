@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * HLSVideoCell Component
  * A self-contained component for displaying an HLS video stream
@@ -34,6 +33,12 @@ import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestur
 import { TileAudioButton } from './TileAudioButton.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
+import type {
+  HlsMode,
+  LiveTransportCellProps,
+  VendorFullscreenDocument,
+} from '../../types/live-transport.ts';
 import Hls from 'hls.js';
 
 /**
@@ -57,13 +62,13 @@ export function HLSVideoCell({
   mobileGesturesDisabled = false,
   audioDisabled = false,
   onTransportFailure
-}) {
+}: LiveTransportCellProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
   // Component state
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -81,7 +86,7 @@ export function HLSVideoCell({
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
   // go2rtc mode is used only when the backend reports go2rtc is available for this stream
-  const [hlsMode, setHlsMode] = useState(() => {
+  const [hlsMode, setHlsMode] = useState<HlsMode>(() => {
     return stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native';
   });
 
@@ -97,15 +102,15 @@ export function HLSVideoCell({
   const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
-  const videoRef = useRef(null);
-  const cellRef = useRef(null);
-  const hlsPlayerRef = useRef(null);
-  const detectionOverlayRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const hlsPlayerRef = useRef<Hls | null>(null);
+  const detectionOverlayRef = useRef<DetectionOverlayHandle | null>(null);
   const fatalErrorCountRef = useRef(0);  // Track consecutive fatal error recovery attempts
   const recoveringRef = useRef(false);   // True when we're in the middle of error recovery (prevents counter reset)
-  const hlsUrlRef = useRef(null);        // Master manifest URL — stored for session-expiry recovery
+  const hlsUrlRef = useRef<string | null>(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
-  const cellAbortRef = useRef(null);     // Cancels a queued/in-flight gated preflight on unmount
+  const cellAbortRef = useRef<AbortController | null>(null);     // Cancels a queued/in-flight gated preflight on unmount
   const handleMobileAudioToggle = () => {
     if (audioDisabled) return;
     const nextEnabled = !audioEnabled;
@@ -160,7 +165,7 @@ export function HLSVideoCell({
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data: unknown = await response.json();
         console.log(`Successfully refreshed go2rtc registration for stream ${stream.name}:`, data);
         return true;
       } else {
@@ -188,11 +193,11 @@ export function HLSVideoCell({
 
     // Track if component is still mounted - using ref for stable access in callbacks
     let isMounted = true;
-    let initTimeout = null;
+    let initTimeout: number | null = null;
 
     // Store event listener references for cleanup (native HLS case)
-    let nativeLoadedHandler = null;
-    let nativeErrorHandler = null;
+    let nativeLoadedHandler: (() => void) | null = null;
+    let nativeErrorHandler: (() => void) | null = null;
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
     const initHls = async () => {
@@ -322,7 +327,7 @@ export function HLSVideoCell({
           return;
         }
         // Network-level failure — let hls.js surface it through its own path
-        console.warn(`[HLS ${stream.name}] Manifest preflight failed (${err.message}), continuing to player`);
+        console.warn(`[HLS ${stream.name}] Manifest preflight failed (${(err as Error).message}), continuing to player`);
       }
       if (!isMounted) return;
 
@@ -369,7 +374,7 @@ export function HLSVideoCell({
         hlsPlayerRef.current = hls;
 
         hls.loadSource(hlsStreamUrl);
-        hls.attachMedia(videoRef.current);
+        hls.attachMedia(videoRef.current!);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
@@ -420,6 +425,7 @@ export function HLSVideoCell({
               hlsPlayerRef.current = null;
             }
             if (isMounted) {
+              // @ts-expect-error TS2552: go2rtcEnabled is block-scoped to the !forceNative branch above; at runtime this throws ReferenceError (logged bug in T6, left in place)
               if (usingGo2rtc && !go2rtcEnabled) {
                 // go2rtc was auto-detected but not force-enabled, fall back to native
                 console.warn(`[HLS ${stream.name}] Falling back to native HLS`);
@@ -473,6 +479,7 @@ export function HLSVideoCell({
               hlsPlayerRef.current = null;
             }
             if (isMounted) {
+              // @ts-expect-error TS2552: go2rtcEnabled is block-scoped to the !forceNative branch above; at runtime this throws ReferenceError (logged bug in T6, left in place)
               if (usingGo2rtc && !go2rtcEnabled) {
                 fatalErrorCountRef.current = 0;
                 setHlsMode('native');
@@ -486,10 +493,10 @@ export function HLSVideoCell({
         });
       }
       // Check if HLS is supported natively (Safari)
-      else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+      else if (videoRef.current!.canPlayType('application/vnd.apple.mpegurl')) {
         console.log(`Using native HLS support for stream ${stream.name}`);
         // Native HLS support (Safari)
-        videoRef.current.src = hlsStreamUrl;
+        videoRef.current!.src = hlsStreamUrl;
 
         // Store handlers for cleanup
         nativeLoadedHandler = function() {
@@ -501,6 +508,7 @@ export function HLSVideoCell({
         nativeErrorHandler = function() {
           if (!isMounted) return;
           if (usingGo2rtc) {
+            // @ts-expect-error TS2552: go2rtcEnabled is block-scoped to the !forceNative branch above; at runtime this throws ReferenceError (logged bug in T6, left in place)
             if (go2rtcEnabled) {
               console.error(`[HLS ${stream.name}] go2rtc HLS failed (native player) - no fallback (go2rtc enabled)`);
               setError(t('live.go2rtcHlsFailedRetry'));
@@ -517,8 +525,8 @@ export function HLSVideoCell({
           }
         };
 
-        videoRef.current.addEventListener('loadedmetadata', nativeLoadedHandler);
-        videoRef.current.addEventListener('error', nativeErrorHandler);
+        videoRef.current!.addEventListener('loadedmetadata', nativeLoadedHandler);
+        videoRef.current!.addEventListener('error', nativeErrorHandler);
       } else {
         // Fallback for truly unsupported browsers
         console.error(`HLS not supported for stream ${stream.name} - neither HLS.js nor native support available`);
@@ -674,7 +682,7 @@ export function HLSVideoCell({
       setShowPrivacyConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.pauseForPrivacy')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.pauseForPrivacy')}: ${(err as Error).message}`, 'error', 5000);
       setShowPrivacyConfirm(false);
     } finally {
       setIsTogglingEnabled(false);
@@ -696,7 +704,7 @@ export function HLSVideoCell({
       setPrivacyActive(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.resumeStream')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.resumeStream')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
       setIsTogglingEnabled(false);
     }
@@ -932,7 +940,7 @@ export function HLSVideoCell({
               const canvas = document.createElement('canvas');
               canvas.width = videoElement.videoWidth;
               canvas.height = videoElement.videoHeight;
-              const ctx = canvas.getContext('2d');
+              const ctx = canvas.getContext('2d')!;
 
               // Draw video frame at native resolution
               ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -1089,7 +1097,7 @@ export function HLSVideoCell({
           title={t('live.viewInTimeline')}
           aria-label={t('live.viewInTimeline')}
           onClick={(event) => {
-            const fromFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            const fromFullscreen = !!(document.fullscreenElement || (document as VendorFullscreenDocument).webkitFullscreenElement);
             forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString(), fromFullscreen), event);
           }}
           style={{

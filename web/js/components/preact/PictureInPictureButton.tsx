@@ -1,10 +1,15 @@
-// @ts-nocheck
 import { useEffect, useState } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import { useI18n } from '../../i18n.ts';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { pictureInPictureAdapter } from './pictureInPicture.ts';
 
-export function PictureInPictureButton({ videoRef, disabled = false }) {
+interface PictureInPictureButtonProps {
+  videoRef?: RefObject<HTMLVideoElement | null>;
+  disabled?: boolean;
+}
+
+export function PictureInPictureButton({ videoRef, disabled = false }: PictureInPictureButtonProps) {
   const { t } = useI18n();
   const [supported, setSupported] = useState(false);
   const [active, setActive] = useState(false);
@@ -28,7 +33,7 @@ export function PictureInPictureButton({ videoRef, disabled = false }) {
 
   if (!supported) return null;
 
-  const toggle = async (event) => {
+  const toggle = async (event: MouseEvent) => {
     event.stopPropagation();
     const adapter = pictureInPictureAdapter(videoRef?.current);
     if (!adapter) return;
@@ -36,7 +41,7 @@ export function PictureInPictureButton({ videoRef, disabled = false }) {
       await (adapter.active() ? adapter.exit() : adapter.enter());
       setActive(adapter.active());
     } catch (error) {
-      showStatusMessage(t('live.pictureInPictureError', { message: error.message }), 'error');
+      showStatusMessage(t('live.pictureInPictureError', { message: (error as Error).message }), 'error');
     }
   };
 

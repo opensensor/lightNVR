@@ -1,5 +1,15 @@
-// @ts-nocheck
-export function pictureInPictureAdapter(video, documentObject = globalThis.document) {
+import type { PresentationModeVideo } from '../../types/live-transport.ts';
+
+export interface PictureInPictureAdapter {
+  active: () => boolean;
+  enter: () => Promise<unknown> | void;
+  exit: () => Promise<unknown> | void;
+}
+
+export function pictureInPictureAdapter(
+  video: PresentationModeVideo | null | undefined,
+  documentObject: Document | null | undefined = globalThis.document
+): PictureInPictureAdapter | null {
   if (!video || !documentObject) return null;
   if (documentObject.pictureInPictureEnabled
       && typeof video.requestPictureInPicture === 'function'
@@ -15,8 +25,8 @@ export function pictureInPictureAdapter(video, documentObject = globalThis.docum
       && typeof video.webkitSetPresentationMode === 'function') {
     return {
       active: () => video.webkitPresentationMode === 'picture-in-picture',
-      enter: () => video.webkitSetPresentationMode('picture-in-picture'),
-      exit: () => video.webkitSetPresentationMode('inline'),
+      enter: () => video.webkitSetPresentationMode!('picture-in-picture'),
+      exit: () => video.webkitSetPresentationMode!('inline'),
     };
   }
   return null;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Decide whether a fullscreen WebRTC main-stream upgrade should step back to
  * the already configured sub-stream.
@@ -13,7 +12,12 @@ export function shouldFallbackFullscreenToSubStream({
   effectiveUseSubStream,
   noVideoCheckCount = 0,
   connectionQuality = 'unknown',
-}) {
+}: {
+  fullscreenUpgraded: boolean;
+  effectiveUseSubStream: boolean;
+  noVideoCheckCount?: number;
+  connectionQuality?: string;
+}): boolean {
   if (!fullscreenUpgraded || effectiveUseSubStream) return false;
 
   return noVideoCheckCount >= 1 ||

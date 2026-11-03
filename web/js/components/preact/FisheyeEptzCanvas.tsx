@@ -1,7 +1,32 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { RefObject, TargetedKeyboardEvent, TargetedPointerEvent, TargetedWheelEvent } from 'preact';
 import { parseEptzConfig } from '../../utils/eptz-config.ts';
+import type { EptzConfig } from '../../utils/eptz-config.ts';
 import { useI18n } from '../../i18n.ts';
+
+interface EptzView {
+  yaw: number;
+  tilt: number;
+  fov: number;
+}
+
+interface EptzPoint {
+  x: number;
+  y: number;
+}
+
+type EptzGesture =
+  | { type: 'pinch'; distance: number; startFov: number }
+  | { type: 'pan'; pointerId: number; x: number; y: number; start: EptzView };
+
+type EptzUniform = 'source_size' | 'output_size' | 'center' | 'radius' | 'lens_fov'
+  | 'rotation' | 'yaw' | 'tilt' | 'view_fov';
+
+interface FisheyeEptzCanvasProps {
+  videoRef?: RefObject<HTMLVideoElement | null>;
+  eptzConfig: unknown;
+  streamName?: string;
+}
 
 const VERTEX_SHADER = `#version 300 es
 precision highp float;
@@ -74,11 +99,11 @@ void main() {
   out_color = texture(u_video, source_uv);
 }`;
 
-const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
-const wrapDegrees = (value) => ((value + 180) % 360 + 360) % 360 - 180;
+const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
+const wrapDegrees = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
 
-function compileShader(gl, type, source) {
-  const shader = gl.createShader(type);
+function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
+  const shader = gl.createShader(type)!;
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
@@ -89,7 +114,7 @@ function compileShader(gl, type, source) {
   return shader;
 }
 
-function createProgram(gl) {
+function createProgram(gl: WebGL2RenderingContext): WebGLProgram {
   const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
   const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
   const program = gl.createProgram();
@@ -106,11 +131,11 @@ function createProgram(gl) {
   return program;
 }
 
-function storageKey(streamName) {
+function storageKey(streamName: string | undefined): string {
   return `lightnvr-eptz-view:${streamName || 'camera'}`;
 }
 
-function initialView(config, streamName) {
+function initialView(config: EptzConfig, streamName: string | undefined): EptzView {
   const fallback = {
     yaw: config.defaultYaw,
     tilt: config.defaultTilt,
@@ -118,7 +143,7 @@ function initialView(config, streamName) {
   };
   if (typeof localStorage === 'undefined') return fallback;
   try {
-    const stored = JSON.parse(localStorage.getItem(storageKey(streamName)) || 'null');
+    const stored: EptzView | null = JSON.parse(localStorage.getItem(storageKey(streamName)) || 'null');
     if (!stored || !Number.isFinite(stored.yaw) || !Number.isFinite(stored.tilt) ||
         !Number.isFinite(stored.fov)) return fallback;
     return {
@@ -136,13 +161,13 @@ function initialView(config, streamName) {
  * decoder or network connection; live and recorded players keep ownership of
  * the source video, audio, seeking, and transport health.
  */
-export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
+export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }: FisheyeEptzCanvasProps) {
   const { t } = useI18n();
   const config = useMemo(() => parseEptzConfig(eptzConfig), [eptzConfig]);
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawRef = useRef(() => {});
-  const pointersRef = useRef(new Map());
-  const gestureRef = useRef(null);
+  const pointersRef = useRef(new Map<number, EptzPoint>());
+  const gestureRef = useRef<EptzGesture | null>(null);
   const viewRef = useRef(initialView(config, streamName));
   const [rendererReady, setRendererReady] = useState(false);
   const [rendererError, setRendererError] = useState('');
@@ -158,7 +183,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }
   }, [streamName]);
 
-  const updateView = useCallback((next, persist = false) => {
+  const updateView = useCallback((next: EptzView, persist = false) => {
     const view = {
       yaw: wrapDegrees(next.yaw),
       tilt: clamp(next.tilt, -90, Math.min(30, config.fov / 2 - 2)),
@@ -170,7 +195,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     if (persist) persistView();
   }, [config.fov, persistView]);
 
-  const resetView = useCallback((event) => {
+  const resetView = useCallback((event?: Event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     updateView({
@@ -194,16 +219,16 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     setRendererReady(false);
     setRendererError('');
 
-    let gl;
-    let program;
-    let texture;
-    let resizeObserver;
-    let frameCallbackId = null;
-    let animationFrameId = null;
+    let gl!: WebGL2RenderingContext;
+    let program!: WebGLProgram;
+    let texture!: WebGLTexture;
+    let resizeObserver: ResizeObserver | undefined;
+    let frameCallbackId: number | null = null;
+    let animationFrameId: number | null = null;
     let disposed = false;
     let drawQueued = false;
 
-    const handleContextLost = (event) => {
+    const handleContextLost = (event: Event) => {
       event.preventDefault();
       setRendererReady(false);
       setRendererError('Graphics context was lost');
@@ -221,7 +246,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
         depth: false,
         stencil: false,
         powerPreference: 'high-performance',
-      });
+      }) as WebGL2RenderingContext;
       if (!gl) throw new Error('WebGL2 is unavailable');
       program = createProgram(gl);
       texture = gl.createTexture();
@@ -236,7 +261,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
       gl.uniform1i(gl.getUniformLocation(program, 'u_video'), 0);
     } catch (error) {
       console.warn(`[ePTZ ${streamName}] renderer unavailable:`, error);
-      setRendererError(error.message || 'WebGL2 renderer unavailable');
+      setRendererError((error as Error).message || 'WebGL2 renderer unavailable');
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
       if (gl && texture) gl.deleteTexture(texture);
@@ -244,10 +269,10 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
       return undefined;
     }
 
-    const locations = {};
+    const locations = {} as Record<EptzUniform, WebGLUniformLocation | null>;
     ['source_size', 'output_size', 'center', 'radius', 'lens_fov', 'rotation',
       'yaw', 'tilt', 'view_fov'].forEach((name) => {
-      locations[name] = gl.getUniformLocation(program, `u_${name}`);
+      locations[name as EptzUniform] = gl.getUniformLocation(program, `u_${name}`);
     });
 
     const resize = () => {
@@ -288,7 +313,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
       } catch (error) {
         console.warn(`[ePTZ ${streamName}] frame upload failed:`, error);
         setRendererReady(false);
-        setRendererError(error.message || 'Unable to render this video source');
+        setRendererError((error as Error).message || 'Unable to render this video source');
       }
     };
 
@@ -350,8 +375,8 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
   }, [config.centerX, config.centerY, config.enabled, config.fov, config.radius,
     config.rotation, rendererEpoch, streamName, videoRef]);
 
-  const pointerPosition = (event) => ({ x: event.clientX, y: event.clientY });
-  const handlePointerDown = (event) => {
+  const pointerPosition = (event: PointerEvent): EptzPoint => ({ x: event.clientX, y: event.clientY });
+  const handlePointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
     event.currentTarget.focus({ preventScroll: true });
     pointersRef.current.set(event.pointerId, pointerPosition(event));
@@ -360,7 +385,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     if (pointers.length === 2) {
       gestureRef.current = {
         type: 'pinch',
-        distance: Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y),
+        distance: Math.hypot(pointers[0]!.x - pointers[1]!.x, pointers[0]!.y - pointers[1]!.y),
         startFov: viewRef.current.fov,
       };
     } else {
@@ -372,7 +397,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }
   };
 
-  const handlePointerMove = (event) => {
+  const handlePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (!pointersRef.current.has(event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -380,7 +405,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     const gesture = gestureRef.current;
     const pointers = Array.from(pointersRef.current.values());
     if (gesture?.type === 'pinch' && pointers.length >= 2) {
-      const distance = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+      const distance = Math.hypot(pointers[0]!.x - pointers[1]!.x, pointers[0]!.y - pointers[1]!.y);
       if (gesture.distance > 0) {
         updateView({ ...viewRef.current, fov: gesture.startFov * gesture.distance / distance });
       }
@@ -397,13 +422,13 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }
   };
 
-  const handlePointerEnd = (event) => {
+  const handlePointerEnd = (event: TargetedPointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
     pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const remaining = Array.from(pointersRef.current.entries());
     if (remaining.length === 1) {
-      const [pointerId, point] = remaining[0];
+      const [pointerId, point] = remaining[0]!;
       gestureRef.current = {
         type: 'pan', pointerId, x: point.x, y: point.y,
         start: { ...viewRef.current },
@@ -414,7 +439,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }
   };
 
-  const handleWheel = (event) => {
+  const handleWheel = (event: TargetedWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     updateView({
@@ -423,10 +448,10 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
     }, true);
   };
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = (event: TargetedKeyboardEvent<HTMLDivElement>) => {
     const view = viewRef.current;
     const step = event.shiftKey ? 10 : 3;
-    let next = null;
+    let next: EptzView | null = null;
     if (event.key === 'ArrowLeft') next = { ...view, yaw: view.yaw - step };
     if (event.key === 'ArrowRight') next = { ...view, yaw: view.yaw + step };
     if (event.key === 'ArrowUp') next = { ...view, tilt: view.tilt + step };
@@ -460,7 +485,7 @@ export function FisheyeEptzCanvas({ videoRef, eptzConfig, streamName }) {
         <div
           className="absolute inset-0 outline-none"
           role="application"
-          tabIndex="0"
+          tabIndex={0}
           aria-label={t('live.eptzCanvasLabel')}
           title={t('live.eptzCanvasHint')}
           style={{ zIndex: 3, touchAction: 'none', cursor: 'grab' }}

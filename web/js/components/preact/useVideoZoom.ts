@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useVideoZoom — digital (client-side) zoom for a video surface.
  *
@@ -18,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import type { RefObject } from 'preact';
 
 export const MIN_ZOOM_SCALE = 1;
 export const MAX_ZOOM_SCALE = 8;
@@ -31,14 +31,48 @@ const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 // subtly offset with no way to tell.
 const ZOOM_EPSILON = 0.01;
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+export interface ZoomPoint {
+  x: number;
+  y: number;
+}
+
+interface ZoomPanState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startOffset: ZoomPoint;
+}
+
+interface ZoomPinchState {
+  startDistance: number;
+  startScale: number;
+}
+
+export interface UseVideoZoomOptions {
+  enabled?: boolean;
+  maxScale?: number;
+}
+
+export interface VideoZoom {
+  containerRef: RefObject<HTMLDivElement | null>;
+  scale: number;
+  offset: ZoomPoint;
+  isZoomed: boolean;
+  transform: string;
+  touchAction: 'none' | 'pan-y';
+  reset: () => void;
+  zoomBy: (factor: number) => void;
+  zoomAtPoint: (nextScaleRaw: number, clientX: number, clientY: number) => void;
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /**
  * Clamp a pan offset so the scaled video never reveals empty space at its edges.
  * At scale s the video overflows its box by (s-1)/2 in each direction, which is
  * exactly how far it may be panned.
  */
-function clampOffset(offset, scale, rect) {
+function clampOffset(offset: ZoomPoint, scale: number, rect: DOMRect | null | undefined): ZoomPoint {
   if (!rect || scale <= MIN_ZOOM_SCALE) return { x: 0, y: 0 };
   const maxX = (rect.width * (scale - 1)) / 2;
   const maxY = (rect.height * (scale - 1)) / 2;
@@ -54,23 +88,23 @@ function clampOffset(offset, scale, rect) {
  *   (e.g. while a modal owns the pointer).
  * @param {number}  [options.maxScale=MAX_ZOOM_SCALE]
  */
-export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {}) {
-  const containerRef = useRef(null);
-  const [scale, setScale] = useState(MIN_ZOOM_SCALE);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE }: UseVideoZoomOptions = {}): VideoZoom {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState<number>(MIN_ZOOM_SCALE);
+  const [offset, setOffset] = useState<ZoomPoint>({ x: 0, y: 0 });
 
   // Live mirrors of the transform. The wheel/pointer handlers are attached
   // imperatively (they need { passive: false } to be able to preventDefault),
   // so they read current values from refs rather than closing over state.
-  const scaleRef = useRef(MIN_ZOOM_SCALE);
-  const offsetRef = useRef({ x: 0, y: 0 });
+  const scaleRef = useRef<number>(MIN_ZOOM_SCALE);
+  const offsetRef = useRef<ZoomPoint>({ x: 0, y: 0 });
   scaleRef.current = scale;
   offsetRef.current = offset;
 
   // Active pointers, keyed by pointerId, for pan (1 pointer) and pinch (2).
-  const pointersRef = useRef(new Map());
-  const panStateRef = useRef(null);
-  const pinchStateRef = useRef(null);
+  const pointersRef = useRef(new Map<number, ZoomPoint>());
+  const panStateRef = useRef<ZoomPanState | null>(null);
+  const pinchStateRef = useRef<ZoomPinchState | null>(null);
 
   const isZoomed = scale > MIN_ZOOM_SCALE + ZOOM_EPSILON;
 
@@ -84,7 +118,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
    * pinned in place — the behaviour that makes wheel zoom feel like a
    * magnifying glass rather than a slider.
    */
-  const zoomAtPoint = useCallback((nextScaleRaw, clientX, clientY) => {
+  const zoomAtPoint = useCallback((nextScaleRaw: number, clientX: number, clientY: number) => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -114,7 +148,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     setOffset(clampOffset(next, nextScale, rect));
   }, [maxScale]);
 
-  const zoomBy = useCallback((factor) => {
+  const zoomBy = useCallback((factor: number) => {
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
@@ -128,7 +162,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     const container = containerRef.current;
     if (!container || !enabled) return undefined;
 
-    const handleWheel = (event) => {
+    const handleWheel = (event: WheelEvent) => {
       const current = scaleRef.current;
 
       // Don't swallow the page scroll for a gesture that cannot do anything.
@@ -157,15 +191,15 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     const pointers = pointersRef.current;
 
     const pinchDistance = () => {
-      const [a, b] = Array.from(pointers.values());
+      const [a, b] = Array.from(pointers.values()) as [ZoomPoint, ZoomPoint];
       return Math.hypot(a.x - b.x, a.y - b.y);
     };
     const pinchMidpoint = () => {
-      const [a, b] = Array.from(pointers.values());
+      const [a, b] = Array.from(pointers.values()) as [ZoomPoint, ZoomPoint];
       return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     };
 
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       // Never turn a press on an overlay control into a pan — the live-view
       // tiles put snapshot/PTZ/fullscreen buttons on top of the video.
       const target = event.target instanceof Element ? event.target : null;
@@ -202,7 +236,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
       }
     };
 
-    const handlePointerMove = (event) => {
+    const handlePointerMove = (event: PointerEvent) => {
       if (!pointers.has(event.pointerId)) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -230,7 +264,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
       }
     };
 
-    const endPointer = (event) => {
+    const endPointer = (event: PointerEvent) => {
       pointers.delete(event.pointerId);
       try {
         if (container.hasPointerCapture(event.pointerId)) {

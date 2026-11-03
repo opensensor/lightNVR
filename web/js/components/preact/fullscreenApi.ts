@@ -1,13 +1,14 @@
-// @ts-nocheck
+import type { VendorFullscreenDocument, VendorFullscreenElement } from '../../types/live-transport.ts';
+
 export const PSEUDO_FULLSCREEN_EVENT = 'lightnvr:pseudo-fullscreenchange';
 
-let pseudoFullscreenElement = null;
+let pseudoFullscreenElement: Element | null = null;
 
-export function getNativeFullscreenElement() {
-  return document.fullscreenElement || document.webkitFullscreenElement || pseudoFullscreenElement || null;
+export function getNativeFullscreenElement(): Element | null {
+  return document.fullscreenElement || (document as VendorFullscreenDocument).webkitFullscreenElement || pseudoFullscreenElement || null;
 }
 
-function enterPseudoFullscreen(element) {
+function enterPseudoFullscreen(element: Element): void {
   pseudoFullscreenElement?.classList.remove('pseudo-native-fullscreen');
   pseudoFullscreenElement = element;
   element.classList.add('pseudo-native-fullscreen');
@@ -15,7 +16,7 @@ function enterPseudoFullscreen(element) {
   document.dispatchEvent(new Event(PSEUDO_FULLSCREEN_EVENT));
 }
 
-function exitPseudoFullscreen() {
+function exitPseudoFullscreen(): void {
   if (!pseudoFullscreenElement) return;
   pseudoFullscreenElement.classList.remove('pseudo-native-fullscreen');
   pseudoFullscreenElement = null;
@@ -23,11 +24,11 @@ function exitPseudoFullscreen() {
   document.dispatchEvent(new Event(PSEUDO_FULLSCREEN_EVENT));
 }
 
-export function isPseudoFullscreenActive() {
+export function isPseudoFullscreenActive(): boolean {
   return Boolean(pseudoFullscreenElement);
 }
 
-export function requestNativeFullscreen(element) {
+export function requestNativeFullscreen(element: VendorFullscreenElement): Promise<void> {
   const request = element?.requestFullscreen || element?.webkitRequestFullscreen;
   if (!request) {
     enterPseudoFullscreen(element);
@@ -43,12 +44,12 @@ export function requestNativeFullscreen(element) {
   }
 }
 
-export function exitNativeFullscreen() {
+export function exitNativeFullscreen(): Promise<void> {
   if (pseudoFullscreenElement) {
     exitPseudoFullscreen();
     return Promise.resolve();
   }
-  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  const exit = document.exitFullscreen || (document as VendorFullscreenDocument).webkitExitFullscreen;
   if (!exit) {
     exitPseudoFullscreen();
     return Promise.resolve();

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useAutoRetry — schedules an automatic retry while a player is in its
  * error state, so unattended monitoring dashboards (kiosk mode, wall
@@ -34,8 +33,8 @@ const AUTO_RETRY_JITTER_MS = 1000;
 const AUTO_RETRY_RESET_AFTER_MS = 30000;
 const COUNTDOWN_TICK_MS = 250;
 
-export function useAutoRetry(error, onRetry) {
-  const [countdownSeconds, setCountdownSeconds] = useState(null);
+export function useAutoRetry(error: unknown, onRetry: (() => unknown) | null | undefined): number | null {
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
 
   const onRetryRef = useRef(onRetry);
   onRetryRef.current = onRetry;

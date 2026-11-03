@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { HLSVideoCell } from './HLSVideoCell.tsx';
 import { MSEVideoCell } from './MSEVideoCell.tsx';
@@ -9,6 +8,9 @@ import {
   isPlaybackFallback,
   shouldFallbackPlaybackTransport,
 } from '../../utils/playback-transport.ts';
+import type { PlaybackFailure } from '../../utils/playback-transport.ts';
+import type { LiveTransport } from '../../types/core.ts';
+import type { PlaybackTransportCellProps } from '../../types/live-transport.ts';
 
 const CELLS = {
   webrtc: WebRTCVideoCell,
@@ -16,11 +18,11 @@ const CELLS = {
   hls: HLSVideoCell,
 };
 
-const transportName = (value) => ({
+const transportName = (value: LiveTransport | undefined) => (({
   webrtc: 'WebRTC',
   mse: 'MSE',
   hls: 'HLS',
-}[value] || value || 'Playback');
+} as Partial<Record<string, string>>)[value as string] || value || 'Playback');
 
 /** Selects and, when configured, falls back between renderers for one tile. */
 export function PlaybackTransportCell({
@@ -30,7 +32,7 @@ export function PlaybackTransportCell({
   forcedTransport = null,
   fullscreenUpgraded = false,
   ...cellProps
-}) {
+}: PlaybackTransportCellProps) {
   const { t } = useI18n();
   const plan = useMemo(
     () => buildPlaybackTransportPlan(
@@ -52,7 +54,7 @@ export function PlaybackTransportCell({
   const activeTransport = plan.available[transportIndex];
   const hasRuntimeFallback = transportIndex + 1 < plan.available.length;
   const sourceUnavailableMessage = t('live.cannotConnectToSource');
-  const handleTransportFailure = useCallback((failure) => {
+  const handleTransportFailure = useCallback((failure: PlaybackFailure) => {
     if (hasRuntimeFallback && shouldFallbackPlaybackTransport(failure, {
       streamStatus: stream?.status || stream?.state,
       sourceUnavailableMessage,

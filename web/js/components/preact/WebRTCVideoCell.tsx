@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * WebRTCVideoCell Component
  * A self-contained component for displaying a WebRTC video stream
@@ -40,8 +39,22 @@ import {
 import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.tsx';
 import { FisheyeEptzCanvas } from './FisheyeEptzCanvas.tsx';
 import { isEptzEnabled } from '../../utils/eptz-config.ts';
+import type { DetectionOverlayHandle } from './DetectionOverlay.tsx';
+import type {
+  IceServersResponse,
+  LiveTransportCellProps,
+  VendorFullscreenDocument,
+  WebRTCStatsEntry,
+} from '../../types/live-transport.ts';
 import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../../utils/live-video-errors.ts';
 import 'webrtc-adapter';
+
+declare global {
+  interface Window {
+    /** Safari's prefixed AudioContext. */
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
 
 // Retry configuration for sending WebRTC offers to go2rtc.
 // Adjust these values to tune reliability vs. latency.
@@ -99,7 +112,7 @@ export function WebRTCVideoCell({
   mobileGesturesDisabled = false,
   audioDisabled = false,
   onTransportFailure
-}) {
+}: LiveTransportCellProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -122,7 +135,7 @@ export function WebRTCVideoCell({
 
     return true;
   });
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
@@ -143,7 +156,7 @@ export function WebRTCVideoCell({
 
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
-  const [microphoneError, setMicrophoneError] = useState(null);
+  const [microphoneError, setMicrophoneError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [talkMode, setTalkMode] = useState('ptt'); // 'ptt' (push-to-talk) or 'toggle'
 
@@ -169,27 +182,27 @@ export function WebRTCVideoCell({
   const zoom = useVideoZoom({ enabled: !eptzEnabled });
 
   // Refs
-  const videoRef = useRef(null);
-  const cellRef = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const detectionOverlayRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  const connectionMonitorRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const detectionOverlayRef = useRef<DetectionOverlayHandle | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const connectionMonitorRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const connectionRefreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
   const noDataReconnectAttemptsRef = useRef(0); // Separate counter for ICE-connected-but-no-data retries
-  const localStreamRef = useRef(null);
-  const audioSenderRef = useRef(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const audioEnabledRef = useRef(false);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const audioLevelIntervalRef = useRef(null);
-  const disconnectRecoveryTimeoutRef = useRef(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioLevelIntervalRef = useRef<number | null>(null);
+  const disconnectRecoveryTimeoutRef = useRef<number | null>(null);
   // Track previous stream status so we can detect transitions to 'Running'
   const prevStatusRef = useRef(stream.status);
 
-  const applyAudioPlaybackState = useCallback((enabled) => {
+  const applyAudioPlaybackState = useCallback((enabled: boolean) => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -198,7 +211,7 @@ export function WebRTCVideoCell({
     videoElement.volume = effectiveEnabled ? 1 : 0;
 
     if (videoElement.srcObject) {
-      videoElement.srcObject.getAudioTracks().forEach((track) => {
+      (videoElement.srcObject as MediaStream).getAudioTracks().forEach((track) => {
         track.enabled = !audioDisabled;
       });
     }
@@ -217,7 +230,7 @@ export function WebRTCVideoCell({
 
       // Debug: Log audio track info
       if (videoRef.current.srcObject) {
-        const audioTracks = videoRef.current.srcObject.getAudioTracks();
+        const audioTracks = (videoRef.current.srcObject as MediaStream).getAudioTracks();
         console.log(`Audio tracks for ${stream?.name}: ${audioTracks.length}`, audioTracks.map(t => ({
           id: t.id,
           label: t.label,
@@ -305,9 +318,9 @@ export function WebRTCVideoCell({
     connectionRefreshRequestedRef.current = false;
 
     // Store cleanup functions
-    let connectionTimeout = null;
-    let videoDataTimeout = null;
-    let go2rtcBaseUrl = null;
+    let connectionTimeout: number | null = null;
+    let videoDataTimeout: number | null = null;
+    let go2rtcBaseUrl: string | null = null;
 
     // Server-configurable WebRTC timeouts (ms). Populated in initWebRTC from
     // /api/client-config; seeded with the previous hardcoded defaults so behaviour is
@@ -345,11 +358,11 @@ export function WebRTCVideoCell({
       if (cellAbortSignal.aborted) return;
 
       // Fetch ICE server configuration from API (includes TURN if configured)
-      let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+      let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
       try {
         const iceResponse = await fetch('/api/ice-servers', { signal: cellAbortSignal });
         if (iceResponse.ok) {
-          const iceConfig = await iceResponse.json();
+          const iceConfig: IceServersResponse = await iceResponse.json();
           if (iceConfig.ice_servers && iceConfig.ice_servers.length > 0) {
             iceServers = iceConfig.ice_servers;
             console.log(`Using ${iceServers.length} ICE servers from config`);
@@ -380,12 +393,12 @@ export function WebRTCVideoCell({
       // rather than keeping them alive until the next automatic retry.
       const stopConnectionAttempt = () => {
         cellAbortController.abort();
-        clearTimeout(connectionTimeout);
-        clearTimeout(videoDataTimeout);
+        clearTimeout(connectionTimeout as number | undefined);
+        clearTimeout(videoDataTimeout as number | undefined);
         // A superseded attempt can reject after the replacement has started.
         // Never clear the replacement peer's monitoring interval.
         if (peerConnectionRef.current === pc) {
-          clearInterval(connectionMonitorRef.current);
+          clearInterval(connectionMonitorRef.current as number | undefined);
           connectionMonitorRef.current = null;
         }
         pc.ontrack = null;
@@ -408,7 +421,7 @@ export function WebRTCVideoCell({
       };
 
       // Set up event handlers
-      let videoTransceiver;
+      let videoTransceiver: RTCRtpTransceiver | undefined;
       let compatibilityRetryRequested = forceH264;
       const h264Codecs = h264ReceiverCodecs(globalThis.RTCRtpReceiver?.getCapabilities?.('video'));
       const retryWithH264 = () => {
@@ -454,7 +467,7 @@ export function WebRTCVideoCell({
         // Track retry attempts for play()
         let playRetryCount = 0;
         const maxPlayRetries = 3;
-        let playRetryTimeout = null;
+        let playRetryTimeout: number | null = null;
 
         // Function to attempt play with retry logic
         const attemptPlay = () => {
@@ -873,7 +886,7 @@ export function WebRTCVideoCell({
           // default when several high-resolution cameras start together.
           timeoutMs: webrtcConnectionTimeoutMs,
         };
-        const sendOfferWithRetry = async (attempt) => {
+        const sendOfferWithRetry = async (attempt: number): Promise<string> => {
           const { response, bodyText } = await streamConnectionGate.run(
             async (signal) => {
               signal.throwIfAborted();
@@ -883,7 +896,7 @@ export function WebRTCVideoCell({
                 headers: {
                   'Content-Type': 'application/sdp',
                 },
-                body: pc.localDescription.sdp,
+                body: pc.localDescription!.sdp,
                 signal,
               });
               // Keep both the slot and cancellation wired through body reading.
@@ -929,7 +942,7 @@ export function WebRTCVideoCell({
           console.log(`SDP audio section preview: ${sdpAnswer.substring(audioIndex, audioIndex + 200)}...`);
         }
         // go2rtc returns raw SDP, wrap it in RTCSessionDescription
-        const answer = {
+        const answer: RTCSessionDescriptionInit = {
           type: 'answer',
           sdp: sdpAnswer
         };
@@ -970,7 +983,7 @@ export function WebRTCVideoCell({
           let currentRtt = 0;
           let jitter = 0;
           
-          stats.forEach(report => {
+          stats.forEach((report: WebRTCStatsEntry) => {
             if (report.type === 'inbound-rtp' && report.kind === 'video') {
               packetsLost = report.packetsLost || 0;
               packetsReceived = report.packetsReceived || 0;
@@ -1100,7 +1113,7 @@ export function WebRTCVideoCell({
 
       // Clean up video element
       if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks();
+        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach(track => track.stop());
         videoRef.current.srcObject = null;
       }
@@ -1160,7 +1173,7 @@ export function WebRTCVideoCell({
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data: unknown = await response.json();
         console.log(`Successfully refreshed go2rtc registration for stream ${stream.name}:`, data);
         return true;
       } else {
@@ -1186,7 +1199,7 @@ export function WebRTCVideoCell({
     }
 
     if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
@@ -1240,7 +1253,7 @@ export function WebRTCVideoCell({
       setShowPrivacyConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.pauseForPrivacy')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.pauseForPrivacy')}: ${(err as Error).message}`, 'error', 5000);
       setShowPrivacyConfirm(false);
     } finally {
       setIsTogglingEnabled(false);
@@ -1262,17 +1275,17 @@ export function WebRTCVideoCell({
       setPrivacyActive(false);
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     } catch (err) {
-      showStatusMessage(`${t('live.resumeStream')}: ${err.message}`, 'error', 5000);
+      showStatusMessage(`${t('live.resumeStream')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
       setIsTogglingEnabled(false);
     }
   };
 
   // Start audio level monitoring
-  const startAudioLevelMonitoring = useCallback((localStream) => {
+  const startAudioLevelMonitoring = useCallback((localStream: MediaStream) => {
     try {
       // Create audio context and analyser for level monitoring
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext!)();
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
 
@@ -1350,12 +1363,12 @@ export function WebRTCVideoCell({
     } catch (err) {
       console.error(`Failed to start backchannel audio for stream ${stream.name}:`, err);
 
-      if (err.name === 'NotAllowedError') {
+      if ((err as Error).name === 'NotAllowedError') {
         setMicrophoneError(t('live.microphoneAccessDenied'));
-      } else if (err.name === 'NotFoundError') {
+      } else if ((err as Error).name === 'NotFoundError') {
         setMicrophoneError(t('live.noMicrophoneFound'));
       } else {
-        setMicrophoneError(t('live.microphoneErrorWithMessage', { message: err.message }));
+        setMicrophoneError(t('live.microphoneErrorWithMessage', { message: (err as Error).message }));
       }
     }
   }, [audioDisabled, stream, startAudioLevelMonitoring, t]);
@@ -1417,7 +1430,7 @@ export function WebRTCVideoCell({
       const pc = peerConnectionRef.current;
       if (!pc) return;
       pc.getStats().then(stats => {
-        stats.forEach(report => {
+        stats.forEach((report: WebRTCStatsEntry) => {
           if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
             telemetry.updateRtt(report.currentRoundTripTime * 1000); // Convert to ms
           }
@@ -1655,7 +1668,7 @@ export function WebRTCVideoCell({
               const canvas = document.createElement('canvas');
               canvas.width = videoElement.videoWidth;
               canvas.height = videoElement.videoHeight;
-              const ctx = canvas.getContext('2d');
+              const ctx = canvas.getContext('2d')!;
 
               // Draw video frame at native resolution
               ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -1926,7 +1939,7 @@ export function WebRTCVideoCell({
           title={t('live.viewInTimeline')}
           aria-label={t('live.viewInTimeline')}
           onClick={(event) => {
-            const fromFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            const fromFullscreen = !!(document.fullscreenElement || (document as VendorFullscreenDocument).webkitFullscreenElement);
             forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString(), fromFullscreen), event);
           }}
           style={{
