@@ -1,10 +1,11 @@
-// @ts-nocheck
 import { getLocalesUrl, useI18n } from '../../../i18n.ts';
 
-export default function LanguageSelector({ mobile = false }) {
+type LocaleOption = ReturnType<typeof useI18n>['availableLocales'][number];
+
+export default function LanguageSelector({ mobile = false }: { mobile?: boolean }) {
   const { t, locale, setLocalePreference, availableLocales } = useI18n();
 
-  const renderLocaleContent = (item, menu = false) => (
+  const renderLocaleContent = (item: LocaleOption, menu = false) => (
     <>
       <img
         width="40"
@@ -51,7 +52,7 @@ export default function LanguageSelector({ mobile = false }) {
             className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
             onClick={() => {
               setLocalePreference(null);
-              document.activeElement.blur();
+              (document.activeElement as HTMLElement).blur();
             }}
           >
             <span style={{ whiteSpace: 'nowrap' }} className="ms-3 me-3">{t('language.browserDefault')}</span>
@@ -64,7 +65,7 @@ export default function LanguageSelector({ mobile = false }) {
               className={`flex w-full cursor-pointer border-0 font-medium items-center ${baseClasses} py-1 ${activeClass}`}
               onClick={() => {
                 setLocalePreference(item.code);
-                document.activeElement.blur();
+                (document.activeElement as HTMLElement).blur();
               }}
             >
               {renderLocaleContent(item, true)}

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface LoginView Component
  * Preact component for the login page
@@ -7,6 +6,25 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { useI18n } from '../../i18n.ts';
 import LanguageSelector from './common/LanguageSelector.tsx';
+
+interface LoginConfigResponse {
+  force_mfa_on_login?: boolean;
+  remember_device_enabled?: boolean;
+  trusted_device_days?: number;
+}
+
+interface LoginRequestBody {
+  username: string;
+  password: string;
+  totp_code?: string;
+  remember_device?: boolean;
+}
+
+interface LoginResponse {
+  totp_required?: boolean;
+  totp_token?: string;
+  must_change_password?: boolean;
+}
 
 /**
  * Returns a safe same-origin redirect path from a candidate URL string.
@@ -19,7 +37,7 @@ import LanguageSelector from './common/LanguageSelector.tsx';
  * @param {string|null} url  Raw value from the `redirect` query parameter
  * @returns {string}  A safe relative path, defaulting to '/index.html'
  */
-function safeRedirectPath(url) {
+function safeRedirectPath(url: string | null): string {
   if (!url || typeof url !== 'string') return '/index.html';
   try {
     // Resolve against the current origin so relative paths work too.
@@ -52,8 +70,8 @@ export function LoginView() {
   const [rememberDeviceEnabled, setRememberDeviceEnabled] = useState(false);
   const [trustedDeviceDays, setTrustedDeviceDays] = useState(30);
   const [rememberDevice, setRememberDevice] = useState(false);
-  const abortControllerRef = useRef(null);
-  const staleSessionLogoutRef = useRef(null);
+  const abortControllerRef = useRef<AbortController>(null);
+  const staleSessionLogoutRef = useRef<Promise<unknown>>(null);
   const { t, locale } = useI18n();
 
   useEffect(() => {
@@ -80,7 +98,7 @@ export function LoginView() {
       try {
         const response = await fetch('/api/auth/login/config');
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as LoginConfigResponse;
           setForceMfaEnabled(data.force_mfa_on_login || false);
           setRememberDeviceEnabled(data.remember_device_enabled || false);
           setTrustedDeviceDays(data.trusted_device_days || 30);
@@ -130,7 +148,7 @@ export function LoginView() {
   }, []);
 
   // Handle login form submission
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: Event) => {
     e.preventDefault();
 
     if (!username || !password) {
@@ -161,7 +179,7 @@ export function LoginView() {
       }
 
       // Build login request body
-      const loginBody = { username, password };
+      const loginBody: LoginRequestBody = { username, password };
       if (forceMfaEnabled && forceMfaTotpCode) {
         loginBody.totp_code = forceMfaTotpCode;
       }
@@ -189,7 +207,7 @@ export function LoginView() {
       }
 
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as LoginResponse;
 
         // Check if TOTP verification is required (two-step flow, only when force MFA is off)
         if (data.totp_required && data.totp_token) {
@@ -232,7 +250,7 @@ export function LoginView() {
   };
 
   // Handle TOTP code submission
-  const handleTotpSubmit = async (e) => {
+  const handleTotpSubmit = async (e: Event) => {
     e.preventDefault();
 
     if (!totpCode || totpCode.length !== 6) {
@@ -256,7 +274,7 @@ export function LoginView() {
         const redirectParams = new URLSearchParams(window.location.search);
         window.location.href = safeRedirectPath(redirectParams.get('redirect'));
       } else {
-        const data = await response.json();
+        const data = await response.json() as { error?: string };
         setIsLoggingIn(false);
 
         if (response.status === 401 && data.error && data.error.includes('expired')) {
@@ -323,7 +341,7 @@ export function LoginView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder={t('login.usernamePlaceholder')}
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => setUsername((e.target as HTMLInputElement).value)}
                   required
                   autoComplete="username"
               />
@@ -337,7 +355,7 @@ export function LoginView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder={t('login.passwordPlaceholder')}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
                   required
                   autoComplete="current-password"
               />
@@ -351,8 +369,8 @@ export function LoginView() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
                     placeholder="000000"
                     value={forceMfaTotpCode}
-                    onChange={(e) => setForceMfaTotpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                    maxLength="6"
+                    onChange={(e) => setForceMfaTotpCode((e.target as HTMLInputElement).value.replace(/[^0-9]/g, '').slice(0, 6))}
+                    maxLength={6}
                     pattern="[0-9]{6}"
                     autoComplete="one-time-code"
                 />
@@ -364,7 +382,7 @@ export function LoginView() {
                 <input
                   type="checkbox"
                   checked={rememberDevice}
-                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  onChange={(e) => setRememberDevice((e.target as HTMLInputElement).checked)}
                   disabled={isLoggingIn}
                 />
                 <span>{t('login.rememberDevice', { days: trustedDeviceDays })}</span>
@@ -395,8 +413,8 @@ export function LoginView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
                   placeholder="000000"
                   value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                  maxLength="6"
+                  onChange={(e) => setTotpCode((e.target as HTMLInputElement).value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  maxLength={6}
                   pattern="[0-9]{6}"
                   autoComplete="one-time-code"
                   autoFocus
@@ -408,7 +426,7 @@ export function LoginView() {
                 <input
                   type="checkbox"
                   checked={rememberDevice}
-                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  onChange={(e) => setRememberDevice((e.target as HTMLInputElement).checked)}
                   disabled={isLoggingIn}
                 />
                 <span>{t('login.rememberDevice', { days: trustedDeviceDays })}</span>

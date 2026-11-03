@@ -1,10 +1,16 @@
-// @ts-nocheck
 /**
  * LightNVR Loading Indicator Component
  * Displays a loading spinner and optional message
  */
 
+import type { ComponentChildren } from 'preact';
 import { useI18n } from '../../i18n.ts';
+
+export interface LoadingIndicatorProps {
+  message?: ComponentChildren;
+  size?: 'sm' | 'md' | 'lg';
+  fullPage?: boolean;
+}
 
 /**
  * LoadingIndicator component
@@ -14,7 +20,7 @@ import { useI18n } from '../../i18n.ts';
  * @param {boolean} props.fullPage - Whether to display as a full page overlay
  * @returns {JSX.Element} LoadingIndicator component
  */
-export function LoadingIndicator({ message, size = 'md', fullPage = false }) {
+export function LoadingIndicator({ message, size = 'md', fullPage = false }: LoadingIndicatorProps) {
   const { t } = useI18n();
   const resolvedMessage = message ?? t('common.loading');
 
@@ -48,6 +54,15 @@ export function LoadingIndicator({ message, size = 'md', fullPage = false }) {
   );
 }
 
+export interface ContentLoaderProps {
+  isLoading?: boolean;
+  /** Tested for truthiness only. */
+  hasData?: unknown;
+  children?: ComponentChildren;
+  loadingMessage?: ComponentChildren;
+  emptyMessage?: ComponentChildren;
+}
+
 /**
  * ContentLoader component - displays a loading indicator or content based on loading state
  * @param {Object} props - Component props
@@ -64,7 +79,7 @@ export function ContentLoader({
   children, 
   loadingMessage,
   emptyMessage,
-}) {
+}: ContentLoaderProps) {
   const { t } = useI18n();
   const resolvedLoadingMessage = loadingMessage ?? t('common.loadingData');
   const resolvedEmptyMessage = emptyMessage ?? t('common.noDataAvailable');

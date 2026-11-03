@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AsyncButton — button primitive that wraps any async handler with a
  * consistent pending/success/error UI.
@@ -36,15 +35,36 @@
  */
 
 import { Fragment } from 'preact';
+import type { ButtonHTMLAttributes, ComponentChildren, TargetedMouseEvent } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useAsyncAction } from '../../hooks/useAsyncAction.ts';
 import { useI18n } from '../../i18n.ts';
+
+type AsyncButtonClickEvent = TargetedMouseEvent<HTMLButtonElement>;
+
+export interface AsyncButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'className' | 'disabled' | 'type'> {
+  /** May return a promise, which drives the pending/success/error states. */
+  onClick?: (evt: AsyncButtonClickEvent) => unknown;
+  idleLabel?: ComponentChildren;
+  confirmText?: string;
+  successLabel?: ComponentChildren;
+  successDurationMs?: number;
+  confirmWindowMs?: number;
+  className?: string;
+  disabled?: boolean;
+  type?: 'button' | 'submit' | 'reset';
+}
+
+interface IconProps {
+  className?: string;
+}
 
 /**
  * Inline 16x16 spinner icon, rotated via Tailwind's `animate-spin`.
  * Kept as an SVG so it inherits `currentColor` and doesn't pull a lib.
  */
-function SpinnerIcon({ className = 'w-4 h-4' }) {
+function SpinnerIcon({ className = 'w-4 h-4' }: IconProps) {
   return (
     <svg
       class={`${className} animate-spin`}
@@ -73,7 +93,7 @@ function SpinnerIcon({ className = 'w-4 h-4' }) {
 /**
  * Inline 16x16 check icon for brief success confirmation.
  */
-function CheckIcon({ className = 'w-4 h-4' }) {
+function CheckIcon({ className = 'w-4 h-4' }: IconProps) {
   return (
     <svg
       class={className}
@@ -96,7 +116,7 @@ function CheckIcon({ className = 'w-4 h-4' }) {
 /**
  * Inline warning icon for the error chip.
  */
-function WarningIcon({ className = 'w-4 h-4' }) {
+function WarningIcon({ className = 'w-4 h-4' }: IconProps) {
   return (
     <svg
       class={className}
@@ -132,18 +152,18 @@ export function AsyncButton({
   disabled = false,
   type = 'button',
   ...rest
-}) {
+}: AsyncButtonProps) {
   const { t } = useI18n();
   const { run, pending, error } = useAsyncAction(onClick || (() => Promise.resolve()));
 
   // Track the brief success flash.
   const [showSuccess, setShowSuccess] = useState(false);
-  const successTimerRef = useRef(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Destructive-action two-step confirm state.
   const [armed, setArmed] = useState(false);
-  const armedTimerRef = useRef(null);
-  const buttonRef = useRef(null);
+  const armedTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const clearSuccessTimer = () => {
     if (successTimerRef.current) {
@@ -167,8 +187,8 @@ export function AsyncButton({
   // When armed for a destructive confirm, clicking outside cancels.
   useEffect(() => {
     if (!armed) return undefined;
-    const onDocPointer = (evt) => {
-      if (buttonRef.current && !buttonRef.current.contains(evt.target)) {
+    const onDocPointer = (evt: Event) => {
+      if (buttonRef.current && !buttonRef.current.contains(evt.target as Node | null)) {
         setArmed(false);
         clearArmedTimer();
       }
@@ -182,7 +202,7 @@ export function AsyncButton({
     };
   }, [armed]);
 
-  const executeRun = useCallback(async (evt) => {
+  const executeRun = useCallback(async (evt: AsyncButtonClickEvent) => {
     try {
       await run(evt);
       clearSuccessTimer();
@@ -199,7 +219,7 @@ export function AsyncButton({
     }
   }, [run, successDurationMs]);
 
-  const handleClick = useCallback((evt) => {
+  const handleClick = useCallback((evt: AsyncButtonClickEvent) => {
     // The idempotency guard in useAsyncAction will silently drop this if
     // another call is already in flight, but an early bail keeps the
     // click-through to the DOM handler tidy.
@@ -239,7 +259,7 @@ export function AsyncButton({
   const isDisabled = disabled || pending;
 
   // Build the visible content.
-  let content;
+  let content: ComponentChildren;
   if (pending) {
     content = (
       <span class="inline-flex items-center justify-center gap-2">

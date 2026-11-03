@@ -1,11 +1,17 @@
-// @ts-nocheck
 /**
  * Sparkline - Inline SVG sparkline component for stream health metrics
  * Zero dependencies, renders a simple polyline chart.
  */
 import { useMemo } from 'preact/hooks';
 
-export function Sparkline({ data = [], width = 120, height = 30, color = 'hsl(var(--primary))' }) {
+export interface SparklineProps {
+    data?: readonly number[] | null;
+    width?: number;
+    height?: number;
+    color?: string;
+}
+
+export function Sparkline({ data = [], width = 120, height = 30, color = 'hsl(var(--primary))' }: SparklineProps) {
     const points = useMemo(() => {
         if (!data || data.length < 2) return '';
         const max = Math.max(...data, 0.001); // avoid division by zero

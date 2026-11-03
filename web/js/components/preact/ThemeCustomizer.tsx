@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Theme Customizer Component
  * Allows users to customize color themes and intensity
@@ -9,6 +8,9 @@ import { useState, useEffect } from 'preact/hooks';
 import { COLOR_THEMES, applyThemeColors } from '../../utils/theme-init.js';
 import { useI18n } from '../../i18n.ts';
 
+type ThemeId = keyof typeof COLOR_THEMES;
+type ThemeConfig = (typeof COLOR_THEMES)[ThemeId];
+
 /**
  * ThemeCustomizer component
  * @returns {JSX.Element} ThemeCustomizer component
@@ -17,10 +19,10 @@ export function ThemeCustomizer() {
   const [mounted, setMounted] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [colorIntensity, setColorIntensity] = useState(50);
-  const [colorTheme, setColorTheme] = useState('default');
+  const [colorTheme, setColorTheme] = useState<ThemeId>('default');
   const { t } = useI18n();
 
-  const getThemeDisplayName = (themeConfig) => themeConfig.nameKey ? t(themeConfig.nameKey) : themeConfig.name;
+  const getThemeDisplayName = (themeConfig: ThemeConfig) => themeConfig.nameKey ? t(themeConfig.nameKey) : themeConfig.name;
 
   // Load saved preferences from localStorage
   useEffect(() => {
@@ -46,8 +48,8 @@ export function ThemeCustomizer() {
     }
 
     // Load color theme
-    if (savedColorTheme && COLOR_THEMES[savedColorTheme]) {
-      setColorTheme(savedColorTheme);
+    if (savedColorTheme && COLOR_THEMES[savedColorTheme as ThemeId]) {
+      setColorTheme(savedColorTheme as ThemeId);
     }
   }, []);
 
@@ -75,15 +77,15 @@ export function ThemeCustomizer() {
     setIsDark(!isDark);
   };
 
-  const handleIntensityChange = (e) => {
-    setColorIntensity(parseInt(e.target.value));
+  const handleIntensityChange = (e: Event) => {
+    setColorIntensity(parseInt((e.target as HTMLInputElement).value));
   };
 
-  const handleThemeChange = (themeId) => {
-    setColorTheme(themeId);
+  const handleThemeChange = (themeId: string) => {
+    setColorTheme(themeId as ThemeId);
   };
 
-  const handlePresetIntensity = (value) => {
+  const handlePresetIntensity = (value: number) => {
     setColorIntensity(value);
   };
 

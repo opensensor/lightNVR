@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SetupWizard.tsx
  * First-run setup wizard shown as a full-screen modal overlay.
@@ -10,15 +9,48 @@
  *   3 – Complete / summary
  */
 
+import type { ComponentChildren } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useI18n } from '../../i18n.ts';
+
+interface WizardForm {
+  storagePath: string;
+  maxStorageSize: string;
+  dbPath: string;
+  threadPoolSize: string;
+  maxStreams: string;
+}
+
+type WizardFormChange = (key: keyof WizardForm, value: string) => void;
+
+interface SettingsResponse {
+  storage_path?: string;
+  max_storage_size?: number;
+  db_path?: string;
+  web_thread_pool_size?: number;
+  max_streams?: number;
+  max_streams_ceiling?: number;
+}
+
+interface SystemInfoResponse {
+  system?: { cpu_cores?: number };
+  cpu_cores?: number;
+}
+
+interface SetupSettingsPayload {
+  storage_path?: string;
+  max_storage_size?: number;
+  db_path?: string;
+  web_thread_pool_size?: number;
+  max_streams?: number;
+}
 
 /* ─────────────────────────────────────────────
    Tiny shared sub-components
 ───────────────────────────────────────────── */
 
-function StepDots({ current, total }) {
+function StepDots({ current, total }: { current: number; total: number }) {
   return (
     <div class="flex justify-center gap-2 mt-6">
       {Array.from({ length: total }).map((_, i) => (
@@ -37,7 +69,7 @@ function StepDots({ current, total }) {
   );
 }
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, children }: { label: ComponentChildren; hint?: ComponentChildren; children?: ComponentChildren }) {
   return (
     <div class="mb-5">
       <label class="block text-sm font-medium mb-1">{label}</label>
@@ -73,7 +105,7 @@ function WelcomeStep() {
   );
 }
 
-function StorageStep({ form, onChange }) {
+function StorageStep({ form, onChange }: { form: WizardForm; onChange: WizardFormChange }) {
   const { t } = useI18n();
   return (
     <div>
@@ -86,7 +118,7 @@ function StorageStep({ form, onChange }) {
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.storagePath}
-          onInput={e => onChange('storagePath', e.target.value)}
+          onInput={e => onChange('storagePath', (e.target as HTMLInputElement).value)}
           placeholder="/var/lib/lightnvr/recordings"
         />
       </Field>
@@ -96,7 +128,7 @@ function StorageStep({ form, onChange }) {
           min="0"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.maxStorageSize}
-          onInput={e => onChange('maxStorageSize', e.target.value)}
+          onInput={e => onChange('maxStorageSize', (e.target as HTMLInputElement).value)}
         />
       </Field>
       <Field label={t('setupWizard.dbPath')} hint={t('setupWizard.dbPathHint')}>
@@ -104,7 +136,7 @@ function StorageStep({ form, onChange }) {
           type="text"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.dbPath}
-          onInput={e => onChange('dbPath', e.target.value)}
+          onInput={e => onChange('dbPath', (e.target as HTMLInputElement).value)}
           placeholder="/var/lib/lightnvr/lightnvr.db"
         />
       </Field>
@@ -114,7 +146,12 @@ function StorageStep({ form, onChange }) {
 
 
 
-function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
+function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }: {
+  form: WizardForm;
+  onChange: WizardFormChange;
+  cpuCores: number;
+  maxStreamsCeiling: number;
+}) {
   const { t } = useI18n();
   const recommended = cpuCores > 0 ? cpuCores * 2 : '?';
   return (
@@ -149,7 +186,7 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
           max="128"
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.threadPoolSize}
-          onInput={e => onChange('threadPoolSize', e.target.value)}
+          onInput={e => onChange('threadPoolSize', (e.target as HTMLInputElement).value)}
           placeholder={recommended.toString()}
         />
       </Field>
@@ -163,14 +200,14 @@ function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
           max={maxStreamsCeiling}
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.maxStreams}
-          onInput={e => onChange('maxStreams', e.target.value)}
+          onInput={e => onChange('maxStreams', (e.target as HTMLInputElement).value)}
         />
       </Field>
     </div>
   );
 }
 
-function CompleteStep({ saved, restartRequired }) {
+function CompleteStep({ saved, restartRequired }: { saved: boolean; restartRequired: boolean }) {
   const { t } = useI18n();
   return (
     <div class="text-center">
@@ -195,7 +232,7 @@ function CompleteStep({ saved, restartRequired }) {
    Main SetupWizard component
 ───────────────────────────────────────────── */
 
-export function SetupWizard({ onClose }) {
+export function SetupWizard({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const TOTAL_STEPS = 4;
   const [step, setStep] = useState(0);
@@ -205,7 +242,7 @@ export function SetupWizard({ onClose }) {
   const [cpuCores, setCpuCores] = useState(0);
   const [maxStreamsCeiling, setMaxStreamsCeiling] = useState(1024);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<WizardForm>({
     storagePath: '',
     maxStorageSize: '0',
     dbPath: '',
@@ -216,7 +253,7 @@ export function SetupWizard({ onClose }) {
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((data: SettingsResponse | null) => {
         if (!data) return;
         setForm(f => ({
           ...f,
@@ -234,28 +271,28 @@ export function SetupWizard({ onClose }) {
 
     fetch('/api/system/info')
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((data: SystemInfoResponse | null) => {
         const cores = data?.system?.cpu_cores || data?.cpu_cores || 0;
         if (cores > 0) setCpuCores(cores);
       })
       .catch(() => {});
   }, []);
 
-  const handleChange = useCallback((key, value) => {
+  const handleChange = useCallback((key: keyof WizardForm, value: string) => {
     setForm(f => ({ ...f, [key]: value }));
   }, []);
 
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const payload = {
+      const payload: SetupSettingsPayload = {
         storage_path:         form.storagePath    || undefined,
         max_storage_size:     parseInt(form.maxStorageSize, 10) || 0,
         db_path:              form.dbPath         || undefined,
         web_thread_pool_size: form.threadPoolSize ? parseInt(form.threadPoolSize, 10) : undefined,
         max_streams:          parseInt(form.maxStreams, 10) || 32,
       };
-      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+      (Object.keys(payload) as (keyof SetupSettingsPayload)[]).forEach(k => payload[k] === undefined && delete payload[k]);
 
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -267,7 +304,7 @@ export function SetupWizard({ onClose }) {
       setRestartRequired(!!(payload.web_thread_pool_size || payload.max_streams));
       setSaved(true);
     } catch (err) {
-      showStatusMessage(t('setupWizard.saveFailed', { error: err.message }), 'error');
+      showStatusMessage(t('setupWizard.saveFailed', { error: (err as Error).message }), 'error');
     } finally {
       setSaving(false);
     }

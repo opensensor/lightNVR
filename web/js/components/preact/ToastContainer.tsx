@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Toast Container Component
  * Preact component for displaying toast notifications
@@ -8,18 +7,40 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { formatLocalTime } from '../../utils/date-utils.ts';
 
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+interface ToastEntry {
+  id: number;
+  message: string;
+  type: string;
+  duration: number;
+}
+
+// Toast helpers are also published on window, here and by Toast.tsx.
+declare global {
+  interface Window {
+    showSuccessToast?: (message: string, duration?: number) => unknown;
+    showErrorToast?: (message: string, duration?: number) => unknown;
+    showWarningToast?: (message: string, duration?: number) => unknown;
+    showInfoToast?: (message: string, duration?: number) => unknown;
+    showToast?: (message: string, type?: string, duration?: number) => unknown;
+    showStatusMessage?: (message: string, type?: string, duration?: number) => unknown;
+    testToast?: (type?: string) => string;
+  }
+}
+
 // Global toast state
-let toastQueue = [];
+let toastQueue: ToastEntry[] = [];
 let toastId = 0;
-let setToastsFunction = null;
+let setToastsFunction: ((toasts: ToastEntry[]) => void) | null = null;
 
 /**
  * Add a toast to the queue
- * @param {string} message - Message to display
- * @param {string} type - Toast type ('success', 'error', 'warning', 'info')
+ * @param {unknown} message - Message to display; stringified, with a fallback for null/undefined
+ * @param {string} type - Toast type ('success', 'error', 'warning', 'info'); other values render as info
  * @param {number} duration - Duration in milliseconds
  */
-export function addToast(message, type = 'info', duration = 4000) {
+export function addToast(message: unknown, type: string = 'info', duration: number = 4000) {
   // Ensure message is a string and handle undefined/null values
   const safeMessage = message !== undefined && message !== null ? String(message) : 'Operation completed';
 
@@ -51,7 +72,7 @@ export function addToast(message, type = 'info', duration = 4000) {
  * Remove a toast from the queue
  * @param {number} id - Toast ID
  */
-export function removeToast(id) {
+export function removeToast(id: number) {
   console.log('Removing toast from queue:', id);
 
   // Remove from queue
@@ -69,7 +90,7 @@ export function removeToast(id) {
  */
 export function ToastContainer() {
   const [toasts, setToasts] = useState(toastQueue);
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Store the setter function in the global variable
   useEffect(() => {
@@ -92,7 +113,7 @@ export function ToastContainer() {
       className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:inset-e-4 sm:inset-s-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] z-50 flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
     >
       {toasts.map(toast => {
-        const getToastStyles = (type) => {
+        const getToastStyles = (type: string) => {
           const baseStyles = 'py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium border-s-[6px]';
           const typeStyles = {
             success: { bg: 'hsl(var(--success))', fg: 'hsl(var(--success-foreground))', border: 'hsl(var(--success) / 0.8)' },
@@ -100,7 +121,7 @@ export function ToastContainer() {
             warning: { bg: 'hsl(var(--warning))', fg: 'hsl(var(--warning-foreground))', border: 'hsl(var(--warning) / 0.8)' },
             info: { bg: 'hsl(var(--info))', fg: 'hsl(var(--info-foreground))', border: 'hsl(var(--info) / 0.8)' }
           };
-          return { baseStyles, ...typeStyles[type] || typeStyles.info };
+          return { baseStyles, ...typeStyles[type as ToastType] || typeStyles.info };
         };
 
         const styles = getToastStyles(toast.type);
@@ -126,28 +147,28 @@ export function ToastContainer() {
 }
 
 // Export toast functions
-export function showSuccessToast(message, duration = 4000) {
+export function showSuccessToast(message: unknown, duration: number = 4000) {
   addToast(message, 'success', duration);
 }
 
-export function showErrorToast(message, duration = 4000) {
+export function showErrorToast(message: unknown, duration: number = 4000) {
   addToast(message, 'error', duration);
 }
 
-export function showWarningToast(message, duration = 4000) {
+export function showWarningToast(message: unknown, duration: number = 4000) {
   addToast(message, 'warning', duration);
 }
 
-export function showInfoToast(message, duration = 4000) {
+export function showInfoToast(message: unknown, duration: number = 4000) {
   addToast(message, 'info', duration);
 }
 
-export function showToast(message, type = 'info', duration = 4000) {
+export function showToast(message: unknown, type: string = 'info', duration: number = 4000) {
   addToast(message, type, duration);
 }
 
 // For backward compatibility
-export function showStatusMessage(message, type = 'info', duration = 4000) {
+export function showStatusMessage(message: unknown, type: string = 'info', duration: number = 4000) {
   // Map type strings to the new format
   let toastType = 'info';
 

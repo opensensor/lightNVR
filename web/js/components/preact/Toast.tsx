@@ -1,18 +1,55 @@
-// @ts-nocheck
 /**
  * LightNVR Toast Notification System
  * JSX-based toast notifications using Preact
  */
 import { render, Component, createContext } from 'preact';
+import type { ComponentChildren, CSSProperties } from 'preact';
 import { useState, useEffect, useContext } from 'preact/hooks';
 import { formatLocalTime, nowMilliseconds } from '../../utils/date-utils.ts';
 
+interface ToastEntry {
+  id: number;
+  message: string;
+  type: string;
+  duration: number;
+  exiting?: boolean;
+}
+
+interface ToastItemProps {
+  id: number;
+  message: string;
+  type: string;
+  onRemove: () => void;
+}
+
+interface ToastContainerState {
+  toasts: ToastEntry[];
+}
+
+export interface ToastContextValue {
+  showToast: (message: string, type?: string, duration?: number) => number | null;
+  showSuccessToast: (message: string, duration?: number) => number | null;
+  showErrorToast: (message: string, duration?: number) => number | null;
+  showWarningToast: (message: string, duration?: number) => number | null;
+  showInfoToast: (message: string, duration?: number) => number | null;
+}
+
+export interface ToastProviderProps {
+  children?: ComponentChildren;
+}
+
+declare global {
+  interface Window {
+    createDirectToast?: (message: string, type?: string, duration?: number) => unknown;
+  }
+}
+
 // Create a context for the toast system
-const ToastContext = createContext(null);
+const ToastContext = createContext<ToastContextValue | null>(null);
 
 // Toast colors - using CSS variables for theme support
-const getToastColor = (type) => {
-  const colorMap = {
+const getToastColor = (type: string) => {
+  const colorMap: Record<string, string> = {
     success: 'var(--success)',
     error: 'var(--danger)',
     warning: 'var(--warning)',
@@ -21,8 +58,8 @@ const getToastColor = (type) => {
   return `hsl(${colorMap[type] || colorMap.info})`;
 };
 
-const getToastForegroundColor = (type) => {
-  const colorMap = {
+const getToastForegroundColor = (type: string) => {
+  const colorMap: Record<string, string> = {
     success: 'var(--success-foreground)',
     error: 'var(--danger-foreground)',
     warning: 'var(--warning-foreground)',
@@ -32,14 +69,14 @@ const getToastForegroundColor = (type) => {
 };
 
 // Toast icons (Unicode symbols)
-const toastIcons = {
+const toastIcons: Record<string, string> = {
   success: '✓',
   error: '✕',
   warning: '⚠',
   info: 'ℹ'
 };
 
-const containerStyle = {
+const containerStyle: CSSProperties = {
   position: 'fixed',
   top: '20px',
   left: '50%',
@@ -54,7 +91,7 @@ const containerStyle = {
 /**
  * Individual Toast Component
  */
-const Toast = ({ id, message, type, onRemove }) => {
+const Toast = ({ id, message, type, onRemove }: ToastItemProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   
@@ -73,7 +110,7 @@ const Toast = ({ id, message, type, onRemove }) => {
     }, 300); // Match transition duration
   };
   
-  const toastStyle = {
+  const toastStyle: CSSProperties = {
     padding: '10px 15px',
     borderRadius: '4px',
     marginBottom: '10px',
@@ -93,7 +130,7 @@ const Toast = ({ id, message, type, onRemove }) => {
     border: '1px solid rgba(255,255,255,0.1)'
   };
   
-  const closeButtonStyle = {
+  const closeButtonStyle: CSSProperties = {
     marginLeft: '10px',
     background: 'none',
     border: 'none',
@@ -106,7 +143,7 @@ const Toast = ({ id, message, type, onRemove }) => {
     fontWeight: 'bold'
   };
   
-  const iconStyle = {
+  const iconStyle: CSSProperties = {
     marginRight: '10px',
     fontSize: '16px',
     display: 'flex',
@@ -116,13 +153,13 @@ const Toast = ({ id, message, type, onRemove }) => {
     height: '20px'
   };
   
-  const contentStyle = {
+  const contentStyle: CSSProperties = {
     flex: 1,
     display: 'flex',
     alignItems: 'center'
   };
   
-  const messageStyle = {
+  const messageStyle: CSSProperties = {
     marginLeft: '5px'
   };
   
@@ -147,12 +184,12 @@ const Toast = ({ id, message, type, onRemove }) => {
 /**
  * Toast Container Component
  */
-class ToastContainer extends Component {
-  state = {
+class ToastContainer extends Component<object, ToastContainerState> {
+  state: ToastContainerState = {
     toasts: []
   };
   
-  addToast = (message, type, duration) => {
+  addToast = (message: string, type: string, duration: number) => {
     const id = nowMilliseconds();
     const newToast = { id, message, type, duration };
     
@@ -182,7 +219,7 @@ class ToastContainer extends Component {
     return id;
   };
   
-  removeToast = (id) => {
+  removeToast = (id: number) => {
     this.setState(prevState => ({
       toasts: prevState.toasts.filter(toast => toast.id !== id)
     }));
@@ -213,8 +250,10 @@ class ToastContainer extends Component {
  * Toast Provider Component
  * This component provides the toast functionality to the entire app
  */
-export class ToastProvider extends Component {
-  constructor(props) {
+export class ToastProvider extends Component<ToastProviderProps> {
+  declare toastContainerRef: ToastContainer | null;
+
+  constructor(props: ToastProviderProps) {
     super(props);
     this.toastContainerRef = null;
   }
@@ -228,7 +267,8 @@ export class ToastProvider extends Component {
       document.body.appendChild(containerElement);
       
       // Render the ToastContainer into the DOM
-      this.toastContainerRef = render(<ToastContainer />, containerElement);
+      // render() returns nothing; this code assumes it returns the instance (bug logged in the migration plan).
+      this.toastContainerRef = render(<ToastContainer />, containerElement) as unknown as ToastContainer;
       
       console.log('Toast container initialized');
     }
@@ -249,7 +289,7 @@ export class ToastProvider extends Component {
   }
   
   // Methods to show different types of toasts
-  showToast = (message, type = 'info', duration = 4000) => {
+  showToast = (message: string, type: string = 'info', duration: number = 4000) => {
     if (this.toastContainerRef) {
       return this.toastContainerRef.addToast(message, type, duration);
     }
@@ -257,19 +297,19 @@ export class ToastProvider extends Component {
     return null;
   };
   
-  showSuccessToast = (message, duration = 4000) => {
+  showSuccessToast = (message: string, duration: number = 4000) => {
     return this.showToast(message, 'success', duration);
   };
   
-  showErrorToast = (message, duration = 4000) => {
+  showErrorToast = (message: string, duration: number = 4000) => {
     return this.showToast(message, 'error', duration);
   };
   
-  showWarningToast = (message, duration = 4000) => {
+  showWarningToast = (message: string, duration: number = 4000) => {
     return this.showToast(message, 'warning', duration);
   };
   
-  showInfoToast = (message, duration = 4000) => {
+  showInfoToast = (message: string, duration: number = 4000) => {
     return this.showToast(message, 'info', duration);
   };
   
@@ -302,13 +342,13 @@ export function useToast() {
 }
 
 // Singleton instance for use outside of React components
-let toastInstance = null;
+let toastInstance: ToastContainer | null = null;
 
 /**
  * Initialize the toast system
  * This should be called once at app startup
  */
-export function initToasts() {
+export function initToasts(): ToastContainer {
   if (!toastInstance) {
     // Create a container element for the toast container
     const containerElement = document.createElement('div');
@@ -316,7 +356,8 @@ export function initToasts() {
     document.body.appendChild(containerElement);
     
     // Render the ToastContainer into the DOM
-    toastInstance = render(<ToastContainer />, containerElement);
+    // render() returns nothing; this code assumes it returns the instance (bug logged in the migration plan).
+    toastInstance = render(<ToastContainer />, containerElement) as unknown as ToastContainer;
     
     console.log('Toast system initialized');
   }
@@ -324,33 +365,33 @@ export function initToasts() {
 }
 
 // Export functions for use outside of React components
-export function showToast(message, type = 'info', duration = 4000) {
+export function showToast(message: string, type: string = 'info', duration: number = 4000) {
   const instance = toastInstance || initToasts();
   return instance.addToast(message, type, duration);
 }
 
-export function showSuccessToast(message, duration = 4000) {
+export function showSuccessToast(message: string, duration: number = 4000) {
   return showToast(message, 'success', duration);
 }
 
-export function showErrorToast(message, duration = 4000) {
+export function showErrorToast(message: string, duration: number = 4000) {
   return showToast(message, 'error', duration);
 }
 
-export function showWarningToast(message, duration = 4000) {
+export function showWarningToast(message: string, duration: number = 4000) {
   return showToast(message, 'warning', duration);
 }
 
-export function showInfoToast(message, duration = 4000) {
+export function showInfoToast(message: string, duration: number = 4000) {
   return showToast(message, 'info', duration);
 }
 
 // For backward compatibility
-export function createDirectToast(message, type = 'info', duration = 4000) {
+export function createDirectToast(message: string, type: string = 'info', duration: number = 4000) {
   return showToast(message, type, duration);
 }
 
-export function showStatusMessage(message, type = 'info', duration = 4000) {
+export function showStatusMessage(message: string, type: string = 'info', duration: number = 4000) {
   // Map type strings to the new format
   let toastType = 'info';
   

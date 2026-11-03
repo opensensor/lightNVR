@@ -1,4 +1,4 @@
-// @ts-nocheck
+import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
 import { useI18n } from '../../i18n.ts';
@@ -9,7 +9,9 @@ import {
 } from '../../utils/auth-utils.ts';
 import { validateForcedPasswordChange } from './forcedPasswordChange.ts';
 
-export function RequiredPasswordChange({ session }) {
+type SessionInfo = Awaited<ReturnType<typeof validateSession>>;
+
+export function RequiredPasswordChange({ session }: { session: SessionInfo }) {
   const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -21,7 +23,7 @@ export function RequiredPasswordChange({ session }) {
     document.title = `${t('passwordChangeRequired.title')} - LightNVR`;
   }, [t]);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: Event) => {
     event.preventDefault();
     const validationError = validateForcedPasswordChange(
       currentPassword,
@@ -47,14 +49,14 @@ export function RequiredPasswordChange({ session }) {
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
+        const payload = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(payload.error || t('passwordChangeRequired.error.generic'));
       }
 
       clearAuthState();
       window.location.assign('/login.html?password_changed=true');
     } catch (requestError) {
-      setError(requestError.message || t('passwordChangeRequired.error.generic'));
+      setError((requestError as Error).message || t('passwordChangeRequired.error.generic'));
       setSaving(false);
     }
   };
@@ -101,7 +103,7 @@ export function RequiredPasswordChange({ session }) {
               id="required-new-password"
               type="password"
               autoComplete="new-password"
-              minLength="8"
+              minLength={8}
               className="w-full rounded border border-input bg-background p-2 text-foreground"
               value={newPassword}
               onInput={(event) => setNewPassword(event.currentTarget.value)}
@@ -142,9 +144,9 @@ export function RequiredPasswordChange({ session }) {
   );
 }
 
-export function AuthGate({ children }) {
+export function AuthGate({ children }: { children?: ComponentChildren }) {
   const { t } = useI18n();
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
 
   useEffect(() => {
     let active = true;

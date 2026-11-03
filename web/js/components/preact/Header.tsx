@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface Header Component
  * Preact component for the site header
@@ -15,7 +14,50 @@ import { forceNavigation } from '../../utils/navigation-utils.ts';
 import { useI18n } from '../../i18n.ts';
 import LanguageSelector from './common/LanguageSelector.tsx';
 
-const buildProfileFormData = (user = {}) => ({
+type SessionInfo = Awaited<ReturnType<typeof validateSession>>;
+
+interface ProfileUser {
+  id: number;
+  username: string;
+  email: string;
+  role?: string;
+  role_id?: number;
+  is_active?: boolean;
+  password_change_locked?: boolean;
+}
+
+interface ProfileFormData {
+  username: string;
+  password: string;
+  email: string;
+  role: number;
+  is_active: boolean;
+  password_change_locked: boolean;
+  allowed_login_cidrs: string;
+}
+
+/** Response of PUT /api/auth/users/:id; `role` is the numeric role id. */
+interface UpdatedUserResponse {
+  id: number;
+  username: string;
+  email?: string;
+  role?: number;
+  is_active?: boolean;
+  password_change_locked?: boolean;
+}
+
+interface NavItem {
+  id: string;
+  label: string;
+  href?: string;
+  title?: string;
+  disabled?: boolean;
+  onClick?: (e: Event) => void;
+  classNameLi?: string;
+  baseClasses?: string;
+}
+
+const buildProfileFormData = (user: Partial<ProfileUser> = {}): ProfileFormData => ({
   username: user.username || '',
   password: '',
   email: user.email || '',
@@ -31,32 +73,32 @@ const buildProfileFormData = (user = {}) => ({
  * @param {string} props.version - System version
  * @returns {JSX.Element} Header component
  */
-export function Header({ version = VERSION }) {
+export function Header({ version = VERSION }: { version?: string }) {
   // Get active navigation from data attribute on header container
   const headerContainer = document.getElementById('header-container');
   const activeNav = headerContainer?.dataset?.activeNav || '';
   const [username, _setUsername] = useState(localStorage.getItem('username') || '');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState<ProfileUser | null>(null);
   const [profileFormData, setProfileFormData] = useState(() => buildProfileFormData());
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
-  const [userRole, _setUserRole] = useState(localStorage.getItem('userrole') || null); // null = still loading
+  const [userRole, _setUserRole] = useState<string | null>(localStorage.getItem('userrole') || null); // null = still loading
   const { t } = useI18n();
 
-  const setUsername = (username) => {
+  const setUsername = (username: string) => {
     _setUsername(username);
     localStorage.setItem('username', username);
   };
 
-  const setUserRole = (userrole) => {
+  const setUserRole = (userrole: string) => {
     _setUserRole(userrole);
     localStorage.setItem('userrole', userrole);
   };
 
-  const syncSessionState = useCallback((session) => {
+  const syncSessionState = useCallback((session: SessionInfo) => {
     if (session.valid && session.role) {
       setUserRole(session.role);
     } else {
@@ -73,7 +115,7 @@ export function Header({ version = VERSION }) {
     }
 
     if (session.id) {
-      const nextUser = {
+      const nextUser: ProfileUser = {
         id: session.id,
         username: session.username || '',
         email: session.email || '',
@@ -106,7 +148,7 @@ export function Header({ version = VERSION }) {
     // Fetch settings to check if auth is enabled
     async function checkAuthEnabled() {
       try {
-        const settings = await getSettings();
+        const settings = await getSettings() as { web_auth_enabled?: boolean };
         const isAuthEnabled = settings.web_auth_enabled === true;
         setAuthEnabled(isAuthEnabled);
       } catch (error) {
@@ -135,8 +177,8 @@ export function Header({ version = VERSION }) {
     return () => clearInterval(intervalId);
   }, [currentUser?.id, syncSessionState]);
 
-  const handleProfileInputChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
+  const handleProfileInputChange = useCallback((e: Event) => {
+    const { name, value, type, checked } = e.target as HTMLInputElement;
     setProfileFormData(prevData => ({
       ...prevData,
       [name]: type === 'checkbox' ? checked : value,
@@ -157,7 +199,7 @@ export function Header({ version = VERSION }) {
     setIsProfileModalOpen(false);
   }, []);
 
-  const handleProfileSave = useCallback(async (e) => {
+  const handleProfileSave = useCallback(async (e?: Event) => {
     if (e) {
       e.preventDefault();
     }
@@ -168,7 +210,7 @@ export function Header({ version = VERSION }) {
 
     setIsSavingProfile(true);
     try {
-      const payload = {
+      const payload: { username: string; email: string; password?: string } = {
         username: profileFormData.username.trim(),
         email: profileFormData.email.trim(),
       };
@@ -185,9 +227,9 @@ export function Header({ version = VERSION }) {
         timeout: 15000,
         retries: 1,
         retryDelay: 1000,
-      });
+      }) as UpdatedUserResponse;
 
-      const nextUser = {
+      const nextUser: ProfileUser = {
         id: updatedUser.id,
         username: updatedUser.username,
         email: updatedUser.email || '',
@@ -204,7 +246,7 @@ export function Header({ version = VERSION }) {
       showStatusMessage(t('auth.profileUpdated'), 'success', 5000);
     } catch (error) {
       console.error('Error updating current user:', error);
-      showStatusMessage(t('auth.profileUpdateError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('auth.profileUpdateError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setIsSavingProfile(false);
     }
@@ -238,7 +280,7 @@ export function Header({ version = VERSION }) {
 
   // Navigation items - don't preserve query parameters when navigating via header
   // Admin-only tabs (System, Users) are hidden from non-admin roles.
-  const navItems = [
+  const navItems: NavItem[] = [
     { id: 'nav-live', href: getLiveViewHref(), label: t('nav.live') },
     { id: 'nav-recordings', href: 'recordings.html', label: t('nav.recordings') },
     { id: 'nav-streams', href: 'streams.html', label: t('nav.streams') },
@@ -248,7 +290,7 @@ export function Header({ version = VERSION }) {
   ];
 
   // Render navigation item
-  const renderNavItem = (item, mobile = false) => {
+  const renderNavItem = (item: NavItem, mobile = false) => {
     const isActive = activeNav === item.id;
     const baseClasses = "no-underline rounded transition-colors cursor-pointer border-0 font-medium " + (item.baseClasses || "");
     const desktopClasses = "px-3 py-2";
@@ -404,6 +446,7 @@ export function Header({ version = VERSION }) {
           formData={profileFormData}
           handleInputChange={handleProfileInputChange}
           handleEditUser={handleProfileSave}
+          handleClearLoginLockout={undefined}
           onClose={closeProfileModal}
           title={t('auth.editProfileTitle')}
           submitLabel={isSavingProfile ? t('common.saving') : t('common.saveChanges')}
@@ -411,7 +454,6 @@ export function Header({ version = VERSION }) {
           showRoleField={false}
           showActiveField={false}
           showPasswordLockField={false}
-          showAllowedTagsField={false}
           showAllowedLoginCidrsField={false}
           showClearLoginLockoutButton={false}
         />

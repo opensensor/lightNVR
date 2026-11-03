@@ -1,10 +1,10 @@
-// @ts-nocheck
 /**
  * UI utility components for LightNVR
  * JSX version of UI components
  */
 
 import { createContext } from 'preact';
+import type { ComponentChildren } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.tsx';
@@ -23,6 +23,50 @@ export { ConfirmDialog } from './common/ModalDialog.tsx';
 dayjs.extend(utc);
 dayjs.extend(customParseFormat);
 
+/** Fields of GET /api/recordings/:id that the video modal reads. */
+interface RecordingDetails {
+  stream?: string;
+  start_time?: number | string;
+  start_time_unix?: number;
+  end_time?: number | string | null;
+  protected?: boolean;
+  detection_labels?: unknown;
+  has_detection?: boolean;
+}
+
+/** One entry of GET /api/detection/results/:stream. Box values are normalized to 0..1. */
+interface DetectionResult {
+  label: string;
+  confidence: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  timestamp?: number;
+}
+
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void;
+};
+
+type VendorFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => void;
+  msRequestFullscreen?: () => void;
+};
+
+export interface ModalContextValue {
+  showVideoModal: (videoUrl: string, title?: string, downloadUrl?: string) => void;
+  showSnapshotPreview: (imageData: string, streamName?: string) => void;
+}
+
+// RecordingsView publishes its modal context here for the deprecated helpers below.
+declare global {
+  interface Window {
+    __modalContext?: ModalContextValue;
+  }
+}
+
 /**
  * Parse a recording timestamp to Unix seconds.
  * Accepts a Unix epoch number (seconds), an ISO 8601 string ("2026-02-18T05:00:00Z"),
@@ -30,7 +74,7 @@ dayjs.extend(customParseFormat);
  * @param {number|string} value - Timestamp value
  * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
  */
-const parseRecordingTimestamp = (value) => {
+const parseRecordingTimestamp = (value: number | string | null | undefined): number => {
   if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return value > 0 ? value : 0;
   const parsed = dayjs.utc(value);
@@ -38,10 +82,20 @@ const parseRecordingTimestamp = (value) => {
 };
 
 // Create contexts for modals
-export const ModalContext = createContext({
+export const ModalContext = createContext<ModalContextValue>({
   showVideoModal: () => {},
   showSnapshotPreview: () => {}
 });
+
+export interface DeleteConfirmationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  /** 'single', 'selected' or 'all'; any other value uses the generic wording. */
+  mode?: string;
+  count?: number;
+  recordingName?: string;
+}
 
 /**
  * DeleteConfirmationModal component for Preact
@@ -54,7 +108,7 @@ export const ModalContext = createContext({
  * @param {string} [props.recordingName] - Stream name of the recording (for 'single' mode)
  * @returns {JSX.Element} DeleteConfirmationModal component
  */
-export function DeleteConfirmationModal(props) {
+export function DeleteConfirmationModal(props: DeleteConfirmationModalProps) {
   const { t } = useI18n();
   const { isOpen, onClose, onConfirm, mode, count, recordingName } = props;
 
@@ -76,14 +130,14 @@ export function DeleteConfirmationModal(props) {
   }
 
   // Handle escape key
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
     }
   };
 
   // Handle background click
-  const handleBackgroundClick = (e) => {
+  const handleBackgroundClick = (e: MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
@@ -121,6 +175,14 @@ export function DeleteConfirmationModal(props) {
   );
 }
 
+export interface SnapshotPreviewModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  imageData: string;
+  streamName?: string;
+  onDownload: () => void;
+}
+
 /**
  * SnapshotPreviewModal component
  * @param {Object} props - Component props
@@ -130,13 +192,13 @@ export function DeleteConfirmationModal(props) {
  * @param {string} props.streamName - Stream name
  * @returns {JSX.Element} SnapshotPreviewModal component
  */
-export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, onDownload }) {
+export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, onDownload }: SnapshotPreviewModalProps) {
   const { t } = useI18n();
-  const modalRef = useRef(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Handle escape key
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }
@@ -147,7 +209,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
     // Animate in
     if (isOpen && modalRef.current) {
       setTimeout(() => {
-        const modalContent = modalRef.current.querySelector('.modal-content');
+        const modalContent = modalRef.current!.querySelector('.modal-content');
         if (modalContent) {
           modalContent.classList.remove('scale-95', 'opacity-0');
           modalContent.classList.add('scale-100', 'opacity-100');
@@ -161,7 +223,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
   }, [isOpen, onClose]);
 
   // Handle background click
-  const handleBackgroundClick = (e) => {
+  const handleBackgroundClick = (e: MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
@@ -219,6 +281,14 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
   );
 }
 
+export interface VideoModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  videoUrl?: string;
+  title?: string;
+  downloadUrl?: string;
+}
+
 /**
  * VideoModal component
  * @param {Object} props - Component props
@@ -229,13 +299,13 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
  * @param {string} props.downloadUrl - Optional URL for downloading the video
  * @returns {JSX.Element} VideoModal component
  */
-export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
+export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: VideoModalProps) {
   const { t } = useI18n();
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [timeWindow, setTimeWindow] = useState(2);
-  const [detections, setDetections] = useState([]);
-  const [recordingData, setRecordingData] = useState(null);
-  const [detectionStatus, setDetectionStatus] = useState(() => t('recordings.noDetectionsLoaded'));
+  const [detections, setDetections] = useState<DetectionResult[]>([]);
+  const [recordingData, setRecordingData] = useState<RecordingDetails | null>(null);
+  const [detectionStatus, setDetectionStatus] = useState<string>(() => t('recordings.noDetectionsLoaded'));
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
   const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -243,19 +313,19 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [playbackMessage, setPlaybackMessage] = useState('');
 
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const modalRef = useRef(null);
-  const videoContainerRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
-  const updatePlaybackSeconds = useCallback((video) => {
+  const updatePlaybackSeconds = useCallback((video: HTMLVideoElement) => {
     const nextSeconds = Math.max(0, Math.floor(video?.currentTime || 0));
     setCurrentPlaybackSeconds(prev => prev === nextSeconds ? prev : nextSeconds);
   }, []);
 
   // Handle escape key and cleanup
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }
@@ -293,7 +363,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         const response = await fetch(`/api/recordings/${recordingId}`);
         if (!response.ok) throw new Error('Failed to fetch recording data');
 
-        const data = await response.json();
+        const data = await response.json() as RecordingDetails;
         setRecordingData(data);
         setIsProtected(!!data.protected);
 
@@ -325,7 +395,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
           if (!detectionsResponse.ok) throw new Error('Failed to fetch detections');
 
-          const detectionsData = await detectionsResponse.json();
+          const detectionsData = await detectionsResponse.json() as { detections?: DetectionResult[] };
           console.log('[VideoModal] Detections response:', detectionsData);
           const fetchedDetections = detectionsData.detections || [];
           setDetections(fetchedDetections);
@@ -357,7 +427,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   // Extract recording ID from URL
   const recordingId = videoUrl ? (() => {
     const m = videoUrl.match(/\/play\/(\d+)/);
-    return m ? parseInt(m[1], 10) : null;
+    return m ? parseInt(m[1]!, 10) : null;
   })() : null;
 
   // Toggle protection for the current recording
@@ -383,7 +453,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }));
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
     }
   }, [recordingId, isProtected]);
 
@@ -404,7 +474,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       onClose();
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
       setShowDeleteConfirm(false);
     }
   }, [recordingId, onClose]);
@@ -420,7 +490,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const streamName = recordingData?.stream || 'recording';
@@ -447,7 +517,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   }, [recordingData]);
 
   // Draw detections on canvas
-  const drawDetections = useCallback(() => {
+  const drawDetections: () => void = useCallback(() => {
     if (!detectionOverlayEnabled || !videoRef.current || !canvasRef.current || detections.length === 0) {
       return;
     }
@@ -470,13 +540,13 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     canvas.width = displayWidth;
     canvas.height = displayHeight;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Calculate letterbox / pillarbox offsets (video uses object-contain)
     const videoAspect = videoWidth / videoHeight;
     const displayAspect = displayWidth / displayHeight;
-    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+    let drawWidth: number, drawHeight: number, offsetX = 0, offsetY = 0;
 
     if (videoAspect > displayAspect) {
       drawWidth = displayWidth;
@@ -555,7 +625,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   useEffect(() => {
     if (!isOpen || !videoRef.current) return;
 
-    const video = videoRef.current;
+    const video: HTMLVideoElement & { lastDrawnTime?: number } = videoRef.current;
 
     const handleLoadedMetadata = () => {
       updatePlaybackSeconds(video);
@@ -633,7 +703,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     if (!isOpen || !videoRef.current || !videoContainerRef.current) return;
 
     const container = videoContainerRef.current;
-    let redrawTimeoutId = null;
+    let redrawTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleRedraw = () => {
       if (redrawTimeoutId !== null) {
@@ -647,7 +717,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     };
 
     const handleFullscreenChange = () => {
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
       setIsFullscreen(fullscreenElement === container);
       scheduleRedraw();
     };
@@ -687,16 +757,16 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   }, [isOpen, detectionOverlayEnabled, drawDetections]);
 
   const handleToggleFullscreen = useCallback(async () => {
-    const container = videoContainerRef.current;
+    const container: VendorFullscreenElement | null = videoContainerRef.current;
     if (!container) return;
 
     try {
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
       if (fullscreenElement === container) {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-          document.webkitExitFullscreen();
+        } else if ((document as WebkitFullscreenDocument).webkitExitFullscreen) {
+          (document as WebkitFullscreenDocument).webkitExitFullscreen!();
         }
         return;
       }
@@ -712,19 +782,19 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }
     } catch (error) {
       console.error('Error toggling fullscreen:', error);
-      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
+      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: (error as Error).message }), 'error');
     }
   }, []);
 
   // Handle background click
-  const handleBackgroundClick = (e) => {
+  const handleBackgroundClick = (e: MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
 
   // Handle speed change
-  const handleSpeedChange = (speed) => {
+  const handleSpeedChange = (speed: number) => {
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
       setCurrentSpeed(speed);
@@ -732,8 +802,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   };
 
   // Handle time window change
-  const handleTimeWindowChange = (e) => {
-    const newTimeWindow = parseInt(e.target.value, 10);
+  const handleTimeWindowChange = (e: Event) => {
+    const newTimeWindow = parseInt((e.target as HTMLInputElement).value, 10);
     setTimeWindow(newTimeWindow);
     if (detectionOverlayEnabled) {
       drawDetections();
@@ -742,7 +812,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
   // Handle modal animation after the portal is mounted.
   useEffect(() => {
-    let animationTimeout;
+    let animationTimeout: ReturnType<typeof setTimeout> | undefined;
 
     if (isOpen && modalRef.current) {
       animationTimeout = setTimeout(() => {
@@ -888,7 +958,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                       id="detection-overlay-checkbox"
                       className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
                       checked={detectionOverlayEnabled}
-                      onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
+                      onChange={(e) => setDetectionOverlayEnabled((e.target as HTMLInputElement).checked)}
                       disabled={detections.length === 0}
                     />
                     <label
@@ -1037,19 +1107,32 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   );
 }
 
+interface SnapshotModalState {
+  isOpen: boolean;
+  imageData: string;
+  streamName?: string;
+}
+
+interface VideoModalState {
+  isOpen: boolean;
+  videoUrl: string;
+  title?: string;
+  downloadUrl?: string;
+}
+
 /**
  * ModalProvider component
  * Provides modal context and renders modal components
  */
-export function ModalProvider({ children }) {
+export function ModalProvider({ children }: { children?: ComponentChildren }) {
   const { t } = useI18n();
-  const [snapshotModal, setSnapshotModal] = useState({
+  const [snapshotModal, setSnapshotModal] = useState<SnapshotModalState>({
     isOpen: false,
     imageData: '',
     streamName: '',
   });
 
-  const [videoModal, setVideoModal] = useState({
+  const [videoModal, setVideoModal] = useState<VideoModalState>({
     isOpen: false,
     videoUrl: '',
     title: '',
@@ -1057,7 +1140,7 @@ export function ModalProvider({ children }) {
   });
 
   // Show snapshot preview
-  const showSnapshotPreview = useCallback((imageData, streamName) => {
+  const showSnapshotPreview = useCallback((imageData: string, streamName?: string) => {
     setSnapshotModal({
       isOpen: true,
       imageData,
@@ -1066,7 +1149,7 @@ export function ModalProvider({ children }) {
   }, []);
 
   // Show video modal
-  const showVideoModal = useCallback((videoUrl, title, downloadUrl) => {
+  const showVideoModal = useCallback((videoUrl: string, title?: string, downloadUrl?: string) => {
     console.log('ModalProvider.showVideoModal called with:', { videoUrl, title, downloadUrl });
 
     setVideoModal({
@@ -1108,7 +1191,7 @@ export function ModalProvider({ children }) {
       showStatusMessage(t('recordings.snapshotDownloaded'), 'success', 3000);
     } catch (error) {
       console.error('Error in snapshot download process:', error);
-      showStatusMessage(t('recordings.downloadFailed', { message: error.message }), 'error', 5000);
+      showStatusMessage(t('recordings.downloadFailed', { message: (error as Error).message }), 'error', 5000);
     }
   }, [snapshotModal]);
 
@@ -1161,7 +1244,7 @@ export function ModalProvider({ children }) {
 }
 
 // Export function for backward compatibility
-export function showVideoModal(videoUrl, title, downloadUrl) {
+export function showVideoModal(videoUrl: string, title?: string, downloadUrl?: string) {
   console.warn('Direct showVideoModal() is deprecated. Use ModalContext.showVideoModal instead.');
 
   // Get the modal context from the global variable if available
@@ -1211,7 +1294,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   });
 }
 
-export function showSnapshotPreview(imageData, streamName) {
+export function showSnapshotPreview(imageData: string, streamName?: string) {
   console.warn('Direct showSnapshotPreview() is deprecated. Use ModalContext.showSnapshotPreview instead.');
 
   // Get the modal context from the global variable if available
@@ -1256,7 +1339,7 @@ export function showSnapshotPreview(imageData, streamName) {
         showStatusMessage(translate('recordings.snapshotDownloaded'), 'success', 3000);
       } catch (error) {
         console.error('Error downloading snapshot:', error);
-        showStatusMessage(translate('recordings.downloadFailed', { message: error.message }), 'error', 5000);
+        showStatusMessage(translate('recordings.downloadFailed', { message: (error as Error).message }), 'error', 5000);
       }
     };
 

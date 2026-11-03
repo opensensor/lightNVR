@@ -1,4 +1,4 @@
-// @ts-nocheck
+import type { ComponentChildren, RefObject } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
@@ -13,6 +13,16 @@ const FOCUSABLE_SELECTOR = [
 
 let nextDialogId = 0;
 
+interface ModalShellProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: ComponentChildren;
+  description?: ComponentChildren;
+  children?: ComponentChildren;
+  closeDisabled?: boolean;
+  initialFocusRef?: RefObject<HTMLElement | null>;
+}
+
 function ModalShell({
   isOpen,
   onClose,
@@ -21,9 +31,9 @@ function ModalShell({
   children,
   closeDisabled = false,
   initialFocusRef,
-}) {
-  const dialogRef = useRef(null);
-  const idRef = useRef(null);
+}: ModalShellProps) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const idRef = useRef<string>(null);
   if (!idRef.current) {
     nextDialogId += 1;
     idRef.current = `lightnvr-dialog-${nextDialogId}`;
@@ -32,14 +42,14 @@ function ModalShell({
   useEffect(() => {
     if (!isOpen) return undefined;
 
-    const previouslyFocused = document.activeElement;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const focusTimer = window.setTimeout(() => {
       const preferred = initialFocusRef?.current;
-      const firstFocusable = dialogRef.current?.querySelector(FOCUSABLE_SELECTOR);
+      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       (preferred || firstFocusable || dialogRef.current)?.focus();
     }, 0);
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -48,14 +58,14 @@ function ModalShell({
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
 
-      const focusable = [...dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR)];
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
       if (focusable.length === 0) {
         event.preventDefault();
         dialogRef.current.focus();
         return;
       }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -79,7 +89,7 @@ function ModalShell({
 
   const titleId = `${idRef.current}-title`;
   const descriptionId = description ? `${idRef.current}-description` : undefined;
-  const handleBackdropMouseDown = (event) => {
+  const handleBackdropMouseDown = (event: MouseEvent) => {
     event.stopPropagation();
     if (event.target === event.currentTarget && !closeDisabled) onClose();
   };
@@ -97,7 +107,7 @@ function ModalShell({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        tabIndex="-1"
+        tabIndex={-1}
         className="w-full max-w-md rounded-lg border border-border bg-card text-card-foreground shadow-2xl"
       >
         <header className="border-b border-border px-5 py-4">
@@ -115,6 +125,18 @@ function ModalShell({
   );
 }
 
+export interface ConfirmDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => unknown;
+  title: ComponentChildren;
+  message: ComponentChildren;
+  confirmLabel?: ComponentChildren;
+  cancelLabel?: ComponentChildren;
+  variant?: 'warning' | 'danger';
+  confirmDisabled?: boolean;
+}
+
 /** A reusable confirmation modal for warning and destructive actions. */
 export function ConfirmDialog({
   isOpen,
@@ -126,8 +148,8 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'warning',
   confirmDisabled = false,
-}) {
-  const cancelRef = useRef(null);
+}: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const danger = variant === 'danger';
 
   const handleConfirm = () => {
@@ -174,6 +196,23 @@ export function ConfirmDialog({
   );
 }
 
+export interface TextInputDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  /** Resolving to exactly `false` keeps the dialog open. */
+  onSubmit: (value: string, checked: boolean) => unknown;
+  title: ComponentChildren;
+  description?: ComponentChildren;
+  inputLabel?: ComponentChildren;
+  initialValue?: string;
+  placeholder?: string;
+  confirmLabel?: ComponentChildren;
+  cancelLabel?: ComponentChildren;
+  checkboxLabel?: ComponentChildren;
+  checkboxInitialValue?: boolean;
+  maxLength?: number;
+}
+
 /** A modal form backed by a real text input, optionally with one checkbox. */
 export function TextInputDialog({
   isOpen,
@@ -189,8 +228,8 @@ export function TextInputDialog({
   checkboxLabel,
   checkboxInitialValue = false,
   maxLength = 127,
-}) {
-  const inputRef = useRef(null);
+}: TextInputDialogProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(initialValue);
   const [checked, setChecked] = useState(checkboxInitialValue);
   const [submitting, setSubmitting] = useState(false);
@@ -202,7 +241,7 @@ export function TextInputDialog({
     setSubmitting(false);
   }, [checkboxInitialValue, initialValue, isOpen]);
 
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     const trimmed = value.trim();
     if (!trimmed || submitting) return;
@@ -266,9 +305,17 @@ export function TextInputDialog({
   );
 }
 
+export interface AlertDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: ComponentChildren;
+  message: ComponentChildren;
+  closeLabel?: ComponentChildren;
+}
+
 /** A one-action informational modal, used in place of browser alert(). */
-export function AlertDialog({ isOpen, onClose, title, message, closeLabel = 'Close' }) {
-  const closeRef = useRef(null);
+export function AlertDialog({ isOpen, onClose, title, message, closeLabel = 'Close' }: AlertDialogProps) {
+  const closeRef = useRef<HTMLButtonElement>(null);
   return (
     <ModalShell isOpen={isOpen} onClose={onClose} title={title} initialFocusRef={closeRef}>
       <div className="px-5 py-4">

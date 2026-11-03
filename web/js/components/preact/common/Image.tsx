@@ -1,5 +1,19 @@
-// @ts-nocheck
+import type { ComponentChildren, PartialImgHTMLAttributes } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
+
+export interface ImageProps
+  extends Omit<
+    PartialImgHTMLAttributes<HTMLImageElement>,
+    'src' | 'alt' | 'class' | 'onError' | 'onLoad' | 'placeholder' | 'role' | 'aria-label' | 'aria-labelledby' | 'title'
+  > {
+  src?: string;
+  alt?: string;
+  class?: string;
+  onError?: () => void;
+  onLoad?: () => void;
+  eager?: boolean;
+  placeholder?: ComponentChildren;
+}
 
 /**
  * Image component with preloading support
@@ -24,7 +38,7 @@ export default function Image({
   eager = false,
   placeholder,
   ...otherProps 
-}) {
+}: ImageProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
