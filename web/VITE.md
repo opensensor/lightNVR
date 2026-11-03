@@ -63,6 +63,29 @@ cd web
 npm run preview
 ```
 
+## TypeScript
+
+Vite compiles `.ts` and `.tsx` with Oxc using the same Preact JSX settings as
+`.jsx`, and only strips types. `npm run typecheck` is what checks them, and CI
+runs it in `static-analysis.yml`.
+
+- `tsconfig.base.json` holds the shared strict options. Do not relax them.
+- `tsconfig.json` covers `js/**`; Vite's client types come from `js/env.d.ts`.
+- `tsconfig.tests.json` covers TS tests under `tests/` with Jest and Node types.
+- `allowJs` is on and `checkJs` is off, so TS can import legacy `.js` modules
+  without those modules being checked. `// @ts-nocheck` opts a TS file out until
+  its domain is typed.
+- Jest compiles `.ts`, `.tsx`, and `.jsx` through the overrides in
+  `babel.config.cjs`. Plain `.js` compiles as before.
+- ESLint parses `.ts` and `.tsx` with the TypeScript parser and keeps the a11y and
+  i18n rules on them. `no-explicit-any` and `ban-ts-comment` are errors;
+  `@ts-expect-error` needs a reason on the same line.
+- `i18n-literal-baseline.json` keeps its `.jsx` keys: the rule reads `X.tsx` as
+  `X.jsx`, so counts carry across a rename.
+- `tests/types/tsxFixture.spec.tsx` runs TSX through Preact in Jest. Its
+  `@ts-expect-error` is a permanent check that prop types are enforced, so
+  removing that line must make `npm run typecheck` fail.
+
 ## Directory Structure
 
 Vite uses a slightly different output structure than Snowpack:

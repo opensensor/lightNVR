@@ -3,7 +3,7 @@
 // excluded here and run via `npm run test:e2e` (jest.e2e.config.cjs).
 module.exports = {
   testMatch: [
-    '**/tests/**/*.spec.js'
+    '**/tests/**/*.spec.{js,ts,tsx}'
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
@@ -13,7 +13,7 @@ module.exports = {
   setupFilesAfterEnv: ['./tests/setup.cjs'],
   testTimeout: 30000,
   transform: {
-    '^.+\\.m?jsx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
+    '^.+\\.(?:m?jsx?|tsx?)$': ['babel-jest', { configFile: './babel.config.cjs' }]
   },
   // Preact 11 ships ES modules only; compile it (and preact/* subpaths) for
   // Jest's CommonJS runtime instead of skipping node_modules entirely.

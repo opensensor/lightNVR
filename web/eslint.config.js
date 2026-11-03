@@ -8,6 +8,7 @@
  */
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
 import noLiteralUiString from './eslint-rules/no-literal-ui-string.js';
 
 const recommendedRules = jsxA11y.flatConfigs.recommended.rules;
@@ -21,7 +22,7 @@ export default [
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
   {
-    files: ['js/**/*.js', 'js/**/*.jsx'],
+    files: ['js/**/*.js', 'js/**/*.jsx', 'js/**/*.ts', 'js/**/*.tsx'],
     linterOptions: {
       // Targeted disable comments (e.g. react-hooks) belong to configs outside
       // this a11y lint; don't flag them as unused here.
@@ -47,7 +48,26 @@ export default [
     },
   },
   {
-    files: ['js/components/**/*.js', 'js/components/**/*.jsx'],
+    // The a11y and i18n rules above and below apply here too; this block only
+    // swaps the parser and adds the TS escape-hatch policy. The parser picks
+    // JSX support from the extension: .tsx has it, .ts does not.
+    files: ['js/**/*.ts', 'js/**/*.tsx'],
+    plugins: { '@typescript-eslint': tseslint.plugin },
+    languageOptions: { parser: tseslint.parser },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/ban-ts-comment': ['error', {
+        'ts-check': false,
+        'ts-expect-error': 'allow-with-description',
+        'ts-ignore': true,
+        // Allowed until the migration closes: every file starts with this
+        // header after the rename, and each domain removes it as it is typed.
+        'ts-nocheck': false,
+      }],
+    },
+  },
+  {
+    files: ['js/components/**/*.js', 'js/components/**/*.jsx', 'js/components/**/*.ts', 'js/components/**/*.tsx'],
     // Existing technical labels and examples are counted by file in the
     // baseline. New JSX text or visible-attribute literals fail lint.
     plugins: { 'lightnvr-i18n': { rules: { 'no-literal-ui-string': noLiteralUiString } } },

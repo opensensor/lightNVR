@@ -52,7 +52,7 @@ function listFiles(dir, exts) {
 function physicalUtilities() {
   const found = new Map();
   const files = [
-    ...listFiles(path.join(webRoot, 'js'), ['.js', '.jsx']),
+    ...listFiles(path.join(webRoot, 'js'), ['.js', '.jsx', '.ts', '.tsx']),
     ...listFiles(path.join(webRoot, 'css'), ['.css']),
   ];
   for (const file of files) {

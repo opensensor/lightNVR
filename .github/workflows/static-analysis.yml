@@ -24,6 +24,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         run: npm ci --prefix web
+      - name: Type-check web UI
+        run: npm run typecheck --prefix web
       - name: Report JSX accessibility findings
         run: |
           npm run lint --prefix web

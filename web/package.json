@@ -13,6 +13,7 @@
     "audit": "npm run build && node ../scripts/audit-touch-targets.mjs",
     "preview": "vite preview",
     "lint": "eslint js",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.tests.json",
     "test": "jest --config=jest.config.cjs",
     "test:e2e": "jest --config=jest.e2e.config.cjs --runInBand"
   },
@@ -35,9 +36,13 @@
   },
   "devDependencies": {
     "@babel/core": "^8.0.10",
+    "@babel/plugin-transform-react-jsx": "8.0.1",
     "@babel/preset-env": "^8.0.7",
+    "@babel/preset-typescript": "8.0.7",
     "@prefresh/vite": "^4.0.1",
     "@sentry/vite-plugin": "^11.10.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
     "@vitejs/plugin-legacy": "^8.2.3",
     "autoprefixer": "^10.6.2",
     "babel-jest": "^30.5.2",
@@ -49,6 +54,8 @@
     "postcss": "^8.5.32",
     "postcss-import": "^17.0.1",
     "selenium-webdriver": "^4.52.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
     "vite": "^8.3.5",
     "vite-plugin-compression": "^0.5.1"
   },
