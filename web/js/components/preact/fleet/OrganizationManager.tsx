@@ -1,16 +1,30 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { buildLocationRows, locationParentOptions } from './fleetOrganization.ts';
+import type { FleetLocation, FleetTag, Translate } from '../../../types/fleet.ts';
+import type { FormNumber } from '../../../types/streams.ts';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const locationTypes = ['site', 'building', 'floor', 'area', 'zone'];
 
-function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
+interface LocationEditorState {
+  item?: FleetLocation;
+  parentUuid?: string;
+}
+
+interface LocationEditorProps {
+  editor: LocationEditorState;
+  locations: FleetLocation[];
+  onSaved: () => unknown;
+  onCancel: () => void;
+  t: Translate;
+}
+
+function LocationEditor({ editor, locations, onSaved, onCancel, t }: LocationEditorProps) {
   const item = editor.item;
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = useState<{ name: string; type: string; parent_uuid: string; sort_order: FormNumber }>(() => ({
     name: item?.name || '',
     type: item?.type || 'area',
     parent_uuid: item?.parent_uuid || editor.parentUuid || '',
@@ -19,7 +33,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
   const [saving, setSaving] = useState(false);
   const parentOptions = useMemo(() => locationParentOptions(locations, item?.uuid), [locations, item?.uuid]);
 
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     setSaving(true);
     try {
@@ -38,7 +52,7 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
       showStatusMessage(t(item ? 'fleet.organization.locationUpdated' : 'fleet.organization.locationCreated'), 'success');
       await onSaved();
     } catch (error) {
-      showStatusMessage(t('fleet.organization.saveError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.organization.saveError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setSaving(false);
     }
@@ -80,18 +94,25 @@ function LocationEditor({ editor, locations, onSaved, onCancel, t }) {
   );
 }
 
-function LocationsTab({ locations, loading, onRefresh, t }) {
-  const [editor, setEditor] = useState(null);
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+interface LocationsTabProps {
+  locations: FleetLocation[];
+  loading: boolean;
+  onRefresh: () => unknown;
+  t: Translate;
+}
+
+function LocationsTab({ locations, loading, onRefresh, t }: LocationsTabProps) {
+  const [editor, setEditor] = useState<LocationEditorState | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<FleetLocation | null>(null);
   const rows = useMemo(() => buildLocationRows(locations), [locations]);
 
-  const deleteLocation = async (location) => {
+  const deleteLocation = async (location: FleetLocation) => {
     try {
       await fetchJSON(`/api/locations/${location.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.locationDeleted'), 'success');
       await onRefresh();
     } catch (error) {
-      showStatusMessage(t('fleet.organization.deleteError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.organization.deleteError', { message: (error as Error).message }), 'error', 8000);
     }
   };
 
@@ -136,14 +157,14 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
                 </tr>
               );
             })}
-            {!loading && rows.length === 0 && <tr><td colSpan="4" className="px-4 py-10 text-center text-muted-foreground">{t('fleet.organization.noLocations')}</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">{t('fleet.organization.noLocations')}</td></tr>}
           </tbody>
         </table>
       </div>
       <ConfirmDialog
         isOpen={Boolean(deleteCandidate)}
         onClose={() => setDeleteCandidate(null)}
-        onConfirm={() => deleteLocation(deleteCandidate)}
+        onConfirm={() => deleteLocation(deleteCandidate!)}
         title={t('fleet.organization.locations')}
         message={deleteCandidate ? t('fleet.organization.deleteLocationConfirm', { name: deleteCandidate.name }) : ''}
         confirmLabel={t('common.delete')}
@@ -154,7 +175,20 @@ function LocationsTab({ locations, loading, onRefresh, t }) {
   );
 }
 
-function TagEditor({ editor, tags, onSaved, onCancel, t }) {
+interface TagEditorState {
+  item?: FleetTag;
+  mode?: string;
+}
+
+interface TagEditorProps {
+  editor: TagEditorState;
+  tags: FleetTag[];
+  onSaved: () => unknown;
+  onCancel: () => void;
+  t: Translate;
+}
+
+function TagEditor({ editor, tags, onSaved, onCancel, t }: TagEditorProps) {
   const item = editor.item;
   const merging = editor.mode === 'merge';
   const [form, setForm] = useState(() => ({
@@ -165,12 +199,12 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
   }));
   const [saving, setSaving] = useState(false);
 
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     setSaving(true);
     try {
       if (merging) {
-        await fetchJSON(`/api/camera-tags/${item.uuid}/merge`, {
+        await fetchJSON(`/api/camera-tags/${item!.uuid}/merge`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ target_uuid: form.target_uuid }), timeout: 15000, retries: 1,
         });
@@ -184,7 +218,7 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
       showStatusMessage(t(merging ? 'fleet.organization.tagsMerged' : item ? 'fleet.organization.tagUpdated' : 'fleet.organization.tagCreated'), 'success');
       await onSaved();
     } catch (error) {
-      showStatusMessage(t('fleet.organization.saveError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.organization.saveError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setSaving(false);
     }
@@ -198,7 +232,7 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
           {t('fleet.organization.mergeInto')}
           <select className={`${fieldClasses} mt-1`} value={form.target_uuid} required autoFocus onChange={(event) => setForm({ ...form, target_uuid: event.currentTarget.value })}>
             <option value="">{t('fleet.organization.chooseTag')}</option>
-            {tags.filter((tag) => tag.uuid !== item.uuid).map((tag) => <option key={tag.uuid} value={tag.uuid}>{tag.label} ({tag.camera_count})</option>)}
+            {tags.filter((tag) => tag.uuid !== item!.uuid).map((tag) => <option key={tag.uuid} value={tag.uuid}>{tag.label} ({tag.camera_count})</option>)}
           </select>
           <span className="mt-2 block text-xs text-muted-foreground">{t('fleet.organization.mergeWarning')}</span>
         </label>
@@ -217,7 +251,7 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
           </label>
           <label className="text-sm font-medium sm:col-span-2">
             {t('fleet.organization.tagDescription')}
-            <textarea className={`${fieldClasses} mt-1`} rows="2" value={form.description} maxLength={255} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
+            <textarea className={`${fieldClasses} mt-1`} rows={2} value={form.description} maxLength={255} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
           </label>
         </div>
       )}
@@ -229,17 +263,24 @@ function TagEditor({ editor, tags, onSaved, onCancel, t }) {
   );
 }
 
-function TagsTab({ tags, loading, onRefresh, t }) {
-  const [editor, setEditor] = useState(null);
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+interface TagsTabProps {
+  tags: FleetTag[];
+  loading: boolean;
+  onRefresh: () => unknown;
+  t: Translate;
+}
+
+function TagsTab({ tags, loading, onRefresh, t }: TagsTabProps) {
+  const [editor, setEditor] = useState<TagEditorState | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<FleetTag | null>(null);
   const sortedTags = useMemo(() => [...tags].sort((left, right) => left.label.localeCompare(right.label)), [tags]);
-  const deleteTag = async (tag) => {
+  const deleteTag = async (tag: FleetTag) => {
     try {
       await fetchJSON(`/api/camera-tags/${tag.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('fleet.organization.tagDeleted'), 'success');
       await onRefresh();
     } catch (error) {
-      showStatusMessage(t('fleet.organization.deleteError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.organization.deleteError', { message: (error as Error).message }), 'error', 8000);
     }
   };
 
@@ -273,14 +314,14 @@ function TagsTab({ tags, loading, onRefresh, t }) {
                 </td>
               </tr>
             ))}
-            {!loading && sortedTags.length === 0 && <tr><td colSpan="4" className="px-4 py-10 text-center text-muted-foreground">{t('fleet.organization.noTags')}</td></tr>}
+            {!loading && sortedTags.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">{t('fleet.organization.noTags')}</td></tr>}
           </tbody>
         </table>
       </div>
       <ConfirmDialog
         isOpen={Boolean(deleteCandidate)}
         onClose={() => setDeleteCandidate(null)}
-        onConfirm={() => deleteTag(deleteCandidate)}
+        onConfirm={() => deleteTag(deleteCandidate!)}
         title={t('fleet.organization.tags')}
         message={deleteCandidate ? t('fleet.organization.deleteTagConfirm', { name: deleteCandidate.label, count: deleteCandidate.camera_count }) : ''}
         confirmLabel={t('common.delete')}
@@ -291,10 +332,19 @@ function TagsTab({ tags, loading, onRefresh, t }) {
   );
 }
 
-export function OrganizationManager({ locations, tags, loading, onRefresh, onClose, t }) {
+export interface OrganizationManagerProps {
+  locations: FleetLocation[];
+  tags: FleetTag[];
+  loading: boolean;
+  onRefresh: () => unknown;
+  onClose: () => void;
+  t: Translate;
+}
+
+export function OrganizationManager({ locations, tags, loading, onRefresh, onClose, t }: OrganizationManagerProps) {
   const [tab, setTab] = useState('locations');
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape') onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);

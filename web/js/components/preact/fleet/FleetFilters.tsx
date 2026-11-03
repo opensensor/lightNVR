@@ -1,9 +1,18 @@
-// @ts-nocheck
 import { AVAILABILITY_VALUES, HEALTH_VALUES, RECORDING_VALUES, facetCount, toggleFleetValue } from './fleetQuery.ts';
+import type { ComponentChildren } from 'preact';
+import type { CameraCollection, FleetFacets, FleetState, FleetStateChange, LocationRow, Translate } from '../../../types/fleet.ts';
 
 const inputClasses = 'h-4 w-4 rounded border-input text-[hsl(var(--primary))] focus:ring-[hsl(var(--primary))]';
 
-function FilterCheckbox({ id, checked, label, count, onChange }) {
+interface FilterCheckboxProps {
+  id: string;
+  checked: boolean;
+  label: ComponentChildren;
+  count: number;
+  onChange: () => void;
+}
+
+function FilterCheckbox({ id, checked, label, count, onChange }: FilterCheckboxProps) {
   return (
     <label htmlFor={id} className="flex items-center justify-between gap-3 py-1.5 text-sm cursor-pointer">
       <span className="flex min-w-0 items-center gap-2">
@@ -15,7 +24,12 @@ function FilterCheckbox({ id, checked, label, count, onChange }) {
   );
 }
 
-function FilterGroup({ title, children }) {
+interface FilterGroupProps {
+  title: ComponentChildren;
+  children: ComponentChildren;
+}
+
+function FilterGroup({ title, children }: FilterGroupProps) {
   return (
     <fieldset className="border-0 border-b border-border pb-4 last:border-b-0 last:pb-0">
       <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</legend>
@@ -24,12 +38,22 @@ function FilterGroup({ title, children }) {
   );
 }
 
-export function FleetFilters({ state, facets = {}, locations: locationCatalog = [], collections = [], onChange, t, idPrefix = 'fleet' }) {
+export interface FleetFiltersProps {
+  state: FleetState;
+  facets?: FleetFacets;
+  locations?: LocationRow[];
+  collections?: CameraCollection[];
+  onChange: FleetStateChange;
+  t: Translate;
+  idPrefix?: string;
+}
+
+export function FleetFilters({ state, facets = {}, locations: locationCatalog = [], collections = [], onChange, t, idPrefix = 'fleet' }: FleetFiltersProps) {
   const tags = facets.tags || [];
   const locations = facets.locations || [];
   const locationNames = new Map(locationCatalog.map((location) => [location.uuid, location.path || location.name]));
-  const labelHealth = (value) => t(`fleet.health.${value}`);
-  const labelRecording = (value) => t(`fleet.recording.${value}`);
+  const labelHealth = (value: string) => t(`fleet.health.${value}`);
+  const labelRecording = (value: string) => t(`fleet.recording.${value}`);
 
   return (
     <div className="space-y-4">

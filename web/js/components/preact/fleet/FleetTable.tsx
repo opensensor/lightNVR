@@ -1,5 +1,6 @@
-// @ts-nocheck
-const HEALTH_STYLES = {
+import type { FleetCamera, FleetCameraTag, FleetState, Translate } from '../../../types/fleet.ts';
+
+const HEALTH_STYLES: Partial<Record<string, string>> = {
   up: 'bg-[hsl(var(--success)/0.14)] text-[hsl(var(--success))]',
   degraded: 'bg-[hsl(var(--warning)/0.18)] text-[hsl(var(--warning-foreground))]',
   down: 'bg-[hsl(var(--danger)/0.14)] text-[hsl(var(--danger))]',
@@ -7,7 +8,14 @@ const HEALTH_STYLES = {
   unknown: 'bg-muted text-muted-foreground',
 };
 
-function SortButton({ field, label, state, onSort }) {
+interface SortButtonProps {
+  field: string;
+  label: string;
+  state: FleetState;
+  onSort: (field: string) => void;
+}
+
+function SortButton({ field, label, state, onSort }: SortButtonProps) {
   const active = state.sortBy === field;
   return (
     <button
@@ -24,7 +32,12 @@ function SortButton({ field, label, state, onSort }) {
   );
 }
 
-function HealthBadge({ health, t }) {
+interface HealthBadgeProps {
+  health: string;
+  t: Translate;
+}
+
+function HealthBadge({ health, t }: HealthBadgeProps) {
   const value = health || 'unknown';
   return (
     <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${HEALTH_STYLES[value] || HEALTH_STYLES.unknown}`}>
@@ -33,7 +46,12 @@ function HealthBadge({ health, t }) {
   );
 }
 
-function RecordingState({ camera, t }) {
+interface CameraRowProps {
+  camera: FleetCamera;
+  t: Translate;
+}
+
+function RecordingState({ camera, t }: CameraRowProps) {
   const isActive = camera.recording_active === true;
   return (
     <div>
@@ -45,7 +63,7 @@ function RecordingState({ camera, t }) {
   );
 }
 
-function CameraTags({ tags = [] }) {
+function CameraTags({ tags = [] }: { tags?: FleetCameraTag[] }) {
   if (tags.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex max-w-xs flex-wrap gap-1">
@@ -59,7 +77,11 @@ function CameraTags({ tags = [] }) {
   );
 }
 
-function CameraActions({ camera, onEditCamera, t }) {
+interface CameraActionsProps extends CameraRowProps {
+  onEditCamera?: ((name: string) => unknown) | undefined;
+}
+
+function CameraActions({ camera, onEditCamera, t }: CameraActionsProps) {
   const encodedName = encodeURIComponent(camera.name);
   const classes = 'inline-flex min-h-8 items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs font-medium no-underline hover:bg-muted focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
   const editLabel = `${t('common.edit')}: ${camera.name}`;
@@ -85,14 +107,18 @@ function CameraActions({ camera, onEditCamera, t }) {
   );
 }
 
-function formatLastFrame(timestamp, locale, t) {
+function formatLastFrame(timestamp: number, locale: string, t: Translate): string {
   if (!timestamp) return t('common.never');
   const milliseconds = timestamp < 1e12 ? timestamp * 1000 : timestamp;
   const date = new Date(milliseconds);
   return Number.isNaN(date.getTime()) ? t('common.unknown') : date.toLocaleString(locale);
 }
 
-function CameraContext({ camera, locale, t }) {
+interface CameraContextProps extends CameraRowProps {
+  locale: string;
+}
+
+function CameraContext({ camera, locale, t }: CameraContextProps) {
   const capabilityLabels = (camera.capabilities || []).map((value) => value.toUpperCase()).join(' · ');
   return (
     <div className="min-w-0">
@@ -110,7 +136,20 @@ function CameraContext({ camera, locale, t }) {
   );
 }
 
-export function FleetTable({ cameras, state, onSort, locale, t, selectable = false, selectedIds, onToggleCamera, onTogglePage, onEditCamera }) {
+export interface FleetTableProps {
+  cameras: FleetCamera[];
+  state: FleetState;
+  onSort: (field: string) => void;
+  locale: string;
+  t: Translate;
+  selectable?: boolean;
+  selectedIds: Set<string>;
+  onToggleCamera: (camera: FleetCamera, checked: boolean) => void;
+  onTogglePage: (cameras: FleetCamera[], checked: boolean) => void;
+  onEditCamera?: ((name: string) => unknown) | undefined;
+}
+
+export function FleetTable({ cameras, state, onSort, locale, t, selectable = false, selectedIds, onToggleCamera, onTogglePage, onEditCamera }: FleetTableProps) {
   const selectedOnPage = selectable ? cameras.filter((camera) => selectedIds.has(camera.camera_uuid)).length : 0;
   const allOnPageSelected = cameras.length > 0 && selectedOnPage === cameras.length;
   return (

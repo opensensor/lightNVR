@@ -1,18 +1,23 @@
-// @ts-nocheck
 import { useMemo } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.ts';
+import type {
+  CameraCollection,
+  CameraCollectionsResponse,
+  FleetQueryResponse,
+  JsonFetcher,
+} from '../../../types/fleet.ts';
 
 const COLLECTION_PAGE_SIZE = 200;
 
-export async function fetchCollectionCameraUuids(collectionUuid, request = fetchJSON, signal) {
+export async function fetchCollectionCameraUuids(collectionUuid: string | null | undefined, request: JsonFetcher = fetchJSON, signal?: AbortSignal): Promise<string[]> {
   if (!collectionUuid) return [];
 
-  const cameraUuids = [];
+  const cameraUuids: string[] = [];
   let page = 1;
-  let totalPages;
+  let totalPages: number;
 
   do {
-    const response = await request('/api/fleet/cameras/query', {
+    const response = await request<FleetQueryResponse>('/api/fleet/cameras/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -39,11 +44,18 @@ export async function fetchCollectionCameraUuids(collectionUuid, request = fetch
   return [...new Set(cameraUuids)];
 }
 
-export function useCollectionMembership(collectionUuid) {
-  const collectionsQuery = useQuery(['camera-collections'], '/api/camera-collections', {}, {
+export interface CollectionMembership {
+  collections: CameraCollection[];
+  cameraUuids: Set<string>;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+export function useCollectionMembership(collectionUuid: string | null | undefined): CollectionMembership {
+  const collectionsQuery = useQuery<CameraCollectionsResponse>(['camera-collections'], '/api/camera-collections', {}, {
     staleTime: 30000,
   });
-  const membershipQuery = useQuery({
+  const membershipQuery = useQuery<string[]>({
     queryKey: ['camera-collection-membership', collectionUuid],
     queryFn: ({ signal }) => fetchCollectionCameraUuids(collectionUuid, fetchJSON, signal),
     enabled: Boolean(collectionUuid),

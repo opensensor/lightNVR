@@ -1,15 +1,34 @@
-// @ts-nocheck
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { CollectionSelectorBuilder } from './CollectionSelectorBuilder.tsx';
 import { StaticCollectionMembers } from './StaticCollectionMembers.tsx';
+import type {
+  CameraCollection,
+  CameraCollectionMembersResponse,
+  CameraCollectionPayload,
+  CameraCollectionPreview,
+  CollectionEditorSpec,
+  FleetLocation,
+  FleetSelector,
+  FleetTag,
+  Translate,
+} from '../../../types/fleet.ts';
 
 const fieldClasses = 'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
-const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
+const ALL_SELECTOR: FleetSelector = { version: 1, expression: { op: 'all' } };
 
-function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
+interface CollectionEditorProps {
+  spec: CollectionEditorSpec;
+  locations: FleetLocation[];
+  tags: FleetTag[];
+  onSaved: () => unknown;
+  onCancel: () => void;
+  t: Translate;
+}
+
+function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }: CollectionEditorProps) {
   const collection = spec.collection;
   const [form, setForm] = useState(() => ({
     name: collection?.name || '',
@@ -18,27 +37,27 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
     shared: collection?.shared ?? true,
   }));
   const [members, setMembers] = useState(spec.members || []);
-  const [selector, setSelector] = useState(collection?.selector || ALL_SELECTOR);
+  const [selector, setSelector] = useState<FleetSelector | null>(collection?.selector || ALL_SELECTOR);
   const [selectorError, setSelectorError] = useState('');
   const [saving, setSaving] = useState(false);
-  const handleSelectorChange = useCallback((value, error) => {
+  const handleSelectorChange = useCallback((value: FleetSelector | null, error: string) => {
     setSelector(value);
     setSelectorError(error);
   }, []);
 
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     if (form.type === 'smart' && (!selector || selectorError)) return;
     setSaving(true);
     try {
-      const payload = {
+      const payload: CameraCollectionPayload = {
         name: form.name.trim(),
         description: form.description.trim(),
         type: form.type,
         shared: form.shared,
       };
       if (form.type === 'smart') payload.selector = selector;
-      const saved = await fetchJSON(collection ? `/api/camera-collections/${collection.uuid}` : '/api/camera-collections', {
+      const saved = await fetchJSON<CameraCollection>(collection ? `/api/camera-collections/${collection.uuid}` : '/api/camera-collections', {
         method: collection ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -57,7 +76,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
       showStatusMessage(t(collection ? 'collections.updated' : 'collections.created'), 'success');
       await onSaved();
     } catch (error) {
-      showStatusMessage(t('collections.saveError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('collections.saveError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setSaving(false);
     }
@@ -83,7 +102,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
         </label>
         <label className="text-sm font-medium sm:col-span-2">
           {t('collections.description')}
-          <textarea className={`${fieldClasses} mt-1`} rows="2" maxLength={511} value={form.description} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
+          <textarea className={`${fieldClasses} mt-1`} rows={2} maxLength={511} value={form.description} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
         </label>
         <label className="touch-target flex cursor-pointer items-start gap-2 text-sm sm:col-span-2">
           <input type="checkbox" className="mt-1 h-4 w-4" checked={form.shared} onChange={(event) => setForm({ ...form, shared: event.currentTarget.checked })} />
@@ -99,13 +118,13 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
 
       <div className="flex justify-end gap-2 border-t border-border pt-4">
         <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>{t('common.cancel')}</button>
-        <button type="submit" className="btn-primary" disabled={saving || !form.name.trim() || (form.type === 'smart' && (!selector || selectorError))}>{saving ? t('common.saving') : t('common.saveChanges')}</button>
+        <button type="submit" className="btn-primary" disabled={(saving || !form.name.trim() || (form.type === 'smart' && (!selector || selectorError))) as boolean}>{saving ? t('common.saving') : t('common.saveChanges')}</button>
       </div>
     </form>
   );
 }
 
-function CollectionPreview({ data, t }) {
+function CollectionPreview({ data, t }: { data: CameraCollectionPreview; t: Translate }) {
   return (
     <div className="mt-3 rounded-md border border-border bg-muted/20 p-3">
       <div className="mb-2 text-sm font-semibold">{t('collections.preview.matches', { count: data.matched_count })}</div>
@@ -118,7 +137,20 @@ function CollectionPreview({ data, t }) {
   );
 }
 
-function CollectionList({ collections, loading, isAdmin, previews, previewingUuid, onPreview, onEdit, onDelete, onCreate, t }) {
+interface CollectionListProps {
+  collections: CameraCollection[];
+  loading: boolean;
+  isAdmin: boolean;
+  previews: Partial<Record<string, CameraCollectionPreview>>;
+  previewingUuid: string;
+  onPreview: (collection: CameraCollection) => void;
+  onEdit: (collection: CameraCollection) => void;
+  onDelete: (collection: CameraCollection) => void;
+  onCreate: () => void;
+  t: Translate;
+}
+
+function CollectionList({ collections, loading, isAdmin, previews, previewingUuid, onPreview, onEdit, onDelete, onCreate, t }: CollectionListProps) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -145,7 +177,7 @@ function CollectionList({ collections, loading, isAdmin, previews, previewingUui
                 {isAdmin && <button type="button" className="btn-danger" onClick={() => onDelete(collection)}>{t('common.delete')}</button>}
               </div>
             </div>
-            {previews[collection.uuid] && <CollectionPreview data={previews[collection.uuid]} t={t} />}
+            {previews[collection.uuid] && <CollectionPreview data={previews[collection.uuid]!} t={t} />}
           </article>
         ))}
         {!loading && collections.length === 0 && <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center"><h3 className="font-semibold">{t('collections.emptyTitle')}</h3><p className="mt-1 text-sm text-muted-foreground">{t(isAdmin ? 'collections.emptyAdmin' : 'collections.emptyViewer')}</p></div>}
@@ -155,60 +187,71 @@ function CollectionList({ collections, loading, isAdmin, previews, previewingUui
   );
 }
 
-export function CollectionManager({ collections, loading, isAdmin, locations, tags, onRefresh, onClose, t }) {
-  const [editorSpec, setEditorSpec] = useState(null);
+export interface CollectionManagerProps {
+  collections: CameraCollection[];
+  loading: boolean;
+  isAdmin: boolean;
+  locations: FleetLocation[];
+  tags: FleetTag[];
+  onRefresh: () => unknown;
+  onClose: () => void;
+  t: Translate;
+}
+
+export function CollectionManager({ collections, loading, isAdmin, locations, tags, onRefresh, onClose, t }: CollectionManagerProps) {
+  const [editorSpec, setEditorSpec] = useState<CollectionEditorSpec | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
-  const [previews, setPreviews] = useState({});
+  const [previews, setPreviews] = useState<Partial<Record<string, CameraCollectionPreview>>>({});
   const [previewingUuid, setPreviewingUuid] = useState('');
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<CameraCollection | null>(null);
 
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape' && !editorLoading) onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !editorLoading) onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, editorLoading]);
 
-  const previewCollection = async (collection) => {
+  const previewCollection = async (collection: CameraCollection) => {
     if (previews[collection.uuid]) {
       setPreviews((current) => { const next = { ...current }; delete next[collection.uuid]; return next; });
       return;
     }
     setPreviewingUuid(collection.uuid);
     try {
-      const result = await fetchJSON(`/api/camera-collections/${collection.uuid}/preview`, {
+      const result = await fetchJSON<CameraCollectionPreview>(`/api/camera-collections/${collection.uuid}/preview`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', timeout: 20000, retries: 1,
       });
       setPreviews((current) => ({ ...current, [collection.uuid]: result }));
     } catch (error) {
-      showStatusMessage(t('collections.preview.error', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('collections.preview.error', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setPreviewingUuid('');
     }
   };
 
-  const editCollection = async (collection) => {
+  const editCollection = async (collection: CameraCollection) => {
     setEditorLoading(true);
     try {
-      let members = [];
+      let members: string[] = [];
       if (collection.type === 'static') {
-        const response = await fetchJSON(`/api/camera-collections/${collection.uuid}/members`, { timeout: 20000, retries: 1 });
+        const response = await fetchJSON<CameraCollectionMembersResponse>(`/api/camera-collections/${collection.uuid}/members`, { timeout: 20000, retries: 1 });
         members = response.camera_uuids || [];
       }
       setEditorSpec({ collection, members });
     } catch (error) {
-      showStatusMessage(t('collections.loadError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('collections.loadError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setEditorLoading(false);
     }
   };
 
-  const deleteCollection = async (collection) => {
+  const deleteCollection = async (collection: CameraCollection) => {
     try {
       await fetchJSON(`/api/camera-collections/${collection.uuid}`, { method: 'DELETE', timeout: 15000, retries: 1 });
       showStatusMessage(t('collections.deleted'), 'success');
       await onRefresh();
     } catch (error) {
-      showStatusMessage(t('collections.deleteError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('collections.deleteError', { message: (error as Error).message }), 'error', 8000);
     }
   };
 
@@ -228,7 +271,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
       <ConfirmDialog
         isOpen={Boolean(deleteCandidate)}
         onClose={() => setDeleteCandidate(null)}
-        onConfirm={() => deleteCollection(deleteCandidate)}
+        onConfirm={() => deleteCollection(deleteCandidate!)}
         title={t('collections.title')}
         message={deleteCandidate ? t('collections.deleteConfirm', { name: deleteCandidate.name }) : ''}
         confirmLabel={t('common.delete')}

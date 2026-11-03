@@ -1,24 +1,32 @@
-// @ts-nocheck
 import { useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog } from '../common/ModalDialog.tsx';
 import { buildFleetSavedViewPayload } from './fleetQuery.ts';
+import type { FleetSavedView, FleetSavedViewsResponse, FleetState, Translate } from '../../../types/fleet.ts';
 
-export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
+export interface SavedViewsBarProps {
+  data: FleetSavedViewsResponse | undefined;
+  state: FleetState;
+  onApply: (view: FleetSavedView) => boolean;
+  onRefresh: () => unknown;
+  t: Translate;
+}
+
+export function SavedViewsBar({ data, state, onApply, onRefresh, t }: SavedViewsBarProps) {
   const views = data?.views || [];
   const [selectedUuid, setSelectedUuid] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [shared, setShared] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<FleetSavedView | null>(null);
   const selected = useMemo(
     () => views.find((view) => view.uuid === selectedUuid) || null,
     [selectedUuid, views]
   );
 
-  const selectView = (uuid) => {
+  const selectView = (uuid: string) => {
     setSelectedUuid(uuid);
     const view = views.find((candidate) => candidate.uuid === uuid);
     if (view && !onApply(view)) {
@@ -26,12 +34,12 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
     }
   };
 
-  const save = async (event) => {
+  const save = async (event: Event) => {
     event.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const created = await fetchJSON('/api/fleet/views', {
+      const created = await fetchJSON<FleetSavedView>('/api/fleet/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildFleetSavedViewPayload(name, shared, state)),
@@ -43,13 +51,13 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
       await onRefresh();
       showStatusMessage(t('fleet.views.saved'), 'success');
     } catch (error) {
-      showStatusMessage(t('fleet.views.saveError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.views.saveError', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setSaving(false);
     }
   };
 
-  const remove = async (view) => {
+  const remove = async (view: FleetSavedView | null) => {
     if (!view?.owned) return;
     try {
       await fetchJSON(`/api/fleet/views/${encodeURIComponent(view.uuid)}`, {
@@ -61,7 +69,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
       await onRefresh();
       showStatusMessage(t('fleet.views.deleted'), 'success');
     } catch (error) {
-      showStatusMessage(t('fleet.views.deleteError', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.views.deleteError', { message: (error as Error).message }), 'error', 8000);
     }
   };
 
@@ -100,7 +108,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
             <input
               className="w-full rounded-md border border-input bg-background px-3 py-2"
               value={name}
-              maxLength="127"
+              maxLength={127}
               required
               onInput={(event) => setName(event.currentTarget.value)}
             />

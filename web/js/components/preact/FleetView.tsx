@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
@@ -23,8 +22,23 @@ import {
   readFleetUrlState,
   writeFleetUrlState,
 } from './fleet/fleetQuery.ts';
+import type { ComponentChildren } from 'preact';
+import type {
+  BulkOrganizationResult,
+  CameraCollectionsResponse,
+  FleetCamera,
+  FleetLocationsResponse,
+  FleetOperationalQueue,
+  FleetQueryResponse,
+  FleetSavedView,
+  FleetSavedViewsResponse,
+  FleetState,
+  FleetStateChange,
+  FleetTagsResponse,
+  Translate,
+} from '../../types/fleet.ts';
 
-function useDebouncedValue(value, delay) {
+function useDebouncedValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedValue(value), delay);
@@ -33,7 +47,13 @@ function useDebouncedValue(value, delay) {
   return debouncedValue;
 }
 
-function StatCard({ label, value, tone = 'default' }) {
+interface StatCardProps {
+  label: ComponentChildren;
+  value: ComponentChildren;
+  tone?: 'default' | 'success' | 'warning' | 'danger';
+}
+
+function StatCard({ label, value, tone = 'default' }: StatCardProps) {
   const tones = {
     default: 'border-border',
     success: 'border-[hsl(var(--success)/0.55)]',
@@ -48,7 +68,14 @@ function StatCard({ label, value, tone = 'default' }) {
   );
 }
 
-function OperationalQueueCard({ queue, locale, onOpen, t }) {
+interface OperationalQueueCardProps {
+  queue: FleetOperationalQueue | undefined;
+  locale: string;
+  onOpen: (queue: FleetOperationalQueue) => void;
+  t: Translate;
+}
+
+function OperationalQueueCard({ queue, locale, onOpen, t }: OperationalQueueCardProps) {
   if (!queue) return null;
   const danger = queue?.severity === 'critical';
   const oldest = queue?.oldest_unresolved_at
@@ -69,7 +96,13 @@ function OperationalQueueCard({ queue, locale, onOpen, t }) {
   );
 }
 
-function EmptyFleet({ filtered, onClear, t }) {
+interface EmptyFleetProps {
+  filtered: boolean;
+  onClear: () => void;
+  t: Translate;
+}
+
+function EmptyFleet({ filtered, onClear, t }: EmptyFleetProps) {
   return (
     <div className="flex flex-col items-center px-6 py-16 text-center">
       <svg className="mb-4 h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -84,7 +117,15 @@ function EmptyFleet({ filtered, onClear, t }) {
   );
 }
 
-function Pagination({ state, total, totalPages, onChange, t }) {
+interface PaginationProps {
+  state: FleetState;
+  total: number;
+  totalPages: number;
+  onChange: FleetStateChange;
+  t: Translate;
+}
+
+function Pagination({ state, total, totalPages, onChange, t }: PaginationProps) {
   const first = total === 0 ? 0 : ((state.page - 1) * state.pageSize) + 1;
   const last = Math.min(state.page * state.pageSize, total);
   return (
@@ -116,11 +157,15 @@ function Pagination({ state, total, totalPages, onChange, t }) {
   );
 }
 
-export function FleetView({ onEditCamera }) {
+export interface FleetViewProps {
+  onEditCamera?: (name: string) => unknown;
+}
+
+export function FleetView({ onEditCamera }: FleetViewProps) {
   const { t, locale } = useI18n();
   const [state, setState] = useState(() => readFleetUrlState(typeof window === 'undefined' ? '' : window.location.search));
   const [isAdmin, setIsAdmin] = useState(false);
-  const [selectedCameras, setSelectedCameras] = useState(() => new Map());
+  const [selectedCameras, setSelectedCameras] = useState<Map<string, FleetCamera>>(() => new Map());
   const [showOrganizationManager, setShowOrganizationManager] = useState(false);
   const [showBulkOrganizer, setShowBulkOrganizer] = useState(false);
   const [showCollectionManager, setShowCollectionManager] = useState(false);
@@ -130,9 +175,9 @@ export function FleetView({ onEditCamera }) {
     [state.locationUuid, state.collectionUuid, state.tagUuids, state.health, state.enabled, state.availability, state.recordingModes, state.page, state.pageSize, state.sortBy, state.sortOrder, debouncedSearch]
   );
 
-  const { data, error, isLoading, isFetching, refetch } = useQuery({
+  const { data, error, isLoading, isFetching, refetch } = useQuery<FleetQueryResponse>({
     queryKey: ['fleet-cameras', requestBody],
-    queryFn: ({ signal }) => fetchJSON('/api/fleet/cameras/query', {
+    queryFn: ({ signal }) => fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
@@ -149,7 +194,7 @@ export function FleetView({ onEditCamera }) {
     data: locationData,
     isLoading: locationsLoading,
     refetch: refetchLocations,
-  } = useQuery(['fleet-locations'], '/api/locations', {}, {
+  } = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, {
     enabled: isAdmin,
     staleTime: 60000,
   });
@@ -157,7 +202,7 @@ export function FleetView({ onEditCamera }) {
     data: tagData,
     isLoading: tagsLoading,
     refetch: refetchTags,
-  } = useQuery(['fleet-tags'], '/api/camera-tags', {}, {
+  } = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, {
     enabled: isAdmin,
     staleTime: 60000,
   });
@@ -165,17 +210,17 @@ export function FleetView({ onEditCamera }) {
     data: collectionData,
     isLoading: collectionsLoading,
     refetch: refetchCollections,
-  } = useQuery(['camera-collections'], '/api/camera-collections', {}, {
+  } = useQuery<CameraCollectionsResponse>(['camera-collections'], '/api/camera-collections', {}, {
     staleTime: 30000,
   });
   const {
     data: savedViewsData,
     refetch: refetchSavedViews,
-  } = useQuery(['fleet-saved-views'], '/api/fleet/views', {}, {
+  } = useQuery<FleetSavedViewsResponse>(['fleet-saved-views'], '/api/fleet/views', {}, {
     staleTime: 30000,
   });
 
-  const updateState = useCallback((changes, resetPage = true) => {
+  const updateState = useCallback<FleetStateChange>((changes, resetPage = true) => {
     setState((current) => ({ ...current, ...changes, page: resetPage ? 1 : (changes.page ?? current.page) }));
   }, []);
 
@@ -188,7 +233,7 @@ export function FleetView({ onEditCamera }) {
     }));
   }, []);
 
-  const handleSort = useCallback((field) => {
+  const handleSort = useCallback((field: string) => {
     setState((current) => ({
       ...current,
       sortBy: field,
@@ -197,19 +242,19 @@ export function FleetView({ onEditCamera }) {
     }));
   }, []);
 
-  const applySavedView = useCallback((view) => {
+  const applySavedView = useCallback((view: FleetSavedView) => {
     const next = fleetStateFromSavedView(view, state);
     if (!next) return false;
     setState(next);
     return true;
   }, [state]);
 
-  const openQueue = useCallback((queue) => {
+  const openQueue = useCallback((queue: FleetOperationalQueue) => {
     const next = fleetStateFromOperationalQueue(queue, state);
     if (next) setState(next);
   }, [state]);
 
-  const toggleCamera = useCallback((camera, checked) => {
+  const toggleCamera = useCallback((camera: FleetCamera, checked: boolean) => {
     setSelectedCameras((current) => {
       const next = new Map(current);
       if (checked) next.set(camera.camera_uuid, camera);
@@ -218,7 +263,7 @@ export function FleetView({ onEditCamera }) {
     });
   }, []);
 
-  const togglePage = useCallback((pageCameras, checked) => {
+  const togglePage = useCallback((pageCameras: FleetCamera[], checked: boolean) => {
     setSelectedCameras((current) => {
       const next = new Map(current);
       pageCameras.forEach((camera) => {
@@ -233,7 +278,7 @@ export function FleetView({ onEditCamera }) {
     await Promise.all([refetchLocations(), refetchTags(), refetchCollections(), refetch()]);
   }, [refetch, refetchCollections, refetchLocations, refetchTags]);
 
-  const handleBulkComplete = useCallback(async (result) => {
+  const handleBulkComplete = useCallback(async (result: BulkOrganizationResult<FleetCamera>) => {
     await refreshOrganization();
     const failedByUuid = new Map(result.failed.map(({ camera }) => [camera.camera_uuid, camera]));
     setSelectedCameras(failedByUuid);
@@ -267,7 +312,7 @@ export function FleetView({ onEditCamera }) {
   const filterCount = countFleetFilters(state);
   const hasFilter = filterCount > 0 || Boolean(state.search.trim());
   const total = data?.total || 0;
-  const queues = data?.queues || [
+  const queues: FleetOperationalQueue[] = data?.queues || [
     { key: 'degraded', severity: 'warning', count: facetCount(facets, 'health', 'degraded'), oldest_unresolved_at: null, selector: { version: 1, health: ['degraded'] } },
     { key: 'offline', severity: 'critical', count: facetCount(facets, 'health', 'down'), oldest_unresolved_at: null, selector: { version: 1, health: ['down'] } },
   ];
@@ -379,7 +424,7 @@ export function FleetView({ onEditCamera }) {
                 onTogglePage={togglePage}
                 onEditCamera={onEditCamera}
               />
-              <Pagination state={state} total={total} totalPages={data.total_pages || 0} onChange={updateState} t={t} />
+              <Pagination state={state} total={total} totalPages={data!.total_pages || 0} onChange={updateState} t={t} />
             </>
           )}
         </section>

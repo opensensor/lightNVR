@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { buildLocationRows } from './fleetOrganization.ts';
@@ -12,17 +11,37 @@ import {
   updateCollectionRuleType,
   validateCollectionSelectorJson,
 } from './collectionSelector.ts';
+import type {
+  CollectionRule,
+  CollectionSelectorChange,
+  FleetCamera,
+  FleetQueryResponse,
+  FleetSelectorInput,
+  FleetSelectorSeed,
+  LocationLike,
+  LocationRow,
+  TagLike,
+  Translate,
+} from '../../../types/fleet.ts';
 
 const fieldClasses = 'rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const HEALTH_OPTIONS = ['unknown', 'up', 'degraded', 'down', 'disabled'];
 const RECORDING_OPTIONS = ['off', 'continuous', 'detection'];
 const CAPABILITY_OPTIONS = ['onvif', 'ptz', 'backchannel'];
 
-function toggleValue(values, value) {
+function toggleValue(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
-function ValueChecks({ values, options, onChange, getLabel, idPrefix }) {
+interface ValueChecksProps {
+  values: string[];
+  options: (string | { value: string; label: string })[];
+  onChange: (values: string[]) => void;
+  getLabel: (value: string) => string;
+  idPrefix: string;
+}
+
+function ValueChecks({ values, options, onChange, getLabel, idPrefix }: ValueChecksProps) {
   return (
     <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto rounded-md border border-border bg-background p-2">
       {options.map((option) => {
@@ -40,17 +59,25 @@ function ValueChecks({ values, options, onChange, getLabel, idPrefix }) {
   );
 }
 
-export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeaders = {} }) {
+export interface CameraValuePickerProps {
+  values: string[];
+  onChange: (values: string[]) => void;
+  idPrefix: string;
+  t: Translate;
+  requestHeaders?: Record<string, string> | undefined;
+}
+
+export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeaders = {} }: CameraValuePickerProps) {
   const [search, setSearch] = useState('');
-  const [results, setResults] = useState([]);
-  const [labels, setLabels] = useState({});
+  const [results, setResults] = useState<FleetCamera[]>([]);
+  const [labels, setLabels] = useState<Partial<Record<string, string>>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (values.length === 0) return undefined;
     let active = true;
-    fetchJSON('/api/fleet/cameras/query', {
+    fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...requestHeaders },
       body: JSON.stringify({
@@ -86,7 +113,7 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
       setLoading(true);
       setError('');
       try {
-        const response = await fetchJSON('/api/fleet/cameras/query', {
+        const response = await fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...requestHeaders },
           body: JSON.stringify({
@@ -110,7 +137,7 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
       } catch (requestError) {
         if (active) {
           setResults([]);
-          setError(requestError.message);
+          setError((requestError as Error).message);
         }
       } finally {
         if (active) setLoading(false);
@@ -122,7 +149,7 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
     };
   }, [search]);
 
-  const addCamera = (camera) => {
+  const addCamera = (camera: FleetCamera) => {
     if (values.includes(camera.camera_uuid) || values.length >= 64) return;
     setLabels((current) => ({ ...current, [camera.camera_uuid]: camera.name }));
     onChange([...values, camera.camera_uuid]);
@@ -181,7 +208,18 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
   );
 }
 
-function RuleValueEditor({ rule, index, locations, tags, onChange, t, builderId, requestHeaders }) {
+interface RuleValueEditorProps {
+  rule: CollectionRule;
+  index: number;
+  locations: LocationRow<LocationLike>[];
+  tags: TagLike[];
+  onChange: (rule: CollectionRule) => void;
+  t: Translate;
+  builderId: string;
+  requestHeaders: Record<string, string>;
+}
+
+function RuleValueEditor({ rule, index, locations, tags, onChange, t, builderId, requestHeaders }: RuleValueEditorProps) {
   const idPrefix = `${builderId}-rule-${index}`;
   if (rule.type === 'location_subtree') {
     return (
@@ -228,7 +266,7 @@ function RuleValueEditor({ rule, index, locations, tags, onChange, t, builderId,
   );
 }
 
-function SelectorPreview({ preview, t }) {
+function SelectorPreview({ preview, t }: { preview: FleetQueryResponse | null; t: Translate }) {
   if (!preview) return null;
   return (
     <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
@@ -250,16 +288,27 @@ function SelectorPreview({ preview, t }) {
   );
 }
 
-export function CollectionSelectorBuilder({ initialSelector, locations, tags, onChange, t, allowCameraSelection = false, idPrefix = 'collection-selector', requestHeaders = {} }) {
+export interface CollectionSelectorBuilderProps {
+  initialSelector?: FleetSelectorSeed | null;
+  locations: LocationLike[];
+  tags: TagLike[];
+  onChange: CollectionSelectorChange;
+  t: Translate;
+  allowCameraSelection?: boolean;
+  idPrefix?: string;
+  requestHeaders?: Record<string, string>;
+}
+
+export function CollectionSelectorBuilder({ initialSelector, locations, tags, onChange, t, allowCameraSelection = false, idPrefix = 'collection-selector', requestHeaders = {} }: CollectionSelectorBuilderProps) {
   const initial = initialSelector || { version: 1, expression: { op: 'all' } };
-  const parsedInitial = parseCollectionSelector(initial);
+  const parsedInitial = parseCollectionSelector(initial as FleetSelectorInput);
   const initialVisualSupported = parsedInitial.supported &&
     (allowCameraSelection || !parsedInitial.rules.some((rule) => rule.type === CAMERA_SELECTOR_RULE_TYPE));
   const [match, setMatch] = useState(parsedInitial.match);
   const [rules, setRules] = useState(parsedInitial.rules);
   const [advanced, setAdvanced] = useState(!initialVisualSupported);
   const [advancedJson, setAdvancedJson] = useState(() => JSON.stringify(initial, null, 2));
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState<FleetQueryResponse | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const locationRows = useMemo(() => buildLocationRows(locations), [locations]);
@@ -279,7 +328,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
     onChange(currentSelector, validationError);
   }, [currentSelector, validationError, onChange]);
 
-  const updateRule = (index, nextRule) => setRules((current) => current.map((rule, ruleIndex) => ruleIndex === index ? nextRule : rule));
+  const updateRule = (index: number, nextRule: CollectionRule) => setRules((current) => current.map((rule, ruleIndex) => ruleIndex === index ? nextRule : rule));
   const switchMode = () => {
     if (advanced) {
       const parsed = advancedValidation.selector && parseCollectionSelector(advancedValidation.selector);
@@ -304,7 +353,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
     setPreviewing(true);
     setPreviewError('');
     try {
-      const result = await fetchJSON('/api/fleet/selectors/preview', {
+      const result = await fetchJSON<FleetQueryResponse>('/api/fleet/selectors/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({ selector: currentSelector, page: 1, page_size: 20, facets: false, explain: true }),
@@ -313,7 +362,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
       });
       setPreview(result);
     } catch (error) {
-      setPreviewError(error.message);
+      setPreviewError((error as Error).message);
       setPreview(null);
     } finally {
       setPreviewing(false);
@@ -332,7 +381,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
 
       {advanced ? (
         <div>
-          <textarea className="min-h-56 w-full rounded-md border border-input bg-background p-3 font-mono text-xs" value={advancedJson} onInput={(event) => { setAdvancedJson(event.currentTarget.value); setPreview(null); }} spellCheck="false"></textarea>
+          <textarea className="min-h-56 w-full rounded-md border border-input bg-background p-3 font-mono text-xs" value={advancedJson} onInput={(event) => { setAdvancedJson(event.currentTarget.value); setPreview(null); }} spellcheck={false}></textarea>
           {advancedValidation.error && <p className="mt-1 text-xs text-[hsl(var(--danger))]">{advancedValidation.error}</p>}
         </div>
       ) : (

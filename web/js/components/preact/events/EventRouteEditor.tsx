@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.tsx';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -12,10 +11,25 @@ import {
   shortEventType,
   validateRouteDraft,
 } from './eventRouting.ts';
+import type { ComponentChildren } from 'preact';
+import type {
+  EventCatalogEntry,
+  EventDestinationOption,
+  EventRoute,
+  EventRouteDraft,
+  EventRoutePayload,
+  EventRoutePreview,
+  EventScheduleWindow,
+  FleetSelector,
+  HealthCondition,
+  LocationLike,
+  TagLike,
+  Translate,
+} from '../../../types/fleet.ts';
 
 const DETECTION_TYPE = 'io.lightnvr.detection.object.v1';
 const fieldClasses = 'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
-const DAYS = [
+const DAYS: [string, number][] = [
   ['events.schedule.sunday', 0],
   ['events.schedule.monday', 1],
   ['events.schedule.tuesday', 2],
@@ -25,7 +39,13 @@ const DAYS = [
   ['events.schedule.saturday', 6],
 ];
 
-function Field({ label, help, children }) {
+interface FieldProps {
+  label: ComponentChildren;
+  help?: ComponentChildren;
+  children: ComponentChildren;
+}
+
+function Field({ label, help, children }: FieldProps) {
   return (
     <label className="block text-sm font-medium">
       {label}
@@ -35,8 +55,16 @@ function Field({ label, help, children }) {
   );
 }
 
-function ScheduleWindow({ window, index, onChange, onRemove, t }) {
-  const toggleDay = (day) => {
+interface ScheduleWindowProps {
+  window: EventScheduleWindow;
+  index: number;
+  onChange: (window: EventScheduleWindow) => void;
+  onRemove: () => void;
+  t: Translate;
+}
+
+function ScheduleWindow({ window, index, onChange, onRemove, t }: ScheduleWindowProps) {
+  const toggleDay = (day: number) => {
     const days = window.days.includes(day)
       ? window.days.filter((value) => value !== day)
       : [...window.days, day];
@@ -67,7 +95,7 @@ function ScheduleWindow({ window, index, onChange, onRemove, t }) {
   );
 }
 
-function PreviewResult({ preview, t }) {
+function PreviewResult({ preview, t }: { preview: EventRoutePreview | null; t: Translate }) {
   if (!preview) return null;
   const hasSystemEvents = (preview.event_types || []).some(
     (eventType) => eventType.subject_kind === 'system');
@@ -79,7 +107,7 @@ function PreviewResult({ preview, t }) {
       </div>
       {(preview.camera_sample || []).length > 0 && (
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {preview.camera_sample.map((camera) => (
+          {preview.camera_sample!.map((camera) => (
             <div key={camera.camera_uuid} className="rounded border border-border bg-card px-3 py-2 text-sm">
               <div className="font-medium">{camera.name}</div>
               <div className="truncate text-xs text-muted-foreground">{camera.location_path || camera.camera_uuid}</div>
@@ -97,10 +125,24 @@ function PreviewResult({ preview, t }) {
   );
 }
 
-export function EventRouteEditor({ route, catalog, healthConditions, healthRegistryUnavailable, destinations, locations, tags, onPreview, onSave, onClose, t }) {
+export interface EventRouteEditorProps {
+  route: Partial<EventRoute> | null;
+  catalog: EventCatalogEntry[];
+  healthConditions: HealthCondition[];
+  healthRegistryUnavailable: boolean;
+  destinations: EventDestinationOption[];
+  locations: LocationLike[];
+  tags: TagLike[];
+  onPreview: (payload: EventRoutePayload) => Promise<EventRoutePreview>;
+  onSave: (payload: EventRoutePayload) => unknown;
+  onClose: () => void;
+  t: Translate;
+}
+
+export function EventRouteEditor({ route, catalog, healthConditions, healthRegistryUnavailable, destinations, locations, tags, onPreview, onSave, onClose, t }: EventRouteEditorProps) {
   const creating = !route;
-  const [draft, setDraft] = useState(() => route ? routeToDraft(route) : { ...EMPTY_ROUTE_DRAFT, eventTypes: [], windows: [] });
-  const [preview, setPreview] = useState(null);
+  const [draft, setDraft] = useState<EventRouteDraft>(() => route ? routeToDraft(route) : { ...EMPTY_ROUTE_DRAFT, eventTypes: [], windows: [] });
+  const [preview, setPreview] = useState<EventRoutePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const healthSeverities = useMemo(
@@ -114,29 +156,29 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
   }), [catalog, draft, healthConditions, healthSeverities]);
   const detectionSelected = draft.eventTypes.includes(DETECTION_TYPE);
   const selectedDefinitions = draft.eventTypes.map(
-    (type) => catalog.find((eventType) => eventType.type === type)).filter(Boolean);
+    (type) => catalog.find((eventType) => eventType.type === type)).filter(Boolean) as EventCatalogEntry[];
   const healthSelected = selectedDefinitions.some(
     (eventType) => eventType.family === HEALTH_EVENT_FAMILY);
   const cameraOnly = selectedDefinitions.length === draft.eventTypes.length &&
     selectedDefinitions.every((eventType) => eventType.subject_kind === 'camera');
 
   useEffect(() => {
-    const handleKey = (event) => {
+    const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !saving && !previewing) onClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, previewing, saving]);
 
-  const update = (changes) => {
+  const update = (changes: Partial<EventRouteDraft>) => {
     setDraft((current) => ({ ...current, ...changes }));
     setPreview(null);
   };
-  const handleSelectorChange = useCallback((selector, selectorError) => {
+  const handleSelectorChange = useCallback((selector: FleetSelector | null, selectorError: string) => {
     setDraft((current) => ({ ...current, selector, selectorError }));
     setPreview(null);
   }, []);
-  const toggleEventType = (type) => {
+  const toggleEventType = (type: string) => {
     const eventTypes = draft.eventTypes.includes(type)
       ? draft.eventTypes.filter((value) => value !== type)
       : [...draft.eventTypes, type];
@@ -152,19 +194,19 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
         ? draft.healthFilterEnabled : false,
     });
   };
-  const toggleHealthCondition = (code) => update({
+  const toggleHealthCondition = (code: string) => update({
     healthConditionCodes: draft.healthConditionCodes.includes(code)
       ? draft.healthConditionCodes.filter((value) => value !== code)
       : [...draft.healthConditionCodes, code],
   });
-  const toggleHealthSeverity = (severity) => update({
+  const toggleHealthSeverity = (severity: string) => update({
     healthSeverities: draft.healthSeverities.includes(severity)
       ? draft.healthSeverities.filter((value) => value !== severity)
       : [...draft.healthSeverities, severity],
   });
-  const updateWindow = (index, nextWindow) => update({ windows: draft.windows.map((window, windowIndex) => windowIndex === index ? nextWindow : window) });
-  const removeWindow = (index) => update({ windows: draft.windows.filter((_, windowIndex) => windowIndex !== index) });
-  const setScheduled = (enabled) => update({
+  const updateWindow = (index: number, nextWindow: EventScheduleWindow) => update({ windows: draft.windows.map((window, windowIndex) => windowIndex === index ? nextWindow : window) });
+  const removeWindow = (index: number) => update({ windows: draft.windows.filter((_, windowIndex) => windowIndex !== index) });
+  const setScheduled = (enabled: boolean) => update({
     scheduleEnabled: enabled,
     windows: enabled && draft.windows.length === 0 ? [{ ...DEFAULT_SCHEDULE_WINDOW, days: [...DEFAULT_SCHEDULE_WINDOW.days] }] : draft.windows,
   });
@@ -183,7 +225,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
       setPreviewing(false);
     }
   };
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     if (validationCode) {
       showStatusMessage(t(`events.route.validation.${validationCode}`), 'error', 7000);
@@ -213,13 +255,13 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
         <div className="space-y-6 overflow-y-auto p-5">
           <section>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label={t('common.name')}><input className={fieldClasses} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
+              <Field label={t('common.name')}><input className={fieldClasses} value={draft.name} maxLength={127} autoFocus onInput={(event) => update({ name: event.currentTarget.value })} /></Field>
               <Field label={t('events.route.destination')} help={t('events.route.destinationHelp')}>
                 <select className={fieldClasses} value={draft.destination} onChange={(event) => update({ destination: event.currentTarget.value })}>
                   {destinations.map((destination) => <option key={destination.key} value={destination.key} disabled={destination.managed && destination.enabled === false}>{destination.name}{destination.enabled === false ? ` — ${t('common.disabled')}` : ''}</option>)}
                 </select>
               </Field>
-              <div className="md:col-span-2"><Field label={t('common.description')}><textarea className={`${fieldClasses} min-h-20`} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea></Field></div>
+              <div className="md:col-span-2"><Field label={t('common.description')}><textarea className={`${fieldClasses} min-h-20`} value={draft.description} maxLength={511} onInput={(event) => update({ description: event.currentTarget.value })}></textarea></Field></div>
             </div>
             <label className="touch-target mt-4 inline-flex cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/15 px-3 py-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} /><span><span className="font-medium">{t('events.route.enabled')}</span> <span className="text-muted-foreground">— {t('events.route.enabledHelp')}</span></span></label>
           </section>

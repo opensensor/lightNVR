@@ -1,32 +1,48 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { applyBulkOrganization, buildLocationRows } from './fleetOrganization.ts';
+import type {
+  BulkOrganizationFailure,
+  BulkOrganizationResult,
+  FleetCamera,
+  FleetLocation,
+  FleetTag,
+  Translate,
+} from '../../../types/fleet.ts';
 
-export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClose, t }) {
+export interface BulkOrganizeModalProps {
+  cameras: FleetCamera[];
+  locations: FleetLocation[];
+  tags: FleetTag[];
+  onComplete: (result: BulkOrganizationResult<FleetCamera>) => unknown;
+  onClose: () => void;
+  t: Translate;
+}
+
+export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClose, t }: BulkOrganizeModalProps) {
   const [locationUuid, setLocationUuid] = useState('');
   const [tagOperation, setTagOperation] = useState('none');
-  const [tagUuids, setTagUuids] = useState([]);
+  const [tagUuids, setTagUuids] = useState<string[]>([]);
   const [progress, setProgress] = useState({ completed: 0, total: cameras.length });
   const [working, setWorking] = useState(false);
-  const [failures, setFailures] = useState([]);
+  const [failures, setFailures] = useState<BulkOrganizationFailure<FleetCamera>[]>([]);
   const locationRows = useMemo(() => buildLocationRows(locations), [locations]);
   const sortedTags = useMemo(() => [...tags].sort((left, right) => left.label.localeCompare(right.label)), [tags]);
   const hasTagChange = tagOperation === 'replace' || (tagOperation !== 'none' && tagUuids.length > 0);
   const hasChanges = Boolean(locationUuid) || hasTagChange;
 
   useEffect(() => {
-    const handleKey = (event) => { if (event.key === 'Escape' && !working) onClose(); };
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !working) onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose, working]);
 
-  const toggleTag = (uuid) => {
+  const toggleTag = (uuid: string) => {
     setTagUuids((current) => current.includes(uuid) ? current.filter((item) => item !== uuid) : [...current, uuid]);
   };
 
-  const submit = async (event) => {
+  const submit = async (event: Event) => {
     event.preventDefault();
     if (!hasChanges) return;
     setWorking(true);
@@ -48,7 +64,7 @@ export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClos
         showStatusMessage(t('fleet.bulk.partial', { succeeded: result.succeeded.length, failed: result.failed.length }), 'warning', 8000);
       }
     } catch (error) {
-      showStatusMessage(t('fleet.bulk.error', { message: error.message }), 'error', 8000);
+      showStatusMessage(t('fleet.bulk.error', { message: (error as Error).message }), 'error', 8000);
     } finally {
       setWorking(false);
     }

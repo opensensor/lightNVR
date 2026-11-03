@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
@@ -13,27 +12,81 @@ import {
   shortEventType,
   writeEventSection,
 } from './events/eventRouting.ts';
+import type { ComponentChildren } from 'preact';
+import type {
+  EventCatalogEntry,
+  EventCatalogResponse,
+  EventDestination,
+  EventDestinationOption,
+  EventDestinationPayload,
+  EventDestinationsResponse,
+  EventRoute,
+  EventRoutePayload,
+  EventRoutePreview,
+  EventRoutesResponse,
+  FleetLocationsResponse,
+  FleetTagsResponse,
+  HealthPolicySettings,
+  RequestError,
+  Translate,
+} from '../../types/fleet.ts';
 
-function SummaryCard({ label, value, detail }) {
+type DeleteCandidate =
+  | { kind: 'route'; item: EventRoute }
+  | { kind: 'destination'; item: EventDestination };
+
+interface SummaryCardProps {
+  label: ComponentChildren;
+  value: ComponentChildren;
+  detail?: ComponentChildren;
+}
+
+function SummaryCard({ label, value, detail }: SummaryCardProps) {
   return <div className="rounded-lg border border-border bg-card p-4 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div><div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>{detail && <div className="mt-1 text-xs text-muted-foreground">{detail}</div>}</div>;
 }
 
-function EmptyState({ title, description, action, actionLabel }) {
+interface EmptyStateProps {
+  title: ComponentChildren;
+  description: ComponentChildren;
+  action?: () => void;
+  actionLabel?: ComponentChildren;
+}
+
+function EmptyState({ title, description, action, actionLabel }: EmptyStateProps) {
   return <div className="flex flex-col items-center px-6 py-14 text-center"><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-2xl" aria-hidden="true">↗</div><h3 className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-lg text-sm text-muted-foreground">{description}</p>{action && <button type="button" className="btn-primary mt-4" onClick={action}>{actionLabel}</button>}</div>;
 }
 
-function LoadingOrError({ loading, error, onRetry, children, t }) {
+interface LoadingOrErrorProps {
+  loading: boolean;
+  error: RequestError | null;
+  onRetry: () => unknown;
+  children: ComponentChildren;
+  t: Translate;
+}
+
+function LoadingOrError({ loading, error, onRetry, children, t }: LoadingOrErrorProps) {
   if (loading) return <div className="p-12 text-center text-sm text-muted-foreground">{t('common.loading')}</div>;
   if (error) return <div className="p-12 text-center"><h3 className="font-semibold text-[hsl(var(--danger))]">{t('events.loadError')}</h3><p className="mt-1 text-sm text-muted-foreground">{error.status === 403 ? t('events.accessDenied') : error.message}</p><button type="button" className="btn-secondary mt-4" onClick={onRetry}>{t('common.retry')}</button></div>;
   return children;
 }
 
-function RouteList({ routes, destinationNames, busyKey, onEdit, onToggle, onDelete, onAdd, t }) {
+interface RouteListProps {
+  routes: EventRoute[];
+  destinationNames: Map<string, string>;
+  busyKey: string;
+  onEdit: (route: EventRoute) => void;
+  onToggle: (route: EventRoute) => void;
+  onDelete: (route: EventRoute) => void;
+  onAdd: () => void;
+  t: Translate;
+}
+
+function RouteList({ routes, destinationNames, busyKey, onEdit, onToggle, onDelete, onAdd, t }: RouteListProps) {
   if (routes.length === 0) return <EmptyState title={t('events.route.emptyTitle')} description={t('events.route.emptyDescription')} action={onAdd} actionLabel={t('events.route.add')} />;
   return (
     <div className="divide-y divide-border">
       {routes.map((route) => {
-        const suppression = route.suppression || {};
+        const suppression: NonNullable<EventRoute['suppression']> = route.suppression || {};
         const suppressionValues = [suppression.debounce_seconds, suppression.cooldown_seconds, suppression.grouping_window_seconds, suppression.max_events_per_minute].filter((value) => Number(value) > 0);
         return (
           <article key={route.uuid} className="p-4 sm:p-5">
@@ -61,9 +114,21 @@ function RouteList({ routes, destinationNames, busyKey, onEdit, onToggle, onDele
   );
 }
 
-function DestinationList({ defaultDestination, destinations, routes, busyKey, onEdit, onToggle, onDelete, onAdd, t }) {
+interface DestinationListProps {
+  defaultDestination: EventDestinationsResponse['default_destination'];
+  destinations: EventDestination[];
+  routes: EventRoute[];
+  busyKey: string;
+  onEdit: (destination: EventDestination) => void;
+  onToggle: (destination: EventDestination) => void;
+  onDelete: (destination: EventDestination) => void;
+  onAdd: () => void;
+  t: Translate;
+}
+
+function DestinationList({ defaultDestination, destinations, routes, busyKey, onEdit, onToggle, onDelete, onAdd, t }: DestinationListProps) {
   const routeCounts = useMemo(() => {
-    const counts = new Map();
+    const counts = new Map<string, number>();
     routes.forEach((route) => counts.set(route.destination, (counts.get(route.destination) || 0) + 1));
     return counts;
   }, [routes]);
@@ -105,7 +170,7 @@ function DestinationList({ defaultDestination, destinations, routes, busyKey, on
   );
 }
 
-function EventCatalog({ eventTypes, t }) {
+function EventCatalog({ eventTypes, t }: { eventTypes: EventCatalogEntry[]; t: Translate }) {
   const groups = useMemo(() => groupCatalog(eventTypes), [eventTypes]);
   return <div className="space-y-5 p-4 sm:p-5">{groups.map((group) => <section key={group.family}><h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.family}</h3><div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{group.types.map((eventType) => <article key={eventType.type} className="rounded-lg border border-border bg-background p-4"><div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-semibold">{shortEventType(eventType.type)}</h4><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${eventType.severity === 'critical' || eventType.severity === 'error' ? 'badge-danger' : eventType.severity === 'warning' ? 'badge-warning' : 'badge-info'}`}>{eventType.severity}</span></div><p className="mt-2 text-sm text-muted-foreground">{eventType.description}</p><div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground"><span className="rounded bg-muted px-2 py-1">{eventType.expected_rate}</span><span className="rounded bg-muted px-2 py-1">{eventType.sensitivity}</span><span className="rounded bg-muted px-2 py-1">{eventType.subject_kind}</span></div><code className="mt-3 block break-all text-[10px] text-muted-foreground">{eventType.type}</code></article>)}</div></section>)}</div>;
 }
@@ -114,17 +179,17 @@ export function EventRoutingView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [section, setSection] = useState(() => readEventSection(typeof window === 'undefined' ? '' : window.location.search));
-  const [routeEditor, setRouteEditor] = useState(null);
-  const [destinationEditor, setDestinationEditor] = useState(null);
+  const [routeEditor, setRouteEditor] = useState<Partial<EventRoute> | null>(null);
+  const [destinationEditor, setDestinationEditor] = useState<Partial<EventDestination> | null>(null);
   const [busyKey, setBusyKey] = useState('');
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<DeleteCandidate | null>(null);
 
-  const routesQuery = useQuery(['event-routes'], '/api/event-routes', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const destinationsQuery = useQuery(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const catalogQuery = useQuery(['event-catalog'], '/api/events/catalog', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 60000 });
-  const healthRegistryQuery = useQuery(['settings-health-registry'], '/api/settings', { cache: 'no-store', timeout: 15000, retries: 0 }, { staleTime: 60000 });
-  const locationsQuery = useQuery(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
-  const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
+  const routesQuery = useQuery<EventRoutesResponse, RequestError>(['event-routes'], '/api/event-routes', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const destinationsQuery = useQuery<EventDestinationsResponse, RequestError>(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const catalogQuery = useQuery<EventCatalogResponse, RequestError>(['event-catalog'], '/api/events/catalog', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 60000 });
+  const healthRegistryQuery = useQuery<HealthPolicySettings>(['settings-health-registry'], '/api/settings', { cache: 'no-store', timeout: 15000, retries: 0 }, { staleTime: 60000 });
+  const locationsQuery = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
+  const tagsQuery = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -139,7 +204,7 @@ export function EventRoutingView() {
     () => healthConditionsFromSettings(healthRegistryQuery.data),
     [healthRegistryQuery.data]
   );
-  const destinationOptions = useMemo(() => [
+  const destinationOptions = useMemo<EventDestinationOption[]>(() => [
     defaultDestination || { key: 'mqtt:default', name: t('events.destination.default'), managed: false },
     ...destinations,
   ], [defaultDestination, destinations, t]);
@@ -150,52 +215,52 @@ export function EventRoutingView() {
   const error = routesQuery.error || destinationsQuery.error || catalogQuery.error;
 
   const refresh = async () => Promise.all([routesQuery.refetch(), destinationsQuery.refetch(), catalogQuery.refetch()]);
-  const staleAware = async (operation, refetch) => {
+  const staleAware = async <T,>(operation: () => Promise<T>, refetch?: () => Promise<unknown>): Promise<T> => {
     try {
       return await operation();
     } catch (requestError) {
-      showStatusMessage(requestError.message, 'error', 8000);
-      if (requestError.status === 409 && refetch) await refetch();
+      showStatusMessage((requestError as RequestError).message, 'error', 8000);
+      if ((requestError as RequestError).status === 409 && refetch) await refetch();
       throw requestError;
     }
   };
 
-  const saveRoute = async (payload) => {
+  const saveRoute = async (payload: EventRoutePayload) => {
     const editing = Boolean(routeEditor?.uuid);
-    const response = await staleAware(() => fetchJSON(editing ? `/api/event-routes/${encodeURIComponent(routeEditor.uuid)}` : '/api/event-routes', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), routesQuery.refetch);
+    const response = await staleAware(() => fetchJSON<EventRoute>(editing ? `/api/event-routes/${encodeURIComponent((routeEditor as EventRoute).uuid)}` : '/api/event-routes', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), routesQuery.refetch);
     await queryClient.invalidateQueries({ queryKey: ['event-routes'] });
     setRouteEditor(null);
     showStatusMessage(t(editing ? 'events.route.updated' : 'events.route.created'), 'success');
     return response;
   };
-  const previewRoute = (payload) => staleAware(() => fetchJSON('/api/event-routes/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }));
-  const toggleRoute = async (route) => {
+  const previewRoute = (payload: EventRoutePayload) => staleAware(() => fetchJSON<EventRoutePreview>('/api/event-routes/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }));
+  const toggleRoute = async (route: EventRoute) => {
     setBusyKey(route.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !route.enabled, revision: route.revision }), timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t(route.enabled ? 'events.route.disabled' : 'events.route.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
-  const deleteRoute = async (route) => {
+  const deleteRoute = async (route: EventRoute) => {
     setBusyKey(route.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-routes/${encodeURIComponent(route.uuid)}?revision=${encodeURIComponent(route.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), routesQuery.refetch); await routesQuery.refetch(); showStatusMessage(t('events.route.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
 
-  const saveDestination = async (payload) => {
+  const saveDestination = async (payload: EventDestinationPayload) => {
     const editing = Boolean(destinationEditor?.uuid);
-    const response = await staleAware(() => fetchJSON(editing ? `/api/event-destinations/${encodeURIComponent(destinationEditor.uuid)}` : '/api/event-destinations', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), destinationsQuery.refetch);
+    const response = await staleAware(() => fetchJSON<EventDestination>(editing ? `/api/event-destinations/${encodeURIComponent((destinationEditor as EventDestination).uuid)}` : '/api/event-destinations', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 }), destinationsQuery.refetch);
     await queryClient.invalidateQueries({ queryKey: ['event-destinations'] });
     setDestinationEditor(null);
     showStatusMessage(t(editing ? 'events.destination.updated' : 'events.destination.created'), 'success');
     return response;
   };
-  const toggleDestination = async (destination) => {
+  const toggleDestination = async (destination: EventDestination) => {
     setBusyKey(destination.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !destination.enabled, revision: destination.revision }), timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t(destination.enabled ? 'events.destination.pausedMessage' : 'events.destination.enabledMessage'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
-  const deleteDestination = async (destination) => {
+  const deleteDestination = async (destination: EventDestination) => {
     setBusyKey(destination.uuid);
     try { await staleAware(() => fetchJSON(`/api/event-destinations/${encodeURIComponent(destination.uuid)}?revision=${encodeURIComponent(destination.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 }), destinationsQuery.refetch); await destinationsQuery.refetch(); showStatusMessage(t('events.destination.deleted'), 'success'); } catch (_error) { /* surfaced by staleAware */ } finally { setBusyKey(''); }
   };
 
-  const sections = [
+  const sections: [string, string, number][] = [
     ['routes', t('events.routes'), routes.length],
     ['destinations', t('events.destinations'), destinations.length + 1],
     ['catalog', t('events.catalog'), eventTypes.length],
@@ -211,7 +276,7 @@ export function EventRoutingView() {
         isOpen={Boolean(deleteCandidate)}
         onClose={() => setDeleteCandidate(null)}
         onConfirm={() => deleteCandidate?.kind === 'route'
-          ? deleteRoute(deleteCandidate.item) : deleteDestination(deleteCandidate.item)}
+          ? deleteRoute(deleteCandidate.item) : deleteDestination(deleteCandidate!.item as EventDestination)}
         title={t('common.delete')}
         message={deleteCandidate
           ? t(deleteCandidate.kind === 'route'

@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.ts';
+import type { FleetQueryResponse, Translate } from '../../../types/fleet.ts';
 
-function useDebouncedValue(value, delay) {
+function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const timeout = setTimeout(() => setDebounced(value), delay);
@@ -11,7 +11,13 @@ function useDebouncedValue(value, delay) {
   return debounced;
 }
 
-export function StaticCollectionMembers({ selectedUuids, onChange, t }) {
+export interface StaticCollectionMembersProps {
+  selectedUuids: string[];
+  onChange: (uuids: string[]) => void;
+  t: Translate;
+}
+
+export function StaticCollectionMembers({ selectedUuids, onChange, t }: StaticCollectionMembersProps) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebouncedValue(search, 250);
@@ -25,9 +31,9 @@ export function StaticCollectionMembers({ selectedUuids, onChange, t }) {
     sort_order: 'asc',
     facets: false,
   }), [debouncedSearch, page]);
-  const { data, error, isLoading } = useQuery({
+  const { data, error, isLoading } = useQuery<FleetQueryResponse>({
     queryKey: ['collection-member-picker', request],
-    queryFn: ({ signal }) => fetchJSON('/api/fleet/cameras/query', {
+    queryFn: ({ signal }) => fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request), signal, timeout: 20000, retries: 1,
     }),
@@ -40,16 +46,16 @@ export function StaticCollectionMembers({ selectedUuids, onChange, t }) {
 
   useEffect(() => setPage(1), [debouncedSearch]);
   useEffect(() => {
-    if (data?.total_pages > 0 && page > data.total_pages) setPage(data.total_pages);
+    if ((data?.total_pages as number) > 0 && page > (data as FleetQueryResponse).total_pages) setPage((data as FleetQueryResponse).total_pages);
   }, [data?.total_pages, page]);
 
-  const toggleCamera = (uuid, checked) => {
+  const toggleCamera = (uuid: string, checked: boolean) => {
     const next = new Set(selected);
     if (checked) next.add(uuid);
     else next.delete(uuid);
     onChange([...next]);
   };
-  const togglePage = (checked) => {
+  const togglePage = (checked: boolean) => {
     const next = new Set(selected);
     cameras.forEach((camera) => checked ? next.add(camera.camera_uuid) : next.delete(camera.camera_uuid));
     onChange([...next]);

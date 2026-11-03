@@ -1,5 +1,23 @@
-// @ts-nocheck
-export const ALL_CAMERAS_SELECTOR = {
+import type {
+  EventCatalogEntry,
+  EventCatalogGroup,
+  EventDestination,
+  EventDestinationDraft,
+  EventDestinationPayload,
+  EventRoute,
+  EventRouteDetectionPredicate,
+  EventRouteDraft,
+  EventRouteHealthPredicate,
+  EventRoutePayload,
+  EventRoutePredicate,
+  EventRouteRegistries,
+  EventScheduleWindow,
+  FleetSelector,
+  HealthCondition,
+  HealthPolicySettings,
+} from '../../../types/fleet.ts';
+
+export const ALL_CAMERAS_SELECTOR: FleetSelector = {
   version: 1,
   expression: { op: 'all' },
 };
@@ -8,7 +26,7 @@ export const DEFAULT_TOPIC_TEMPLATE = 'lightnvr/v1/events/{type}/{subject_id}';
 export const HEALTH_EVENT_FAMILY = 'system_health';
 export const HEALTH_SEVERITY_ORDER = ['warning', 'error', 'critical'];
 
-export const EMPTY_DESTINATION_DRAFT = {
+export const EMPTY_DESTINATION_DRAFT: EventDestinationDraft = {
   name: '',
   description: '',
   enabled: true,
@@ -31,7 +49,7 @@ export const EMPTY_DESTINATION_DRAFT = {
   uuid: '',
 };
 
-export const EMPTY_ROUTE_DRAFT = {
+export const EMPTY_ROUTE_DRAFT: EventRouteDraft = {
   name: '',
   description: '',
   enabled: true,
@@ -58,7 +76,7 @@ export const EMPTY_ROUTE_DRAFT = {
   uuid: '',
 };
 
-export const DEFAULT_SCHEDULE_WINDOW = {
+export const DEFAULT_SCHEDULE_WINDOW: EventScheduleWindow = {
   days: [1, 2, 3, 4, 5],
   start: '18:00',
   end: '06:00',
@@ -66,26 +84,26 @@ export const DEFAULT_SCHEDULE_WINDOW = {
 
 export const EVENT_SECTIONS = new Set(['routes', 'destinations', 'catalog']);
 
-export function createDestinationDraft(randomUuid) {
+export function createDestinationDraft(randomUuid?: string): EventDestinationDraft {
   const uuid = randomUuid || (globalThis.crypto?.randomUUID?.() ?? 'events-client');
   const suffix = String(uuid).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toLowerCase();
   return { ...EMPTY_DESTINATION_DRAFT, clientId: `lightnvr-${suffix || 'events-client'}` };
 }
 
-function uniqueStrings(values) {
+function uniqueStrings(values: unknown[] | null | undefined): string[] {
   return [...new Set((values || []).map((value) => String(value).trim()).filter(Boolean))];
 }
 
-export function splitList(value) {
+export function splitList(value: unknown): string[] {
   return uniqueStrings(String(value || '').split(/[\n,]/));
 }
 
-function integer(value, fallback = 0) {
+function integer(value: unknown, fallback = 0): number {
   const number = Number(value);
   return Number.isInteger(number) ? number : fallback;
 }
 
-export function destinationToDraft(destination) {
+export function destinationToDraft(destination: Partial<EventDestination> | null | undefined): EventDestinationDraft {
   if (!destination) return { ...EMPTY_DESTINATION_DRAFT };
   return {
     ...EMPTY_DESTINATION_DRAFT,
@@ -110,8 +128,8 @@ export function destinationToDraft(destination) {
   };
 }
 
-export function buildDestinationPayload(draft, creating = false) {
-  const authentication = { username: String(draft.username || '').trim() };
+export function buildDestinationPayload(draft: EventDestinationDraft, creating = false): EventDestinationPayload {
+  const authentication: EventDestinationPayload['authentication'] = { username: String(draft.username || '').trim() };
   if (draft.clearPassword) authentication.password = null;
   else if (draft.password) authentication.password = draft.password;
 
@@ -127,7 +145,7 @@ export function buildDestinationPayload(draft, creating = false) {
     tls.key_file = String(draft.keyFile || '').trim();
   }
 
-  const payload = {
+  const payload: EventDestinationPayload = {
     name: String(draft.name || '').trim(),
     description: String(draft.description || '').trim(),
     enabled: draft.enabled === true,
@@ -148,7 +166,7 @@ export function buildDestinationPayload(draft, creating = false) {
   return payload;
 }
 
-export function validateDestinationDraft(draft) {
+export function validateDestinationDraft(draft: EventDestinationDraft): string {
   if (!String(draft.name || '').trim() || String(draft.name).length >= 128 ||
       String(draft.description || '').length >= 512) return 'name';
   const host = String(draft.host || '').trim();
@@ -188,7 +206,7 @@ export function validateDestinationDraft(draft) {
   return '';
 }
 
-export function routeToDraft(route) {
+export function routeToDraft(route: Partial<EventRoute> | null | undefined): EventRouteDraft {
   if (!route) return { ...EMPTY_ROUTE_DRAFT, selector: ALL_CAMERAS_SELECTOR, windows: [] };
   const detection = route.predicate?.detection;
   const health = route.predicate?.health;
@@ -223,10 +241,10 @@ export function routeToDraft(route) {
   };
 }
 
-export function buildRoutePayload(draft, creating = false) {
-  const predicate = { version: 1 };
+export function buildRoutePayload(draft: EventRouteDraft, creating = false): EventRoutePayload {
+  const predicate: EventRoutePredicate = { version: 1 };
   if (draft.detectionFilterEnabled) {
-    const detection = {};
+    const detection: EventRouteDetectionPredicate = {};
     const labels = splitList(draft.labels);
     const zones = splitList(draft.zones);
     if (labels.length) detection.labels_any = labels;
@@ -237,14 +255,14 @@ export function buildRoutePayload(draft, creating = false) {
     predicate.detection = detection;
   }
   if (draft.healthFilterEnabled) {
-    const health = {};
+    const health: EventRouteHealthPredicate = {};
     const conditions = uniqueStrings(draft.healthConditionCodes);
     const severities = uniqueStrings(draft.healthSeverities);
     if (conditions.length) health.condition_codes_any = conditions;
     if (severities.length) health.severities_any = severities;
     predicate.health = health;
   }
-  const payload = {
+  const payload: EventRoutePayload = {
     name: String(draft.name || '').trim(),
     description: String(draft.description || '').trim(),
     enabled: draft.enabled === true,
@@ -278,7 +296,7 @@ export function buildRoutePayload(draft, creating = false) {
 
 const CLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export function validateRouteDraft(draft, registries = {}) {
+export function validateRouteDraft(draft: EventRouteDraft, registries: EventRouteRegistries = {}): string {
   if (!String(draft.name || '').trim()) return 'name';
   if (!draft.destination) return 'destination';
   if (!Array.isArray(draft.eventTypes) || draft.eventTypes.length === 0) return 'event_types';
@@ -286,7 +304,7 @@ export function validateRouteDraft(draft, registries = {}) {
   const catalog = Array.isArray(registries.catalog) ? registries.catalog : [];
   const selectedDefinitions = draft.eventTypes
     .map((type) => catalog.find((entry) => entry.type === type))
-    .filter(Boolean);
+    .filter(Boolean) as EventCatalogEntry[];
   if (draft.scopeType === 'selector' && selectedDefinitions.some(
     (entry) => entry.subject_kind !== 'camera')) return 'system_scope';
   if (draft.detectionFilterEnabled) {
@@ -320,7 +338,7 @@ export function validateRouteDraft(draft, registries = {}) {
     );
     if (invalidWindow) return 'schedule_window';
   }
-  const limits = [
+  const limits: ['debounceSeconds' | 'cooldownSeconds' | 'groupingWindowSeconds' | 'maxEventsPerMinute', number, number][] = [
     ['debounceSeconds', 0, 86400],
     ['cooldownSeconds', 0, 604800],
     ['groupingWindowSeconds', 0, 3600],
@@ -333,24 +351,24 @@ export function validateRouteDraft(draft, registries = {}) {
   return '';
 }
 
-export function healthConditionsFromSettings(settings) {
+export function healthConditionsFromSettings(settings: HealthPolicySettings | null | undefined): HealthCondition[] {
   const conditions = settings?.health_effective_policy?.conditions;
   if (!Array.isArray(conditions)) return [];
-  const seen = new Set();
+  const seen = new Set<string>();
   return conditions.filter((condition) => {
     const code = condition?.code || condition?.condition;
     if (!code || seen.has(code)) return false;
     seen.add(code);
     return true;
-  }).map((condition) => ({ ...condition, code: condition.code || condition.condition }));
+  }).map((condition) => ({ ...condition, code: (condition.code || condition.condition) as string }));
 }
 
-export function healthSeveritiesFromCatalog(catalog, selectedTypes = []) {
+export function healthSeveritiesFromCatalog(catalog: EventCatalogEntry[] | null | undefined, selectedTypes: string[] = []): string[] {
   const selected = new Set(selectedTypes);
   const healthTypes = (catalog || []).filter((entry) =>
     entry.family === HEALTH_EVENT_FAMILY &&
     (selected.size === 0 || selected.has(entry.type)));
-  const allowed = new Set();
+  const allowed = new Set<string>();
   healthTypes.forEach((entry) => {
     const minimum = HEALTH_SEVERITY_ORDER.indexOf(entry.minimum_severity);
     const maximum = HEALTH_SEVERITY_ORDER.indexOf(entry.maximum_severity);
@@ -361,28 +379,28 @@ export function healthSeveritiesFromCatalog(catalog, selectedTypes = []) {
   return HEALTH_SEVERITY_ORDER.filter((severity) => allowed.has(severity));
 }
 
-export function groupCatalog(eventTypes) {
-  const groups = new Map();
+export function groupCatalog(eventTypes: EventCatalogEntry[] | null | undefined): EventCatalogGroup[] {
+  const groups = new Map<string, EventCatalogEntry[]>();
   (eventTypes || []).forEach((eventType) => {
     const family = eventType.family || 'other';
     if (!groups.has(family)) groups.set(family, []);
-    groups.get(family).push(eventType);
+    groups.get(family)!.push(eventType);
   });
   return [...groups.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([family, types]) => ({ family, types: types.sort((left, right) => left.type.localeCompare(right.type)) }));
 }
 
-export function shortEventType(type) {
+export function shortEventType(type: string | null | undefined): string {
   return String(type || '').replace(/^io\.lightnvr\./, '').replace(/\.v\d+$/, '');
 }
 
-export function readEventSection(search) {
+export function readEventSection(search: string | null | undefined): string {
   const section = new URLSearchParams(search || '').get('eventView');
-  return EVENT_SECTIONS.has(section) ? section : 'routes';
+  return EVENT_SECTIONS.has(section as string) ? section as string : 'routes';
 }
 
-export function writeEventSection(href, section) {
+export function writeEventSection(href: string, section: string): URL {
   const url = new URL(href, 'http://localhost');
   if (section === 'routes') url.searchParams.delete('eventView');
   else url.searchParams.set('eventView', EVENT_SECTIONS.has(section) ? section : 'routes');
