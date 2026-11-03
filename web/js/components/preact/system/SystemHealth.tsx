@@ -1,15 +1,45 @@
-// @ts-nocheck
 import { useMemo } from 'preact/hooks';
 import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { formatBytes } from './SystemUtils.ts';
 import { HealthIncidentHistory } from './HealthIncidentHistory.tsx';
+import type {
+  HealthActiveIncident,
+  HealthCoverageMessage,
+  HealthObservation,
+  HealthRecentSample,
+  HealthSelfObservability,
+  SystemHealthResponse,
+  Translate,
+} from '../../../types/system.ts';
+
+type HealthGroup = 'resources' | 'storage' | 'hardware' | 'network' | 'clock' | 'components';
+
+interface ObservationCardProps {
+  observation: HealthObservation;
+  t: Translate;
+}
+
+interface IncidentCardProps {
+  incident: HealthActiveIncident;
+  t: Translate;
+}
+
+interface CoverageBannerProps {
+  health: SystemHealthResponse | undefined;
+  t: Translate;
+}
+
+interface ComponentHealthProps {
+  self: HealthSelfObservability | undefined;
+  t: Translate;
+}
 
 export const HEALTH_SAMPLE_LIMIT = 120;
 
-const GROUP_ORDER = ['resources', 'storage', 'hardware', 'network', 'clock', 'components'];
+const GROUP_ORDER: HealthGroup[] = ['resources', 'storage', 'hardware', 'network', 'clock', 'components'];
 
-export function observationGroup(metric = '') {
+export function observationGroup(metric = ''): HealthGroup {
   if (metric.startsWith('filesystem.') || metric.startsWith('storage.')) return 'storage';
   if (metric.startsWith('thermal.') || metric.startsWith('hardware.')) return 'hardware';
   if (metric.startsWith('network.')) return 'network';
@@ -18,22 +48,22 @@ export function observationGroup(metric = '') {
   return 'resources';
 }
 
-export function groupHealthObservations(observations = []) {
-  const groups = Object.fromEntries(GROUP_ORDER.map((name) => [name, []]));
+export function groupHealthObservations(observations: HealthObservation[] = []) {
+  const groups = Object.fromEntries(GROUP_ORDER.map((name): [HealthGroup, HealthObservation[]] => [name, []])) as Record<HealthGroup, HealthObservation[]>;
   for (const observation of observations.slice(0, 256)) {
     groups[observationGroup(observation?.metric)].push(observation);
   }
   return groups;
 }
 
-export function boundedRecentSamples(samples = []) {
+export function boundedRecentSamples(samples: HealthRecentSample[] = []) {
   return Array.isArray(samples) ? samples.slice(-HEALTH_SAMPLE_LIMIT) : [];
 }
 
-export function formatHealthValue(observation, unknown = 'Unknown') {
+export function formatHealthValue(observation: HealthObservation | null | undefined, unknown = 'Unknown') {
   if (!observation || observation.capability !== 'available' ||
       observation.freshness === 'stale' || !Number.isFinite(observation.value)) return unknown;
-  const value = observation.value;
+  const value = observation.value as number;
   switch (observation.unit) {
     case 'ratio': return `${(value * 100).toFixed(1)}%`;
     case 'bytes': return formatBytes(value);
@@ -49,10 +79,10 @@ export function formatHealthValue(observation, unknown = 'Unknown') {
 export function remediationKey(condition = '') {
   const prefix = condition.split('.')[0];
   const known = new Set(['memory', 'cpu', 'io', 'filesystem', 'thermal', 'network', 'clock', 'process', 'storage', 'hardware', 'health', 'system', 'event']);
-  return `system.health.remediation.${known.has(prefix) ? prefix : 'default'}`;
+  return `system.health.remediation.${known.has(prefix!) ? prefix : 'default'}`;
 }
 
-function statusClass(status) {
+function statusClass(status: string) {
   if (status === 'healthy' || status === 'available' || status === 'fresh') return 'badge-success';
   if (status === 'warning' || status === 'pending' || status === 'stale') return 'badge-warning';
   if (status === 'error' || status === 'critical') return 'badge-danger';
@@ -63,7 +93,7 @@ function readableMetric(metric = '') {
   return metric.replaceAll('.', ' ').replaceAll('_', ' ');
 }
 
-function relativeDuration(timestampMs, unknown) {
+function relativeDuration(timestampMs: number, unknown: string) {
   if (!Number.isFinite(timestampMs) || timestampMs <= 0) return unknown;
   const seconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
   if (seconds < 60) return `${seconds}s`;
@@ -72,7 +102,7 @@ function relativeDuration(timestampMs, unknown) {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
-function ObservationCard({ observation, t }) {
+function ObservationCard({ observation, t }: ObservationCardProps) {
   const unavailable = observation?.capability !== 'available' || observation?.freshness === 'stale';
   return (
     <article className={`rounded-md border p-3 ${unavailable ? 'border-border bg-muted/30' : 'border-border bg-background'}`}>
@@ -95,7 +125,7 @@ function ObservationCard({ observation, t }) {
   );
 }
 
-function IncidentCard({ incident, t }) {
+function IncidentCard({ incident, t }: IncidentCardProps) {
   const threshold = incident.thresholds;
   return (
     <article className="rounded-lg border border-border bg-card p-4" data-testid="active-health-incident">
@@ -118,9 +148,9 @@ function IncidentCard({ incident, t }) {
   );
 }
 
-export function healthCoverageMessage(health) {
-  const visibility = health?.visibility || {};
-  const coverage = health?.coverage || {};
+export function healthCoverageMessage(health: SystemHealthResponse | null | undefined): HealthCoverageMessage {
+  const visibility: NonNullable<SystemHealthResponse['visibility']> = health?.visibility || {};
+  const coverage: NonNullable<SystemHealthResponse['coverage']> = health?.coverage || {};
   const monitoring = health?.monitoring;
   const disabled = monitoring?.initialized === true
     ? monitoring.enabled === false
@@ -148,7 +178,7 @@ export function healthCoverageMessage(health) {
   };
 }
 
-function CoverageBanner({ health, t }) {
+function CoverageBanner({ health, t }: CoverageBannerProps) {
   const message = healthCoverageMessage(health);
   return (
     <div role="status" data-testid="health-coverage-banner" className={`rounded-lg border p-4 ${message.warning ? 'border-amber-400/70 bg-amber-50 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100' : 'border-border bg-card'}`}>
@@ -159,12 +189,12 @@ function CoverageBanner({ health, t }) {
   );
 }
 
-function ComponentHealth({ self, t }) {
+function ComponentHealth({ self, t }: ComponentHealthProps) {
   if (!self) return null;
   const collectors = Array.isArray(self.collectors) ? self.collectors.slice(0, 33) : [];
   const staleCollectors = collectors.filter((collector) => collector.stale || collector.failures > 0 || collector.timeouts > 0);
-  const delivery = self.event_delivery || {};
-  const persistence = self.incident_persistence || {};
+  const delivery: NonNullable<HealthSelfObservability['event_delivery']> = self.event_delivery || {};
+  const persistence: NonNullable<HealthSelfObservability['incident_persistence']> = self.incident_persistence || {};
   return (
     <section className="rounded-lg border border-border bg-card p-4" aria-labelledby="component-health-heading" data-testid="health-component-status">
       <h3 id="component-health-heading" className="font-semibold">{t('system.health.componentStatus')}</h3>
@@ -180,7 +210,7 @@ function ComponentHealth({ self, t }) {
 
 export function SystemHealth() {
   const { t } = useI18n();
-  const query = useQuery(
+  const query = useQuery<SystemHealthResponse>(
     ['systemHealth'],
     '/api/system/health',
     { timeout: 15000, retries: 1 },

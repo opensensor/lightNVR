@@ -1,10 +1,22 @@
-// @ts-nocheck
 /**
  * LogsView Component
  * Displays and manages system logs
  */
 
 import { useI18n } from '../../../i18n.ts';
+import type { SystemLogEntry, Translate } from '../../../types/system.ts';
+
+export interface LogsViewProps {
+  logs: SystemLogEntry[];
+  logLevel: string;
+  logCount: number;
+  pollingInterval: number;
+  setLogLevel: (level: string) => void;
+  setLogCount: (count: number) => void;
+  setPollingInterval: (interval: number) => void;
+  loadLogs: () => void;
+  clearLogs: () => void;
+}
 
 /**
  * Format log level with appropriate styling
@@ -12,7 +24,7 @@ import { useI18n } from '../../../i18n.ts';
  * @param {string} level Log level
  * @returns {JSX.Element} Formatted log level badge
  */
-function formatLogLevel(level, t) {
+function formatLogLevel(level: string | null | undefined, t: Translate) {
   // Handle null or undefined level
   if (level === null || level === undefined) {
     return (
@@ -75,7 +87,7 @@ function formatLogLevel(level, t) {
  * @param {Function} props.clearLogs Function to clear logs
  * @returns {JSX.Element} LogsView component
  */
-export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLevel, setLogCount, setPollingInterval, loadLogs, clearLogs }) {
+export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLevel, setLogCount, setPollingInterval, loadLogs, clearLogs }: LogsViewProps) {
   const { t } = useI18n();
 
   return (
@@ -88,7 +100,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
             className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={logLevel}
             onChange={e => {
-              const newLevel = e.target.value;
+              const newLevel = (e.target as HTMLSelectElement).value;
               console.log(`LogsView: Log level changed from ${logLevel} to ${newLevel}`);
               setLogLevel(newLevel);
             }}
@@ -102,7 +114,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
             id="log-count"
             className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={logCount}
-            onChange={e => setLogCount(parseInt(e.target.value, 10))}
+            onChange={e => setLogCount(parseInt((e.target as HTMLSelectElement).value, 10))}
           >
             <option value="50">{t('system.logLines', { count: 50 })}</option>
             <option value="100">{t('system.logLines', { count: 100 })}</option>
@@ -114,7 +126,7 @@ export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLeve
             className="px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground"
             value={pollingInterval}
             onChange={e => {
-              const newInterval = parseInt(e.target.value, 10);
+              const newInterval = parseInt((e.target as HTMLSelectElement).value, 10);
               console.log(`LogsView: Polling interval changed to ${newInterval}ms`);
               setPollingInterval(newInterval);
             }}

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SystemControls Component
  * Provides system restart control with a styled modal
@@ -8,6 +7,12 @@ import { useState } from 'preact/hooks';
 import { RestartModal } from './RestartModal.tsx';
 import { useI18n } from '../../../i18n.ts';
 
+export interface SystemControlsProps {
+  onRestartConfirm?: () => unknown;
+  isRestarting: boolean;
+  canControlSystem?: boolean;
+}
+
 /**
  * SystemControls component
  * @param {Object} props Component props
@@ -16,7 +21,7 @@ import { useI18n } from '../../../i18n.ts';
  * @param {boolean} props.canControlSystem Whether the user has permission to control the system
  * @returns {JSX.Element} SystemControls component
  */
-export function SystemControls({ onRestartConfirm, isRestarting, canControlSystem = true }) {
+export function SystemControls({ onRestartConfirm, isRestarting, canControlSystem = true }: SystemControlsProps) {
   const [showRestartModal, setShowRestartModal] = useState(false);
   const { t } = useI18n();
 

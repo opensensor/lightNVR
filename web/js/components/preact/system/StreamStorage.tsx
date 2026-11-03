@@ -1,10 +1,15 @@
-// @ts-nocheck
 /**
  * StreamStorage Component
  * Displays storage usage per stream with slivers in a progress bar
  */
 
 import { useI18n } from '../../../i18n.ts';
+import type { FormatBytes, SystemInfoData } from '../../../types/system.ts';
+
+export interface StreamStorageProps {
+  systemInfo: SystemInfoData;
+  formatBytes: FormatBytes;
+}
 
 /**
  * StreamStorage component
@@ -13,7 +18,7 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Function} props.formatBytes Function to format bytes to human-readable size
  * @returns {JSX.Element} StreamStorage component
  */
-export function StreamStorage({ systemInfo, formatBytes }) {
+export function StreamStorage({ systemInfo, formatBytes }: StreamStorageProps) {
   const { t } = useI18n();
   // Check if stream storage information is available
   if (!systemInfo.streamStorage || !Array.isArray(systemInfo.streamStorage) || systemInfo.streamStorage.length === 0) {
@@ -54,7 +59,7 @@ export function StreamStorage({ systemInfo, formatBytes }) {
   streamStorageData.sort((a, b) => b.size - a.size);
 
   // Generate theme-aware colors for each stream
-  const getStreamColor = (index) => {
+  const getStreamColor = (index: number) => {
     const hues = [217, 142, 38, 0, 265, 350, 215, 180]; // primary, success, warning, danger, purple, rose, slate, teal
     const hue = hues[index % hues.length];
     return {

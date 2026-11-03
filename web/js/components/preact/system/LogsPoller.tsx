@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LogsPoller Component
  * Handles polling for logs via HTTP API
@@ -8,6 +7,15 @@ import { useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchJSON } from '../../../fetch-utils.ts';
 import { log_level_meets_minimum } from './SystemUtils.ts';
 import { toEpochMilliseconds } from '../../../utils/date-utils.ts';
+import type { SystemLogEntry, SystemLogsResponse } from '../../../types/system.ts';
+
+export interface LogsPollerProps {
+  logLevel: string;
+  /** Parsed with parseInt on every render, so a string also works. */
+  logCount: number | string;
+  pollingInterval?: number;
+  onLogsReceived: (logs: SystemLogEntry[]) => void;
+}
 
 /**
  * LogsPoller component
@@ -18,18 +26,18 @@ import { toEpochMilliseconds } from '../../../utils/date-utils.ts';
  * @param {Function} props.onLogsReceived Callback function when logs are received
  * @returns {JSX.Element} LogsPoller component (invisible)
  */
-export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsReceived }) {
-  const lastTimestampRef = useRef(null);
+export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsReceived }: LogsPollerProps) {
+  const lastTimestampRef = useRef<string | null>(null);
 
   // Keep refs to the latest prop values so fetchLogs never needs to be recreated.
   // Assigning directly in render (not in an effect) ensures they are always current
   // before the next fetch fires.
   const onLogsReceivedRef = useRef(onLogsReceived);
   const logLevelRef = useRef(logLevel);
-  const logCountRef = useRef(logCount);
+  const logCountRef = useRef<number>(logCount as number);
   onLogsReceivedRef.current = onLogsReceived;
   logLevelRef.current = String(logLevel).toLowerCase();
-  logCountRef.current = parseInt(logCount);
+  logCountRef.current = parseInt(logCount as string);
 
   // Load saved timestamp from localStorage on mount
   useEffect(() => {
@@ -56,7 +64,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
 
     try {
       const log_uri = `/api/system/logs?level=${encodeURIComponent(normalizedLevel)}&count=${encodeURIComponent(logCount)}`;
-      const response = await fetchJSON(log_uri, {
+      const response = await fetchJSON<SystemLogsResponse>(log_uri, {
         timeout: 10000,
         retries: 1
       });
@@ -80,10 +88,10 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
         cleanedLogs.sort((a, b) => toEpochMilliseconds(b.timestamp) - toEpochMilliseconds(a.timestamp));
 
         // Update last timestamp for future reference
-        if (cleanedLogs.length > 0 && cleanedLogs[0].timestamp) {
-          lastTimestampRef.current = cleanedLogs[0].timestamp;
-          localStorage.setItem('lastLogTimestamp', cleanedLogs[0].timestamp);
-          console.log('Updated and saved last log timestamp:', cleanedLogs[0].timestamp);
+        if (cleanedLogs.length > 0 && cleanedLogs[0]!.timestamp) {
+          lastTimestampRef.current = cleanedLogs[0]!.timestamp;
+          localStorage.setItem('lastLogTimestamp', cleanedLogs[0]!.timestamp);
+          console.log('Updated and saved last log timestamp:', cleanedLogs[0]!.timestamp);
         }
 
         // Filter using the latest logLevel from the ref (hierarchical: 'debug' = all)

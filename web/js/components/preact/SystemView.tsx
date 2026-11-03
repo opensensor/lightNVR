@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LightNVR Web Interface SystemView Component
  * Preact component for the system page
@@ -10,6 +9,7 @@ import { ContentLoader } from './LoadingIndicator.tsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
 import { validateSession } from '../../utils/auth-utils.ts';
 import { useI18n } from '../../i18n.ts';
+import type { SystemInfoData, SystemLogEntry } from '../../types/system.ts';
 
 // Import system components
 import { SystemControls } from './system/SystemControls.tsx';
@@ -37,7 +37,7 @@ export function SystemView() {
   const { t } = useI18n();
 
   // Define all state variables first
-  const [systemInfo, setSystemInfo] = useState({
+  const [systemInfo, setSystemInfo] = useState<SystemInfoData>({
     version: '',
     uptime: '',
     cpu: {
@@ -90,7 +90,7 @@ export function SystemView() {
       items: []
     }
   });
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState<SystemLogEntry[]>([]);
   const [logLevel, setLogLevel] = useState(() => localStorage.getItem('lightnvr_system_logLevel') || 'debug');
   const logLevelRef = useRef(localStorage.getItem('lightnvr_system_logLevel') || 'debug');
   const [logCount, setLogCount] = useState(100);
@@ -104,7 +104,7 @@ export function SystemView() {
   const [activeTab, setActiveTab] = useState('system');
 
   // User role state for permission-based UI
-  const [userRole, setUserRole] = useState(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // Fetch user role on mount
   useEffect(() => {
@@ -135,7 +135,7 @@ export function SystemView() {
   const {
     data: systemInfoData,
     isLoading
-  } = useQuery(
+  } = useQuery<SystemInfoData>(
     ['systemInfo'],
     '/api/system/info',
     {
@@ -166,21 +166,21 @@ export function SystemView() {
   });
 
   // Then define all handler functions
-  const handleSetLogLevel = (newLevel) => {
+  const handleSetLogLevel = (newLevel: string) => {
     console.log(`SystemView: Setting log level from ${logLevel} to ${newLevel}`);
     setLogLevel(newLevel);
     logLevelRef.current = newLevel;
     localStorage.setItem('lightnvr_system_logLevel', newLevel);
   };
 
-  const handleSetPollingInterval = (newInterval) => {
+  const handleSetPollingInterval = (newInterval: number) => {
     setPollingInterval(newInterval);
     localStorage.setItem('lightnvr_system_pollingInterval', String(newInterval));
   };
 
   // useCallback with [] because it only reads logLevelRef.current (a ref, not state),
   // giving a stable reference that won't trigger downstream effects on every render.
-  const handleLogsReceived = useCallback((newLogs) => {
+  const handleLogsReceived = useCallback((newLogs: SystemLogEntry[]) => {
     console.log('SystemView received new logs:', newLogs.length);
     const currentLogLevel = logLevelRef.current;
     const filteredLogs = newLogs.filter(log => log_level_meets_minimum(log.level, currentLogLevel));

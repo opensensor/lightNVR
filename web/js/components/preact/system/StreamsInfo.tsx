@@ -1,10 +1,15 @@
-// @ts-nocheck
 /**
  * StreamsInfo Component
  * Displays information about streams and recordings
  */
 
 import { useI18n } from '../../../i18n.ts';
+import type { FormatBytes, SystemInfoData } from '../../../types/system.ts';
+
+export interface StreamsInfoProps {
+  systemInfo: SystemInfoData;
+  formatBytes: FormatBytes;
+}
 
 /**
  * StreamsInfo component
@@ -13,7 +18,7 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Function} props.formatBytes Function to format bytes to human-readable size
  * @returns {JSX.Element} StreamsInfo component
  */
-export function StreamsInfo({ systemInfo, formatBytes }) {
+export function StreamsInfo({ systemInfo, formatBytes }: StreamsInfoProps) {
   const { t } = useI18n();
 
   return (

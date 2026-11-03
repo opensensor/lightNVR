@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Summaries of recording storage across tiers (hot disks, warm mounts, cold
  * buckets) for the System page. Pure functions over /api/storage-targets so
@@ -10,27 +9,35 @@
  * summary reports each target against its own capacity (disks) or archive
  * budget (buckets).
  */
+import type {
+  StorageClass,
+  StorageMeter,
+  StorageTierRow,
+  StorageTierSummary,
+  StorageTierTarget,
+  StorageTierTargetHealth,
+} from '../../../types/system.ts';
 
 const CLASS_ORDER = Object.freeze({ hot: 0, warm: 1, cold: 2 });
-export const STORAGE_CLASSES = Object.freeze(['hot', 'warm', 'cold']);
+export const STORAGE_CLASSES: readonly StorageClass[] = Object.freeze<StorageClass[]>(['hot', 'warm', 'cold']);
 
-function finite(value) {
+function finite(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
 
 /** One display row per enabled target. */
-export function storageTierRow(target) {
+export function storageTierRow(target: StorageTierTarget | null | undefined): StorageTierRow {
   const isBucket = target?.target_type === 's3';
-  const health = target?.health || {};
+  const health: StorageTierTargetHealth = target?.health || {};
   const recordingBytes = finite(target?.recording_bytes);
   const replicaBytes = finite(target?.replica_bytes);
   const storedBytes = recordingBytes + replicaBytes;
   const capacityBytes = finite(health.capacity_bytes);
   const budgetBytes = finite(target?.archive_budget_bytes);
-  const storageClass = STORAGE_CLASSES.includes(target?.storage_class)
-    ? target.storage_class : (isBucket ? 'cold' : 'hot');
-  let meter = null;
+  const storageClass = STORAGE_CLASSES.includes(target?.storage_class as StorageClass)
+    ? target!.storage_class as StorageClass : (isBucket ? 'cold' : 'hot');
+  let meter: StorageMeter | null = null;
   if (!isBucket && health.capacity_known !== false && capacityBytes > 0) {
     // A disk fills from everything on it, not only recordings.
     meter = { kind: 'filesystem', used: finite(health.used_bytes), total: capacityBytes };
@@ -58,7 +65,7 @@ export function storageTierRow(target) {
  * Summarize enabled targets. `tiered` is true when recordings can live in
  * more than one place, i.e. when the single legacy bar is misleading.
  */
-export function summarizeStorageTiers(targets) {
+export function summarizeStorageTiers(targets: StorageTierTarget[] | null | undefined): StorageTierSummary {
   const rows = (Array.isArray(targets) ? targets : [])
     .filter((target) => target && target.enabled !== false)
     .map(storageTierRow)
@@ -71,7 +78,7 @@ export function summarizeStorageTiers(targets) {
   return { rows, byClass, storedBytes, tiered };
 }
 
-export function meterPercent(meter) {
+export function meterPercent(meter: StorageMeter | null | undefined) {
   if (!meter || !(meter.total > 0)) return null;
   return Math.max(0, Math.min(100, (meter.used / meter.total) * 100));
 }

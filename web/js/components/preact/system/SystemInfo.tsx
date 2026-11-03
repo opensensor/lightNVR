@@ -1,10 +1,15 @@
-// @ts-nocheck
 /**
  * SystemInfo Component
  * Displays basic system information like version, uptime, and CPU details
  */
 
 import { useI18n } from '../../../i18n.ts';
+import type { SystemInfoData } from '../../../types/system.ts';
+
+export interface SystemInfoProps {
+  systemInfo: SystemInfoData;
+  formatUptime: (seconds: number) => string;
+}
 
 /**
  * SystemInfo component
@@ -13,11 +18,11 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Function} props.formatUptime Function to format uptime
  * @returns {JSX.Element} SystemInfo component
  */
-export function SystemInfo({ systemInfo, formatUptime }) {
+export function SystemInfo({ systemInfo, formatUptime }: SystemInfoProps) {
   const { t } = useI18n();
   const cpuKnown = systemInfo.cpu?.usageCapability === 'available' &&
     Number.isFinite(systemInfo.cpu?.usage);
-  const uptimeKnown = Number.isFinite(systemInfo.uptime) && systemInfo.uptime >= 0;
+  const uptimeKnown = Number.isFinite(systemInfo.uptime) && (systemInfo.uptime as number) >= 0;
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
@@ -29,7 +34,7 @@ export function SystemInfo({ systemInfo, formatUptime }) {
         </div>
         <div className="flex justify-between">
           <span className="font-medium">{t('system.uptime')}:</span>
-          <span>{uptimeKnown ? formatUptime(systemInfo.uptime) : t('common.unknown')}</span>
+          <span>{uptimeKnown ? formatUptime(systemInfo.uptime as number) : t('common.unknown')}</span>
         </div>
         <div className="flex justify-between">
           <span className="font-medium">{t('system.cpuModel')}:</span>
@@ -41,13 +46,13 @@ export function SystemInfo({ systemInfo, formatUptime }) {
         </div>
         <div className="flex justify-between items-center">
           <span className="font-medium">{t('system.cpuUsage')}:</span>
-          <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={t('system.cpuUsage')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={cpuKnown ? Math.max(0, Math.min(100, systemInfo.cpu.usage)) : undefined} aria-valuetext={cpuKnown ? `${systemInfo.cpu.usage.toFixed(1)}%` : t('common.unknown')}>
+          <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={t('system.cpuUsage')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={cpuKnown ? Math.max(0, Math.min(100, systemInfo.cpu!.usage as number)) : undefined} aria-valuetext={cpuKnown ? `${(systemInfo.cpu!.usage as number).toFixed(1)}%` : t('common.unknown')}>
             <div
               className="h-2.5 rounded-full"
-              style={{ backgroundColor: cpuKnown ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: cpuKnown ? `${Math.max(0, Math.min(100, systemInfo.cpu.usage))}%` : '100%' }}
+              style={{ backgroundColor: cpuKnown ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: cpuKnown ? `${Math.max(0, Math.min(100, systemInfo.cpu!.usage as number))}%` : '100%' }}
             ></div>
           </div>
-          <span>{cpuKnown ? `${systemInfo.cpu.usage.toFixed(1)}%` : t('common.unknown')}</span>
+          <span>{cpuKnown ? `${(systemInfo.cpu!.usage as number).toFixed(1)}%` : t('common.unknown')}</span>
         </div>
       </div>
     </div>

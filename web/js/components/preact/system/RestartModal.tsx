@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RestartModal Component
  * A styled modal for confirming and showing restart progress
@@ -9,6 +8,13 @@ import { createPortal } from 'preact/compat';
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
 
+export interface RestartModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => unknown;
+  isRestarting: boolean;
+}
+
 /**
  * RestartModal component
  * @param {Object} props Component props
@@ -18,8 +24,8 @@ import { AsyncButton } from '../AsyncButton.tsx';
  * @param {boolean} props.isRestarting Whether the system is currently restarting
  * @returns {JSX.Element} RestartModal component
  */
-export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
-  const modalRef = useRef(null);
+export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: RestartModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [reconnectStatus, setReconnectStatus] = useState('');
   const [serverDown, setServerDown] = useState(false);
@@ -28,7 +34,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
 
   // Handle escape key (only when not restarting)
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen && !isRestarting) {
         onClose();
       }
@@ -120,7 +126,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
   }, [isRestarting, reconnectAttempts, serverDown, t]);
 
   // Handle background click (only when not restarting)
-  const handleBackgroundClick = (e) => {
+  const handleBackgroundClick = (e: MouseEvent) => {
     if (e.target === e.currentTarget && !isRestarting) {
       onClose();
     }

@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { useState } from 'preact/hooks';
 import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { formatBytes } from './SystemUtils.ts';
+import type { HealthIncidentsResponse, HealthObservation } from '../../../types/system.ts';
 
 const HISTORY_PAGE_SIZE = 20;
 
@@ -11,40 +11,40 @@ export function buildIncidentHistoryUrl(cursor = '') {
   return `/api/system/health/incidents?limit=${HISTORY_PAGE_SIZE}&include_closed=true${suffix}`;
 }
 
-function formatHistoryValue(observation, unknown) {
+function formatHistoryValue(observation: HealthObservation | null | undefined, unknown: string) {
   if (!observation || observation.capability !== 'available' || !Number.isFinite(observation.value)) return unknown;
-  if (observation.unit === 'ratio') return `${(observation.value * 100).toFixed(1)}%`;
-  if (observation.unit === 'bytes') return formatBytes(observation.value);
-  if (observation.unit === 'celsius') return `${observation.value.toFixed(1)} °C`;
-  return observation.value.toLocaleString();
+  if (observation.unit === 'ratio') return `${((observation.value as number) * 100).toFixed(1)}%`;
+  if (observation.unit === 'bytes') return formatBytes(observation.value as number);
+  if (observation.unit === 'celsius') return `${(observation.value as number).toFixed(1)} °C`;
+  return (observation.value as number).toLocaleString();
 }
 
 function historyRemediationKey(condition = '') {
   const prefix = condition.split('.')[0];
   const known = new Set(['memory', 'cpu', 'io', 'filesystem', 'thermal', 'network', 'clock', 'process', 'storage', 'hardware', 'health', 'system', 'event']);
-  return `system.health.remediation.${known.has(prefix) ? prefix : 'default'}`;
+  return `system.health.remediation.${known.has(prefix!) ? prefix : 'default'}`;
 }
 
 function label(value = '') {
   return value.replaceAll('.', ' ').replaceAll('_', ' ');
 }
 
-function severityClass(severity) {
+function severityClass(severity: string) {
   if (severity === 'critical' || severity === 'error') return 'badge-danger';
   if (severity === 'warning') return 'badge-warning';
   if (severity === 'none') return 'badge-success';
   return 'bg-muted text-muted-foreground';
 }
 
-function dateTime(value, unknown) {
+function dateTime(value: number, unknown: string) {
   return Number.isFinite(value) && value > 0 ? new Date(value).toLocaleString() : unknown;
 }
 
 export function HealthIncidentHistory() {
   const { t } = useI18n();
   const [cursor, setCursor] = useState('');
-  const [previous, setPrevious] = useState([]);
-  const query = useQuery(
+  const [previous, setPrevious] = useState<string[]>([]);
+  const query = useQuery<HealthIncidentsResponse>(
     ['systemHealthIncidents', cursor],
     buildIncidentHistoryUrl(cursor),
     { timeout: 15000, retries: 1 },
@@ -60,7 +60,7 @@ export function HealthIncidentHistory() {
   const goPrevious = () => {
     if (!previous.length) return;
     const items = previous.slice(0, -1);
-    setCursor(previous[previous.length - 1]);
+    setCursor(previous[previous.length - 1]!);
     setPrevious(items);
   };
 

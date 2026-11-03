@@ -1,10 +1,14 @@
-// @ts-nocheck
 /**
  * NetworkInfo Component
  * Displays network interface information
  */
 
 import { useI18n } from '../../../i18n.ts';
+import type { SystemInfoData } from '../../../types/system.ts';
+
+export interface NetworkInfoProps {
+  systemInfo: SystemInfoData;
+}
 
 /**
  * NetworkInfo component
@@ -12,7 +16,7 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Object} props.systemInfo System information object
  * @returns {JSX.Element} NetworkInfo component
  */
-export function NetworkInfo({ systemInfo }) {
+export function NetworkInfo({ systemInfo }: NetworkInfoProps) {
   const { t } = useI18n();
 
   return (

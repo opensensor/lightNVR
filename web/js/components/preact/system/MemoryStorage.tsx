@@ -1,36 +1,67 @@
-// @ts-nocheck
 /** Memory and storage facts sourced from the completed health snapshot. */
 import { useI18n } from '../../../i18n.ts';
 import { useQuery } from '../../../query-client.ts';
 import { meterPercent, summarizeStorageTiers } from './storageTiers.ts';
+import type {
+  CapacitySection,
+  FormatBytes,
+  StorageClass,
+  StorageTargetsResponse,
+  StorageTierSummary,
+  SystemInfoData,
+} from '../../../types/system.ts';
 
-export function metricKnown(section, value) {
+interface MeterProps {
+  value: number | null;
+  label: string;
+  unknown: string;
+}
+
+interface CapacityRowProps {
+  label: string;
+  section: CapacitySection | undefined;
+  formatBytes: FormatBytes;
+  unknown: string;
+}
+
+export interface RecordingStorageTiersProps {
+  summary: StorageTierSummary;
+  formatBytes: FormatBytes;
+  unknown: string;
+}
+
+export interface MemoryStorageProps {
+  systemInfo: SystemInfoData;
+  formatBytes: FormatBytes;
+}
+
+export function metricKnown(section: { capability?: string } | null | undefined, value: unknown): boolean {
   return Number.isFinite(value) && (!section?.capability || section.capability === 'available');
 }
 
-export function boundedPercent(used, total) {
-  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null;
-  return Math.max(0, Math.min(100, used / total * 100));
+export function boundedPercent(used: number | null | undefined, total: number | null | undefined): number | null {
+  if (!Number.isFinite(used) || !Number.isFinite(total) || (total as number) <= 0) return null;
+  return Math.max(0, Math.min(100, (used as number) / (total as number) * 100));
 }
 
-function Meter({ value, label, unknown }) {
+function Meter({ value, label, unknown }: MeterProps) {
   const known = Number.isFinite(value);
   return (
-    <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={known ? value : undefined} aria-valuetext={known ? `${value.toFixed(1)}%` : unknown}>
+    <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={known ? (value as number) : undefined} aria-valuetext={known ? `${(value as number).toFixed(1)}%` : unknown}>
       <div className="h-2.5 rounded-full" style={{ backgroundColor: known ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: known ? `${value}%` : '100%' }}></div>
     </div>
   );
 }
 
-function CapacityRow({ label, section, formatBytes, unknown }) {
+function CapacityRow({ label, section, formatBytes, unknown }: CapacityRowProps) {
   const totalKnown = metricKnown(section, section?.total);
   const usedKnown = metricKnown(section, section?.used);
-  const percent = totalKnown && usedKnown ? boundedPercent(section.used, section.total) : null;
+  const percent = totalKnown && usedKnown ? boundedPercent(section!.used, section!.total) : null;
   return (
     <div>
       <div className="flex flex-wrap justify-between gap-2 mb-1">
         <span className="font-medium">{label}:</span>
-        <span>{totalKnown && usedKnown ? `${formatBytes(section.used)} / ${formatBytes(section.total)}` : unknown}</span>
+        <span>{totalKnown && usedKnown ? `${formatBytes(section!.used as number)} / ${formatBytes(section!.total as number)}` : unknown}</span>
       </div>
       <Meter value={percent} label={label} unknown={unknown} />
       {!totalKnown || !usedKnown ? <p className="mt-1 text-xs text-muted-foreground">{section?.capability || unknown}</p> : null}
@@ -38,12 +69,12 @@ function CapacityRow({ label, section, formatBytes, unknown }) {
   );
 }
 
-const CLASS_BADGES = {
+const CLASS_BADGES: Record<StorageClass, string> = {
   hot: 'bg-red-500/15 text-red-600 dark:text-red-300',
   warm: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
   cold: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
 };
-const PRESSURE_BADGES = {
+const PRESSURE_BADGES: Partial<Record<string, string>> = {
   high: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
   reserve: 'bg-red-500/15 text-red-600 dark:text-red-300',
   unavailable: 'bg-muted text-muted-foreground',
@@ -54,9 +85,9 @@ const PRESSURE_BADGES = {
  * recordings span several targets (e.g. a hot disk plus a cold bucket), since
  * that bar divides every recording byte by the local disk's capacity.
  */
-export function RecordingStorageTiers({ summary, formatBytes, unknown }) {
+export function RecordingStorageTiers({ summary, formatBytes, unknown }: RecordingStorageTiersProps) {
   const { t } = useI18n();
-  const classTotals = ['hot', 'warm', 'cold']
+  const classTotals = (['hot', 'warm', 'cold'] as StorageClass[])
     .filter((storageClass) => summary.rows.some((row) => row.storageClass === storageClass))
     .map((storageClass) => `${t(`system.storageTiers.class.${storageClass}`)} ${formatBytes(summary.byClass[storageClass])}`);
   return (
@@ -117,12 +148,12 @@ export function RecordingStorageTiers({ summary, formatBytes, unknown }) {
   );
 }
 
-export function MemoryStorage({ systemInfo, formatBytes }) {
+export function MemoryStorage({ systemInfo, formatBytes }: MemoryStorageProps) {
   const { t } = useI18n();
   const unknown = t('common.unknown');
   // Same query key as Settings → Storage. Accounts without storage-configure
   // permission get a 403 and simply keep the single legacy bar.
-  const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets',
+  const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets',
     { cache: 'no-store', timeout: 15000, retries: 0 }, { staleTime: 30000, retry: false });
   const tierSummary = targetsQuery.data ? summarizeStorageTiers(targetsQuery.data.targets) : null;
   const processSections = [
@@ -130,11 +161,11 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
     { name: 'go2rtc', section: systemInfo.go2rtcMemory, badge: 'badge-success' },
     { name: 'detector', section: systemInfo.detectorMemory, badge: 'badge-warning' },
   ];
-  const processValues = processSections.map(({ section }) => metricKnown(section, section?.used) ? section.used : null);
+  const processValues = processSections.map(({ section }) => metricKnown(section, section?.used) ? section!.used as number : null);
   const totalSystemMemory = metricKnown(systemInfo.systemMemory, systemInfo.systemMemory?.total)
-    ? systemInfo.systemMemory.total : null;
+    ? systemInfo.systemMemory!.total as number : null;
   const allProcessesKnown = processValues.every(Number.isFinite);
-  const combinedMemoryUsed = allProcessesKnown ? processValues.reduce((sum, value) => sum + value, 0) : null;
+  const combinedMemoryUsed = allProcessesKnown ? processValues.reduce<number>((sum, value) => sum + (value as number), 0) : null;
   const combinedMemoryPercent = boundedPercent(combinedMemoryUsed, totalSystemMemory);
 
   return (
@@ -147,17 +178,17 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
             <div className="flex flex-wrap justify-end gap-1">
               {processSections.map(({ name, section, badge }) => (
                 <span key={name} className={`inline-block px-2 py-0.5 text-xs rounded ${badge}`}>
-                  {name}: {metricKnown(section, section?.used) ? formatBytes(section.used) : unknown}
+                  {name}: {metricKnown(section, section?.used) ? formatBytes(section!.used as number) : unknown}
                 </span>
               ))}
             </div>
           </div>
           <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground mb-1">
             <span>{allProcessesKnown && Number.isFinite(totalSystemMemory)
-              ? t('system.combinedMemory', { used: formatBytes(combinedMemoryUsed), total: formatBytes(totalSystemMemory) })
+              ? t('system.combinedMemory', { used: formatBytes(combinedMemoryUsed as number), total: formatBytes(totalSystemMemory as number) })
               : t('system.health.valueUnavailable')}</span>
             <span>{Number.isFinite(combinedMemoryPercent)
-              ? t('system.percentOfTotalMemory', { percent: combinedMemoryPercent.toFixed(1) })
+              ? t('system.percentOfTotalMemory', { percent: (combinedMemoryPercent as number).toFixed(1) })
               : unknown}</span>
           </div>
           <Meter value={combinedMemoryPercent} label={t('system.processMemory')} unknown={unknown} />

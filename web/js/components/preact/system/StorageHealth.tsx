@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StorageHealth Component
  * Displays storage controller health: disk pressure, last cleanup stats,
@@ -9,11 +8,16 @@ import { useState } from 'preact/hooks';
 import { useQuery, useMutation, fetchJSON } from '../../../query-client.ts';
 import { nowMilliseconds } from '../../../utils/date-utils.ts';
 import { useI18n } from '../../../i18n.ts';
+import type { FormatBytes, StorageHealthResponse, Translate } from '../../../types/system.ts';
+
+export interface StorageHealthProps {
+  formatBytes: FormatBytes;
+}
 
 /**
  * Map pressure level to a badge color class
  */
-function pressureBadge(level, t) {
+function pressureBadge(level: string, t: Translate) {
   switch (level) {
     case 'NORMAL':    return { bg: 'hsl(142 70% 45% / 0.15)', text: 'hsl(142 70% 35%)', label: t('system.pressure.normal') };
     case 'WARNING':   return { bg: 'hsl(38 92% 50% / 0.15)',  text: 'hsl(38 80% 40%)',  label: t('system.pressure.warning') };
@@ -27,7 +31,7 @@ function pressureBadge(level, t) {
  * Format the projected-time-to-capacity-target value from the health API.
  * seconds < 0 => unknown; 0 => already at/over target.
  */
-function formatProjection(seconds, t) {
+function formatProjection(seconds: number | null | undefined, t: Translate) {
   if (seconds == null || seconds < 0) return t('system.projectedUnknown');
   if (seconds === 0) return t('system.projectedNow');
   const days = seconds / 86400;
@@ -35,7 +39,7 @@ function formatProjection(seconds, t) {
   return t('system.projectedHours', { count: Math.max(1, Math.round(seconds / 3600)) });
 }
 
-function formatTimeAgo(epochSeconds, t) {
+function formatTimeAgo(epochSeconds: number | null | undefined, t: Translate) {
   if (!epochSeconds) return t('common.never');
   const diff = Math.floor(nowMilliseconds() / 1000) - epochSeconds;
   if (diff < 0) return t('system.justNow');
@@ -51,19 +55,19 @@ function formatTimeAgo(epochSeconds, t) {
  * @param {Function} props.formatBytes Function to format bytes to human-readable size
  * @returns {JSX.Element}
  */
-export function StorageHealth({ formatBytes }) {
+export function StorageHealth({ formatBytes }: StorageHealthProps) {
   const { t } = useI18n();
   const [cleanupPending, setCleanupPending] = useState(false);
-  const [cleanupTriggeredAt, setCleanupTriggeredAt] = useState(null);
+  const [cleanupTriggeredAt, setCleanupTriggeredAt] = useState<number | null>(null);
 
-  const { data: health, isLoading, error, refetch } = useQuery(
+  const { data: health, isLoading, error, refetch } = useQuery<StorageHealthResponse>(
     ['storageHealth'],
     '/api/storage/health',
     { timeout: 10000, retries: 1 },
     { refetchInterval: 60000 }  // refresh every 60s (matches heartbeat)
   );
 
-  const cleanupMutation = useMutation({
+  const cleanupMutation = useMutation<unknown, Error, boolean>({
     mutationFn: async (aggressive) => {
       return await fetchJSON('/api/storage/cleanup', {
         method: 'POST',

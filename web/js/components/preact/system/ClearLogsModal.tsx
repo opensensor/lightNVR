@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ClearLogsModal Component
  * A styled confirmation modal for clearing logs
@@ -8,6 +7,12 @@ import { useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { useI18n } from '../../../i18n.ts';
 
+export interface ClearLogsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
 /**
  * ClearLogsModal component
  * @param {Object} props Component props
@@ -16,13 +21,13 @@ import { useI18n } from '../../../i18n.ts';
  * @param {Function} props.onConfirm Function to call when clear is confirmed
  * @returns {JSX.Element} ClearLogsModal component
  */
-export function ClearLogsModal({ isOpen, onClose, onConfirm }) {
-  const modalRef = useRef(null);
+export function ClearLogsModal({ isOpen, onClose, onConfirm }: ClearLogsModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const { t } = useI18n();
 
   if (!isOpen) return null;
 
-  const handleBackgroundClick = (e) => {
+  const handleBackgroundClick = (e: MouseEvent) => {
     if (e.target === modalRef.current) {
       onClose();
     }

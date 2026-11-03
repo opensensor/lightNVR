@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * WebServiceInfo Component
  * Displays web server activity (request counts, health) and process thread info.
@@ -6,11 +5,21 @@
 
 import { useQuery } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
+import type { StreamHealthResponse, SystemInfoData, Translate } from '../../../types/system.ts';
+
+interface StatusBadgeProps {
+  healthy: boolean;
+  t: Translate;
+}
+
+export interface WebServiceInfoProps {
+  systemInfo: SystemInfoData;
+}
 
 /**
  * Small status badge — green for healthy, red otherwise.
  */
-function StatusBadge({ healthy, t }) {
+function StatusBadge({ healthy, t }: StatusBadgeProps) {
   const bg   = healthy ? 'hsl(142 70% 45% / 0.15)' : 'hsl(0 84% 60% / 0.15)';
   const text = healthy ? 'hsl(142 70% 35%)'         : 'hsl(0 84% 40%)';
   const label = healthy ? t('system.healthy') : t('system.unhealthy');
@@ -28,9 +37,9 @@ function StatusBadge({ healthy, t }) {
  * @param {Object} props.systemInfo  System information object (for thread counts)
  * @returns {JSX.Element}
  */
-export function WebServiceInfo({ systemInfo }) {
+export function WebServiceInfo({ systemInfo }: WebServiceInfoProps) {
   const { t } = useI18n();
-  const { data: health, isLoading, error } = useQuery(
+  const { data: health, isLoading, error } = useQuery<StreamHealthResponse>(
     ['webHealth'],
     '/api/health',
     { timeout: 5000, retries: 1 },
@@ -42,6 +51,8 @@ export function WebServiceInfo({ systemInfo }) {
   const isHealthy    = !error && health?.healthy !== false;
   const totalReqs    = health?.totalRequests  ?? 0;
   const failedReqs   = health?.failedRequests ?? 0;
+  // successRate is a toFixed() string; the style below relies on JS coercing it
+  // for the >= comparisons, hence the two `as unknown as number` casts there.
   const successRate  = totalReqs > 0
     ? ((1 - failedReqs / totalReqs) * 100).toFixed(1)
     : null;
@@ -77,9 +88,9 @@ export function WebServiceInfo({ systemInfo }) {
                   <div className="h-2 rounded-full"
                        style={{
                          width: `${successRate}%`,
-                         backgroundColor: successRate >= 99
+                         backgroundColor: (successRate as unknown as number) >= 99
                            ? 'hsl(142 70% 45%)'
-                           : successRate >= 95
+                           : (successRate as unknown as number) >= 95
                              ? 'hsl(38 92% 50%)'
                              : 'hsl(0 84% 60%)'
                        }} />

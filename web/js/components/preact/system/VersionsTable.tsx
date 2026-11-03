@@ -1,14 +1,23 @@
-// @ts-nocheck
 import { useI18n } from '../../../i18n.ts';
+import type { SystemVersions, Translate } from '../../../types/system.ts';
 
-const CATEGORY_STYLES = {
+interface CategoryBadgeProps {
+  category: string;
+  t: Translate;
+}
+
+export interface VersionsTableProps {
+  versions: SystemVersions | null | undefined;
+}
+
+const CATEGORY_STYLES: Partial<Record<string, string>> = {
   'Application': 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
   'OS': 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
   'Service': 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
   'Library': 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
 };
 
-function CategoryBadge({ category, t }) {
+function CategoryBadge({ category, t }: CategoryBadgeProps) {
   const className = CATEGORY_STYLES[category] || 'bg-muted text-muted-foreground';
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}>
@@ -17,7 +26,7 @@ function CategoryBadge({ category, t }) {
   );
 }
 
-export function VersionsTable({ versions }) {
+export function VersionsTable({ versions }: VersionsTableProps) {
   const items = Array.isArray(versions?.items) ? versions.items : [];
   const { t } = useI18n();
 

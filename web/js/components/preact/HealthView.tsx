@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * HealthView - Stream Health monitoring page
  * Shows fleet summary, per-stream health cards with sparklines
@@ -7,14 +6,34 @@ import { useState } from 'preact/hooks';
 import { useQuery } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
 import { Sparkline } from './health/Sparkline.tsx';
+import type {
+    StreamHealthDetail,
+    StreamHealthHistoryResponse,
+    StreamHealthResponse,
+} from '../../types/system.ts';
 
-function StatusBadge({ status }) {
+interface BadgeColors {
+    bg: string;
+    text: string;
+}
+
+interface StatusBadgeProps {
+    status: string;
+}
+
+interface StreamCardProps {
+    stream: StreamHealthDetail;
+    expanded: boolean;
+    onToggle: () => void;
+}
+
+function StatusBadge({ status }: StatusBadgeProps) {
     const colors = {
         up:       { bg: 'hsl(142 70% 45% / 0.15)', text: 'hsl(142 70% 35%)' },
         degraded: { bg: 'hsl(45 93% 47% / 0.15)',   text: 'hsl(45 80% 35%)' },
         down:     { bg: 'hsl(0 84% 60% / 0.15)',    text: 'hsl(0 84% 40%)' },
     };
-    const c = colors[status] || colors.down;
+    const c = (colors as Partial<Record<string, BadgeColors>>)[status] || colors.down;
     return (
         <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full"
               style={{ backgroundColor: c.bg, color: c.text }}>
@@ -23,13 +42,13 @@ function StatusBadge({ status }) {
     );
 }
 
-function OverallStatusBadge({ status }) {
+function OverallStatusBadge({ status }: StatusBadgeProps) {
     const colors = {
         healthy:  { bg: 'hsl(142 70% 45% / 0.15)', text: 'hsl(142 70% 35%)' },
         degraded: { bg: 'hsl(45 93% 47% / 0.15)',   text: 'hsl(45 80% 35%)' },
         critical: { bg: 'hsl(0 84% 60% / 0.15)',    text: 'hsl(0 84% 40%)' },
     };
-    const c = colors[status] || colors.critical;
+    const c = (colors as Partial<Record<string, BadgeColors>>)[status] || colors.critical;
     return (
         <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full"
               style={{ backgroundColor: c.bg, color: c.text }}>
@@ -38,21 +57,21 @@ function OverallStatusBadge({ status }) {
     );
 }
 
-function formatBitrate(bps) {
+function formatBitrate(bps: number) {
     if (!bps || bps <= 0) return '0 bps';
     if (bps >= 1000000) return (bps / 1000000).toFixed(1) + ' Mbps';
     if (bps >= 1000) return (bps / 1000).toFixed(0) + ' Kbps';
     return bps.toFixed(0) + ' bps';
 }
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number | undefined) {
     if (!bytes || bytes <= 0) return '0 B';
     if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
     if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
     return (bytes / 1024).toFixed(0) + ' KB';
 }
 
-function formatDuration(seconds) {
+function formatDuration(seconds: number) {
     if (!seconds || seconds <= 0) return '0s';
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -62,7 +81,7 @@ function formatDuration(seconds) {
     return `${s}s`;
 }
 
-function formatTimeAgo(ts) {
+function formatTimeAgo(ts: number) {
     if (!ts || ts <= 0) return 'never';
     const ago = Math.floor(Date.now() / 1000) - ts;
     if (ago < 5) return 'just now';
@@ -71,7 +90,7 @@ function formatTimeAgo(ts) {
     return `${Math.floor(ago / 3600)}h ago`;
 }
 
-function StreamCard({ stream, expanded, onToggle }) {
+function StreamCard({ stream, expanded, onToggle }: StreamCardProps) {
     const { t } = useI18n();
     const observedFps = stream.observed_fps ?? stream.fps ?? 0;
     const expectedFps = stream.expected_fps ?? stream.configured_fps ?? 30;
@@ -150,15 +169,15 @@ function StreamCard({ stream, expanded, onToggle }) {
 
 export function HealthView() {
     const { t } = useI18n();
-    const [expandedStream, setExpandedStream] = useState(null);
+    const [expandedStream, setExpandedStream] = useState<string | null>(null);
 
-    const { data: health, isLoading, error } = useQuery(
+    const { data: health, isLoading, error } = useQuery<StreamHealthResponse>(
         ['streamHealth'],
         '/api/health',
         { timeout: 10000, retries: 1 },
         { refetchInterval: 10000 }
     );
-    const { data: healthHistory } = useQuery(
+    const { data: healthHistory } = useQuery<StreamHealthHistoryResponse>(
         ['streamHealthHistory'],
         '/api/health?sparklines=true&history_only=true',
         { timeout: 15000, retries: 1 },
@@ -189,7 +208,7 @@ export function HealthView() {
         ...stream,
         ...(historyByName.get(stream.name) || {}),
     }));
-    const storage = health?.storage || {};
+    const storage: NonNullable<StreamHealthResponse['storage']> = health?.storage || {};
     const overallStatus = health?.status || 'healthy';
     const storagePercent = storage.used_bytes && storage.available_bytes
         ? ((storage.used_bytes / (storage.used_bytes + storage.available_bytes)) * 100).toFixed(1)

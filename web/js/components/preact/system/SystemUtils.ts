@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SystemUtils
  * Utility functions for the system components
@@ -11,7 +10,7 @@
  * @param {number} decimals Number of decimal places
  * @returns {string} Formatted size string
  */
-export function formatBytes(bytes, decimals = 1) {
+export function formatBytes(bytes: number, decimals = 1) {
   if (bytes === 0) return '0 Bytes';
   
   const k = 1024;
@@ -29,7 +28,7 @@ export function formatBytes(bytes, decimals = 1) {
  * @param {number} seconds Uptime in seconds
  * @returns {string} Formatted uptime string
  */
-export function formatUptime(seconds) {
+export function formatUptime(seconds: unknown) {
   const safeSeconds = Number.isFinite(Number(seconds))
     ? Math.max(0, Number(seconds))
     : 0;
@@ -55,7 +54,7 @@ export function formatUptime(seconds) {
  * @param {string} minLevel The minimum required level
  * @returns {boolean} True if the log level meets the minimum, false otherwise
  */
-export function log_level_meets_minimum(logLevel, minLevel) {
+export function log_level_meets_minimum(logLevel: string | null | undefined, minLevel: string | null | undefined) {
   // Special case: if minLevel is debug, always return true
   // This ensures all log levels are shown when debug is selected
   if (String(minLevel || '').toLowerCase() === 'debug') {
