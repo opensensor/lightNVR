@@ -260,8 +260,6 @@ export interface User {
   email: string;
   role: number;
   role_name: UserRoleName;
-  /** Only when the server was asked to include it and the user has one. */
-  api_key?: string;
   created_at: number;
   updated_at: number;
   last_login: number;
