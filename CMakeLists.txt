@@ -958,10 +958,15 @@ else()
         execute_process(
             COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            OUTPUT_VARIABLE GIT_COMMIT
+            OUTPUT_VARIABLE GIT_COMMIT_CANDIDATE
+            RESULT_VARIABLE GIT_REV_PARSE_RESULT
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
         )
+        if(GIT_REV_PARSE_RESULT EQUAL 0 AND NOT "${GIT_COMMIT_CANDIDATE}" STREQUAL "")
+            set(GIT_COMMIT "${GIT_COMMIT_CANDIDATE}")
+            string(TOLOWER "${GIT_COMMIT}" GIT_COMMIT)
+        endif()
     endif()
 endif()
 
