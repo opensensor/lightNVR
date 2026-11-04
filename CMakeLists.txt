@@ -968,16 +968,19 @@ endif()
 # Build date in ISO-8601
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
-# Create a version.h file
+# Create a version.h file in the build tree (out-of-source safe)
+set(GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include")
+file(MAKE_DIRECTORY "${GENERATED_INCLUDE_DIR}/core")
 file(READ
         "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in"
         VERSION_H_IN
 )
 string(CONFIGURE "${VERSION_H_IN}" VERSION_H_OUT @ONLY)
 file(GENERATE
-        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h"
+        OUTPUT "${GENERATED_INCLUDE_DIR}/core/version.h"
         CONTENT "${VERSION_H_OUT}"
 )
+include_directories("${GENERATED_INCLUDE_DIR}")
 
 # Generate version.js for web interface
 add_custom_target(generate_version_js
