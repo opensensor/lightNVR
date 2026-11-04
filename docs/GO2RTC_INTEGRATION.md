@@ -37,6 +37,17 @@ separately configured H.264 substream is still the cheapest option for a grid
 with many cameras; conversion of the main stream is available when a camera
 does not provide a usable substream.
 
+## Live audio and Record Audio
+
+**Record Audio** controls whether recordings contain audio. It does not mute Live
+View. WebRTC can only carry Opus and G.711, so main streams keep a `#audio=opus`
+FFmpeg source for cameras that send AAC. That process runs only while a WebRTC
+viewer needs it. Sub-streams do not get this source because each grid tile would
+start its own FFmpeg process, so a tile on an AAC sub-stream is silent over WebRTC.
+To remove audio from Live View entirely, use the instance audio policy
+(`audio_disabled`). Adding `#noaudio` to a stream URL only removes this FFmpeg
+source; audio the camera sends in a codec the player supports still plays.
+
 ## Architecture
 
 The integration consists of three main components:

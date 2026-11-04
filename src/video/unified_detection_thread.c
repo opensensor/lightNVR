@@ -1281,6 +1281,11 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
                                   ctx->rtsp_url, sizeof(ctx->rtsp_url)) != 0) {
             safe_strcpy(ctx->rtsp_url, config.url, sizeof(ctx->rtsp_url), 0);
         }
+    } else if (!ctx->record_audio) {
+        // Clips will not contain audio, so do not ask go2rtc for it. Otherwise
+        // this always-on consumer holds an audio source open and hands the
+        // video-only clip writer packets it has no track for (#767).
+        safe_strcat(ctx->rtsp_url, "?video", sizeof(ctx->rtsp_url));
     }
 
     /* The recording directory is selected lazily when a detection clip starts. */

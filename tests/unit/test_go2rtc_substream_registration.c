@@ -96,7 +96,9 @@ void tearDown(void) {
 void test_substream_keeps_video_fallback_after_h264_main_registration(void) {
     TEST_ASSERT_TRUE(go2rtc_stream_register("Front Gate", "rtsp://camera/stream1",
         NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "h264"));
-    TEST_ASSERT_EQUAL_INT(1, source_count);
+    /* Only the on-demand live audio source (#767): H.264 needs no video fallback. */
+    TEST_ASSERT_EQUAL_INT(2, source_count);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:Front Gate#audio=opus", registered_sources[1]);
 
     /* #579: the main is H.264, but /stream8 advertises JPEG. Its codec has
      * not been probed separately, so preserve a fallback on the sub relay. */
@@ -145,12 +147,12 @@ void test_hardware_preview_preserves_portrait_and_small_geometry(void) {
     camera_config.height = 3840;
     TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
         NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "hevc"));
-    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=606#height=1080", registered_sources[1]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=606#height=1080", registered_sources[2]);
     camera_config.width = 640;
     camera_config.height = 480;
     TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
         NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "hevc"));
-    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=640#height=480", registered_sources[1]);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264#hardware#width=640#height=480", registered_sources[2]);
 }
 
 void test_substream_fallback_preserves_instance_audio_policy(void) {
@@ -173,6 +175,35 @@ void test_main_stream_audio_and_video_fallbacks_are_preserved(void) {
     TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#video=h264", registered_sources[2]);
 }
 
+/* #767: "Record Audio" off must not silence live WebRTC on AAC cameras. */
+void test_main_stream_without_record_audio_keeps_live_opus_source(void) {
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "h264"));
+    TEST_ASSERT_EQUAL_INT(2, source_count);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera#audio=opus", registered_sources[1]);
+}
+
+void test_noaudio_fragment_suppresses_live_opus_source(void) {
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main#noaudio",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "h264"));
+    TEST_ASSERT_EQUAL_INT(1, source_count);
+}
+
+void test_audio_policy_suppresses_live_opus_source(void) {
+    g_config.audio_disabled = true;
+    TEST_ASSERT_TRUE(go2rtc_stream_register("camera", "rtsp://camera/main",
+        NULL, NULL, false, STREAM_PROTOCOL_TCP, false, "h264"));
+    TEST_ASSERT_EQUAL_INT(1, source_count);
+}
+
+/* #437: grid sub-streams must not gain a per-tile audio transcoder. */
+void test_substream_has_no_live_opus_source(void) {
+    TEST_ASSERT_TRUE(go2rtc_stream_register_substream("camera_sub",
+        "rtsp://camera/sub", NULL, NULL, STREAM_PROTOCOL_TCP));
+    TEST_ASSERT_EQUAL_INT(2, source_count);
+    TEST_ASSERT_EQUAL_STRING("ffmpeg:camera_sub#video=h264", registered_sources[1]);
+}
+
 void test_substream_reports_registration_failure(void) {
     registration_succeeds = false;
     TEST_ASSERT_FALSE(go2rtc_stream_register_substream("camera_sub",
@@ -187,6 +218,10 @@ int main(void) {
     RUN_TEST(test_hardware_preview_preserves_portrait_and_small_geometry);
     RUN_TEST(test_substream_fallback_preserves_instance_audio_policy);
     RUN_TEST(test_main_stream_audio_and_video_fallbacks_are_preserved);
+    RUN_TEST(test_main_stream_without_record_audio_keeps_live_opus_source);
+    RUN_TEST(test_noaudio_fragment_suppresses_live_opus_source);
+    RUN_TEST(test_audio_policy_suppresses_live_opus_source);
+    RUN_TEST(test_substream_has_no_live_opus_source);
     RUN_TEST(test_substream_reports_registration_failure);
     return UNITY_END();
 }

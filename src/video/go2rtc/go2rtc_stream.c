@@ -192,7 +192,8 @@ static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size,
 static bool go2rtc_stream_register_locked(const char *stream_id, const char *stream_url,
                                           const char *username, const char *password,
                                           bool backchannel_enabled, stream_protocol_t protocol,
-                                          bool record_audio, const char *codec) {
+                                          bool record_audio, const char *codec,
+                                          bool live_audio_fallback) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -356,6 +357,14 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
      *         browser negotiates an opus track in the SDP that never carries
      *         any audio — the exact "speaker icon but no sound" symptom. (#429)
      *
+     *   - ffmpeg:<id>#audio=opus             when record_audio is false.
+     *     "Record Audio" only controls what goes into recordings, so live
+     *     WebRTC must not go silent on AAC cameras when it is off; MSE and
+     *     go2rtc HLS carry that audio regardless. (#767) Recording, native HLS
+     *     and detection consumers request ?video, and preload requests video
+     *     only, so this ffmpeg process starts only for a viewer that asks for
+     *     audio the camera cannot supply. Grid sub-streams opt out (#437).
+     *
      *   - ffmpeg:<id>#video=h264[#hardware]   when the source codec is
      *     anything other than "h264" (including unknown/empty). Clients
      *     without native H.265 support need a transcoded fallback — it only spawns its
@@ -389,6 +398,10 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
         // browser's WebRTC player. (#429)
         snprintf(ffmpeg_audio_source, sizeof(ffmpeg_audio_source),
                  "ffmpeg:%s#audio=aac#audio=opus", stream_id);
+        sources[num_sources++] = ffmpeg_audio_source;
+    } else if (live_audio_fallback && !suppress_audio) {
+        snprintf(ffmpeg_audio_source, sizeof(ffmpeg_audio_source),
+                 "ffmpeg:%s#audio=opus", stream_id);
         sources[num_sources++] = ffmpeg_audio_source;
     }
 
@@ -498,10 +511,11 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
     return result;
 }
 
-bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                            const char *username, const char *password,
-                            bool backchannel_enabled, stream_protocol_t protocol,
-                            bool record_audio, const char *codec) {
+static bool go2rtc_stream_register_with_lifecycle(const char *stream_id, const char *stream_url,
+                                                  const char *username, const char *password,
+                                                  bool backchannel_enabled, stream_protocol_t protocol,
+                                                  bool record_audio, const char *codec,
+                                                  bool live_audio_fallback) {
     go2rtc_lifecycle_guard_t guard;
     if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_RECONFIGURE, false, true,
                                 &guard)) {
@@ -512,18 +526,29 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     bool result = go2rtc_stream_register_locked(
         stream_id, stream_url, username, password, backchannel_enabled,
-        protocol, record_audio, codec);
+        protocol, record_audio, codec, live_audio_fallback);
     go2rtc_lifecycle_end(&guard, result);
     return result;
+}
+
+bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
+                            const char *username, const char *password,
+                            bool backchannel_enabled, stream_protocol_t protocol,
+                            bool record_audio, const char *codec) {
+    return go2rtc_stream_register_with_lifecycle(stream_id, stream_url, username, password,
+                                                 backchannel_enabled, protocol,
+                                                 record_audio, codec, true);
 }
 
 bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_url,
                                      const char *username, const char *password,
                                      stream_protocol_t protocol) {
     /* No independent sub-stream codec is stored yet. Never borrow the main
-     * codec: doing so suppressed JPEG -> H.264 fallback in issue #579. */
-    return go2rtc_stream_register(stream_id, stream_url, username, password,
-                                  false, protocol, false, NULL);
+     * codec: doing so suppressed JPEG -> H.264 fallback in issue #579.
+     * Grid tiles always offer an audio track, so a live audio fallback here
+     * would start one ffmpeg per tile (#437). */
+    return go2rtc_stream_register_with_lifecycle(stream_id, stream_url, username, password,
+                                                 false, protocol, false, NULL, false);
 }
 
 static bool go2rtc_stream_unregister_locked(const char *stream_id) {
