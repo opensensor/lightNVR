@@ -30,11 +30,13 @@
 /**
  * @brief Convert a user_t struct to a cJSON object
  *
+ * The legacy API key is deliberately left out. It is a one-time secret, returned
+ * only by POST /api/auth/users/:id/api-key when it is generated.
+ *
  * @param user User struct
- * @param include_api_key Whether to include the API key in the response
  * @return cJSON* JSON object representing the user
  */
-static cJSON *user_to_json(const user_t *user, int include_api_key) {
+static cJSON *user_to_json(const user_t *user) {
     cJSON *json = cJSON_CreateObject();
 
     cJSON_AddNumberToObject(json, "id", (double)user->id);
@@ -42,10 +44,6 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddStringToObject(json, "email", user->email);
     cJSON_AddNumberToObject(json, "role", user->role);
     cJSON_AddStringToObject(json, "role_name", db_auth_get_role_name(user->role));
-
-    if (include_api_key && user->api_key[0] != '\0') {
-        cJSON_AddStringToObject(json, "api_key", user->api_key);
-    }
 
     cJSON_AddNumberToObject(json, "created_at", (double)user->created_at);
     cJSON_AddNumberToObject(json, "updated_at", (double)user->updated_at);
@@ -267,7 +265,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         populate_user_from_stmt(stmt, &user);
 
         // Add user to array
-        cJSON_AddItemToArray(users_array, user_to_json(&user, 1));
+        cJSON_AddItemToArray(users_array, user_to_json(&user));
     }
 
     sqlite3_finalize(stmt);
@@ -321,7 +319,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     }
 
     // Convert user to JSON
-    cJSON *user_json = user_to_json(&user, 1);
+    cJSON *user_json = user_to_json(&user);
 
     // Send response
     char *json_str = cJSON_PrintUnformatted(user_json);
@@ -479,7 +477,7 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
     }
 
     // Create JSON response
-    cJSON *response = user_to_json(&user, 0);
+    cJSON *response = user_to_json(&user);
 
     // Send response
     char *json_str = cJSON_PrintUnformatted(response);
@@ -689,7 +687,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     // Create JSON response
-    cJSON *response = user_to_json(&user, 0);
+    cJSON *response = user_to_json(&user);
 
     // Send response
     char *json_str = cJSON_PrintUnformatted(response);
@@ -1052,7 +1050,7 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
     }
 
     // Create JSON response
-    cJSON *response = user_to_json(&user, 0);
+    cJSON *response = user_to_json(&user);
 
     // Send response
     char *json_str = cJSON_PrintUnformatted(response);

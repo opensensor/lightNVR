@@ -29,7 +29,10 @@ curl -b cookies.txt http://your-lightnvr-ip:8080/api/streams
 
 ### 2. Legacy API key (compatibility automation)
 
-Every user has an `api_key` field. Pass it via either header:
+A user can have one legacy API key. Generate it with
+[`POST /api/auth/users/{id}/api-key`](#generate-api-key), or from the Users page.
+The key is returned only in that response, so store it when you generate it.
+Pass it via either header:
 
 ```bash
 # Preferred
@@ -40,7 +43,7 @@ curl -H "Authorization: Bearer <your-api-key>" http://your-lightnvr-ip:8080/api/
 ```
 
 For automation (Home Assistant, NodeRED, cron jobs, etc.), create a dedicated
-user with the `USER_ROLE_API` role and use that user's `api_key`. Keep admin
+user with the `USER_ROLE_API` role and use that user's API key. Keep admin
 keys out of automation configs. New integrations should use the expiring,
 action- and camera-scoped tokens described below. The single non-expiring key
 remains a compatibility credential, but it is evaluated against the same
@@ -695,7 +698,7 @@ here means LightNVR *also* runs that detector on the stream, which is only what
 you want if you intend to combine local detection with external events.
 
 **Authentication:** See [Authentication](#authentication). For automation use
-a dedicated `USER_ROLE_API` user and its `api_key`; `USER_ROLE_VIEWER` is
+a dedicated `USER_ROLE_API` user and its API key; `USER_ROLE_VIEWER` is
 rejected with 403.
 
 **Request body:**
@@ -1928,7 +1931,7 @@ recover safely after a refresh.
 GET /api/auth/users
 ```
 
-Returns all users (admin only).
+Returns all users (admin only). API keys are not included.
 
 #### Create User
 
@@ -1944,7 +1947,7 @@ Creates a new user.
 GET /api/auth/users/{id}
 ```
 
-Returns a specific user.
+Returns a specific user. The API key is not included.
 
 #### Update User
 
@@ -1968,7 +1971,9 @@ Deletes a user.
 POST /api/auth/users/{id}/api-key
 ```
 
-Generates an API key for a user.
+Generates an API key for a user and returns it as `api_key`. This is the only
+response that contains the key, and no endpoint can retrieve it later. Generating
+a new key replaces the user's existing one, so use this to recover from a lost key.
 
 #### Change Password
 
