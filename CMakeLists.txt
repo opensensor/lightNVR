@@ -48,7 +48,13 @@ if(LIGHTNVR_MAX_STREAMS STREQUAL "auto")
 elseif(LIGHTNVR_MAX_STREAMS MATCHES "^[0-9]+$")
     # Normalize to canonical decimal to avoid leading-zero forms (for example
     # 08/09 invalid, 010 interpreted as octal) in downstream C definitions.
-    math(EXPR LIGHTNVR_RESOLVED_MAX_STREAMS "${LIGHTNVR_MAX_STREAMS}")
+    set(LIGHTNVR_MAX_STREAMS_NORMALIZED "${LIGHTNVR_MAX_STREAMS}")
+    string(REGEX REPLACE "^0+" "" LIGHTNVR_MAX_STREAMS_NORMALIZED
+           "${LIGHTNVR_MAX_STREAMS_NORMALIZED}")
+    if(LIGHTNVR_MAX_STREAMS_NORMALIZED STREQUAL "")
+        set(LIGHTNVR_MAX_STREAMS_NORMALIZED "0")
+    endif()
+    math(EXPR LIGHTNVR_RESOLVED_MAX_STREAMS "${LIGHTNVR_MAX_STREAMS_NORMALIZED}")
 else()
     message(FATAL_ERROR
         "LIGHTNVR_MAX_STREAMS must be 'auto' or an integer from 1 to 1024")
