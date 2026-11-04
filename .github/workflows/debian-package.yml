@@ -213,16 +213,15 @@ jobs:
           # Un-indent the service file (heredoc indented for readability)
           sed -i 's/^          //' "${PKG_DIR}/lib/systemd/system/lightnvr.service"
 
-          # ── Suite-specific FFmpeg dependency names ─────────────────────────
+          # ── Dependencies on the library versions the binary actually links ─
+          LINKED_DEPS="$(scripts/deb-linked-deps.sh "${PKG_DIR}/usr/bin/lightnvr")"
+          echo "Linked library dependencies: ${LINKED_DEPS}"
+
           case "${DEBIAN_SUITE}" in
             sid)
-              FFMPEG_DEPS="libavcodec62 | libavcodec-extra, libavformat62, libavutil60, libswscale9, libavfilter11"
-              LLHTTP_DEP="libllhttp9.3"
               SUITE_NOTE="Note: This package targets Debian sid (unstable)."
               ;;
             trixie)
-              FFMPEG_DEPS="libavcodec61 | libavcodec-extra, libavformat61, libavutil59, libswscale8, libavfilter10"
-              LLHTTP_DEP="libllhttp9.2"
               SUITE_NOTE="Note: This package targets Debian 13 trixie (stable)."
               ;;
             *)
@@ -239,7 +238,7 @@ jobs:
           Architecture: ${DEB_ARCH}
           Maintainer: OpenSensor <support@opensensor.io>
           Installed-Size: ${INSTALLED_SIZE}
-          Depends: ffmpeg, ${FFMPEG_DEPS}, libuv1t64, libsqlite3-0, ${LLHTTP_DEP}, libcurl4t64 | libcurl4, libmbedtls21, libmosquitto1, libcjson1, libyaml-0-2, procps, tzdata
+          Depends: ffmpeg, ${LINKED_DEPS}, libuv1t64, libsqlite3-0, libcurl4t64 | libcurl4, libmbedtls21, libmosquitto1, libcjson1, libyaml-0-2, procps, tzdata
           Section: net
           Priority: optional
           Homepage: https://github.com/opensensor/lightNVR
