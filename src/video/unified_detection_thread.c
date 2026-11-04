@@ -1182,6 +1182,28 @@ static void stop_detection_stream_thread(unified_detection_ctx_t *ctx) {
 /**
  * Start unified detection recording for a stream
  */
+static bool detection_should_record_audio(const stream_config_t *config,
+                                          const config_t *global_cfg) {
+    return config->record_audio && !(global_cfg && global_cfg->audio_disabled);
+}
+
+static void resolve_detection_rtsp_url(unified_detection_ctx_t *ctx, const char *stream_name,
+                                       const stream_config_t *config) {
+    if (!go2rtc_stream_get_rtsp_url(stream_name, ctx->rtsp_url, sizeof(ctx->rtsp_url))) {
+        // Fall back to direct stream URL, injecting ONVIF credentials if available
+        if (url_apply_credentials(config->url,
+                                  config->onvif_username[0] ? config->onvif_username : NULL,
+                                  config->onvif_password[0] ? config->onvif_password : NULL,
+                                  ctx->rtsp_url, sizeof(ctx->rtsp_url)) != 0) {
+            safe_strcpy(ctx->rtsp_url, config->url, sizeof(ctx->rtsp_url), 0);
+        }
+    } else if (!ctx->record_audio) {
+        // Clips will not contain audio, so do not ask go2rtc for it. Otherwise
+        // this always-on consumer could keep an audio source running (#767).
+        safe_strcat(ctx->rtsp_url, "?video", sizeof(ctx->rtsp_url));
+    }
+}
+
 int start_unified_detection_thread(const char *stream_name, const char *model_path,
                                    float threshold, int pre_buffer_seconds,
                                    int post_buffer_seconds, bool annotation_only) {
@@ -1251,7 +1273,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->segment_duration = (global_cfg && global_cfg->mp4_segment_duration > 0) ? global_cfg->mp4_segment_duration : 30;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
     load_runtime_engine_config(ctx, model_path, threshold, ctx->detection_interval);
-    ctx->record_audio = config.record_audio && !(global_cfg && global_cfg->audio_disabled);
+    ctx->record_audio = detection_should_record_audio(&config, global_cfg);
     ctx->audio_voice_enhancement = config.audio_voice_enhancement;
     ctx->annotation_only = annotation_only;
     atomic_store(&ctx->external_motion_trigger, 0);  // no pending external trigger
@@ -1272,20 +1294,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
                  stream_name);
     }
 
-    // Get RTSP URL from go2rtc
-    if (!go2rtc_stream_get_rtsp_url(stream_name, ctx->rtsp_url, sizeof(ctx->rtsp_url))) {
-        // Fall back to direct stream URL, injecting ONVIF credentials if available
-        if (url_apply_credentials(config.url,
-                                  config.onvif_username[0] ? config.onvif_username : NULL,
-                                  config.onvif_password[0] ? config.onvif_password : NULL,
-                                  ctx->rtsp_url, sizeof(ctx->rtsp_url)) != 0) {
-            safe_strcpy(ctx->rtsp_url, config.url, sizeof(ctx->rtsp_url), 0);
-        }
-    } else if (!ctx->record_audio) {
-        // Clips will not contain audio, so do not ask go2rtc for it. Otherwise
-        // this always-on consumer could keep an audio source running (#767).
-        safe_strcat(ctx->rtsp_url, "?video", sizeof(ctx->rtsp_url));
-    }
+    resolve_detection_rtsp_url(ctx, stream_name, &config);
 
     /* The recording directory is selected lazily when a detection clip starts. */
 
