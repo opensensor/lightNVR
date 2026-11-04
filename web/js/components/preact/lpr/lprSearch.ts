@@ -46,10 +46,26 @@ export function parseDateTimeLocalValue(value: unknown) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   if (!match) return null;
   const [, year, month, day, hour, minute, second = '0'] = match;
+  const yearNum = Number(year);
+  const monthNum = Number(month);
+  const dayNum = Number(day);
+  const hourNum = Number(hour);
+  const minuteNum = Number(minute);
+  const secondNum = Number(second);
   const date = new Date(
-    Number(year), Number(month) - 1, Number(day),
-    Number(hour), Number(minute), Number(second),
+    yearNum, monthNum - 1, dayNum,
+    hourNum, minuteNum, secondNum,
   );
+  if (
+    date.getFullYear() !== yearNum
+    || date.getMonth() !== monthNum - 1
+    || date.getDate() !== dayNum
+    || date.getHours() !== hourNum
+    || date.getMinutes() !== minuteNum
+    || date.getSeconds() !== secondNum
+  ) {
+    return null;
+  }
   return Number.isFinite(date.getTime()) ? date.getTime() : null;
 }
 
