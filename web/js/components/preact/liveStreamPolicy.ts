@@ -24,3 +24,26 @@ export function shouldFallbackFullscreenToSubStream({
     connectionQuality === 'poor' ||
     connectionQuality === 'bad';
 }
+
+export type WebRTCAudioDirection = 'none' | 'recvonly' | 'sendrecv';
+
+/**
+ * Decide which audio track a WebRTC tile should request.
+ *
+ * The instance audio policy always wins. Two-way talk needs its sender from the
+ * start of the connection. Otherwise audio is requested only once the viewer has
+ * asked to listen, because the request alone can start a server-side transcoder.
+ */
+export function getWebRTCAudioDirection({
+  audioDisabled,
+  backchannelEnabled,
+  listeningRequested,
+}: {
+  audioDisabled: boolean;
+  backchannelEnabled: boolean;
+  listeningRequested: boolean;
+}): WebRTCAudioDirection {
+  if (audioDisabled) return 'none';
+  if (backchannelEnabled) return 'sendrecv';
+  return listeningRequested ? 'recvonly' : 'none';
+}

@@ -28,7 +28,7 @@ import {
   ICE_GATHER_OUTCOME,
   waitForIceGathering,
 } from '../../utils/webrtc-ice-gathering.ts';
-import { shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.ts';
+import { getWebRTCAudioDirection, shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.ts';
 import { LiveTileStatus } from './LiveTileStatus.tsx';
 import { PictureInPictureButton } from './PictureInPictureButton.tsx';
 import { getNativeFullscreenElement } from './fullscreenApi.ts';
@@ -162,6 +162,15 @@ export function WebRTCVideoCell({
 
   // Audio playback state (for hearing audio from camera)
   const [audioEnabled, setAudioEnabled] = useState(false);
+  // Muted tiles don't request audio: on an AAC camera that request starts an
+  // FFmpeg transcoder per tile (#437, #767). Set on first unmute, which reconnects.
+  const [listeningRequested, setListeningRequested] = useState(false);
+  useEffect(() => setListeningRequested(false), [stream?.name]);
+  const webrtcAudioDirection = getWebRTCAudioDirection({
+    audioDisabled,
+    backchannelEnabled: !!stream?.backchannel_enabled,
+    listeningRequested,
+  });
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
@@ -250,6 +259,7 @@ export function WebRTCVideoCell({
     applyAudioPlaybackState(nextEnabled);
 
     if (nextEnabled) {
+      setListeningRequested(true);
       window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
         detail: { streamName: stream.name },
       }));
@@ -499,6 +509,15 @@ export function WebRTCVideoCell({
                   }
                   playRetryTimeout = setTimeout(attemptPlay, 500);
                 }
+              } else if (err.name === 'NotAllowedError' && audioEnabledRef.current) {
+                // Unmuting reconnects, and a browser may refuse to autoplay the
+                // new connection with sound. Keep the video playing muted.
+                console.warn(`Audio autoplay blocked for stream ${stream.name}, continuing muted`);
+                audioEnabledRef.current = false;
+                setAudioEnabled(false);
+                applyAudioPlaybackState(false);
+                showStatusMessage(t('live.audioPlaybackBlocked'), 'error', 5000);
+                attemptPlay();
               } else if (err.name === 'NotAllowedError') {
                 console.warn(`Autoplay blocked for stream ${stream.name}, user interaction required`);
                 setError(t('live.webrtcAutoplayBlocked'));
@@ -815,10 +834,9 @@ export function WebRTCVideoCell({
       videoTransceiver.setCodecPreferences(h264Codecs);
     }
 
-    // Under the instance compliance policy, do not advertise audio at all.
-    if (audioDisabled) {
-      console.log(`Audio disabled by instance policy for stream ${stream.name}`);
-    } else if (stream.backchannel_enabled) {
+    if (webrtcAudioDirection === 'none') {
+      console.log(`Not requesting audio for stream ${stream.name}`);
+    } else if (webrtcAudioDirection === 'sendrecv') {
       // Use sendrecv to allow both receiving audio from camera and sending audio to camera.
       console.log(`Adding audio transceiver with sendrecv for backchannel on stream ${stream.name}`);
       const audioTransceiver = pc.addTransceiver('audio', {direction: 'sendrecv'});
@@ -1134,7 +1152,7 @@ export function WebRTCVideoCell({
     // /api/streams status refetch doesn't tear down healthy connections when
     // it produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, effectiveUseSubStream, forceH264, audioDisabled, t, applyAudioPlaybackState]);
+  }, [stream?.name, retryCount, effectiveUseSubStream, forceH264, audioDisabled, webrtcAudioDirection, t, applyAudioPlaybackState]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).

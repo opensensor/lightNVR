@@ -362,8 +362,9 @@ static bool go2rtc_stream_register_locked(const char *stream_id, const char *str
      *     WebRTC must not go silent on AAC cameras when it is off; MSE and
      *     go2rtc HLS carry that audio regardless. (#767) Recording, native HLS
      *     and detection consumers request ?video, and preload requests video
-     *     only, so this ffmpeg process starts only for a viewer that asks for
-     *     audio the camera cannot supply. Grid sub-streams opt out (#437).
+     *     only, and muted WebRTC tiles request no audio, so this ffmpeg process
+     *     starts only for a viewer listening to a camera whose audio WebRTC
+     *     cannot carry. Grid sub-streams opt out (#437).
      *
      *   - ffmpeg:<id>#video=h264[#hardware]   when the source codec is
      *     anything other than "h264" (including unknown/empty). Clients
@@ -545,8 +546,7 @@ bool go2rtc_stream_register_substream(const char *stream_id, const char *stream_
                                      stream_protocol_t protocol) {
     /* No independent sub-stream codec is stored yet. Never borrow the main
      * codec: doing so suppressed JPEG -> H.264 fallback in issue #579.
-     * Grid tiles always offer an audio track, so a live audio fallback here
-     * would start one ffmpeg per tile (#437). */
+     * Sub-streams stay free of audio transcoders (#437). */
     return go2rtc_stream_register_with_lifecycle(stream_id, stream_url, username, password,
                                                  false, protocol, false, NULL, false);
 }
