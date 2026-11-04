@@ -59,7 +59,7 @@ COPY --from=target-sysroot / /opt/target-sysroot/
 # Install build dependencies including Node.js and target FFmpeg dev libraries.
 # Node.js comes from NodeSource so every Debian suite uses the Node 24 LTS
 # baseline required by the Babel 8 web test toolchain.
-# sid ships Go 1.26+/FFmpeg 8.x; trixie ships Go 1.24+/FFmpeg 7.x.
+# sid ships Go 1.26+/FFmpeg 9.x; trixie ships Go 1.24+/FFmpeg 7.x.
 #
 # ARMv7 is cross-compiled on the x86_64 runner. Compiling LiteRT/XNNPACK under
 # QEMU accounted for nearly three hours of each release; the target sysroot
@@ -391,7 +391,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only necessary runtime dependencies
 # ffmpeg pulls the correct versioned libavcodec/libavformat/libavutil/libswscale
-# for the target suite (e.g. libavcodec62 on sid, libavcodec61 on trixie)
+# for the target suite (e.g. libavcodec63 on sid, libavcodec61 on trixie)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
