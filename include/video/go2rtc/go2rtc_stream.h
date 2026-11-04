@@ -37,7 +37,10 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
  * @param protocol Stream protocol (TCP or UDP) - used to set transport parameter for go2rtc
  * @param record_audio Whether audio recording is enabled - if true, adds an FFmpeg
- *              `#audio=aac#audio=opus` source (AAC for recording/HLS, OPUS for WebRTC)
+ *              `#audio=aac#audio=opus` source (AAC for recording/HLS, OPUS for WebRTC).
+ *              If false, adds an on-demand `#audio=opus` source so live WebRTC keeps
+ *              audio on cameras whose codec it cannot carry. The instance audio
+ *              policy and `#noaudio` suppress both sources.
  * @param codec Detected or user-declared source video codec (e.g. "h264", "hevc").
  *              May be NULL or empty when unknown. Used to decide whether to add
  *              an `ffmpeg:<id>#video=h264` fallback source (with `#hardware`

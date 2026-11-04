@@ -157,6 +157,16 @@ static void assert_complete_recording(uint64_t id, int expected_streams) {
     avformat_close_input(&clip);
 }
 
+/* ---- go2rtc URL stub ---------------------------------------------------- */
+
+static bool go2rtc_url_available = false;
+
+bool __wrap_go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buffer_size) {
+    if (!go2rtc_url_available) return false;
+    snprintf(buffer, buffer_size, "rtsp://localhost:8554/%s", stream_id);
+    return true;
+}
+
 /* ---- fixtures ----------------------------------------------------------- */
 
 void setUp(void) {
@@ -183,6 +193,7 @@ void setUp(void) {
     ctx->first_video_pts = AV_NOPTS_VALUE;
     ctx->record_audio = true;
     g_config.detection_grace_period = 0;
+    go2rtc_url_available = false;
     cursor = 0;
     audio_pts = 0;
     input = NULL;
@@ -691,6 +702,40 @@ static int load_fixture(void) {
     return video_count > 0 ? 0 : -1;
 }
 
+/* ---- detection input URL (#767) ----------------------------------------- */
+
+static void assert_detection_url(bool record_audio, bool audio_disabled, const char *expected) {
+    stream_config_t config = {0};
+    config_t global = {0};
+    config.record_audio = record_audio;
+    global.audio_disabled = audio_disabled;
+    safe_strcpy(config.url, "rtsp://camera/main", sizeof(config.url), 0);
+
+    ctx->record_audio = detection_should_record_audio(&config, &global);
+    resolve_detection_rtsp_url(ctx, "cam", &config);
+    TEST_ASSERT_EQUAL_STRING(expected, ctx->rtsp_url);
+}
+
+void test_detection_url_requests_audio_when_recording_it(void) {
+    go2rtc_url_available = true;
+    assert_detection_url(true, false, "rtsp://localhost:8554/cam");
+}
+
+void test_detection_url_is_video_only_without_record_audio(void) {
+    go2rtc_url_available = true;
+    assert_detection_url(false, false, "rtsp://localhost:8554/cam?video");
+}
+
+void test_detection_url_is_video_only_under_audio_policy(void) {
+    go2rtc_url_available = true;
+    assert_detection_url(true, true, "rtsp://localhost:8554/cam?video");
+}
+
+void test_detection_url_fallback_leaves_camera_url_unchanged(void) {
+    go2rtc_url_available = false;
+    assert_detection_url(false, false, "rtsp://camera/main");
+}
+
 int main(void) {
     init_logger();
     set_log_level(LOG_LEVEL_ERROR);
@@ -743,6 +788,10 @@ int main(void) {
     RUN_TEST(test_registry_status_api);
     RUN_TEST(test_thread_lifecycle_reads_local_source);
     RUN_TEST(test_shutdown_cleans_up_stopped_contexts);
+    RUN_TEST(test_detection_url_requests_audio_when_recording_it);
+    RUN_TEST(test_detection_url_is_video_only_without_record_audio);
+    RUN_TEST(test_detection_url_is_video_only_under_audio_policy);
+    RUN_TEST(test_detection_url_fallback_leaves_camera_url_unchanged);
     int failures = UNITY_END();
 
     shutdown_unified_detection_system();

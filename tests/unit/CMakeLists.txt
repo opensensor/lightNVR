@@ -480,6 +480,9 @@ target_link_options(test_detection_io_recovery PRIVATE
 )
 set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
 add_layer3_test(test_udt_recording CI_UNIT CI_SANITIZER)
+target_link_options(test_udt_recording PRIVATE
+    "-Wl,--wrap=go2rtc_stream_get_rtsp_url"
+)
 target_compile_definitions(test_udt_recording PRIVATE
     TEST_RECORDING_PATH="${CMAKE_SOURCE_DIR}/tests/integration/fixtures/recording.mp4"
 )
