@@ -3,7 +3,7 @@ import {
   canvasPointToImageFraction,
   imageFractionToCanvasPoint,
   resolveImageAspect,
-} from '../js/utils/zone-editor-geometry.js';
+} from '../js/utils/zone-editor-geometry.ts';
 
 describe('computeImageLetterbox', () => {
   it('adds top/bottom bars when the image is wider than the canvas (letterboxing)', () => {
@@ -72,7 +72,7 @@ describe('canvasPointToImageFraction', () => {
 describe('imageFractionToCanvasPoint', () => {
   const letterbox = { offsetX: 200, offsetY: 0, drawWidth: 800, drawHeight: 600 };
 
-  it('matches the DetectionOverlay.jsx convention: fraction * drawWidth + offset', () => {
+  it('matches the DetectionOverlay.tsx convention: fraction * drawWidth + offset', () => {
     const p = imageFractionToCanvasPoint(0.25, 0.5, letterbox);
     expect(p.x).toBeCloseTo(0.25 * 800 + 200);
     expect(p.y).toBeCloseTo(0.5 * 600 + 0);

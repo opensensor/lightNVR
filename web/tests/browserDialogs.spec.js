@@ -9,8 +9,14 @@ function sourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(absolutePath);
-    return /\.(?:js|jsx)$/.test(entry.name) ? [absolutePath] : [];
+    return /\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [absolutePath] : [];
   });
+}
+
+function parserPlugins(file) {
+  if (file.endsWith('.ts')) return ['typescript'];
+  if (file.endsWith('.tsx')) return ['typescript', 'jsx'];
+  return ['jsx'];
 }
 
 function walkAst(value, visit) {
@@ -31,7 +37,7 @@ describe('browser dialog policy', () => {
 
     sourceFiles(SOURCE_ROOT).forEach((file) => {
       const ast = parse(fs.readFileSync(file, 'utf8'), {
-        plugins: ['jsx'],
+        plugins: parserPlugins(file),
         sourceFilename: file,
         sourceType: 'module',
       });

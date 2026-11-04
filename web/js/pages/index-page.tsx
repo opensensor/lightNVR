@@ -1,0 +1,144 @@
+import '../sentry.ts';
+/**
+ * LightNVR Web Interface Live View Page
+ * Entry point for the live view page with WebRTC/HLS support
+ */
+
+import { render } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
+import { LiveView } from '../components/preact/LiveView.tsx';
+import { resolveLiveViewVariant } from '../utils/live-view-url.ts';
+import { QueryClientProvider, queryClient } from '../query-client.ts';
+import { Header } from "../components/preact/Header.tsx";
+import { Footer } from "../components/preact/Footer.tsx";
+import { ToastContainer } from "../components/preact/ToastContainer.tsx";
+import { setupSessionValidation } from '../utils/auth-utils.ts';
+import { SetupWizard } from '../components/preact/SetupWizard.tsx';
+import { AuthGate } from '../components/preact/AuthGate.tsx';
+import { initI18n } from '../i18n.ts';
+import type { ClientConfig } from '../types/core.ts';
+
+/**
+ * The camelCase fields are read by App below, but handle_get_client_config only
+ * emits the snake_case names, so they are always undefined today.
+ */
+interface IndexClientConfig extends ClientConfig {
+    go2rtcEnabled?: boolean;
+    audioDisabled?: boolean;
+    autoDisabled?: boolean;
+    webrtcDisabled?: boolean;
+    hlsDisabled?: boolean;
+    mseDisabled?: boolean;
+}
+
+/** GET /api/setup/status: api_handlers_setup.c */
+interface SetupStatusResponse {
+    complete: boolean;
+    setup_completed_at: number;
+}
+
+/**
+ * Main App component. Renders the LiveView in its WebRTC-first variant unless
+ * WebRTC is disabled in settings.
+ */
+function App() {
+    const [viewFlags, setViewFlags] = useState({
+        audioDisabled: false,
+        autoDisabled: false,
+        webrtcDisabled: false,
+        hlsDisabled: false,
+        mseDisabled: false,
+    });
+    const [isLoading, setIsLoading] = useState(true);
+    const [showWizard, setShowWizard] = useState(false);
+
+    useEffect(() => {
+        // Check setup wizard status and view-method settings in parallel.
+        async function init() {
+            try {
+                const [settingsRes, setupRes] = await Promise.all([
+                    fetch('/api/client-config'),
+                    fetch('/api/setup/status'),
+                ]);
+
+                if (settingsRes.ok) {
+                    const settings: IndexClientConfig = await settingsRes.json();
+                    // WebRTC requires go2rtc. If go2rtc is off, treat WebRTC
+                    // and MSE as unavailable regardless of the user's flags.
+                    // #397
+                    const go2rtcOff = settings.go2rtcEnabled === false || settings.go2rtc_enabled === false;
+                    
+                    setViewFlags({
+                        // Membaca versi camelCase agar sinkron dengan AuthTab
+                        audioDisabled:  settings.audioDisabled !== undefined ? !!settings.audioDisabled : !!settings.audio_disabled,
+                        autoDisabled:   settings.autoDisabled !== undefined ? !!settings.autoDisabled : !!settings.auto_disabled,
+                        webrtcDisabled: settings.webrtcDisabled !== undefined ? !!settings.webrtcDisabled || go2rtcOff : !!settings.webrtc_disabled || go2rtcOff,
+                        hlsDisabled:    settings.hlsDisabled !== undefined ? !!settings.hlsDisabled : !!settings.hls_disabled,
+                        mseDisabled:    settings.mseDisabled !== undefined ? !!settings.mseDisabled || go2rtcOff : !!settings.mse_disabled || go2rtcOff,
+                    });
+                } else {
+                    console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
+                }
+
+                if (setupRes.ok) {
+                    const setupData: SetupStatusResponse = await setupRes.json();
+                    if (!setupData.complete) {
+                        setShowWizard(true);
+                    }
+                }
+            } catch (error) {
+                console.error('Error during init:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        init();
+    }, []);
+
+    if (isLoading) {
+        return <div className="loading">Loading...</div>;
+    }
+
+    // Prefer the WebRTC-first variant, fall back to the HLS one. LiveView
+    // hides the tabs for disabled methods. #397
+    document.title = 'Live View - LightNVR';
+
+    return (
+        <>
+            {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
+            <LiveView
+                variant={resolveLiveViewVariant(viewFlags)}
+                audioDisabled={viewFlags.audioDisabled}
+                isAutoDisabled={viewFlags.autoDisabled}
+                isWebRTCDisabled={viewFlags.webrtcDisabled}
+                isHlsDisabled={viewFlags.hlsDisabled}
+                isMseDisabled={viewFlags.mseDisabled}
+            />
+        </>
+    );
+}
+
+// Render the App component when the DOM is loaded
+document.addEventListener('DOMContentLoaded', async () => {
+    await initI18n();
+    // Setup session validation (checks every 5 minutes)
+    setupSessionValidation();
+
+    // Get the container element
+    const container = document.getElementById('main-content');
+
+    if (container) {
+        render(
+            <QueryClientProvider client={queryClient}>
+                <AuthGate>
+                    <Header />
+                    <ToastContainer />
+                    <App />
+                    <Footer />
+                </AuthGate>
+            </QueryClientProvider>,
+            container
+        );
+    }
+});

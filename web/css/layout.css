@@ -94,7 +94,7 @@ th {
     @apply text-center text-muted-foreground py-8;
 }
 
-/* Pagination styles — all button styling handled in PaginationControls.jsx */
+/* Pagination styles — all button styling handled in PaginationControls.tsx */
 .pagination-controls {
     @apply flex justify-between items-center py-4 flex-wrap gap-4;
 }

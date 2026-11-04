@@ -18,7 +18,7 @@ async function openBrowser({
       loader: 'jsx',
       contents: `
     import { h, render } from 'preact'; import { useState } from 'preact/hooks';
-    import { BulkTagsOverlay } from './js/components/preact/recordings/TagsOverlay.jsx';
+    import { BulkTagsOverlay } from './js/components/preact/recordings/TagsOverlay.tsx';
     window.calls = {requests:[],changed:0,messages:[]};
     window.api = {
       getAllRecordingTags:()=>${delayedCatalog ? 'new Promise(resolve=>window.finishCatalog=resolve)' : "Promise.resolve(['shared','partial','known'])"},
@@ -41,7 +41,7 @@ async function openBrowser({
       name: 'fixture',
       setup(build) {
         build.onResolve({
-          filter: /(?:i18n\.js|recordingsAPI\.jsx|ToastContainer\.jsx)$/
+          filter: /(?:i18n\.ts|recordingsAPI\.tsx|ToastContainer\.tsx)$/
         }, args => ({
           path: args.path,
           namespace: 'fixture'
@@ -50,7 +50,7 @@ async function openBrowser({
           filter: /.*/,
           namespace: 'fixture'
         }, args => ({
-          contents: args.path.endsWith('i18n.js') ? 'export const useI18n=()=>({t:key=>key});' : args.path.endsWith('recordingsAPI.jsx') ? 'export const recordingsAPI={getAllRecordingTags:()=>window.api.getAllRecordingTags(),batchUpdateRecordingTags:(...args)=>window.api.batchUpdateRecordingTags(...args)};' : 'export const showStatusMessage=(...args)=>window.calls.messages.push(args);',
+          contents: args.path.endsWith('i18n.ts') ? 'export const useI18n=()=>({t:key=>key});' : args.path.endsWith('recordingsAPI.tsx') ? 'export const recordingsAPI={getAllRecordingTags:()=>window.api.getAllRecordingTags(),batchUpdateRecordingTags:(...args)=>window.api.batchUpdateRecordingTags(...args)};' : 'export const showStatusMessage=(...args)=>window.calls.messages.push(args);',
           loader: 'js'
         }));
       }

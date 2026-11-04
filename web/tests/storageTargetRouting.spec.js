@@ -3,7 +3,7 @@ import {
   policyHasArchiveTrigger,
   referencedTargetUuids,
   targetIsRouted,
-} from '../js/components/preact/settings/storageTargetRouting.js';
+} from '../js/components/preact/settings/storageTargetRouting.ts';
 
 describe('storage target routing helpers (#621)', () => {
   const targets = {

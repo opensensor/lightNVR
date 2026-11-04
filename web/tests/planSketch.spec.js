@@ -29,7 +29,7 @@ import {
   snapPoint,
   translateShape,
   undoHistory,
-} from '../js/components/preact/live/planSketch.js';
+} from '../js/components/preact/live/planSketch.ts';
 
 const canvas = { width: 1200, height: 800 };
 

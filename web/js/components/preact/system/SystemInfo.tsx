@@ -1,0 +1,60 @@
+/**
+ * SystemInfo Component
+ * Displays basic system information like version, uptime, and CPU details
+ */
+
+import { useI18n } from '../../../i18n.ts';
+import type { SystemInfoData } from '../../../types/system.ts';
+
+export interface SystemInfoProps {
+  systemInfo: SystemInfoData;
+  formatUptime: (seconds: number) => string;
+}
+
+/**
+ * SystemInfo component
+ * @param {Object} props Component props
+ * @param {Object} props.systemInfo System information object
+ * @param {Function} props.formatUptime Function to format uptime
+ * @returns {JSX.Element} SystemInfo component
+ */
+export function SystemInfo({ systemInfo, formatUptime }: SystemInfoProps) {
+  const { t } = useI18n();
+  const cpuKnown = systemInfo.cpu?.usageCapability === 'available' &&
+    Number.isFinite(systemInfo.cpu?.usage);
+  const uptimeKnown = Number.isFinite(systemInfo.uptime) && (systemInfo.uptime as number) >= 0;
+
+  return (
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.systemInformation')}</h3>
+      <div className="space-y-2">
+        <div className="flex justify-between">
+          <span className="font-medium">{t('system.version')}:</span>
+          <span>{systemInfo.version || t('common.unknown')}{systemInfo.git_commit ? `-${systemInfo.git_commit}` : ''}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="font-medium">{t('system.uptime')}:</span>
+          <span>{uptimeKnown ? formatUptime(systemInfo.uptime as number) : t('common.unknown')}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="font-medium">{t('system.cpuModel')}:</span>
+          <span>{systemInfo.cpu?.model || t('common.unknown')}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="font-medium">{t('system.cpuCores')}:</span>
+          <span>{systemInfo.cpu?.cores || t('common.unknown')}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="font-medium">{t('system.cpuUsage')}:</span>
+          <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" role="progressbar" aria-label={t('system.cpuUsage')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={cpuKnown ? Math.max(0, Math.min(100, systemInfo.cpu!.usage as number)) : undefined} aria-valuetext={cpuKnown ? `${(systemInfo.cpu!.usage as number).toFixed(1)}%` : t('common.unknown')}>
+            <div
+              className="h-2.5 rounded-full"
+              style={{ backgroundColor: cpuKnown ? 'hsl(var(--primary))' : 'hsl(var(--muted))', width: cpuKnown ? `${Math.max(0, Math.min(100, systemInfo.cpu!.usage as number))}%` : '100%' }}
+            ></div>
+          </div>
+          <span>{cpuKnown ? `${(systemInfo.cpu!.usage as number).toFixed(1)}%` : t('common.unknown')}</span>
+        </div>
+      </div>
+    </div>
+  );
+}

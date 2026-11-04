@@ -21,8 +21,8 @@ async function openPlanBrowser() {
       loader: 'jsx',
       contents: `
   import { h, render } from 'preact';
-  import { QueryClient, QueryClientProvider } from './js/query-client.js';
-  import { LiveBuildingPlan } from './js/components/preact/live/LiveBuildingPlan.jsx';
+  import { QueryClient, QueryClientProvider } from './js/query-client.ts';
+  import { LiveBuildingPlan } from './js/components/preact/live/LiveBuildingPlan.tsx';
   const plan = ${JSON.stringify(fixturePlan)};
   window.calls = { puts: [], locations: [] };
   const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -58,7 +58,7 @@ async function openPlanBrowser() {
     plugins: [{
       name: 'fixture',
       setup(builder) {
-        builder.onResolve({ filter: /(?:\/i18n|ToastContainer)\.jsx?$/ }, (args) => ({
+        builder.onResolve({ filter: /(?:\/i18n|ToastContainer)\.tsx?$/ }, (args) => ({
           path: args.path, namespace: 'fixture',
         }));
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({

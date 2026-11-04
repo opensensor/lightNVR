@@ -4,7 +4,7 @@ import {
   shouldToggleFullscreenFromTap,
   shouldToggleFullscreenFromDoubleClick,
   writeAlwaysFullscreenOnTap,
-} from '../js/components/preact/useAlwaysFullscreenOnTap.js';
+} from '../js/components/preact/useAlwaysFullscreenOnTap.ts';
 
 function memoryStorage() {
   const values = new Map();

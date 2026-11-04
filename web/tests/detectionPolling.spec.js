@@ -1,4 +1,4 @@
-import { startDetectionPolling } from '../js/utils/detection-polling.js';
+import { startDetectionPolling } from '../js/utils/detection-polling.ts';
 
 describe('detection polling under slow responses', () => {
   let stop;

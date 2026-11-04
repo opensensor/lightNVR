@@ -3,7 +3,7 @@ import {
   resistedPullDistance,
   shouldIgnoreTileGestureTarget,
   shouldShowGestureTip,
-} from '../js/components/preact/mobileLiveGestures.js';
+} from '../js/components/preact/mobileLiveGestures.ts';
 
 describe('mobile live gestures', () => {
   test('classifies fullscreen navigation and exit swipes', () => {

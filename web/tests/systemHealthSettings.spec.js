@@ -4,7 +4,7 @@ const { buildSync } = require('esbuild');
 function loadHealthHelpers() {
   const output = buildSync({
     absWorkingDir: path.resolve(__dirname, '..'),
-    entryPoints: ['js/components/preact/settings/HealthTab.jsx'],
+    entryPoints: ['js/components/preact/settings/HealthTab.tsx'],
     bundle: true,
     format: 'cjs',
     platform: 'node',

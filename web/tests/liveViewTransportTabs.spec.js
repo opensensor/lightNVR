@@ -3,7 +3,7 @@ import {
   LIVE_VIEW_VARIANTS,
   resolveForcedLiveTransport,
   resolveLiveViewVariant,
-} from '../js/utils/live-view-url.js';
+} from '../js/utils/live-view-url.ts';
 
 // Before #654 index.html rendered WebRTCView unless WebRTC was disabled, and
 // LiveView otherwise (hls.html always rendered LiveView). WebRTCView always

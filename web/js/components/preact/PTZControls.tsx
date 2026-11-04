@@ -1,0 +1,412 @@
+/**
+ * PTZ Controls Component
+ * Pan-Tilt-Zoom controls for PTZ-enabled cameras
+ */
+
+
+import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useI18n } from '../../i18n.ts';
+import { showSuccessToast, showErrorToast } from './ToastContainer.tsx';
+import {
+  getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome,
+  ptzMove, ptzStop, ptzHome, ptzGotoPreset
+} from './ptzActions.ts';
+import type { PtzCapabilities, PtzDirection, PtzError, PtzPreset } from '../../types/live.ts';
+
+interface DirectionButtonProps {
+  direction: PtzDirection;
+  onMouseDown: () => unknown;
+  onMouseUp: () => unknown;
+  onMouseLeave: () => unknown;
+  disabled?: boolean;
+}
+
+export interface PTZControlsProps {
+  stream?: { name: string; ptz_enabled?: boolean } | null;
+  isVisible?: boolean;
+  onClose?: () => unknown;
+  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
+  streamName?: string;
+  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
+  ptzType?: string;
+}
+
+
+/**
+ * Direction button component
+ */
+function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disabled }: DirectionButtonProps) {
+  const icons = {
+    up: '▲',
+    down: '▼',
+    left: '◀',
+    right: '▶',
+    'zoom-in': '+',
+    'zoom-out': '−'
+  };
+
+  return (
+    <button
+      className={`ptz-btn ptz-btn-${direction}`}
+      onMouseDown={onMouseDown}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
+      onTouchStart={onMouseDown}
+      onTouchEnd={onMouseUp}
+      disabled={disabled}
+      style={{
+        width: '40px',
+        height: '40px',
+        borderRadius: '50%',
+        border: 'none',
+        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        color: 'white',
+        fontSize: '16px',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background-color 0.2s',
+        opacity: disabled ? 0.5 : 1
+      }}
+    >
+      {icons[direction]}
+    </button>
+  );
+}
+
+/**
+ * PTZ Controls component
+ */
+export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsProps) {
+  const { t } = useI18n();
+  const [speed, setSpeed] = useState(0.5);
+  const [presets, setPresets] = useState<PtzPreset[]>([]);
+  const [isMoving, setIsMoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<PtzCapabilities | null>(null);
+  const [canManage, setCanManage] = useState(true);
+  const [presetName, setPresetName] = useState('');
+  const [showPresetForm, setShowPresetForm] = useState(false);
+  const [confirmSetHome, setConfirmSetHome] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load capabilities and presets
+  useEffect(() => {
+    if (!stream?.name || !stream?.ptz_enabled) return;
+
+    let active = true;
+    setCapabilities(null);
+    setCanManage(true);
+    setPresets([]);
+    setPresetName('');
+    setShowPresetForm(false);
+    setConfirmSetHome(false);
+    getPtzCapabilities(stream.name)
+      .then(data => { if (active) setCapabilities(data); })
+      .catch(err => console.error('Failed to get PTZ capabilities:', err));
+    getPtzPresets(stream.name)
+      .then(data => { if (active) setPresets(data.presets || []); })
+      .catch(err => console.error('Failed to get PTZ presets:', err));
+    return () => { active = false; };
+  }, [stream?.name, stream?.ptz_enabled]);
+
+  const handleActionFailure = useCallback((err: PtzError, message: string) => {
+    if (err.status === 403) {
+      setCanManage(false);
+      setShowPresetForm(false);
+      setConfirmSetHome(false);
+    }
+    showErrorToast(message);
+    console.error(message, err);
+  }, []);
+
+  const handleSavePreset = useCallback(async (event: Event) => {
+    event.preventDefault();
+    const name = presetName.trim();
+    if (!stream?.name || !name || saving) return;
+    setSaving(true);
+    try {
+      await savePtzPreset(stream.name, name, setPresets);
+      setShowPresetForm(false);
+      setPresetName('');
+      showSuccessToast(t('live.ptzPresetSaved'));
+    } catch (err) {
+      handleActionFailure(err as PtzError, t((err as PtzError).stage === 'refresh'
+        ? 'live.ptzPresetRefreshFailed' : 'live.ptzPresetSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }, [stream?.name, presetName, saving, t, handleActionFailure]);
+
+  const handleSetHome = useCallback(async () => {
+    if (!stream?.name || saving) return;
+    setSaving(true);
+    try {
+      await setPtzHome(stream.name);
+      setConfirmSetHome(false);
+      showSuccessToast(t('live.ptzHomeSet'));
+    } catch (err) {
+      handleActionFailure(err as PtzError, t('live.ptzSetHomeFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }, [stream?.name, saving, t, handleActionFailure]);
+
+  // Handle continuous move
+  const handleMoveStart = useCallback((pan: number, tilt: number, zoom: number) => {
+    if (!stream?.name) return;
+    setIsMoving(true);
+    setError(null);
+    
+    ptzMove(stream.name, pan * speed, tilt * speed, zoom * speed)
+      .catch(err => {
+        setIsMoving(false);
+        setError(t('live.ptzMoveFailed'));
+        console.error('PTZ move error:', err);
+      });
+  }, [stream?.name, speed, t]);
+
+  const handleMoveStop = useCallback(() => {
+    if (!stream?.name || !isMoving) return;
+    setIsMoving(false);
+    
+    ptzStop(stream.name)
+      .catch(err => console.error('PTZ stop error:', err));
+  }, [stream?.name, isMoving]);
+
+  const handleHome = useCallback(() => {
+    if (!stream?.name) return;
+    setError(null);
+    
+    ptzHome(stream.name)
+      .catch(err => {
+        setError(t('live.ptzHomeFailed'));
+        console.error('PTZ home error:', err);
+      });
+  }, [stream?.name, t]);
+
+  const handlePreset = useCallback((token: string) => {
+    if (!stream?.name) return;
+    setError(null);
+    
+    ptzGotoPreset(stream.name, token)
+      .catch(err => {
+        setError(t('live.ptzPresetFailed'));
+        console.error('PTZ preset error:', err);
+      });
+  }, [stream?.name, t]);
+
+  if (!isVisible || !stream?.ptz_enabled) return null;
+
+  return (
+    <div
+      className="ptz-controls"
+      style={{
+        position: 'absolute',
+        bottom: '60px',
+        insetInlineStart: '10px',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        borderRadius: '8px',
+        padding: '12px',
+        zIndex: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        minWidth: '160px'
+      }}
+    >
+      {/* Header with close button */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>{t('live.ptzControl')}</span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common.close')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '0 4px'
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* Direction pad */}
+      <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '4px', justifyContent: 'center' }}>
+        <div></div>
+        <DirectionButton
+          direction="up"
+          onMouseDown={() => handleMoveStart(0, 1, 0)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+        <div></div>
+        <DirectionButton
+          direction="left"
+          onMouseDown={() => handleMoveStart(-1, 0, 0)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+        <button
+          type="button"
+          onClick={handleHome}
+          aria-label={t('live.goToHomePosition')}
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            border: 'none',
+            backgroundColor: 'rgba(107, 114, 128, 0.8)',
+            color: 'white',
+            fontSize: '10px',
+            cursor: 'pointer'
+          }}
+          title={t('live.goToHomePosition')}
+        >
+          ⌂
+        </button>
+        <DirectionButton
+          direction="right"
+          onMouseDown={() => handleMoveStart(1, 0, 0)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+        <div></div>
+        <DirectionButton
+          direction="down"
+          onMouseDown={() => handleMoveStart(0, -1, 0)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+        <div></div>
+      </div>
+
+      {/* Zoom controls */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '4px' }}>
+        <DirectionButton
+          direction="zoom-out"
+          onMouseDown={() => handleMoveStart(0, 0, -1)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+        <span style={{ color: 'white', fontSize: '11px', alignSelf: 'center' }}>{t('live.zoom')}</span>
+        <DirectionButton
+          direction="zoom-in"
+          onMouseDown={() => handleMoveStart(0, 0, 1)}
+          onMouseUp={handleMoveStop}
+          onMouseLeave={handleMoveStop}
+        />
+      </div>
+
+      {/* Speed slider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+        <span style={{ color: 'white', fontSize: '11px' }}>{t('live.speedLabel')}</span>
+        <input
+          type="range"
+          aria-label={t('live.speedLabel')}
+          min="0.1"
+          max="1"
+          step="0.1"
+          value={speed}
+          onChange={(e) => setSpeed(parseFloat((e.target as HTMLInputElement).value))}
+          style={{ flex: 1 }}
+        />
+        <span style={{ color: 'white', fontSize: '11px', width: '30px' }}>{Math.round(speed * 100)}%</span>
+      </div>
+
+      {/* Presets dropdown */}
+      {presets.length > 0 && (
+        <div style={{ marginTop: '4px' }}>
+          <select
+            aria-label={t('live.goToPreset')}
+            onChange={(e) => (e.target as HTMLSelectElement).value && handlePreset((e.target as HTMLSelectElement).value)}
+            style={{
+              width: '100%',
+              padding: '6px',
+              borderRadius: '4px',
+              border: 'none',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              color: 'white',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">{t('live.goToPreset')}</option>
+            {presets.map(preset => (
+              <option key={preset.token} value={preset.token}>
+                {preset.name || t('live.presetNumber', { token: preset.token })}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {canManage && capabilities?.has_presets && (
+        showPresetForm ? (
+          <form onSubmit={handleSavePreset} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label htmlFor="ptz-preset-name" style={{ color: 'white', fontSize: '11px' }}>
+              {t('live.ptzPresetName')}
+              <input
+                id="ptz-preset-name"
+                type="text"
+                aria-label={t('live.ptzPresetName')}
+                value={presetName}
+                onInput={(event) => setPresetName(event.currentTarget.value)}
+                maxLength={64}
+                required
+                style={{ padding: '6px', borderRadius: '4px' }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button type="submit" disabled={saving || !presetName.trim()} aria-label={t('live.ptzSavePreset')}>
+                {t('live.ptzSavePreset')}
+              </button>
+              <button type="button" disabled={saving} onClick={() => setShowPresetForm(false)} aria-label={t('common.cancel')}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" onClick={() => { setConfirmSetHome(false); setShowPresetForm(true); }} aria-label={t('live.ptzSaveCurrentPosition')}>
+            {t('live.ptzSaveCurrentPosition')}
+          </button>
+        )
+      )}
+
+      {canManage && capabilities?.has_home_position && (
+        confirmSetHome ? (
+          <div style={{ color: 'white', fontSize: '11px' }}>
+            <span>{t('live.ptzConfirmSetHome')}</span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button type="button" disabled={saving} onClick={handleSetHome} aria-label={t('live.ptzSetHome')}>
+                {t('live.ptzSetHome')}
+              </button>
+              <button type="button" disabled={saving} onClick={() => setConfirmSetHome(false)} aria-label={t('common.cancel')}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => { setShowPresetForm(false); setConfirmSetHome(true); }} aria-label={t('live.ptzSetCurrentPositionHome')}>
+            {t('live.ptzSetCurrentPositionHome')}
+          </button>
+        )
+      )}
+
+      {/* Error message */}
+      {error && (
+        <div style={{ color: '#ef4444', fontSize: '11px', textAlign: 'center' }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+

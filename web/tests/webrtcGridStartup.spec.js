@@ -2,11 +2,11 @@
 // browser. Only DOM/RTC/network boundaries and unrelated UI hooks are stubbed.
 import path from 'node:path';
 import { buildSync } from 'esbuild';
-import * as gateModule from '../js/utils/stream-connection-gate.js';
+import * as gateModule from '../js/utils/stream-connection-gate.ts';
 
 const output = buildSync({
   absWorkingDir: path.resolve(__dirname, '..'),
-  entryPoints: ['js/components/preact/WebRTCVideoCell.jsx'],
+  entryPoints: ['js/components/preact/WebRTCVideoCell.tsx'],
   bundle: true, format: 'cjs', platform: 'node', external: ['*'],
   jsx: 'automatic', jsxImportSource: 'preact', write: false,
 }).outputFiles[0].text;
@@ -45,17 +45,17 @@ function mount(name) {
   const stubs = {
     'preact/hooks': hooks,
     'webrtc-adapter': {},
-    'i18n.js': { useI18n: () => ({ t }) },
-    'query-client.js': { useQueryClient: () => ({}) },
-    'settings-utils.js': {
+    'i18n.ts': { useI18n: () => ({ t }) },
+    'query-client.ts': { useQueryClient: () => ({}) },
+    'settings-utils.ts': {
       getGo2rtcBaseUrl: async () => '/go2rtc',
       getWebRTCTimeouts: async () => ({ connectionMs, iceRecoveryMs: 5000 }),
     },
-    'stream-connection-gate.js': { ...gateModule, streamConnectionGate: gate },
-    'useVideoZoom.js': { useVideoZoom: () => ({}) },
-    'MobileTileGestures.jsx': { useMobileTileGestures: () => ({}) },
-    'useAutoRetry.js': { useAutoRetry: noop },
-    'player-telemetry.js': { createPlayerTelemetry: () => ({ destroy: noop }) },
+    'stream-connection-gate.ts': { ...gateModule, streamConnectionGate: gate },
+    'useVideoZoom.ts': { useVideoZoom: () => ({}) },
+    'MobileTileGestures.tsx': { useMobileTileGestures: () => ({}) },
+    'useAutoRetry.ts': { useAutoRetry: noop },
+    'player-telemetry.ts': { createPlayerTelemetry: () => ({ destroy: noop }) },
   };
   const loaded = { exports: {} };
   const componentDir = path.resolve(__dirname, '../js/components/preact');
@@ -63,7 +63,7 @@ function mount(name) {
     if (id === 'preact/jsx-runtime') return require(id);
     const stub = stubs[id] || stubs[path.basename(id)];
     if (stub) return stub;
-    if (id.endsWith('.jsx')) return {};
+    if (id.endsWith('.tsx')) return {};
     return require(path.resolve(componentDir, id));
   });
   const tree = loaded.exports.WebRTCVideoCell({

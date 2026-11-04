@@ -18,7 +18,7 @@ import {
   summarizeInvestigationActionPreview,
   thumbnailWindowForResult,
   videoContentBox,
-} from '../js/components/preact/investigation/investigationUtils.js';
+} from '../js/components/preact/investigation/investigationUtils.ts';
 
 const tracks = [
   {

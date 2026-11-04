@@ -2,7 +2,7 @@ import {
   exitNativeFullscreen,
   getNativeFullscreenElement,
   requestNativeFullscreen,
-} from '../js/components/preact/fullscreenApi.js';
+} from '../js/components/preact/fullscreenApi.ts';
 
 function classListDouble() {
   const values = new Set();

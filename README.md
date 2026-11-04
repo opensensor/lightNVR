@@ -253,7 +253,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
    # Use this script rather than running: cd web && npm install && npm run build
    # It also runs scripts/extract_version.js first, which generates web/js/version.js
    # from CMakeLists.txt. Skipping that step fails the Vite build with:
-   # "Could not resolve '../../version.js'" in Header.jsx.
+   # "Could not resolve '../../version.js'" in Header.tsx.
    ./scripts/build_web_vite.sh
 
    # Build the software

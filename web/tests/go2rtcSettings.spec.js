@@ -1,6 +1,6 @@
-jest.mock('../js/fetch-utils.js', () => ({ fetchJSON: jest.fn() }));
-const { fetchJSON } = require('../js/fetch-utils.js');
-const { getSettings, getGo2rtcBaseUrl, getGo2rtcWebSocketUrl } = require('../js/utils/settings-utils.js');
+jest.mock('../js/fetch-utils.ts', () => ({ fetchJSON: jest.fn() }));
+const { fetchJSON } = require('../js/fetch-utils.ts');
+const { getSettings, getGo2rtcBaseUrl, getGo2rtcWebSocketUrl } = require('../js/utils/settings-utils.ts');
 
 beforeEach(() => {
   global.window = { location: {

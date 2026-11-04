@@ -33,7 +33,7 @@ async function openZoneBrowser() {
       loader: 'jsx',
       contents: `
   import {h,render} from 'preact';
-  import {ZoneEditor} from './js/components/preact/ZoneEditor.jsx';
+  import {ZoneEditor} from './js/components/preact/ZoneEditor.tsx';
   const zones=${JSON.stringify(fixtureZones)};
   window.calls={saved:[],closed:0,events:[],requests:[]};
   window.fetch=async(url,options={})=>{if(options.method==='POST'){window.calls.requests.push({url,method:options.method,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})};}return{ok:true,json:async()=>{window.zonesLoaded=true;return{zones};}};};
@@ -50,7 +50,7 @@ async function openZoneBrowser() {
       name: 'fixture',
       setup(builder) {
         builder.onResolve({
-          filter: /(?:i18n|settings-utils)\.js$/
+          filter: /(?:i18n|settings-utils)\.ts$/
         }, args => ({
           path: args.path,
           namespace: 'fixture'
@@ -172,6 +172,23 @@ browserTest.each([['pointer', false], ['keyboard', false], ['label', false], ['p
         }
       }]
     });
+  } finally {
+    await browser.close();
+  }
+}, 30000);
+it('selects a zone row when keyboard focus enters it', async () => {
+  const {
+    browser,
+    page
+  } = await openZoneBrowser();
+  try {
+    const card = page.locator('div.mb-3.p-3.rounded.border').first();
+    const selected = () => card.evaluate(element => element.classList.contains('border-primary'));
+    expect(await selected()).toBe(false);
+    const nameInput = card.locator('input[type=text]');
+    for (let index = 0; index < 20 && !(await nameInput.evaluate(element => element === document.activeElement)); index += 1) await page.keyboard.press('Tab');
+    expect(await nameInput.evaluate(element => element === document.activeElement)).toBe(true);
+    expect(await selected()).toBe(true);
   } finally {
     await browser.close();
   }

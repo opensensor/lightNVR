@@ -1,9 +1,9 @@
 import { readFileSync } from 'fs';
 import path from 'path';
-import { shouldFallbackFullscreenToSubStream } from '../js/components/preact/liveStreamPolicy.js';
-import { formatUtils } from '../js/components/preact/recordings/formatUtils.js';
-import { formatUptime } from '../js/components/preact/system/SystemUtils.js';
-import { shouldSeekPlaybackPosition } from '../js/components/preact/timeline/timelineUtils.js';
+import { shouldFallbackFullscreenToSubStream } from '../js/components/preact/liveStreamPolicy.ts';
+import { formatUtils } from '../js/components/preact/recordings/formatUtils.ts';
+import { formatUptime } from '../js/components/preact/system/SystemUtils.ts';
+import { shouldSeekPlaybackPosition } from '../js/components/preact/timeline/timelineUtils.ts';
 
 describe('open issue regressions', () => {
   test('never formats uptime as a negative duration (#475)', () => {
@@ -53,7 +53,7 @@ describe('open issue regressions', () => {
 
   test('shows one control bar for an investigation recording, not native plus custom (#568)', () => {
     const source = readFileSync(
-      path.resolve(__dirname, '../js/components/preact/investigation/InvestigationView.jsx'),
+      path.resolve(__dirname, '../js/components/preact/investigation/InvestigationView.tsx'),
       'utf8',
     );
     const frameStart = source.indexOf('className="investigation-video-frame"');

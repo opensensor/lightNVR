@@ -14,7 +14,7 @@ import {
   validateDestinationDraft,
   validateRouteDraft,
   writeEventSection,
-} from '../js/components/preact/events/eventRouting.js';
+} from '../js/components/preact/events/eventRouting.ts';
 
 describe('event routing workspace helpers', () => {
   test('creates a stable safe MQTT client ID', () => {

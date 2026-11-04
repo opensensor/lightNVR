@@ -1,0 +1,112 @@
+import { useEffect, useState } from 'preact/hooks';
+import { fetchJSON, useMutation, useQuery, useQueryClient } from '../../../query-client.ts';
+import { showStatusMessage } from '../ToastContainer.tsx';
+import {
+  WORKSPACE_KEYS,
+  workspaceVisibilityFromResponse,
+} from '../../../utils/workspace-preferences.ts';
+import type { WorkspaceKey } from '../../../utils/workspace-preferences.ts';
+import type { WorkspacesResponse } from '../../../types/core.ts';
+import type { Translate } from '../../../types/settings.ts';
+
+const WORKSPACE_TRANSLATION_KEYS = Object.freeze({
+  [WORKSPACE_KEYS.LIVE_NAVIGATOR]: {
+    label: 'workspaces.liveNavigator',
+    description: 'workspaces.liveNavigatorDescription',
+  },
+  [WORKSPACE_KEYS.INVESTIGATION]: {
+    label: 'workspaces.investigation',
+    description: 'workspaces.investigationDescription',
+  },
+});
+
+interface WorkspacesTabProps {
+  t: Translate;
+}
+
+export function WorkspacesTab({ t }: WorkspacesTabProps) {
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery<WorkspacesResponse>(
+    ['ui-workspaces'],
+    '/api/ui/workspaces',
+    { timeout: 10000, retries: 1 }
+  );
+  const [visibility, setVisibility] = useState(() => workspaceVisibilityFromResponse());
+
+  useEffect(() => {
+    if (data) setVisibility(workspaceVisibilityFromResponse(data));
+  }, [data]);
+
+  const mutation = useMutation<WorkspacesResponse, Error, Partial<Record<string, boolean>>>({
+    mutationKey: ['save-ui-workspaces'],
+    mutationFn: (workspaces) => fetchJSON<WorkspacesResponse>('/api/ui/workspaces', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaces }),
+      timeout: 10000,
+    }),
+    onSuccess: (response) => {
+      setVisibility(workspaceVisibilityFromResponse(response));
+      queryClient.setQueryData(['ui-workspaces'], response);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('lightnvr:workspaces-changed', {
+          detail: response,
+        }));
+      }
+      showStatusMessage(t('workspaces.saved'), 'success', 3000);
+    },
+    onError: (saveError) => {
+      showStatusMessage(t('workspaces.saveError', { message: saveError.message }), 'error', 6000);
+    },
+  });
+
+  const toggle = (key: string, visible: boolean) => {
+    const next = { ...visibility, [key]: visible };
+    setVisibility(next);
+    mutation.mutate({ [key]: visible });
+  };
+
+  return (
+    <div className="settings-group bg-card text-card-foreground rounded-lg shadow p-4 space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold">{t('workspaces.title')}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t('workspaces.description')}</p>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+      ) : error ? (
+        <p className="text-sm text-[hsl(var(--danger))]">{t('workspaces.loadError')}</p>
+      ) : (
+        <div className="divide-y divide-border rounded-md border border-border">
+          {(data?.workspaces || []).map((workspace) => {
+            const translationKeys = (WORKSPACE_TRANSLATION_KEYS as Partial<Record<string, { label: string; description: string }>>)[workspace.key as string];
+            const label = translationKeys ? t(translationKeys.label) : workspace.label;
+            const description = translationKeys
+              ? t(translationKeys.description) : workspace.description;
+            return (
+              <label
+                key={workspace.key}
+                data-setting-label={`${label} ${description}`}
+                className="flex min-h-16 items-center justify-between gap-4 p-4"
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium">{label}</span>
+                  <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 shrink-0 rounded border-input"
+                  checked={visibility[workspace.key as WorkspaceKey] !== false}
+                  disabled={!workspace.configurable || mutation.isPending}
+                  onChange={(event) => toggle(workspace.key as string, event.currentTarget.checked)}
+                  aria-label={t('workspaces.showWorkspace', { name: label })}
+                />
+              </label>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">{t('workspaces.authorizationNote')}</p>
+    </div>
+  );
+}

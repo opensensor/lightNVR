@@ -4,9 +4,9 @@ import {
   favoriteEmptyStateKey,
   filterFavoriteStreams,
   requestFavoriteChange,
-} from '../js/components/preact/live/cameraFavorites.js';
+} from '../js/components/preact/live/cameraFavorites.ts';
 
-jest.mock('../js/query-client.js', () => ({
+jest.mock('../js/query-client.ts', () => ({
   fetchJSON: jest.fn(),
   useQuery: jest.fn(),
   useMutation: jest.fn(),

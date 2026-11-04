@@ -1,0 +1,1363 @@
+/**
+ * UI utility components for LightNVR
+ * JSX version of UI components
+ */
+
+import { createContext } from 'preact';
+import type { ComponentChildren } from 'preact';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
+import { showStatusMessage } from './ToastContainer.tsx';
+import { t as translate, useI18n } from '../../i18n.ts';
+import { formatUtils } from './recordings/formatUtils.ts';
+import { formatFilenameTimestamp, nowMilliseconds } from '../../utils/date-utils.ts';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+import { ConfirmDialog } from './common/ModalDialog.tsx';
+import { loadRecordingPlayback } from '../../utils/recording-playback.ts';
+
+export { ConfirmDialog } from './common/ModalDialog.tsx';
+
+// Initialize dayjs plugins
+dayjs.extend(utc);
+dayjs.extend(customParseFormat);
+
+/** Fields of GET /api/recordings/:id that the video modal reads. */
+interface RecordingDetails {
+  stream?: string;
+  start_time?: number | string;
+  start_time_unix?: number;
+  end_time?: number | string | null;
+  protected?: boolean;
+  detection_labels?: unknown;
+  has_detection?: boolean;
+}
+
+/** One entry of GET /api/detection/results/:stream. Box values are normalized to 0..1. */
+interface DetectionResult {
+  label: string;
+  confidence: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  timestamp?: number;
+}
+
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void;
+};
+
+type VendorFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => void;
+  msRequestFullscreen?: () => void;
+};
+
+export interface ModalContextValue {
+  showVideoModal: (videoUrl: string, title?: string, downloadUrl?: string) => void;
+  showSnapshotPreview: (imageData: string, streamName?: string) => void;
+}
+
+// RecordingsView publishes its modal context here for the deprecated helpers below.
+declare global {
+  interface Window {
+    __modalContext?: ModalContextValue;
+  }
+}
+
+/**
+ * Parse a recording timestamp to Unix seconds.
+ * Accepts a Unix epoch number (seconds), an ISO 8601 string ("2026-02-18T05:00:00Z"),
+ * or the legacy "YYYY-MM-DD HH:mm:ss UTC" string from older server versions.
+ * @param {number|string} value - Timestamp value
+ * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
+ */
+const parseRecordingTimestamp = (value: number | string | null | undefined): number => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value > 0 ? value : 0;
+  const parsed = dayjs.utc(value);
+  return parsed.isValid() ? parsed.unix() : 0;
+};
+
+// Create contexts for modals
+export const ModalContext = createContext<ModalContextValue>({
+  showVideoModal: () => {},
+  showSnapshotPreview: () => {}
+});
+
+export interface DeleteConfirmationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  /** 'single', 'selected' or 'all'; any other value uses the generic wording. */
+  mode?: string;
+  count?: number;
+  recordingName?: string;
+}
+
+/**
+ * DeleteConfirmationModal component for Preact
+ * @param {Object} props - Component props
+ * @param {boolean} props.isOpen - Whether the modal is open
+ * @param {Function} props.onClose - Function to call when the modal is closed
+ * @param {Function} props.onConfirm - Function to call when delete is confirmed
+ * @param {string} props.mode - Delete mode ('single', 'selected' or 'all')
+ * @param {number} props.count - Number of items selected (for 'selected' mode)
+ * @param {string} [props.recordingName] - Stream name of the recording (for 'single' mode)
+ * @returns {JSX.Element} DeleteConfirmationModal component
+ */
+export function DeleteConfirmationModal(props: DeleteConfirmationModalProps) {
+  const { t } = useI18n();
+  const { isOpen, onClose, onConfirm, mode, count, recordingName } = props;
+
+  if (!isOpen) return null;
+
+  // Determine title and message based on mode
+  let title = t('recordings.confirmDelete');
+  let message = t('recordings.confirmDeleteItem');
+
+  if (mode === 'single') {
+    title = t('timeline.deleteRecording');
+    message = t('recordings.confirmDeleteFromStream', { stream: recordingName || t('recordings.thisStream') });
+  } else if (mode === 'selected') {
+    title = t('recordings.deleteSelectedRecordings');
+    message = t(count === 1 ? 'recordings.confirmDeleteSelectedOne' : 'recordings.confirmDeleteSelectedMany', { count });
+  } else if (mode === 'all') {
+    title = t('recordings.deleteAllFilteredRecordings');
+    message = t('recordings.confirmDeleteAllFiltered');
+  }
+
+  // Handle escape key
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  // Handle background click
+  const handleBackgroundClick = (e: MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div role="presentation"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={handleBackgroundClick}
+      onKeyDown={handleKeyDown}
+    >
+      <div class="bg-card text-card-foreground rounded-lg shadow-xl p-6 max-w-md mx-auto">
+        <div class="mb-4">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
+        </div>
+
+        <p class="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+
+        <div class="flex justify-end space-x-3">
+          <button
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            onClick={onConfirm}
+          >
+            {t('common.delete')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface SnapshotPreviewModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  imageData: string;
+  streamName?: string;
+  onDownload: () => void;
+}
+
+/**
+ * SnapshotPreviewModal component
+ * @param {Object} props - Component props
+ * @param {boolean} props.isOpen - Whether the modal is open
+ * @param {Function} props.onClose - Function to call when the modal is closed
+ * @param {string} props.imageData - Image data URL
+ * @param {string} props.streamName - Stream name
+ * @returns {JSX.Element} SnapshotPreviewModal component
+ */
+export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, onDownload }: SnapshotPreviewModalProps) {
+  const { t } = useI18n();
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Handle escape key
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Animate in
+    if (isOpen && modalRef.current) {
+      setTimeout(() => {
+        const modalContent = modalRef.current!.querySelector('.modal-content');
+        if (modalContent) {
+          modalContent.classList.remove('scale-95', 'opacity-0');
+          modalContent.classList.add('scale-100', 'opacity-100');
+        }
+      }, 10);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  // Handle background click
+  const handleBackgroundClick = (e: MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div role="presentation"
+      ref={modalRef}
+      id="snapshot-preview-modal"
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      onClick={handleBackgroundClick}
+    >
+      <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style={{ width: '90%' }}>
+        <div className="flex justify-between items-center p-4 border-b border-border">
+          <h3 id="snapshot-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+            {streamName ? t('recordings.snapshotOfStream', { stream: streamName }) : t('timeline.snapshot')}
+          </h3>
+          <button
+            className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            onClick={onClose}
+            aria-label={t('common.close')}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4 overflow-auto flex-grow">
+          <img
+            id="snapshot-preview-image"
+            className="max-w-full max-h-[70vh] mx-auto"
+            src={imageData}
+            alt={t('timeline.snapshot')}
+          />
+        </div>
+        <div className="p-4 border-t border-border flex justify-end space-x-2">
+          <button
+            id="snapshot-download-btn"
+            className="btn-primary"
+            onClick={onDownload}
+          >
+            {t('common.download')}
+          </button>
+          <button
+            id="snapshot-close-btn"
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            onClick={onClose}
+          >
+            {t('common.close')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export interface VideoModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  videoUrl?: string;
+  title?: string;
+  downloadUrl?: string;
+}
+
+/**
+ * VideoModal component
+ * @param {Object} props - Component props
+ * @param {boolean} props.isOpen - Whether the modal is open
+ * @param {Function} props.onClose - Function to call when the modal is closed
+ * @param {string} props.videoUrl - URL of the video to display
+ * @param {string} props.title - Title for the video
+ * @param {string} props.downloadUrl - Optional URL for downloading the video
+ * @returns {JSX.Element} VideoModal component
+ */
+export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: VideoModalProps) {
+  const { t } = useI18n();
+  const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
+  const [timeWindow, setTimeWindow] = useState(2);
+  const [detections, setDetections] = useState<DetectionResult[]>([]);
+  const [recordingData, setRecordingData] = useState<RecordingDetails | null>(null);
+  const [detectionStatus, setDetectionStatus] = useState<string>(() => t('recordings.noDetectionsLoaded'));
+  const [currentSpeed, setCurrentSpeed] = useState(1.0);
+  const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isProtected, setIsProtected] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [playbackMessage, setPlaybackMessage] = useState('');
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  const updatePlaybackSeconds = useCallback((video: HTMLVideoElement) => {
+    const nextSeconds = Math.max(0, Math.floor(video?.currentTime || 0));
+    setCurrentPlaybackSeconds(prev => prev === nextSeconds ? prev : nextSeconds);
+  }, []);
+
+  // Handle escape key and cleanup
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      console.log('VideoModal opened, setting up event listeners');
+      document.addEventListener('keydown', handleKeyDown);
+
+      if (videoRef.current) {
+        videoRef.current.ondblclick = () => handleToggleFullscreen();
+      }
+    }
+
+    return () => {
+      console.log('VideoModal cleanup');
+      document.removeEventListener('keydown', handleKeyDown);
+
+    };
+  }, [isOpen, onClose]);
+
+  // Fetch recording data and detections
+  useEffect(() => {
+    if (!isOpen || !videoUrl) return;
+
+    // Extract recording ID from URL
+    const recordingIdMatch = videoUrl.match(/\/play\/(\d+)/);
+    if (!recordingIdMatch || !recordingIdMatch[1]) return;
+
+    const recordingId = parseInt(recordingIdMatch[1], 10);
+
+    // Fetch recording data
+    const fetchRecordingData = async () => {
+      try {
+        const response = await fetch(`/api/recordings/${recordingId}`);
+        if (!response.ok) throw new Error('Failed to fetch recording data');
+
+        const data = await response.json() as RecordingDetails;
+        setRecordingData(data);
+        setIsProtected(!!data.protected);
+
+        // If we have recording data, fetch detections
+        if (data && data.stream && data.start_time && data.end_time) {
+          const startTime = parseRecordingTimestamp(data.start_time);
+          const endTime = parseRecordingTimestamp(data.end_time);
+
+          console.log('[VideoModal] Detection fetch debug:', {
+            stream: data.stream,
+            start_time_raw: data.start_time,
+            end_time_raw: data.end_time,
+            startTime_parsed: startTime,
+            endTime_parsed: endTime,
+            detection_labels: data.detection_labels,
+            has_detection: data.has_detection
+          });
+
+          if (startTime === 0 || endTime === 0) {
+            console.error('Failed to parse recording timestamps:', data.start_time, data.end_time);
+            setDetectionStatus(t('recordings.invalidRecordingTimestamps'));
+            return;
+          }
+
+          const detectionsUrl = `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`;
+          console.log('[VideoModal] Fetching detections from:', detectionsUrl);
+
+          const detectionsResponse = await fetch(detectionsUrl);
+
+          if (!detectionsResponse.ok) throw new Error('Failed to fetch detections');
+
+          const detectionsData = await detectionsResponse.json() as { detections?: DetectionResult[] };
+          console.log('[VideoModal] Detections response:', detectionsData);
+          const fetchedDetections = detectionsData.detections || [];
+          setDetections(fetchedDetections);
+
+          if (fetchedDetections.length > 0) {
+            setDetectionStatus(t(fetchedDetections.length === 1 ? 'recordings.detectionAvailableOne' : 'recordings.detectionAvailableMany', { count: fetchedDetections.length }));
+          } else {
+            setDetectionStatus(t('recordings.noDetectionsForRecording'));
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setDetectionStatus(t('recordings.errorLoadingDetections'));
+      }
+    };
+
+    fetchRecordingData();
+  }, [isOpen, videoUrl]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPlaybackSeconds(0);
+      return;
+    }
+
+    setCurrentPlaybackSeconds(0);
+  }, [isOpen, videoUrl]);
+
+  // Extract recording ID from URL
+  const recordingId = videoUrl ? (() => {
+    const m = videoUrl.match(/\/play\/(\d+)/);
+    return m ? parseInt(m[1]!, 10) : null;
+  })() : null;
+
+  // Toggle protection for the current recording
+  const handleToggleProtection = useCallback(async () => {
+    if (!recordingId) return;
+    const newState = !isProtected;
+    try {
+      const response = await fetch(`/api/recordings/${recordingId}/protect`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ protected: newState }),
+      });
+      if (!response.ok) throw new Error(t(newState ? 'recordings.protectFailed' : 'recordings.unprotectFailed'));
+      setIsProtected(newState);
+      showStatusMessage(
+        t(newState ? 'recordings.recordingProtected' : 'recordings.recordingProtectionRemoved'),
+        'success'
+      );
+
+      // Notify RecordingsView to update the list locally
+      window.dispatchEvent(new CustomEvent('recording-protected', {
+        detail: { id: recordingId, protected: newState }
+      }));
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
+    }
+  }, [recordingId, isProtected]);
+
+  // Delete the current recording
+  const handleDeleteRecording = useCallback(async () => {
+    if (!recordingId) return;
+    try {
+      const response = await fetch(`/api/recordings/${recordingId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(t('timeline.failedToDeleteRecording'));
+      showStatusMessage(t('timeline.recordingDeletedSuccessfully'), 'success');
+      setShowDeleteConfirm(false);
+
+      // Notify RecordingsView to remove the recording locally
+      window.dispatchEvent(new CustomEvent('recording-deleted', {
+        detail: { id: recordingId }
+      }));
+
+      onClose();
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
+      setShowDeleteConfirm(false);
+    }
+  }, [recordingId, onClose]);
+
+  // Take a snapshot of the current video frame
+  const handleSnapshot = useCallback(() => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      showStatusMessage(t('timeline.cannotTakeSnapshotVideoNotLoaded'), 'error');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const streamName = recordingData?.stream || 'recording';
+    const timestamp = formatFilenameTimestamp();
+    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
+        return;
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      showStatusMessage(t('recordings.snapshotSaved', { fileName }), 'success', 2000);
+    }, 'image/jpeg', 0.95);
+  }, [recordingData]);
+
+  // Draw detections on canvas
+  const drawDetections: () => void = useCallback(() => {
+    if (!detectionOverlayEnabled || !videoRef.current || !canvasRef.current || detections.length === 0) {
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    // Get native video dimensions
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    if (videoWidth === 0 || videoHeight === 0) {
+      requestAnimationFrame(drawDetections);
+      return;
+    }
+
+    // Set canvas to match the displayed element size (not native resolution)
+    const displayWidth = video.clientWidth;
+    const displayHeight = video.clientHeight;
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate letterbox / pillarbox offsets (video uses object-contain)
+    const videoAspect = videoWidth / videoHeight;
+    const displayAspect = displayWidth / displayHeight;
+    let drawWidth: number, drawHeight: number, offsetX = 0, offsetY = 0;
+
+    if (videoAspect > displayAspect) {
+      drawWidth = displayWidth;
+      drawHeight = displayWidth / videoAspect;
+      offsetY = (displayHeight - drawHeight) / 2;
+    } else {
+      drawHeight = displayHeight;
+      drawWidth = displayHeight * videoAspect;
+      offsetX = (displayWidth - drawWidth) / 2;
+    }
+
+    // Get current video time in seconds
+    const currentTime = video.currentTime;
+
+    if (!recordingData || !recordingData.start_time) {
+      return;
+    }
+
+    const recordingStartTime = parseRecordingTimestamp(recordingData.start_time);
+    if (recordingStartTime === 0) {
+      console.error('Failed to parse recording start time:', recordingData.start_time);
+      return;
+    }
+
+    const currentTimestamp = recordingStartTime + Math.floor(currentTime);
+
+    // Filter detections to only show those within the time window
+    const visibleDetections = detections.filter(detection => {
+      if (!detection.timestamp) return false;
+      return Math.abs(detection.timestamp - currentTimestamp) <= timeWindow;
+    });
+
+    // Update status
+    if (visibleDetections.length > 0) {
+      setDetectionStatus(t(visibleDetections.length === 1 ? 'recordings.showingDetectionOne' : 'recordings.showingDetectionMany', { count: visibleDetections.length }));
+    } else {
+      setDetectionStatus(t('recordings.noDetectionsAtCurrentTime', { count: detections.length }));
+    }
+
+    // Draw each visible detection using letterbox-aware coordinates
+    visibleDetections.forEach(detection => {
+      const x = (detection.x * drawWidth) + offsetX;
+      const y = (detection.y * drawHeight) + offsetY;
+      const width = detection.width * drawWidth;
+      const height = detection.height * drawHeight;
+
+      // Scale line width for visibility
+      const scale = Math.max(1, Math.min(drawWidth, drawHeight) / 400);
+
+      // Draw bounding box
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.lineWidth = Math.max(2, 3 * scale);
+      ctx.strokeRect(x, y, width, height);
+
+      // Draw label background
+      const fontSize = Math.round(Math.max(12, 14 * scale));
+      ctx.font = `${fontSize}px Arial`;
+      const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+      const labelWidth = ctx.measureText(labelText).width + 10;
+      const labelHeight = fontSize + 8;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y - labelHeight, labelWidth, labelHeight);
+
+      // Draw label text
+      ctx.fillStyle = 'white';
+      ctx.fillText(labelText, x + 5, y - 5);
+    });
+
+    // Request next frame if video is playing
+    if (!video.paused && !video.ended) {
+      requestAnimationFrame(drawDetections);
+    }
+  }, [detectionOverlayEnabled, detections, recordingData, timeWindow]);
+
+  // Set up video event listeners
+  useEffect(() => {
+    if (!isOpen || !videoRef.current) return;
+
+    const video: HTMLVideoElement & { lastDrawnTime?: number } = videoRef.current;
+
+    const handleLoadedMetadata = () => {
+      updatePlaybackSeconds(video);
+    };
+
+    const handlePlay = () => {
+      updatePlaybackSeconds(video);
+      if (detectionOverlayEnabled) {
+        drawDetections();
+      }
+    };
+
+    const handleSeeked = () => {
+      updatePlaybackSeconds(video);
+      if (detectionOverlayEnabled) {
+        drawDetections();
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      updatePlaybackSeconds(video);
+      if (detectionOverlayEnabled) {
+        // Don't redraw on every timeupdate as it's too frequent
+        // Instead, redraw every 0.5 seconds
+        const currentTime = Math.floor(video.currentTime * 2) / 2;
+        if (video.lastDrawnTime !== currentTime) {
+          video.lastDrawnTime = currentTime;
+          drawDetections();
+        }
+      }
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('timeupdate', handleTimeUpdate);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [isOpen, detectionOverlayEnabled, drawDetections, updatePlaybackSeconds]);
+
+  // Own the media source in one effect. Closing/switching aborts preparation
+  // and clears the captured element so stale requests cannot reload a clip.
+  useEffect(() => {
+    if (!isOpen || !videoUrl || !videoRef.current) return;
+    const video = videoRef.current;
+    setPlaybackMessage('');
+    return loadRecordingPlayback(video, videoUrl, {
+      onPreparing: () => setPlaybackMessage(t('recordings.preparingCompatiblePlayback')),
+      onReady: () => setPlaybackMessage(''),
+      onError: error => setPlaybackMessage(error.message),
+    });
+  }, [isOpen, videoUrl]);
+
+  // Update detection overlay when enabled/disabled
+  useEffect(() => {
+    if (detectionOverlayEnabled) {
+      if (canvasRef.current) {
+        canvasRef.current.style.display = 'block';
+      }
+      drawDetections();
+    } else {
+      if (canvasRef.current) {
+        canvasRef.current.style.display = 'none';
+      }
+    }
+  }, [detectionOverlayEnabled, drawDetections]);
+
+  // Track fullscreen state and redraw overlays when the player size changes.
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || !videoContainerRef.current) return;
+
+    const container = videoContainerRef.current;
+    let redrawTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRedraw = () => {
+      if (redrawTimeoutId !== null) {
+        clearTimeout(redrawTimeoutId);
+      }
+      redrawTimeoutId = setTimeout(() => {
+        if (detectionOverlayEnabled) {
+          drawDetections();
+        }
+      }, 100);
+    };
+
+    const handleFullscreenChange = () => {
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
+      setIsFullscreen(fullscreenElement === container);
+      scheduleRedraw();
+    };
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        scheduleRedraw();
+      })
+      : null;
+
+    const handleWindowResize = () => {
+      scheduleRedraw();
+    };
+
+    if (resizeObserver) {
+      resizeObserver.observe(container);
+      resizeObserver.observe(videoRef.current);
+    } else {
+      window.addEventListener('resize', handleWindowResize);
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    handleFullscreenChange();
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      resizeObserver?.disconnect();
+      if (!resizeObserver) {
+        window.removeEventListener('resize', handleWindowResize);
+      }
+      if (redrawTimeoutId !== null) {
+        clearTimeout(redrawTimeoutId);
+      }
+    };
+  }, [isOpen, detectionOverlayEnabled, drawDetections]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const container: VendorFullscreenElement | null = videoContainerRef.current;
+    if (!container) return;
+
+    try {
+      const fullscreenElement = document.fullscreenElement || (document as WebkitFullscreenDocument).webkitFullscreenElement;
+      if (fullscreenElement === container) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as WebkitFullscreenDocument).webkitExitFullscreen) {
+          (document as WebkitFullscreenDocument).webkitExitFullscreen!();
+        }
+        return;
+      }
+
+      if (container.requestFullscreen) {
+        await container.requestFullscreen();
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      } else {
+        showStatusMessage(t('common.fullscreenUnsupported'), 'warning');
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: (error as Error).message }), 'error');
+    }
+  }, []);
+
+  // Handle background click
+  const handleBackgroundClick = (e: MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  // Handle speed change
+  const handleSpeedChange = (speed: number) => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+      setCurrentSpeed(speed);
+    }
+  };
+
+  // Handle time window change
+  const handleTimeWindowChange = (e: Event) => {
+    const newTimeWindow = parseInt((e.target as HTMLInputElement).value, 10);
+    setTimeWindow(newTimeWindow);
+    if (detectionOverlayEnabled) {
+      drawDetections();
+    }
+  };
+
+  // Handle modal animation after the portal is mounted.
+  useEffect(() => {
+    let animationTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (isOpen && modalRef.current) {
+      animationTimeout = setTimeout(() => {
+        const modalContent = modalRef.current?.querySelector('.modal-content');
+        if (modalContent) {
+          modalContent.classList.remove('scale-95', 'opacity-0');
+          modalContent.classList.add('scale-100', 'opacity-100');
+          console.log('Modal animation applied');
+        }
+      }, 10);
+    }
+
+    return () => {
+      if (animationTimeout) {
+        clearTimeout(animationTimeout);
+      }
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const playbackPositionLabel = recordingData?.stream
+    ? `${recordingData.stream} - ${formatUtils.formatDuration(currentPlaybackSeconds)}`
+    : formatUtils.formatDuration(currentPlaybackSeconds);
+
+  return createPortal(
+    <div role="presentation"
+      ref={modalRef}
+      id="video-preview-modal"
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      onClick={handleBackgroundClick}
+    >
+      <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
+        <div className="flex justify-between items-center p-2 sm:p-3 border-b border-border flex-shrink-0">
+          <h3 id="video-preview-title" className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate me-2">
+            {title || t('recordings.video')}
+          </h3>
+          <button
+            className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
+            onClick={onClose}
+            aria-label={t('common.close')}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-none p-2 sm:p-3 md:flex-1 md:min-h-0 flex justify-center items-center">
+            <div
+              ref={videoContainerRef}
+              data-testid="recording-video-container"
+              className={isFullscreen
+                ? 'relative w-screen h-screen bg-black'
+                : 'relative w-full aspect-video bg-black overflow-hidden md:h-full md:aspect-auto'}
+            >
+              <video /* eslint-disable-line jsx-a11y/media-has-caption -- camera footage has no caption source */
+                ref={videoRef}
+                className="w-full h-full object-contain"
+                controls
+                controlsList="nofullscreen"
+                key={videoUrl} /* Add key to force re-render when URL changes */
+                onLoadStart={() => console.log('Video load started')}
+                onLoadedData={() => console.log('Video data loaded')}
+              />
+              {playbackMessage && (
+                <div role="status" className="absolute inset-0 flex items-center justify-center p-4 text-center text-white bg-black/75">
+                  {playbackMessage}
+                </div>
+              )}
+              <canvas
+                ref={canvasRef}
+                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                style={{ display: 'none', zIndex: 2 }}
+              />
+            </div>
+          </div>
+
+          <div className="px-2 sm:px-3 pb-1 flex-shrink-0">
+            <div
+              id="recording-playback-position"
+              data-testid="recording-playback-position"
+              className="text-center text-sm font-medium text-foreground tabular-nums"
+            >
+              {playbackPositionLabel}
+            </div>
+          </div>
+
+          <div id="recordings-controls" className="mx-2 sm:mx-3 mb-2 sm:mb-3 p-2 sm:p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain md:flex-none">
+            <h3 className="text-base font-bold text-center mb-2 text-foreground">
+              {t('recordings.playbackControls')}
+            </h3>
+
+            <div className="flex justify-center mb-3">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
+                onClick={handleToggleFullscreen}
+                title={t(isFullscreen ? 'timeline.exitFullscreen' : 'timeline.enterFullscreen')}
+              >
+                {t(isFullscreen ? 'timeline.exitFullscreen' : 'timeline.fullscreen')}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+              {/* Speed controls section */}
+              <div className="border-b border-border pb-3 md:border-b-0 md:border-e md:pe-3 md:pb-0">
+                <h4 className="font-bold text-center mb-2 text-foreground text-sm">
+                  {t('recordings.playbackSpeed')}
+                </h4>
+
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {[0.25, 0.5, 1.0, 1.5, 2.0, 4.0].map(speed => (
+                    <button
+                      key={speed}
+                      className={`speed-btn px-2.5 py-1.5 rounded-full ${
+                        speed === currentSpeed
+                          ? 'badge-success'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      } text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
+                      data-speed={speed}
+                      onClick={() => handleSpeedChange(speed)}
+                    >
+                      {speed === 1.0 ? t('recordings.normalSpeed') : `${speed}×`}
+                    </button>
+                  ))}
+                </div>
+
+                <div id="current-speed-indicator" className="mt-2 text-center font-medium text-green-600 dark:text-green-400 text-xs">
+                  {t('recordings.currentSpeed', { speed: `${currentSpeed}×` })} {currentSpeed === 1.0 ? t('recordings.normalSpeedSuffix') : ''}
+                </div>
+              </div>
+
+              {/* Detection overlay section */}
+              <div className="pt-3 md:pt-0 md:ps-3">
+                <h4 className="font-bold text-center mb-2 text-foreground text-sm">
+                  {t('recordings.detectionOverlays')}
+                </h4>
+
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      type="checkbox"
+                      id="detection-overlay-checkbox"
+                      className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
+                      checked={detectionOverlayEnabled}
+                      onChange={(e) => setDetectionOverlayEnabled((e.target as HTMLInputElement).checked)}
+                      disabled={detections.length === 0}
+                    />
+                    <label
+                      htmlFor="detection-overlay-checkbox"
+                      className="text-xs font-medium text-foreground"
+                    >
+                      {t('recordings.showDetectionOverlays')}
+                    </label>
+                  </div>
+
+                  <div className="flex flex-col w-full mt-1 mb-1">
+                    <label
+                      htmlFor="detection-sensitivity-slider"
+                      className="text-xs font-medium text-foreground mb-1"
+                    >
+                      {t('recordings.detectionSensitivity')}
+                    </label>
+
+                    <input
+                      type="range"
+                      id="detection-sensitivity-slider"
+                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                      min="1"
+                      max="10"
+                      step="1"
+                      value={timeWindow}
+                      onChange={handleTimeWindowChange}
+                    />
+
+                    <div id="detection-sensitivity-value" className="text-xs text-muted-foreground text-center mb-1">
+                      {t(timeWindow === 1 ? 'recordings.timeWindowOne' : 'recordings.timeWindowMany', { count: timeWindow })}
+                    </div>
+                  </div>
+
+                  <div id="detection-status-indicator" className={`text-center text-xs ${
+                    detections.length > 0
+                      ? 'font-medium text-green-600 dark:text-green-400'
+                      : 'text-muted-foreground'
+                  }`}>
+                    {detectionStatus}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap justify-center gap-2 mt-3 pt-2 border-t border-border">
+              {/* Snapshot */}
+              <button
+                className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
+                onClick={handleSnapshot}
+                title={t('timeline.takeSnapshot')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {t('timeline.snapshot')}
+              </button>
+              {/* Download */}
+              {downloadUrl && (
+                <a
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
+                  href={downloadUrl}
+                  download={`video-${nowMilliseconds()}.mp4`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  {t('common.download')}
+                </a>
+              )}
+              {/* View in Timeline */}
+              {recordingData && recordingData.stream && (recordingData.start_time_unix || recordingData.start_time) && (() => {
+                const tsValue = recordingData.start_time_unix ?? recordingData.start_time;
+                const local = typeof tsValue === 'number'
+                  ? dayjs.unix(tsValue).local()
+                  : dayjs.utc(tsValue).local();
+                if (!local.isValid()) return null;
+                const date = local.format('YYYY-MM-DD');
+                const time = local.format('HH:mm:ss');
+                const timelineUrl = `timeline.html?stream=${encodeURIComponent(recordingData.stream)}&date=${date}&time=${time}`;
+                return (
+                  <a
+                    className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
+                    href={timelineUrl}
+                    title={t('recordings.viewInTimelineTitle')}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {t('nav.timeline')}
+                  </a>
+                );
+              })()}
+              {/* Protect */}
+              {recordingId && (
+                <button
+                  className={`px-3 py-1.5 rounded transition-colors flex items-center text-xs ${
+                    isProtected
+                      ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  onClick={handleToggleProtection}
+                  title={t(isProtected ? 'recordings.unprotect' : 'recordings.protect')}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {isProtected ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                    )}
+                  </svg>
+                  {t(isProtected ? 'recordings.protected' : 'recordings.protectAction')}
+                </button>
+              )}
+              {/* Delete */}
+              {recordingId && (
+                <button
+                  className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-xs"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  title={t('timeline.deleteRecording')}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 me-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  {t('common.delete')}
+                </button>
+              )}
+            </div>
+
+            {/* Delete confirmation */}
+            <ConfirmDialog
+              isOpen={showDeleteConfirm}
+              onClose={() => setShowDeleteConfirm(false)}
+              onConfirm={handleDeleteRecording}
+              title={t('timeline.deleteRecording')}
+              message={t('timeline.deleteRecordingConfirmation')}
+              confirmLabel={t('common.delete')}
+            />
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+interface SnapshotModalState {
+  isOpen: boolean;
+  imageData: string;
+  streamName?: string;
+}
+
+interface VideoModalState {
+  isOpen: boolean;
+  videoUrl: string;
+  title?: string;
+  downloadUrl?: string;
+}
+
+/**
+ * ModalProvider component
+ * Provides modal context and renders modal components
+ */
+export function ModalProvider({ children }: { children?: ComponentChildren }) {
+  const { t } = useI18n();
+  const [snapshotModal, setSnapshotModal] = useState<SnapshotModalState>({
+    isOpen: false,
+    imageData: '',
+    streamName: '',
+  });
+
+  const [videoModal, setVideoModal] = useState<VideoModalState>({
+    isOpen: false,
+    videoUrl: '',
+    title: '',
+    downloadUrl: '',
+  });
+
+  // Show snapshot preview
+  const showSnapshotPreview = useCallback((imageData: string, streamName?: string) => {
+    setSnapshotModal({
+      isOpen: true,
+      imageData,
+      streamName,
+    });
+  }, []);
+
+  // Show video modal
+  const showVideoModal = useCallback((videoUrl: string, title?: string, downloadUrl?: string) => {
+    console.log('ModalProvider.showVideoModal called with:', { videoUrl, title, downloadUrl });
+
+    setVideoModal({
+      isOpen: true,
+      videoUrl,
+      title,
+      downloadUrl,
+    });
+    console.log('Video modal state updated with new content');
+  }, []);
+
+  // Handle snapshot download
+  const handleSnapshotDownload = useCallback(() => {
+    try {
+      const { imageData, streamName } = snapshotModal;
+
+      if (!imageData) {
+        console.error('No image data available for download');
+        showStatusMessage(t('recordings.snapshotDownloadMissingData'), 'error', 5000);
+        return;
+      }
+
+      const timestamp = formatFilenameTimestamp();
+      const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
+
+      const link = document.createElement('a');
+      link.href = imageData;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 100);
+
+      showStatusMessage(t('recordings.snapshotDownloaded'), 'success', 3000);
+    } catch (error) {
+      console.error('Error in snapshot download process:', error);
+      showStatusMessage(t('recordings.downloadFailed', { message: (error as Error).message }), 'error', 5000);
+    }
+  }, [snapshotModal]);
+
+  // Close snapshot modal
+  const closeSnapshotModal = useCallback(() => {
+    setSnapshotModal(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Close video modal
+  const closeVideoModal = useCallback(() => {
+    console.log('Closing video modal');
+
+    setVideoModal({
+      isOpen: false,
+      videoUrl: '',
+      title: '',
+      downloadUrl: ''
+    });
+    console.log('Video modal state fully reset');
+  }, []);
+
+  // Create context value
+  const contextValue = {
+    showSnapshotPreview,
+    showVideoModal,
+  };
+
+  return (
+    <ModalContext.Provider value={contextValue}>
+      {children}
+
+      {/* Render modals */}
+      <SnapshotPreviewModal
+        isOpen={snapshotModal.isOpen}
+        onClose={closeSnapshotModal}
+        imageData={snapshotModal.imageData}
+        streamName={snapshotModal.streamName}
+        onDownload={handleSnapshotDownload}
+      />
+
+      <VideoModal
+        isOpen={videoModal.isOpen}
+        onClose={closeVideoModal}
+        videoUrl={videoModal.videoUrl}
+        title={videoModal.title}
+        downloadUrl={videoModal.downloadUrl}
+      />
+    </ModalContext.Provider>
+  );
+}
+
+// Export function for backward compatibility
+export function showVideoModal(videoUrl: string, title?: string, downloadUrl?: string) {
+  console.warn('Direct showVideoModal() is deprecated. Use ModalContext.showVideoModal instead.');
+
+  // Get the modal context from the global variable if available
+  if (window.__modalContext && window.__modalContext.showVideoModal) {
+    console.log('Using modal context to show video modal');
+    window.__modalContext.showVideoModal(videoUrl, title, downloadUrl);
+    return;
+  }
+
+  console.log('Falling back to direct modal rendering');
+
+  // Fallback to creating a modal directly
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) {
+    console.log('Creating modal root element');
+    const root = document.createElement('div');
+    root.id = 'modal-root';
+    document.body.appendChild(root);
+  }
+
+  // Create a temporary div to render the modal
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'temp-modal-container';
+  document.body.appendChild(modalContainer);
+
+  // Import preact to render the modal
+  console.log('Dynamically importing preact to render modal');
+  import('preact').then(({ render, h }) => {
+    console.log('Rendering VideoModal component');
+    render(
+      h(VideoModal, {
+        isOpen: true,
+        onClose: () => {
+          console.log('Closing modal');
+          render(null, modalContainer);
+          document.body.removeChild(modalContainer);
+        },
+        videoUrl,
+        title,
+        downloadUrl
+      }),
+      modalContainer
+    );
+  }).catch(err => {
+    console.error('Error rendering video modal:', err);
+    showStatusMessage(translate('recordings.errorShowingVideo', { message: err.message }), 'error');
+  });
+}
+
+export function showSnapshotPreview(imageData: string, streamName?: string) {
+  console.warn('Direct showSnapshotPreview() is deprecated. Use ModalContext.showSnapshotPreview instead.');
+
+  // Get the modal context from the global variable if available
+  if (window.__modalContext && window.__modalContext.showSnapshotPreview) {
+    window.__modalContext.showSnapshotPreview(imageData, streamName);
+    return;
+  }
+
+  // Fallback to creating a modal directly
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) {
+    const root = document.createElement('div');
+    root.id = 'modal-root';
+    document.body.appendChild(root);
+  }
+
+  // Create a temporary div to render the modal
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'temp-snapshot-container';
+  document.body.appendChild(modalContainer);
+
+  // Import preact to render the modal
+  import('preact').then(({ render, h }) => {
+    const handleDownload = () => {
+      try {
+        const timestamp = formatFilenameTimestamp();
+        const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
+
+        const link = document.createElement('a');
+        link.href = imageData;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up
+        setTimeout(() => {
+          if (document.body.contains(link)) {
+            document.body.removeChild(link);
+          }
+        }, 100);
+
+        showStatusMessage(translate('recordings.snapshotDownloaded'), 'success', 3000);
+      } catch (error) {
+        console.error('Error downloading snapshot:', error);
+        showStatusMessage(translate('recordings.downloadFailed', { message: (error as Error).message }), 'error', 5000);
+      }
+    };
+
+    render(
+      h(SnapshotPreviewModal, {
+        isOpen: true,
+        onClose: () => {
+          render(null, modalContainer);
+          document.body.removeChild(modalContainer);
+        },
+        imageData,
+        streamName,
+        onDownload: handleDownload
+      }),
+      modalContainer
+    );
+  }).catch(err => {
+    console.error('Error rendering snapshot modal:', err);
+    showStatusMessage(translate('recordings.errorShowingSnapshot', { message: err.message }), 'error');
+  });
+}

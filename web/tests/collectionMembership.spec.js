@@ -1,6 +1,6 @@
-import { fetchCollectionCameraUuids } from '../js/components/preact/fleet/collectionMembership.js';
+import { fetchCollectionCameraUuids } from '../js/components/preact/fleet/collectionMembership.ts';
 
-jest.mock('../js/query-client.js', () => ({
+jest.mock('../js/query-client.ts', () => ({
   fetchJSON: jest.fn(),
   useQuery: jest.fn(),
 }));

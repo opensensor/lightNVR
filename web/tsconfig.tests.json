@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["jest", "node"]
+  },
+  "include": ["tests/**/*.ts", "tests/**/*.tsx", "js/env.d.ts"]
+}

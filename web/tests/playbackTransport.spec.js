@@ -3,7 +3,7 @@ import {
   isPlaybackFallback,
   normalizePlaybackTransport,
   shouldFallbackPlaybackTransport,
-} from '../js/utils/playback-transport.js';
+} from '../js/utils/playback-transport.ts';
 
 describe('per-stream playback transport', () => {
   const all = { webrtc: true, mse: true, hls: true };

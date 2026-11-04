@@ -1,0 +1,71 @@
+import { useI18n } from '../../../i18n.ts';
+import { AsyncButton } from '../AsyncButton.tsx';
+import type { User } from '../../../types/core.ts';
+import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
+
+export interface DeleteUserModalProps {
+  currentUser: Pick<User, 'username'>;
+  handleDeleteUser: () => unknown;
+  onClose: () => void;
+}
+
+/**
+ * Delete User Modal Component
+ */
+
+/**
+ * Delete User Modal Component
+ * @param {Object} props - Component props
+ * @param {Object} props.currentUser - Current user being deleted
+ * @param {Function} props.handleDeleteUser - Function to handle user deletion
+ * @param {Function} props.onClose - Function to close the modal
+ * @returns {JSX.Element} Delete user modal
+ */
+export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }: DeleteUserModalProps) {
+  const { t } = useI18n();
+  useEscapeKey(onClose);
+
+  // Direct delete handler — wrapped in Promise.resolve so AsyncButton can
+  // observe pending state whether the parent uses mutate or mutateAsync.
+  const handleDeleteClick = (e: Event) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation(); // Stop event from bubbling up
+    }
+    return Promise.resolve(handleDeleteUser());
+  };
+
+  // Stop click propagation on modal content
+  const stopPropagation = (e: Event) => {
+    e.stopPropagation();
+  };
+
+  return (
+    <div role="presentation" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div role="presentation" className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
+        <h2 className="text-xl font-bold mb-4">{t('users.deleteUser')}</h2>
+
+        <p className="mb-6">
+          {t('users.deleteUserConfirmation', { username: currentUser.username })}
+        </p>
+
+        <div className="flex justify-end">
+          <button
+            className="btn-secondary me-2"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </button>
+          {/* AsyncButton locks the button + shows a spinner while the DELETE
+              is in flight so the #399 rapid-tap double-submit can't fire
+              more than one deletion. */}
+          <AsyncButton
+            className="btn-danger"
+            onClick={handleDeleteClick}
+          >
+            {t('users.deleteUser')}
+          </AsyncButton>
+        </div>
+      </div>
+    </div>
+  );
+}
