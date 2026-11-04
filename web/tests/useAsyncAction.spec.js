@@ -56,7 +56,7 @@ jest.mock('preact/hooks', () => {
   };
 });
 
-const { useAsyncAction } = require('../js/hooks/useAsyncAction.js');
+const { useAsyncAction } = require('../js/hooks/useAsyncAction.ts');
 
 function resetHookState() {
   state.values = [];

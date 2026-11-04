@@ -1,4 +1,4 @@
-import { loadRecordingPlayback, prepareRecordingPlayback } from '../js/utils/recording-playback.js';
+import { loadRecordingPlayback, prepareRecordingPlayback } from '../js/utils/recording-playback.ts';
 
 describe('recording playback preparation', () => {
   const videoUrl = '/api/recordings/play/42?token=example';

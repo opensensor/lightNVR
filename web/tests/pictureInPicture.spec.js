@@ -1,4 +1,4 @@
-import { pictureInPictureAdapter } from '../js/components/preact/pictureInPicture.js';
+import { pictureInPictureAdapter } from '../js/components/preact/pictureInPicture.ts';
 
 describe('picture-in-picture adapter', () => {
   test('uses the standard API when available', async () => {

@@ -186,7 +186,7 @@ Environment-variable equivalents (useful for Docker): `WEBRTC_CONNECTION_TIMEOUT
 
 **HLS live view** — the following buffer/timeout tuning currently still requires a source rebuild:
 
-1. **Adjust HLS.js buffer settings** in `web/js/components/preact/HLSVideoCell.jsx`:
+1. **Adjust HLS.js buffer settings** in `web/js/components/preact/HLSVideoCell.tsx`:
    ```javascript
    const hls = new Hls({
        maxBufferLength: 60,            // Increase for more buffering (default: 30)
@@ -219,7 +219,7 @@ If you notice the live stream showing outdated video (stale data):
      set_response_header(response, "Expires", "0");
      ```
 
-2. **Add cache-busting to HLS URLs** in `web/js/components/video.js`:
+2. **Add cache-busting to HLS URLs** in `web/js/components/preact/HLSVideoCell.tsx`:
    ```javascript
    const timestamp = Date.now();
    const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;

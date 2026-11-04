@@ -9,12 +9,12 @@
 //   E2E_HEADLESS   'false' to watch the browser; headless otherwise
 module.exports = {
   testMatch: [
-    '**/tests/e2e/**/*.spec.js'
+    '**/tests/e2e/**/*.spec.{js,ts,tsx}'
   ],
   testEnvironment: 'node',
   setupFilesAfterEnv: ['./tests/setup.cjs'],
   testTimeout: 60000,
   transform: {
-    '^.+\\.jsx?$': ['babel-jest', { configFile: './babel.config.cjs' }]
+    '^.+\\.(?:jsx?|tsx?)$': ['babel-jest', { configFile: './babel.config.cjs' }]
   }
 };

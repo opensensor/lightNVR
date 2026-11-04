@@ -24,10 +24,10 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         run: npm ci --prefix web
-      - name: Report JSX accessibility findings
-        run: |
-          npm run lint --prefix web
-          echo 'The existing WCAG audit findings are warnings. Promote each rule to an error as its finding is fixed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Type-check web UI
+        run: npm run typecheck --prefix web
+      - name: Lint web UI
+        run: npm run lint --prefix web
 
   clang-tidy:
     name: clang-tidy

@@ -6,6 +6,12 @@ const baseline = JSON.parse(fs.readFileSync(new URL('../i18n-literal-baseline.js
 const componentsRoot = fileURLToPath(new URL('../js/components/', import.meta.url));
 const visibleAttributes = new Set(['title', 'aria-label', 'placeholder', 'alt']);
 
+// The baseline is keyed by the pre-TypeScript file name, so counts survive the
+// .jsx to .tsx (and .js to .ts) rename.
+export function baselineKey(file) {
+  return file.replace(/\.ts(x?)$/, '.js$1');
+}
+
 function candidate(value) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return /[A-Za-z]/.test(normalized) ? normalized : null;
@@ -15,6 +21,9 @@ function candidate(value) {
 // class names, API paths, and logging arguments are outside this rule's scope.
 function expressionStrings(node) {
   if (!node) return [];
+  if (['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression'].includes(node.type)) {
+    return expressionStrings(node.expression);
+  }
   if (node.type === 'Literal' && typeof node.value === 'string') return [node.value];
   if (node.type === 'TemplateLiteral') return node.quasis.map((part) => part.value.cooked || '');
   if (node.type === 'ConditionalExpression') {
@@ -34,7 +43,7 @@ export default {
     schema: [],
   },
   create(context) {
-    const file = path.relative(componentsRoot, context.filename).replaceAll(path.sep, '/');
+    const file = baselineKey(path.relative(componentsRoot, context.filename).replaceAll(path.sep, '/'));
     const allowed = baseline[file] || {};
     const seen = new Map();
 

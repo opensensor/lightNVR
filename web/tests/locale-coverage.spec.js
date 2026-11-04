@@ -26,13 +26,19 @@ test('static translation keys used by the web UI exist in English', () => {
   const sourceRoot = path.resolve(__dirname, '../js');
   const sourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);
-    return entry.isDirectory() ? sourceFiles(file) : /\.jsx?$/.test(entry.name) ? [file] : [];
+    if (entry.isDirectory()) return sourceFiles(file);
+    return /\.[jt]sx?$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [file] : [];
   });
+  const parserPlugins = (file) => {
+    if (file.endsWith('.ts')) return ['typescript'];
+    if (file.endsWith('.tsx')) return ['typescript', 'jsx'];
+    return ['jsx'];
+  };
   const missing = [];
 
   for (const file of sourceFiles(sourceRoot)) {
     const source = fs.readFileSync(file, 'utf8');
-    const ast = parse(source, { sourceType: 'module', plugins: ['jsx'] });
+    const ast = parse(source, { sourceType: 'module', plugins: parserPlugins(file) });
     const visit = (node) => {
       if (!node || typeof node !== 'object') return;
       if (Array.isArray(node)) return node.forEach(visit);

@@ -13,7 +13,7 @@ import {
   floorPlanCanvasFromImage,
   floorPlanPayload,
   normalizeCoverage,
-} from '../js/components/preact/live/liveOperator.js';
+} from '../js/components/preact/live/liveOperator.ts';
 
 const locations = [
   { uuid: 'campus', parent_uuid: null, name: 'Campus', type: 'site', sort_order: 0 },

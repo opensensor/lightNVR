@@ -2,7 +2,7 @@ import {
   meterPercent,
   storageTierRow,
   summarizeStorageTiers,
-} from '../js/components/preact/system/storageTiers.js';
+} from '../js/components/preact/system/storageTiers.ts';
 
 const GB = 1024 ** 3;
 

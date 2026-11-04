@@ -1,4 +1,4 @@
-import { urlUtils } from '../js/components/preact/recordings/urlUtils.js';
+import { urlUtils } from '../js/components/preact/recordings/urlUtils.ts';
 
 describe('recordings collection URL state', () => {
   const originalWindow = global.window;

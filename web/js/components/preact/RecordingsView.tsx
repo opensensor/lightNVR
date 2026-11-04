@@ -1,0 +1,1228 @@
+/**
+ * LightNVR Web Interface RecordingsView Component
+ * Preact component for the recordings page
+ */
+
+import { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'preact/hooks';
+import { useQuery, useQueryClient } from '../../query-client.ts';
+import { showStatusMessage } from './ToastContainer.tsx';
+import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.tsx';
+import { BatchDownloadModal } from './BatchDownloadModal.tsx';
+import { AsyncButton } from './AsyncButton.tsx';
+import { ContentLoader } from './LoadingIndicator.tsx';
+import { clearThumbnailQueue } from '../../request-queue.ts';
+import { useI18n } from '../../i18n.ts';
+import { usePullToRefresh } from './usePullToRefresh.ts';
+
+// Import components
+import { FiltersSidebar } from './recordings/FiltersSidebar.tsx';
+import { ActiveFilters } from './recordings/ActiveFilters.tsx';
+import { RecordingsTable } from './recordings/RecordingsTable.tsx';
+import { RecordingsGrid } from './recordings/RecordingsGrid.tsx';
+import { PaginationControls } from './recordings/PaginationControls.tsx';
+
+// Import utilities
+import { formatUtils } from './recordings/formatUtils.ts';
+import { recordingsAPI } from './recordings/recordingsAPI.tsx';
+import { urlUtils } from './recordings/urlUtils.ts';
+import { getDefaultDateRange } from '../../utils/date-utils.ts';
+
+import { validateSession } from '../../utils/auth-utils.ts';
+import type { ClientConfig, StreamSummary, UserRoleName } from '../../types/core.ts';
+import type {
+  ActiveFilter,
+  ActiveFilterKey,
+  RecordingListItem,
+  RecordingSelection,
+  RecordingsCollectionsResponse,
+  RecordingsListResponse,
+  RecordingsPaginationState,
+} from '../../types/recordings.ts';
+
+const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
+const RECORDINGS_SELECTED_IDS_KEY = 'lightnvr_selected_recording_ids';
+const RECORDINGS_RESTORE_SELECTION_KEY = 'lightnvr_restore_recording_selection';
+const MAX_INVESTIGATION_CAMERAS = 16;
+const MAX_INVESTIGATION_WINDOW_SECONDS = 31 * 24 * 60 * 60;
+
+function getRestoredSelectedRecordings(): RecordingSelection {
+  try {
+    if (sessionStorage.getItem(RECORDINGS_RESTORE_SELECTION_KEY) !== 'true') {
+      return {};
+    }
+
+    const rawSelectedIds = sessionStorage.getItem(RECORDINGS_SELECTED_IDS_KEY);
+    const selectedIds: unknown = rawSelectedIds ? JSON.parse(rawSelectedIds) : [];
+    if (!Array.isArray(selectedIds)) {
+      return {};
+    }
+
+    return selectedIds.reduce<RecordingSelection>((restoredSelections, id: unknown) => {
+      if (id !== null && id !== undefined && `${id}`.length > 0) {
+        restoredSelections[String(id)] = true;
+      }
+      return restoredSelections;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function clearRestoredSelectionFlag() {
+  try {
+    sessionStorage.removeItem(RECORDINGS_RESTORE_SELECTION_KEY);
+  } catch {}
+}
+
+function clearStoredSelectedRecordings() {
+  try {
+    sessionStorage.removeItem(RECORDINGS_SELECTED_IDS_KEY);
+    sessionStorage.removeItem(RECORDINGS_RESTORE_SELECTION_KEY);
+  } catch {}
+}
+
+/**
+ * RecordingsView component
+ * @returns {JSX.Element} RecordingsView component
+ */
+export function RecordingsView() {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const { data: collectionData } = useQuery<RecordingsCollectionsResponse>(
+    ['camera-collections'], '/api/camera-collections', {}, { staleTime: 30000 }
+  );
+  const collections = useMemo(
+    () => collectionData?.collections || [],
+    [collectionData]
+  );
+  // '' marks a finished check with no valid session; undefined is a session without a role.
+  const [userRole, setUserRole] = useState<UserRoleName | '' | null | undefined>(null);
+  const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
+  const [streams, setStreams] = useState<StreamSummary[]>([]);
+
+  // Initialize sort state from URL params (lazy — no double render)
+  const [sortField, setSortField] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('sort') || 'start_time';
+  });
+  const [sortDirection, setSortDirection] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('order') || 'desc';
+  });
+
+  // Initialize filter state from URL params (lazy — no double render)
+  const [filters, setFilters] = useState(() => {
+    const urlState = urlUtils.getFiltersFromUrl();
+    return urlState?.filters || urlUtils.createDefaultFilters();
+  });
+
+  // Initialize filters sidebar collapsed state
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('recordings_filters_collapsed') === 'true'; }
+    catch { return false; }
+  });
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      localStorage.setItem('recordings_filters_collapsed', String(!prev));
+      return !prev;
+    });
+  };
+
+  // Initialize pagination state from URL params (lazy — no double render)
+  const [pagination, setPagination] = useState<RecordingsPaginationState>(() => {
+    const p = new URLSearchParams(window.location.search);
+    const paginationLimit = urlUtils.parsePaginationLimit(p.get('limit'));
+    const pageFromUrl = parseInt(p.get('page') || '1', 10);
+    return {
+      currentPage: paginationLimit.showAll ? 1 : (Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? pageFromUrl : 1),
+      pageSize: paginationLimit.pageSize,
+      showAll: paginationLimit.showAll,
+      totalItems: 0,
+      totalPages: 1,
+      startItem: 0,
+      endItem: 0
+    };
+  });
+  const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const [activeFiltersDisplay, setActiveFiltersDisplay] = useState<ActiveFilter[]>([]);
+  const [selectedRecordings, setSelectedRecordings] = useState<RecordingSelection>(() => getRestoredSelectedRecordings());
+  const [selectAll, setSelectAll] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
+  const [pendingDeleteRecording, setPendingDeleteRecording] = useState<RecordingListItem | null>(null); // recording awaiting single-delete confirmation
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const recordingsTableBodyRef = useRef<HTMLTableSectionElement | null>(null);
+
+  // View mode: 'table' or 'grid' — initialized from URL, then localStorage, then default
+  const [viewMode, setViewMode] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const urlView = p.get('view');
+    if (urlView === 'grid' || urlView === 'table') return urlView;
+    return localStorage.getItem('recordings_view_mode') || 'table';
+  });
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
+  // 1 = single first-frame thumb only (CPU-save, #364); 3 = start/middle/end with hover cycling.
+  const [thumbnailsPerRecording, setThumbnailsPerRecording] = useState(3);
+
+  useEffect(() => {
+    clearRestoredSelectionFlag();
+  }, []);
+
+  // Column visibility for table view
+  const [hiddenColumns, setHiddenColumns] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('recordings_hidden_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  const toggleColumn = (col: string) => {
+    setHiddenColumns(prev => {
+      const next = { ...prev, [col]: !prev[col] };
+      localStorage.setItem('recordings_hidden_columns', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Persist view mode preference
+  const handleViewModeChange = (mode: string) => {
+    setViewMode(mode);
+    localStorage.setItem('recordings_view_mode', mode);
+  };
+
+  // Fetch generate_thumbnails + thumbnails_per_recording settings
+  useEffect(() => {
+    fetch('/api/client-config')
+      .then(res => res.json())
+      .then((data: ClientConfig) => {
+        if (data && typeof data.generate_thumbnails !== 'undefined') {
+          setThumbnailsEnabled(data.generate_thumbnails);
+          // If thumbnails disabled and user had grid mode saved, fall back to table
+          if (!data.generate_thumbnails && viewMode === 'grid') {
+            handleViewModeChange('table');
+          }
+        }
+        if (data && typeof data.thumbnails_per_recording === 'number') {
+          setThumbnailsPerRecording(data.thumbnails_per_recording <= 1 ? 1 : 3);
+        }
+      })
+      .catch(() => {}); // Silently ignore - default to enabled
+  }, []);
+
+  // Get modal context for video playback
+  const modalContext = useContext(ModalContext);
+
+  // Fetch user role on mount
+  useEffect(() => {
+    async function fetchUserRole() {
+      const session = await validateSession();
+      if (session.valid) {
+        setUserRole(session.role);
+        console.log('User role:', session.role);
+      } else {
+        // Session invalid - set to empty string to indicate fetch completed
+        setUserRole('');
+        console.log('Session validation failed, no role');
+      }
+    }
+    fetchUserRole();
+  }, []);
+
+  // Role is still loading if null
+  const roleLoading = userRole === null;
+  // Check if user can delete recordings (admin or user role, not viewer)
+  // While loading, keep delete disabled until authentication is verified
+  const canDelete = !roleLoading && (userRole === 'admin' || userRole === 'user');
+
+  // Store modal context in window for global access
+  useEffect(() => {
+    if (modalContext) {
+      console.log('Modal context available in RecordingsView');
+      window.__modalContext = modalContext;
+
+      // Log the available methods for debugging
+      console.log('Available modal methods:',
+        Object.keys(modalContext).map(key => key)
+      );
+    } else {
+      console.warn('Modal context not available in RecordingsView');
+    }
+  }, [modalContext]);
+
+  // Listen for recording changes from the Play modal so we can update the
+  // list locally without a full refetch (preserves scroll/sort position).
+  useEffect(() => {
+    const handleProtected = (e: Event) => {
+      const { id, protected: isProtected } = (e as CustomEvent<{ id: number; protected: boolean }>).detail;
+      setRecordings(prev =>
+        prev.map(r => r.id === id ? { ...r, protected: isProtected } : r)
+      );
+    };
+    const handleDeleted = (e: Event) => {
+      const { id } = (e as CustomEvent<{ id: number }>).detail;
+      setRecordings(prev => prev.filter(r => r.id !== id));
+    };
+    window.addEventListener('recording-protected', handleProtected);
+    window.addEventListener('recording-deleted', handleDeleted);
+    return () => {
+      window.removeEventListener('recording-protected', handleProtected);
+      window.removeEventListener('recording-deleted', handleDeleted);
+    };
+  }, []);
+
+  // Fetch streams using preact-query. useStreams declares no parameters, so these
+  // options are ignored; the cast lets the existing call compile unchanged.
+  const {
+    data: streamsData,
+    error: streamsError
+  } = (recordingsAPI.hooks.useStreams as (ignoredOptions: { staleTime: number; cacheTime: number }) => ReturnType<typeof recordingsAPI.hooks.useStreams>)({
+    // Streams are relatively static; avoid unnecessary refetches
+    staleTime: 5 * 60 * 1000,  // 5 minutes
+    cacheTime: 10 * 60 * 1000  // 10 minutes
+  });
+
+  // Update streams state when data is loaded
+  useEffect(() => {
+    if (streamsData && Array.isArray(streamsData)) {
+      setStreams(streamsData);
+    }
+  }, [streamsData]);
+
+  // Handle streams error
+  useEffect(() => {
+    if (streamsError) {
+      console.error('Error loading streams for filter:', streamsError);
+      showStatusMessage(t('recordings.errorLoadingStreams', { message: streamsError.message }));
+    }
+  }, [streamsError]);
+
+  // Clear thumbnail queue when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      clearThumbnailQueue();
+    };
+  }, []);
+
+  // Update active filters when filters change
+  useEffect(() => {
+    updateActiveFilters();
+  }, [filters, collections]);
+
+  // Reactively sync all view state to URL via replaceState (no browser history entries).
+  // This mirrors the approach used in LiveView and ensures refresh always preserves state.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+
+    // Filters
+    url.searchParams.set('dateRange', filters.dateRange);
+    if (filters.dateRange === 'custom') {
+      url.searchParams.set('startDate', filters.startDate);
+      url.searchParams.set('startTime', filters.startTime);
+      url.searchParams.set('endDate', filters.endDate);
+      url.searchParams.set('endTime', filters.endTime);
+    } else {
+      url.searchParams.delete('startDate');
+      url.searchParams.delete('startTime');
+      url.searchParams.delete('endDate');
+      url.searchParams.delete('endTime');
+    }
+
+    const serializedStreams = urlUtils.serializeMultiValueParam(filters.streamIds);
+    if (serializedStreams) url.searchParams.set('stream', serializedStreams);
+    else url.searchParams.delete('stream');
+
+    if (filters.collectionUuid) url.searchParams.set('collection', filters.collectionUuid);
+    else url.searchParams.delete('collection');
+
+    if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
+    else if (filters.recordingType === 'no_detection') url.searchParams.set('detection', '-1');
+    else url.searchParams.delete('detection');
+
+    const serializedDetectionLabels = urlUtils.serializeMultiValueParam(filters.detectionLabels);
+    if (serializedDetectionLabels) {
+      url.searchParams.set('detection_label', serializedDetectionLabels);
+    } else {
+      url.searchParams.delete('detection_label');
+    }
+
+    const serializedTags = urlUtils.serializeMultiValueParam(filters.tags);
+    if (serializedTags) {
+      url.searchParams.set('tag', serializedTags);
+    } else {
+      url.searchParams.delete('tag');
+    }
+
+    const serializedCaptureMethods = urlUtils.serializeMultiValueParam(filters.captureMethods);
+    if (serializedCaptureMethods) {
+      url.searchParams.set('capture_method', serializedCaptureMethods);
+    } else {
+      url.searchParams.delete('capture_method');
+    }
+
+    if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');
+    else if (filters.protectedStatus === 'no') url.searchParams.set('protected', '0');
+    else url.searchParams.delete('protected');
+
+    // Pagination
+    url.searchParams.set('page', pagination.currentPage.toString());
+    url.searchParams.set('limit', urlUtils.serializePaginationLimit(pagination));
+
+    // Sort
+    url.searchParams.set('sort', sortField);
+    url.searchParams.set('order', sortDirection);
+
+    // View mode — omit param when 'table' (the default) to keep URLs clean
+    if (viewMode !== 'table') url.searchParams.set('view', viewMode);
+    else url.searchParams.delete('view');
+
+    window.history.replaceState({}, '', url);
+  }, [filters, pagination.currentPage, pagination.pageSize, pagination.showAll, sortField, sortDirection, viewMode]);
+
+  // When any filter changes, reset to page 1 so the user doesn't end up on
+  // a page that doesn't exist for the new filter (fixes #179).
+  const isInitialFilterRender = useRef(true);
+  useEffect(() => {
+    if (isInitialFilterRender.current) {
+      isInitialFilterRender.current = false;
+      return;
+    }
+    setPagination(prev => prev.currentPage === 1 ? prev : { ...prev, currentPage: 1 });
+  }, [filters]);
+
+  // Set default date range (used when switching to 'custom' with no existing dates)
+  const setDefaultDateRange = () => {
+    const { startDate, endDate } = getDefaultDateRange(7);
+
+    setFilters(prev => ({
+      ...prev,
+      endDate,
+      startDate
+    }));
+  };
+
+  // Fetch recordings using preact-query
+  const {
+    data: recordingsData,
+    isLoading: isLoadingRecordings,
+    error: recordingsError,
+    refetch: refetchRecordings
+  } = recordingsAPI.hooks.useRecordings(filters, pagination, sortField, sortDirection);
+
+  const refreshRecordingList = useCallback(async () => {
+    const result = await refetchRecordings();
+    if (result?.error) throw result.error;
+    return result;
+  }, [refetchRecordings]);
+
+  const pullToRefresh = usePullToRefresh(async () => {
+    try {
+      await refreshRecordingList();
+      showStatusMessage(t('recordings.refreshed'), 'success', 2000);
+    } catch (error) {
+      showStatusMessage(
+        t('recordings.refreshFailed', { message: (error as Error)?.message || t('common.unknown') }),
+        'error',
+        5000
+      );
+    }
+  });
+
+  // Update recordings state when data is loaded
+  useEffect(() => {
+    if (recordingsData) {
+      // Store recordings in the component state
+      const recordingsArray = recordingsData.recordings || [];
+
+      // When filtering for detection events, all returned recordings should have detections
+      if (filters.recordingType === 'detection') {
+        recordingsArray.forEach(recording => {
+          recording.has_detections = true;
+        });
+      }
+
+      // Set the recordings state
+      setRecordings(recordingsArray);
+      setHasData(recordingsArray.length > 0);
+
+      // Update pagination
+      if (recordingsData.pagination) {
+        updatePaginationFromResponse(recordingsData, pagination.currentPage);
+      }
+    }
+  }, [recordingsData, filters.recordingType, pagination.currentPage]);
+
+  useEffect(() => {
+    if (recordings.length === 0) {
+      setSelectAll(false);
+      return;
+    }
+
+    setSelectAll(recordings.every(recording => !!selectedRecordings[recording.id]));
+  }, [recordings, selectedRecordings]);
+
+  // Handle recordings error
+  useEffect(() => {
+    if (recordingsError) {
+      console.error('Error loading recordings:', recordingsError);
+      showStatusMessage(t('recordings.errorLoadingRecordings', { message: recordingsError.message }));
+      setHasData(false);
+    }
+  }, [recordingsError]);
+
+
+  // State for data status
+  const [hasData, setHasData] = useState(false);
+
+  // Load recordings — updates page in state; URL sync is handled by the reactive useEffect
+  const loadRecordings = (page = pagination.currentPage) => {
+    setPagination(prev => ({ ...prev, currentPage: page }));
+  };
+
+  // Update pagination from API response
+  const updatePaginationFromResponse = (data: RecordingsListResponse, currentPage: number) => {
+    // Use the provided page parameter instead of the state
+    currentPage = currentPage || pagination.currentPage;
+
+    if (data.pagination) {
+      const pageSize = Number.isFinite(data.pagination.limit)
+        ? data.pagination.limit
+        : (pagination.showAll ? Math.max(data.pagination.total || 0, 1) : pagination.pageSize);
+      const totalItems = Number.isFinite(data.pagination.total) ? data.pagination.total : 0;
+      const totalPages = Number.isFinite(data.pagination.pages) ? data.pagination.pages : 1;
+
+      // Calculate start and end items based on current page
+      let startItem = 0;
+      let endItem = 0;
+
+      if (data.recordings.length > 0) {
+        startItem = (currentPage - 1) * pageSize + 1;
+        endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
+      }
+
+      console.log('Pagination update:', {
+        currentPage,
+        pageSize,
+        totalItems,
+        totalPages,
+        startItem,
+        endItem,
+        recordingsLength: data.recordings.length
+      });
+
+      setPagination(prev => ({
+        ...prev,
+        currentPage: prev.showAll ? 1 : currentPage,
+        totalItems,
+        totalPages,
+        pageSize,
+        startItem,
+        endItem
+      }));
+    } else {
+      // Fallback if pagination object is not provided
+      const pageSize = pagination.showAll ? Math.max(data.total || 0, 1) : pagination.pageSize;
+      const totalItems = data.total || 0;
+      const totalPages = pagination.showAll ? (totalItems > 0 ? 1 : 0) : (Math.ceil(totalItems / pageSize) || 1);
+
+      // Calculate start and end items based on current page
+      let startItem = 0;
+      let endItem = 0;
+
+      if (data.recordings.length > 0) {
+        startItem = (currentPage - 1) * pageSize + 1;
+        endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
+      }
+
+      console.log('Pagination update (fallback):', {
+        currentPage,
+        pageSize,
+        totalItems,
+        totalPages,
+        startItem,
+        endItem,
+        recordingsLength: data.recordings.length
+      });
+
+      setPagination(prev => ({
+        ...prev,
+        currentPage: prev.showAll ? 1 : currentPage,
+        totalItems,
+        totalPages,
+        pageSize,
+        startItem,
+        endItem
+      }));
+    }
+  };
+
+  // Handle date range change
+  const handleDateRangeChange = (e: Event) => {
+    const newDateRange = (e.target as HTMLSelectElement).value;
+
+    setFilters(prev => ({
+      ...prev,
+      dateRange: newDateRange
+    }));
+
+    if (newDateRange === 'custom') {
+      // If custom is selected, make sure we have default dates
+      if (!filters.startDate || !filters.endDate) {
+        const { startDate, endDate } = getDefaultDateRange(7);
+
+        setFilters(prev => ({
+          ...prev,
+          endDate,
+          startDate
+        }));
+      }
+    }
+  };
+
+  // Update active filters
+  const updateActiveFilters = () => {
+    const activeFilters = urlUtils.getActiveFiltersDisplay(filters, collections);
+    setHasActiveFilters(activeFilters.length > 0);
+    setActiveFiltersDisplay(activeFilters);
+  };
+
+  // Apply filters — resets to page 1; URL sync is handled by the reactive
+  // useEffect. Returns a Promise (resolved after the recordings query
+  // refetches) so <AsyncButton> can render pending state on the Apply
+  // button (PRD UXD_01 §5.1 / #399 anti-double-submit).
+  const applyFilters = (resetToFirstPage = true) => {
+    if (resetToFirstPage) {
+      setPagination(prev => ({ ...prev, currentPage: 1 }));
+    }
+    // Invalidate + refetch so the pending spinner has a concrete signal to
+    // settle on; URL sync is still driven by the reactive useEffect.
+    return queryClient.invalidateQueries({ queryKey: ['recordings'] });
+  };
+
+  // Reset filters — resets all state to defaults; URL sync is handled by the reactive useEffect
+  const resetFilters = () => {
+    setFilters(urlUtils.createDefaultFilters());
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    setSortField('start_time');
+    setSortDirection('desc');
+    // URL sync handled by the reactive useEffect
+  };
+
+  // Remove filter
+  const removeFilter = (key: ActiveFilterKey, value?: string) => {
+    switch (key) {
+      case 'dateRange':
+        setFilters(prev => ({
+          ...prev,
+          dateRange: 'last7days'
+        }));
+        break;
+      case 'streamIds':
+        setFilters(prev => ({
+          ...prev,
+          streamIds: value ? urlUtils.removeMultiValue(prev.streamIds, value) : []
+        }));
+        break;
+      case 'collectionUuid':
+        setFilters(prev => ({ ...prev, collectionUuid: '' }));
+        break;
+      case 'recordingType':
+        setFilters(prev => ({
+          ...prev,
+          recordingType: 'all'
+        }));
+        break;
+      case 'detectionLabels':
+        setFilters(prev => ({
+          ...prev,
+          detectionLabels: value ? urlUtils.removeMultiValue(prev.detectionLabels, value) : []
+        }));
+        break;
+      case 'tags':
+        setFilters(prev => ({
+          ...prev,
+          tags: value ? urlUtils.removeMultiValue(prev.tags, value) : []
+        }));
+        break;
+      case 'captureMethods':
+        setFilters(prev => ({
+          ...prev,
+          captureMethods: value ? urlUtils.removeMultiValue(prev.captureMethods, value) : []
+        }));
+        break;
+      case 'protectedStatus':
+        setFilters(prev => ({
+          ...prev,
+          protectedStatus: 'all'
+        }));
+        break;
+    }
+
+    applyFilters();
+  };
+
+  // Sort by field — URL sync is handled by the reactive useEffect
+  const sortBy = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortDirection(field === 'start_time' ? 'desc' : 'asc');
+      setSortField(field);
+    }
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    // URL sync handled by the reactive useEffect
+  };
+
+  // Go to page — URL sync is handled by the reactive useEffect
+  const goToPage = (page: number) => {
+    if (page < 1 || page > pagination.totalPages) return;
+    clearThumbnailQueue();
+    setPagination(prev => ({ ...prev, currentPage: page }));
+    // URL sync handled by the reactive useEffect
+  };
+
+  // Toggle selection of a recording
+  const toggleRecordingSelection = (recordingId: number) => {
+    setSelectedRecordings(prev => {
+      const next = { ...prev };
+      if (next[recordingId]) {
+        delete next[recordingId];
+      } else {
+        next[recordingId] = true;
+      }
+      return next;
+    });
+  };
+
+  // Toggle select all recordings
+  const toggleSelectAll = () => {
+    if (recordings.length === 0) {
+      return;
+    }
+
+    const shouldSelectCurrentPage = !recordings.every(recording => !!selectedRecordings[recording.id]);
+    setSelectAll(shouldSelectCurrentPage);
+
+    setSelectedRecordings(prev => {
+      const next = { ...prev };
+      recordings.forEach(recording => {
+        if (shouldSelectCurrentPage) {
+          next[recording.id] = true;
+        } else {
+          delete next[recording.id];
+        }
+      });
+      return next;
+    });
+  };
+
+  // Get count of selected recordings
+  const getSelectedCount = () => {
+    return Object.values(selectedRecordings).filter(Boolean).length;
+  };
+
+  // Clear all selections
+  const clearSelections = () => {
+    setSelectedRecordings({});
+    setSelectAll(false);
+    clearStoredSelectedRecordings();
+  };
+
+  // Handle tag changes — update local state when possible, only refetch for bulk ops
+  const handleTagsChanged = (recordingId?: number, newTags?: string[]) => {
+    if (recordingId && newTags) {
+      // Single recording tag change — update local state without refetching
+      setRecordings(prev =>
+        prev.map(r => r.id === recordingId ? { ...r, tags: newTags } : r)
+      );
+    } else {
+      // Bulk tag change — refetch to get accurate state
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
+    }
+  };
+
+  // Navigate to timeline with selected recording IDs
+  const viewSelectedInTimeline = () => {
+    const selectedIds = Object.entries(selectedRecordings)
+      .filter(([_, sel]) => sel)
+      .map(([id]) => id);
+    if (selectedIds.length === 0) {
+      showStatusMessage(t('recordings.noRecordingsSelected'), 'warning');
+      return;
+    }
+    // Store current URL for "Refine Selections" back-link
+    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, window.location.href);
+    sessionStorage.setItem(RECORDINGS_SELECTED_IDS_KEY, JSON.stringify(selectedIds));
+    sessionStorage.setItem(RECORDINGS_RESTORE_SELECTION_KEY, 'true');
+    window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
+  };
+
+  const investigateSelected = async () => {
+    const selectedIds = Object.entries(selectedRecordings)
+      .filter(([_, selected]) => selected)
+      .map(([id]) => id);
+    if (selectedIds.length === 0) {
+      showStatusMessage(t('investigation.selectRecordingError'), 'warning');
+      return;
+    }
+
+    try {
+      const visibleById = new Map(recordings.map((recording) =>
+        [String(recording.id), recording]));
+      const selected = await Promise.all(selectedIds.map((id) =>
+        visibleById.get(String(id)) || recordingsAPI.getRecording(id)));
+      const unidentified = selected.filter((recording) => !recording.camera_uuid);
+      if (unidentified.length > 0) {
+        showStatusMessage(t('investigation.missingCameraIdentity', {
+          count: unidentified.length,
+        }), 'warning');
+        return;
+      }
+
+      const cameraUuids = [...new Set(selected.map((recording) => recording.camera_uuid))];
+      if (cameraUuids.length > MAX_INVESTIGATION_CAMERAS) {
+        showStatusMessage(t('investigation.cameraLimit', {
+          count: MAX_INVESTIGATION_CAMERAS,
+        }), 'warning');
+        return;
+      }
+
+      const start = Math.min(...selected.map((recording) =>
+        Number(recording.start_time_unix)));
+      const end = Math.max(...selected.map((recording) =>
+        Number(recording.end_time_unix)));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        showStatusMessage(t('investigation.recordingTimeError'), 'warning');
+        return;
+      }
+      const paddedStart = Math.max(1, Math.floor(start) - 30);
+      const paddedEnd = Math.ceil(end) + 30;
+      if (paddedEnd - paddedStart > MAX_INVESTIGATION_WINDOW_SECONDS) {
+        showStatusMessage(t('investigation.windowLimit'), 'warning');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        cameras: cameraUuids.join(','),
+        start: String(paddedStart),
+        end: String(paddedEnd),
+        cursor: String(Math.floor(start)),
+      });
+      window.location.href = `investigation.html?${params.toString()}`;
+    } catch (requestError) {
+      showStatusMessage((requestError as Error).message, 'error');
+    }
+  };
+
+  // Open download modal
+  const openDownloadModal = () => setIsDownloadModalOpen(true);
+
+  // Open delete confirmation modal (single) or go straight to batch delete flow
+  const openDeleteModal = (mode: string) => {
+    if (mode === 'single') {
+      setDeleteMode(mode);
+      setIsDeleteModalOpen(true);
+      return;
+    }
+
+    // For batch modes ('selected' / 'all'), go directly to the batch delete
+    // modal which has its own built-in confirmation step with a proper warning.
+    startBatchDelete(mode);
+  };
+
+  // Close delete confirmation modal
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setPendingDeleteRecording(null);
+  };
+
+  // Handle delete confirmation (single recording only now)
+  const handleDeleteConfirm = async () => {
+    closeDeleteModal();
+
+    if (deleteMode === 'single' && pendingDeleteRecording) {
+      deleteRecordingMutation(pendingDeleteRecording.id, {
+        onSuccess: () => loadRecordings()
+      });
+      setPendingDeleteRecording(null);
+    }
+  };
+
+  // Start a batch delete (selected or all filtered)
+  const startBatchDelete = async (mode: string) => {
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const currentSortField = currentUrlParams.get('sort') || sortField;
+    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+    const currentPage = parseInt(currentUrlParams.get('page') as string, 10) || pagination.currentPage;
+
+    if (mode === 'selected') {
+      const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
+
+      setSelectedRecordings({});
+      setSelectAll(false);
+      clearStoredSelectedRecordings();
+
+      if (result && (result.succeeded as number) > 0) {
+        reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
+      }
+    } else {
+      await recordingsAPI.deleteAllFilteredRecordings(filters);
+
+      setSelectedRecordings({});
+      setSelectAll(false);
+      clearStoredSelectedRecordings();
+
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
+    }
+  };
+
+  // Helper function to reload recordings with preserved parameters
+  const reloadRecordingsWithPreservedParams = (sortField: string, sortDirection: string, page: number) => {
+    // Set the sort parameters directly
+    setSortField(sortField);
+    setSortDirection(sortDirection);
+
+    // Update pagination with the preserved page
+    setPagination(prev => ({
+      ...prev,
+      currentPage: page
+    }));
+
+    // Load recordings from API with the updated parameters
+    setTimeout(() => {
+      const updatedPagination = { ...pagination, currentPage: page };
+      // URL sync handled by the reactive useEffect
+      recordingsAPI.loadRecordings(filters, updatedPagination, sortField, sortDirection)
+        .then(data => {
+          setRecordings(data.recordings || []);
+          updatePaginationFromResponse(data, page);
+        })
+        .catch(error => {
+          console.error('Error loading recordings:', error);
+          showStatusMessage(t('recordings.errorLoadingRecordings', { message: error.message }));
+        });
+    }, 0);
+  };
+
+  // Delete recording using preact-query mutation
+  const { mutate: deleteRecordingMutation } = recordingsAPI.hooks.useDeleteRecording();
+
+  // Delete a single recording — opens the confirmation modal instead of window.confirm()
+  const deleteRecording = (recording: RecordingListItem) => {
+    setPendingDeleteRecording(recording);
+    setDeleteMode('single');
+    setIsDeleteModalOpen(true);
+  };
+
+  // Toggle recording protection
+  const toggleProtection = async (recording: RecordingListItem) => {
+    const newProtectedState = !recording.protected;
+    try {
+      const response = await fetch(`/api/recordings/${recording.id}/protect`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ protected: newProtectedState }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to ${newProtectedState ? 'protect' : 'unprotect'} recording`);
+      }
+
+      // Update the local state optimistically so the UI responds immediately
+      setRecordings(prevRecordings =>
+        prevRecordings.map(r =>
+          r.id === recording.id ? { ...r, protected: newProtectedState } : r
+        )
+      );
+
+      // Invalidate the recordings query so the list re-fetches and reflects the
+      // new protected status (important when a protected-status filter is active)
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
+
+      showStatusMessage(
+        newProtectedState
+          ? t('recordings.recordingProtected')
+          : t('recordings.recordingProtectionRemoved'),
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(t('recordings.errorMessage', { message: (error as Error).message }), 'error');
+    }
+  };
+
+  // Play recording
+  const playRecording = (recording: RecordingListItem) => {
+    console.log('RecordingsView.playRecording called with:', recording);
+
+    // A segment that is still recording has no finalized MP4 index yet, so
+    // playback cannot work (the backend rejects it with HTTP 409). Tell the
+    // user instead of opening a broken video modal (#482).
+    if (recording && recording.in_progress) {
+      showStatusMessage(t('recordings.inProgressToast'), 'info');
+      return;
+    }
+
+    // Use the modal context if available, otherwise fall back to the imported function
+    if (modalContext && modalContext.showVideoModal) {
+      console.log('Using modal context showVideoModal');
+      const videoUrl = `/api/recordings/play/${recording.id}${recording.external_source ? "?archive=1" : ""}`;
+      const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time)}`;
+      const downloadUrl = `/api/recordings/download/${recording.id}`;
+
+      // Call the context function directly
+      modalContext.showVideoModal(videoUrl, title, downloadUrl);
+    } else {
+      console.log('Falling back to recordingsAPI.playRecording');
+      // Fall back to the API function which will use the imported showVideoModal
+      recordingsAPI.playRecording(recording, showVideoModal);
+    }
+  };
+
+  // Download recording
+  const downloadRecording = (recording: RecordingListItem) => {
+    if (recording?.in_progress) {
+      showStatusMessage(t('recordings.inProgressToast'), 'info');
+      return;
+    }
+    recordingsAPI.downloadRecording(recording);
+  };
+
+  return (
+    <section id="recordings-page" class="page">
+      <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
+        <h2 class="text-xl font-bold">{t('nav.recordings')}</h2>
+        {/* Right: toolbar actions */}
+        <div class="flex items-center gap-2">
+          {/* Refresh pulls a fresh page of recordings without a full reload.
+              Uses AsyncButton so the spinner + auto-disable mirrors the
+              Apply-filters button below (PRD UXD_01 §5.1 / #399). */}
+          <AsyncButton
+            id="refresh-recordings-btn"
+            className="btn-secondary text-sm inline-flex items-center gap-1.5 min-h-11"
+            onClick={refreshRecordingList}
+            title={t('recordings.refreshTitle')}
+            aria-label={t('recordings.refreshTitle')}
+            idleLabel={(
+              <span class="inline-flex items-center gap-1.5">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{t('recordings.refresh')}</span>
+              </span>
+            )}
+          />
+          {/* Contextual action — only shown when recordings are selected */}
+          {getSelectedCount() > 0 && (
+            <>
+              <button
+                onClick={viewSelectedInTimeline}
+                class="btn-secondary text-sm"
+                title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
+              >
+                ▶ {t('nav.timeline')} ({getSelectedCount()})
+              </button>
+              <button
+                onClick={investigateSelected}
+                class="btn-primary text-sm"
+                title={t('investigation.investigateSelectedCount', { count: getSelectedCount() })}
+              >
+                {t('nav.investigation')} ({getSelectedCount()})
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sub-navigation tabs — matches System page style */}
+      <div class="mb-4 border-b border-border" role="tablist" aria-label={t('recordings.views')}>
+        <div class="flex overflow-x-auto whitespace-nowrap sm:gap-2 sm:overflow-visible">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'table'}
+            class={`shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 ${
+              viewMode === 'table'
+                ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => handleViewModeChange('table')}
+          >
+            {t('recordings.table')}
+          </button>
+          {thumbnailsEnabled && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'grid'}
+              class={`shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 ${
+                viewMode === 'grid'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => handleViewModeChange('grid')}
+            >
+              {t('recordings.grid')}
+            </button>
+          )}
+          {/* Timeline is a separate page — styled as a tab link for visual consistency */}
+          <a
+            href="timeline.html"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
+          >
+            {t('nav.timeline')}
+          </a>
+          <a
+            href="investigation.html"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
+          >
+            {t('nav.investigation')}
+          </a>
+          <a
+            href="plates.html"
+            class="shrink-0 rounded-t-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 text-muted-foreground hover:text-foreground"
+          >
+            {t('nav.plates')}
+          </a>
+        </div>
+      </div>
+
+      <div
+        class="recordings-layout relative flex flex-col md:flex-row gap-4 w-full"
+        {...pullToRefresh.bind}
+      >
+        {(pullToRefresh.distance > 0 || pullToRefresh.refreshing) && (
+          <div
+            className={`mobile-pull-refresh ${pullToRefresh.ready ? 'ready' : ''}`}
+            style={{ '--pull-distance': `${pullToRefresh.distance}px` }}
+            role="status"
+          >
+            {pullToRefresh.refreshing
+              ? t('recordings.refreshing')
+              : pullToRefresh.ready
+                ? t('recordings.releaseToRefresh')
+                : t('recordings.pullToRefresh')}
+          </div>
+        )}
+        {!collapsed && (
+          <FiltersSidebar
+            toggleCollapsed={toggleCollapsed}
+            filters={filters}
+            setFilters={setFilters}
+            pagination={pagination}
+            setPagination={setPagination}
+            streams={streams}
+            collections={collections}
+            applyFilters={applyFilters}
+            resetFilters={resetFilters}
+            handleDateRangeChange={handleDateRangeChange}
+            setDefaultDateRange={setDefaultDateRange}
+          />
+        )}
+
+        <div class="recordings-content flex-1 min-w-0">
+          <ActiveFilters
+            activeFiltersDisplay={activeFiltersDisplay}
+            removeFilter={removeFilter}
+            hasActiveFilters={hasActiveFilters}
+          />
+
+          <ContentLoader
+            isLoading={isLoadingRecordings}
+            hasData={hasData}
+            loadingMessage={t('recordings.loadingRecordings')}
+            emptyMessage={t('recordings.noRecordingsFoundMatchingCriteria')}
+          >
+            {viewMode === 'grid' && thumbnailsEnabled ? (
+              <RecordingsGrid
+                collapsed={collapsed}
+                toggleCollapsed={toggleCollapsed}
+                recordings={recordings}
+                selectedRecordings={selectedRecordings}
+                toggleRecordingSelection={toggleRecordingSelection}
+                selectAll={selectAll}
+                toggleSelectAll={toggleSelectAll}
+                getSelectedCount={getSelectedCount}
+                openDeleteModal={openDeleteModal}
+                openDownloadModal={openDownloadModal}
+                playRecording={playRecording}
+                downloadRecording={downloadRecording}
+                deleteRecording={deleteRecording}
+                toggleProtection={toggleProtection}
+                pagination={pagination}
+                canDelete={canDelete}
+                clearSelections={clearSelections}
+                hiddenColumns={hiddenColumns}
+                toggleColumn={toggleColumn}
+                onTagsChanged={handleTagsChanged}
+                viewSelectedInTimeline={viewSelectedInTimeline}
+                thumbnailsPerRecording={thumbnailsPerRecording}
+              />
+            ) : (
+              <RecordingsTable
+                collapsed={collapsed}
+                toggleCollapsed={toggleCollapsed}
+                recordings={recordings}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                sortBy={sortBy}
+                selectedRecordings={selectedRecordings}
+                toggleRecordingSelection={toggleRecordingSelection}
+                selectAll={selectAll}
+                toggleSelectAll={toggleSelectAll}
+                getSelectedCount={getSelectedCount}
+                openDeleteModal={openDeleteModal}
+                openDownloadModal={openDownloadModal}
+                playRecording={playRecording}
+                downloadRecording={downloadRecording}
+                deleteRecording={deleteRecording}
+                toggleProtection={toggleProtection}
+                recordingsTableBodyRef={recordingsTableBodyRef}
+                pagination={pagination}
+                canDelete={canDelete}
+                clearSelections={clearSelections}
+                hiddenColumns={hiddenColumns}
+                toggleColumn={toggleColumn}
+                onTagsChanged={handleTagsChanged}
+                viewSelectedInTimeline={viewSelectedInTimeline}
+              />
+            )}
+
+            <PaginationControls
+              pagination={pagination}
+              goToPage={goToPage}
+            />
+          </ContentLoader>
+        </div>
+      </div>
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        mode={deleteMode}
+        count={getSelectedCount()}
+        recordingName={pendingDeleteRecording?.stream}
+      />
+
+      <BatchDownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        recordings={recordings}
+        selectedIds={selectedRecordings}
+      />
+    </section>
+  );
+}

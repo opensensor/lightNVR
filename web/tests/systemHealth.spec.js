@@ -29,9 +29,9 @@ const {
   healthCoverageMessage,
   observationGroup,
   remediationKey,
-} = loadJsx('js/components/preact/system/SystemHealth.jsx');
-const { buildIncidentHistoryUrl } = loadJsx('js/components/preact/system/HealthIncidentHistory.jsx');
-const { boundedPercent, metricKnown } = loadJsx('js/components/preact/system/MemoryStorage.jsx');
+} = loadJsx('js/components/preact/system/SystemHealth.tsx');
+const { buildIncidentHistoryUrl } = loadJsx('js/components/preact/system/HealthIncidentHistory.tsx');
+const { boundedPercent, metricKnown } = loadJsx('js/components/preact/system/MemoryStorage.tsx');
 
 describe('System Health operator view helpers', () => {
   test('reports missing samples before claiming limited container coverage', () => {

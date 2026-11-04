@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../js/utils/live-video-errors.js';
+import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../js/utils/live-video-errors.ts';
 
 const english = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../public/locales/en.json'), 'utf8'));
 

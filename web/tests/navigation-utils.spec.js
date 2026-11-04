@@ -1,4 +1,4 @@
-import { forceNavigation } from '../js/utils/navigation-utils.js';
+import { forceNavigation } from '../js/utils/navigation-utils.ts';
 
 describe('navigation-utils', () => {
   const originalWindow = global.window;

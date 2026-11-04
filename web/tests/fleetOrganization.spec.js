@@ -4,7 +4,7 @@ import {
   locationParentOptions,
   resolveTagAssignments,
   runBounded,
-} from '../js/components/preact/fleet/fleetOrganization.js';
+} from '../js/components/preact/fleet/fleetOrganization.ts';
 
 describe('fleet organization helpers', () => {
   const locations = [

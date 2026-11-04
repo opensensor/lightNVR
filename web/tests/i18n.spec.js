@@ -9,7 +9,7 @@ import {
   resolveSupportedLocale,
   setLocalePreference,
   t,
-} from '../js/i18n.js';
+} from '../js/i18n.ts';
 
 const ptBrCatalog = JSON.parse(fs.readFileSync(
   path.resolve(__dirname, '../public/locales/pt-BR.json'),
@@ -81,7 +81,7 @@ test('pt-BR includes the reported operator workspace translations', () => {
 
 test('the footer keeps the LightNVR brand out of localization', () => {
   const footerSource = fs.readFileSync(
-    path.resolve(__dirname, '../js/components/preact/Footer.jsx'),
+    path.resolve(__dirname, '../js/components/preact/Footer.tsx'),
     'utf8',
   );
 

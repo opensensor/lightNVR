@@ -13,8 +13,8 @@ import {
   searchLprReads,
   toDateTimeLocalValue,
   validateLprFilters,
-} from '../js/components/preact/lpr/lprSearch.js';
-import { buildTimelineSegmentsUrl } from '../js/components/preact/timeline/timelineUtils.js';
+} from '../js/components/preact/lpr/lprSearch.ts';
+import { buildTimelineSegmentsUrl } from '../js/components/preact/timeline/timelineUtils.ts';
 
 const CAMERA = 'ad1d3d70-36ee-4f0c-9225-3b88373f42cb';
 

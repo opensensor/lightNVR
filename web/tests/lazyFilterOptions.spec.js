@@ -6,7 +6,7 @@ import {
   areFilterOptionsInteractive,
   createCachedFilterOptionsLoader,
   shouldLoadFilterOptions
-} from '../js/components/preact/recordings/lazyFilterOptions.js';
+} from '../js/components/preact/recordings/lazyFilterOptions.ts';
 
 describe('lazy recordings filter options', () => {
   test('do not load while their accordion section is collapsed', () => {

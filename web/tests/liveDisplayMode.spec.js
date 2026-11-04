@@ -8,7 +8,7 @@ import {
   objectFitForLiveDisplayMode,
   readLiveDisplayMode,
   writeLiveDisplayMode,
-} from '../js/components/preact/useLiveDisplayMode.js';
+} from '../js/components/preact/useLiveDisplayMode.ts';
 
 function memoryStorage() {
   const values = new Map();
