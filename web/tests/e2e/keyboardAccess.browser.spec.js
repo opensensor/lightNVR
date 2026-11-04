@@ -146,6 +146,7 @@ describe('Escape on dialogs', () => {
     await settle();
     await page.evaluate(() => window.openConfirm());
     await page.getByRole('dialog').waitFor();
+    await settle();
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     await settle();
