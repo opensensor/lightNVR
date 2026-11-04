@@ -80,10 +80,13 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       systemd-standalone-sysusers curl ca-certificates gpg && \
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" \
-      -o /tmp/nodesource_setup.sh && \
-    bash /tmp/nodesource_setup.sh && \
-    rm /tmp/nodesource_setup.sh && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | \
+      gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    test "$(gpg --show-keys --with-colons /etc/apt/keyrings/nodesource.gpg | awk -F: '/^fpr:/ { print $10; exit }')" = "9FD3B784BC1C6FC31A8A0A1C1655A0AB68576280" && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+      > /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
       git cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
