@@ -612,6 +612,20 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    // Validate before changing credentials. Only an omitted role uses the
+    // database's -1 sentinel; supplied roles must be whole numbers from 0 to 3.
+    int role = -1;
+    if (role_json) {
+        if (!cJSON_IsNumber(role_json) || role_json->valuedouble < 0 ||
+            role_json->valuedouble > 3 ||
+            role_json->valuedouble != role_json->valueint) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "Invalid role");
+            return;
+        }
+        role = role_json->valueint;
+    }
+
     // Update password if provided and not empty
     if (password_json && cJSON_IsString(password_json)) {
         const char *password = password_json->valuestring;
@@ -644,15 +658,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
 
     // Update other fields
     const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
-    int role = (role_json && cJSON_IsNumber(role_json)) ? role_json->valueint : -1;
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : -1;
-
-    // Validate role (role == -1 means "not provided", otherwise must be 0-3)
-    if (role < -1 || role > 3) {
-        cJSON_Delete(json_req);
-        http_response_set_json_error(res, 400, "Invalid role");
-        return;
-    }
 
     rc = db_auth_update_user(user_id, username, email, role, is_active);
 

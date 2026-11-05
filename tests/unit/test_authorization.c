@@ -2081,6 +2081,63 @@ void test_user_create_rejects_retired_allowed_tags_field(void) {
                           db_auth_get_user_by_username("retiredtags", &user));
 }
 
+void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "rolecheck", "password123", NULL, USER_ROLE_VIEWER, true, &target_id));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
+    char token[128];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(
+        target_id, NULL, NULL, 3600, token, sizeof(token)));
+    const char *invalid_roles[] = {
+        "-2", "-1", "-1.5", "-0.5", "0.5", "3.5", "4", "1e100",
+        "\"2\"", "null", "true", "{}", "[]"
+    };
+    for (size_t i = 0; i < sizeof(invalid_roles) / sizeof(invalid_roles[0]); i++) {
+        char body[256];
+        snprintf(body, sizeof(body),
+                 "{\"role\":%s,\"password\":\"replacement123\","
+                 "\"email\":\"changed@example.com\"}", invalid_roles[i]);
+        cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
+                                        path, body, NULL, 400);
+        TEST_ASSERT_EQUAL_STRING("Invalid role",
+                                 cJSON_GetObjectItem(json, "error")->valuestring);
+        cJSON_Delete(json);
+        user_t user;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
+        TEST_ASSERT_EQUAL_INT(USER_ROLE_VIEWER, user.role);
+        TEST_ASSERT_EQUAL_STRING("", user.email);
+        int64_t authenticated_id = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate(
+            "rolecheck", "password123", &authenticated_id));
+        TEST_ASSERT_EQUAL_INT64(target_id, authenticated_id);
+        TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(token, &authenticated_id));
+    }
+}
+
+void test_user_update_accepts_valid_and_omitted_roles(void) {
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "rolecheck", "password123", NULL, USER_ROLE_VIEWER, true, &target_id));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
+    for (int role = 0; role <= 3; role++) {
+        char body[64];
+        snprintf(body, sizeof(body), "{\"role\":%d}", role);
+        cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
+                                        path, body, NULL, 200);
+        TEST_ASSERT_EQUAL_INT(role, cJSON_GetObjectItem(json, "role")->valueint);
+        cJSON_Delete(json);
+    }
+    cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
+                                    path, "{\"email\":\"new@example.com\"}", NULL, 200);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetObjectItem(json, "role")->valueint);
+    TEST_ASSERT_EQUAL_STRING("new@example.com",
+                             cJSON_GetObjectItem(json, "email")->valuestring);
+    cJSON_Delete(json);
+}
+
 void test_users_manage_grant_controls_cross_user_password_and_totp(void) {
     int64_t manager_id = 0;
     int64_t target_id = 0;
@@ -2839,6 +2896,8 @@ int main(void) {
     RUN_TEST(test_metrics_require_system_admin_authorization);
     RUN_TEST(test_stream_health_filters_camera_metrics_by_live_view_scope);
     RUN_TEST(test_user_create_rejects_retired_allowed_tags_field);
+    RUN_TEST(test_user_update_rejects_invalid_roles_before_changing_credentials);
+    RUN_TEST(test_user_update_accepts_valid_and_omitted_roles);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
     RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);
     RUN_TEST(test_recording_file_check_requires_scoped_replay_access);
