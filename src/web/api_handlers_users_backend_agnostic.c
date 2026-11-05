@@ -28,6 +28,33 @@
 #include "database/db_core.h"
 #include "database/db_schema_cache.h"
 
+/* User IDs are literal positive decimal int64 values. Parse the raw route
+ * so URL decoding cannot hide a NUL, separator, sign, or whitespace. */
+static bool extract_user_id(const http_request_t *req, http_response_t *res,
+                            const char *suffix, int64_t *user_id) {
+    const char *prefix = "/api/auth/users/";
+    const char *id = req->path;
+    if (strncmp(id, prefix, strlen(prefix)) != 0) goto invalid;
+    id += strlen(prefix);
+    if (*id < '0' || *id > '9') goto invalid;
+
+    errno = 0;
+    char *end = NULL;
+    long long parsed = strtoll(id, &end, 10);
+    if (errno == ERANGE || parsed <= 0 || parsed > INT64_MAX ||
+        strncmp(end, suffix, strlen(suffix)) != 0) goto invalid;
+    end += strlen(suffix);
+    /* Keep the existing optional trailing slash and query-string support. */
+    while (*end == '/') ++end;
+    if (*end != '\0' && *end != '?') goto invalid;
+    *user_id = (int64_t)parsed;
+    return true;
+
+invalid:
+    http_response_set_json_error(res, 400, "Invalid user ID");
+    return false;
+}
+
 /**
  * @brief Convert a user_t struct to a cJSON object
  *
@@ -331,21 +358,8 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
-    // Extract user ID from URL
-    char user_id_str[32];
-    if (http_request_extract_path_param(req, "/api/auth/users/", user_id_str, sizeof(user_id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
-
-    // Convert user ID to integer
-    int64_t user_id = strtoll(user_id_str, NULL, 10);
-    if (user_id <= 0) {
-        log_error("Invalid user ID: %s", user_id_str);
-        http_response_set_json_error(res, 400, "Invalid user ID");
-        return;
-    }
+    int64_t user_id;
+    if (!extract_user_id(req, res, "", &user_id)) return;
 
     user_t user;
     int rc = db_auth_get_user_by_id(user_id, &user);
@@ -555,20 +569,9 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Extract user ID from URL
-    char id_str[64] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
+    int64_t user_id;
+    if (!extract_user_id(req, res, "", &user_id)) return;
 
-    char *suffix = strchr(id_str, '/');
-    if (suffix) {
-        *suffix = '\0';
-    }
-
-    int64_t user_id = strtoll(id_str, NULL, 10);
     bool can_manage_users =
         principal_holds_global_action(&current_user, AUTHZ_USERS_MANAGE);
     bool is_self_update = !current_user.authenticated_via_scoped_token &&
@@ -735,20 +738,8 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
 void handle_users_delete(const http_request_t *req, http_response_t *res) {
     log_info("Handling DELETE /api/auth/users/:id request");
 
-    // Extract user ID from URL
-    char id_str[64] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
-
-    char *suffix = strchr(id_str, '/');
-    if (suffix) {
-        *suffix = '\0';
-    }
-
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    int64_t user_id;
+    if (!extract_user_id(req, res, "", &user_id)) return;
 
     // Check if the user has permission to delete this user (includes self-delete check)
     if (!check_delete_user_permission(req, res, user_id)) {
@@ -825,20 +816,8 @@ void handle_users_delete(const http_request_t *req, http_response_t *res) {
 void handle_users_generate_api_key(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/auth/users/:id/api-key request");
 
-    // Extract user ID from URL
-    char id_str[64] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
-
-    char *suffix = strchr(id_str, '/');
-    if (suffix) {
-        *suffix = '\0';
-    }
-
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    int64_t user_id;
+    if (!extract_user_id(req, res, "/api-key", &user_id)) return;
 
     // Check if the user has permission to generate API key for this user
     if (!check_generate_api_key_permission(req, res, user_id)) {
@@ -893,23 +872,8 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         return;
     }
 
-    // Extract user ID from URL
-    // 19 decimal ID digits, /password, and the terminating null byte.
-    char id_str[32] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
-
-    char *id_end = NULL;
-    errno = 0;
-    int64_t target_user_id = strtoll(id_str, &id_end, 10);
-    if (id_str[0] < '0' || id_str[0] > '9' || errno == ERANGE ||
-        target_user_id <= 0 || !id_end || strcmp(id_end, "/password") != 0) {
-        http_response_set_json_error(res, 400, "Invalid user ID");
-        return;
-    }
+    int64_t target_user_id;
+    if (!extract_user_id(req, res, "/password", &target_user_id)) return;
 
     // Check if the target user exists
     user_t target_user;
@@ -1034,15 +998,8 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
-    // Extract user ID from URL
-    char id_str[16] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
-
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    int64_t user_id;
+    if (!extract_user_id(req, res, "/password-lock", &user_id)) return;
 
     // Check if the user exists
     user_t user;
@@ -1111,19 +1068,9 @@ void handle_users_clear_login_lockout(const http_request_t *req, http_response_t
         return;
     }
 
-    char id_str[64] = {0};
-    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
-        log_error("Failed to extract user ID from URL");
-        http_response_set_json_error(res, 400, "Invalid request path");
-        return;
-    }
+    int64_t user_id;
+    if (!extract_user_id(req, res, "/login-lockout/clear", &user_id)) return;
 
-    char *suffix = strchr(id_str, '/');
-    if (suffix) {
-        *suffix = '\0';
-    }
-
-    int64_t user_id = strtoll(id_str, NULL, 10);
     user_t user;
     int rc = db_auth_get_user_by_id(user_id, &user);
     if (rc != 0) {

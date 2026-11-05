@@ -2357,6 +2357,100 @@ void test_password_change_rejects_malformed_and_overflowing_ids(void) {
     }
 }
 
+void test_user_routes_reject_malformed_ids_without_mutation(void) {
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("routevalidation", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &target_id));
+    char original_key[64];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(target_id, original_key, sizeof(original_key)));
+    struct {
+        void (*handler)(const http_request_t *, http_response_t *);
+        http_method_t method;
+        const char *suffix;
+        const char *body;
+    } routes[] = {
+        {handle_users_get, HTTP_METHOD_GET, "", NULL},
+        {handle_users_update, HTTP_METHOD_PUT, "", "{\"email\":\"changed@example.com\"}"},
+        {handle_users_delete, HTTP_METHOD_DELETE, "", NULL},
+        {handle_users_generate_api_key, HTTP_METHOD_POST, "/api-key", NULL},
+        {handle_users_change_password, HTTP_METHOD_PUT, "/password", "{\"new_password\":\"replacement123\"}"},
+        {handle_users_password_lock, HTTP_METHOD_PUT, "/password-lock", "{\"locked\":true}"},
+        {handle_users_clear_login_lockout, HTTP_METHOD_POST, "/login-lockout/clear", NULL}
+    };
+    char malformed[7][80];
+    snprintf(malformed[0], sizeof(malformed[0]), "%lldx", (long long)target_id);
+    snprintf(malformed[1], sizeof(malformed[1]), "+%lld", (long long)target_id);
+    snprintf(malformed[2], sizeof(malformed[2]), "%%20%lld", (long long)target_id);
+    snprintf(malformed[3], sizeof(malformed[3]), "%lld%%00junk", (long long)target_id);
+    snprintf(malformed[4], sizeof(malformed[4]), "%lld/extra", (long long)target_id);
+    snprintf(malformed[5], sizeof(malformed[5]), " %lld", (long long)target_id);
+    snprintf(malformed[6], sizeof(malformed[6]), "%lld%%2fextra", (long long)target_id);
+    const char *ids[] = {"0", "-1", "abc", "9223372036854775808",
+                         "9999999999999999999999999999999999999999",
+                         malformed[0], malformed[1], malformed[2], malformed[3],
+                         malformed[4], malformed[5], malformed[6]};
+    for (size_t route = 0; route < sizeof(routes) / sizeof(routes[0]); ++route) {
+        for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+            char path[160];
+            snprintf(path, sizeof(path), "/api/auth/users/%s%s", ids[i], routes[route].suffix);
+            cJSON *json = call_handler_path(routes[route].handler, routes[route].method,
+                                            path, routes[route].body, NULL, 400);
+            cJSON_Delete(json);
+            user_t user;
+            TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
+            TEST_ASSERT_EQUAL_STRING(original_key, user.api_key);
+            TEST_ASSERT_FALSE(user.password_change_locked);
+            TEST_ASSERT_TRUE(strcmp(user.email, "changed@example.com") != 0);
+        }
+        char path[160];
+        snprintf(path, sizeof(path), "/api/auth/users/%lld%s/unexpected",
+                 (long long)target_id, routes[route].suffix);
+        cJSON_Delete(call_handler_path(routes[route].handler, routes[route].method,
+                                       path, routes[route].body, NULL, 400));
+    }
+    TEST_ASSERT_EQUAL_INT(0, db_auth_verify_password(target_id, "password123"));
+}
+
+void test_user_routes_accept_full_width_ids_and_exact_suffixes(void) {
+    const int64_t ids[] = {INT64_C(2147483648), INT64_MAX};
+    for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+        int64_t initial_id;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("routeboundary", "password123", NULL,
+                                                   USER_ROLE_VIEWER, true, &initial_id));
+        sqlite3_stmt *stmt = NULL;
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+            "UPDATE users SET id = ? WHERE id = ?", -1, &stmt, NULL));
+        sqlite3_bind_int64(stmt, 1, ids[i]);
+        sqlite3_bind_int64(stmt, 2, initial_id);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+        sqlite3_finalize(stmt);
+        char path[128];
+        snprintf(path, sizeof(path), "/api/auth/users/%lld/?check=1", (long long)ids[i]);
+        cJSON_Delete(call_handler_path(handle_users_get, HTTP_METHOD_GET, path, NULL, NULL, 200));
+        cJSON_Delete(call_handler_path(handle_users_update, HTTP_METHOD_PUT, path,
+                                       "{\"email\":\"boundary@example.com\"}", NULL, 200));
+        snprintf(path, sizeof(path), "/api/auth/users/%lld/api-key", (long long)ids[i]);
+        cJSON_Delete(call_handler_path(handle_users_generate_api_key, HTTP_METHOD_POST,
+                                       path, NULL, NULL, 200));
+        snprintf(path, sizeof(path), "/api/auth/users/%lld/password-lock", (long long)ids[i]);
+        cJSON_Delete(call_handler_path(handle_users_password_lock, HTTP_METHOD_PUT,
+                                       path, "{\"locked\":true}", NULL, 200));
+        user_t user;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(ids[i], &user));
+        TEST_ASSERT_TRUE(user.password_change_locked);
+        TEST_ASSERT_EQUAL_STRING("boundary@example.com", user.email);
+        TEST_ASSERT_TRUE(user.api_key[0] != '\0');
+        cJSON_Delete(call_handler_path(handle_users_password_lock, HTTP_METHOD_PUT,
+                                       path, "{\"locked\":false}", NULL, 200));
+        snprintf(path, sizeof(path), "/api/auth/users/%lld/login-lockout/clear", (long long)ids[i]);
+        cJSON_Delete(call_handler_path(handle_users_clear_login_lockout, HTTP_METHOD_POST,
+                                       path, NULL, NULL, 200));
+        snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)ids[i]);
+        cJSON_Delete(call_handler_path(handle_users_delete, HTTP_METHOD_DELETE, path, NULL, NULL, 200));
+        TEST_ASSERT_NOT_EQUAL(0, db_auth_get_user_by_id(ids[i], &user));
+    }
+}
+
 void test_users_manage_grant_controls_cross_user_password_and_totp(void) {
     int64_t manager_id = 0;
     int64_t target_id = 0;
@@ -3124,6 +3218,8 @@ int main(void) {
     RUN_TEST(test_user_creation_requires_actions_and_all_camera_scope);
     RUN_TEST(test_password_change_supports_large_user_ids);
     RUN_TEST(test_password_change_rejects_malformed_and_overflowing_ids);
+    RUN_TEST(test_user_routes_reject_malformed_ids_without_mutation);
+    RUN_TEST(test_user_routes_accept_full_width_ids_and_exact_suffixes);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
     RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);
     RUN_TEST(test_recording_file_check_requires_scoped_replay_access);
