@@ -576,8 +576,13 @@ set(EZXML_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ezxml/ezxml.c"
 )
 
+# Put generated headers first, including for test subdirectories. An older
+# in-source build may have left include/core/version.h in the source tree.
+set(GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include")
+
 # Define all include directories in one place
 set(LIGHTNVR_INCLUDE_DIRS
+        ${GENERATED_INCLUDE_DIR}
         ${LIGHTNVR_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${FFMPEG_INCLUDE_DIRS}
@@ -980,7 +985,6 @@ endif()
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
 # Create a version.h file in the build tree (out-of-source safe)
-set(GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include")
 file(MAKE_DIRECTORY "${GENERATED_INCLUDE_DIR}/core")
 file(READ
         "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in"
@@ -991,7 +995,6 @@ file(GENERATE
         OUTPUT "${GENERATED_INCLUDE_DIR}/core/version.h"
         CONTENT "${VERSION_H_OUT}"
 )
-include_directories("${GENERATED_INCLUDE_DIR}")
 
 # Generate version.js for web interface
 add_custom_target(generate_version_js
