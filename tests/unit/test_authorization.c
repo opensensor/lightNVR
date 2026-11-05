@@ -2006,12 +2006,13 @@ void test_action_catalog_bit_layout_matches_database(void) {
  */
 void test_streams_reject_empty_camera_uuid(void) {
     sqlite3 *db = get_db_handle();
-    TEST_ASSERT_NOT_EQUAL(
-        SQLITE_DONE,
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_CONSTRAINT,
         sqlite3_exec(db,
                      "INSERT INTO streams (name,url) "
                      "VALUES ('No UUID','rtsp://camera/live');",
                      NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_CONSTRAINT_TRIGGER, sqlite3_extended_errcode(db));
     sqlite3_stmt *stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
