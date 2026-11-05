@@ -748,7 +748,14 @@ void handle_users_delete(const http_request_t *req, http_response_t *res) {
         *suffix = '\0';
     }
 
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    errno = 0;
+    char *endptr = NULL;
+    int64_t user_id = strtoll(id_str, &endptr, 10);
+    if (id_str[0] == '\0' || endptr == id_str || *endptr != '\0' || errno == ERANGE || user_id <= 0) {
+        log_error("Invalid user ID in request path: '%s'", id_str);
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
 
     // Check if the user has permission to delete this user (includes self-delete check)
     if (!check_delete_user_permission(req, res, user_id)) {
