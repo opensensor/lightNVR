@@ -104,8 +104,8 @@ bool detection_zone_point_count_valid(int point_count) {
 }
 
 int save_detection_zones(const char *stream_name, const detection_zone_t *zones, int count) {
-    if (!stream_name || !zones || count < 0) {
-        log_error("Invalid parameters for save_detection_zones");
+    if (!stream_name || !zones || count < 0 || count > MAX_ZONES_PER_STREAM) {
+        log_error("Invalid parameters for save_detection_zones (count=%d, max=%d)", count, MAX_ZONES_PER_STREAM);
         return -1;
     }
 

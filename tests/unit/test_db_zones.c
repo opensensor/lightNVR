@@ -170,6 +170,31 @@ void test_invalid_polygon_keeps_saved_zones(void) {
     TEST_ASSERT_EQUAL_STRING("zone-a", out[0].id);
 }
 
+
+void test_zone_count_limits_preserve_saved_zones(void) {
+    detection_zone_t zones[MAX_ZONES_PER_STREAM + 1];
+    for (int i = 0; i <= MAX_ZONES_PER_STREAM; ++i) {
+        char id[MAX_ZONE_ID];
+        snprintf(id, sizeof(id), "zone-%d", i);
+        zones[i] = make_zone(id, "cam1", id, true);
+    }
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("cam1", zones, MAX_ZONES_PER_STREAM));
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("cam1", zones, MAX_ZONES_PER_STREAM + 1));
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("cam1", zones, -1));
+    detection_zone_t out[MAX_ZONES_PER_STREAM + 1];
+    TEST_ASSERT_EQUAL_INT(MAX_ZONES_PER_STREAM,
+        get_detection_zones("cam1", out, MAX_ZONES_PER_STREAM + 1));
+    for (int i = 0; i < MAX_ZONES_PER_STREAM; ++i) {
+        bool found = false;
+        for (int j = 0; j < MAX_ZONES_PER_STREAM; ++j) {
+            if (strcmp(zones[i].id, out[j].id) == 0) found = true;
+        }
+        TEST_ASSERT_TRUE(found);
+    }
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("cam1", zones, 0));
+    TEST_ASSERT_EQUAL_INT(0, get_detection_zones("cam1", out, MAX_ZONES_PER_STREAM + 1));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -177,6 +202,7 @@ int main(void) {
         return 1;
     }
     UNITY_BEGIN();
+    RUN_TEST(test_zone_count_limits_preserve_saved_zones);
     RUN_TEST(test_save_and_get_zones);
     RUN_TEST(test_polygon_points_preserved);
     RUN_TEST(test_multiple_zones_per_stream);
