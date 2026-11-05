@@ -1349,12 +1349,16 @@ export function WebRTCVideoCell({
     setAudioLevel(0);
   }, []);
 
+  const talkStartRequestIdRef = useRef(0);
+
   // Start push-to-talk (acquire microphone and send audio)
   const startTalking = useCallback(async () => {
     if (audioDisabled || !stream.backchannel_enabled || !audioSenderRef.current) {
       console.warn('Backchannel not enabled or audio sender not available');
       return;
     }
+
+    const requestId = ++talkStartRequestIdRef.current;
 
     try {
       setMicrophoneError(null);
@@ -1369,6 +1373,11 @@ export function WebRTCVideoCell({
         }
       });
 
+      if (requestId !== talkStartRequestIdRef.current) {
+        localStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       localStreamRef.current = localStream;
 
       // Start audio level monitoring
@@ -1378,6 +1387,18 @@ export function WebRTCVideoCell({
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack && audioSenderRef.current) {
         await audioSenderRef.current.replaceTrack(audioTrack);
+
+        if (requestId !== talkStartRequestIdRef.current) {
+          localStream.getTracks().forEach((track) => track.stop());
+          if (localStreamRef.current === localStream) {
+            localStreamRef.current = null;
+          }
+          if (audioSenderRef.current) {
+            await audioSenderRef.current.replaceTrack(null);
+          }
+          return;
+        }
+
         console.log(`Started sending audio for backchannel on stream ${stream.name}`);
         setIsTalking(true);
       }
