@@ -48,6 +48,21 @@ describe('LPR filter state', () => {
     });
   });
 
+  test.each([
+    '2026-00-15T12:00', '2026-13-15T12:00',
+    '2026-02-29T12:00', '2026-04-31T12:00', '2026-01-00T12:00',
+    '2026-01-01T24:00', '2026-01-01T12:60', '2026-01-01T12:00:60',
+  ])('rejects overflowing calendar fields in %s', (value) => {
+    expect(parseDateTimeLocalValue(value)).toBeNull();
+    expect(keys(validateLprFilters(filters({ start: value })))).toContain('lpr.validation.startInvalid');
+  });
+
+  test('accepts leap days and optional seconds without normalizing them', () => {
+    const expected = new Date(2024, 1, 29, 12, 34, 56).getTime();
+    expect(parseDateTimeLocalValue('2024-02-29T12:34:56')).toBe(expected);
+    expect(parseDateTimeLocalValue('2024-02-29T12:34')).toBe(expected - 56000);
+  });
+
   test('datetime-local values round-trip in the browser zone', () => {
     const milliseconds = new Date(2026, 9, 28, 15, 31).getTime();
     expect(parseDateTimeLocalValue(toDateTimeLocalValue(milliseconds))).toBe(milliseconds);
