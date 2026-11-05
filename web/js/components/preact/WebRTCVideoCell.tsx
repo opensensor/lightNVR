@@ -47,6 +47,7 @@ import type {
   WebRTCStatsEntry,
 } from '../../types/live-transport.ts';
 import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../../utils/live-video-errors.ts';
+import { createPushToTalk } from '../../utils/push-to-talk.ts';
 import 'webrtc-adapter';
 
 declare global {
@@ -178,6 +179,9 @@ export function WebRTCVideoCell({
   // Privacy mode state
   const [showPrivacyConfirm, setShowPrivacyConfirm] = useState(false);
   const [privacyActive, setPrivacyActive] = useState(!!stream.privacy_mode);
+  useEffect(() => {
+    setPrivacyActive(!!stream.privacy_mode);
+  }, [stream.name, stream.privacy_mode]);
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
 
@@ -201,7 +205,7 @@ export function WebRTCVideoCell({
   const reconnectAttemptsRef = useRef(0);
   const connectionRefreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
   const noDataReconnectAttemptsRef = useRef(0); // Separate counter for ICE-connected-but-no-data retries
-  const localStreamRef = useRef<MediaStream | null>(null);
+  const talkSessionRef = useRef<ReturnType<typeof createPushToTalk> | null>(null);
   const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const audioEnabledRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -1112,11 +1116,8 @@ export function WebRTCVideoCell({
         abortControllerRef.current = null;
       }
 
-      // Clean up local microphone stream
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
+      // Cancel pending permission/track requests as well as active audio.
+      talkSessionRef.current?.stop();
 
       // Clean up audio level monitoring
       if (audioLevelIntervalRef.current) {
@@ -1349,41 +1350,32 @@ export function WebRTCVideoCell({
     setAudioLevel(0);
   }, []);
 
-  // Start push-to-talk (acquire microphone and send audio)
-  const startTalking = useCallback(async () => {
-    if (audioDisabled || !stream.backchannel_enabled || !audioSenderRef.current) {
-      console.warn('Backchannel not enabled or audio sender not available');
-      return;
-    }
-
-    try {
-      setMicrophoneError(null);
-
-      // Request microphone access
-      console.log(`Requesting microphone access for backchannel on stream ${stream.name}`);
-      const localStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-
-      localStreamRef.current = localStream;
-
-      // Start audio level monitoring
-      startAudioLevelMonitoring(localStream);
-
-      // Get the audio track and replace the sender's track
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack && audioSenderRef.current) {
-        await audioSenderRef.current.replaceTrack(audioTrack);
-        console.log(`Started sending audio for backchannel on stream ${stream.name}`);
+  if (!talkSessionRef.current) {
+    talkSessionRef.current = createPushToTalk({
+      onStarted: (localStream) => {
+        startAudioLevelMonitoring(localStream);
         setIsTalking(true);
-      }
+      },
+      onStopped: () => {
+        stopAudioLevelMonitoring();
+        setIsTalking(false);
+      },
+      onDetachError: (err) => console.warn('Failed to detach backchannel audio:', err),
+    });
+  }
+
+  // Capture the sender before requesting permission; a reconnect must not
+  // attach this request's microphone to a different peer connection.
+  const startTalking = useCallback(async () => {
+    const sender = audioSenderRef.current;
+    if (audioDisabled || !stream.backchannel_enabled || !sender) return;
+    setMicrophoneError(null);
+    try {
+      await talkSessionRef.current!.start(sender, () => navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }));
     } catch (err) {
       console.error(`Failed to start backchannel audio for stream ${stream.name}:`, err);
-
       if ((err as Error).name === 'NotAllowedError') {
         setMicrophoneError(t('live.microphoneAccessDenied'));
       } else if ((err as Error).name === 'NotFoundError') {
@@ -1392,33 +1384,12 @@ export function WebRTCVideoCell({
         setMicrophoneError(t('live.microphoneErrorWithMessage', { message: (err as Error).message }));
       }
     }
-  }, [audioDisabled, stream, startAudioLevelMonitoring, t]);
+  }, [audioDisabled, stream, t]);
 
-  // Stop push-to-talk (stop sending audio)
-  const stopTalking = useCallback(async () => {
-    if (audioDisabled || !stream.backchannel_enabled) return;
-
-    try {
-      // Stop audio level monitoring
-      stopAudioLevelMonitoring();
-
-      // Stop the local audio track
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
-
-      // Replace the sender's track with null to stop sending
-      if (audioSenderRef.current) {
-        await audioSenderRef.current.replaceTrack(null);
-        console.log(`Stopped sending audio for backchannel on stream ${stream.name}`);
-      }
-
-      setIsTalking(false);
-    } catch (err) {
-      console.error(`Failed to stop backchannel audio for stream ${stream.name}:`, err);
-    }
-  }, [audioDisabled, stream, stopAudioLevelMonitoring]);
+  // Always cancel, even if a settings update just disabled backchannel audio.
+  const stopTalking = useCallback(() => {
+    talkSessionRef.current?.stop();
+  }, []);
 
   // Toggle talk mode handler
   const handleTalkToggle = useCallback(() => {
@@ -1826,6 +1797,7 @@ export function WebRTCVideoCell({
               onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
               onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
               onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
+              onTouchCancel={talkMode === 'ptt' ? stopTalking : undefined}
               onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
               style={{
                 backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
