@@ -40,7 +40,7 @@
  * window.  This also self-expires incomplete "zombie" rows left behind when
  * a writer thread is killed mid-segment (those keep their fixed, aging
  * start_time and drop out of the view once the window passes; the startup
- * reconcile pass in storage_manager.c finalizes them for good).
+ * reconcile pass in storage_manager.c finalizes the ones that can still play).
  *
  * When the per-stream config row is missing we fall back to the schema
  * default of 900 s.  The LEFT JOIN on streams is indexed on streams.name

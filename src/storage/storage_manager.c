@@ -33,6 +33,7 @@
 #include "database/db_lpr_reads.h"
 #include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
+#include "video/recording_media_probe.h"
 #include "video/recording_path.h"
 #include "video/hls/hls_directory.h"
 #include "core/config.h"
@@ -2054,6 +2055,7 @@ int storage_reconcile_incomplete_recordings(void) {
     int finalized = 0;
     int pruned = 0;
     int retained = 0;
+    int unplayable = 0;
     int count;
     uint64_t after_id = 0;
     uint64_t maximum_id = 0;
@@ -2087,6 +2089,12 @@ int storage_reconcile_incomplete_recordings(void) {
             bool have_file = stat_result == 0;
 
             if (have_file && st.st_size > 0) {
+                // Finalizing would list a file that cannot play. Keep it hidden
+                // rather than delete footage that recovery tools may still read.
+                if (!recording_media_has_playable_video(batch[i].file_path)) {
+                    unplayable++;
+                    continue;
+                }
                 // Footage survived — finalize it so it appears in listings.
                 time_t end_time = batch[i].end_time > 0 ? batch[i].end_time : st.st_mtime;
                 if (update_recording_metadata(batch[i].id, end_time,
@@ -2114,9 +2122,13 @@ int storage_reconcile_incomplete_recordings(void) {
 
     free(batch);
 
-    if (reconciled > 0 || retained > 0) {
+    if (reconciled > 0 || retained > 0 || unplayable > 0) {
         log_info("Reconciled %d incomplete recordings on startup (%d finalized, %d pruned, %d retained)",
                  reconciled, finalized, pruned, retained);
+    }
+    if (unplayable > 0) {
+        log_warn("Kept %d interrupted recordings hidden because they cannot play; "
+                 "their files stay on disk and are outside retention", unplayable);
     }
     return reconciled;
 }
