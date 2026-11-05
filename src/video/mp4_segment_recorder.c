@@ -288,6 +288,11 @@ static int interrupt_callback(void *ctx) {
     return 0;
 }
 
+/* Retrying these on the next packet cannot succeed, so end the segment now. */
+static bool is_terminal_storage_write_error(int error) {
+    return error == AVERROR(ENOSPC) || error == AVERROR(EIO) || error == AVERROR(EROFS);
+}
+
 static void notify_recording_activity(record_segment_activity_cb activity_cb, void *cb_ctx) {
     if (activity_cb) {
         activity_cb(cb_ctx);
@@ -1384,9 +1389,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // Write packet
                     ret = av_interleaved_write_frame(output_ctx, pkt);
                     if (ret < 0) {
+                        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                                    RECORDING_IO_OPERATION_PACKET, ret);
                         log_error("Error writing final video frame: %d", ret);
-                        if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                            log_error("Non-recoverable write error on final frame (disk full or I/O error), stopping segment");
+                        if (is_terminal_storage_write_error(ret)) {
+                            log_error("Non-recoverable write error on final frame (disk full, I/O error or read-only storage), stopping segment");
                             av_packet_unref(pkt);
                             goto cleanup;
                         }
@@ -1493,8 +1500,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 log_error("Error writing video frame: %d (%s)", ret, error_buf);
 
                 // Non-recoverable I/O error — stop the segment immediately
-                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                    log_error("Non-recoverable video write error (disk full or I/O error), stopping segment");
+                if (is_terminal_storage_write_error(ret)) {
+                    log_error("Non-recoverable video write error (disk full, I/O error or read-only storage), stopping segment");
                     goto cleanup;
                 }
 
@@ -1758,8 +1765,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 log_error("Error writing audio frame: %d (%s)", ret, error_buf);
 
                 // Non-recoverable I/O error — stop the segment immediately
-                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
-                    log_error("Non-recoverable audio write error (disk full or I/O error), stopping segment");
+                if (is_terminal_storage_write_error(ret)) {
+                    log_error("Non-recoverable audio write error (disk full, I/O error or read-only storage), stopping segment");
                     goto cleanup;
                 }
 

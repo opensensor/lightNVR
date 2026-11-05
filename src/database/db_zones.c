@@ -99,10 +99,22 @@ static int json_to_polygon(const char *json, zone_point_t *polygon, int *count, 
 /**
  * Save detection zones for a stream
  */
+bool detection_zone_point_count_valid(int point_count) {
+    return point_count >= MIN_ZONE_POINTS && point_count <= MAX_ZONE_POINTS;
+}
+
 int save_detection_zones(const char *stream_name, const detection_zone_t *zones, int count) {
     if (!stream_name || !zones || count < 0) {
         log_error("Invalid parameters for save_detection_zones");
         return -1;
+    }
+
+    // Validate the whole batch first so a bad zone can't discard the saved ones.
+    for (int i = 0; i < count; i++) {
+        if (!detection_zone_point_count_valid(zones[i].polygon_count)) {
+            log_error("Invalid polygon point count: %d", zones[i].polygon_count);
+            return -1;
+        }
     }
 
     sqlite3 *db = get_db_handle();

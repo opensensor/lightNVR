@@ -1476,6 +1476,12 @@ int delete_recording_metadata(uint64_t id) {
     return rc;
 }
 
+int delete_stale_incomplete_recording_metadata(uint64_t id) {
+    int rc = storage_recording_delete_stale_incomplete(id);
+    if (rc == 0) bump_recordings_generation();
+    return rc;
+}
+
 // Delete old recording metadata from the database
 int delete_old_recording_metadata(uint64_t max_age) {
     sqlite3 *db = get_db_handle();
@@ -2525,13 +2531,16 @@ int get_recordings_for_pressure_cleanup_default_target(
 }
 
 /**
- * Get recordings still marked incomplete (is_complete = 0) whose start_time is
- * older than older_than_seconds. These are recordings that were interrupted by
- * an unclean shutdown/crash: the finalize path never ran. The caller inspects
- * the on-disk file to either finalize or prune each one.
+ * Page through recordings still marked incomplete (is_complete = 0) that
+ * started before cutoff. These were interrupted by an unclean shutdown/crash:
+ * the finalize path never ran. The caller inspects the on-disk file to either
+ * finalize or prune each one.
+ *
+ * Paging is keyed on id, so a row the caller has to retain is never returned
+ * again and cannot stop the scan from reaching newer rows.
  */
-int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
-                                    int older_than_seconds) {
+int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
+                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -2543,21 +2552,34 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
         log_error("Database not initialized");
         return -1;
     }
-    if (!recordings || max_count <= 0) {
-        log_error("Invalid parameters for get_stale_incomplete_recordings");
+    if (!recordings || max_count <= 0 || !maximum_id) {
+        log_error("Invalid parameters for get_stale_incomplete_recordings_page");
         return -1;
     }
 
-    time_t cutoff = time(NULL) - (time_t)(older_than_seconds > 0 ? older_than_seconds : 0);
-
     pthread_mutex_lock(db_mutex);
+
+    if (after_id == 0) {
+        sqlite3_stmt *limit = NULL;
+        rc = sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(id), 0) FROM recordings;", -1, &limit, NULL);
+        if (rc == SQLITE_OK) rc = sqlite3_step(limit);
+        if (rc == SQLITE_ROW) *maximum_id = (uint64_t)sqlite3_column_int64(limit, 0);
+        sqlite3_finalize(limit);
+        if (rc != SQLITE_ROW) {
+            log_error("Failed to bound stale-incomplete scan: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+    }
 
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
-        "size_bytes, width, height, fps, codec, is_complete, trigger_type "
+        "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+        "storage_target_uuid, object_key "
         "FROM recordings "
-        "WHERE is_complete = 0 AND start_time < ? "
-        "ORDER BY start_time ASC "
+        "WHERE is_complete = 0 AND deletion_pending = 0 AND start_time < ? "
+        "AND id > ? AND id <= ? "
+        "ORDER BY id ASC "
         "LIMIT ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -2568,9 +2590,11 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
     }
 
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff);
-    sqlite3_bind_int(stmt, 2, max_count);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)after_id);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)*maximum_id);
+    sqlite3_bind_int(stmt, 4, max_count);
 
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    while (count < max_count && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
         const char *sname = (const char *)sqlite3_column_text(stmt, 1);
@@ -2605,12 +2629,23 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
         recordings[count].disk_pressure_eligible = true;
         recordings[count].schedule_restricted = -1;
 
+        const char *target = (const char *)sqlite3_column_text(stmt, 12);
+        if (target) safe_strcpy(recordings[count].storage_target_uuid, target,
+                                sizeof(recordings[count].storage_target_uuid), 0);
+        else recordings[count].storage_target_uuid[0] = '\0';
+
+        const char *object_key = (const char *)sqlite3_column_text(stmt, 13);
+        safe_strcpy(recordings[count].object_key, object_key ? object_key : "",
+                    sizeof(recordings[count].object_key), 0);
+
         count++;
     }
 
+    bool failed = count < max_count && rc != SQLITE_DONE;
+    if (failed) log_error("Failed to read stale-incomplete recordings: %s", sqlite3_errmsg(db));
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
-    return count;
+    return failed ? -1 : count;
 }
 
 /**

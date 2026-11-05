@@ -250,6 +250,10 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
     "-Wl,--wrap=http_serve_file"
 )
 add_layer2_test(test_storage_manager_retention CI_UNIT)
+add_layer2_test(test_storage_reconcile_incomplete CI_UNIT CI_SANITIZER)
+target_link_options(test_storage_reconcile_incomplete PRIVATE
+    "-Wl,--wrap=stat" "-Wl,--wrap=lstat")
+set_tests_properties(test_storage_reconcile_incomplete PROPERTIES TIMEOUT 60)
 add_layer2_test(test_storage_target_pressure_cleanup CI_UNIT)
 add_layer2_test(test_storage_migration CI_UNIT)
 add_layer2_test(test_storage_migration_publication CI_UNIT CI_SANITIZER)
@@ -263,6 +267,9 @@ if(ENABLE_S3_ARCHIVE)
 endif()
 add_layer2_test(test_db_detections CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_zones CI_UNIT CI_SANITIZER)
+add_layer2_test(test_api_handlers_zones CI_UNIT)
+target_link_options(test_api_handlers_zones PRIVATE
+    "-Wl,--wrap=httpd_authorize_stream_action")
 add_layer2_test(test_db_events CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_auth CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
@@ -331,6 +338,8 @@ endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_proxy_query)
+    add_layer3_test(test_go2rtc_multi_source_limits CI_UNIT)
+    set_tests_properties(test_go2rtc_multi_source_limits PROPERTIES TIMEOUT 30)
     add_layer3_test(test_go2rtc_websocket)
     set_tests_properties(test_go2rtc_websocket PROPERTIES TIMEOUT 20)
     add_layer3_test(test_go2rtc_proxy_routing)
@@ -434,6 +443,16 @@ set_tests_properties(test_hls_reconnect_backoff PROPERTIES TIMEOUT 10)
 add_layer3_test(test_mp4_writer_watchdog)
 add_layer3_test(test_mp4_segment_timestamps)
 add_layer3_test(test_mp4_segment_boundaries CI_UNIT CI_SANITIZER)
+target_link_options(test_mp4_segment_boundaries PRIVATE
+    "-Wl,--wrap=av_interleaved_write_frame")
+add_layer3_test(test_mp4_segment_retry_pairing CI_UNIT)
+target_link_options(test_mp4_segment_retry_pairing PRIVATE
+    "-Wl,--wrap=record_segment" "-Wl,--wrap=av_usleep"
+    "-Wl,--wrap=get_stream_config_by_name" "-Wl,--wrap=storage_should_pause_recording"
+    "-Wl,--wrap=prepare_placed_mp4_recording_path"
+    "-Wl,--wrap=add_recording_metadata" "-Wl,--wrap=update_recording_metadata"
+    "-Wl,--wrap=update_stream_storage_cache_add_recording")
+set_tests_properties(test_mp4_segment_retry_pairing PROPERTIES TIMEOUT 10)
 add_layer3_test(test_recording_video_params CI_UNIT CI_SANITIZER)
 target_link_options(test_recording_video_params PRIVATE
     "-Wl,--wrap=update_stream_video_params")

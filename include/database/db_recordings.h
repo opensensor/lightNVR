@@ -235,6 +235,16 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
 int delete_recording_metadata(uint64_t id);
 
 /**
+ * Remove an interrupted recording whose media is known to be missing or empty.
+ * Only for startup reconciliation: delete_recording_metadata refuses incomplete
+ * rows so it can never remove a file the recorder is writing.
+ *
+ * @return 0 when removed, 1 when deletion is still pending, -2 when the row must
+ *         be retained, -1 on error
+ */
+int delete_stale_incomplete_recording_metadata(uint64_t id);
+
+/**
  * Delete old recording metadata from the database
  *
  * @param max_age Maximum age in seconds
@@ -383,17 +393,16 @@ int get_recordings_for_pressure_cleanup_default_target(
     int max_count);
 
 /**
- * Get recordings still marked incomplete (is_complete = 0) and older than
- * older_than_seconds — i.e. recordings interrupted by an unclean shutdown.
- * The caller inspects the on-disk file to finalize or prune each one.
+ * Page through recordings still marked incomplete (is_complete = 0) that started
+ * before cutoff, oldest ID first. Pass after_id = 0 for the first page, which
+ * snapshots *maximum_id; then keep cutoff and maximum_id and pass the last ID
+ * returned. Retained rows are not revisited and new rows cannot extend the scan.
+ * Rows already pending deletion are excluded.
  *
- * @param recordings Array to fill with recording metadata
- * @param max_count Maximum number of recordings to return
- * @param older_than_seconds Only return rows whose start_time is older than this
  * @return Number of recordings found, or -1 on error
  */
-int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
-                                    int older_than_seconds);
+int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
+                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id);
 
 /**
  * Get total storage bytes used by a stream from the database

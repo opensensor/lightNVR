@@ -171,10 +171,12 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
         cJSON *filter_classes = cJSON_GetObjectItem(zone_obj, "filter_classes");
         cJSON *min_confidence = cJSON_GetObjectItem(zone_obj, "min_confidence");
 
-        if (!id || !cJSON_IsString(id) || !name || !cJSON_IsString(name) || 
+        if (!id || !cJSON_IsString(id) || !name || !cJSON_IsString(name) ||
             !polygon || !cJSON_IsArray(polygon)) {
             log_warn("Invalid zone data at index %d", i);
-            continue;
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400, "Each zone needs an id, name and polygon");
+            return;
         }
 
         // Copy basic fields
@@ -189,25 +191,31 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
             strcpy(zone->color, "#3b82f6");
         }
 
-        // Parse polygon points
+        // Parse polygon points. Reject rather than alter a shape: dropping points
+        // would save a different area than the one the user drew.
         int point_count = cJSON_GetArraySize(polygon);
-        if (point_count > MAX_ZONE_POINTS) {
-            point_count = MAX_ZONE_POINTS;
+        if (!detection_zone_point_count_valid(point_count)) {
+            log_warn("Invalid polygon point count %d at zone index %d", point_count, i);
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400, "Zone polygon must have 3 to 32 points");
+            return;
         }
 
         zone->polygon_count = 0;
         for (int j = 0; j < point_count; j++) {
             cJSON *point = cJSON_GetArrayItem(polygon, j);
-            if (!point) continue;
+            cJSON *x = point ? cJSON_GetObjectItem(point, "x") : NULL;
+            cJSON *y = point ? cJSON_GetObjectItem(point, "y") : NULL;
 
-            cJSON *x = cJSON_GetObjectItem(point, "x");
-            cJSON *y = cJSON_GetObjectItem(point, "y");
-
-            if (x && cJSON_IsNumber(x) && y && cJSON_IsNumber(y)) {
-                zone->polygon[zone->polygon_count].x = (float)x->valuedouble;
-                zone->polygon[zone->polygon_count].y = (float)y->valuedouble;
-                zone->polygon_count++;
+            if (!x || !cJSON_IsNumber(x) || !y || !cJSON_IsNumber(y)) {
+                log_warn("Invalid polygon point %d at zone index %d", j, i);
+                cJSON_Delete(json);
+                http_response_set_json_error(res, 400, "Zone polygon points need numeric x and y");
+                return;
             }
+            zone->polygon[zone->polygon_count].x = (float)x->valuedouble;
+            zone->polygon[zone->polygon_count].y = (float)y->valuedouble;
+            zone->polygon_count++;
         }
 
         // Parse optional fields
