@@ -2121,7 +2121,7 @@ void test_user_update_rolls_back_every_field_and_sessions_on_failure(void) {
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(target_id, NULL, NULL, 3600, token, sizeof(token)));
     char path[128];
     snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
-    const char *body = "{\"email\":\"changed@example.com\",\"role\":1,\"is_active\":false,"
+    const char *body = "{\"email\":\"changed@example.com\",\"is_active\":false,"
                        "\"allowed_login_cidrs\":\"127.0.0.1\",\"password\":\"replacement123\"}";
     sqlite3 *db = get_db_handle();
     for (int failure = 0; failure < 5; failure++) {
@@ -2158,7 +2158,7 @@ void test_user_update_rolls_back_every_field_and_sessions_on_failure(void) {
     user_t user;
     TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
     TEST_ASSERT_EQUAL_STRING("changed@example.com", user.email);
-    TEST_ASSERT_EQUAL_INT(USER_ROLE_USER, user.role);
+    TEST_ASSERT_EQUAL_INT(USER_ROLE_VIEWER, user.role);
     TEST_ASSERT_FALSE(user.is_active);
     TEST_ASSERT_TRUE(user.has_login_cidr_restriction);
     int64_t authenticated_id = 0;
@@ -2167,7 +2167,7 @@ void test_user_update_rolls_back_every_field_and_sessions_on_failure(void) {
     TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("atomicuser", "replacement123", &authenticated_id));
 }
 
-void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
+void test_user_update_rejects_roles_before_changing_credentials(void) {
     int64_t target_id = 0;
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
         "rolecheck", "password123", NULL, USER_ROLE_VIEWER, true, &target_id));
@@ -2177,7 +2177,7 @@ void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(
         target_id, NULL, NULL, 3600, token, sizeof(token)));
     const char *invalid_roles[] = {
-        "-2", "-1", "-1.5", "-0.5", "0.5", "3.5", "4", "1e100",
+        "0", "1", "2", "3", "-2", "-1", "-1.5", "-0.5", "0.5", "3.5", "4", "1e100",
         "\"2\"", "null", "true", "{}", "[]"
     };
     for (size_t i = 0; i < sizeof(invalid_roles) / sizeof(invalid_roles[0]); i++) {
@@ -2187,7 +2187,7 @@ void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
                  "\"email\":\"changed@example.com\"}", invalid_roles[i]);
         cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
                                         path, body, NULL, 400);
-        TEST_ASSERT_EQUAL_STRING("Invalid role",
+        TEST_ASSERT_EQUAL_STRING("role updates are not supported via this endpoint; update authorization grants instead",
                                  cJSON_GetObjectItem(json, "error")->valuestring);
         cJSON_Delete(json);
         user_t user;
@@ -2202,25 +2202,106 @@ void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
     }
 }
 
-void test_user_update_accepts_valid_and_omitted_roles(void) {
+void test_user_update_rejects_nonstring_password_without_changes(void) {
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("passwordtype", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &target_id));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
+    const char *values[] = {"null", "true", "42", "{}", "[]"};
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+        char body[256];
+        snprintf(body, sizeof(body), "{\"email\":\"changed@example.com\",\"password\":%s}", values[i]);
+        cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT, path, body, NULL, 400);
+        TEST_ASSERT_EQUAL_STRING("password must be a string", cJSON_GetObjectItem(json, "error")->valuestring);
+        cJSON_Delete(json);
+        user_t user;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
+        TEST_ASSERT_EQUAL_STRING("", user.email);
+        int64_t authenticated_id = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("passwordtype", "password123", &authenticated_id));
+    }
+    cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT, path,
+                                    "{\"password\":\"\",\"email\":\"updated@example.com\"}", NULL, 200);
+    cJSON_Delete(json);
+    int64_t authenticated_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("passwordtype", "password123", &authenticated_id));
+}
+
+void test_user_creation_requires_actions_and_all_camera_scope(void) {
+    int64_t manager_id = 0;
+    // Numeric Admin metadata must not bypass the actual policy grants.
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("creationmanager", "password123", NULL,
+                                               USER_ROLE_ADMIN, true, &manager_id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(manager_id, "policy"));
+    authorization_role_t manager_role;
+    memset(&manager_role, 0, sizeof(manager_role));
+    safe_strcpy(manager_role.name, "Creation manager", sizeof(manager_role.name), 0);
+    manager_role.action_mask = authorization_action_bit(AUTHZ_USERS_MANAGE);
+    int64_t version = 0, new_version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&manager_role, version, &new_version));
+    create_grant(manager_id, manager_role.uuid, "all", NULL, NULL);
+    char api_key[128];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(manager_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+    for (int role = 0; role <= 3; role++) {
+        char body[256];
+        snprintf(body, sizeof(body),
+                 "{\"username\":\"deniedchild\",\"password\":\"password123\",\"role\":%d}", role);
+        cJSON *json = call_handler_path(handle_users_create, HTTP_METHOD_POST,
+                                        "/api/auth/users", body, api_key, 403);
+        cJSON_Delete(json);
+        user_t user;
+        TEST_ASSERT_NOT_EQUAL(0, db_auth_get_user_by_username("deniedchild", &user));
+    }
+    stream_config_t camera = create_camera("Creation scope", "Test");
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\",\"values\":[\"%s\"]}}", camera.camera_uuid);
+    const char *viewer_role = "00000000-0000-4000-8000-000000000003";
+    create_grant(manager_id, viewer_role, "selector", selector, NULL);
+    const char *viewer_body = "{\"username\":\"viewerchild\",\"password\":\"password123\",\"role\":2}";
+    cJSON *json = call_handler_path(handle_users_create, HTTP_METHOD_POST,
+                                    "/api/auth/users", viewer_body, api_key, 403);
+    cJSON_Delete(json);
+    // A bounded manager can create a role it actually holds over all cameras.
+    create_grant(manager_id, viewer_role, "all", NULL, NULL);
+    json = call_handler_path(handle_users_create, HTTP_METHOD_POST,
+                             "/api/auth/users", viewer_body, api_key, 200);
+    cJSON_Delete(json);
+    // The default Operator role must be checked too.
+    json = call_handler_path(handle_users_create, HTTP_METHOD_POST, "/api/auth/users",
+        "{\"username\":\"defaultchild\",\"password\":\"password123\"}", api_key, 403);
+    cJSON_Delete(json);
+    create_grant(manager_id, ADMIN_ROLE_UUID, "all", NULL, NULL);
+    json = call_handler_path(handle_users_create, HTTP_METHOD_POST, "/api/auth/users",
+        "{\"username\":\"adminchild\",\"password\":\"password123\",\"role\":0}", api_key, 200);
+    cJSON_Delete(json);
+    user_t manager;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(manager_id, &manager));
+    uint64_t mask = 0;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&manager, &mask));
+    api_token_t token;
+    char secret[API_TOKEN_SECRET_MAX];
+    create_scoped_token(manager_id, mask, "all", NULL, &token, secret);
+    json = call_handler_path(handle_users_create, HTTP_METHOD_POST, "/api/auth/users",
+        "{\"username\":\"tokenchild\",\"password\":\"password123\",\"role\":0}", secret, 403);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
+void test_user_update_preserves_omitted_role(void) {
     int64_t target_id = 0;
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
         "rolecheck", "password123", NULL, USER_ROLE_VIEWER, true, &target_id));
     char path[128];
     snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
-    for (int role = 0; role <= 3; role++) {
-        char body[64];
-        snprintf(body, sizeof(body), "{\"role\":%d}", role);
-        cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
-                                        path, body, NULL, 200);
-        TEST_ASSERT_EQUAL_INT(role, cJSON_GetObjectItem(json, "role")->valueint);
-        cJSON_Delete(json);
-    }
     cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT,
                                     path, "{\"email\":\"new@example.com\"}", NULL, 200);
-    TEST_ASSERT_EQUAL_INT(3, cJSON_GetObjectItem(json, "role")->valueint);
-    TEST_ASSERT_EQUAL_STRING("new@example.com",
-                             cJSON_GetObjectItem(json, "email")->valuestring);
+    TEST_ASSERT_EQUAL_INT(USER_ROLE_VIEWER, cJSON_GetObjectItem(json, "role")->valueint);
+    TEST_ASSERT_EQUAL_STRING("new@example.com", cJSON_GetObjectItem(json, "email")->valuestring);
     cJSON_Delete(json);
 }
 
@@ -2985,8 +3066,10 @@ int main(void) {
     RUN_TEST(test_user_create_rejects_noninteger_and_out_of_range_roles);
     RUN_TEST(test_user_create_accepts_integer_and_default_roles);
     RUN_TEST(test_user_update_rolls_back_every_field_and_sessions_on_failure);
-    RUN_TEST(test_user_update_rejects_invalid_roles_before_changing_credentials);
-    RUN_TEST(test_user_update_accepts_valid_and_omitted_roles);
+    RUN_TEST(test_user_update_rejects_roles_before_changing_credentials);
+    RUN_TEST(test_user_update_preserves_omitted_role);
+    RUN_TEST(test_user_update_rejects_nonstring_password_without_changes);
+    RUN_TEST(test_user_creation_requires_actions_and_all_camera_scope);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
     RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);
     RUN_TEST(test_recording_file_check_requires_scoped_replay_access);

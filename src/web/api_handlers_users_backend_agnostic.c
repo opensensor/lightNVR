@@ -156,6 +156,42 @@ static const char *built_in_role_uuid_for_legacy_role(user_role_t role) {
     }
 }
 
+/* Initial built-in policies grant every action over all cameras. Check each
+ * action at that scope, just as the authorization-grant endpoint does. */
+static bool authorize_initial_user_role(const http_request_t *req,
+                                        http_response_t *res, user_role_t role) {
+    user_t requester;
+    if (!httpd_check_action_access(req, &requester)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    if (requester.authenticated_via_scoped_token) {
+        http_response_set_json_error(res, 403, "Scoped API tokens cannot create users");
+        return false;
+    }
+    authorization_role_t initial_role;
+    const char *uuid = built_in_role_uuid_for_legacy_role(role);
+    if (!uuid || db_authorization_role_get(uuid, &initial_role) != DB_AUTHORIZATION_OK) {
+        http_response_set_json_error(res, 500, "Failed to resolve initial user role");
+        return false;
+    }
+    for (int action = 0; action < AUTHZ_ACTION_COUNT; action++) {
+        if (!(initial_role.action_mask & authorization_action_bit((authorization_action_t)action))) continue;
+        authorization_evaluation_t evaluation;
+        if (authorization_evaluate(&requester, (authorization_action_t)action,
+                                    NULL, &evaluation) != 0) {
+            http_response_set_json_error(res, 500, "Failed to evaluate initial user role");
+            return false;
+        }
+        if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+            http_response_set_json_error(res, 403,
+                "Initial user role exceeds your authority or camera scope");
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool provision_new_user_policy(int64_t user_id, user_role_t role) {
     const char *role_uuid = built_in_role_uuid_for_legacy_role(role);
     if (!role_uuid) return false;
@@ -442,6 +478,11 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    if (!authorize_initial_user_role(req, res, (user_role_t)role)) {
+        cJSON_Delete(json_req);
+        return;
+    }
+
     // Create the user
     int64_t user_id;
     /* Keep the row inactive until its CIDR restriction and exact policy grant
@@ -570,11 +611,11 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    if (role_json && strcmp(user.authorization_mode, "policy") == 0) {
+    if (role_json) {
         cJSON_Delete(json_req);
         http_response_set_json_error(
             res, 400,
-            "role is compatibility metadata for policy users; update authorization grants instead");
+            "role updates are not supported via this endpoint; update authorization grants instead");
         return;
     }
 
@@ -623,24 +664,16 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         }
     }
 
-    // Validate before changing credentials. Only an omitted role uses the
-    // database's -1 sentinel; supplied roles must be whole numbers from 0 to 3.
-    int role = -1;
-    if (role_json) {
-        if (!cJSON_IsNumber(role_json) || role_json->valuedouble < 0 ||
-            role_json->valuedouble > 3 ||
-            role_json->valuedouble != role_json->valueint) {
-            cJSON_Delete(json_req);
-            http_response_set_json_error(res, 400, "Invalid role");
-            return;
-        }
-        role = role_json->valueint;
-    }
-
     // Validate password if provided and not empty; apply it only after other updates succeed
     const char *password = NULL;
     int has_password_update = 0;
-    if (password_json && cJSON_IsString(password_json)) {
+    if (password_json) {
+        if (!cJSON_IsString(password_json)) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "password must be a string");
+            return;
+        }
+
         password = password_json->valuestring;
 
         // Only update if password is not empty
@@ -658,7 +691,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : -1;
 
-    rc = db_auth_update_user_account(user_id, username, email, role, is_active,
+    rc = db_auth_update_user_account(user_id, username, email, -1, is_active,
                                      has_password_update ? password : NULL,
                                      set_allowed_login_cidrs, allowed_login_cidrs);
     cJSON_Delete(json_req);
