@@ -4,6 +4,7 @@
 #include "telemetry/collectors/linux_cgroup.h"
 
 #include <ftw.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -404,6 +405,128 @@ static void test_v1_rejects_intermediate_symlinks(void) { check_symlink_escape(t
 static void test_v2_rejects_leaf_symlinks(void) { check_symlink_escape(false, true); }
 static void test_v1_rejects_leaf_symlinks(void) { check_symlink_escape(true, true); }
 
+static void write_membership_fixture(const char *relative, const char *text) {
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/%s", temporary_root, relative);
+    for (char *cursor = path + strlen(temporary_root) + 1; *cursor; ++cursor) {
+        if (*cursor != '/') continue;
+        *cursor = '\0';
+        TEST_ASSERT_TRUE(mkdir(path, 0700) == 0 || errno == EEXIST);
+        *cursor = '/';
+    }
+    FILE *file = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_TRUE(fputs(text, file) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+}
+
+static void assert_delta_state(const system_health_observation_sink_t *sink,
+                                const char *metric, bool valid, float value) {
+    const system_health_observation_t *observation = find_observation(sink->items, sink->count, metric);
+    TEST_ASSERT_NOT_NULL(observation);
+    TEST_ASSERT_EQUAL(valid, observation->value_valid);
+    if (valid) TEST_ASSERT_FLOAT_WITHIN(0.0001f, value, (float)observation->value);
+    else TEST_ASSERT_EQUAL(SYSTEM_HEALTH_CAPABILITY_STALE, observation->capability);
+}
+
+static void test_v2_membership_changes_and_discovery_gaps_reset_deltas(void) {
+    snprintf(temporary_root, sizeof(temporary_root), "/tmp/lightnvr-cgroup-XXXXXX");
+    TEST_ASSERT_NOT_NULL(mkdtemp(temporary_root));
+    const char *groups[] = {"first", "second"};
+    for (size_t i = 0; i < 2; ++i) {
+        char path[128];
+        snprintf(path, sizeof(path), "sys/%s/cpu.max", groups[i]);
+        write_membership_fixture(path, "100000 100000\n");
+        snprintf(path, sizeof(path), "sys/%s/cpu.stat", groups[i]);
+        write_membership_fixture(path, i == 0
+            ? "usage_usec 100000\nnr_periods 10\nnr_throttled 1\nthrottled_usec 100\n"
+            : "usage_usec 9000000\nnr_periods 100\nnr_throttled 50\nthrottled_usec 9000\n");
+        snprintf(path, sizeof(path), "sys/%s/memory.events", groups[i]);
+        write_membership_fixture(path, i == 0
+            ? "low 0\nhigh 0\nmax 0\noom 0\noom_kill 2\n"
+            : "low 0\nhigh 0\nmax 0\noom 0\noom_kill 20\n");
+    }
+    linux_cgroup_state_t state;
+    system_health_collector_t collector;
+    system_health_observation_t items[32];
+    system_health_observation_sink_t sink = {.items = items, .capacity = 32U};
+    char proc[256], sys[256];
+    snprintf(proc, sizeof(proc), "%s/proc", temporary_root);
+    snprintf(sys, sizeof(sys), "%s/sys", temporary_root);
+    system_health_collect_context_t context = {.proc_root = proc, .cgroup_root = sys};
+    TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
+    const char *memberships[] = {"0::/first\n", "0::/second\n", "0::/second\n",
+                                  "invalid\n", "0::/second\n", "0::/second\n"};
+    for (size_t i = 0; i < sizeof(memberships) / sizeof(memberships[0]); ++i) {
+        write_membership_fixture("proc/self/cgroup", memberships[i]);
+        if (i == 2) {
+            write_membership_fixture("sys/second/cpu.stat",
+                "usage_usec 9250000\nnr_periods 110\nnr_throttled 51\nthrottled_usec 9100\n");
+            write_membership_fixture("sys/second/memory.events",
+                "low 0\nhigh 0\nmax 0\noom 0\noom_kill 23\n");
+        }
+        context.monotonic_ms = (i + 1) * 1000;
+        sink.count = 0;
+        TEST_ASSERT_EQUAL_INT(0, collector.collect(collector.state, &context, &sink));
+        if (i == 3) {
+            const system_health_observation_t *discovery = find_observation(items, sink.count,
+                "container.cgroup.discovery");
+            TEST_ASSERT_NOT_NULL(discovery);
+            TEST_ASSERT_FALSE(discovery->value_valid);
+            continue;
+        }
+        bool valid = i == 2 || i == 5;
+        assert_delta_state(&sink, "container.cpu.usage_ratio", valid, i == 2 ? 0.25f : 0.0f);
+        assert_delta_state(&sink, "container.cpu.throttled_ratio", valid, i == 2 ? 0.1f : 0.0f);
+        assert_delta_state(&sink, "container.memory.oom_kills_delta", valid, i == 2 ? 3.0f : 0.0f);
+    }
+}
+
+static void test_v1_tracks_each_controller_and_long_memberships(void) {
+    snprintf(temporary_root, sizeof(temporary_root), "/tmp/lightnvr-cgroup-XXXXXX");
+    TEST_ASSERT_NOT_NULL(mkdtemp(temporary_root));
+    const char *groups[] = {"first", "second"};
+    for (size_t i = 0; i < 2; ++i) {
+        char path[128];
+        const char *files[] = {"cpu.cfs_quota_us", "cpu.cfs_period_us", "cpu.stat"};
+        const char *values[] = {"100000\n", "100000\n",
+            "nr_periods 10\nnr_throttled 1\nthrottled_time 100000\n"};
+        for (size_t j = 0; j < 3; ++j) {
+            snprintf(path, sizeof(path), "sys/cpu/%s/%s", groups[i], files[j]);
+            write_membership_fixture(path, values[j]);
+        }
+        snprintf(path, sizeof(path), "sys/cpuacct/%s/cpuacct.usage", groups[i]);
+        write_membership_fixture(path, i ? "9000000000\n" : "100000000\n");
+    }
+    linux_cgroup_state_t state;
+    system_health_collector_t collector;
+    system_health_observation_t items[32];
+    system_health_observation_sink_t sink = {.items = items, .capacity = 32U};
+    char proc[256], sys[256], membership[2048], memory[512], pids[512];
+    snprintf(proc, sizeof(proc), "%s/proc", temporary_root);
+    snprintf(sys, sizeof(sys), "%s/sys", temporary_root);
+    /* Long paths differ only at the end; their components remain valid. */
+    memset(memory, 'm', sizeof(memory) - 1);
+    memory[0] = memory[200] = memory[400] = '/';
+    memory[511] = '\0';
+    memcpy(pids, memory, sizeof(pids));
+    system_health_collect_context_t context = {.proc_root = proc, .cgroup_root = sys};
+    TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
+    for (size_t i = 0; i < 6; ++i) {
+        if (i == 3) memory[510] = 'n';
+        if (i == 4) pids[510] = 'n';
+        snprintf(membership, sizeof(membership),
+                 "2:cpu:/%s\n3:cpuacct:/%s\n4:memory:%s\n5:pids:%s\n",
+                 i >= 2 ? "second" : "first", i >= 1 ? "second" : "first", memory, pids);
+        write_membership_fixture("proc/self/cgroup", membership);
+        context.monotonic_ms = (i + 1) * 1000;
+        sink.count = 0;
+        TEST_ASSERT_EQUAL_INT(0, collector.collect(collector.state, &context, &sink));
+        assert_delta_state(&sink, "container.cpu.usage_ratio", i == 5, 0.0f);
+        assert_delta_state(&sink, "container.cpu.throttled_ratio", i == 5, 0.0f);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_cgroup_parsers_reject_bad_limits_and_overflow);
@@ -417,5 +540,7 @@ int main(void) {
     RUN_TEST(test_v1_rejects_intermediate_symlinks);
     RUN_TEST(test_v2_rejects_leaf_symlinks);
     RUN_TEST(test_v1_rejects_leaf_symlinks);
+    RUN_TEST(test_v2_membership_changes_and_discovery_gaps_reset_deltas);
+    RUN_TEST(test_v1_tracks_each_controller_and_long_memberships);
     return UNITY_END();
 }

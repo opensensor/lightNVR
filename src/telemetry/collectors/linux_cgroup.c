@@ -27,14 +27,13 @@ typedef enum {
     CG_READ_ERROR
 } cg_read_result_t;
 
-typedef struct {
-    linux_cgroup_version_t version;
-    char unified[512];
-    char cpu[512];
-    char cpuacct[512];
-    char memory[512];
-    char pids[512];
-} cgroup_memberships_t;
+static bool same_memberships(const linux_cgroup_memberships_t *a,
+                              const linux_cgroup_memberships_t *b) {
+    return a->version == b->version &&
+        strcmp(a->unified, b->unified) == 0 && strcmp(a->cpu, b->cpu) == 0 &&
+        strcmp(a->cpuacct, b->cpuacct) == 0 && strcmp(a->memory, b->memory) == 0 &&
+        strcmp(a->pids, b->pids) == 0;
+}
 
 typedef struct {
     cg_read_result_t cpu_max_status;
@@ -239,9 +238,9 @@ static bool controller_list_has(const char *list, const char *controller) {
     return false;
 }
 
-static int parse_memberships(const char *text, cgroup_memberships_t *out) {
+static int parse_memberships(const char *text, linux_cgroup_memberships_t *out) {
     const char *line = text;
-    cgroup_memberships_t parsed;
+    linux_cgroup_memberships_t parsed;
     if (!text || !out) return -1;
     memset(&parsed, 0, sizeof(parsed));
     while (line && *line) {
@@ -284,7 +283,7 @@ static int parse_memberships(const char *text, cgroup_memberships_t *out) {
 }
 
 static cg_read_result_t read_proc_membership(const char *proc_root,
-                                             cgroup_memberships_t *out) {
+                                             linux_cgroup_memberships_t *out) {
     char path[CGROUP_PATH_MAX];
     char text[CGROUP_READ_MAX];
     int length = snprintf(path, sizeof(path), "%s/self/cgroup", proc_root);
@@ -497,7 +496,7 @@ static cg_read_result_t parse_v1_cpu_max(const char *quota_text,
     return CG_READ_OK;
 }
 
-static void sample_v2(const char *root, const cgroup_memberships_t *memberships,
+static void sample_v2(const char *root, const linux_cgroup_memberships_t *memberships,
                       cgroup_sample_t *sample) {
     char first[CGROUP_READ_MAX];
     char second[CGROUP_READ_MAX];
@@ -611,7 +610,7 @@ static cg_read_result_t effective_v1_cpu_max(
     return CG_READ_OK;
 }
 
-static void sample_v1(const char *root, const cgroup_memberships_t *memberships,
+static void sample_v1(const char *root, const linux_cgroup_memberships_t *memberships,
                       cgroup_sample_t *sample) {
     char first[CGROUP_READ_MAX];
     char second[CGROUP_READ_MAX];
@@ -905,7 +904,7 @@ static int collect_cgroup(void *opaque,
                           const system_health_collect_context_t *context,
                           system_health_observation_sink_t *sink) {
     linux_cgroup_state_t *state = opaque;
-    cgroup_memberships_t memberships;
+    linux_cgroup_memberships_t memberships;
     cgroup_sample_t sample;
     cg_read_result_t membership_status;
     bool constrained;
@@ -915,10 +914,19 @@ static int collect_cgroup(void *opaque,
     memset(&sample, 0, sizeof(sample));
     membership_status = read_proc_membership(context->proc_root, &memberships);
     if (membership_status != CG_READ_OK) {
+        /* A discovery gap cannot establish continuity with the next sample. */
+        state->cpu_valid = false;
+        state->oom_valid = false;
         system_health_capability_t cap = capability(membership_status);
         append_unavailable(sink, context, SYSTEM_HEALTH_SCOPE_CONTAINER,
                            "container.cgroup.discovery", cap);
         return 0;
+    }
+    /* Invalidate before emitting: counters from different memberships must
+     * never be subtracted, even if the new counters happen to be larger. */
+    if (!same_memberships(&state->memberships, &memberships)) {
+        state->cpu_valid = false;
+        state->oom_valid = false;
     }
     if (memberships.version == LINUX_CGROUP_V2)
         sample_v2(context->cgroup_root, &memberships, &sample);
@@ -933,10 +941,6 @@ static int collect_cgroup(void *opaque,
     emit_cpu(state, &sample, memberships.version, scope, context, sink);
     emit_memory(state, &sample, memberships.version, scope, context, sink);
     emit_pids(&sample, scope, context, sink);
-    if (state->version != memberships.version) {
-        state->cpu_valid = false;
-        state->oom_valid = false;
-    }
     if (sample.cpu_stat_status == CG_READ_OK) {
         state->cpu = sample.cpu_stat;
         state->sampled_monotonic_ms = context->monotonic_ms;
@@ -946,6 +950,7 @@ static int collect_cgroup(void *opaque,
     if (sample.oom_status == CG_READ_OK) state->oom_kills = sample.oom_kills;
     else state->oom_valid = false;
     state->version = memberships.version;
+    state->memberships = memberships;
     if (sample.cpu_stat_status == CG_READ_OK) state->cpu_valid = true;
     if (sample.oom_status == CG_READ_OK) state->oom_valid = true;
     return 0;
