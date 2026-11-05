@@ -193,3 +193,40 @@ it('selects a zone row when keyboard focus enters it', async () => {
     await browser.close();
   }
 }, 30000);
+browserTest('drawing stops at the point limit the API accepts', async () => {
+  const {
+    browser,
+    page
+  } = await openZoneBrowser();
+  try {
+    // The fixture has no Tailwind, so give the canvas a clickable size.
+    await page.addStyleTag({
+      content: 'canvas{width:640px;height:360px}'
+    });
+    await page.getByRole('button', {
+      name: t('zoneEditor.drawZone')
+    }).click();
+    const canvas = page.locator('canvas');
+    for (let index = 0; index < 33; index++) await canvas.click({
+      position: {
+        x: 100 + index * 10,
+        y: 100 + index % 2 * 100
+      }
+    });
+    await page.getByRole('status').filter({
+      hasText: t('zoneEditor.maxPointsReached')
+    }).waitFor();
+    await page.getByRole('button', {
+      name: t('zoneEditor.completeZoneWithPoints')
+    }).click();
+    await page.getByRole('button', {
+      name: t('zoneEditor.saveZones'),
+      exact: true
+    }).click();
+    await page.waitForFunction(() => window.calls.requests.length === 1);
+    const [request] = await page.evaluate(() => window.calls.requests);
+    expect(request.body.zones.map(zone => zone.polygon.length)).toEqual([3, 32]);
+  } finally {
+    await browser.close();
+  }
+}, 30000);

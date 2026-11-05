@@ -1,4 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
+  MAX_ZONE_POINTS,
+  appendZonePoint,
   computeImageLetterbox,
   canvasPointToImageFraction,
   imageFractionToCanvasPoint,
@@ -113,5 +117,26 @@ describe('resolveImageAspect', () => {
 
   it('treats a zero or missing configured height as invalid rather than dividing by zero', () => {
     expect(resolveImageAspect(null, false, false, 1920, 0)).toBeNull();
+  });
+});
+
+describe('zone point limit', () => {
+  it('matches the limit the server enforces', () => {
+    const header = fs.readFileSync(path.resolve(__dirname, '../../include/database/db_zones.h'), 'utf8');
+    expect(header).toMatch(new RegExp(`#define MAX_ZONE_POINTS ${MAX_ZONE_POINTS}\\b`));
+  });
+
+  it('adds points up to the limit', () => {
+    const polygon = Array.from({ length: MAX_ZONE_POINTS - 1 }, (_, x) => ({ x, y: 0 }));
+    const point = { x: 0.5, y: 0.5 };
+    const full = appendZonePoint(polygon, point);
+    expect(full).toHaveLength(MAX_ZONE_POINTS);
+    expect(full[MAX_ZONE_POINTS - 1]).toBe(point);
+    expect(polygon).toHaveLength(MAX_ZONE_POINTS - 1);
+  });
+
+  it('ignores points past the limit', () => {
+    const full = Array.from({ length: MAX_ZONE_POINTS }, (_, x) => ({ x, y: 0 }));
+    expect(appendZonePoint(full, { x: 0.5, y: 0.5 })).toBe(full);
   });
 });

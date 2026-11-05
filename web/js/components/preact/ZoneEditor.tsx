@@ -9,6 +9,8 @@ import { nowMilliseconds } from '../../utils/date-utils.ts';
 import { useI18n } from '../../i18n.ts';
 import { AlertDialog } from './common/ModalDialog.tsx';
 import {
+  MAX_ZONE_POINTS,
+  appendZonePoint,
   computeImageLetterbox,
   canvasPointToImageFraction,
   imageFractionToCanvasPoint,
@@ -437,7 +439,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       } else {
         setCurrentZone({
           ...currentZone,
-          polygon: [...currentZone.polygon, { x, y }]
+          polygon: appendZonePoint(currentZone.polygon, { x, y })
         });
       }
     } else if (editMode === 'delete') {
@@ -651,6 +653,11 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                   <button onClick={cancelZone} className="btn-secondary">
                     {t('common.cancel')}
                   </button>
+                  {currentZone.polygon.length >= MAX_ZONE_POINTS && (
+                    <span role="status" className="self-center text-sm text-muted-foreground">
+                      {t('zoneEditor.maxPointsReached', { count: MAX_ZONE_POINTS })}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
