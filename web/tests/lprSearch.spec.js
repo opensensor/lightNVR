@@ -282,6 +282,9 @@ describe('recording deep link', () => {
     expect(lprTimelineHref({ camera_uuid: CAMERA, stream_name: 'Driveway', observed_at: observedAt }, []))
       .toContain('stream=Driveway');
     expect(lprTimelineHref({ stream_name: 'Driveway' }, [])).toBeNull();
+    expect(lprTimelineHref({ stream_name: 'Driveway', observed_at: null }, [])).toBeNull();
+    expect(lprTimelineHref({ stream_name: 'Driveway', observed_at: '' }, [])).toBeNull();
+    expect(lprTimelineHref({ stream_name: 'Driveway', observed_at: '   ' }, [])).toBeNull();
   });
 
   test('supports UUID-only reads and retains the legacy name fallback', () => {
