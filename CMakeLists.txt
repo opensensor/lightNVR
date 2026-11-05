@@ -48,7 +48,13 @@ if(LIGHTNVR_MAX_STREAMS STREQUAL "auto")
 elseif(LIGHTNVR_MAX_STREAMS MATCHES "^[0-9]+$")
     # Normalize to canonical decimal to avoid leading-zero forms (for example
     # 08/09 invalid, 010 interpreted as octal) in downstream C definitions.
-    math(EXPR LIGHTNVR_RESOLVED_MAX_STREAMS "${LIGHTNVR_MAX_STREAMS}")
+    set(LIGHTNVR_MAX_STREAMS_NORMALIZED "${LIGHTNVR_MAX_STREAMS}")
+    string(REGEX REPLACE "^0+" "" LIGHTNVR_MAX_STREAMS_NORMALIZED
+           "${LIGHTNVR_MAX_STREAMS_NORMALIZED}")
+    if(LIGHTNVR_MAX_STREAMS_NORMALIZED STREQUAL "")
+        set(LIGHTNVR_MAX_STREAMS_NORMALIZED "0")
+    endif()
+    math(EXPR LIGHTNVR_RESOLVED_MAX_STREAMS "${LIGHTNVR_MAX_STREAMS_NORMALIZED}")
 else()
     message(FATAL_ERROR
         "LIGHTNVR_MAX_STREAMS must be 'auto' or an integer from 1 to 1024")
@@ -570,8 +576,13 @@ set(EZXML_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ezxml/ezxml.c"
 )
 
+# Put generated headers first, including for test subdirectories. An older
+# in-source build may have left include/core/version.h in the source tree.
+set(GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include")
+
 # Define all include directories in one place
 set(LIGHTNVR_INCLUDE_DIRS
+        ${GENERATED_INCLUDE_DIR}
         ${LIGHTNVR_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${FFMPEG_INCLUDE_DIRS}
@@ -958,24 +969,30 @@ else()
         execute_process(
             COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            OUTPUT_VARIABLE GIT_COMMIT
+            OUTPUT_VARIABLE GIT_COMMIT_CANDIDATE
+            RESULT_VARIABLE GIT_REV_PARSE_RESULT
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
         )
+        if(GIT_REV_PARSE_RESULT EQUAL 0 AND NOT "${GIT_COMMIT_CANDIDATE}" STREQUAL "")
+            set(GIT_COMMIT "${GIT_COMMIT_CANDIDATE}")
+            string(TOLOWER "${GIT_COMMIT}" GIT_COMMIT)
+        endif()
     endif()
 endif()
 
 # Build date in ISO-8601
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
-# Create a version.h file
+# Create a version.h file in the build tree (out-of-source safe)
+file(MAKE_DIRECTORY "${GENERATED_INCLUDE_DIR}/core")
 file(READ
         "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in"
         VERSION_H_IN
 )
 string(CONFIGURE "${VERSION_H_IN}" VERSION_H_OUT @ONLY)
 file(GENERATE
-        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h"
+        OUTPUT "${GENERATED_INCLUDE_DIR}/core/version.h"
         CONTENT "${VERSION_H_OUT}"
 )
 
