@@ -1792,12 +1792,29 @@ export function WebRTCVideoCell({
               title={talkMode === 'ptt'
                 ? (isTalking ? t('live.releaseToStopTalking') : t('live.holdToTalk'))
                 : (isTalking ? t('live.clickToStopTalking') : t('live.clickToStartTalking'))}
+              aria-label={talkMode === 'ptt'
+                ? (isTalking ? t('live.releaseToStopTalking') : t('live.holdToTalk'))
+                : (isTalking ? t('live.clickToStopTalking') : t('live.clickToStartTalking'))}
               onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
               onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
               onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
               onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
               onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
               onTouchCancel={talkMode === 'ptt' ? stopTalking : undefined}
+              onKeyDown={talkMode === 'ptt' ? (e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  if (!isTalking) {
+                    startTalking();
+                  }
+                }
+              } : undefined}
+              onKeyUp={talkMode === 'ptt' ? (e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  stopTalking();
+                }
+              } : undefined}
               onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
               style={{
                 backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
