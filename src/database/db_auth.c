@@ -852,6 +852,66 @@ int db_auth_update_user(int64_t user_id, const char *username, const char *email
     return 0;
 }
 
+int db_auth_update_user_account(int64_t user_id, const char *username,
+                                const char *email, int role, int is_active,
+                                const char *password, bool set_login_cidrs,
+                                const char *allowed_login_cidrs) {
+    char normalized[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
+    bool has_entries = false;
+    // Resolve schema/cache work before taking the connection mutex: schema
+    // probes may acquire their own mutex before accessing the database.
+    if (set_login_cidrs &&
+        (!cached_column_exists("users", "allowed_login_cidrs") ||
+         normalize_allowed_login_cidrs(allowed_login_cidrs, normalized,
+                                       sizeof(normalized), &has_entries) != 0)) {
+        return -1;
+    }
+
+    pthread_mutex_t *mutex = get_db_mutex();
+    pthread_mutex_lock(mutex);
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
+    // Other legacy helpers use the shared connection without get_db_mutex().
+    // Hold SQLite's recursive connection mutex too, so their statements cannot
+    // join this transaction between our individual updates.
+    sqlite3_mutex *connection_mutex = sqlite3_db_mutex(db);
+    sqlite3_mutex_enter(connection_mutex);
+    int rc = -1;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+        goto done;
+    }
+    rc = db_auth_update_user(user_id, username, email, role, is_active);
+    if (rc == 0 && set_login_cidrs) {
+        sqlite3_stmt *stmt = NULL;
+        rc = -1;
+        if (sqlite3_prepare_v2(db,
+                "UPDATE users SET allowed_login_cidrs = ? WHERE id = ?;",
+                -1, &stmt, NULL) == SQLITE_OK) {
+            if (has_entries) sqlite3_bind_text(stmt, 1, normalized, -1, SQLITE_TRANSIENT);
+            else sqlite3_bind_null(stmt, 1);
+            sqlite3_bind_int64(stmt, 2, user_id);
+            if (sqlite3_step(stmt) == SQLITE_DONE) rc = 0;
+        }
+        sqlite3_finalize(stmt);
+    }
+    if (rc == 0 && password) {
+        int password_rc = db_auth_change_password(user_id, password);
+        rc = password_rc == -2 ? -3 : (password_rc == 0 ? 0 : -1);
+    }
+    if (rc == 0 && (password || is_active == 0)) {
+        rc = db_auth_delete_user_sessions(user_id);
+    }
+    if (rc == 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) rc = -1;
+    if (rc != 0) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+done:
+    sqlite3_mutex_leave(connection_mutex);
+    pthread_mutex_unlock(mutex);
+    return rc;
+}
+
 /**
  * Change a user's password
  */

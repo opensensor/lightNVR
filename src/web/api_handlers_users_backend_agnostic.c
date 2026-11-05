@@ -383,7 +383,18 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
 
     const char *password = password_json->valuestring;
     const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
-    int role = (role_json && cJSON_IsNumber(role_json)) ? role_json->valueint : USER_ROLE_USER;
+
+    if (role_json) {
+        if (!cJSON_IsNumber(role_json) ||
+            role_json->valuedouble < 0 || role_json->valuedouble > 3 ||
+            role_json->valuedouble != role_json->valueint) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "Invalid role");
+            return;
+        }
+    }
+
+    int role = role_json ? role_json->valueint : USER_ROLE_USER;
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : 1;
 
     // Validate username
@@ -626,9 +637,11 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         role = role_json->valueint;
     }
 
-    // Update password if provided and not empty
+    // Validate password if provided and not empty; apply it only after other updates succeed
+    const char *password = NULL;
+    int has_password_update = 0;
     if (password_json && cJSON_IsString(password_json)) {
-        const char *password = password_json->valuestring;
+        password = password_json->valuestring;
 
         // Only update if password is not empty
         if (strlen(password) > 0) {
@@ -638,49 +651,25 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
                 http_response_set_json_error(res, 400, "Password must be at least 8 characters");
                 return;
             }
-
-            rc = db_auth_change_password(user_id, password);
-            if (rc == -2) {
-                // Password changes are locked for this user
-                cJSON_Delete(json_req);
-                http_response_set_json_error(res, 403, "Password changes are locked for this user");
-                return;
-            } else if (rc != 0) {
-                cJSON_Delete(json_req);
-                http_response_set_json_error(res, 500, "Failed to update password");
-                return;
-            }
-
-            db_auth_delete_user_sessions(user_id);
-            log_info("Invalidated all sessions for user %lld after password change", (long long)user_id);
+            has_password_update = 1;
         }
     }
 
-    // Update other fields
     const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : -1;
 
-    rc = db_auth_update_user(user_id, username, email, role, is_active);
-
-    if (rc == -2) {
-        cJSON_Delete(json_req);
-        http_response_set_json_error(res, 409, "Username already exists");
-        return;
-    }
-
-    if (rc == 0 && is_active == 0) {
-        db_auth_delete_user_sessions(user_id);
-        log_info("Invalidated all sessions for user %lld after deactivation", (long long)user_id);
-    }
-
-    if (rc == 0 && set_allowed_login_cidrs && db_auth_set_allowed_login_cidrs(user_id, allowed_login_cidrs) != 0) {
-        rc = -1;
-    }
-
+    rc = db_auth_update_user_account(user_id, username, email, role, is_active,
+                                     has_password_update ? password : NULL,
+                                     set_allowed_login_cidrs, allowed_login_cidrs);
     cJSON_Delete(json_req);
-
     if (rc != 0) {
-        http_response_set_json_error(res, 500, "Failed to update user");
+        if (rc == -2) {
+            http_response_set_json_error(res, 409, "Username already exists");
+        } else if (rc == -3) {
+            http_response_set_json_error(res, 403, "Password changes are locked for this user");
+        } else {
+            http_response_set_json_error(res, 500, "Failed to update user");
+        }
         return;
     }
 

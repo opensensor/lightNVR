@@ -121,6 +121,16 @@ int db_auth_create_user(const char *username, const char *password, const char *
  */
 int db_auth_update_user(int64_t user_id, const char *username, const char *email, int role, int is_active);
 
+/** Update account fields, optional password/CIDRs, and session revocation atomically.
+ * NULL password leaves credentials unchanged. Return 0 on success, -2 for a
+ * duplicate username, -3 for a locked password, or -1 on any other failure.
+ */
+int db_auth_update_user_account(int64_t user_id, const char *username,
+                                const char *email, int role, int is_active,
+                                const char *password, bool set_login_cidrs,
+                                const char *allowed_login_cidrs);
+
+
 /**
  * @brief Change a user's password
  * 
