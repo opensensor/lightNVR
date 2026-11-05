@@ -50,9 +50,20 @@
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
 
-#define TEST_DB_PATH "/tmp/lightnvr_unit_authorization_test.db"
+static char TEST_DB_PATH[] = "/tmp/lightnvr_unit_authorization_test.XXXXXX";
 #define OPERATOR_ROLE_UUID "00000000-0000-4000-8000-000000000002"
 #define ADMIN_ROLE_UUID "00000000-0000-4000-8000-000000000001"
+
+static void initialize_test_db_path(void) {
+    static int initialized = 0;
+    if (initialized) return;
+
+    int fd = mkstemp(TEST_DB_PATH);
+    TEST_ASSERT_TRUE_MESSAGE(fd >= 0, "Failed to create unique temporary DB path");
+    close(fd);
+    unlink(TEST_DB_PATH);
+    initialized = 1;
+}
 
 static stream_config_t create_camera(const char *name, const char *tags) {
     stream_config_t stream;
