@@ -780,6 +780,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddNumberToObject(recording, "start_time_unix", (double)recordings[i].start_time);
         cJSON_AddBoolToObject(recording, "in_progress", in_progress);
+        cJSON_AddStringToObject(recording, "playback_issue", recordings[i].playback_issue);
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
         cJSON_AddStringToObject(recording, "capture_method",

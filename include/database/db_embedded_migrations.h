@@ -2099,6 +2099,12 @@ static const char migration_0090_up[] =
 static const char migration_0090_down[] =
     "DROP INDEX IF EXISTS idx_detections_external_motion_camera_end;";
 
+static const char migration_0091_up[] =
+    "ALTER TABLE recordings ADD COLUMN playback_issue TEXT NOT NULL DEFAULT '';";
+
+static const char migration_0091_down[] =
+    "ALTER TABLE recordings DROP COLUMN playback_issue;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2730,8 +2736,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0090_down,
         .is_embedded = true
     },
+    {
+        .version = "0091",
+        .description = "add_recording_playback_issue",
+        .sql_up = migration_0091_up,
+        .sql_down = migration_0091_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 90
+#define EMBEDDED_MIGRATIONS_COUNT 91
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

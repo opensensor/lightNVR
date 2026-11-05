@@ -40,7 +40,7 @@
  * window.  This also self-expires incomplete "zombie" rows left behind when
  * a writer thread is killed mid-segment (those keep their fixed, aging
  * start_time and drop out of the view once the window passes; the startup
- * reconcile pass in storage_manager.c finalizes the ones that can still play).
+ * reconcile pass in storage_manager.c finalizes them with any playback issue reported separately).
  *
  * When the per-stream config row is missing we fall back to the schema
  * default of 900 s.  The LEFT JOIN on streams is indexed on streams.name
@@ -337,8 +337,9 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
 }
 
 // Update recording metadata in the database
-int update_recording_metadata(uint64_t id, time_t end_time,
-                             uint64_t size_bytes, bool is_complete) {
+static int update_recording_metadata_with_issue(uint64_t id, time_t end_time,
+                             uint64_t size_bytes, bool is_complete,
+                             const char *playback_issue) {
     int rc;
     sqlite3_stmt *stmt;
 
@@ -352,8 +353,9 @@ int update_recording_metadata(uint64_t id, time_t end_time,
 
     pthread_mutex_lock(db_mutex);
 
-    const char *sql = "UPDATE recordings SET end_time = ?, size_bytes = ?, is_complete = ? "
-                      "WHERE id = ?;";
+    const char *sql = "UPDATE recordings SET end_time = ?, size_bytes = ?, is_complete = ?, "
+                      "playback_issue = COALESCE(?5, playback_issue) "
+                      "WHERE id = ?4;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -369,6 +371,9 @@ int update_recording_metadata(uint64_t id, time_t end_time,
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)size_bytes);
     sqlite3_bind_int(stmt, 3, is_complete ? 1 : 0);
     sqlite3_bind_int64(stmt, 4, (sqlite3_int64)id);
+
+    if (playback_issue) sqlite3_bind_text(stmt, 5, playback_issue, -1, SQLITE_TRANSIENT);
+    else sqlite3_bind_null(stmt, 5);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -400,6 +405,17 @@ int update_recording_metadata(uint64_t id, time_t end_time,
     pthread_mutex_unlock(db_mutex);
 
     return 0;
+}
+
+int update_recording_metadata(uint64_t id, time_t end_time,
+                             uint64_t size_bytes, bool is_complete) {
+    return update_recording_metadata_with_issue(id, end_time, size_bytes, is_complete, NULL);
+}
+
+int finalize_recording_reconciliation(uint64_t id, time_t end_time,
+                                      uint64_t size_bytes, const char *playback_issue) {
+    if (!playback_issue) return -1;
+    return update_recording_metadata_with_issue(id, end_time, size_bytes, true, playback_issue);
 }
 
 /**
@@ -478,7 +494,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                       "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
                       "schedule_restricted, camera_uuid, r.storage_target_uuid, "
-                      "r.object_key, r.placement_reason, r.storage_policy_version "
+                      "r.object_key, r.placement_reason, r.storage_policy_version, r.playback_issue "
                       "FROM recordings r WHERE r.id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -573,6 +589,10 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
             sqlite3_column_type(stmt, 21) == SQLITE_NULL
                 ? 0 : sqlite3_column_int64(stmt, 21);
 
+        const char *playback_issue = (const char *)sqlite3_column_text(stmt, 22);
+        safe_strcpy((*metadata).playback_issue, playback_issue ? playback_issue : "",
+                    sizeof((*metadata).playback_issue), 0);
+
         result = 0; // Success
     }
 
@@ -621,7 +641,7 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                       "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                      "schedule_restricted, camera_uuid "
+                      "schedule_restricted, camera_uuid, playback_issue "
                       "FROM recordings WHERE file_path = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -697,6 +717,10 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
         safe_strcpy(metadata->camera_uuid, camera_uuid ? camera_uuid : "",
                     sizeof(metadata->camera_uuid), 0);
 
+        const char *playback_issue = (const char *)sqlite3_column_text(stmt, 18);
+        safe_strcpy((*metadata).playback_issue, playback_issue ? playback_issue : "",
+                    sizeof((*metadata).playback_issue), 0);
+
         result = 0; // Success
     }
 
@@ -734,7 +758,7 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     snprintf(sql, sizeof(sql), "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                  "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                 "schedule_restricted, camera_uuid "
+                 "schedule_restricted, camera_uuid, playback_issue "
                  "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
 
     if (start_time > 0) {
@@ -845,6 +869,10 @@ int get_recording_metadata(time_t start_time, time_t end_time,
             safe_strcpy(metadata[count].camera_uuid,
                         camera_uuid ? camera_uuid : "",
                         sizeof(metadata[count].camera_uuid), 0);
+
+            const char *playback_issue = (const char *)sqlite3_column_text(stmt, 18);
+            safe_strcpy(metadata[count].playback_issue, playback_issue ? playback_issue : "",
+                        sizeof(metadata[count].playback_issue), 0);
 
             count++;
         }
@@ -1167,7 +1195,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
                 "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
                 "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
-                "r.schedule_restricted, r.camera_uuid "
+                "r.schedule_restricted, r.camera_uuid, r.playback_issue "
                 "FROM recordings r "
                 "LEFT JOIN streams s ON s.name = r.stream_name "
                 "WHERE " RECORDINGS_VISIBLE_PREDICATE,
@@ -1177,7 +1205,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
                 "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
                 "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
-                "r.schedule_restricted, r.camera_uuid "
+                "r.schedule_restricted, r.camera_uuid, r.playback_issue "
                 "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL",
                 sizeof(sql), 0);
     }
@@ -1451,6 +1479,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             safe_strcpy(metadata[count].camera_uuid,
                         camera_uuid ? camera_uuid : "",
                         sizeof(metadata[count].camera_uuid), 0);
+
+            const char *playback_issue = (const char *)sqlite3_column_text(stmt, 18);
+            safe_strcpy(metadata[count].playback_issue, playback_issue ? playback_issue : "",
+                        sizeof(metadata[count].playback_issue), 0);
 
             count++;
         }
@@ -2531,10 +2563,9 @@ int get_recordings_for_pressure_cleanup_default_target(
 }
 
 /**
- * Page through recordings still marked incomplete (is_complete = 0) that
- * started before cutoff. These were interrupted by an unclean shutdown/crash:
- * the finalize path never ran. The caller inspects the on-disk file to either
- * finalize or prune each one.
+ * Page through interrupted recordings and previously flagged playback issues
+ * that started before cutoff. The caller checks the on-disk file to finalize
+ * stopped writers, refresh playback status, or prune missing/empty files.
  *
  * Paging is keyed on id, so a row the caller has to retain is never returned
  * again and cannot stop the scan from reaching newer rows.
@@ -2577,7 +2608,7 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
         "storage_target_uuid, object_key "
         "FROM recordings "
-        "WHERE is_complete = 0 AND deletion_pending = 0 AND start_time < ? "
+        "WHERE (is_complete = 0 OR playback_issue != '') AND deletion_pending = 0 AND start_time < ? "
         "AND id > ? AND id <= ? "
         "ORDER BY id ASC "
         "LIMIT ?;";
@@ -2617,7 +2648,7 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
         if (codec) safe_strcpy(recordings[count].codec, codec, sizeof(recordings[count].codec), 0);
         else recordings[count].codec[0] = '\0';
 
-        recordings[count].is_complete = false;
+        recordings[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
 
         const char *ttype = (const char *)sqlite3_column_text(stmt, 11);
         if (ttype) safe_strcpy(recordings[count].trigger_type, ttype, sizeof(recordings[count].trigger_type), 0);

@@ -81,6 +81,12 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
         return;
     }
 
+    if (recording_playback_unavailable(&recording)) {
+        http_response_set_json_error(res, 422,
+            "Playback is unavailable for this interrupted recording. Download the original file for recovery, or delete it.");
+        return;
+    }
+
     if (recording_archive_serve(req, res, id, false)) return;
 
     if (!recording_source_for_request(req, res, id, recording.file_path)) return;

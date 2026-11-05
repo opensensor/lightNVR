@@ -4,6 +4,9 @@
  * On hover, cycles through 3 thumbnail frames (start, middle, end).
  */
 
+import { RecordingPlaybackNotice } from './RecordingPlaybackNotice.tsx';
+import { recordingPlaybackUnavailable } from '../../../utils/recording-media-status.ts';
+
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.ts';
 import {
@@ -177,17 +180,18 @@ function RecordingCard({
   // the MP4 index is not finalized until the segment completes, so the
   // thumbnail extractor cannot serve it yet (#482).
   const inProgress = !!recording.in_progress;
+  const playbackUnavailable = recordingPlaybackUnavailable(recording);
 
   /** Load (or reload) the mount-time (first-frame) thumbnail. */
   const loadThumbnail = useCallback(() => {
-    if (inProgress) return;
+    if (inProgress || playbackUnavailable) return;
     const url = `/api/recordings/thumbnail/${recording.id}/0`;
     setLoadState('loading');
     imgErrorCountRef.current = 0;
     queueThumbnailLoad(url, Priority.HIGH)
       .then(() => setLoadState('loaded'))
       .catch(() => setLoadState('error'));
-  }, [inProgress, recording.id]);
+  }, [inProgress, playbackUnavailable, recording.id]);
 
   // Handle <img> element load errors — if the decoded image was evicted
   // from the browser cache between queueThumbnailLoad success and render,
@@ -231,7 +235,7 @@ function RecordingCard({
   // request queue and cause a stampede).
   // Skipped entirely when hoverFramesEnabled is false (#364 single-thumb mode).
   useEffect(() => {
-    if (!hoverFramesEnabled || inProgress) return;
+    if (!hoverFramesEnabled || inProgress || playbackUnavailable) return;
     if (isHovering && !preloadedRef.current) {
       preloadedRef.current = true;
       const promises = [1, 2].map(i => {
@@ -245,7 +249,7 @@ function RecordingCard({
           setFramesReady(true);
         });
     }
-  }, [isHovering, recording.id, hoverFramesEnabled]);
+  }, [isHovering, recording.id, hoverFramesEnabled, inProgress, playbackUnavailable]);
 
   // Reset framesReady when no longer hovering
   // (preloadedRef stays true so we don't re-fetch on next hover)
@@ -286,10 +290,10 @@ function RecordingCard({
       {/* Thumbnail area */}
       <div /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- pointer shortcut for the Play action button */
         class="relative aspect-video bg-muted overflow-hidden"
-        onClick={() => playRecording(recording)}
+        onClick={() => { if (!playbackUnavailable) playRecording(recording); }}
         title={inProgress ? t('recordings.inProgressToast') : undefined}
       >
-        {!show('actions') && (
+        {!show('actions') && !playbackUnavailable && (
           <button
             type="button"
             class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:inset-e-2 focus:z-10 rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
@@ -298,7 +302,9 @@ function RecordingCard({
             {t('recordings.play')}
           </button>
         )}
-        {inProgress ? (
+        {playbackUnavailable ? (
+          <div class="w-full h-full flex items-center justify-center p-3 text-sm text-muted-foreground">{t('recordings.playbackUnavailable')}</div>
+        ) : inProgress ? (
           <div class="w-full h-full flex flex-col items-center justify-center gap-2 text-destructive">
             <span class="relative flex h-3 w-3" aria-hidden="true">
               <span class="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75 animate-ping" />
@@ -336,14 +342,14 @@ function RecordingCard({
         )}
 
         {/* Play overlay on hover */}
-        <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        {!playbackUnavailable && <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <svg class="w-12 h-12 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
           </svg>
-        </div>
+        </div>}
 
         {/* Frame indicator dots */}
-        {isHovering && (
+        {isHovering && !playbackUnavailable && (
           <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
             {[0, 1, 2].map(i => (
               <div
@@ -404,8 +410,9 @@ function RecordingCard({
       </div>
 
       {/* Card info — only render if at least one info element is visible */}
-      {(show('stream') || show('detections') || show('actions')) && (
+      {(recording.playback_issue || show('stream') || show('detections') || show('actions')) && (
         <div class="p-3">
+          <RecordingPlaybackNotice recording={recording} />
           {show('stream') && (
             <div class="mb-1">
               <div class="flex items-center justify-between gap-2">
@@ -477,8 +484,9 @@ function RecordingCard({
               <button
                 class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--primary))' }}
-                onClick={() => playRecording(recording)}
-                title={t('recordings.play')}
+                onClick={() => { if (!playbackUnavailable) playRecording(recording); }}
+                disabled={playbackUnavailable}
+                title={t(playbackUnavailable ? 'recordings.playbackUnavailable' : 'recordings.play')}
                 aria-label={t('recordings.play')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -489,8 +497,8 @@ function RecordingCard({
                 class="p-1 rounded-full"
                 style={{ color: 'hsl(var(--success))' }}
                 onClick={() => downloadRecording(recording)}
-                title={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
-                aria-label={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
+                title={t(recording.playback_issue ? 'recordings.downloadOriginal' : 'common.download')}
+                aria-label={t(recording.playback_issue ? 'recordings.downloadOriginal' : 'common.download')}
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />

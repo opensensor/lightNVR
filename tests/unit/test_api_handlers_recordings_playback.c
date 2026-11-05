@@ -81,6 +81,7 @@ int __wrap_http_serve_file(const http_request_t *req, const http_response_t *res
 }
 
 void setUp(void) {
+    recording.playback_issue[0] = '\0';
     http_request_init(&request);
     http_response_init(&response);
     strcpy(request.path, "/api/recordings/play/42");
@@ -235,6 +236,23 @@ void test_in_progress_recording_is_rejected_with_conflict(void) {
     TEST_ASSERT_EQUAL_INT(0, prepare_calls);
 }
 
+void test_damaged_recording_reports_recovery_without_transcoding(void) {
+    strcpy(recording.playback_issue, "invalid_media");
+    handle_recordings_playback(&request, &response);
+    TEST_ASSERT_EQUAL_INT(422, response.status_code);
+    TEST_ASSERT_NOT_NULL(strstr(response.body, "Download the original"));
+    TEST_ASSERT_EQUAL_INT(0, serve_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+}
+
+void test_inconclusive_probe_still_allows_playback(void) {
+    strcpy(recording.playback_issue, "probe_limit");
+    request.query_string[0] = '\0';
+    handle_recordings_playback(&request, &response);
+    TEST_ASSERT_EQUAL_INT(1, serve_calls);
+    TEST_ASSERT_EQUAL_INT(0, prepare_calls);
+}
+
 int main(void) {
     if (!mkdtemp(directory)) return 1;
     strcpy(g_config.storage_path, directory);
@@ -257,6 +275,8 @@ int main(void) {
     RUN_TEST(test_archive_preparation_returns_retry_without_starting_transcode);
     RUN_TEST(test_archive_media_preparation_failure_and_deletion_are_not_served);
     RUN_TEST(test_source_only_preparation_never_probes_or_transcodes_hevc);
+    RUN_TEST(test_damaged_recording_reports_recovery_without_transcoding);
+    RUN_TEST(test_inconclusive_probe_still_allows_playback);
     RUN_TEST(test_in_progress_recording_is_rejected_with_conflict);
     int result = UNITY_END();
     unlink(recording.file_path);

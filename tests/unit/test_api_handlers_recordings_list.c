@@ -401,6 +401,36 @@ void test_handle_get_recordings_includes_still_recording_segment(void) {
     recordings_count_cache_reset();
 }
 
+void test_interrupted_recordings_are_listed_with_playback_issues(void) {
+    g_config.web_auth_enabled = false;
+    recordings_count_cache_reset();
+    create_stream("damaged_cam");
+    raw_insert_recording("damaged_cam", "/tmp/damaged.mp4", time(NULL) - 7200);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE recordings SET playback_issue='invalid_media' WHERE stream_name='damaged_cam';",
+        NULL, NULL, NULL));
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.method = HTTP_METHOD_GET;
+    strcpy(req.path, "/api/recordings");
+    strcpy(req.query_string, "stream=damaged_cam&limit=1");
+    handle_get_recordings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = cJSON_Parse(res.body);
+    TEST_ASSERT_NOT_NULL(root);
+    cJSON *pagination = cJSON_GetObjectItem(root, "pagination");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItem(pagination, "total")->valueint);
+    cJSON *items = cJSON_GetObjectItem(root, "recordings");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(items));
+    cJSON *item = cJSON_GetArrayItem(items, 0);
+    TEST_ASSERT_EQUAL_STRING("invalid_media", cJSON_GetObjectItem(item, "playback_issue")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(item, "in_progress")));
+    cJSON_Delete(root);
+    http_response_free(&res);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -408,6 +438,7 @@ int main(void) {
         return 1;
     }
     UNITY_BEGIN();
+    RUN_TEST(test_interrupted_recordings_are_listed_with_playback_issues);
     RUN_TEST(test_count_cache_key_covers_every_filter_component_and_scope);
     RUN_TEST(test_count_cache_hit_within_ttl_miss_after_ttl_or_clock_rewind);
     RUN_TEST(test_count_cache_invalidates_on_generation_change);

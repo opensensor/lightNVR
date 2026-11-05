@@ -1,18 +1,10 @@
 #ifndef LIGHTNVR_RECORDING_MEDIA_PROBE_H
 #define LIGHTNVR_RECORDING_MEDIA_PROBE_H
 
-#include <stdbool.h>
+/* Decode an initial video frame from a local MP4 within a best-effort budget.
+ * Returns an empty string on success, a media-failure code, or an inconclusive
+ * code (probe_limit, decoder_unavailable, probe_error). Returned strings are static.
+ * A successful initial frame does not certify the rest of a damaged file. */
+const char *recording_media_probe_issue(const char *path);
 
-/**
- * Check that an MP4 can actually be played, by decoding its first video frame.
- *
- * A writer that dies before writing the trailer leaves a file with no moov atom,
- * and a faststart header can survive with its video data missing. Neither plays,
- * though both are non-empty.
- *
- * @return true only if a video frame decodes without errors, or if the video
- *         packets read correctly and this build has no decoder for the codec
- */
-bool recording_media_has_playable_video(const char *path);
-
-#endif /* LIGHTNVR_RECORDING_MEDIA_PROBE_H */
+#endif

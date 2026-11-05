@@ -2,6 +2,9 @@
  * RecordingsTable component for RecordingsView
  */
 
+import { RecordingPlaybackNotice } from './RecordingPlaybackNotice.tsx';
+import { recordingPlaybackUnavailable } from '../../../utils/recording-media-status.ts';
+
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { formatUtils } from './formatUtils.ts';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.tsx';
@@ -409,7 +412,7 @@ export function RecordingsTable({
                     </span>
                   </td>
                 )}
-                <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}<RecordingPlaybackNotice recording={recording} /></td>
                 {isColumnVisible('duration') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     {recording.in_progress ? (
@@ -461,7 +464,8 @@ export function RecordingsTable({
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => playRecording(recording)}
-                              title={t('recordings.play')}
+                              disabled={recordingPlaybackUnavailable(recording)}
+                              title={t(recordingPlaybackUnavailable(recording) ? 'recordings.playbackUnavailable' : 'recordings.play')}
                               aria-label={t('recordings.play')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
@@ -474,8 +478,8 @@ export function RecordingsTable({
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onBlur={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => downloadRecording(recording)}
-                              title={t('common.download')}
-                              aria-label={t('common.download')}>
+                              title={t(recording.playback_issue ? 'recordings.downloadOriginal' : 'common.download')}
+                              aria-label={t(recording.playback_issue ? 'recordings.downloadOriginal' : 'common.download')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"></path>
                         </svg>

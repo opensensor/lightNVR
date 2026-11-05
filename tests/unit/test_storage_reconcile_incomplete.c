@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/time.h>
+#include "video/recording_media_probe.h"
 #include <limits.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -40,6 +42,18 @@ static const char *g_failed_stat_path;
 static char g_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
 static char g_playable[PATH_MAX];
 static long g_playable_size;
+static bool g_missing_decoder;
+static bool g_probe_expired;
+static int g_clock_calls;
+
+const AVCodec *__real_avcodec_find_decoder(enum AVCodecID id);
+const AVCodec *__wrap_avcodec_find_decoder(enum AVCodecID id) {
+    return g_missing_decoder ? NULL : __real_avcodec_find_decoder(id);
+}
+int64_t __real_av_gettime_relative(void);
+int64_t __wrap_av_gettime_relative(void) {
+    return g_probe_expired ? (g_clock_calls++ ? 10000000 : 0) : __real_av_gettime_relative();
+}
 
 int __real_stat(const char *path, struct stat *st);
 int __real_lstat(const char *path, struct stat *st);
@@ -193,16 +207,26 @@ static void add_playable_row(const char *path) {
     add_row(path, false, false, NULL);
 }
 
-static void assert_kept_hidden(const char *path) {
-    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+static void assert_visible_with_issue(const char *path) {
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
     TEST_ASSERT_EQUAL_INT(1, query_count(
-        "SELECT COUNT(*) FROM recordings WHERE is_complete=0 AND deletion_pending=0;"));
+        "SELECT COUNT(*) FROM recordings WHERE is_complete=1 AND playback_issue != '' AND deletion_pending=0;"));
     TEST_ASSERT_EQUAL_INT(0, access(path, F_OK));
+    recording_metadata_t listing[2];
+    TEST_ASSERT_EQUAL_INT(1, get_recording_metadata(0, 0, "cam", listing, 2));
+    TEST_ASSERT_TRUE(recording_playback_unavailable(&listing[0]));
+    TEST_ASSERT_TRUE(listing[0].size_bytes > 0);
+    TEST_ASSERT_TRUE(listing[0].end_time >= listing[0].start_time);
+    recording_metadata_t detail;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(listing[0].id, &detail));
+    TEST_ASSERT_EQUAL_STRING(listing[0].playback_issue, detail.playback_issue);
     unlink(path);
 }
 
 void setUp(void) {
     g_failed_stat_path = NULL;
+    g_missing_decoder = g_probe_expired = false;
+    g_clock_calls = 0;
     exec_sql("DELETE FROM recordings;");
 }
 
@@ -238,33 +262,33 @@ static void test_nonregular_media_is_retained_without_scheduling_deletion(void) 
     unlink(path);
 }
 
-static void test_crash_file_without_a_trailer_stays_hidden(void) {
+static void test_crash_file_without_a_trailer_stays_visible_with_issue(void) {
     char path[PATH_MAX];
     next_path(path, sizeof(path), g_present_dir);
     write_mp4(path, true, false);
     add_row(path, false, false, NULL);
-    assert_kept_hidden(path);
+    assert_visible_with_issue(path);
 }
 
-static void test_non_mp4_contents_stay_hidden(void) {
+static void test_non_mp4_contents_stay_visible_with_issue(void) {
     char path[PATH_MAX];
     next_path(path, sizeof(path), g_present_dir);
     create_file(path, "footage");
     add_row(path, false, false, NULL);
-    assert_kept_hidden(path);
+    assert_visible_with_issue(path);
 }
 
-static void test_header_without_its_video_data_stays_hidden(void) {
+static void test_header_without_its_video_data_stays_visible_with_issue(void) {
     char path[PATH_MAX];
     next_path(path, sizeof(path), g_present_dir);
     write_mp4(path, true, true);
     off_t payload_size = 0;
     TEST_ASSERT_EQUAL_INT(0, truncate(path, mdat_payload_offset(path, &payload_size)));
     add_row(path, false, false, NULL);
-    assert_kept_hidden(path);
+    assert_visible_with_issue(path);
 }
 
-static void test_zeroed_video_data_stays_hidden(void) {
+static void test_zeroed_video_data_stays_visible_with_issue(void) {
     char path[PATH_MAX];
     next_path(path, sizeof(path), g_present_dir);
     write_mp4(path, true, true);
@@ -279,7 +303,7 @@ static void test_zeroed_video_data_stays_hidden(void) {
     close(fd);
     free(zeros);
     add_row(path, false, false, NULL);
-    assert_kept_hidden(path);
+    assert_visible_with_issue(path);
 }
 
 static void test_unplayable_row_is_rechecked_at_the_next_startup(void) {
@@ -287,12 +311,12 @@ static void test_unplayable_row_is_rechecked_at_the_next_startup(void) {
     next_path(path, sizeof(path), g_present_dir);
     create_file(path, "footage");
     add_row(path, false, false, NULL);
-    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
 
     write_mp4(path, true, true);
 
     TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
-    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT COUNT(*) FROM recordings WHERE is_complete=1;"));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT COUNT(*) FROM recordings WHERE is_complete=1 AND playback_issue='';"));
     unlink(path);
 }
 
@@ -454,6 +478,48 @@ static void test_ordinary_deletion_still_refuses_incomplete_rows(void) {
     TEST_ASSERT_EQUAL_INT(1, query_count("SELECT COUNT(*) FROM recordings;"));
 }
 
+static void test_inconclusive_checks_stay_visible_and_do_not_block_playback(void) {
+    const char *issues[] = {"decoder_unavailable", "probe_limit"};
+    for (int i = 0; i < 2; ++i) {
+        exec_sql("DELETE FROM recordings;");
+        char path[PATH_MAX];
+        next_path(path, sizeof(path), g_present_dir);
+        add_playable_row(path);
+        g_missing_decoder = i == 0;
+        g_probe_expired = i == 1;
+        g_clock_calls = 0;
+        TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
+        recording_metadata_t listing[2];
+        TEST_ASSERT_EQUAL_INT(1, get_recording_metadata(0, 0, "cam", listing, 2));
+        TEST_ASSERT_EQUAL_STRING(issues[i], listing[0].playback_issue);
+        TEST_ASSERT_FALSE(recording_playback_unavailable(&listing[0]));
+        unlink(path);
+    }
+}
+
+static void test_damaged_recordings_keep_protection_and_can_be_deleted(void) {
+    char path[PATH_MAX];
+    next_path(path, sizeof(path), g_present_dir);
+    create_file(path, "not a video");
+    add_row(path, false, true, NULL);
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_incomplete_recordings());
+    recording_metadata_t rows[1];
+    TEST_ASSERT_EQUAL_INT(1, get_recording_metadata(0, 0, "cam", rows, 1));
+    TEST_ASSERT_TRUE(rows[0].protected);
+    TEST_ASSERT_TRUE(recording_playback_unavailable(&rows[0]));
+    exec_sql("UPDATE recordings SET start_time=strftime('%s','now')-172800;");
+    recording_metadata_t eligible[1];
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_retention("cam", 1, 1, eligible, 1));
+    TEST_ASSERT_EQUAL_INT(0, get_recordings_for_pressure_cleanup(eligible, 1));
+    exec_sql("UPDATE recordings SET protected=0;");
+    TEST_ASSERT_EQUAL_INT(1, get_recordings_for_retention("cam", 1, 1, eligible, 1));
+    TEST_ASSERT_EQUAL_UINT64(rows[0].id, eligible[0].id);
+    TEST_ASSERT_EQUAL_INT(1, get_recordings_for_pressure_cleanup(eligible, 1));
+    TEST_ASSERT_EQUAL_INT(0, delete_recording_metadata(rows[0].id));
+    TEST_ASSERT_EQUAL_INT(0, query_count("SELECT COUNT(*) FROM recordings;"));
+    TEST_ASSERT_EQUAL_INT(-1, access(path, F_OK));
+}
+
 int main(void) {
     strcpy(g_root, "/tmp/lightnvr_reconcile_XXXXXX");
     if (!mkdtemp(g_root)) return 1;
@@ -490,10 +556,12 @@ int main(void) {
     RUN_TEST(test_ordinary_deletion_still_refuses_incomplete_rows);
     RUN_TEST(test_failed_media_lookup_keeps_the_file_and_row);
     RUN_TEST(test_nonregular_media_is_retained_without_scheduling_deletion);
-    RUN_TEST(test_crash_file_without_a_trailer_stays_hidden);
-    RUN_TEST(test_non_mp4_contents_stay_hidden);
-    RUN_TEST(test_header_without_its_video_data_stays_hidden);
-    RUN_TEST(test_zeroed_video_data_stays_hidden);
+    RUN_TEST(test_inconclusive_checks_stay_visible_and_do_not_block_playback);
+    RUN_TEST(test_damaged_recordings_keep_protection_and_can_be_deleted);
+    RUN_TEST(test_crash_file_without_a_trailer_stays_visible_with_issue);
+    RUN_TEST(test_non_mp4_contents_stay_visible_with_issue);
+    RUN_TEST(test_header_without_its_video_data_stays_visible_with_issue);
+    RUN_TEST(test_zeroed_video_data_stays_visible_with_issue);
     RUN_TEST(test_unplayable_row_is_rechecked_at_the_next_startup);
     RUN_TEST(test_playable_file_without_faststart_is_finalized);
     RUN_TEST(test_available_target_media_is_reconciled);
