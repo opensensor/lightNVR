@@ -201,6 +201,12 @@ int db_camera_collection_list(camera_collection_t *collections, int max_count) {
     return count;
 }
 
+db_camera_collection_result_t db_camera_collection_get_on_connection(
+    sqlite3 *db, const char *uuid, camera_collection_t *collection) {
+    if (!db || !collection || !valid_uuid(uuid)) return DB_CAMERA_COLLECTION_INVALID;
+    return get_locked(db, uuid, collection);
+}
+
 db_camera_collection_result_t db_camera_collection_get(
     const char *uuid, camera_collection_t *collection) {
     sqlite3 *db = get_db_handle();
@@ -405,23 +411,30 @@ int db_camera_collection_list_members(
     char camera_uuids[][CAMERA_UUID_STRING_SIZE], int max_count) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    int result = db_camera_collection_list_members_on_connection(
+        db, collection_uuid, camera_uuids, max_count);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+int db_camera_collection_list_members_on_connection(sqlite3 *db,
+    const char *collection_uuid,
+    char camera_uuids[][CAMERA_UUID_STRING_SIZE], int max_count) {
     if (!db || !valid_uuid(collection_uuid) || !camera_uuids || max_count <= 0) {
         return -1;
     }
-    pthread_mutex_lock(mutex);
     camera_collection_t collection;
     db_camera_collection_result_t result =
         get_locked(db, collection_uuid, &collection);
     if (result == DB_CAMERA_COLLECTION_NOT_FOUND) {
-        pthread_mutex_unlock(mutex);
         return -2;
     }
     if (result != DB_CAMERA_COLLECTION_OK) {
-        pthread_mutex_unlock(mutex);
         return -1;
     }
     if (strcmp(collection.collection_type, "static") != 0) {
-        pthread_mutex_unlock(mutex);
         return -3;
     }
     sqlite3_stmt *stmt = NULL;
@@ -431,7 +444,6 @@ int db_camera_collection_list_members(
         "WHERE collection_uuid = ? ORDER BY camera_uuid;",
         -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        pthread_mutex_unlock(mutex);
         return -1;
     }
     sqlite3_bind_text(stmt, 1, collection_uuid, -1, SQLITE_TRANSIENT);
@@ -442,7 +454,6 @@ int db_camera_collection_list_members(
     }
     if (rc != SQLITE_ROW && rc != SQLITE_DONE) count = -1;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
     return count;
 }
 

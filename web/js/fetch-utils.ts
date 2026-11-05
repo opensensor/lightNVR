@@ -14,6 +14,8 @@ export interface EnhancedFetchOptions extends RequestInit {
   retryDelay?: number;
   /** Opt out of the redirect to the login page on a 401. */
   skipAuthRedirect?: boolean;
+  /** Suppress URL, payload and error logging for sensitive API calls. */
+  sensitive?: boolean;
 }
 
 /**
@@ -89,12 +91,13 @@ export async function enhancedFetch(url: string, options: EnhancedFetchOptions =
     retryDelay = 1000,
     signal: externalSignal,
     skipAuthRedirect = false, // Allow callers to opt-out of auto-redirect (e.g., login page)
+    sensitive = false,
     ...fetchOptions
   } = options;
 
   // Log the request details
-  console.log(`enhancedFetch: ${fetchOptions.method || 'GET'} ${url}`);
-  console.debug('enhancedFetch options:', {
+  if (!sensitive) console.log(`enhancedFetch: ${fetchOptions.method || 'GET'} ${url}`);
+  if (!sensitive) console.debug('enhancedFetch options:', {
     timeout,
     retries,
     retryDelay,
@@ -107,7 +110,9 @@ export async function enhancedFetch(url: string, options: EnhancedFetchOptions =
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    if (externalSignal?.aborted) throw new Error('Request was cancelled');
+    if (externalSignal?.aborted) throw sensitive
+      ? new DOMException('Request was cancelled', 'AbortError')
+      : new Error('Request was cancelled');
 
     // Each attempt needs its own timeout and signal. Reusing an aborted
     // controller makes every subsequent attempt fail immediately.
@@ -117,19 +122,19 @@ export async function enhancedFetch(url: string, options: EnhancedFetchOptions =
       : timeoutController.signal;
     let completed = false;
     const timeoutId = timeout ? setTimeout(() => {
-      console.warn(`enhancedFetch: Timeout reached for ${url}, aborting request`);
+      if (!sensitive) console.warn(`enhancedFetch: Timeout reached for ${url}, aborting request`);
       timeoutController.abort();
     }, timeout) : null;
 
     try {
-      console.debug(`enhancedFetch: Attempt ${attempt + 1}/${retries + 1} for ${url}`);
+      if (!sensitive) console.debug(`enhancedFetch: Attempt ${attempt + 1}/${retries + 1} for ${url}`);
       const response = await fetch(url, {
         credentials: 'same-origin',
         ...fetchOptions,
         signal
       });
 
-      console.log(`enhancedFetch response: ${response.status} ${response.statusText} for ${url}`);
+      if (!sensitive) console.log(`enhancedFetch response: ${response.status} ${response.statusText} for ${url}`);
 
       if (response.status === 401) {
         if (!skipAuthRedirect && !window._authDisabled && !window._demoMode) {
@@ -146,15 +151,18 @@ export async function enhancedFetch(url: string, options: EnhancedFetchOptions =
           const errorBody = (await response.json()) as ApiErrorBody | null;
           if (errorBody && errorBody.error) errorMessage = errorBody.error;
         } catch (parseError) {
-          console.debug('Could not parse error response body:', parseError);
+          if (!sensitive) console.debug('Could not parse error response body:', parseError);
         }
         throw new HTTPError(response.status, response.statusText, errorMessage);
       }
       completed = true;
       return response;
     } catch (error) {
-      console.error(`enhancedFetch error (attempt ${attempt + 1}/${retries + 1}):`, error);
-      if (externalSignal?.aborted) throw new Error('Request was cancelled');
+      if (!sensitive) console.error(`enhancedFetch error (attempt ${attempt + 1}/${retries + 1}):`, error);
+      if (externalSignal?.aborted) {
+        if (sensitive && typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError') throw error;
+        throw sensitive ? new DOMException('Request was cancelled', 'AbortError') : new Error('Request was cancelled');
+      }
       if (isAuthenticationError(error as FetchFailure) ||
           ((error as FetchFailure).status >= 400 && (error as FetchFailure).status < 500)) {
         throw error;
@@ -176,7 +184,7 @@ export async function enhancedFetch(url: string, options: EnhancedFetchOptions =
     }
 
     if (attempt < retries) {
-      console.log(`enhancedFetch: Waiting ${retryDelay}ms before retry ${attempt + 1} for ${url}`);
+      if (!sensitive) console.log(`enhancedFetch: Waiting ${retryDelay}ms before retry ${attempt + 1} for ${url}`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
   }
@@ -231,11 +239,11 @@ export function createRequestController() {
 export async function fetchJSON<T = unknown>(url: string, options: EnhancedFetchOptions = {}): Promise<T> {
   try {
     const response = await enhancedFetch(url, options);
-    console.log('fetchJSON: Parsing JSON response from', url);
+    if (!options.sensitive) console.log('fetchJSON: Parsing JSON response from', url);
     const data: T = await response.json();
     return data;
   } catch (error) {
-    console.error('fetchJSON: Error fetching or parsing JSON from', url, ':', error);
+    if (!options.sensitive) console.error('fetchJSON: Error fetching or parsing JSON from', url, ':', error);
     throw error;
   }
 }

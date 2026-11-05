@@ -378,7 +378,7 @@ export function SettingsView() {
       apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
       apiDetectionFormat: settingsData.api_detection_format || 'light-object-detect',
       apiDetectionDetectorName: settingsData.api_detection_detector_name || 'default',
-      defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
+      defaultDetectionThreshold: settingsData.default_detection_threshold ?? 50,
       defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
       defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
       defaultPlaybackTransport: settingsData.default_playback_transport || 'auto',

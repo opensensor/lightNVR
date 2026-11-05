@@ -1,0 +1,170 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Contract tool smoke fixture",
+    "version": "1.0.0",
+    "description": "Synthetic tooling fixture"
+  },
+  "servers": [
+    {
+      "url": "../"
+    }
+  ],
+  "security": [
+    {
+      "basic": []
+    }
+  ],
+  "paths": {
+    "/api/fixture": {
+      "get": {
+        "operationId": "getFixture",
+        "summary": "Read a synthetic fixture",
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Synthetic payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fixture"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-lightnvr-validators": [
+    "Fixture",
+    "Tuple",
+    "LiteralNames"
+  ],
+  "components": {
+    "securitySchemes": {
+      "basic": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    },
+    "schemas": {
+      "Identity": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "Fixture": {
+        "type": "object",
+        "required": [
+          "identity",
+          "count",
+          "variant"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/Identity"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "optional": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string",
+            "default": "not inserted"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "Tuple": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "items": false,
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "LiteralNames": {
+        "type": "object",
+        "required": [
+          "example",
+          "discriminator",
+          "xml",
+          "externalDocs",
+          "x-foo",
+          "$ref"
+        ],
+        "properties": {
+          "example": {
+            "type": "integer"
+          },
+          "discriminator": {
+            "type": "integer"
+          },
+          "xml": {
+            "type": "integer"
+          },
+          "externalDocs": {
+            "type": "integer"
+          },
+          "x-foo": {
+            "type": "integer"
+          },
+          "$ref": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "default": {
+          "$ref": "https://literal.invalid/not-a-schema",
+          "x-lightnvr-authorization": {
+            "data": true
+          }
+        },
+        "examples": [
+          {
+            "$id": "literal-data-not-a-schema"
+          }
+        ]
+      }
+    }
+  }
+}

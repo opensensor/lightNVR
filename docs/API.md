@@ -2,17 +2,56 @@
 
 This document describes the REST API endpoints provided by LightNVR.
 
+## Machine-readable contracts and API explorer
+
+The [canonical OpenAPI 3.1.1 document](api/openapi.json) covers Streams list,
+full-detail and update, personalized discovery, selected authentication/token
+operations, and recording reads/playback/protection/tags/deletion/export jobs.
+It currently specifies 33 operations across 30 paths. Coverage is partial;
+consult its `covered_operations` and the [route coverage map](api/contracts/coverage.json)
+for the exact subset and remaining surface.
+
+Authenticated `GET /api/openapi.json` returns a document projected for the current
+session, Basic credential, legacy key or scoped token. Operation eligibility and
+conditional response models use the server's effective action/resource policy.
+They do not grant access: every subsequent request is authorized again, and an
+operation's presence does not imply permission for every camera. Empty camera
+scope still permits discovery and the filtered list operation.
+
+Discovery returns `Cache-Control: private, no-store`. Invalid authentication is
+`401`; synthetic auth-disabled and anonymous-demo principals receive `403`.
+Projection failures return `500` without falling back to the canonical document.
+The response includes partial-coverage metadata and a canonical revision, without
+principal, camera, selector or credential values. See the
+[contract design](api/contracts/design.md) for resource-observation semantics.
+
+Open `/api-docs.html` after signing in to browse this personalized document.
+The separately loaded Swagger explorer is read-only: no token-entry form,
+persisted credentials or Try-it-out requests. It clears and revalidates on
+identity/lifecycle changes and supports deployment under a path prefix. Token
+clients can fetch the JSON directly. [Measured costs](api/contracts/performance.md)
+include both web profiles and bounded discovery workloads; embedded-device
+qualification remains separate.
+
+Recording job status/result access is bound to the creator and, for scoped-token
+jobs, that exact token. The recording jobs have no cancellation endpoint.
+Their detected error states are documented separately from completion. The
+current ZIP writer does not detect every filesystem read/write/close failure,
+so `complete` alone is not an archive-integrity guarantee; this is tracked in
+the [next hardening plan](../engineering-api-expansion-plan.md).
+
 ## API Overview
 
 LightNVR provides a RESTful API that allows you to interact with the system programmatically. The API is accessible via HTTP and returns JSON responses using the cJSON library. The API is served by the libuv + llhttp web server.
 
 ## Authentication
 
-If authentication is enabled in the configuration file, endpoints that require
-authentication accept one of three mechanisms. Authentication and role-based
-access checks are enforced per-endpoint. Where authentication is required, all
-three mechanisms resolve to the same `user_t`, so pick whichever fits the
-caller.
+Authentication requirements are endpoint-specific. Supported credentials include
+sessions, HTTP Basic, legacy API keys and scoped tokens. Scoped tokens retain
+their action/resource restrictions after resolving the owner; they cannot use
+owner identity to bypass self-service restrictions. Identity verification and
+token management accept session/Basic/legacy-key identities but reject scoped
+tokens. The canonical contract records these distinctions for covered operations.
 
 ### 1. Session cookie (interactive UI, scripts that log in once)
 
@@ -74,9 +113,11 @@ reject a supplied `role` for both policy and legacy accounts; change grants thro
 the authorization endpoint instead. If supplied, `password` must be a string;
 an empty string preserves the existing password.
 
-Write authorization is endpoint-specific. Stream creation, updates (including
-privacy mode), and deletion reject `VIEWER` with `403`, as does
-[`POST /api/motion/trigger`](#trigger-motion-event).
+Write authorization is endpoint-specific. Camera configuration operations use
+`camera.configure` for their resolved resource or required global scope. A
+numeric viewer role does not override an explicit policy grant; a denied action
+returns `403`. The Streams edit/update controls follow each row's server-reported
+`can_configure` decision.
 
 ### Action-level authorization foundation
 

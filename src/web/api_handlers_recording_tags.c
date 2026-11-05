@@ -48,7 +48,7 @@ static void audit_recording_tag_operation(
     cJSON_Delete(details);
 }
 
-static int load_replay_authorized_streams(
+static int load_replay_authorized_cameras(
     const http_request_t *req, http_response_t *res,
     fleet_camera_t **cameras, const char **stream_names, int *stream_count) {
     user_t user;
@@ -69,8 +69,13 @@ static int load_replay_authorized_streams(
             res, 500, "Authorization policy evaluation failed");
         return 0;
     }
+    if (camera_count > MAX_STREAMS) {
+        free(*cameras); *cameras = NULL;
+        http_response_set_json_error(res, 500, "Camera scope exceeds supported limit");
+        return 0;
+    }
     for (int i = 0; i < camera_count; i++) {
-        stream_names[i] = (*cameras)[i].name;
+        stream_names[i] = (*cameras)[i].camera_uuid;
     }
     *stream_count = camera_count;
     return 1;
@@ -85,11 +90,11 @@ void handle_get_recording_tags(const http_request_t *req, http_response_t *res) 
     fleet_camera_t *cameras = NULL;
     const char *stream_names[MAX_STREAMS];
     int stream_count = 0;
-    if (!load_replay_authorized_streams(req, res, &cameras, stream_names,
+    if (!load_replay_authorized_cameras(req, res, &cameras, stream_names,
                                         &stream_count)) return;
 
     char tags[MAX_RECORDING_TAGS][MAX_TAG_LENGTH];
-    int count = db_recording_tag_get_unique_for_streams(
+    int count = db_recording_tag_get_unique_for_cameras(
         stream_names, stream_count, tags, MAX_RECORDING_TAGS);
     free(cameras);
     if (count < 0) {
@@ -119,11 +124,11 @@ void handle_get_recording_detection_labels(const http_request_t *req, http_respo
     fleet_camera_t *cameras = NULL;
     const char *stream_names[MAX_STREAMS];
     int stream_count = 0;
-    if (!load_replay_authorized_streams(req, res, &cameras, stream_names,
+    if (!load_replay_authorized_cameras(req, res, &cameras, stream_names,
                                         &stream_count)) return;
 
     char labels[MAX_UNIQUE_DETECTION_LABELS][MAX_LABEL_LENGTH];
-    int count = get_unique_detection_labels_for_streams(
+    int count = get_unique_detection_labels_for_cameras(
         stream_names, stream_count, labels, MAX_UNIQUE_DETECTION_LABELS);
     free(cameras);
     if (count < 0) {
@@ -357,8 +362,8 @@ void handle_batch_recording_tags(const http_request_t *req, http_response_t *res
             denied_member = true;
             break;
         }
-        int eval_result = httpd_evaluate_stream_action(
-            &user, AUTHZ_EVIDENCE_PROTECT, recording.stream_name,
+        int eval_result = httpd_evaluate_camera_identity_action(
+            &user, AUTHZ_EVIDENCE_PROTECT, recording.camera_uuid, recording.stream_name,
             &evaluation);
         if (eval_result < 0) {
             evaluation_error = true;

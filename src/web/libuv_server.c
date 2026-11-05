@@ -468,7 +468,7 @@ static void count_handles_cb(uv_handle_t *handle, void *arg) {
  */
 void libuv_server_stop(http_server_handle_t handle) {
     libuv_server_t *server = (libuv_server_t *)handle;
-    if (!server || !server->running) {
+    if (!server || server->shutting_down) {
         return;
     }
 
@@ -532,10 +532,10 @@ void libuv_server_stop(http_server_handle_t handle) {
     log_info("libuv_server_stop: Closing all active handles");
     uv_walk(server->loop, close_walk_cb, NULL);
 
-    // Run the loop to process close callbacks with a timeout
-    log_info("libuv_server_stop: Processing close callbacks (with timeout)");
+    // Warn after the diagnostic deadline; work cannot safely be abandoned.
+    log_info("libuv_server_stop: Processing close callbacks");
 
-    const int max_wait_ms = 3000;  // 3 second maximum wait for close callbacks
+    const int max_wait_ms = 3000;  // Diagnostic warning threshold
     const int check_interval_ms = 50;  // Check every 50ms
     int elapsed_ms = 0;
 
@@ -577,6 +577,10 @@ void libuv_server_stop(http_server_handle_t handle) {
             log_warn("libuv_server_stop: Timeout waiting for handles to close, %d handles still active",
                      handle_count);
         }
+        /* Workers still access request state, database and server/TLS objects.
+         * Stop must finish their after-work callbacks before global teardown.
+         * A timed-out drain is not permission to free a busy loop. */
+        while (uv_loop_alive(server->loop)) uv_run(server->loop, UV_RUN_DEFAULT);
     }
 
     log_info("libuv_server_stop: Server stopped");
@@ -592,7 +596,7 @@ void libuv_server_destroy(http_server_handle_t handle) {
     }
 
     // Ensure server is stopped
-    if (server->running) {
+    if (!server->shutting_down) {
         libuv_server_stop(handle);
     }
 
@@ -601,6 +605,14 @@ void libuv_server_destroy(http_server_handle_t handle) {
 
     // Shutdown go2rtc proxy thread subsystem
     go2rtc_proxy_thread_shutdown();
+
+    if (server->owns_loop && server->loop) {
+        int closed = uv_loop_close(server->loop);
+        if (closed != 0) {
+            log_error("libuv_server_destroy: Refusing to free busy event loop: %s", uv_strerror(closed));
+            return;
+        }
+    }
 
     // Free handler registry
     if (server->handlers) {
@@ -617,7 +629,6 @@ void libuv_server_destroy(http_server_handle_t handle) {
 
     // Close and free event loop if we own it
     if (server->owns_loop && server->loop) {
-        uv_loop_close(server->loop);
         safe_free(server->loop);
     }
 

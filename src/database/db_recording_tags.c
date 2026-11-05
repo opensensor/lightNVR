@@ -17,6 +17,7 @@
 
 #include "database/db_recording_tags.h"
 #include "database/db_core.h"
+#include "database/db_recordings.h"
 #include "core/logger.h"
 #include "utils/strings.h"
 
@@ -270,29 +271,40 @@ int db_recording_tag_get_all_unique(char tags[][MAX_TAG_LENGTH], int max_tags) {
     return count;
 }
 
+static int unique_tags_for_scope(
+    const char *const *stream_names, int stream_count,
+    char tags[][MAX_TAG_LENGTH], int max_tags, bool camera_scope) ;
 int db_recording_tag_get_unique_for_streams(
     const char *const *stream_names, int stream_count,
-    char tags[][MAX_TAG_LENGTH], int max_tags) {
+    char tags[][MAX_TAG_LENGTH], int max_tags) { return unique_tags_for_scope(stream_names, stream_count, tags, max_tags, false); }
+int db_recording_tag_get_unique_for_cameras(const char *const *camera_uuids, int camera_count, char tags[][MAX_TAG_LENGTH], int max_tags) {
+    return unique_tags_for_scope(camera_uuids, camera_count, tags, max_tags, true);
+}
+static int unique_tags_for_scope(
+    const char *const *stream_names, int stream_count,
+    char tags[][MAX_TAG_LENGTH], int max_tags, bool camera_scope) {
     if (!stream_names || stream_count <= 0 || !tags || max_tags <= 0) return 0;
     sqlite3 *db = NULL;
     if (db_open_readonly_connection(&db) != 0) return -1;
     int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
-    int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
+    if (variable_limit < 2) { db_close_readonly_connection(db); return -1; }
+    int batch_limit = variable_limit - 1;
     if (batch_limit > 256) batch_limit = 256;
     int count = 0;
     int final_rc = SQLITE_DONE;
     for (int offset = 0; offset < stream_count; offset += batch_limit) {
         int batch_count = stream_count - offset;
         if (batch_count > batch_limit) batch_count = batch_limit;
-        size_t sql_size = 256 + (size_t)batch_count * 3;
+        size_t sql_size = 512 + (size_t)batch_count * 3;
         char *sql = calloc(sql_size, 1);
         if (!sql) {
             final_rc = SQLITE_NOMEM;
             break;
         }
         safe_strcpy(sql,
-            "SELECT DISTINCT rt.tag FROM recording_tags rt "
-            "JOIN recordings r ON r.id=rt.recording_id WHERE r.stream_name IN (",
+            camera_scope
+            ? "SELECT DISTINCT rt.tag FROM recording_tags rt JOIN recordings r ON r.id=rt.recording_id WHERE " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " IN ("
+            : "SELECT DISTINCT rt.tag FROM recording_tags rt JOIN recordings r ON r.id=rt.recording_id WHERE r.stream_name IN (",
             sql_size, 0);
         for (int i = 0; i < batch_count; i++) {
             safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);

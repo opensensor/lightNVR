@@ -76,8 +76,8 @@ void handle_check_recording_file(const http_request_t *req, http_response_t *res
     user_t user;
     fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    if (!httpd_authorize_stream_action_with_context(
-            req, res, AUTHZ_RECORDINGS_REPLAY, recording.stream_name, &user,
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDINGS_REPLAY, recording.camera_uuid, recording.stream_name, &user,
             &camera, &evaluation)) {
         return;
     }
@@ -155,8 +155,8 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
     }
     fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    if (!httpd_authorize_stream_action_with_context(
-            req, res, AUTHZ_RECORDING_DELETE, recording.stream_name, &user,
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDING_DELETE, recording.camera_uuid, recording.stream_name, &user,
             &camera, &evaluation)) {
         return;
     }

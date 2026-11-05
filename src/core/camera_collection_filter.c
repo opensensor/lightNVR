@@ -23,7 +23,7 @@ void camera_collection_filter_free(camera_collection_filter_t *filter) {
 }
 
 static camera_collection_filter_result_t load_filter(
-    const char *collection_uuid, const user_t *user, bool shared_only,
+    sqlite3 *connection, const char *collection_uuid, const user_t *user, bool shared_only,
     camera_collection_filter_t *filter) {
     if (!filter || (!user && !shared_only)) {
         return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
@@ -35,7 +35,8 @@ static camera_collection_filter_result_t load_filter(
 
     camera_collection_t collection;
     db_camera_collection_result_t result =
-        db_camera_collection_get(collection_uuid, &collection);
+        connection ? db_camera_collection_get_on_connection(connection, collection_uuid, &collection)
+                   : db_camera_collection_get(collection_uuid, &collection);
     bool can_manage = false;
     if (result == DB_CAMERA_COLLECTION_OK && user && !shared_only) {
         authorization_evaluation_t evaluation;
@@ -66,15 +67,22 @@ static camera_collection_filter_result_t load_filter(
     }
 
     filter->member_count = collection.member_count;
-    if (filter->member_count <= 0) return CAMERA_COLLECTION_FILTER_OK;
+    if (filter->member_count < 0 || filter->member_count > CAMERA_COLLECTION_MAX_MEMBERS) {
+        camera_collection_filter_free(filter);
+        return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
+    }
+    if (filter->member_count == 0) return CAMERA_COLLECTION_FILTER_OK;
     filter->member_uuids = calloc((size_t)filter->member_count,
                                   sizeof(*filter->member_uuids));
     if (!filter->member_uuids) {
         camera_collection_filter_free(filter);
         return CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY;
     }
-    int count = db_camera_collection_list_members(
-        collection.uuid, filter->member_uuids, filter->member_count);
+    int count = connection
+        ? db_camera_collection_list_members_on_connection(connection, collection.uuid,
+            filter->member_uuids, filter->member_count)
+        : db_camera_collection_list_members(collection.uuid, filter->member_uuids,
+            filter->member_count);
     if (count < 0) {
         camera_collection_filter_free(filter);
         return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
@@ -86,13 +94,20 @@ static camera_collection_filter_result_t load_filter(
 camera_collection_filter_result_t camera_collection_filter_load(
     const char *collection_uuid, const user_t *user,
     camera_collection_filter_t *filter) {
-    return load_filter(collection_uuid, user, false, filter);
+    return load_filter(NULL, collection_uuid, user, false, filter);
 }
 
 camera_collection_filter_result_t
 camera_collection_filter_load_for_authorization(
     const char *collection_uuid, camera_collection_filter_t *filter) {
-    return load_filter(collection_uuid, NULL, true, filter);
+    return load_filter(NULL, collection_uuid, NULL, true, filter);
+}
+
+camera_collection_filter_result_t
+camera_collection_filter_load_on_connection(sqlite3 *connection,
+    const char *collection_uuid, camera_collection_filter_t *filter) {
+    if (!connection) return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
+    return load_filter(connection, collection_uuid, NULL, true, filter);
 }
 
 bool camera_collection_filter_matches(

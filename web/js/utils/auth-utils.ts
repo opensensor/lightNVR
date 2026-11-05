@@ -7,6 +7,26 @@ import { enhancedFetch } from '../fetch-utils.ts';
 import type {} from '../types/global.d.ts';
 import type { AuthVerifyResponse, SessionInfo, SessionUser } from '../types/core.ts';
 
+const SESSION_TIMEOUT_MS = 10000;
+let authGeneration = 0;
+let stopPreviousValidation: (() => void) | undefined;
+
+function isVerifyPayload(value: unknown): value is AuthVerifyResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  for (const key of ['authenticated', 'demo_mode', 'is_active', 'password_change_locked', 'must_change_password', 'auth_enabled']) {
+    if (data[key] !== undefined && typeof data[key] !== 'boolean') return false;
+  }
+  for (const key of ['username', 'email']) {
+    if (data[key] !== undefined && typeof data[key] !== 'string') return false;
+  }
+  for (const key of ['id', 'role_id']) {
+    if (data[key] !== undefined && (typeof data[key] !== 'number' || !Number.isSafeInteger(data[key]))) return false;
+  }
+  return data.role === undefined || (typeof data.role === 'string' &&
+    ['admin', 'user', 'viewer', 'api', 'unknown'].includes(data.role));
+}
+
 /**
  * Check if user has authentication credentials stored
  * @returns {boolean} - True if auth credentials exist
@@ -30,6 +50,7 @@ export function getAuthHeaders(): Record<string, string> {
  * Clear all authentication state
  */
 export function clearAuthState(): void {
+  authGeneration++;
   // Clear localStorage
   localStorage.removeItem('auth');
 
@@ -37,33 +58,68 @@ export function clearAuthState(): void {
   // cleared server-side, but we clear legacy/fallback cookies here)
   document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
   document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+  window._demoMode = false;
+  window._authDisabled = false;
+  window.dispatchEvent(new Event('lightnvr:auth-cleared'));
+  // Cookie-only sessions may have no localStorage entry to trigger a storage
+  // event. Notify other tabs without storing or transmitting credentials.
+  if (typeof BroadcastChannel === 'function') {
+    try {
+      const channel = new BroadcastChannel('lightnvr-auth');
+      try { channel.postMessage('cleared'); } finally { channel.close(); }
+    } catch { /* Cross-tab messaging can be disabled by the browser. */ }
+  }
 }
 
 /**
  * Validate current session by making a lightweight API call
  * @returns {Promise<{valid: boolean, id?: number, username?: string, email?: string, role?: string, role_id?: number, is_active?: boolean, password_change_locked?: boolean, must_change_password?: boolean, demo_mode?: boolean, authenticated?: boolean}>} - Session info
  */
-export async function validateSession(): Promise<SessionInfo> {
+export async function validateSession(options: {signal?: AbortSignal; verifyUrl?: string} = {}): Promise<SessionInfo> {
+  const generation = authGeneration;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, {once: true});
+  if (options.signal?.aborted) controller.abort();
+  // Cover the response body too: enhancedFetch's own deadline ends at headers.
+  const deadline = setTimeout(abort, SESSION_TIMEOUT_MS);
   try {
     // Use enhancedFetch with skipAuthRedirect to avoid triggering the global 401 handler
     // We want to handle the validation result ourselves
-    const response = await enhancedFetch('/api/auth/verify', {
+    const response = await enhancedFetch(options.verifyUrl ?? '/api/auth/verify', {
       method: 'GET',
       skipAuthRedirect: true, // Don't auto-redirect on 401
+      signal: controller.signal,
+      timeout: 0,
+      retries: 0, // The caller controls retry; one bounded verification at a time.
+      // Explorer identity checks must cross the HTTP boundary on each refresh.
+      ...(options.verifyUrl !== undefined ? { cache: 'no-store' as const } : {}),
     });
 
     if (response.ok) {
-      const data = (await response.json()) as AuthVerifyResponse;
+      const data: unknown = await response.json();
+      if (controller.signal.aborted || generation !== authGeneration || !isVerifyPayload(data)) {
+        return {valid: false, status: 'unavailable'};
+      }
       // In demo mode, the server returns authenticated: false but demo_mode: true
       // We treat this as a valid session with viewer-level access
       const isDemoMode = data.demo_mode === true;
       const isAuthenticated = data.authenticated === true;
+      if (data.is_active === false || (data.authenticated === false && !isDemoMode)) {
+        return {valid: false, status: 'invalid'};
+      }
+      if ((!isAuthenticated && !isDemoMode) || !data.role ||
+          (isDemoMode && !isAuthenticated && data.role !== 'viewer')) {
+        return {valid: false, status: 'unavailable'};
+      }
 
       // Store demo mode state globally for UI components
       window._demoMode = isDemoMode;
+      window._authDisabled = data.auth_enabled === false;
 
       return {
         valid: true,
+        status: 'valid',
         authenticated: isAuthenticated,
         demo_mode: isDemoMode,
         id: data.id,
@@ -77,11 +133,14 @@ export async function validateSession(): Promise<SessionInfo> {
         auth_enabled: data.auth_enabled
       };
     }
-    return { valid: false };
+    return {valid: false, status: response.status === 401 || response.status === 403 ? 'invalid' : 'unavailable'};
   } catch (error) {
-    // If we get a 401 or other error, session is invalid
-    console.debug('Session validation failed:', (error as Error).message);
-    return { valid: false };
+    if (controller.signal.aborted || generation !== authGeneration) return {valid: false, status: 'unavailable'};
+    const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
+    return {valid: false, status: status === 401 || status === 403 ? 'invalid' : 'unavailable'};
+  } finally {
+    clearTimeout(deadline);
+    options.signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -169,71 +228,42 @@ export function redirectToLogin(reason: string | null = null): void {
  * @returns {number|null} - Interval ID that can be used to clear the interval, or null if not setup
  */
 export function setupSessionValidation(intervalMs: number = 5 * 60 * 1000): ReturnType<typeof setInterval> | null {
-  // Don't setup validation on login page
-  if (isOnLoginPage()) {
-    console.debug('Skipping session validation setup on login page');
-    return null;
-  }
+  stopPreviousValidation?.();
+  if (isOnLoginPage()) return null;
 
-  console.log(`Setting up session validation with ${intervalMs}ms interval`);
-
-  // Validate immediately on page load by calling the server
-  // This handles auth-enabled, auth-disabled, and demo mode cases:
-  // - If auth is disabled, /api/auth/verify returns success (no redirect needed)
-  // - If demo mode is enabled, returns success with demo_mode: true (no redirect needed)
-  // - If auth is enabled and session is valid, returns success
-  // - If auth is enabled and session is invalid, we redirect to login
-  validateSession().then(session => {
-    if (!session.valid) {
-      console.warn('Initial session validation failed, redirecting to login');
-      clearAuthState();
-      redirectToLogin('session_expired');
-    } else {
-      console.debug('Initial session validation passed for user:', session.username);
-      // If auth is disabled on the server, store that fact to avoid unnecessary checks
-      if (session.auth_enabled === false) {
-        console.debug('Authentication is disabled on the server, skipping periodic validation');
-        window._authDisabled = true;
+  let stopped = false;
+  let paused = false;
+  let inFlight: AbortController | null = null;
+  const check = async () => {
+    if (stopped || paused || inFlight || isOnLoginPage()) return;
+    const controller = new AbortController();
+    inFlight = controller;
+    try {
+      const session = await validateSession({signal: controller.signal});
+      if (stopped || paused || controller.signal.aborted) return;
+      if (session.status === 'invalid') {
+        clearAuthState();
+        redirectToLogin('session_expired');
       }
-      // If demo mode is enabled, log it
-      if (session.demo_mode) {
-        console.debug('Demo mode enabled, viewer access granted without authentication');
-      }
+      // Unavailable neither erases credentials nor restores cached permissions.
+      // HttpOnly session cookies are invisible to hasAuthCredentials(): always
+      // ask the server, including after auth-disabled/demo configuration changes.
+    } finally {
+      if (inFlight === controller) inFlight = null;
     }
-  });
-
-  // Setup periodic validation
-  const intervalId = setInterval(async () => {
-    // Skip periodic validation if auth is disabled on the server
-    if (window._authDisabled) {
-      console.debug('Session validation skipped - auth disabled on server');
-      return;
-    }
-
-    // Skip periodic validation if in demo mode with no credentials
-    // Demo mode users don't need periodic validation - they have persistent viewer access
-    if (window._demoMode && !hasAuthCredentials()) {
-      console.debug('Session validation skipped - demo mode with no credentials');
-      return;
-    }
-
-    // Check credentials still exist before validating (only for authenticated users)
-    if (!hasAuthCredentials() && !window._demoMode) {
-      console.debug('Session validation skipped - no credentials');
-      return;
-    }
-
-    console.debug('Running periodic session validation');
-    const session = await validateSession();
-
-    if (!session.valid) {
-      console.warn('Periodic session validation failed, redirecting to login');
-      clearAuthState();
-      redirectToLogin('session_expired');
-    } else {
-      console.debug('Session validation passed for user:', session.username);
-    }
-  }, intervalMs);
-
+  };
+  const intervalId = setInterval(() => { void check(); }, Math.max(1000, intervalMs));
+  const pause = () => { paused = true; inFlight?.abort(); };
+  const resume = () => { paused = false; void check(); };
+  window.addEventListener('pagehide', pause);
+  window.addEventListener('pageshow', resume);
+  stopPreviousValidation = () => {
+    stopped = true;
+    clearInterval(intervalId);
+    inFlight?.abort();
+    window.removeEventListener('pagehide', pause);
+    window.removeEventListener('pageshow', resume);
+  };
+  void check();
   return intervalId;
 }

@@ -891,12 +891,62 @@ int get_recording_metadata(time_t start_time, time_t end_time,
 }
 
 // Get total count of recordings matching filter criteria
+/* Authorized read queries replace both historical name correlation and the
+ * direct recording link with capture-aware correlation before binding values.
+ * Tokens below are fixed SQL generated here, never request-supplied SQL. */
+static int scope_recording_detection_sql(char *sql, size_t capacity) {
+    const char *needles[] = {"d.stream_name = r.stream_name", "d.recording_id = r.id"};
+    const char *replacements[] = {
+        DB_CAPTURE_CAMERA_MATCH_SQL("d", "r"),
+        "d.recording_id = r.id AND " DB_CAPTURE_CAMERA_MATCH_SQL("d", "r")
+    };
+    for (size_t i = 0; i < sizeof(needles)/sizeof(needles[0]); i++) {
+        char *cursor = sql;
+        size_t extra = strlen(replacements[i]) - strlen(needles[i]);
+        while ((cursor = strstr(cursor, needles[i])) != NULL) {
+            if (strlen(sql) + extra >= capacity) return -1;
+            memmove(cursor + strlen(replacements[i]), cursor + strlen(needles[i]),
+                    strlen(cursor + strlen(needles[i])) + 1);
+            memcpy(cursor, replacements[i], strlen(replacements[i]));
+            cursor += strlen(replacements[i]);
+        }
+    }
+    return 0;
+}
+
+static int get_recording_count_scoped(time_t start_time, time_t end_time,
+                       const char *stream_name, int has_detection,
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count,
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress, bool camera_scope) ;
+
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
                        const char *tag_filter, const char *capture_method_filter,
                        bool include_in_progress) {
+    return get_recording_count_scoped(start_time, end_time, stream_name, has_detection, detection_label, protected_filter, allowed_streams, allowed_streams_count, tag_filter, capture_method_filter, include_in_progress, false);
+}
+
+int get_recording_count_for_cameras(time_t start_time, time_t end_time,
+                       const char *stream_name, int has_detection,
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count,
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress) {
+    if (!allowed_streams || allowed_streams_count <= 0) return 0;
+    if (allowed_streams_count > MAX_STREAMS) return -1;
+    return get_recording_count_scoped(start_time, end_time, stream_name, has_detection, detection_label, protected_filter, allowed_streams, allowed_streams_count, tag_filter, capture_method_filter, include_in_progress, true);
+}
+
+static int get_recording_count_scoped(time_t start_time, time_t end_time,
+                       const char *stream_name, int has_detection,
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count,
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress, bool camera_scope) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -910,7 +960,7 @@ int get_recording_count(time_t start_time, time_t end_time,
     int capture_method_count = parse_csv_filter_values(capture_method_filter, capture_method_filters, MAX_MULTI_FILTER_VALUES);
 
     // Build query based on filters
-    char sql[8192];
+    char sql[32768];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
     if (include_in_progress) {
@@ -1003,7 +1053,8 @@ int get_recording_count(time_t start_time, time_t end_time,
     if (allowed_streams && allowed_streams_count > 0) {
         // Server-resolved policy/collection scope intersects any explicit
         // stream predicate; one must never replace the other.
-        safe_strcat(sql, " AND r.stream_name IN (", sizeof(sql));
+        safe_strcat(sql, camera_scope ? " AND " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " IN ("
+                                    : " AND r.stream_name IN (", sizeof(sql));
         for (int i = 0; i < allowed_streams_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
             safe_strcat(sql, "?", sizeof(sql));
@@ -1045,6 +1096,7 @@ int get_recording_count(time_t start_time, time_t end_time,
         log_debug("Adding %d capture_method filters", capture_method_count);
     }
 
+    if (camera_scope && scope_recording_detection_sql(sql, sizeof(sql)) != 0) return -1;
     log_debug("SQL query for get_recording_count: %s", sql);
 
     /* The exact COUNT can take seconds on a large archive. Run it on a
@@ -1130,6 +1182,17 @@ int get_recording_count(time_t start_time, time_t end_time,
 }
 
 // Get paginated recording metadata from the database with sorting
+static int get_recording_metadata_paginated_scoped(time_t start_time, time_t end_time,
+                                   const char *stream_name, int has_detection,
+                                   const char *detection_label,
+                                   int protected_filter,
+                                   const char *sort_field, const char *sort_order,
+                                   recording_metadata_t *metadata,
+                                   int limit, int offset,
+                                    const char * const *allowed_streams, int allowed_streams_count,
+                                    const char *tag_filter, const char *capture_method_filter,
+                                    bool include_in_progress, bool camera_scope) ;
+
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *stream_name, int has_detection,
                                    const char *detection_label,
@@ -1140,6 +1203,34 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                     const char * const *allowed_streams, int allowed_streams_count,
                                     const char *tag_filter, const char *capture_method_filter,
                                     bool include_in_progress) {
+    return get_recording_metadata_paginated_scoped(start_time, end_time, stream_name, has_detection, detection_label, protected_filter, sort_field, sort_order, metadata, limit, offset, allowed_streams, allowed_streams_count, tag_filter, capture_method_filter, include_in_progress, false);
+}
+
+int get_recording_metadata_paginated_for_cameras(time_t start_time, time_t end_time,
+                                   const char *stream_name, int has_detection,
+                                   const char *detection_label,
+                                   int protected_filter,
+                                   const char *sort_field, const char *sort_order,
+                                   recording_metadata_t *metadata,
+                                   int limit, int offset,
+                                    const char * const *allowed_streams, int allowed_streams_count,
+                                    const char *tag_filter, const char *capture_method_filter,
+                                    bool include_in_progress) {
+    if (!allowed_streams || allowed_streams_count <= 0) return 0;
+    if (allowed_streams_count > MAX_STREAMS) return -1;
+    return get_recording_metadata_paginated_scoped(start_time, end_time, stream_name, has_detection, detection_label, protected_filter, sort_field, sort_order, metadata, limit, offset, allowed_streams, allowed_streams_count, tag_filter, capture_method_filter, include_in_progress, true);
+}
+
+static int get_recording_metadata_paginated_scoped(time_t start_time, time_t end_time,
+                                   const char *stream_name, int has_detection,
+                                   const char *detection_label,
+                                   int protected_filter,
+                                   const char *sort_field, const char *sort_order,
+                                   recording_metadata_t *metadata,
+                                   int limit, int offset,
+                                    const char * const *allowed_streams, int allowed_streams_count,
+                                    const char *tag_filter, const char *capture_method_filter,
+                                    bool include_in_progress, bool camera_scope) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -1184,7 +1275,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     }
 
     // Build query based on filters
-    char sql[8192];
+    char sql[32768];
 
     // Use trigger_type and/or detections table to filter detection-based recordings.
     // Built with safe_strcpy (never snprintf): RECORDINGS_VISIBLE_PREDICATE
@@ -1287,7 +1378,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     if (allowed_streams && allowed_streams_count > 0) {
         // Server-resolved policy/collection scope intersects any explicit
         // stream predicate; one must never replace the other.
-        safe_strcat(sql, " AND r.stream_name IN (", sizeof(sql));
+        safe_strcat(sql, camera_scope ? " AND " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " IN ("
+                                    : " AND r.stream_name IN (", sizeof(sql));
         for (int i = 0; i < allowed_streams_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
             safe_strcat(sql, "?", sizeof(sql));
@@ -1339,6 +1431,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     safe_strcpy(limit_clause, " LIMIT ? OFFSET ?", sizeof(limit_clause), 0);
     safe_strcat(sql, limit_clause, sizeof(sql));
 
+    if (camera_scope && scope_recording_detection_sql(sql, sizeof(sql)) != 0) return -1;
     log_debug("SQL query for get_recording_metadata_paginated: %s", sql);
 
     /* Page reads use a private read-only WAL snapshot (see get_recording_count)
@@ -1490,6 +1583,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     if (rc_step != SQLITE_DONE && rc_step != SQLITE_ROW) {
         log_error("Error while fetching recordings: %s", sqlite3_errmsg(db));
+        if (camera_scope) count = -1;
     }
 
     // Finalize the prepared statement
@@ -1686,8 +1780,15 @@ int get_protected_recordings_count(const char *stream_name) {
     return count;
 }
 
+static int protected_count_for_scope(
+    const char *const *stream_names, int stream_count, bool camera_scope) ;
 int get_protected_recordings_count_for_streams(
-    const char *const *stream_names, int stream_count) {
+    const char *const *stream_names, int stream_count) { return protected_count_for_scope(stream_names, stream_count, false); }
+int get_protected_recordings_count_for_cameras(const char *const *camera_uuids, int camera_count) {
+    return protected_count_for_scope(camera_uuids, camera_count, true);
+}
+static int protected_count_for_scope(
+    const char *const *stream_names, int stream_count, bool camera_scope) {
     if (!stream_names || stream_count <= 0) return 0;
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
@@ -1701,15 +1802,16 @@ int get_protected_recordings_count_for_streams(
     for (int offset = 0; offset < stream_count; offset += batch_limit) {
         int batch_count = stream_count - offset;
         if (batch_count > batch_limit) batch_count = batch_limit;
-        size_t sql_size = 128 + (size_t)batch_count * 3;
+        size_t sql_size = 512 + (size_t)batch_count * 3;
         char *sql = calloc(sql_size, 1);
         if (!sql) {
             failed = true;
             break;
         }
         safe_strcpy(sql,
-                    "SELECT COUNT(*) FROM recordings WHERE protected=1 "
-                    "AND stream_name IN (", sql_size, 0);
+                    camera_scope
+                    ? "SELECT COUNT(*) FROM recordings r WHERE protected=1 AND " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " IN ("
+                    : "SELECT COUNT(*) FROM recordings WHERE protected=1 AND stream_name IN (", sql_size, 0);
         for (int i = 0; i < batch_count; i++) {
             safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);
         }
@@ -2570,8 +2672,36 @@ int get_recordings_for_pressure_cleanup_default_target(
  * Paging is keyed on id, so a row the caller has to retain is never returned
  * again and cannot stop the scan from reaching newer rows.
  */
-int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
-                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id) {
+static int capture_recording_boundary_locked(sqlite3 *db, uint64_t *maximum_id) {
+    *maximum_id = 0;
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(db,
+        "SELECT COALESCE(MAX(id), 0) FROM recordings;", -1, &statement, NULL);
+    if (rc == SQLITE_OK) rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        sqlite3_int64 value = sqlite3_column_int64(statement, 0);
+        if (value >= 0) *maximum_id = (uint64_t)value;
+        else rc = SQLITE_ERROR;
+    }
+    sqlite3_finalize(statement);
+    return rc == SQLITE_ROW ? 0 : -1;
+}
+
+int db_recordings_capture_startup_boundary(uint64_t *maximum_id) {
+    if (!maximum_id) return -1;
+    *maximum_id = 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    int result = capture_recording_boundary_locked(db, maximum_id);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+static int incomplete_recordings_page(recording_metadata_t *recordings,
+    int max_count, time_t cutoff, bool use_age, uint64_t after_id,
+    uint64_t *maximum_id, bool capture_boundary) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -2579,24 +2709,20 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
 
-    if (!db) {
+    if (!db || !db_mutex) {
         log_error("Database not initialized");
         return -1;
     }
-    if (!recordings || max_count <= 0 || !maximum_id) {
+    if (!recordings || max_count <= 0 || !maximum_id ||
+        after_id > INT64_MAX || (!capture_boundary && *maximum_id > INT64_MAX)) {
         log_error("Invalid parameters for get_stale_incomplete_recordings_page");
         return -1;
     }
 
     pthread_mutex_lock(db_mutex);
 
-    if (after_id == 0) {
-        sqlite3_stmt *limit = NULL;
-        rc = sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(id), 0) FROM recordings;", -1, &limit, NULL);
-        if (rc == SQLITE_OK) rc = sqlite3_step(limit);
-        if (rc == SQLITE_ROW) *maximum_id = (uint64_t)sqlite3_column_int64(limit, 0);
-        sqlite3_finalize(limit);
-        if (rc != SQLITE_ROW) {
+    if (capture_boundary && after_id == 0) {
+        if (capture_recording_boundary_locked(db, maximum_id) != 0) {
             log_error("Failed to bound stale-incomplete scan: %s", sqlite3_errmsg(db));
             pthread_mutex_unlock(db_mutex);
             return -1;
@@ -2608,10 +2734,10 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
         "storage_target_uuid, object_key "
         "FROM recordings "
-        "WHERE (is_complete = 0 OR playback_issue != '') AND deletion_pending = 0 AND start_time < ? "
-        "AND id > ? AND id <= ? "
+        "WHERE (is_complete = 0 OR playback_issue != '') AND deletion_pending = 0 "
+        "AND (?1 = 0 OR start_time < ?2) AND id > ?3 AND id <= ?4 "
         "ORDER BY id ASC "
-        "LIMIT ?;";
+        "LIMIT ?5;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -2620,10 +2746,11 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
         return -1;
     }
 
-    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff);
-    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)after_id);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)*maximum_id);
-    sqlite3_bind_int(stmt, 4, max_count);
+    sqlite3_bind_int(stmt, 1, use_age ? 1 : 0);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)after_id);
+    sqlite3_bind_int64(stmt, 4, (sqlite3_int64)*maximum_id);
+    sqlite3_bind_int(stmt, 5, max_count);
 
     while (count < max_count && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
@@ -2677,6 +2804,18 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     return failed ? -1 : count;
+}
+
+int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
+                                         time_t cutoff, uint64_t after_id, uint64_t *maximum_id) {
+    return incomplete_recordings_page(recordings, max_count, cutoff, true,
+                                     after_id, maximum_id, true);
+}
+
+int get_startup_incomplete_recordings_page(recording_metadata_t *recordings,
+    int max_count, uint64_t after_id, uint64_t maximum_id) {
+    return incomplete_recordings_page(recordings, max_count, 0, false,
+                                     after_id, &maximum_id, false);
 }
 
 /**

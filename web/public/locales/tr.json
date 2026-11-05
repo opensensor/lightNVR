@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Yüksek eşiğin üzerinde",
   "system.storageTiers.pressure.reserve": "Rezervin altında",
   "system.storageTiers.pressure.unavailable": "Kullanılamıyor",
-  "system.storageTiers.sharedFilesystem": "Başka bir hedefle aynı dosya sistemini paylaşıyor"
+  "system.storageTiers.sharedFilesystem": "Başka bir hedefle aynı dosya sistemini paylaşıyor",
+  "streams.streamUpdateQueued": "Akış güncellemesi sıraya alındı; mevcut durum yenileniyor.",
+  "auth.sessionVerificationUnavailable": "Oturumunuz doğrulanamadı. Tekrar deneyin.",
+  "apiDocs.title": "API başvurusu",
+  "apiDocs.intro": "Mevcut oturumunuz için salt okunur API belgeleri.",
+  "apiDocs.loading": "Oturumunuz doğrulanıyor ve kullanılabilir işlemler yükleniyor…",
+  "apiDocs.denied": "API başvurusunu görüntüleme izni olan bir hesapla giriş yapın.",
+  "apiDocs.unavailable": "API başvurusu yüklenemedi. Tekrar deneyin.",
+  "apiDocs.partial": "Bu başvuru seçili API’leri kapsar. Eksik işlemler erişimin reddedildiği anlamına gelmez.",
+  "apiDocs.empty": "Mevcut oturum için bu başvuruda kullanılabilir API işlemi yok."
 }

@@ -296,6 +296,8 @@ export interface AuthVerifyResponse {
 
 /** What validateSession() in utils/auth-utils.ts resolves with. */
 export interface SessionInfo {
+  /** Unavailable is not rejection; callers must not clear credentials for it. */
+  status: 'valid' | 'invalid' | 'unavailable';
   valid: boolean;
   authenticated?: boolean;
   demo_mode?: boolean;
@@ -311,7 +313,7 @@ export interface SessionInfo {
 }
 
 /** What getUserInfo() in utils/auth-utils.ts resolves with. */
-export type SessionUser = Omit<SessionInfo, 'valid' | 'authenticated' | 'demo_mode' | 'auth_enabled'>;
+export type SessionUser = Omit<SessionInfo, 'status' | 'valid' | 'authenticated' | 'demo_mode' | 'auth_enabled'>;
 
 // ---------------------------------------------------------------------------
 // Client configuration: api_handlers_settings.c

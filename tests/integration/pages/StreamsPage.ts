@@ -222,8 +222,10 @@ export class StreamsPage extends BasePage {
       ]);
       console.log(`Received response with status: ${response.status()}`);
     } catch (e) {
+      // These rejection values come from Playwright's click/waitForResponse APIs.
+      // Keep the Error assumption scoped to that diagnostic boundary.
       // First attempt failed - retry the click once in case it didn't register
-      console.warn(`First save attempt failed for ${config.name}, retrying: ${e.message}`);
+      console.warn(`First save attempt failed for ${config.name}, retrying: ${(e as Error).message}`);
       try {
         await this.saveButton.scrollIntoViewIfNeeded();
         [response] = await Promise.all([
@@ -245,7 +247,7 @@ export class StreamsPage extends BasePage {
         }).catch(() => 'Unable to capture logs');
         console.log('Browser console logs:', logs);
 
-        throw new Error(`Failed to create stream: ${retryError.message}`);
+        throw new Error(`Failed to create stream: ${(retryError as Error).message}`);
       }
     }
 

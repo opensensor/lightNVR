@@ -293,7 +293,10 @@ void libuv_close_cb(uv_handle_t *handle) {
     if (conn) {
         log_debug("libuv_close_cb: Connection closed after %d requests", 
                   conn->requests_handled);
-        libuv_connection_destroy(conn);
+        conn->close_completed = true;
+        /* A queued handler owns the request, response and receive buffer until
+         * its after-work callback. Closing TCP does not end that ownership. */
+        if (!conn->handler_on_worker) libuv_connection_destroy(conn);
     }
 }
 
@@ -717,6 +720,15 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     safe_free(hw);
 
     conn->handler_on_worker = false;
+
+    if (conn->close_completed) {
+        libuv_connection_destroy(conn);
+        return;
+    }
+    if (conn->server->shutting_down || uv_is_closing((uv_handle_t *)&conn->handle)) {
+        libuv_connection_close(conn);
+        return;
+    }
 
     if (conn->request.request_id[0] != '\0') {
         http_response_add_header(&conn->response, "X-Request-ID",

@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "上限しきい値を超過",
   "system.storageTiers.pressure.reserve": "予約領域を下回っています",
   "system.storageTiers.pressure.unavailable": "利用不可",
-  "system.storageTiers.sharedFilesystem": "別のストレージ先とファイルシステムを共有しています"
+  "system.storageTiers.sharedFilesystem": "別のストレージ先とファイルシステムを共有しています",
+  "streams.streamUpdateQueued": "ストリームの更新を受け付けました。現在の状態を再取得しています。",
+  "auth.sessionVerificationUnavailable": "セッションを確認できません。もう一度お試しください。",
+  "apiDocs.title": "API リファレンス",
+  "apiDocs.intro": "現在のセッション向けの読み取り専用 API ドキュメントです。",
+  "apiDocs.loading": "セッションを確認し、利用可能な操作を読み込んでいます…",
+  "apiDocs.denied": "API リファレンスを閲覧できるアカウントでログインしてください。",
+  "apiDocs.unavailable": "API リファレンスを読み込めません。もう一度お試しください。",
+  "apiDocs.partial": "このリファレンスは一部の API を対象としています。記載されていない操作がアクセス拒否を意味するわけではありません。",
+  "apiDocs.empty": "現在のセッションで利用可能な API 操作はこのリファレンスにありません。"
 }

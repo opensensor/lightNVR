@@ -1,0 +1,173 @@
+{
+  "status": "passed-locally-before-pr",
+  "qualified_at": "2026-11-05T19:33:34.608993+00:00",
+  "baseline_revision": "dea6094a731c86debb03cc1c75d0251ab3b96cec",
+  "qualification_note": "Validation used the implementation working tree before commit. PR packaging only updates documentation, Git attributes, and whitespace. Detailed binary/source manifests and raw fixture evidence remain local; no hosted or device result is implied.",
+  "contract": {
+    "registered_operations": 240,
+    "covered_operations": 33,
+    "paths": 30,
+    "later": 207,
+    "partial": true,
+    "canonical_revision": "c7f5f796e564d551e9d56515ba56f72615d1be0148e7c0bd22fa1689ae6b0b58"
+  },
+  "builds": {
+    "release": {
+      "binary_sha256": "fadd75c4694e09a321a6c21f37305370779b05ca80050e82b9f5e769deb7ecba",
+      "unchanged_manifest_files": 846
+    },
+    "managed_debug": {
+      "binary_sha256": "cb68e8b3e046b081efcdc99828c519895c5e308dcd444ac490ab86b417aaf632",
+      "unchanged_manifest_files": 554
+    }
+  },
+  "validation": {
+    "api": 50,
+    "browser_contracts": 13,
+    "native_ci_unit": 83,
+    "native_ci_sanitizer": 58,
+    "web_suites": 68,
+    "web_tests": 784,
+    "focused_browser_suites": 5,
+    "focused_browser_cases": 33,
+    "fixture_ownership_cases": 4,
+    "tooling_groups": 6,
+    "schema_groups": 6,
+    "root_contract_web_types": "passed",
+    "lint_and_generated_drift": "passed",
+    "migration_drift": "passed",
+    "workflow_lint": "actionlint1.7.7 passed; shellcheck disabled",
+    "documentation_relative_links": 57,
+    "diff_check": "passed",
+    "execution_dag_valid": true
+  },
+  "recovery_scenarios": [
+    {
+      "scenario": "interrupted",
+      "status": "passed",
+      "binary_sha256": "cb68e8b3e046b081efcdc99828c519895c5e308dcd444ac490ab86b417aaf632"
+    },
+    {
+      "scenario": "lifecycle",
+      "status": "passed",
+      "binary_sha256": "cb68e8b3e046b081efcdc99828c519895c5e308dcd444ac490ab86b417aaf632"
+    },
+    {
+      "scenario": "upgrade",
+      "status": "passed",
+      "binary_sha256": "cb68e8b3e046b081efcdc99828c519895c5e308dcd444ac490ab86b417aaf632"
+    },
+    {
+      "scenario": "storage",
+      "status": "passed",
+      "binary_sha256": "cb68e8b3e046b081efcdc99828c519895c5e308dcd444ac490ab86b417aaf632"
+    }
+  ],
+  "upgrade": "actual0.45.3, migration0089 to0092, original preserved",
+  "performance": {
+    "full": {
+      "at_1024": {
+        "admin": {
+          "response_bytes": 131314,
+          "serial_median_ms": 16.109519999998156,
+          "serial_p95_ms": 17.551965999999084,
+          "concurrent_p95_ms": 33.139448999994784,
+          "high_water_mib": 267.765625
+        },
+        "empty": {
+          "response_bytes": 68006,
+          "serial_median_ms": 34.629977000004146,
+          "serial_p95_ms": 49.1167390000046,
+          "concurrent_p95_ms": 70.85709200000565,
+          "high_water_mib": 267.765625
+        },
+        "split": {
+          "response_bytes": 84781,
+          "serial_median_ms": 40.06759399999282,
+          "serial_p95_ms": 49.15528199999244,
+          "concurrent_p95_ms": 71.17281899999944,
+          "high_water_mib": 267.78125
+        },
+        "mixed": {
+          "response_bytes": 87474,
+          "serial_median_ms": 25.03487000000314,
+          "serial_p95_ms": 29.076659999991534,
+          "concurrent_p95_ms": 55.414884000012535,
+          "high_water_mib": 267.78125
+        },
+        "adminReadToken": {
+          "response_bytes": 53587,
+          "serial_median_ms": 30.599637999999686,
+          "serial_p95_ms": 33.90873300000385,
+          "concurrent_p95_ms": 77.14372499998717,
+          "high_water_mib": 267.90234375
+        }
+      },
+      "nonempty_snapshot_statement_counts": {
+        "admin": 19,
+        "empty": 19,
+        "split": 25,
+        "mixed": 25,
+        "adminReadToken": 24
+      }
+    },
+    "repeat": {
+      "at_1024": {
+        "admin": {
+          "response_bytes": 131314,
+          "serial_median_ms": 15.687271999995573,
+          "serial_p95_ms": 19.355064999996102,
+          "concurrent_p95_ms": 33.77948900000047,
+          "high_water_mib": 267.9453125
+        },
+        "empty": {
+          "response_bytes": 68006,
+          "serial_median_ms": 25.457790000000386,
+          "serial_p95_ms": 27.19186699999409,
+          "concurrent_p95_ms": 61.43876000000455,
+          "high_water_mib": 267.9453125
+        },
+        "split": {
+          "response_bytes": 84781,
+          "serial_median_ms": 33.657508999996935,
+          "serial_p95_ms": 38.40756700000202,
+          "concurrent_p95_ms": 68.09769699999742,
+          "high_water_mib": 267.9609375
+        },
+        "mixed": {
+          "response_bytes": 87474,
+          "serial_median_ms": 23.64108600000327,
+          "serial_p95_ms": 28.047303999999713,
+          "concurrent_p95_ms": 51.06536299999425,
+          "high_water_mib": 267.9609375
+        },
+        "adminReadToken": {
+          "response_bytes": 53587,
+          "serial_median_ms": 26.56481199999689,
+          "serial_p95_ms": 28.348314000002574,
+          "concurrent_p95_ms": 66.85471700000198,
+          "high_water_mib": 267.984375
+        }
+      },
+      "nonempty_snapshot_statement_counts": {
+        "admin": 19,
+        "empty": 19,
+        "split": 25,
+        "mixed": 25,
+        "adminReadToken": 24
+      }
+    }
+  },
+  "assets": {
+    "default": 14946302,
+    "modern": 10925296
+  },
+  "default_restore_byte_identical": true,
+  "limits": [
+    "Partial contract;207 registered operations remain later.",
+    "ZIP output/source I/O errors are not universally detected; complete is not an archive-integrity guarantee.",
+    "Same-second recording pathname reuse and clock rollback remain a separate writer-collision task.",
+    "Workstation measurements do not qualify physical devices, active-media capacity, longer soaks, remote archive or HEVC paths.",
+    "No hosted workflow execution or physical-device qualification is claimed. Rust conversion remains deferred."
+  ]
+}

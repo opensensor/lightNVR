@@ -1433,11 +1433,17 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     json = call_handler_path(handle_batch_protect_recordings,
                              HTTP_METHOD_POST,
                              "/api/recordings/batch-protect", batch_body,
-                             api_key, 200);
-    TEST_ASSERT_EQUAL_INT(
-        1, cJSON_GetObjectItemCaseSensitive(json, "success_count")->valueint);
-    TEST_ASSERT_EQUAL_INT(
-        1, cJSON_GetObjectItemCaseSensitive(json, "fail_count")->valueint);
+                             api_key, 403);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(allowed_id, &reloaded));
+    TEST_ASSERT_TRUE(reloaded.protected); /* No partial mutation of allowed member. */
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(denied_id, &reloaded));
+    TEST_ASSERT_FALSE(reloaded.protected);
+    /* The rejected batch did not unprotect A; explicitly do that authorized
+     * operation before the independent delete checks later in this test. */
+    snprintf(path, sizeof(path), "/api/recordings/%llu/protect", (unsigned long long)allowed_id);
+    json = call_handler_path(handle_put_recording_protect, HTTP_METHOD_PUT,
+                             path, "{\"protected\":false}", api_key, 200);
     cJSON_Delete(json);
 
     char ptz_path[MAX_STREAM_NAME + 64];
@@ -3203,6 +3209,17 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
     TEST_ASSERT_EQUAL_STRING(camera.name,
         cJSON_GetObjectItemCaseSensitive(json, "stream")->valuestring);
     cJSON_Delete(json);
+    json = call_handler_path(handle_get_timeline_segments, HTTP_METHOD_GET,
+        "/api/timeline/segments?stream=new_lpr_camera&start=2026-08-28T00:00:00Z&end=2026-08-29T00:00:00Z",
+        NULL, api_key, 200);
+    segments = cJSON_GetObjectItemCaseSensitive(json, "segments");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(segments));
+    TEST_ASSERT_EQUAL_UINT64(recording_id, (uint64_t)cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(segments, 0), "id")->valuedouble);
+    intervals = cJSON_GetObjectItemCaseSensitive(json, "detection_intervals");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(intervals));
+    cJSON_Delete(json);
+
 
     snprintf(path, sizeof(path), "/api/timeline/segments-by-ids?ids=%llu",
              (unsigned long long)recording_id);

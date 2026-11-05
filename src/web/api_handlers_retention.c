@@ -39,8 +39,8 @@ static int authorize_recording_action(const http_request_t *req,
         http_response_set_json_error(res, 404, "Recording not found");
         return 0;
     }
-    return httpd_authorize_stream_action_with_context(
-        req, res, action, recording->stream_name, user, camera, evaluation);
+    return httpd_authorize_camera_identity_action_with_context(
+        req, res, action, recording->camera_uuid, recording->stream_name, user, camera, evaluation);
 }
 
 static void audit_recording_policy_operation(
@@ -403,9 +403,13 @@ void handle_get_protected_recordings(const http_request_t *req, http_response_t 
 
     int count = -1;
     if (stream_name[0]) {
-        if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
-                                           stream_name)) return;
-        count = get_protected_recordings_count(stream_name);
+        user_t user;
+        fleet_camera_t camera;
+        authorization_evaluation_t evaluation;
+        if (!httpd_authorize_camera_identity_action_with_context(req, res,
+                AUTHZ_RECORDINGS_REPLAY, NULL, stream_name, &user, &camera, &evaluation)) return;
+        const char *uuids[] = {camera.camera_uuid};
+        count = get_protected_recordings_count_for_cameras(uuids, 1);
     } else {
         user_t user;
         if (!httpd_check_action_access(req, &user)) {
@@ -429,8 +433,8 @@ void handle_get_protected_recordings(const http_request_t *req, http_response_t 
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
-        for (int i = 0; i < camera_count; i++) names[i] = cameras[i].name;
-        count = get_protected_recordings_count_for_streams(names, camera_count);
+        for (int i = 0; i < camera_count; i++) names[i] = cameras[i].camera_uuid;
+        count = get_protected_recordings_count_for_cameras(names, camera_count);
         free(names);
         free(cameras);
     }
@@ -519,8 +523,8 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
             continue;
         }
         authorization_evaluation_t evaluation;
-        int result = httpd_evaluate_stream_action(
-            &user, AUTHZ_EVIDENCE_PROTECT, recording.stream_name,
+        int result = httpd_evaluate_camera_identity_action(
+            &user, AUTHZ_EVIDENCE_PROTECT, recording.camera_uuid, recording.stream_name,
             &evaluation);
         if (result < 0) {
             audit_batch_policy_operation(
@@ -533,8 +537,12 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
             return;
         }
         if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
-            fail_count++;
-            continue;
+            audit_batch_policy_operation(req, &user, protected, item_count, 0, fail_count,
+                                         "failure", "unauthorized_member");
+            free(authorized_ids);
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 403, "Forbidden");
+            return;
         }
         authorized_ids[authorized_count++] = id;
     }

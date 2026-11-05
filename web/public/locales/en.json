@@ -534,6 +534,7 @@
   "auth.profileUpdateError": "Error updating profile: {message}",
   "auth.authenticationRequired": "Authentication Required",
   "auth.sessionExpiredLoginAgain": "Your session has expired or you are not logged in. Please log in again.",
+  "auth.sessionVerificationUnavailable": "Unable to verify your session. Try again.",
   "auth.goToLogin": "Go to Login",
   "common.loading": "Loading...",
   "common.loadingData": "Loading data...",
@@ -1172,6 +1173,7 @@
   "timeline.speed": "Speed",
   "streams.streamAddedSuccessfully": "Stream added successfully",
   "streams.errorAddingStream": "Error adding stream: {message}",
+  "streams.streamUpdateQueued": "Stream update queued; refreshing current state.",
   "streams.streamUpdatedSuccessfully": "Stream updated successfully",
   "streams.errorUpdatingStream": "Error updating stream: {message}",
   "streams.testingStreamConnection": "Testing stream connection...",
@@ -2951,5 +2953,12 @@
   "recordings.playbackRecovery": "Download the original file to attempt recovery, or delete it if it is no longer needed.",
   "recordings.playbackRetention": "Normal retention applies. Protect this recording to keep it from automatic deletion.",
   "recordings.playbackProtected": "This recording is protected from automatic deletion.",
-  "recordings.downloadOriginal": "Download original"
+  "recordings.downloadOriginal": "Download original",
+  "apiDocs.title": "API reference",
+  "apiDocs.intro": "Read-only API documentation for your current session.",
+  "apiDocs.loading": "Verifying your session and loading available operations…",
+  "apiDocs.denied": "Sign in with an account permitted to view the API reference.",
+  "apiDocs.unavailable": "Unable to load the API reference. Try again.",
+  "apiDocs.partial": "This reference covers selected APIs. Missing operations do not indicate denied access.",
+  "apiDocs.empty": "No API operations are available in this reference for the current session."
 }

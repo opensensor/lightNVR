@@ -235,6 +235,11 @@ jobs:
           ctest --test-dir build/health-ci --output-on-failure \
             -R 'test_system_health_(types|proc|cgroup|filesystem|process|thermal|network|clock|policy|sampler|evaluator|storage)$|test_recording_io_metrics$|test_health_helper_runner$'
 
+      - name: Install browser tooling for UI unit and integration checks
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
       - name: P2/P4 event, presence, API, and UI-unit gate
         run: |
           ctest --test-dir build/health-ci --output-on-failure \
@@ -263,8 +268,6 @@ jobs:
 
       - name: Health API, MQTT, and browser integration gate
         run: |
-          npm ci
-          npx playwright install --with-deps chromium
           LIGHTNVR_TEST_BIN="$GITHUB_WORKSPACE/build/health-ci/bin/lightnvr" \
             LIGHTNVR_TEST_CONFIG="$GITHUB_WORKSPACE/config/lightnvr-health-test.ini" \
             LIGHTNVR_SKIP_GO2RTC=1 \
@@ -315,6 +318,116 @@ jobs:
             test-results/
           retention-days: 7
 
+  contract-tests:
+    name: Permission-aware API and browser contracts
+    runs-on: ubuntu-latest
+    container: debian:sid-slim
+    timeout-minutes: 30
+    steps:
+      - name: Install native dependencies
+        run: |
+          apt-get update
+          apt-get install -y git build-essential cmake pkg-config python3 ca-certificates ffmpeg \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavfilter-dev \
+            libswresample-dev libsqlite3-dev libuv1-dev libllhttp-dev \
+            libcurl4-openssl-dev libcjson-dev libmbedtls-dev
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+      - name: Checkout FAAC
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --depth 1 third_party/faac
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - name: Install tools and browser
+        run: |
+          npm ci
+          npm ci --prefix web
+          npx playwright install --with-deps chromium
+      - name: Build isolated JSON contract variant
+        run: |
+          cmake -S . -B build/contracts-ci -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF -DENABLE_LITERT=OFF -DENABLE_GO2RTC=OFF \
+            -DENABLE_MQTT=OFF -DENABLE_SSL=ON
+          cmake --build build/contracts-ci --parallel 2 --target lightnvr \
+            test_authorization_snapshot test_openapi_projection test_api_handlers_openapi \
+            test_recording_camera_scope
+          npm --prefix web run build
+      - name: Validate native projection and independent schemas
+        run: |
+          mkdir -p build/contracts-ci/projections
+          LIGHTNVR_OPENAPI_OUTPUT_DIR="$GITHUB_WORKSPACE/build/contracts-ci/projections" \
+            ctest --test-dir build/contracts-ci --output-on-failure --no-tests=error \
+              -R '^test_(authorization_snapshot|openapi_projection|api_handlers_openapi|recording_camera_scope)$'
+          npm run contracts:lint -- --projections build/contracts-ci/projections
+          npm run contracts:check
+          npm run contracts:typecheck
+      - name: Isolated fixture ownership checks
+        env:
+          LIGHTNVR_CONTRACT_BIN: ${{ github.workspace }}/build/contracts-ci/bin/lightnvr
+        run: node --test tests/contracts/fixture-server.test.mjs
+      - name: Real-server API contracts
+        env:
+          LIGHTNVR_CONTRACT_BIN: ${{ github.workspace }}/build/contracts-ci/bin/lightnvr
+          PLAYWRIGHT_JSON_OUTPUT_FILE: build/contracts-ci/api-raw.json
+        run: npx playwright test -c tests/contracts/playwright.config.ts --project=api --workers=1 --retries=0 --forbid-only --reporter=list,json
+      - name: Real-server browser contracts
+        env:
+          LIGHTNVR_CONTRACT_BIN: ${{ github.workspace }}/build/contracts-ci/bin/lightnvr
+          PLAYWRIGHT_JSON_OUTPUT_FILE: build/contracts-ci/ui-raw.json
+        run: npx playwright test -c tests/contracts/playwright.config.ts --project=ui --workers=1 --retries=0 --forbid-only --reporter=list,json
+      - name: Prepare credential-free contract status artifacts
+        if: always()
+        run: |
+          # Raw reports/traces can contain synthetic credentials. Publish only
+          # declared test titles, statuses and timing, never errors/attachments.
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('build/contracts-ci')
+          output = root / 'status'
+          output.mkdir(parents=True, exist_ok=True)
+          missing = []
+          for project in ('api', 'ui'):
+              source = root / f'{project}-raw.json'
+              if not source.is_file():
+                  missing.append(project)
+                  continue
+              report = json.loads(source.read_text())
+              rows = []
+              def visit(suite):
+                  for spec in suite.get('specs', []):
+                      for test in spec.get('tests', []):
+                          rows.append({'title': spec['title'], 'status': test['status'],
+                              'results': [{'status': r['status'], 'duration': r['duration']}
+                                          for r in test.get('results', [])]})
+                  for child in suite.get('suites', []):
+                      visit(child)
+              for suite in report.get('suites', []):
+                  visit(suite)
+              if not rows:
+                  raise SystemExit(f'Empty {project} contract report')
+              (output / f'{project}.json').write_text(json.dumps({'tests': rows}, indent=2))
+          binary = root / 'bin/lightnvr'
+          if binary.is_file():
+              (output / 'binary.sha256').write_text(hashlib.sha256(binary.read_bytes()).hexdigest() + '\n')
+          if missing:
+              raise SystemExit('Missing contract reports: ' + ', '.join(missing))
+          PY
+      - name: Upload sanitized contract results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: permission-aware-contract-status
+          path: build/contracts-ci/status/
+          if-no-files-found: error
+          retention-days: 14
+
   go2rtc-unit-tests:
     name: go2rtc Unity Tests (T12 + T15)
     needs: unity-tests
@@ -344,7 +457,7 @@ jobs:
             libmbedtls-dev \
             libyaml-dev \
             lcov \
-            golang-go \
+            golang-go patch python3 \
             ffmpeg \
             curl \
             ca-certificates \
@@ -357,7 +470,10 @@ jobs:
 
       - name: Build go2rtc from vendored submodule
         run: |
+          python3 tests/reliability/test_go2rtc_patch.py
+          sh scripts/apply-go2rtc-patches.sh
           cd go2rtc
+          go test -race ./internal/http -count=1 -timeout=60s
           CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
           chmod +x go2rtc
           ./go2rtc --version
@@ -484,7 +600,7 @@ jobs:
             ffmpeg \
             curl \
             jq \
-            golang-go \
+            golang-go patch \
             procps
 
       - name: Checkout
@@ -510,6 +626,7 @@ jobs:
 
       - name: Build go2rtc from source
         run: |
+          sh scripts/apply-go2rtc-patches.sh
           # Build go2rtc from the opensensor fork submodule
           cd go2rtc
           echo "Building go2rtc from source..."

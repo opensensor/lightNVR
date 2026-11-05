@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 #include "core/config.h"
 
@@ -76,5 +77,9 @@ db_api_token_result_t db_api_token_authenticate(
 /* Reload one active token so authorization observes revocation and expiry. */
 db_api_token_result_t db_api_token_get_active(const char *token_uuid,
                                               api_token_t *token);
+
+/* Borrowed connection; expiration is evaluated at the supplied Unix time. */
+db_api_token_result_t db_api_token_get_active_on_connection(sqlite3 *db,
+    int64_t observed_at, const char *token_uuid, api_token_t *token);
 
 #endif /* LIGHTNVR_DB_API_TOKENS_H */

@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 #include "core/config.h"
 
@@ -53,6 +54,12 @@ db_camera_collection_result_t db_camera_collection_update(
 db_camera_collection_result_t db_camera_collection_delete(const char *uuid);
 
 int db_camera_collection_list_members(
+    const char *collection_uuid,
+    char camera_uuids[][CAMERA_UUID_STRING_SIZE], int max_count);
+/* Borrowed connection: no transaction or global lock is acquired here. */
+db_camera_collection_result_t db_camera_collection_get_on_connection(
+    sqlite3 *db, const char *uuid, camera_collection_t *collection);
+int db_camera_collection_list_members_on_connection(sqlite3 *db,
     const char *collection_uuid,
     char camera_uuids[][CAMERA_UUID_STRING_SIZE], int max_count);
 db_camera_collection_result_t db_camera_collection_set_members(

@@ -20,6 +20,7 @@
 #include "web/libuv_connection.h"
 #include "web/http_server.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_openapi.h"
 #include "web/api_handlers_health.h"
 #include "web/api_handlers_settings.h"
 #include "web/api_handlers_system.h"
@@ -91,6 +92,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     }
 
     log_info("Registering API handlers with libuv server");
+
+    http_server_register_handler(server, "/api/openapi.json", "GET", handle_get_openapi);
 
     // Setup wizard API (no authentication guard – must be accessible before auth is configured)
     http_server_register_handler(server, "/api/setup/status", "GET",  handle_get_setup_status);

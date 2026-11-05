@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 #include "core/camera_selector.h"
 #include "database/db_auth.h"
@@ -115,6 +116,10 @@ int authorization_effective_action_mask(const user_t *user, uint64_t *mask);
 typedef struct authorization_context authorization_context_t;
 
 authorization_context_t *authorization_context_create(void);
+/* Opt-in context borrowing a caller-owned read transaction. The connection
+ * must outlive the context; expiry uses observed_at, never wall-clock reevaluation. */
+authorization_context_t *authorization_context_create_on_connection(
+    sqlite3 *connection, int64_t observed_at);
 void authorization_context_free(authorization_context_t *context);
 
 int authorization_evaluate_in_context(authorization_context_t *context,

@@ -298,12 +298,18 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
  * on-disk file with a separate playback-check result, or prune a missing/empty
  * file when its storage location is available. Surviving files stay visible
  * under normal retention and protection rules even when playback is unavailable.
- * Rows with playback issues are rechecked at each startup. Call once at startup
- * after the database and storage manager are initialized.
+ * This compatibility/manual entry retains the age exclusion. Production
+ * startup uses storage_reconcile_startup_recordings with a boundary captured
+ * before any writer starts, so recent crash rows are not left in progress.
  *
  * @return number of rows reconciled (finalized + pruned)
  */
 int storage_reconcile_incomplete_recordings(void);
+
+/* Reconcile only rows at/below a boundary captured before writer startup.
+ * Caller must not capture the boundary inside a running background scan.
+ * Zero means no preexisting rows. Returns -1 on allocation/query failure. */
+int storage_reconcile_startup_recordings(uint64_t maximum_id);
 
 /**
  * Whether the recorder should pause writing new segments due to disk pressure.

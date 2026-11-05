@@ -2105,6 +2105,15 @@ static const char migration_0091_up[] =
 static const char migration_0091_down[] =
     "ALTER TABLE recordings DROP COLUMN playback_issue;";
 
+static const char migration_0092_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_detections_legacy_stream_label\n"
+    "ON detections(stream_name, label)\n"
+    "WHERE (camera_uuid IS NULL OR camera_uuid = '')\n"
+    "  AND label IS NOT NULL AND TRIM(label) <> '';";
+
+static const char migration_0092_down[] =
+    "DROP INDEX IF EXISTS idx_detections_legacy_stream_label;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2743,8 +2752,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0091_down,
         .is_embedded = true
     },
+    {
+        .version = "0092",
+        .description = "index_legacy_detection_labels",
+        .sql_up = migration_0092_up,
+        .sql_down = migration_0092_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 91
+#define EMBEDDED_MIGRATIONS_COUNT 92
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -520,6 +520,125 @@ static void test_damaged_recordings_keep_protection_and_can_be_deleted(void) {
     TEST_ASSERT_EQUAL_INT(-1, access(path, F_OK));
 }
 
+static uint64_t startup_boundary(void) {
+    uint64_t boundary = UINT64_MAX;
+    TEST_ASSERT_EQUAL_INT(0, db_recordings_capture_startup_boundary(&boundary));
+    return boundary;
+}
+
+static void test_startup_recovers_recent_playable_and_protected_damaged_rows(void) {
+    char playable[PATH_MAX], damaged[PATH_MAX];
+    next_path(playable, sizeof(playable), g_present_dir);
+    next_path(damaged, sizeof(damaged), g_present_dir);
+    add_playable_row(playable);
+    create_file(damaged, "actual surviving damaged footage");
+    add_row(damaged, false, true, NULL);
+    exec_sql("UPDATE recordings SET start_time=strftime('%s','now');");
+    uint64_t boundary = startup_boundary();
+    /* Compatibility/manual scans retain their age exclusion. */
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_incomplete_recordings());
+    TEST_ASSERT_EQUAL_INT(2, storage_reconcile_startup_recordings(boundary));
+    TEST_ASSERT_EQUAL_INT(2, query_count("SELECT count(*) FROM recordings WHERE is_complete=1;"));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE playback_issue='';"));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE protected=1 AND playback_issue='invalid_media';"));
+    TEST_ASSERT_EQUAL_INT(0, access(damaged, F_OK));
+    unlink(playable);
+    unlink(damaged);
+}
+
+static void test_startup_never_touches_post_boundary_writers_even_with_old_timestamps(void) {
+    char before[PATH_MAX], after[PATH_MAX];
+    next_path(before, sizeof(before), g_present_dir);
+    next_path(after, sizeof(after), g_present_dir);
+    add_playable_row(before);
+    uint64_t boundary = startup_boundary();
+    create_file(after, "new writer's partial footage");
+    add_row(after, false, false, NULL); /* Fixture defaults to two hours old. */
+    uint64_t new_id = startup_boundary();
+    TEST_ASSERT_GREATER_THAN_UINT64(boundary, new_id);
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_startup_recordings(boundary));
+    recording_metadata_t active;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(new_id, &active));
+    TEST_ASSERT_FALSE(active.is_complete);
+    TEST_ASSERT_EQUAL_INT(0, active.end_time);
+    TEST_ASSERT_EQUAL_UINT64(0, active.size_bytes);
+    TEST_ASSERT_EQUAL_STRING("", active.playback_issue);
+    TEST_ASSERT_EQUAL_INT(0, access(after, F_OK));
+    unlink(before);
+    unlink(after);
+}
+
+static void test_empty_startup_boundary_cannot_capture_later_rows(void) {
+    uint64_t boundary = startup_boundary();
+    TEST_ASSERT_EQUAL_UINT64(0, boundary);
+    char path[PATH_MAX];
+    next_path(path, sizeof(path), g_present_dir);
+    create_file(path, "active");
+    add_row(path, false, false, NULL);
+    recording_metadata_t page[1];
+    TEST_ASSERT_EQUAL_INT(0, get_startup_incomplete_recordings_page(page, 1, 0, boundary));
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_startup_recordings(boundary));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE is_complete=0;"));
+    unlink(path);
+}
+
+static void test_deleted_boundary_id_is_not_reused_by_supported_inserts(void) {
+    TEST_ASSERT_EQUAL_INT(1, query_count(
+        "SELECT instr(upper(sql),'AUTOINCREMENT')>0 FROM sqlite_master WHERE type='table' AND name='recordings';"));
+    char path[PATH_MAX];
+    next_path(path, sizeof(path), g_present_dir);
+    create_file(path, "active");
+    add_row(path, false, false, NULL);
+    uint64_t boundary = startup_boundary();
+    exec_sql("DELETE FROM recordings;");
+    recording_metadata_t fresh = {0};
+    safe_strcpy(fresh.stream_name, "cam", sizeof(fresh.stream_name), 0);
+    safe_strcpy(fresh.file_path, path, sizeof(fresh.file_path), 0);
+    fresh.start_time = time(NULL) - 7200;
+    uint64_t new_id = add_recording_metadata(&fresh);
+    TEST_ASSERT_GREATER_THAN_UINT64(boundary, new_id);
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_startup_recordings(boundary));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE is_complete=0;"));
+    unlink(path);
+}
+
+static int deny_recording_boundary_read(void *opaque, int action, const char *table,
+                                        const char *column, const char *database,
+                                        const char *trigger) {
+    (void)opaque; (void)column; (void)database; (void)trigger;
+    return action == SQLITE_READ && table && !strcmp(table, "recordings")
+        ? SQLITE_DENY : SQLITE_OK;
+}
+
+static void test_failed_boundary_capture_is_empty_and_cannot_broaden(void) {
+    uint64_t boundary = UINT64_MAX;
+    sqlite3_set_authorizer(get_db_handle(), deny_recording_boundary_read, NULL);
+    int result = db_recordings_capture_startup_boundary(&boundary);
+    sqlite3_set_authorizer(get_db_handle(), NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(-1, result);
+    TEST_ASSERT_EQUAL_UINT64(0, boundary);
+    TEST_ASSERT_EQUAL_INT(-1, db_recordings_capture_startup_boundary(NULL));
+    add_row("/missing/new-writer.mp4", false, false, NULL);
+    TEST_ASSERT_EQUAL_INT(0, storage_reconcile_startup_recordings(boundary));
+    TEST_ASSERT_EQUAL_INT(-1, storage_reconcile_startup_recordings(UINT64_MAX));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE is_complete=0;"));
+}
+
+static void test_startup_boundary_pages_past_retained_rows_without_extending(void) {
+    add_missing_rows(g_absent_dir, BATCH_SIZE + 3);
+    char path[PATH_MAX];
+    next_path(path, sizeof(path), g_present_dir);
+    add_playable_row(path);
+    exec_sql("UPDATE recordings SET start_time=strftime('%s','now');");
+    uint64_t boundary = startup_boundary();
+    add_row("/missing/later-writer.mp4", false, false, NULL);
+    TEST_ASSERT_EQUAL_INT(1, storage_reconcile_startup_recordings(boundary));
+    TEST_ASSERT_EQUAL_INT(BATCH_SIZE + 4,
+        query_count("SELECT count(*) FROM recordings WHERE is_complete=0 AND deletion_pending=0;"));
+    TEST_ASSERT_EQUAL_INT(1, query_count("SELECT count(*) FROM recordings WHERE is_complete=1;"));
+    unlink(path);
+}
+
 int main(void) {
     strcpy(g_root, "/tmp/lightnvr_reconcile_XXXXXX");
     if (!mkdtemp(g_root)) return 1;
@@ -567,6 +686,12 @@ int main(void) {
     RUN_TEST(test_available_target_media_is_reconciled);
     RUN_TEST(test_inconsistent_target_identity_cannot_delete_other_footage);
     RUN_TEST(test_empty_file_on_unmounted_target_is_retained);
+    RUN_TEST(test_startup_recovers_recent_playable_and_protected_damaged_rows);
+    RUN_TEST(test_startup_never_touches_post_boundary_writers_even_with_old_timestamps);
+    RUN_TEST(test_empty_startup_boundary_cannot_capture_later_rows);
+    RUN_TEST(test_deleted_boundary_id_is_not_reused_by_supported_inserts);
+    RUN_TEST(test_failed_boundary_capture_is_empty_and_cannot_broaden);
+    RUN_TEST(test_startup_boundary_pages_past_retained_rows_without_extending);
     int result = UNITY_END();
 
     shutdown_database();

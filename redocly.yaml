@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  no-unused-components: off
+  info-license: off
+  operation-4xx-response: off
+  # ../ intentionally resolves the deployment root from /api/openapi.json.
+  no-server-trailing-slash: off

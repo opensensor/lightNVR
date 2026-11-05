@@ -529,8 +529,8 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
             return;
         }
         authorization_evaluation_t evaluation;
-        int result = httpd_evaluate_stream_action(
-            &user, AUTHZ_RECORDINGS_EXPORT, recording.stream_name,
+        int result = httpd_evaluate_camera_identity_action(
+            &user, AUTHZ_RECORDINGS_EXPORT, recording.camera_uuid, recording.stream_name,
             &evaluation);
         if (result < 0) {
             cJSON_Delete(json);

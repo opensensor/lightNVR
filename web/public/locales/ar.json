@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "أعلى من الحد المرتفع",
   "system.storageTiers.pressure.reserve": "أقل من الاحتياطي",
   "system.storageTiers.pressure.unavailable": "غير متاح",
-  "system.storageTiers.sharedFilesystem": "يشارك نظام ملفات مع هدف آخر"
+  "system.storageTiers.sharedFilesystem": "يشارك نظام ملفات مع هدف آخر",
+  "streams.streamUpdateQueued": "تمت إضافة تحديث البث إلى قائمة الانتظار؛ جارٍ تحديث الحالة الحالية.",
+  "auth.sessionVerificationUnavailable": "تعذر التحقق من جلستك. حاول مرة أخرى.",
+  "apiDocs.title": "مرجع API",
+  "apiDocs.intro": "وثائق API للقراءة فقط لجلستك الحالية.",
+  "apiDocs.loading": "جارٍ التحقق من جلستك وتحميل العمليات المتاحة…",
+  "apiDocs.denied": "سجّل الدخول بحساب مسموح له بعرض مرجع API.",
+  "apiDocs.unavailable": "تعذر تحميل مرجع API. حاول مرة أخرى.",
+  "apiDocs.partial": "يغطي هذا المرجع واجهات API محددة. غياب العمليات لا يعني رفض الوصول.",
+  "apiDocs.empty": "لا توجد عمليات API متاحة في هذا المرجع للجلسة الحالية."
 }

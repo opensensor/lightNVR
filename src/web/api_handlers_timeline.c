@@ -129,14 +129,14 @@ static int get_timeline_segments_for_identity(
         "r.start_time, r.end_time, "
         "r.size_bytes, "
         "CASE WHEN r.trigger_type = 'detection' THEN 1 "
-        "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND " DB_CAPTURE_CAMERA_MATCH_SQL("d", "r") ") THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
-        "                  WHERE d.camera_uuid = r.camera_uuid "
+        "                  WHERE " DB_CAPTURE_CAMERA_MATCH_SQL("d", "r") " "
         "                    AND d.source != 'external_motion' "
         "                    AND d.timestamp >= r.start_time "
         "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER))) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
-        "                  WHERE d.camera_uuid = r.camera_uuid "
+        "                  WHERE " DB_CAPTURE_CAMERA_MATCH_SQL("d", "r") " "
         "                    AND d.source = 'external_motion' "
         "                    AND d.timestamp <= COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
@@ -148,7 +148,7 @@ static int get_timeline_segments_for_identity(
         "  OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0 "
         "      AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)"
         "          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
-        "  AND r.camera_uuid = ? "
+        "  AND " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " = ? "
         "  AND r.start_time < ? "
         "  AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? "
         "ORDER BY r.start_time ASC "
@@ -172,7 +172,8 @@ static int get_timeline_segments_for_identity(
 
     const time_t live_now = time(NULL);
     int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_segments) {
+    int step_result;
+    while ((step_result = sqlite3_step(stmt)) == SQLITE_ROW && count < max_segments) {
         memset(&segments[count], 0, sizeof(segments[count]));
         segments[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
@@ -213,6 +214,8 @@ static int get_timeline_segments_for_identity(
 
     sqlite3_finalize(stmt);
     db_close_readonly_connection(db);
+
+    if (step_result != SQLITE_DONE && step_result != SQLITE_ROW) return -1;
 
     log_info("get_timeline_segments: found %d segments for %s '%s' in range [%ld, %ld]",
              count, by_camera_uuid ? "camera" : "stream", identity,
@@ -288,7 +291,7 @@ int get_timeline_coverage_by_camera_uuid(
         "  OR (r.is_complete = 0 AND COALESCE(r.end_time, 0) = 0 "
         "      AND r.start_time >= CAST(strftime('%s','now') AS INTEGER)"
         "          - (2 * COALESCE(NULLIF(s.segment_duration, 0), 900))))"
-        "  AND r.camera_uuid = ? AND r.start_time < ? "
+        "  AND " DB_CAPTURE_CAMERA_IDENTITY_SQL("r") " = ? AND r.start_time < ? "
         "  AND COALESCE(NULLIF(r.end_time, 0), CAST(strftime('%s','now') AS INTEGER)) > ? "
         "ORDER BY r.start_time ASC;";
     sqlite3_stmt *stmt = NULL;
@@ -488,8 +491,12 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
                                          "stream or camera_uuid is required");
             return;
         }
-        if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
-                                           stream_name)) return;
+        user_t user;
+        fleet_camera_t camera;
+        authorization_evaluation_t evaluation;
+        if (!httpd_authorize_camera_identity_action_with_context(req, res,
+                AUTHZ_RECORDINGS_REPLAY, NULL, stream_name, &user, &camera, &evaluation)) return;
+        safe_strcpy(camera_uuid, camera.camera_uuid, sizeof(camera_uuid), 0);
     }
 
     // Extract start and end parameters (optional)
@@ -532,11 +539,8 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         return;
     }
     
-    int count = by_camera_uuid
-        ? get_timeline_segments_by_camera_uuid(
-              camera_uuid, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS)
-        : get_timeline_segments(
-              stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+    int count = get_timeline_segments_by_camera_uuid(
+        camera_uuid, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
 
     if (count < 0) {
         log_error("Failed to get timeline segments");
@@ -577,13 +581,15 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
                                                   sizeof(*intervals));
         int interval_count = -1;
         if (intervals) {
-            interval_count = by_camera_uuid
-                ? get_external_motion_detection_intervals_by_camera_uuid(
-                      camera_uuid, start_time, end_time, intervals,
-                      MAX_TIMELINE_SEGMENTS)
-                : get_external_motion_detection_intervals(
-                      stream_name, start_time, end_time, intervals,
-                      MAX_TIMELINE_SEGMENTS);
+            interval_count = get_external_motion_detection_intervals_by_camera_uuid(
+                camera_uuid, start_time, end_time, intervals, MAX_TIMELINE_SEGMENTS);
+        }
+        if (interval_count < 0) {
+            free(intervals);
+            free(segments);
+            cJSON_Delete(response);
+            http_response_set_json_error(res, 500, "Failed to get detection intervals");
+            return;
         }
         if (interval_count > 0) {
             for (int i = 0; i < interval_count; i++) {
@@ -734,8 +740,11 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
-                                       stream_name)) return;
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(req, res,
+            AUTHZ_RECORDINGS_REPLAY, NULL, stream_name, &user, &camera, &evaluation)) return;
 
     // Extract start and end parameters (optional)
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -777,9 +786,14 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+    int count = get_timeline_segments_by_camera_uuid(camera.camera_uuid, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
 
-    if (count <= 0) {
+    if (count < 0) {
+        free(segments);
+        http_response_set_json_error(res, 500, "Failed to get timeline segments");
+        return;
+    }
+    if (count == 0) {
         log_error("No timeline segments found for stream %s", stream_name);
         free(segments);
         http_response_set_json_error(res, 404, "No recordings found for the specified time range");
@@ -821,8 +835,11 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
-                                       stream_name)) return;
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(req, res,
+            AUTHZ_RECORDINGS_REPLAY, NULL, stream_name, &user, &camera, &evaluation)) return;
 
     // Extract start parameter
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -862,9 +879,14 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
     time_t search_start = start_time - 3600;
     time_t search_end = start_time + 3600;
 
-    int count = get_timeline_segments(stream_name, search_start, search_end, segments, MAX_TIMELINE_SEGMENTS);
+    int count = get_timeline_segments_by_camera_uuid(camera.camera_uuid, search_start, search_end, segments, MAX_TIMELINE_SEGMENTS);
 
-    if (count <= 0) {
+    if (count < 0) {
+        free(segments);
+        http_response_set_json_error(res, 500, "Failed to get timeline segments");
+        return;
+    }
+    if (count == 0) {
         log_error("No recordings found for stream %s near time %ld", stream_name, (long)start_time);
         free(segments);
         http_response_set_json_error(res, 404, "No recordings found for the specified time");
@@ -1076,20 +1098,13 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         }
         // Authorize against capture identity, not a historical name that may
         // have been renamed or reassigned to a different camera.
-        const char *authorization_name = rec.stream_name;
-        stream_config_t recorded_camera;
-        if (rec.camera_uuid[0] != '\0') {
-            if (get_stream_config_by_uuid(rec.camera_uuid, &recorded_camera) != 0)
-                continue;
-            authorization_name = recorded_camera.name;
-        }
         authorization_evaluation_t replay_evaluation;
-        if (httpd_evaluate_stream_action(&user, AUTHZ_RECORDINGS_REPLAY,
-                                         authorization_name,
-                                         &replay_evaluation) != 0) {
+        int evaluation_result = httpd_evaluate_camera_identity_action(&user,
+            AUTHZ_RECORDINGS_REPLAY, rec.camera_uuid, rec.stream_name, &replay_evaluation);
+        if (evaluation_result > 0) continue;
+        if (evaluation_result < 0) {
             cJSON_Delete(response);
-            http_response_set_json_error(
-                res, 500, "Authorization policy evaluation failed");
+            http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
             return;
         }
         if (replay_evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
@@ -1100,15 +1115,15 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         const time_t effective_end =
             (in_progress && rec.end_time <= 0) ? time(NULL) : rec.end_time;
 
-        /* Check for detections */
-        bool has_det = false;
-        if (rec.trigger_type[0] != '\0' && strcmp(rec.trigger_type, "detection") == 0) {
-            has_det = true;
-        } else if (has_detections_in_time_range(rec.stream_name,
-                                               rec.start_time,
-                                               effective_end) > 0) {
-            has_det = true;
+        recording_metadata_t observed = rec;
+        observed.end_time = effective_end;
+        recording_detection_summary_t summary;
+        if (get_recording_detection_summaries_for_cameras(&observed, 1, &summary) != 0) {
+            cJSON_Delete(response);
+            http_response_set_json_error(res, 500, "Failed to get recording detections");
+            return;
         }
+        bool has_det = strcmp(rec.trigger_type, "detection") == 0 || summary.has_detection;
 
         /* Track overall time range */
         if (overall_start == 0 || rec.start_time < overall_start) overall_start = rec.start_time;

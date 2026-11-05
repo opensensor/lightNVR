@@ -33,6 +33,7 @@
 #include "core/shutdown_coordinator.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "database/db_fleet_query.h"
 #include "storage/storage_deletion.h"
 #include "web/recording_source.h"
 #include "database/db_detections.h"
@@ -191,27 +192,17 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
 
     // Check if recording has detections and get detection labels summary
     bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
-    detection_label_summary_t labels[MAX_DETECTION_LABELS];
-    int label_count = 0;
-
-    if (recording.start_time > 0 && effective_end > 0) {
-        // Get detection labels summary for this recording's time range
-        label_count = get_detection_labels_summary(recording.stream_name,
-                                                   recording.start_time,
-                                                   effective_end,
-                                                   labels, MAX_DETECTION_LABELS);
-        if (label_count > 0) {
-            has_detection_flag = true;
-        } else if (!has_detection_flag) {
-            // Fall back to simple check if get_detection_labels_summary returned 0
-            int det_result = has_detections_in_time_range(recording.stream_name,
-                                                          recording.start_time,
-                                                          effective_end);
-            if (det_result > 0) {
-                has_detection_flag = true;
-            }
-        }
+    recording_detection_summary_t summary = {0};
+    recording_metadata_t observed = recording;
+    observed.end_time = effective_end;
+    if (get_recording_detection_summaries_for_cameras(&observed, 1, &summary) != 0) {
+        cJSON_Delete(recording_obj);
+        http_response_set_json_error(res, 500, "Failed to get recording detections");
+        return;
     }
+    detection_label_summary_t *labels = summary.labels;
+    int label_count = summary.label_count;
+    has_detection_flag = has_detection_flag || summary.has_detection;
     cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
     cJSON_AddBoolToObject(recording_obj, "protected", recording.protected);
     recording_source_add_status(recording_obj, recording.id);
@@ -286,8 +277,8 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     user_t user;
     fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    if (!httpd_authorize_stream_action_with_context(
-            req, res, AUTHZ_RECORDING_DELETE, recording.stream_name, &user,
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDING_DELETE, recording.camera_uuid, recording.stream_name, &user,
             &camera, &evaluation)) {
         return;
     }
@@ -325,6 +316,9 @@ typedef struct {
     char job_id[64];
     cJSON *json;  // Parsed JSON request (will be freed by thread)
     int preflight_error_count;
+    /* Server-captured identities, never accepted from client JSON. */
+    int camera_scope_count;
+    char camera_scope[MAX_STREAMS][CAMERA_UUID_STRING_SIZE];
     int64_t owner_user_id;
     char owner_username[64];
     char owner_auth_method[USER_AUTH_METHOD_MAX];
@@ -458,28 +452,21 @@ static void *batch_delete_worker_thread(void *arg) {
         // Delete by filter
         time_t start_time = 0;
         time_t end_time = 0;
-        char stream_name[256] = {0};
         int has_detection = 0;
         char detection_label[256] = {0};
         char tag_filter[512] = {0};
         char capture_method_filter[128] = {0};
-        char collection_uuid[CAMERA_UUID_STRING_SIZE] = {0};
         // protected_filter: -1=all, 0=not protected, 1=protected
         int protected_filter = -1;
 
         // Extract filter parameters
         cJSON *start = cJSON_GetObjectItem(filter, "start");
         cJSON *end = cJSON_GetObjectItem(filter, "end");
-        cJSON *stream = cJSON_GetObjectItem(filter, "stream_name");
-        if (!stream) {
-            stream = cJSON_GetObjectItem(filter, "stream");
-        }
         cJSON *detection = cJSON_GetObjectItem(filter, "detection");
         cJSON *detection_label_item = cJSON_GetObjectItem(filter, "detection_label");
         cJSON *tag_item = cJSON_GetObjectItem(filter, "tag");
         cJSON *capture_method_item = cJSON_GetObjectItem(filter, "capture_method");
         cJSON *protected_item = cJSON_GetObjectItem(filter, "protected");
-        cJSON *collection_item = cJSON_GetObjectItem(filter, "collection_uuid");
 
         if (start && cJSON_IsString(start)) {
             struct tm tm = {0};
@@ -501,23 +488,6 @@ static void *batch_delete_worker_thread(void *arg) {
                 tm.tm_isdst = 0;
                 end_time = timegm(&tm);
             }
-        }
-
-        if (stream && cJSON_IsString(stream)) {
-            safe_strcpy(stream_name, stream->valuestring, sizeof(stream_name), 0);
-        }
-        if (collection_item && cJSON_IsString(collection_item)) {
-            safe_strcpy(collection_uuid, collection_item->valuestring,
-                        sizeof(collection_uuid), 0);
-        }
-        if (stream_name[0] && collection_uuid[0]) {
-            batch_delete_progress_error(
-                job_id, "Collection and stream filters cannot be combined");
-            audit_batch_delete_job(data, "failure", "invalid_filter", 0, 0,
-                                   0);
-            cJSON_Delete(json);
-            free(data);
-            return NULL;
         }
 
         if (detection && cJSON_IsNumber(detection)) {
@@ -547,53 +517,29 @@ static void *batch_delete_worker_thread(void *arg) {
             log_info("Batch delete: protected_filter=%d", protected_filter);
         }
 
-        char **collection_streams = NULL;
-        int collection_stream_count = 0;
-        if (collection_uuid[0]) {
-            camera_collection_filter_result_t result =
-                camera_collection_filter_resolve_stream_names_for_authorization(
-                    collection_uuid, &collection_streams,
-                    &collection_stream_count);
-            if (result != CAMERA_COLLECTION_FILTER_OK) {
-                batch_delete_progress_error(job_id,
-                                            "Failed to resolve camera collection");
-                audit_batch_delete_job(data, "error",
-                                       "collection_resolution_failed", 0, 0,
-                                       0);
-                cJSON_Delete(json);
-                free(data);
-                return NULL;
-            }
-            if (collection_stream_count == 0) {
-                camera_collection_filter_free_stream_names(
-                    collection_streams, collection_stream_count);
-                batch_delete_progress_complete(job_id, 0, 0);
-                audit_batch_delete_job(data, "success", "no_matches", 0, 0,
-                                       0);
-                cJSON_Delete(json);
-                free(data);
-                return NULL;
-            }
-        }
+        const char *camera_scope[MAX_STREAMS];
+        for (int i = 0; i < data->camera_scope_count; i++) camera_scope[i] = data->camera_scope[i];
 
         // Get total count.  Batch delete must never match a segment that is
         // still being written, so in-progress rows are excluded here (#482).
-        int total_count = get_recording_count(start_time, end_time,
-                                            stream_name[0] != '\0' ? stream_name : NULL,
+        int total_count = get_recording_count_for_cameras(start_time, end_time,
+                                            NULL,
                                             has_detection,
                                             detection_label[0] != '\0' ? detection_label : NULL,
                                             protected_filter,
-                                            collection_uuid[0]
-                                                ? (const char * const *)collection_streams
-                                                : NULL,
-                                            collection_uuid[0] ? collection_stream_count : 0,
+                                            camera_scope, data->camera_scope_count,
                                             tag_filter[0] != '\0' ? tag_filter : NULL,
                                             capture_method_filter[0] != '\0' ? capture_method_filter : NULL,
                                             false);
 
-        if (total_count <= 0) {
-            camera_collection_filter_free_stream_names(
-                collection_streams, collection_stream_count);
+        if (total_count < 0) {
+            batch_delete_progress_error(job_id, "Failed to count recordings");
+            audit_batch_delete_job(data, "error", "query_failed", 0, 0, 0);
+            cJSON_Delete(json);
+            free(data);
+            return NULL;
+        }
+        if (total_count == 0) {
             batch_delete_progress_complete(job_id, 0, 0);
             audit_batch_delete_job(data, "success", "no_matches", 0, 0, 0);
             cJSON_Delete(json);
@@ -611,8 +557,6 @@ static void *batch_delete_worker_thread(void *arg) {
         recording_metadata_t *recordings = (recording_metadata_t *)malloc(total_count * sizeof(recording_metadata_t));
         if (!recordings) {
             log_error("Failed to allocate memory for recordings");
-            camera_collection_filter_free_stream_names(
-                collection_streams, collection_stream_count);
             batch_delete_progress_error(job_id, "Failed to allocate memory");
             audit_batch_delete_job(data, "error", "allocation_failed",
                                    total_count, 0, 0);
@@ -622,32 +566,33 @@ static void *batch_delete_worker_thread(void *arg) {
         }
 
         // Get all recordings
-        int count = get_recording_metadata_paginated(start_time, end_time,
-                                                  stream_name[0] != '\0' ? stream_name : NULL,
+        int count = get_recording_metadata_paginated_for_cameras(start_time, end_time,
+                                                  NULL,
                                                   has_detection,
                                                   detection_label[0] != '\0' ? detection_label : NULL,
                                                   protected_filter, "id", "asc",
                                                   recordings, total_count, 0,
-                                                  collection_uuid[0]
-                                                      ? (const char * const *)collection_streams
-                                                      : NULL,
-                                                  collection_uuid[0] ? collection_stream_count : 0,
+                                                  camera_scope, data->camera_scope_count,
                                                   tag_filter[0] != '\0' ? tag_filter : NULL,
                                                   capture_method_filter[0] != '\0' ? capture_method_filter : NULL,
                                                   false);
 
-        if (count <= 0) {
+        if (count < 0) {
             free(recordings);
-            camera_collection_filter_free_stream_names(
-                collection_streams, collection_stream_count);
+            batch_delete_progress_error(job_id, "Failed to load recordings");
+            audit_batch_delete_job(data, "error", "query_failed", total_count, 0, 0);
+            cJSON_Delete(json);
+            free(data);
+            return NULL;
+        }
+        if (count == 0) {
+            free(recordings);
             batch_delete_progress_complete(job_id, 0, 0);
             audit_batch_delete_job(data, "success", "no_matches", 0, 0, 0);
             cJSON_Delete(json);
             free(data);
             return NULL;
         }
-        camera_collection_filter_free_stream_names(
-            collection_streams, collection_stream_count);
 
         // Process each recording
         int success_count = 0;
@@ -727,8 +672,8 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
             continue;
         }
         authorization_evaluation_t evaluation;
-        int result = httpd_evaluate_stream_action(
-            user, AUTHZ_RECORDING_DELETE, recording.stream_name, &evaluation);
+        int result = httpd_evaluate_camera_identity_action(
+            user, AUTHZ_RECORDING_DELETE, recording.camera_uuid, recording.stream_name, &evaluation);
         if (result < 0) {
             cJSON_Delete(authorized);
             http_response_set_json_error(
@@ -736,8 +681,9 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
             return 0;
         }
         if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
-            (*failure_count)++;
-            continue;
+            cJSON_Delete(authorized);
+            http_response_set_json_error(res, 403, "Forbidden");
+            return 0;
         }
         cJSON_AddItemToArray(authorized, cJSON_CreateNumber((double)id));
     }
@@ -748,50 +694,84 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
 }
 
 static int authorize_batch_delete_filter(const user_t *user,
-                                         const cJSON *filter,
-                                         http_response_t *res) {
+    const cJSON *filter, http_response_t *res,
+    char camera_scope[][CAMERA_UUID_STRING_SIZE], int *scope_count) {
+    *scope_count = 0;
     cJSON *stream = cJSON_GetObjectItemCaseSensitive(filter, "stream_name");
     if (!stream) stream = cJSON_GetObjectItemCaseSensitive(filter, "stream");
-    if (cJSON_IsString(stream) && stream->valuestring[0] != '\0') {
-        char names[256];
-        if (strlen(stream->valuestring) >= sizeof(names)) {
-            http_response_set_json_error(res, 400, "Stream filter is too long");
+    bool has_stream = cJSON_IsString(stream) && stream->valuestring[0];
+    if (!has_stream) {
+        /* Open-ended jobs still require all-fleet authority, but their
+         * membership is frozen before dispatch rather than re-resolved later. */
+        authorization_evaluation_t evaluation;
+        if (authorization_evaluate(user, AUTHZ_RECORDING_DELETE, NULL, &evaluation) != 0) {
+            http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
             return 0;
         }
-        safe_strcpy(names, stream->valuestring, sizeof(names), 0);
+        if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+            http_response_set_json_error(res, 403, "Forbidden");
+            return 0;
+        }
+    }
+    char names[256] = {0};
+    if (has_stream && strlen(stream->valuestring) >= sizeof(names)) {
+        http_response_set_json_error(res, 400, "Stream filter is too long");
+        return 0;
+    }
+    if (has_stream) safe_strcpy(names, stream->valuestring, sizeof(names), 0);
+    fleet_camera_t *cameras = NULL;
+    int count = 0;
+    if (db_fleet_camera_load_readonly(&cameras, &count) != 0 || count > MAX_STREAMS ||
+        authorization_filter_cameras(user, AUTHZ_RECORDING_DELETE, cameras, &count) != 0) {
+        free(cameras);
+        http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
+        return 0;
+    }
+    bool selected[MAX_STREAMS] = {false};
+    if (has_stream) {
         char *saveptr = NULL;
-        for (char *name = strtok_r(names, ",", &saveptr); name;
-             name = strtok_r(NULL, ",", &saveptr)) {
+        bool any_name = false;
+        for (char *name = strtok_r(names, ",", &saveptr); name; name = strtok_r(NULL, ",", &saveptr)) {
             name = trim_ascii_whitespace(name);
-            authorization_evaluation_t evaluation;
-            int result = httpd_evaluate_stream_action(
-                user, AUTHZ_RECORDING_DELETE, name, &evaluation);
-            if (result < 0) {
-                http_response_set_json_error(
-                    res, 500, "Authorization policy evaluation failed");
-                return 0;
+            bool found = false;
+            for (int i = 0; i < count; i++) {
+                if (strcmp(name, cameras[i].name) == 0) { selected[i] = true; found = true; }
             }
-            if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
+            if (!found) {
+                free(cameras);
                 http_response_set_json_error(res, 403, "Forbidden");
                 return 0;
             }
+            any_name = true;
         }
-        return 1;
+        if (!any_name) {
+            free(cameras);
+            http_response_set_json_error(res, 400, "Invalid stream filter");
+            return 0;
+        }
+    } else {
+        for (int i = 0; i < count; i++) selected[i] = true;
     }
-
-    // Open-ended filters can expand after this request. Only an all-fleet
-    // grant (or an unrestricted compatible legacy role) may launch them.
-    authorization_evaluation_t evaluation;
-    if (authorization_evaluate(user, AUTHZ_RECORDING_DELETE, NULL,
-                               &evaluation) != 0) {
-        http_response_set_json_error(
-            res, 500, "Authorization policy evaluation failed");
-        return 0;
+    camera_collection_filter_t collection = {0};
+    cJSON *collection_item = cJSON_GetObjectItemCaseSensitive(filter, "collection_uuid");
+    bool has_collection = cJSON_IsString(collection_item) && collection_item->valuestring[0];
+    if (has_collection) {
+        camera_collection_filter_result_t result = camera_collection_filter_load(collection_item->valuestring, user, &collection);
+        if (result != CAMERA_COLLECTION_FILTER_OK) {
+            free(cameras);
+            camera_collection_filter_free(&collection);
+            http_response_set_json_error(res, result == CAMERA_COLLECTION_FILTER_NOT_FOUND ? 404 : 500,
+                result == CAMERA_COLLECTION_FILTER_NOT_FOUND ? "Collection not found" : "Failed to load collection members");
+            return 0;
+        }
     }
-    if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
-        http_response_set_json_error(res, 403, "Forbidden");
-        return 0;
+    for (int i = 0; i < count; i++) {
+        if (selected[i] && (!has_collection || camera_collection_filter_matches(&collection, &cameras[i]))) {
+            safe_strcpy(camera_scope[(*scope_count)++], cameras[i].camera_uuid, CAMERA_UUID_STRING_SIZE, 0);
+        }
     }
+    camera_collection_filter_free(&collection);
+    free(cameras);
     return 1;
 }
 
@@ -825,6 +805,8 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     int total_count = 0;
 
     int preflight_error_count = 0;
+    char camera_scope[MAX_STREAMS][CAMERA_UUID_STRING_SIZE] = {{0}};
+    int camera_scope_count = 0;
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
         total_count = cJSON_GetArraySize(ids_array);
@@ -842,7 +824,7 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
-        if (!authorize_batch_delete_filter(&user, filter, res)) {
+        if (!authorize_batch_delete_filter(&user, filter, res, camera_scope, &camera_scope_count)) {
             cJSON_Delete(json);
             return;
         }
@@ -881,6 +863,8 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     safe_strcpy(thread_data->job_id, job_id, sizeof(thread_data->job_id), 0);
     thread_data->json = json;  // Transfer ownership to thread
     thread_data->preflight_error_count = preflight_error_count;
+    thread_data->camera_scope_count = camera_scope_count;
+    memcpy(thread_data->camera_scope, camera_scope, sizeof(camera_scope));
     thread_data->owner_user_id = user.id;
     safe_strcpy(thread_data->owner_username, user.username,
                 sizeof(thread_data->owner_username), 0);

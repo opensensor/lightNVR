@@ -5,7 +5,7 @@
  * @tags @ui @streams
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { StreamsPage } from '../pages/StreamsPage';
 import { CONFIG, USERS, login, sleep, getAuthHeader } from '../fixtures/test-fixtures';
 
@@ -209,7 +209,7 @@ test.describe('Streams Page @ui @streams', () => {
     const MOCK_STREAM_NAME = 'test_pattern';
 
     // Minimal stream list + full-detail stubs for route-based clone tests
-    async function setupCloneMocks(page: any) {
+    async function setupCloneMocks(page: Page) {
       await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
         json: { streams: [{
           name: MOCK_STREAM_NAME,

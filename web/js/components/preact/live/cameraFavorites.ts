@@ -71,7 +71,7 @@ export function useCameraFavorites() {
     (cameraUuid: string) => mutation.mutateAsync({ cameraUuid, favorite: !favoriteUuids.has(cameraUuid) }),
     [mutation, favoriteUuids]
   );
-  const pending = mutation.isPending ?? mutation.isLoading;
+  const pending = mutation.isLoading;
 
   return {
     favoriteUuids,

@@ -412,7 +412,7 @@ export const urlUtils = {
    * @param {string} sortField Current sort field
    * @param {string} sortDirection Current sort direction
    */
-  updateUrlWithFilters: (filters: RecordingFilters, pagination: RecordingsPaginationState, sortField: string, sortDirection: string) => {
+  updateUrlWithFilters: (filters: RecordingFilters, pagination: Pick<RecordingsPaginationState, 'currentPage' | 'pageSize'> & Partial<Pick<RecordingsPaginationState, 'showAll'>>, sortField: string, sortDirection: string) => {
     const url = new URL(window.location.href);
 
     // Date range

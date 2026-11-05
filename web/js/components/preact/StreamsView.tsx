@@ -3,7 +3,7 @@
  * React component for the streams page
  */
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { ContentLoader } from './LoadingIndicator.tsx';
 import { StreamDeleteModal } from './StreamDeleteModal.tsx';
@@ -42,6 +42,7 @@ import type {
   OnvifProfilesResponse,
   OnvifTestRequest,
   OnvifTestResponse,
+  OnvifStreamCreatePayload,
   StreamBulkAction,
   StreamFieldChange,
   StreamFieldTarget,
@@ -55,6 +56,9 @@ import type {
   StreamTestRequest,
   StreamTestResponse,
 } from '../../types/streams.ts';
+import { normalizePlaybackTransport } from '../../utils/playback-transport.ts';
+import { getStreamFull, listStreamSummaries, updateStream } from '../../api/streams.ts';
+import type { StreamSummaryQuery, StreamUpdateResult } from '../../api/streams.ts';
 import { useEscapeKey } from '../../hooks/useEscapeKey.ts';
 
 declare global {
@@ -73,6 +77,159 @@ function getInitialWorkspaceTab() {
   const view = new URLSearchParams(window.location.search).get('view');
   return view === 'inventory' || view === 'health' || view === 'events' ? view : 'streams';
 }
+
+const normalizeRecordingSchedule = (recordingSchedule: boolean[], recordOnSchedule: boolean): boolean[] => {
+  if (!recordOnSchedule) {
+    return Array(168).fill(true);
+  }
+  if (Array.isArray(recordingSchedule) && recordingSchedule.length === 168) {
+    return recordingSchedule;
+  }
+  return Array(168).fill(true);
+};
+
+/** Build a typed wire DTO field by field; form/UI metadata never enters PUT. */
+export function streamSavePayloadFromForm(currentStream: StreamFormState, isEditing: boolean): StreamSavePayload {
+  const streamData: StreamSavePayload = {
+    name: currentStream.name.trim(),
+    url: currentStream.url,
+    admin_url: currentStream.adminUrl || '',
+    enabled: currentStream.enabled,
+    streaming_enabled: currentStream.streamingEnabled,
+    playback_transport: currentStream.playbackTransport || 'auto',
+    // width/height/fps are read-only (auto-detected). codec is user-settable
+    // as a hint (select Auto / H.264 / H.265) — the detection thread still
+    // overwrites it with the real value from the source if they differ,
+    // and triggers a go2rtc re-registration so WebRTC negotiation keeps
+    // working after the correction (#374).
+    codec: (currentStream.codec || '').toLowerCase(),
+    protocol: parseInt(currentStream.protocol, 10),
+    priority: parseInt(currentStream.priority, 10),
+    segment_duration: parseInt(String(currentStream.segment), 10),
+    record: currentStream.record,
+    detection_based_recording: currentStream.detectionEnabled,
+    detection_model: currentStream.detectionModel,
+    // Persist ONVIF flag expected by backend (camelCase key)
+    isOnvif: !!currentStream.isOnvif,
+    // ONVIF credentials (for motion detection, PTZ, etc.)
+    onvif_username: currentStream.onvifUsername || '',
+    onvif_password: currentStream.onvifPassword || '',
+    onvif_profile: currentStream.onvifProfile || '',
+    onvif_port: parseInt(String(currentStream.onvifPort), 10) || 0,
+    detection_threshold: parseInt(String(currentStream.detectionThreshold), 10),
+    detection_interval: parseInt(String(currentStream.detectionInterval), 10),
+    pre_detection_buffer: parseInt(String(currentStream.preBuffer), 10),
+    post_detection_buffer: parseInt(String(currentStream.postBuffer), 10),
+    record_audio: currentStream.recordAudio,
+    audio_voice_enhancement: !!currentStream.audioVoiceEnhancement,
+    backchannel_enabled: currentStream.backchannelEnabled,
+    // PTZ control settings
+    ptz_enabled: !!currentStream.ptzEnabled,
+    ptz_max_x: parseInt(String(currentStream.ptzMaxX), 10) || 0,
+    ptz_max_y: parseInt(String(currentStream.ptzMaxY), 10) || 0,
+    ptz_max_z: parseInt(String(currentStream.ptzMaxZ), 10) || 0,
+    ptz_has_home: !!currentStream.ptzHasHome,
+    // Detection object filter settings
+    detection_object_filter: currentStream.detectionObjectFilter || 'none',
+    detection_object_filter_list: currentStream.detectionObjectFilterList || '',
+    // Retention policy settings
+    retention_days: Number.isFinite(parseInt(String(currentStream.retentionDays), 10))
+      ? parseInt(String(currentStream.retentionDays), 10) : -1,
+    detection_retention_days: Number.isFinite(parseInt(String(currentStream.detectionRetentionDays), 10))
+      ? parseInt(String(currentStream.detectionRetentionDays), 10) : -1,
+    max_storage_mb: parseInt(String(currentStream.maxStorageMb), 10) || 0,
+    // Tiered retention weighting
+    tier_critical_multiplier: Number.isFinite(parseFloat(String(currentStream.tierCriticalMultiplier))) ? parseFloat(String(currentStream.tierCriticalMultiplier)) : 3.0,
+    tier_important_multiplier: Number.isFinite(parseFloat(String(currentStream.tierImportantMultiplier))) ? parseFloat(String(currentStream.tierImportantMultiplier)) : 2.0,
+    tier_ephemeral_multiplier: Number.isFinite(parseFloat(String(currentStream.tierEphemeralMultiplier))) ? parseFloat(String(currentStream.tierEphemeralMultiplier)) : 0.25,
+    storage_priority: Math.min(10, Math.max(1, parseInt(String(currentStream.storagePriority), 10) || 5)),
+    // Recording schedule
+    record_on_schedule: !!currentStream.recordOnSchedule,
+    recording_schedule: normalizeRecordingSchedule(
+      currentStream.recordingSchedule,
+      currentStream.recordOnSchedule
+    ),
+    detection_record_on_schedule: !!currentStream.detectionRecordOnSchedule,
+    detection_recording_schedule: normalizeRecordingSchedule(
+      currentStream.detectionRecordingSchedule,
+      currentStream.detectionRecordOnSchedule
+    ),
+    // Tags
+    tags: currentStream.tags || '',
+    // Cross-stream motion trigger source
+    motion_trigger_source: currentStream.motionTriggerSource || '',
+    // go2rtc source override
+    go2rtc_source_override: currentStream.go2rtcSourceOverride?.trim()
+      ? currentStream.go2rtcSourceOverride
+      : '',
+    publish_url: currentStream.publishUrl || '',
+    // Sub-stream URL
+    sub_stream_url: currentStream.subStreamUrl || '',
+    // Secondary stream used only for detection (e.g. MJPEG sub-stream)
+    detection_url: currentStream.detectionUrl || '',
+    // Client-side fisheye calibration; recording remains the raw source.
+    eptz_config: serializeEptzConfig(eptzConfigFromForm(currentStream))
+  };
+
+  // When editing, set is_deleted to false to allow undeleting soft-deleted streams
+  if (isEditing) {
+    streamData.is_deleted = false;
+  }
+
+  return streamData;
+}
+
+/** Map validated details into UI fields without spreading unknown wire properties. */
+export function streamFormFromFull(stream: StreamFull): StreamFormState {
+  return {
+    name: stream.name, url: stream.url, enabled: stream.enabled, record: stream.record,
+    canControlPrivacy: stream.can_control_privacy,
+    width: stream.width, height: stream.height, fps: stream.fps, codec: stream.codec,
+    protocol: String(stream.protocol), priority: String(stream.priority),
+    segment: stream.segment_duration,
+    detectionThreshold: stream.detection_threshold,
+    detectionInterval: stream.detection_interval,
+    preBuffer: stream.pre_detection_buffer, postBuffer: stream.post_detection_buffer,
+    // Zones have their own endpoint and are loaded by the modal.
+    detectionZones: [],
+    adminUrl: stream.admin_url,
+    streamingEnabled: stream.streaming_enabled,
+    playbackTransport: stream.playback_transport,
+    isOnvif: stream.isOnvif,
+    onvifUsername: stream.onvif_username, onvifPassword: stream.onvif_password,
+    onvifProfile: stream.onvif_profile, onvifPort: stream.onvif_port,
+    detectionEnabled: stream.detection_based_recording,
+    detectionModel: stream.detection_model,
+    recordAudio: stream.record_audio,
+    audioVoiceEnhancement: stream.audio_voice_enhancement,
+    backchannelEnabled: stream.backchannel_enabled,
+    ptzEnabled: stream.ptz_enabled, ptzMaxX: stream.ptz_max_x,
+    ptzMaxY: stream.ptz_max_y, ptzMaxZ: stream.ptz_max_z, ptzHasHome: stream.ptz_has_home,
+    detectionObjectFilter: stream.detection_object_filter,
+    detectionObjectFilterList: stream.detection_object_filter_list,
+    retentionDays: stream.retention_days, detectionRetentionDays: stream.detection_retention_days,
+    maxStorageMb: stream.max_storage_mb,
+    tierCriticalMultiplier: stream.tier_critical_multiplier,
+    tierImportantMultiplier: stream.tier_important_multiplier,
+    tierEphemeralMultiplier: stream.tier_ephemeral_multiplier,
+    storagePriority: stream.storage_priority,
+    recordOnSchedule: stream.record_on_schedule,
+    recordingSchedule: [...stream.recording_schedule],
+    detectionRecordOnSchedule: stream.detection_record_on_schedule,
+    detectionRecordingSchedule: [...stream.detection_recording_schedule],
+    tags: stream.tags, motionTriggerSource: stream.motion_trigger_source,
+    go2rtcSourceOverride: stream.go2rtc_source_override, publishUrl: stream.publish_url,
+    subStreamUrl: stream.sub_stream_url, detectionUrl: stream.detection_url,
+    ...eptzFormFields(stream.eptz_config),
+  };
+}
+
+type StreamSaveVariables =
+  | { streamData: StreamSavePayload; editing: true; editorGeneration?: number }
+  | { streamData: StreamSavePayload | OnvifStreamCreatePayload; editing: false; editorGeneration?: number };
+type StreamSaveResult =
+  | { editing: true; result: StreamUpdateResult }
+  | { editing: false; result: unknown };
 
 export function StreamsView() {
   const { t } = useI18n();
@@ -105,7 +262,7 @@ export function StreamsView() {
 
   // Role is still loading if null
   const roleLoading = userRole === null;
-  // Check if user can modify streams (admin or user role, not viewer)
+  // Keep legacy global/create/ONVIF controls separate from per-camera updates.
   // While loading, default to enabled so admin/user doesn't see hidden buttons
   const canModifyStreams = roleLoading || userRole === 'admin' || userRole === 'user';
   // Check if credentials should be hidden (demo mode or viewer role)
@@ -116,7 +273,7 @@ export function StreamsView() {
   const [modalVisible, setModalVisible] = useState(false);
   const [onvifModalVisible, setOnvifModalVisible] = useState(false);
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
-  useEscapeKey(() => setOnvifModalVisible(false), onvifModalVisible);
+  useEscapeKey(closeOnvifModal, onvifModalVisible);
   useEscapeKey(() => setShowCustomNameInput(false), showCustomNameInput);
   const [isAddingStream, setIsAddingStream] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<OnvifDevice[]>([]);
@@ -128,14 +285,39 @@ export function StreamsView() {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [onvifNetworkOverride, setOnvifNetworkOverride] = useState('auto');
+  const editorGeneration = useRef(0);
+  const onvifGeneration = useRef(0);
+  const onvifSelection = useRef(0);
+  const selectedDeviceRef = useRef<OnvifDevice | null>(null);
+
+  function closeOnvifModal() {
+    onvifGeneration.current++;
+    onvifSelection.current++;
+    selectedDeviceRef.current = null;
+    setOnvifModalVisible(false);
+    setShowCustomNameInput(false);
+    setSelectedDevice(null);
+    setSelectedProfile(null);
+    setDeviceProfiles([]);
+    setIsLoadingProfiles(false);
+    setIsDiscovering(false);
+    setIsAddingStream(false);
+  }
+
+  useEffect(() => () => {
+    editorGeneration.current++;
+    onvifGeneration.current++;
+    onvifSelection.current++;
+  }, []);
+
   const [streamPage, setStreamPage] = useState(1);
   const [streamPageSize, setStreamPageSize] = useState(50);
   const [streamSearch, setStreamSearch] = useState('');
   const [streamAvailability, setStreamAvailability] = useState(getInitialStreamAvailability);
   const [debouncedStreamSearch, setDebouncedStreamSearch] = useState('');
   const DEFAULT_SORT_COLUMN = 'name';
-  const [sortColumn, setSortColumn] = useState(DEFAULT_SORT_COLUMN);
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortColumn, setSortColumn] = useState<NonNullable<StreamSummaryQuery['sort_by']>>(DEFAULT_SORT_COLUMN);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -192,7 +374,7 @@ export function StreamsView() {
     if (selectedStreams.size > 0) {
       setSelectedStreams(new Set());
     } else {
-      setSelectedStreams(new Set((streams || []).map(s => s.name)));
+      setSelectedStreams(new Set(streams.filter(stream => stream.can_configure).map(stream => stream.name)));
     }
   };
 
@@ -217,37 +399,24 @@ export function StreamsView() {
     }));
   };
 
-  const streamQueryParams = new URLSearchParams({
-    summary: 'true',
-    surface: 'admin',
-    include_admin_url: 'true',
-    page: String(streamPage),
-    page_size: String(streamPageSize),
-    sort_by: sortColumn,
-    sort_order: sortDirection,
-    availability: streamAvailability,
-  });
-  if (debouncedStreamSearch) {
-    streamQueryParams.set('search', debouncedStreamSearch);
-  }
-  const streamSummaryUrl = `/api/streams?${streamQueryParams.toString()}`;
-
-  // Fetch a bounded administration summary, opting into only the camera admin
-  // launcher URL. Full stream configuration remains deferred to Edit/Clone.
+  // The exact administration guard rejects malformed rows before rendering.
   const {
-    data: streamsResponse = [],
-    isLoading
-  } = useQuery<StreamListResponse | StreamListItem[]>(
-    ['streams', 'summary', streamPage, streamPageSize, sortColumn,
+    data: streamsResponse,
+    isLoading,
+    error: streamsError,
+    refetch: refetchStreams,
+  } = useQuery<StreamListResponse>({
+    queryKey: ['streams', 'summary', streamPage, streamPageSize, sortColumn,
       sortDirection, debouncedStreamSearch, streamAvailability],
-    streamSummaryUrl,
-    {
-    timeout: 10000,
-    retries: 2,
-    retryDelay: 1000
-    },
-    { placeholderData: (previousData) => previousData }
-  );
+    queryFn: ({ signal }) => listStreamSummaries({
+      surface: 'admin', include_admin_url: 'true',
+      page: streamPage, page_size: streamPageSize,
+      sort_by: sortColumn, sort_order: sortDirection,
+      availability: streamAvailability,
+      ...(debouncedStreamSearch ? { search: debouncedStreamSearch } : {}),
+    }, { signal, timeout: 10000, retries: 2, retryDelay: 1000 }),
+    retry: false, // The transport already owns the bounded read retry policy.
+  });
 
   // Fetch detection models
   const {
@@ -264,18 +433,15 @@ export function StreamsView() {
     { timeout: 5000, retries: 1, retryDelay: 1000 }
   );
 
-  // Process the response to handle both array and object formats
-  const streams = Array.isArray(streamsResponse) ? streamsResponse : (streamsResponse.streams || []);
-  const streamTotal = Array.isArray(streamsResponse)
-    ? streamsResponse.length : (streamsResponse.total || 0);
-  const streamTotalPages = Array.isArray(streamsResponse)
-    ? (streams.length > 0 ? 1 : 0) : (streamsResponse.total_pages || 0);
+  const streams = streamsResponse?.streams ?? [];
+  const streamTotal = streamsResponse?.total ?? 0;
+  const streamTotalPages = streamsResponse?.total_pages ?? 0;
   const streamResultsFiltered = hasStreamSummaryFilters(
     debouncedStreamSearch,
     streamAvailability
   );
 
-  const handleSort = (column: string) => {
+  const handleSort = (column: NonNullable<StreamSummaryQuery['sort_by']>) => {
     if (sortColumn === column) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -369,27 +535,15 @@ export function StreamsView() {
   // Extract detection models from query result
   const detectionModels = detectionModelsData?.models || [];
 
-  // Unified mutation that internally decides between create and update
-  const saveStreamMutation = useMutation<unknown, StreamRequestError, StreamSavePayload>({
-    mutationFn: async (streamData) => {
-      if (isEditing) {
-        // Update existing stream via PUT
-        const url = `/api/streams/${encodeURIComponent(streamData.name)}`;
-        // `name` is used as the stream identifier in the URL path and must not be included in the request body
-        const { name, ...rest } = streamData;
-        return await fetchJSON(url, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(rest),
-          timeout: 15000,
-          retries: 1,
-          retryDelay: 1000
-        });
+  // Capture intent with each submission; ONVIF creation never inherits editor state.
+  const saveStreamMutation = useMutation<StreamSaveResult, StreamRequestError, StreamSaveVariables>({
+    mutationFn: async ({ streamData, editing }) => {
+      if (editing) {
+        const { name, ...body } = streamData;
+        return { editing: true, result: await updateStream(name, body, { timeout: 15000 }) };
       }
       // Create new stream via POST
-      return await fetchJSON('/api/streams', {
+      return { editing: false, result: await fetchJSON('/api/streams', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -398,25 +552,27 @@ export function StreamsView() {
         timeout: 45000,
         retries: 1,
         retryDelay: 1000
-      });
+      }) };
     },
     onSuccess: (data, variables) => {
-      if (isEditing) {
+      if (variables.editing) {
         showStatusMessage(
-          t('streams.streamUpdatedSuccessfully', { name: variables?.name }),
+          data.editing && data.result.status === 202
+            ? t('streams.streamUpdateQueued')
+            : t('streams.streamUpdatedSuccessfully', { name: variables.streamData.name }),
           'success',
           3000
         );
       } else {
         showStatusMessage(t('streams.streamAddedSuccessfully'));
       }
-      closeModal();
+      if (variables.editorGeneration === editorGeneration.current) closeModal();
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-cameras'] });
     },
     onError: (error, variables) => {
-      if (!isEditing) {
+      if (!variables.editing) {
         const isStreamLimitError = error?.status === 409 &&
           typeof error?.message === 'string' &&
           error.message.includes('Max streams limit reached');
@@ -426,6 +582,8 @@ export function StreamsView() {
           isStreamLimitError ? 9000 : 5000
         );
       } else {
+        queryClient.invalidateQueries({ queryKey: ['streams'] });
+        queryClient.invalidateQueries({ queryKey: ['stream-full', variables.streamData.name] });
         showStatusMessage(
           t('streams.errorUpdatingStream', { message: error.message }),
           'error',
@@ -515,20 +673,14 @@ export function StreamsView() {
 
   const enableStreamMutation = useMutation<unknown, Error, string>({
     mutationFn: async (streamId) => {
-      return await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enable_disabled: true, enabled: true }),
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+      return await updateStream(streamId, { enable_disabled: true, enabled: true }, { timeout: 15000 });
     },
     onSuccess: () => {
-      showStatusMessage(t('streams.streamSuccessfullyEnabled') || 'Stream enabled.');
+      showStatusMessage(t('streams.streamUpdateQueued'));
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ['streams'] });
       showStatusMessage(t('streams.errorEnablingStream', { message: error.message }) || `Error enabling stream: ${error.message}`, 'error', 5000);
     }
   });
@@ -563,16 +715,8 @@ export function StreamsView() {
     setIsBulkWorking(true);
     const results = await Promise.allSettled(
       names.map(name =>
-        fetchJSON(`/api/streams/${encodeURIComponent(name)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          // Both enable_disabled:true and enabled:true are required so the worker
-          // thread writes enabled=1 to the DB; without enabled:true the worker
-          // overwrites the direct SQL enable with the stale enabled=0 from the
-          // config struct.
-          body: JSON.stringify({ enable_disabled: true, enabled: true }),
-          timeout: 15000,
-        })
+        // Both flags are needed so the worker persists enabled=1.
+        updateStream(name, { enable_disabled: true, enabled: true }, { timeout: 15000 })
       )
     );
     setIsBulkWorking(false);
@@ -583,7 +727,7 @@ export function StreamsView() {
     if (failed > 0) {
       showStatusMessage(t('streams.enabledSomeStreams', { success: names.length - failed, failed }), 'warning', 5000);
     } else {
-      showStatusMessage(t('streams.enabledStreams', { count: names.length }), 'success');
+      showStatusMessage(t('streams.streamUpdateQueued'), 'success');
     }
   };
 
@@ -629,16 +773,6 @@ export function StreamsView() {
     }
   };
 
-  const normalizeRecordingSchedule = (recordingSchedule: boolean[], recordOnSchedule: boolean): boolean[] => {
-    if (!recordOnSchedule) {
-      return Array(168).fill(true);
-    }
-    if (Array.isArray(recordingSchedule) && recordingSchedule.length === 168) {
-      return recordingSchedule;
-    }
-    return Array(168).fill(true);
-  };
-
   // Handle form submission.
   //
   // Returns the save promise so the <AsyncButton> in StreamConfigModal can
@@ -650,104 +784,15 @@ export function StreamsView() {
   const handleSubmit = (e?: Event) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
-    // Prepare stream data for API. The numeric form fields hold a number or an
-    // edited string, and parseInt/parseFloat stringify their argument, hence the
-    // `as string` casts.
-    const streamData: StreamSavePayload = {
-      name: currentStream.name.trim(),
-      url: currentStream.url,
-      admin_url: currentStream.adminUrl || '',
-      enabled: currentStream.enabled,
-      streaming_enabled: currentStream.streamingEnabled,
-      playback_transport: currentStream.playbackTransport || 'auto',
-      // width/height/fps are read-only (auto-detected). codec is user-settable
-      // as a hint (select Auto / H.264 / H.265) — the detection thread still
-      // overwrites it with the real value from the source if they differ,
-      // and triggers a go2rtc re-registration so WebRTC negotiation keeps
-      // working after the correction (#374).
-      codec: (currentStream.codec || '').toLowerCase(),
-      protocol: parseInt(currentStream.protocol, 10),
-      priority: parseInt(currentStream.priority, 10),
-      segment_duration: parseInt(currentStream.segment as string, 10),
-      record: currentStream.record,
-      detection_based_recording: currentStream.detectionEnabled,
-      detection_model: currentStream.detectionModel,
-      // Persist ONVIF flag expected by backend (camelCase key)
-      isOnvif: !!currentStream.isOnvif,
-      // ONVIF credentials (for motion detection, PTZ, etc.)
-      onvif_username: currentStream.onvifUsername || '',
-      onvif_password: currentStream.onvifPassword || '',
-      onvif_profile: currentStream.onvifProfile || '',
-      onvif_port: parseInt(currentStream.onvifPort as string, 10) || 0,
-      detection_threshold: parseInt(currentStream.detectionThreshold as string, 10),
-      detection_interval: parseInt(currentStream.detectionInterval as string, 10),
-      pre_detection_buffer: parseInt(currentStream.preBuffer as string, 10),
-      post_detection_buffer: parseInt(currentStream.postBuffer as string, 10),
-      record_audio: currentStream.recordAudio,
-      audio_voice_enhancement: !!currentStream.audioVoiceEnhancement,
-      backchannel_enabled: currentStream.backchannelEnabled,
-      // PTZ control settings
-      ptz_enabled: !!currentStream.ptzEnabled,
-      ptz_max_x: parseInt(currentStream.ptzMaxX as string, 10) || 0,
-      ptz_max_y: parseInt(currentStream.ptzMaxY as string, 10) || 0,
-      ptz_max_z: parseInt(currentStream.ptzMaxZ as string, 10) || 0,
-      ptz_has_home: !!currentStream.ptzHasHome,
-      // Detection object filter settings
-      detection_object_filter: currentStream.detectionObjectFilter || 'none',
-      detection_object_filter_list: currentStream.detectionObjectFilterList || '',
-      // Retention policy settings
-      retention_days: Number.isFinite(parseInt(currentStream.retentionDays as string, 10))
-        ? parseInt(currentStream.retentionDays as string, 10) : -1,
-      detection_retention_days: Number.isFinite(parseInt(currentStream.detectionRetentionDays as string, 10))
-        ? parseInt(currentStream.detectionRetentionDays as string, 10) : -1,
-      max_storage_mb: parseInt(currentStream.maxStorageMb as string, 10) || 0,
-      // Tiered retention weighting
-      tier_critical_multiplier: Number.isFinite(parseFloat(currentStream.tierCriticalMultiplier as string)) ? parseFloat(currentStream.tierCriticalMultiplier as string) : 3.0,
-      tier_important_multiplier: Number.isFinite(parseFloat(currentStream.tierImportantMultiplier as string)) ? parseFloat(currentStream.tierImportantMultiplier as string) : 2.0,
-      tier_ephemeral_multiplier: Number.isFinite(parseFloat(currentStream.tierEphemeralMultiplier as string)) ? parseFloat(currentStream.tierEphemeralMultiplier as string) : 0.25,
-      storage_priority: Math.min(10, Math.max(1, parseInt(currentStream.storagePriority as string, 10) || 5)),
-      // Recording schedule
-      record_on_schedule: !!currentStream.recordOnSchedule,
-      recording_schedule: normalizeRecordingSchedule(
-        currentStream.recordingSchedule,
-        currentStream.recordOnSchedule
-      ),
-      detection_record_on_schedule: !!currentStream.detectionRecordOnSchedule,
-      detection_recording_schedule: normalizeRecordingSchedule(
-        currentStream.detectionRecordingSchedule,
-        currentStream.detectionRecordOnSchedule
-      ),
-      // Tags
-      tags: currentStream.tags || '',
-      // Cross-stream motion trigger source
-      motion_trigger_source: currentStream.motionTriggerSource || '',
-      // go2rtc source override
-      go2rtc_source_override: currentStream.go2rtcSourceOverride?.trim()
-        ? currentStream.go2rtcSourceOverride
-        : '',
-      publish_url: currentStream.publishUrl || '',
-      // Sub-stream URL
-      sub_stream_url: currentStream.subStreamUrl || '',
-      // Secondary stream used only for detection (e.g. MJPEG sub-stream)
-      detection_url: currentStream.detectionUrl || '',
-      // Client-side fisheye calibration; recording remains the raw source.
-      eptz_config: serializeEptzConfig(eptzConfigFromForm(currentStream))
-    };
-
-    // When editing, set is_deleted to false to allow undeleting soft-deleted streams
-    if (isEditing) {
-      streamData.is_deleted = false;
-    }
+    const streamData = streamSavePayloadFromForm(currentStream, isEditing);
 
     // Use mutation to save stream. We return mutateAsync's promise so
     // AsyncButton in StreamConfigModal can observe pending/error state.
     const savedStreamName = streamData.name;
-    return saveStreamMutation.mutateAsync(streamData).then(async (result) => {
+    return saveStreamMutation.mutateAsync({ streamData, editing: isEditing, editorGeneration: editorGeneration.current }).then(async (result) => {
       // Ensure both list and details are refreshed after save
       await queryClient.invalidateQueries({ queryKey: ['stream-full', savedStreamName] });
       queryClient.invalidateQueries({ queryKey: ['streams'] });
-      // Close the modal after successful save
-      closeModal();
       return result;
     });
   };
@@ -776,13 +821,15 @@ export function StreamsView() {
 
   // Open add stream modal
   const openAddStreamModal = () => {
+    editorGeneration.current++;
+    closeOnvifModal();
     setCurrentStream({
       name: '',
       url: '',
       adminUrl: '',
       enabled: true,
       streamingEnabled: true,
-      playbackTransport: clientConfig.default_playback_transport || 'auto',
+      playbackTransport: normalizePlaybackTransport(clientConfig.default_playback_transport),
       width: 0,
       height: 0,
       fps: 0,
@@ -836,192 +883,77 @@ export function StreamsView() {
 
   // Open edit stream modal
   const openEditStreamModal = async (streamId: string) => {
+    const generation = ++editorGeneration.current;
+    closeOnvifModal();
     try {
       // Use queryClient to fetch stream details (force fresh)
       const data = await queryClient.fetchQuery<StreamFullResponse>({
         queryKey: ['stream-full', streamId],
-        queryFn: async () => {
-          const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/full`);
-          if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
-          }
-          return response.json();
-        },
+        queryFn: ({ signal }) => getStreamFull(streamId, { signal }),
+        retry: false,
         staleTime: 0 // Always fetch fresh when opening modal
       });
-      // handle_get_stream_full always emits `stream` with every Stream field, so
-      // the cast where it is spread below only rules out the unreachable {} case.
-      const stream: Partial<StreamFull> = data.stream || {};
-      const eptzFields = eptzFormFields(stream.eptz_config);
-
-      setCurrentStream({
-        ...(stream as StreamFull),
-        // These are read-only auto-detected values (0/empty means not yet detected)
-        width: stream.width || 0,
-        height: stream.height || 0,
-        fps: stream.fps || 0,
-        codec: stream.codec || '',
-        protocol: (stream.protocol != null ? stream.protocol : 0).toString(),
-        priority: (stream.priority != null ? stream.priority : 5).toString(),
-        segment: stream.segment_duration || 30,
-        detectionThreshold: stream.detection_threshold || 50,
-        detectionInterval: stream.detection_interval || 10,
-        preBuffer: stream.pre_detection_buffer || 10,
-        detectionZones: stream.detection_zones || [],
-        postBuffer: stream.post_detection_buffer || 30,
-        // Map API fields to form fields
-        adminUrl: stream.admin_url || '',
-        streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
-        playbackTransport: stream.playback_transport || 'auto',
-        isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
-        // ONVIF credentials
-        onvifUsername: stream.onvif_username || '',
-        onvifPassword: stream.onvif_password || '',
-        onvifProfile: stream.onvif_profile || '',
-        onvifPort: stream.onvif_port || 0,
-        detectionEnabled: stream.detection_based_recording || false,
-        detectionModel: stream.detection_model || '',
-        recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
-        audioVoiceEnhancement: !!stream.audio_voice_enhancement,
-        backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
-        // PTZ control settings
-        ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
-        ptzMaxX: stream.ptz_max_x || 0,
-        ptzMaxY: stream.ptz_max_y || 0,
-        ptzMaxZ: stream.ptz_max_z || 0,
-        ptzHasHome: stream.ptz_has_home !== undefined ? stream.ptz_has_home : false,
-        // Detection object filter settings
-        detectionObjectFilter: stream.detection_object_filter || 'none',
-        detectionObjectFilterList: stream.detection_object_filter_list || '',
-        // Retention policy settings
-        retentionDays: stream.retention_days ?? -1,
-        detectionRetentionDays: stream.detection_retention_days ?? -1,
-        maxStorageMb: stream.max_storage_mb || 0,
-        tierCriticalMultiplier: stream.tier_critical_multiplier ?? 3.0,
-        tierImportantMultiplier: stream.tier_important_multiplier ?? 2.0,
-        tierEphemeralMultiplier: stream.tier_ephemeral_multiplier ?? 0.25,
-        storagePriority: stream.storage_priority ?? 5,
-        // Recording schedule
-        recordOnSchedule: stream.record_on_schedule || false,
-        recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)
-          ? stream.recording_schedule
-          : Array(168).fill(true),
-        detectionRecordOnSchedule: stream.detection_record_on_schedule || false,
-        detectionRecordingSchedule: (Array.isArray(stream.detection_recording_schedule) && stream.detection_recording_schedule.length === 168)
-          ? stream.detection_recording_schedule
-          : Array(168).fill(true),
-        // Tags
-        tags: stream.tags || '',
-        // Cross-stream motion trigger source
-        motionTriggerSource: stream.motion_trigger_source || '',
-        go2rtcSourceOverride: stream.go2rtc_source_override || '',
-        publishUrl: stream.publish_url || '',
-        subStreamUrl: stream.sub_stream_url || '',
-        detectionUrl: stream.detection_url || '',
-        ...eptzFields
-      });
+      if (generation !== editorGeneration.current) return;
+      if (!data.stream.can_control_privacy) {
+        showStatusMessage(t('streams.readOnlyInsufficientPermissions'), 'error', 5000);
+        return;
+      }
+      setCurrentStream(streamFormFromFull(data.stream));
       setIsEditing(true);
       setModalVisible(true);
     } catch (error) {
-      console.error('Error loading stream details:', error);
-      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: (error as Error).message }));
+      if (generation !== editorGeneration.current) return;
+      if (error instanceof Error && error.name === 'AbortError') return;
+      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: error instanceof Error ? error.message : t('streams.error') }));
     }
   };
 
   // Open clone stream modal — pre-fills from an existing stream but treats as a new one
   const openCloneStreamModal = async (streamId: string) => {
+    const generation = ++editorGeneration.current;
+    closeOnvifModal();
     try {
       await queryClient.invalidateQueries({ queryKey: ['stream-full', streamId] });
       const data = await queryClient.fetchQuery<StreamFullResponse>({
         queryKey: ['stream-full', streamId],
-        queryFn: async () => {
-          const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/full`);
-          if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
-          }
-          return response.json();
-        },
+        queryFn: ({ signal }) => getStreamFull(streamId, { signal }),
+        retry: false,
         staleTime: 0
       });
-      // handle_get_stream_full always emits `stream` with every Stream field, so
-      // the cast where it is spread below only rules out the unreachable {} case.
-      const stream: Partial<StreamFull> = data.stream || {};
-      const eptzFields = eptzFormFields(stream.eptz_config);
-
+      if (generation !== editorGeneration.current) return;
+      if (!data.stream.can_control_privacy) {
+        showStatusMessage(t('streams.readOnlyInsufficientPermissions'), 'error', 5000);
+        return;
+      }
       setCurrentStream({
-        ...(stream as StreamFull),
-        // Clear the name so the user must provide a unique one
-        name: `${t('streams.copyOf')} ${stream.name || streamId}`,
-        // Reset auto-detected fields — the cloned stream may be a different camera
-        width: 0,
-        height: 0,
-        fps: 0,
-        codec: '',
-        protocol: (stream.protocol != null ? stream.protocol : 0).toString(),
-        priority: (stream.priority != null ? stream.priority : 5).toString(),
-        segment: stream.segment_duration || 30,
-        detectionThreshold: stream.detection_threshold || 50,
-        detectionInterval: stream.detection_interval || 10,
-        preBuffer: stream.pre_detection_buffer || 10,
-        detectionZones: [],
-        postBuffer: stream.post_detection_buffer || 30,
-        adminUrl: stream.admin_url || '',
-        streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
-        playbackTransport: stream.playback_transport || 'auto',
-        isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
-        onvifUsername: stream.onvif_username || '',
-        onvifPassword: stream.onvif_password || '',
-        onvifProfile: stream.onvif_profile || '',
-        onvifPort: stream.onvif_port || 0,
-        detectionEnabled: stream.detection_based_recording || false,
-        detectionModel: stream.detection_model || '',
-        recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
-        audioVoiceEnhancement: !!stream.audio_voice_enhancement,
-        backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
-        ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
-        ptzMaxX: stream.ptz_max_x || 0,
-        ptzMaxY: stream.ptz_max_y || 0,
-        ptzMaxZ: stream.ptz_max_z || 0,
-        ptzHasHome: stream.ptz_has_home !== undefined ? stream.ptz_has_home : false,
-        detectionObjectFilter: stream.detection_object_filter || 'none',
-        detectionObjectFilterList: stream.detection_object_filter_list || '',
-        retentionDays: stream.retention_days ?? -1,
-        detectionRetentionDays: stream.detection_retention_days ?? -1,
-        maxStorageMb: stream.max_storage_mb || 0,
-        recordOnSchedule: stream.record_on_schedule || false,
-        recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)
-          ? stream.recording_schedule
-          : Array(168).fill(true),
-        detectionRecordOnSchedule: stream.detection_record_on_schedule || false,
-        detectionRecordingSchedule: (Array.isArray(stream.detection_recording_schedule) && stream.detection_recording_schedule.length === 168)
-          ? stream.detection_recording_schedule
-          : Array(168).fill(true),
-        tags: stream.tags || '',
-        // Cross-stream motion trigger source
-        motionTriggerSource: stream.motion_trigger_source || '',
-        go2rtcSourceOverride: stream.go2rtc_source_override || '',
-        publishUrl: stream.publish_url || '',
-        subStreamUrl: stream.sub_stream_url || '',
-        detectionUrl: stream.detection_url || '',
-        ...eptzFields
+        ...streamFormFromFull(data.stream),
+        name: `${t('streams.copyOf')} ${data.stream.name}`,
+        width: 0, height: 0, fps: 0, codec: '', detectionZones: [],
       });
       setIsEditing(false);
       setIsCloning(true);
       setModalVisible(true);
     } catch (error) {
-      console.error('Error loading stream details for clone:', error);
-      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: (error as Error).message }));
+      if (generation !== editorGeneration.current) return;
+      if (error instanceof Error && error.name === 'AbortError') return;
+      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: error instanceof Error ? error.message : t('streams.error') }));
     }
   };
 
   // Close modal
   const closeModal = () => {
+    editorGeneration.current++;
     setModalVisible(false);
+    setIsEditing(false);
     setIsCloning(false);
   };
 
   // Open ONVIF discovery modal
   const openOnvifModal = async () => {
+    closeModal();
+    closeOnvifModal();
+    const generation = ++onvifGeneration.current;
+    setOnvifModalVisible(true);
     setDiscoveredDevices([]);
     setDeviceProfiles([]);
     setSelectedDevice(null);
@@ -1030,23 +962,26 @@ export function StreamsView() {
     // Reopen the durable staging inbox before the operator starts another scan.
     try {
       const inventory = await fetchJSON<OnvifDevicesResponse>('/api/onvif/devices', { timeout: 5000 });
+      if (generation !== onvifGeneration.current) return;
       setDiscoveredDevices(inventory?.devices || []);
     } catch (e) {
       console.warn('Could not load persisted ONVIF discovery inventory', e);
     }
+    if (generation !== onvifGeneration.current) return;
     // Fetch the configured default network from settings
     try {
       const settings = await fetchJSON<{ onvif_discovery_network?: string }>('/api/settings', { timeout: 5000 });
+      if (generation !== onvifGeneration.current) return;
       if (settings && settings.onvif_discovery_network) {
         setOnvifNetworkOverride(settings.onvif_discovery_network);
       } else {
         setOnvifNetworkOverride('auto');
       }
     } catch (e) {
+      if (generation !== onvifGeneration.current) return;
       console.warn('Could not fetch ONVIF discovery network setting, using auto', e);
       setOnvifNetworkOverride('auto');
     }
-    setOnvifModalVisible(true);
   };
 
   // Handle form input change
@@ -1121,7 +1056,7 @@ export function StreamsView() {
   };
 
   // ONVIF discovery mutation
-  const onvifDiscoveryMutation = usePostMutation<OnvifDevicesResponse, { network: string }>(
+  const onvifDiscoveryMutation = usePostMutation<OnvifDevicesResponse, { network: string }, Error, number>(
     '/api/onvif/discovery/discover',
     {
       timeout: 120000,
@@ -1130,12 +1065,15 @@ export function StreamsView() {
     {
       onMutate: () => {
         setIsDiscovering(true);
+        return onvifGeneration.current;
       },
-      onSuccess: (data) => {
+      onSuccess: (data, _variables, generation) => {
+        if (generation !== onvifGeneration.current) return;
         setDiscoveredDevices(data.devices || []);
         setIsDiscovering(false);
       },
-      onError: (error) => {
+      onError: (error, _variables, generation) => {
+        if (generation !== onvifGeneration.current) return;
         showStatusMessage(t('streams.errorDiscoveringOnvifDevices', { message: error.message }), 'error', 5000);
         setIsDiscovering(false);
       }
@@ -1175,7 +1113,7 @@ export function StreamsView() {
   const getDeviceProfilesMutation = useMutation<
     OnvifProfilesResponse,
     Error,
-    { device: OnvifDevice; credentials: OnvifCredentials }
+    { device: OnvifDevice; credentials: OnvifCredentials; generation: number; selection: number }
   >({
     mutationFn: ({ device, credentials }) => {
       setIsLoadingProfiles(true);
@@ -1245,18 +1183,21 @@ export function StreamsView() {
         return attemptFetch(httpFallbackUrl);
       });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      if (variables.generation !== onvifGeneration.current || variables.selection !== onvifSelection.current) return;
       setDeviceProfiles(data.profiles || []);
       setIsLoadingProfiles(false);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      if (variables.generation !== onvifGeneration.current || variables.selection !== onvifSelection.current) return;
       showStatusMessage(t('streams.errorLoadingDeviceProfiles', { message: error.message }), 'error', 5000);
       setIsLoadingProfiles(false);
     }
   });
 
   // Test ONVIF connection mutation
-  const testOnvifConnectionMutation = usePostMutation<OnvifTestResponse, OnvifTestRequest>(
+  const testOnvifConnectionMutation = usePostMutation<OnvifTestResponse, OnvifTestRequest, Error,
+    { generation: number; selection: number; device: OnvifDevice | null }>(
     '/api/onvif/device/test',
     {
       timeout: 15000,
@@ -1265,19 +1206,22 @@ export function StreamsView() {
     {
       onMutate: () => {
         setIsLoadingProfiles(true);
+        return { generation: onvifGeneration.current, selection: onvifSelection.current, device: selectedDeviceRef.current };
       },
-      onSuccess: (data) => {
+      onSuccess: (data, _variables, context) => {
+        if (!context || context.generation !== onvifGeneration.current || context.selection !== onvifSelection.current) return;
         if (data.success) {
           showStatusMessage(t('streams.connectionSuccessful'), 'success', 3000);
-          if (selectedDevice) {
-            getDeviceProfiles(selectedDevice);
+          if (context.device) {
+            getDeviceProfiles(context.device);
           }
         } else {
           showStatusMessage(t('streams.connectionFailed', { message: data.message }), 'error', 5000);
           setIsLoadingProfiles(false);
         }
       },
-      onError: (error) => {
+      onError: (error, _variables, context) => {
+        if (!context || context.generation !== onvifGeneration.current || context.selection !== onvifSelection.current) return;
         showStatusMessage(t('streams.errorTestingConnection', { message: error.message }), 'error', 5000);
         setIsLoadingProfiles(false);
       }
@@ -1294,9 +1238,11 @@ export function StreamsView() {
     }
 
     setIsAddingStream(true);
+    const generation = onvifGeneration.current;
+    const selection = onvifSelection.current;
 
     // Prepare stream data
-    const streamData = {
+    const streamData: OnvifStreamCreatePayload = {
       name: customStreamName.trim(),
       // ONVIF profiles expose the media endpoint as `stream_uri`, while our
       // backend `Stream` model expects this value under the generic `url` field.
@@ -1323,7 +1269,7 @@ export function StreamsView() {
     };
 
     // Use mutation to save stream
-    saveStreamMutation.mutate(streamData, {
+    saveStreamMutation.mutate({ streamData, editing: false }, {
       onSuccess: async () => {
         if (selectedDevice.inventory_uuid) {
           try {
@@ -1336,6 +1282,7 @@ export function StreamsView() {
               }),
               timeout: 5000
             });
+            if (generation !== onvifGeneration.current) return;
             setDiscoveredDevices(previous => previous.map(device =>
               device.inventory_uuid === selectedDevice.inventory_uuid
                 ? { ...device, claim_state: 'claimed' }
@@ -1343,12 +1290,13 @@ export function StreamsView() {
             ));
           } catch (error) {
             showStatusMessage(
-              t('streams.onvifClaimWarning', { message: (error as Error).message }),
+              t('streams.onvifClaimWarning', { message: error instanceof Error ? error.message : t('streams.error') }),
               'warning',
               5000
             );
           }
         }
+        if (generation !== onvifGeneration.current || selection !== onvifSelection.current) return;
         setIsAddingStream(false);
         setShowCustomNameInput(false);
         // Keep the discovery modal open with its device list intact so
@@ -1358,6 +1306,7 @@ export function StreamsView() {
         setCustomStreamName('');
       },
       onError: () => {
+        if (generation !== onvifGeneration.current || selection !== onvifSelection.current) return;
         setIsAddingStream(false);
       },
     });
@@ -1365,16 +1314,27 @@ export function StreamsView() {
 
   // Start ONVIF discovery
   const startOnvifDiscovery = () => {
+    onvifGeneration.current++;
+    onvifSelection.current++;
+    selectedDeviceRef.current = null;
+    setSelectedDevice(null);
+    setSelectedProfile(null);
+    setDeviceProfiles([]);
+    setShowCustomNameInput(false);
     onvifDiscoveryMutation.mutate({ network: onvifNetworkOverride || 'auto' });
   };
 
   // Get ONVIF device profiles
   const getDeviceProfiles = (device: OnvifDevice) => {
+    const selection = ++onvifSelection.current;
+    selectedDeviceRef.current = device;
     setSelectedDevice(device);
     setDeviceProfiles([]);
     getDeviceProfilesMutation.mutate({
       device,
-      credentials: onvifCredentials
+      credentials: onvifCredentials,
+      generation: onvifGeneration.current,
+      selection
     });
   };
 
@@ -1389,7 +1349,7 @@ export function StreamsView() {
   // Check if a discovered ONVIF device is already added as a stream
   const isDeviceAlreadyAdded = (device: OnvifDevice) => {
     return streams.some(stream => {
-      if (!stream.url || !device.ip_address) return false;
+      if (typeof stream.url !== 'string' || !stream.url || !device.ip_address) return false;
       try {
         const url = new URL(stream.url);
         return url.hostname === device.ip_address;
@@ -1434,8 +1394,13 @@ export function StreamsView() {
 
   // Test ONVIF connection
   const testOnvifConnection = (device: OnvifDevice) => {
-    // Store the selected device first
+    // Invalidate any older device request before starting this selection.
+    onvifSelection.current++;
+    selectedDeviceRef.current = device;
     setSelectedDevice(device);
+    setDeviceProfiles([]);
+    setSelectedProfile(null);
+    setShowCustomNameInput(false);
 
     // Build the device_service URL (using discovery data or ip_address fallback)
     const deviceUrl = buildOnvifDeviceUrl(device);
@@ -1458,7 +1423,7 @@ export function StreamsView() {
       {activeTab === 'streams' && <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 className="text-xl font-bold">{t('nav.streams')}</h2>
         <div className="controls flex items-center space-x-2">
-          {!canModifyStreams && userRole && (
+          {!canModifyStreams && userRole && !streams.some(stream => stream.can_configure) && (
             <span className="text-sm text-muted-foreground italic me-2">
               {t('streams.readOnlyInsufficientPermissions')}
             </span>
@@ -1663,13 +1628,13 @@ export function StreamsView() {
               <option value="all">{t('availability.all')}</option>
             </select>
             <span className="font-medium">{t('streams.sortBy')}:</span>
-            {[
+            {([
               { key: 'name',       label: t('common.name') },
               { key: 'status',     label: t('common.status') },
               { key: 'resolution', label: t('streams.resolution') },
               { key: 'fps',        label: t('streams.fps') },
               { key: 'recording',  label: t('streams.recording') },
-            ].map(({ key, label }) => (
+            ] as const).map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
@@ -1691,7 +1656,14 @@ export function StreamsView() {
             ))}
           </div>
 
-          <ContentLoader
+          {streamsError ? (
+            <div role="alert" className="rounded-md border border-destructive p-4 text-destructive">
+              <p>{t('live.errorLoadingStreams', { message: streamsError.message })}</p>
+              <button type="button" className="btn-secondary mt-3" onClick={() => refetchStreams()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : <ContentLoader
               isLoading={isLoading}
               hasData={hasData}
               loadingMessage={t('streams.loadingStreams')}
@@ -1716,8 +1688,8 @@ export function StreamsView() {
               <div role="listitem" key={stream.name}>
                 <StreamCard
                   stream={stream}
-                  canModifyStreams={canModifyStreams && stream.can_configure !== false}
-                  shouldHideCredentials={shouldHideCredentials}
+                  canModifyStreams={canModifyStreams && stream.can_configure}
+                  shouldHideCredentials={isDemoMode || !stream.can_configure}
                   selectionMode={selectionMode}
                   isSelected={selectedStreams.has(stream.name)}
                   onToggleSelect={toggleSelect}
@@ -1779,7 +1751,7 @@ export function StreamsView() {
             </div>
           </div>
           </>
-          </ContentLoader>
+          </ContentLoader>}
         </div>
         </div>
       )}
@@ -1791,8 +1763,8 @@ export function StreamsView() {
             onClose={closeDeleteModal}
             onDisable={disableStream}
             onDelete={deleteStream}
-            isDeleting={deleteStreamMutation.isPending}
-            isDisabling={disableStreamMutation.isPending}
+            isDeleting={deleteStreamMutation.isLoading}
+            isDisabling={disableStreamMutation.isLoading}
         />
       )}
 
@@ -1826,7 +1798,7 @@ export function StreamsView() {
           onRefreshModels={loadDetectionModels}
           audioDisabled={!!clientConfig.audio_disabled}
           hideCredentials={isEditing
-            ? currentStream.can_control_privacy !== true
+            ? currentStream.canControlPrivacy !== true
             : shouldHideCredentials}
           transportOfferings={{
             webrtc: !clientConfig.webrtc_disabled,
@@ -1841,7 +1813,7 @@ export function StreamsView() {
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{t('streams.onvifCameraDiscovery')}</h3>
-              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</button>
+              <button type="button" aria-label={t('common.close')} className="text-2xl cursor-pointer" onClick={closeOnvifModal}>×</button>
             </div>
             <div className="p-4">
               <div className="mb-4 p-3 bg-muted/50 rounded-lg">
@@ -2053,7 +2025,7 @@ export function StreamsView() {
               <button
                   id="onvif-close-btn"
                   className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
-                  onClick={() => setOnvifModalVisible(false)}
+                  onClick={closeOnvifModal}
                   type="button"
               >
                 {t('common.close')}
