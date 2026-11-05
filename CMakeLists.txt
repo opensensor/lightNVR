@@ -672,6 +672,9 @@ list(APPEND VIDEO_SOURCES ${FFMPEG_LEAK_DETECTOR_SOURCES})
 
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
+# hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
+# Exclude it here to avoid duplicate source listing.
+list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
 file(GLOB TELEMETRY_SOURCES "src/telemetry/*.c")
 file(GLOB HEALTH_COLLECTOR_SOURCES "src/telemetry/collectors/*.c")
 file(GLOB HEALTH_PROVIDER_SOURCES "src/telemetry/providers/*.c")
