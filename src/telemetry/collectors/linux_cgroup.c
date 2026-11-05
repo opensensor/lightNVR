@@ -36,6 +36,23 @@ typedef struct {
     char pids[512];
 } cgroup_memberships_t;
 
+static void format_membership_identity(const cgroup_memberships_t *memberships,
+                                       char *out,
+                                       size_t out_sz) {
+    if (!out || out_sz == 0U) return;
+    if (!memberships) {
+        out[0] = '\0';
+        return;
+    }
+    if (memberships->version == LINUX_CGROUP_V2) {
+        (void)snprintf(out, out_sz, "v2:%s", memberships->unified);
+    } else {
+        (void)snprintf(out, out_sz, "v1:cpu=%s;cpuacct=%s;mem=%s;pids=%s",
+                       memberships->cpu, memberships->cpuacct,
+                       memberships->memory, memberships->pids);
+    }
+}
+
 typedef struct {
     cg_read_result_t cpu_max_status;
     linux_cgroup_cpu_max_t cpu_max;
@@ -910,6 +927,7 @@ static int collect_cgroup(void *opaque,
     cg_read_result_t membership_status;
     bool constrained;
     system_health_scope_t scope;
+    char membership_identity[sizeof(state->membership_identity)];
     if (!state || !context || !sink || !context->proc_root ||
         !context->cgroup_root) return -1;
     memset(&sample, 0, sizeof(sample));
@@ -920,6 +938,8 @@ static int collect_cgroup(void *opaque,
                            "container.cgroup.discovery", cap);
         return 0;
     }
+    format_membership_identity(&memberships, membership_identity,
+                               sizeof(membership_identity));
     if (memberships.version == LINUX_CGROUP_V2)
         sample_v2(context->cgroup_root, &memberships, &sample);
     else
@@ -933,7 +953,8 @@ static int collect_cgroup(void *opaque,
     emit_cpu(state, &sample, memberships.version, scope, context, sink);
     emit_memory(state, &sample, memberships.version, scope, context, sink);
     emit_pids(&sample, scope, context, sink);
-    if (state->version != memberships.version) {
+    if (state->version != memberships.version ||
+        strcmp(state->membership_identity, membership_identity) != 0) {
         state->cpu_valid = false;
         state->oom_valid = false;
     }
@@ -946,6 +967,8 @@ static int collect_cgroup(void *opaque,
     if (sample.oom_status == CG_READ_OK) state->oom_kills = sample.oom_kills;
     else state->oom_valid = false;
     state->version = memberships.version;
+    (void)snprintf(state->membership_identity, sizeof(state->membership_identity),
+                   "%s", membership_identity);
     if (sample.cpu_stat_status == CG_READ_OK) state->cpu_valid = true;
     if (sample.oom_status == CG_READ_OK) state->oom_valid = true;
     return 0;
