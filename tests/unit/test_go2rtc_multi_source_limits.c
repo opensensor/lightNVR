@@ -45,9 +45,12 @@ static void *serve(void *arg) {
     for (;;) {
         int client = accept(listen_fd, NULL, NULL);
         if (client < 0) return NULL;
+        char request[sizeof(last_request)];
+        ssize_t got = recv(client, request, sizeof(request) - 1, 0);
+        size_t length = got > 0 ? (size_t)got : 0;
+        request[length] = '\0';
         pthread_mutex_lock(&request_lock);
-        ssize_t got = recv(client, last_request, sizeof(last_request) - 1, 0);
-        last_request[got > 0 ? got : 0] = '\0';
+        memcpy(last_request, request, length + 1);
         request_count++;
         pthread_mutex_unlock(&request_lock);
         static const char reply[] =
@@ -58,8 +61,10 @@ static void *serve(void *arg) {
 }
 
 void setUp(void) {
+    pthread_mutex_lock(&request_lock);
     request_count = 0;
     last_request[0] = '\0';
+    pthread_mutex_unlock(&request_lock);
 }
 
 void tearDown(void) {
@@ -98,7 +103,7 @@ static void test_source_past_the_escape_buffer_sends_nothing(void) {
 static void test_null_source_sends_nothing(void) {
     const char *sources[] = {"rtsp://camera/stream", NULL};
     TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("cam", sources, 2));
-    TEST_ASSERT_EQUAL_INT(0, request_count);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
 static void test_percent_encoded_source_overflow_sends_nothing(void) {
@@ -107,7 +112,7 @@ static void test_percent_encoded_source_overflow_sends_nothing(void) {
     memset(source, '%', sizeof(source) - 1);
     const char *sources[] = {source, "b", "c", "d"};
     TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("cam", sources, 4));
-    TEST_ASSERT_EQUAL_INT(0, request_count);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
 static void test_truncated_stream_name_sends_nothing(void) {
@@ -115,7 +120,7 @@ static void test_truncated_stream_name_sends_nothing(void) {
     memset(name, '%', sizeof(name) - 1);
     const char *sources[] = {"rtsp://camera/stream"};
     TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi(name, sources, 1));
-    TEST_ASSERT_EQUAL_INT(0, request_count);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
 int main(void) {
