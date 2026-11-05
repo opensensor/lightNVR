@@ -13,6 +13,10 @@
  * recordings and actively transferring recordings return -2 without mutation. */
 int storage_recording_delete(uint64_t recording_id, const char *reason,
                              uint64_t *local_bytes_removed);
+/* Startup reconciliation only: the same journaled deletion, for an incomplete
+ * row whose media the caller has established is missing or empty. Complete,
+ * protected, transferring and archived rows return -2 without mutation. */
+int storage_recording_delete_stale_incomplete(uint64_t recording_id);
 /* Recheck the applied policy/override inside the deletion transaction. Returns
  * -2 if a previously selected recording is no longer eligible for expiry. */
 int storage_recording_expire_policy(uint64_t recording_id);

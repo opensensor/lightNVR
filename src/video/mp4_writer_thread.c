@@ -403,6 +403,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         new_path, sizeof(new_path), &new_placement) != 0) {
                     log_warn("Storage placement blocked rotated MP4 path for %s (reason: %s)",
                              stream_name, new_placement.reason);
+                    // Failed segments now retry through this branch too; don't spin.
+                    av_usleep(1000000);
                     continue;
                 }
 
@@ -648,28 +650,13 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->video_params_detected = false;
             }
 
-            // Refresh the output path so the next attempt writes to a new file.
-            // Without this the same timestamp-based filename from writer creation is
-            // reused on every retry, producing "Output file already exists" warnings
-            // for every attempt after the first partial (261-byte) file is written.
-            if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
-                time_t retry_ts = time(NULL);
-                char retry_path[MAX_PATH_LENGTH];
-                storage_placement_t retry_placement;
-                if (prepare_placed_mp4_recording_path(
-                        get_streaming_config(), stream_name, retry_ts,
-                        retry_path, sizeof(retry_path),
-                        &retry_placement) == 0) {
-                    safe_strcpy(thread_ctx->writer->output_path, retry_path,
-                                sizeof(thread_ctx->writer->output_path), 0);
-                    update_writer_directory_from_path(thread_ctx->writer, retry_path);
-                    thread_ctx->writer->placement = retry_placement;
-                    log_debug("Updated output path for retry attempt: %s",
-                              thread_ctx->writer->output_path);
-                } else {
-                    log_warn("Storage placement blocked retry MP4 path for %s (reason: %s)",
-                             stream_name, retry_placement.reason);
-                }
+            // Write the next attempt to a new file, but rotate through the normal
+            // finalization path instead of swapping output_path here: until then
+            // current_recording_id still describes the file that just failed, and
+            // a new path would leave the next file with no recording row at all.
+            // The backoff below is at least 1 s, so the rotated timestamp differs.
+            if (thread_ctx->writer && segment_duration > 0) {
+                thread_ctx->writer->last_rotation_time = time(NULL) - segment_duration;
             }
 
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",

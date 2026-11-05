@@ -13,6 +13,7 @@
 
 #define MAX_ZONE_NAME 64
 #define MAX_ZONE_ID 64
+#define MIN_ZONE_POINTS 3
 #define MAX_ZONE_POINTS 32
 #define MAX_ZONES_PER_STREAM 16
 
@@ -38,6 +39,11 @@ typedef struct {
     char filter_classes[256];  // Comma-separated list of classes to detect in this zone
     float min_confidence;      // Minimum confidence for this zone (0.0 = use default)
 } detection_zone_t;
+
+/**
+ * Check a polygon has enough points to enclose an area and fits in a zone.
+ */
+bool detection_zone_point_count_valid(int point_count);
 
 /**
  * Save detection zones for a stream

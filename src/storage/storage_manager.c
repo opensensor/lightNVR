@@ -1995,6 +1995,34 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
     return storage_source_trim(target > free_bytes ? target - free_bytes : 0);
 }
 
+/*
+ * A missing file only proves the media is gone when the volume it lives on is
+ * present. Unmounting leaves the mount point behind, so require the file's own
+ * directory rather than the storage root: dated recording directories live on
+ * the volume. Anything uncertain keeps its row for the next startup.
+ */
+static bool stale_media_absence_is_authoritative(const recording_metadata_t *recording) {
+    if (recording->storage_target_uuid[0]) {
+        storage_target_t target;
+        if (db_storage_target_get(recording->storage_target_uuid, &target) != DB_STORAGE_TARGET_OK ||
+            strcmp(target.target_type, "s3") == 0 ||
+            !db_storage_target_mount_guard_active(&target) ||
+            !recording->file_path[0]) {
+            return false;
+        }
+    }
+    if (!recording->file_path[0]) return true;
+
+    char directory[MAX_PATH_LENGTH];
+    safe_strcpy(directory, recording->file_path, sizeof(directory), 0);
+    char *slash = strrchr(directory, '/');
+    if (!slash || slash == directory) return false;
+    *slash = '\0';
+
+    struct stat st;
+    return stat(directory, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 // Reconcile recordings interrupted by an unclean shutdown (is_complete = 0).
 int storage_reconcile_incomplete_recordings(void) {
     // Only touch rows old enough to be certain they are not actively recording.
@@ -2014,13 +2042,21 @@ int storage_reconcile_incomplete_recordings(void) {
     int reconciled = 0;
     int finalized = 0;
     int pruned = 0;
+    int retained = 0;
     int count;
+    uint64_t after_id = 0;
+    uint64_t maximum_id = 0;
+    const time_t cutoff = time(NULL) - STALE_WINDOW_SEC;
 
     do {
-        count = get_stale_incomplete_recordings(batch, RECONCILE_BATCH, STALE_WINDOW_SEC);
+        count = get_stale_incomplete_recordings_page(batch, RECONCILE_BATCH, cutoff,
+                                                     after_id, &maximum_id);
         if (count <= 0) break;
 
         for (int i = 0; i < count; i++) {
+            // Advance first: a row that cannot be resolved must not be revisited.
+            after_id = batch[i].id;
+
             struct stat st;
             bool have_file = (batch[i].file_path[0] != '\0' &&
                               stat(batch[i].file_path, &st) == 0 && S_ISREG(st.st_mode));
@@ -2033,26 +2069,27 @@ int storage_reconcile_incomplete_recordings(void) {
                     finalized++;
                     reconciled++;
                 }
-            } else {
-                // No usable file (missing or empty): drop the phantom row and
-                // any zero-byte leftover so it stops wasting an inode.
-                if (have_file && st.st_size == 0) {
-                    unlink(batch[i].file_path);
-                }
-                delete_recording_thumbnails(batch[i].id);
-                if (delete_recording_metadata(batch[i].id) == 0) {
+            } else if (have_file || stale_media_absence_is_authoritative(&batch[i])) {
+                // No usable media: drop the phantom row. The journaled deletion
+                // also removes any zero-byte leftover so it stops wasting an inode.
+                if (delete_stale_incomplete_recording_metadata(batch[i].id) == 0) {
+                    delete_recording_thumbnails(batch[i].id);
                     pruned++;
                     reconciled++;
+                } else {
+                    retained++;
                 }
+            } else {
+                retained++;
             }
         }
     } while (count == RECONCILE_BATCH);
 
     free(batch);
 
-    if (reconciled > 0) {
-        log_info("Reconciled %d incomplete recordings on startup (%d finalized, %d pruned)",
-                 reconciled, finalized, pruned);
+    if (reconciled > 0 || retained > 0) {
+        log_info("Reconciled %d incomplete recordings on startup (%d finalized, %d pruned, %d retained)",
+                 reconciled, finalized, pruned, retained);
     }
     return reconciled;
 }

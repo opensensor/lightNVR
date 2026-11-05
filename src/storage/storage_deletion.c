@@ -362,7 +362,8 @@ static int inventory_derivatives(sqlite3 *db, const char *uuid, const derivative
 }
 
 static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
-                            bool require_policy_expiry, int64_t age_cutoff) {
+                            bool require_policy_expiry, int64_t age_cutoff,
+                            bool stale_incomplete) {
     if (recovery_read_only()) return -1;
     if (removed) *removed = 0;
     sqlite3 *db = get_db_handle();
@@ -379,7 +380,8 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
     }
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, "SELECT protected,EXISTS(SELECT 1 FROM storage_migration_jobs "
-        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending,is_complete "
+        "WHERE recording_id=?1 AND state IN('copying','verifying','committing')),deletion_pending,is_complete,"
+        "EXISTS(SELECT 1 FROM storage_recording_copies WHERE recording_id=?1) "
         "FROM recordings WHERE id=?1;",
         -1, &statement, NULL);
     if (result == SQLITE_OK) {
@@ -387,9 +389,13 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
         result = sqlite3_step(statement);
     }
     /* Check inside the deletion transaction: an ID selected from the live
-     * recordings list must never remove a file the recorder is writing. */
+     * recordings list must never remove a file the recorder is writing. Startup
+     * reconciliation is the one caller that targets incomplete rows, and it
+     * must not take archived copies with a row whose local media is gone. */
     bool blocked = result == SQLITE_ROW && (sqlite3_column_int(statement, 0) ||
-        sqlite3_column_int(statement, 1) || !sqlite3_column_int(statement, 3));
+        sqlite3_column_int(statement, 1) ||
+        (stale_incomplete ? (sqlite3_column_int(statement, 3) || sqlite3_column_int(statement, 4))
+                          : !sqlite3_column_int(statement, 3)));
     bool pending = result == SQLITE_ROW && sqlite3_column_int(statement, 2);
     if (statement) sqlite3_finalize(statement);
     if (blocked || pending || result != SQLITE_ROW) {
@@ -490,14 +496,18 @@ static int recording_delete(uint64_t id, const char *reason, uint64_t *removed,
 }
 
 int storage_recording_delete(uint64_t id, const char *reason, uint64_t *removed) {
-    return recording_delete(id, reason, removed, false, 0);
+    return recording_delete(id, reason, removed, false, 0, false);
 }
 
 int storage_recording_expire_policy(uint64_t id) {
-    return recording_delete(id, "policy expiry", NULL, true, 0);
+    return recording_delete(id, "policy expiry", NULL, true, 0, false);
 }
 
 int storage_recording_expire_age(uint64_t id, int64_t cutoff) {
     if (!cutoff) return -2;
-    return recording_delete(id, "legacy age retention", NULL, false, cutoff);
+    return recording_delete(id, "legacy age retention", NULL, false, cutoff, false);
+}
+
+int storage_recording_delete_stale_incomplete(uint64_t id) {
+    return recording_delete(id, "stale incomplete recording", NULL, false, 0, true);
 }

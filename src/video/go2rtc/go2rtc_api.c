@@ -274,19 +274,18 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     }
     size_t offset = (size_t)written;
 
-    // Add each source as a src parameter
+    // Add each source as a src parameter. A shortened source or a missing name
+    // would register the wrong stream, so fail and let the caller fall back.
     for (int i = 0; i < num_sources; i++) {
         // URL encode the source
         char encoded_url[URL_BUFFER_SIZE * 3];
-        simple_url_escape(sources[i], encoded_url, URL_BUFFER_SIZE * 3);
+        if (!sources[i]) goto request_too_long;
+        simple_url_escape(sources[i], encoded_url, sizeof(encoded_url));
+        if (strlen(encoded_url) >= sizeof(encoded_url) - 1) goto request_too_long;
 
-        if (i > 0) {
-            written = snprintf(url + offset, url_buf_size - offset, "&");
-            if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
-            offset += (size_t)written;
-        }
-        written = snprintf(url + offset, url_buf_size - offset, "src=%s", encoded_url);
-        if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
+        written = snprintf(url + offset, url_buf_size - offset, "%ssrc=%s",
+                           i > 0 ? "&" : "", encoded_url);
+        if (written < 0 || (size_t)written >= url_buf_size - offset) goto request_too_long;
         offset += (size_t)written;
     }
 
@@ -296,9 +295,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 
     // Add stream name
     written = snprintf(url + offset, url_buf_size - offset, "&name=%s", encoded_stream_id);
-    if (written < 0 || (size_t)written >= url_buf_size - offset) {
-        log_warn("URL truncated building go2rtc request for stream %s", stream_id);
-    }
+    if (written < 0 || (size_t)written >= url_buf_size - offset) goto request_too_long;
 
     log_info("Adding go2rtc stream with %d source(s) for %s", num_sources, stream_id);
 
@@ -333,6 +330,12 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     curl_easy_cleanup(curl);
 
     return success;
+
+request_too_long:
+    log_error("go2rtc request for stream %s does not fit its URL buffer", stream_id);
+    free(url);
+    curl_easy_cleanup(curl);
+    return false;
 }
 
 bool go2rtc_api_remove_stream(const char *stream_id) {

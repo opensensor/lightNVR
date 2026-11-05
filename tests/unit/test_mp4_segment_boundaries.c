@@ -20,6 +20,16 @@ static char output_path[160];
 static AVFormatContext *input;
 static segment_info_t segment;
 static bool saved_faststart;
+static int write_calls, fail_write_at;
+
+int __real_av_interleaved_write_frame(AVFormatContext *context, AVPacket *packet);
+
+/* Passes through until a test asks one write to fail, then keeps succeeding:
+ * only the recorder's reaction to that error can end the segment early. */
+int __wrap_av_interleaved_write_frame(AVFormatContext *context, AVPacket *packet) {
+    if (fail_write_at > 0 && ++write_calls == fail_write_at) return AVERROR(EROFS);
+    return __real_av_interleaved_write_frame(context, packet);
+}
 
 void setUp(void) {
     saved_faststart = config_get_mp4_faststart(&g_config);
@@ -214,11 +224,23 @@ void test_non_keyframe_at_duration_waits_for_next_keyframe(void) {
     record_and_check_boundary(64, 32);
 }
 
+void test_read_only_storage_write_stops_the_segment(void) {
+    open_fixture(10);
+    write_calls = 0;
+    fail_write_at = 10;
+    int result = record_segment(source_path, output_path, 30, 0, &input, &segment,
+                                NULL, NULL, NULL, NULL);
+    fail_write_at = 0;
+    TEST_ASSERT_LESS_THAN_INT(0, result);
+    TEST_ASSERT_EQUAL_INT(10, write_calls);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_keyframe_at_duration_closes_current_segment_and_starts_next);
     RUN_TEST(test_non_keyframe_at_duration_waits_for_next_keyframe);
     RUN_TEST(test_segments_snapshot_live_faststart_setting_at_open);
     RUN_TEST(test_writer_keeps_faststart_snapshot_after_live_update);
+    RUN_TEST(test_read_only_storage_write_stops_the_segment);
     return UNITY_END();
 }

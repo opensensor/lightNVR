@@ -153,6 +153,23 @@ void test_get_zones_empty_stream(void) {
     TEST_ASSERT_EQUAL_INT(0, n);
 }
 
+void test_invalid_polygon_keeps_saved_zones(void) {
+    clear_zones();
+    ensure_test_stream("cam1");
+    detection_zone_t zones[2] = {make_zone("zone-a", "cam1", "A", true),
+                                 make_zone("zone-b", "cam1", "B", true)};
+    TEST_ASSERT_EQUAL_INT(0, save_detection_zones("cam1", zones, 1));
+
+    zones[1].polygon_count = MIN_ZONE_POINTS - 1;
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("cam1", zones, 2));
+    zones[1].polygon_count = MAX_ZONE_POINTS + 1;
+    TEST_ASSERT_EQUAL_INT(-1, save_detection_zones("cam1", zones, 2));
+
+    detection_zone_t out[4];
+    TEST_ASSERT_EQUAL_INT(1, get_detection_zones("cam1", out, 4));
+    TEST_ASSERT_EQUAL_STRING("zone-a", out[0].id);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -167,6 +184,7 @@ int main(void) {
     RUN_TEST(test_delete_detection_zone_single);
     RUN_TEST(test_update_zone_enabled);
     RUN_TEST(test_get_zones_empty_stream);
+    RUN_TEST(test_invalid_polygon_keeps_saved_zones);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
