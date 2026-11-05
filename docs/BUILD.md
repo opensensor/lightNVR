@@ -141,7 +141,7 @@ can serve HTTPS without a reverse proxy. It uses mbedTLS, which is already a
 required dependency, so no extra packages are needed:
 
 ```bash
-cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SSL=ON ..
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_SSL=ON
 ```
 
 HTTPS is then turned on at runtime with `ssl_enabled`, `ssl_cert_path` and
