@@ -99,16 +99,23 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   // Load snapshot for the stream
   useEffect(() => {
     if (streamName) {
+      let isActive = true;
+      setImageLoaded(false);
+      setSnapshotError(false);
+      setSnapshotUrl('');
+
       // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
       const loadSnapshot = async () => {
         try {
           const go2rtcBaseUrl = await getGo2rtcBaseUrl();
+          if (!isActive) return;
           // Add cache-busting parameter to force fresh snapshot
           const timestamp = nowMilliseconds();
           const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           console.log('Loading snapshot from:', url);
           setSnapshotUrl(url);
         } catch (err) {
+          if (!isActive) return;
           console.warn('Failed to get go2rtc URL, using origin proxy:', err);
           const timestamp = nowMilliseconds();
           const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
@@ -120,6 +127,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
       // Set a timeout to show canvas anyway after 10 seconds
       const timeout = setTimeout(() => {
+        if (!isActive) return;
         snapshotTimeoutRef.current = null;
         console.warn('Snapshot not loaded, showing canvas without background');
         setImageLoaded(true);
@@ -128,6 +136,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       snapshotTimeoutRef.current = timeout;
 
       return () => {
+        isActive = false;
         clearTimeout(timeout);
         if (snapshotTimeoutRef.current === timeout) snapshotTimeoutRef.current = null;
       };
