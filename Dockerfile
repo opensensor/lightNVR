@@ -5,6 +5,7 @@ ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3540100
 ARG LIBUV_VERSION=1.53.0
 ARG LLHTTP_VERSION=9.4.3
+ARG LLHTTP_TARBALL_SHA256=1eb813c7437b31a87496a1cd3ed79f00746720f5e7e29c79b42c02cb69f36c39
 ARG NODE_MAJOR=24
 ARG DEB_BUILD=false
 
@@ -45,6 +46,7 @@ ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
 ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
+ARG LLHTTP_TARBALL_SHA256
 ARG NODE_MAJOR
 ARG DEB_BUILD
 ARG BUILDARCH
@@ -183,23 +185,26 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
 
 # Build upstream llhttp (skipped for .deb builds which use system libllhttp)
 RUN if [ "$DEB_BUILD" != "true" ]; then \
-    mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/include/llhttp.h" -O /tmp/llhttp/include/llhttp.h && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/api.c" -O /tmp/llhttp/src/api.c && \
-    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/http.c" -O /tmp/llhttp/src/http.c && \
+    mkdir -p /tmp/llhttp /usr/include && \
+    wget -q "https://github.com/nodejs/llhttp/archive/refs/tags/release/v${LLHTTP_VERSION}.tar.gz" -O /tmp/llhttp.tar.gz && \
+    echo "${LLHTTP_TARBALL_SHA256}  /tmp/llhttp.tar.gz" | sha256sum -c - && \
+    tar -xzf /tmp/llhttp.tar.gz -C /tmp && \
+    cp "/tmp/llhttp-release-v${LLHTTP_VERSION}/include/llhttp.h" /tmp/llhttp/llhttp.h && \
+    cp "/tmp/llhttp-release-v${LLHTTP_VERSION}/src/llhttp.c" /tmp/llhttp/llhttp.c && \
+    cp "/tmp/llhttp-release-v${LLHTTP_VERSION}/src/api.c" /tmp/llhttp/api.c && \
+    cp "/tmp/llhttp-release-v${LLHTTP_VERSION}/src/http.c" /tmp/llhttp/http.c && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       TARGET_CC=arm-linux-gnueabihf-gcc; \
     else \
       TARGET_CC=cc; \
     fi && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/llhttp.c -o /tmp/llhttp/llhttp.o && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/api.c -o /tmp/llhttp/api.o && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/http.c -o /tmp/llhttp/http.o && \
     "$TARGET_CC" -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
-    install -m 644 /tmp/llhttp/include/llhttp.h /usr/include/llhttp.h && \
+    install -m 644 /tmp/llhttp/llhttp.h /usr/include/llhttp.h && \
     printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libllhttp\nDescription: llhttp parser\nVersion: %s\nLibs: -L${libdir} -lllhttp\nCflags: -I${includedir}\n' "$LLHTTP_VERSION" > /usr/lib/pkgconfig/libllhttp.pc && \
     pkg-config --modversion libllhttp; \
     fi
