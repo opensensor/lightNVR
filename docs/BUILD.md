@@ -138,10 +138,12 @@ built, LightNVR logs a warning once and keeps recording unfiltered audio.
 
 `ENABLE_SSL` (default `OFF`) builds TLS termination into the web server so it
 can serve HTTPS without a reverse proxy. It uses mbedTLS, which is already a
-required dependency, so no extra packages are needed:
+required dependency, so no extra packages are needed. From the repository root,
+configure and rebuild the release directory used by `scripts/build.sh`:
 
 ```bash
-cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SSL=ON ..
+cmake -S . -B build/Release -DCMAKE_BUILD_TYPE=Release -DENABLE_SSL=ON
+cmake --build build/Release --parallel
 ```
 
 HTTPS is then turned on at runtime with `ssl_enabled`, `ssl_cert_path` and
