@@ -1044,11 +1044,14 @@ export function WebRTCVideoCell({
           }
           
           // Update connection quality state if changed
-          if (quality !== connectionQuality) {
-            console.log(`WebRTC connection quality for stream ${stream.name} changed to ${quality}`);
-            console.log(`Stats: loss=${lossPercentage.toFixed(2)}%, rtt=${(currentRtt * 1000).toFixed(0)}ms, jitter=${(jitter * 1000).toFixed(0)}ms`);
-            setConnectionQuality(quality);
-          }
+          setConnectionQuality(prevQuality => {
+            if (quality !== prevQuality) {
+              console.log(`WebRTC connection quality for stream ${stream.name} changed to ${quality}`);
+              console.log(`Stats: loss=${lossPercentage.toFixed(2)}%, rtt=${(currentRtt * 1000).toFixed(0)}ms, jitter=${(jitter * 1000).toFixed(0)}ms`);
+              return quality;
+            }
+            return prevQuality;
+          });
 
           if (shouldFallbackFullscreenToSubStream({
             fullscreenUpgraded,
