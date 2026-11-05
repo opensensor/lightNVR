@@ -47,7 +47,18 @@ typedef struct {
     uint64_t oom_kill;
 } linux_cgroup_memory_events_t;
 
+/* Keep exact paths rather than a truncated or delimiter-joined identity. */
 typedef struct {
+    linux_cgroup_version_t version;
+    char unified[512];
+    char cpu[512];
+    char cpuacct[512];
+    char memory[512];
+    char pids[512];
+} linux_cgroup_memberships_t;
+
+typedef struct {
+    linux_cgroup_memberships_t memberships;
     bool cpu_valid;
     bool oom_valid;
     linux_cgroup_version_t version;
