@@ -311,6 +311,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    metrics_shutdown();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     g_config.max_streams = saved_max_streams;
@@ -1990,12 +1991,19 @@ void test_action_catalog_bit_layout_matches_database(void) {
                      "WHERE action_key = 'system.admin';",
                      NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(-1, db_authorization_verify_action_catalog());
+
+    stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db,
-                     "UPDATE authz_actions SET bit_index = 14 "
-                     "WHERE action_key = 'system.admin';",
-                     NULL, NULL, NULL));
+        sqlite3_prepare_v2(db,
+                           "UPDATE authz_actions SET bit_index = ? "
+                           "WHERE action_key = 'system.admin';",
+                           -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_bind_int(stmt, 1, AUTHZ_SYSTEM_ADMIN));
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
     TEST_ASSERT_EQUAL_INT(0, db_authorization_verify_action_catalog());
 }
 
@@ -2040,18 +2048,46 @@ void test_player_telemetry_requires_live_view_authorization(void) {
     g_config.web_auth_enabled = false;
 }
 
-void test_metrics_require_system_admin_authorization(void) {
+static void assert_metrics_status(const char *api_key, int expected_status) {
     http_request_t req;
     http_response_t res;
     http_request_init(&req);
     http_response_init(&res);
+    req.method = HTTP_METHOD_GET;
     safe_strcpy(req.path, "/api/metrics", sizeof(req.path), 0);
     safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
-    g_config.web_auth_enabled = true;
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    if (api_key) {
+        safe_strcpy(req.headers[0].name, "X-API-Key", sizeof(req.headers[0].name), 0);
+        safe_strcpy(req.headers[0].value, api_key, sizeof(req.headers[0].value), 0);
+        req.num_headers = 1;
+    }
     handle_get_metrics(&req, &res);
-    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    int status = res.status_code;
+    bool has_metrics = res.body && strstr((const char *)res.body,
+                                          "# TYPE lightnvr_stream_up gauge");
     http_response_free(&res);
-    g_config.web_auth_enabled = false;
+    TEST_ASSERT_EQUAL_INT(expected_status, status);
+    if (expected_status == 200) TEST_ASSERT_TRUE(has_metrics);
+}
+
+void test_metrics_require_system_admin_authorization(void) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("metricsoperator", "password123", NULL,
+                                                USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_set_user_mode(user_id, "policy"));
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, NULL);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    /* Initialize the endpoint's metrics dependency so the allowed case can
+     * return a real Prometheus response. tearDown also handles assertion failures. */
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(4));
+    g_config.web_auth_enabled = true;
+
+    assert_metrics_status(NULL, 401);
+    assert_metrics_status(api_key, 403);
+    create_grant(user_id, ADMIN_ROLE_UUID, "all", NULL, NULL);
+    assert_metrics_status(api_key, 200);
 }
 
 void test_stream_health_filters_camera_metrics_by_live_view_scope(void) {
