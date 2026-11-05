@@ -838,7 +838,15 @@ void handle_users_generate_api_key(const http_request_t *req, http_response_t *r
         *suffix = '\0';
     }
 
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    errno = 0;
+    char *endptr = NULL;
+    long long parsed_user_id = strtoll(id_str, &endptr, 10);
+    if (id_str[0] == '\0' || endptr == id_str || *endptr != '\0' || errno == ERANGE
+        || parsed_user_id <= 0) {
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
+    int64_t user_id = (int64_t)parsed_user_id;
 
     // Check if the user has permission to generate API key for this user
     if (!check_generate_api_key_permission(req, res, user_id)) {
