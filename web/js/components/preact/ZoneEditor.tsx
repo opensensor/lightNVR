@@ -74,12 +74,19 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
   // Load zones from the backend API
   useEffect(() => {
+    let isActive = true;
+    setZoneList(zones);
+    setCurrentZone(null);
+    setSelectedZoneIndex(null);
+    setDraggedPoint(null);
+    setDraggedZone(null);
+    setHoveredPoint(null);
     const loadZones = async () => {
       try {
         const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
         if (response.ok) {
           const data: ZonesResponse = await response.json();
-          if (data.zones && Array.isArray(data.zones)) {
+          if (isActive && data.zones && Array.isArray(data.zones)) {
             console.log('Loaded zones from API:', data.zones);
             setZoneList(data.zones);
           }
@@ -94,21 +101,29 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     if (streamName) {
       loadZones();
     }
+    return () => { isActive = false; };
   }, [streamName]);
 
   // Load snapshot for the stream
   useEffect(() => {
+    setImageLoaded(false);
+    setSnapshotError(false);
+    setSnapshotUrl(null);
     if (streamName) {
+      let isActive = true;
+
       // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
       const loadSnapshot = async () => {
         try {
           const go2rtcBaseUrl = await getGo2rtcBaseUrl();
+          if (!isActive) return;
           // Add cache-busting parameter to force fresh snapshot
           const timestamp = nowMilliseconds();
           const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           console.log('Loading snapshot from:', url);
           setSnapshotUrl(url);
         } catch (err) {
+          if (!isActive) return;
           console.warn('Failed to get go2rtc URL, using origin proxy:', err);
           const timestamp = nowMilliseconds();
           const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
@@ -120,6 +135,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
       // Set a timeout to show canvas anyway after 10 seconds
       const timeout = setTimeout(() => {
+        if (!isActive) return;
         snapshotTimeoutRef.current = null;
         console.warn('Snapshot not loaded, showing canvas without background');
         setImageLoaded(true);
@@ -128,6 +144,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       snapshotTimeoutRef.current = timeout;
 
       return () => {
+        isActive = false;
         clearTimeout(timeout);
         if (snapshotTimeoutRef.current === timeout) snapshotTimeoutRef.current = null;
       };
@@ -382,7 +399,13 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     if (draggedPoint) {
       canvas.style.cursor = 'move';
       const newZones = [...zoneList];
-      newZones[draggedPoint.zoneIndex]!.polygon[draggedPoint.pointIndex] = { x, y };
+      const originalZone = newZones[draggedPoint.zoneIndex]!;
+      const newPolygon = [...originalZone.polygon];
+      newPolygon[draggedPoint.pointIndex] = { x, y };
+      newZones[draggedPoint.zoneIndex] = {
+        ...originalZone,
+        polygon: newPolygon,
+      };
       setZoneList(newZones);
     }
 
@@ -393,13 +416,16 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       const deltaY = y - draggedZone.startY;
 
       const newZones = [...zoneList];
-      const zone = newZones[draggedZone.zoneIndex]!;
+      const originalZone = newZones[draggedZone.zoneIndex]!;
 
       // Move all points by the delta
-      zone.polygon = zone.polygon.map(point => ({
-        x: Math.max(0, Math.min(1, point.x + deltaX)),
-        y: Math.max(0, Math.min(1, point.y + deltaY))
-      }));
+      newZones[draggedZone.zoneIndex] = {
+        ...originalZone,
+        polygon: originalZone.polygon.map(point => ({
+          x: Math.max(0, Math.min(1, point.x + deltaX)),
+          y: Math.max(0, Math.min(1, point.y + deltaY))
+        })),
+      };
 
       setZoneList(newZones);
       // Update start position for next move
@@ -577,12 +603,14 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
             <div className="flex-1 relative bg-muted rounded-lg overflow-hidden">
               {snapshotUrl && (
                 <img
+                  key={snapshotUrl}
                   ref={imageRef}
                   src={snapshotUrl}
                   alt={t('zoneEditor.streamPreviewAlt')}
                   className="hidden"
                   crossOrigin="anonymous"
-                  onLoad={() => {
+                  onLoad={(event) => {
+                    if (event.currentTarget !== imageRef.current) return;
                     clearSnapshotTimeout();
                     console.log('✅ Snapshot loaded successfully');
                     setImageLoaded(true);
@@ -590,6 +618,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                     drawCanvas();
                   }}
                   onError={(e) => {
+                    if (e.currentTarget !== imageRef.current) return;
                     clearSnapshotTimeout();
                     console.error('❌ Failed to load snapshot:', e);
                     console.error('Snapshot URL was:', snapshotUrl);

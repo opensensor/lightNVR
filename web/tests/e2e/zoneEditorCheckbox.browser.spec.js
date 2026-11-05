@@ -19,7 +19,7 @@ const fixtureZones = [{
 const t = key => 'translated:' + key;
 // Run with: npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'
 const browserTest = it;
-async function openZoneBrowser() {
+async function openZoneBrowser(deferred = false) {
   const {
     chromium
   } = require('../../../node_modules/playwright');
@@ -35,9 +35,12 @@ async function openZoneBrowser() {
   import {h,render} from 'preact';
   import {ZoneEditor} from './js/components/preact/ZoneEditor.tsx';
   const zones=${JSON.stringify(fixtureZones)};
+  window.originalZones=zones;
+  window.pendingZones=[];
+  window.pendingSnapshots=[];
   window.calls={saved:[],closed:0,events:[],requests:[]};
-  window.fetch=async(url,options={})=>{if(options.method==='POST'){window.calls.requests.push({url,method:options.method,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})};}return{ok:true,json:async()=>{window.zonesLoaded=true;return{zones};}};};
-  window.mount=()=>render(h(ZoneEditor,{streamName:'Entry',streamWidth:640,streamHeight:360,zones,onClose:()=>window.calls.closed++,onZonesChange:value=>window.calls.saved.push(value)}),document.getElementById('root'));
+  window.fetch=async(url,options={})=>{if(options.method==='POST'){window.calls.requests.push({url,method:options.method,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})};}if(${deferred})return new Promise(resolve=>window.pendingZones.push({url,resolve}));return{ok:true,json:async()=>{window.zonesLoaded=true;return{zones};}};};
+  window.mount=(streamName='Entry')=>render(h(ZoneEditor,{streamName,streamWidth:640,streamHeight:360,zones,onClose:()=>window.calls.closed++,onZonesChange:value=>window.calls.saved.push(value)}),document.getElementById('root'));
   for(const capture of[true,false])for(const type of['click','input','change'])document.addEventListener(type,event=>{if(event.target.type==='checkbox')window.calls.events.push({type,capture,checked:event.target.checked,selected:String(document.querySelector('input[type=checkbox]')?.closest('div.mb-3.p-3.rounded.border')?.classList.contains('border-primary'))});},capture);
  `
     },
@@ -59,7 +62,7 @@ async function openZoneBrowser() {
           filter: /.*/,
           namespace: 'fixture'
         }, () => ({
-          contents: "export const t=key=>'translated:'+key;export const useI18n=()=>({t});export const getGo2rtcBaseUrl=async()=>'/go2rtc';",
+          contents: "export const t=key=>'translated:'+key;export const useI18n=()=>({t});export const getGo2rtcBaseUrl=()=>window.deferSnapshots?new Promise(resolve=>window.pendingSnapshots.push(resolve)):Promise.resolve('/go2rtc');",
           loader: 'js'
         }));
       }
@@ -87,9 +90,9 @@ async function openZoneBrowser() {
   await page.addScriptTag({
     content: output.outputFiles[0].text
   });
-  await page.evaluate(() => window.mount());
+  await page.evaluate(deferred => { window.deferSnapshots = deferred; window.mount(); }, deferred);
   try {
-    await page.waitForFunction(() => window.zonesLoaded && document.querySelector('input[type=checkbox]'), {}, {
+    await page.waitForFunction(deferred => (deferred || window.zonesLoaded) && document.querySelector('input[type=checkbox]'), deferred, {
       timeout: 5000
     });
   } catch (error) {
@@ -188,6 +191,7 @@ it('selects a zone row when keyboard focus enters it', async () => {
     const nameInput = card.locator('input[type=text]');
     for (let index = 0; index < 20 && !(await nameInput.evaluate(element => element === document.activeElement)); index += 1) await page.keyboard.press('Tab');
     expect(await nameInput.evaluate(element => element === document.activeElement)).toBe(true);
+    await page.waitForFunction(() => document.querySelector('div.mb-3.p-3.rounded.border')?.classList.contains('border-primary'));
     expect(await selected()).toBe(true);
   } finally {
     await browser.close();
@@ -230,3 +234,55 @@ browserTest('drawing stops at the point limit the API accepts', async () => {
     await browser.close();
   }
 }, 30000);
+
+
+it('ignores late zone and snapshot loads after switching cameras', async () => {
+  const { browser, page } = await openZoneBrowser(true);
+  try {
+    await page.waitForFunction(() => window.pendingZones.length === 1 && window.pendingSnapshots.length === 1);
+    await page.evaluate(() => window.mount('Second'));
+    await page.waitForFunction(() => window.pendingZones.length === 2 && window.pendingSnapshots.length === 2);
+    await page.evaluate(() => {
+      window.pendingZones[1].resolve({ok:true,json:async()=>({zones:[{...window.originalZones[0],name:'Second zone'}]})});
+      window.pendingSnapshots[1]('/second');
+    });
+    await page.waitForFunction(() => document.querySelector('input[type=text]')?.value === 'Second zone');
+    await page.locator('img').waitFor({state:'attached'});
+    await page.evaluate(() => {
+      window.pendingZones[0].resolve({ok:true,json:async()=>({zones:[{...window.originalZones[0],name:'Stale zone'}]})});
+      window.pendingSnapshots[0]('/stale');
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await page.locator('input[type=text]').first().inputValue()).toBe('Second zone');
+    expect(await page.locator('img').getAttribute('src')).toContain('/second/api/frame.jpeg?src=Second');
+  } finally { await browser.close(); }
+});
+
+it.each(['vertex', 'polygon'])('dragging a %s does not mutate the supplied zone objects', async kind => {
+  const { browser, page } = await openZoneBrowser();
+  try {
+    await page.addStyleTag({content:'canvas{width:640px;height:360px}'});
+    await page.getByRole('button', {name:t('zoneEditor.selectZone')}).click();
+    await page.waitForFunction(() => document.querySelector('img')?.complete);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const canvas = page.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    // The canvas has a 400px minimum height; account for the letterboxed image.
+    const imageHeight = box.width * 360 / 640;
+    const offsetY = (box.height - imageHeight) / 2;
+    const start = kind === 'vertex'
+      ? {x:box.width * 0.1,y:offsetY + imageHeight * 0.1}
+      : {x:box.width * 0.2,y:offsetY + imageHeight / 6};
+    await page.mouse.move(box.x + start.x, box.y + start.y);
+    await page.mouse.down();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    await page.mouse.move(box.x + start.x + 32, box.y + start.y + 18, {steps:3});
+    await page.mouse.up();
+    await page.getByRole('button', {name:t('zoneEditor.saveZones'),exact:true}).click();
+    await page.waitForFunction(() => window.calls.saved.length === 1);
+    const result = await page.evaluate(() => ({original:window.originalZones,saved:window.calls.saved[0]}));
+    expect(result.original).toEqual(fixtureZones);
+    expect(result.saved[0].polygon).not.toEqual(fixtureZones[0].polygon);
+  } finally { await browser.close(); }
+});
