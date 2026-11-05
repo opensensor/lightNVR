@@ -2305,6 +2305,58 @@ void test_user_update_preserves_omitted_role(void) {
     cJSON_Delete(json);
 }
 
+void test_password_change_supports_large_user_ids(void) {
+    const int64_t ids[] = {INT64_C(1000000), INT64_MAX};
+    for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
+        int64_t initial_id = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("largeid", "password123", NULL,
+                                                   USER_ROLE_VIEWER, true, &initial_id));
+        sqlite3_stmt *stmt = NULL;
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+            "UPDATE users SET id = ? WHERE id = ?", -1, &stmt, NULL));
+        sqlite3_bind_int64(stmt, 1, ids[i]);
+        sqlite3_bind_int64(stmt, 2, initial_id);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+        sqlite3_finalize(stmt);
+        char token[128];
+        TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(ids[i], NULL, NULL, 3600, token, sizeof(token)));
+        char path[128];
+        snprintf(path, sizeof(path), "/api/auth/users/%lld/password", (long long)ids[i]);
+        cJSON *json = call_handler_path(handle_users_change_password, HTTP_METHOD_PUT,
+                                        path, "{\"new_password\":\"replacement123\"}", NULL, 200);
+        cJSON_Delete(json);
+        TEST_ASSERT_EQUAL_INT(0, db_auth_verify_password(ids[i], "replacement123"));
+        TEST_ASSERT_NOT_EQUAL(0, db_auth_verify_password(ids[i], "password123"));
+        TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, NULL));
+        TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user(ids[i]));
+    }
+}
+
+void test_password_change_rejects_malformed_and_overflowing_ids(void) {
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("malformedid", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &target_id));
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "UPDATE users SET id = ? WHERE id = ?", -1, &stmt, NULL));
+    sqlite3_bind_int64(stmt, 1, INT64_MAX);
+    sqlite3_bind_int64(stmt, 2, target_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+    const char *ids[] = {"9223372036854775808", "9999999999999999999", "-1", "0",
+                         "abc", "9223372036854775807x", "+9223372036854775807",
+                         "%209223372036854775807"};
+    for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
+        char path[128];
+        snprintf(path, sizeof(path), "/api/auth/users/%s/password", ids[i]);
+        cJSON *json = call_handler_path(handle_users_change_password, HTTP_METHOD_PUT,
+                                        path, "{\"new_password\":\"replacement123\"}", NULL, 400);
+        cJSON_Delete(json);
+        // strtoll saturation or a numeric prefix must never select this user.
+        TEST_ASSERT_EQUAL_INT(0, db_auth_verify_password(INT64_MAX, "password123"));
+    }
+}
+
 void test_users_manage_grant_controls_cross_user_password_and_totp(void) {
     int64_t manager_id = 0;
     int64_t target_id = 0;
@@ -3070,6 +3122,8 @@ int main(void) {
     RUN_TEST(test_user_update_preserves_omitted_role);
     RUN_TEST(test_user_update_rejects_nonstring_password_without_changes);
     RUN_TEST(test_user_creation_requires_actions_and_all_camera_scope);
+    RUN_TEST(test_password_change_supports_large_user_ids);
+    RUN_TEST(test_password_change_rejects_malformed_and_overflowing_ids);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
     RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);
     RUN_TEST(test_recording_file_check_requires_scoped_replay_access);

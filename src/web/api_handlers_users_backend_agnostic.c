@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <sqlite3.h>
 #include <cjson/cJSON.h>
 
@@ -893,6 +894,7 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
     }
 
     // Extract user ID from URL
+    // 19 decimal ID digits, /password, and the terminating null byte.
     char id_str[32] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
@@ -900,7 +902,14 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         return;
     }
 
-    int64_t target_user_id = strtoll(id_str, NULL, 10);
+    char *id_end = NULL;
+    errno = 0;
+    int64_t target_user_id = strtoll(id_str, &id_end, 10);
+    if (id_str[0] < '0' || id_str[0] > '9' || errno == ERANGE ||
+        target_user_id <= 0 || !id_end || strcmp(id_end, "/password") != 0) {
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
 
     // Check if the target user exists
     user_t target_user;
