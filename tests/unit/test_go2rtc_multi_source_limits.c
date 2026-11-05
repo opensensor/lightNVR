@@ -77,7 +77,7 @@ static void test_request_that_fits_carries_every_source_and_the_name(void) {
     TEST_ASSERT_EQUAL_INT(1, get_request_count());
     get_last_request_snapshot(request_snapshot, sizeof(request_snapshot));
     TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "src=rtsp%3A%2F%2Fcamera%2Fstream"));
-    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&src=ffmpeg%3Acam"));
+    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&src=ffmpeg%3Acam%23video%3Dh264"));
     TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&name=cam"));
 }
 
