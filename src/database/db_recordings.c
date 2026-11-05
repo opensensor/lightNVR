@@ -2575,7 +2575,7 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-        "storage_target_uuid "
+        "storage_target_uuid, object_key "
         "FROM recordings "
         "WHERE is_complete = 0 AND deletion_pending = 0 AND start_time < ? "
         "AND id > ? AND id <= ? "
@@ -2633,6 +2633,10 @@ int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int m
         if (target) safe_strcpy(recordings[count].storage_target_uuid, target,
                                 sizeof(recordings[count].storage_target_uuid), 0);
         else recordings[count].storage_target_uuid[0] = '\0';
+
+        const char *object_key = (const char *)sqlite3_column_text(stmt, 13);
+        safe_strcpy(recordings[count].object_key, object_key ? object_key : "",
+                    sizeof(recordings[count].object_key), 0);
 
         count++;
     }

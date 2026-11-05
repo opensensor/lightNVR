@@ -251,6 +251,8 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
 )
 add_layer2_test(test_storage_manager_retention CI_UNIT)
 add_layer2_test(test_storage_reconcile_incomplete CI_UNIT CI_SANITIZER)
+target_link_options(test_storage_reconcile_incomplete PRIVATE
+    "-Wl,--wrap=stat" "-Wl,--wrap=lstat")
 set_tests_properties(test_storage_reconcile_incomplete PROPERTIES TIMEOUT 60)
 add_layer2_test(test_storage_target_pressure_cleanup CI_UNIT)
 add_layer2_test(test_storage_migration CI_UNIT)

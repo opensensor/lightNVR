@@ -1995,6 +1995,26 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
     return storage_source_trim(target > free_bytes ? target - free_bytes : 0);
 }
 
+/* Check the same identity journaled deletion will use, even for empty files.
+ * A stale compatibility path must never authorize deleting a different object,
+ * or a file on the root disk beneath an unavailable mount. */
+static bool stale_media_target_is_available(const recording_metadata_t *recording) {
+    if (recording->storage_target_uuid[0] || recording->object_key[0]) {
+        storage_target_t target;
+        char resolved[MAX_PATH_LENGTH];
+        if (!recording->storage_target_uuid[0] || !recording->object_key[0] ||
+            db_storage_target_get(recording->storage_target_uuid, &target) != DB_STORAGE_TARGET_OK ||
+            strcmp(target.target_type, "s3") == 0 ||
+            !db_storage_target_mount_guard_active(&target) ||
+            db_storage_target_resolve_path(recording->storage_target_uuid,
+                                           recording->object_key, resolved) != 0 ||
+            strcmp(resolved, recording->file_path) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /*
  * A missing file only proves the media is gone when the volume it lives on is
  * present. Unmounting leaves the mount point behind, so require the file's own
@@ -2002,15 +2022,6 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
  * the volume. Anything uncertain keeps its row for the next startup.
  */
 static bool stale_media_absence_is_authoritative(const recording_metadata_t *recording) {
-    if (recording->storage_target_uuid[0]) {
-        storage_target_t target;
-        if (db_storage_target_get(recording->storage_target_uuid, &target) != DB_STORAGE_TARGET_OK ||
-            strcmp(target.target_type, "s3") == 0 ||
-            !db_storage_target_mount_guard_active(&target) ||
-            !recording->file_path[0]) {
-            return false;
-        }
-    }
     if (!recording->file_path[0]) return true;
 
     char directory[MAX_PATH_LENGTH];
@@ -2057,9 +2068,23 @@ int storage_reconcile_incomplete_recordings(void) {
             // Advance first: a row that cannot be resolved must not be revisited.
             after_id = batch[i].id;
 
+            if (!stale_media_target_is_available(&batch[i])) {
+                retained++;
+                continue;
+            }
+
             struct stat st;
-            bool have_file = (batch[i].file_path[0] != '\0' &&
-                              stat(batch[i].file_path, &st) == 0 && S_ISREG(st.st_mode));
+            int stat_result = batch[i].file_path[0]
+                ? lstat(batch[i].file_path, &st) : -1;
+            int stat_error = batch[i].file_path[0] ? errno : ENOENT;
+            // I/O/permission errors and nonregular paths do not prove absence.
+            // Do not hide these rows behind a durable deletion request.
+            if ((stat_result != 0 && stat_error != ENOENT) ||
+                (stat_result == 0 && !S_ISREG(st.st_mode))) {
+                retained++;
+                continue;
+            }
+            bool have_file = stat_result == 0;
 
             if (have_file && st.st_size > 0) {
                 // Footage survived — finalize it so it appears in listings.
@@ -2068,6 +2093,8 @@ int storage_reconcile_incomplete_recordings(void) {
                                               (uint64_t)st.st_size, true) == 0) {
                     finalized++;
                     reconciled++;
+                } else {
+                    retained++;
                 }
             } else if (have_file || stale_media_absence_is_authoritative(&batch[i])) {
                 // No usable media: drop the phantom row. The journaled deletion

@@ -79,6 +79,23 @@ static void test_null_source_sends_nothing(void) {
     TEST_ASSERT_EQUAL_INT(0, request_count);
 }
 
+static void test_percent_encoded_source_overflow_sends_nothing(void) {
+    /* Escaping stops two bytes short of the buffer's end when %XX won't fit. */
+    static char source[1025];
+    memset(source, '%', sizeof(source) - 1);
+    const char *sources[] = {source, "b", "c", "d"};
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("cam", sources, 4));
+    TEST_ASSERT_EQUAL_INT(0, request_count);
+}
+
+static void test_truncated_stream_name_sends_nothing(void) {
+    static char name[1025];
+    memset(name, '%', sizeof(name) - 1);
+    const char *sources[] = {"rtsp://camera/stream"};
+    TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi(name, sources, 1));
+    TEST_ASSERT_EQUAL_INT(0, request_count);
+}
+
 int main(void) {
     setenv("NO_PROXY", "127.0.0.1", 1);
     setenv("no_proxy", "127.0.0.1", 1);
@@ -100,6 +117,8 @@ int main(void) {
     RUN_TEST(test_sources_past_the_request_buffer_send_nothing);
     RUN_TEST(test_source_past_the_escape_buffer_sends_nothing);
     RUN_TEST(test_null_source_sends_nothing);
+    RUN_TEST(test_percent_encoded_source_overflow_sends_nothing);
+    RUN_TEST(test_truncated_stream_name_sends_nothing);
     int result = UNITY_END();
 
     go2rtc_api_cleanup();

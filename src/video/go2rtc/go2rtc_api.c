@@ -278,23 +278,34 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     // would register the wrong stream, so fail and let the caller fall back.
     for (int i = 0; i < num_sources; i++) {
         // URL encode the source
-        char encoded_url[URL_BUFFER_SIZE * 3];
         if (!sources[i]) goto request_too_long;
-        simple_url_escape(sources[i], encoded_url, sizeof(encoded_url));
-        if (strlen(encoded_url) >= sizeof(encoded_url) - 1) goto request_too_long;
+        // Use an allocating encoder: a truncated %XX escape can leave two
+        // unused bytes, so the length of a fixed buffer cannot prove success.
+        char *encoded_url = curl_easy_escape(curl, sources[i], 0);
+        if (!encoded_url) goto request_too_long;
+        if (strlen(encoded_url) >= URL_BUFFER_SIZE * 3) {
+            curl_free(encoded_url);
+            goto request_too_long;
+        }
 
         written = snprintf(url + offset, url_buf_size - offset, "%ssrc=%s",
                            i > 0 ? "&" : "", encoded_url);
+        curl_free(encoded_url);
         if (written < 0 || (size_t)written >= url_buf_size - offset) goto request_too_long;
         offset += (size_t)written;
     }
 
     // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_stream_id[MAX_STREAM_NAME * 3];
-    simple_url_escape(stream_id, encoded_stream_id, MAX_STREAM_NAME * 3);
+    char *encoded_stream_id = curl_easy_escape(curl, stream_id, 0);
+    if (!encoded_stream_id) goto request_too_long;
+    if (strlen(encoded_stream_id) >= MAX_STREAM_NAME * 3) {
+        curl_free(encoded_stream_id);
+        goto request_too_long;
+    }
 
     // Add stream name
     written = snprintf(url + offset, url_buf_size - offset, "&name=%s", encoded_stream_id);
+    curl_free(encoded_stream_id);
     if (written < 0 || (size_t)written >= url_buf_size - offset) goto request_too_long;
 
     log_info("Adding go2rtc stream with %d source(s) for %s", num_sources, stream_id);
