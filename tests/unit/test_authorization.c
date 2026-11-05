@@ -4,8 +4,10 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 
 #include <cjson/cJSON.h>
+#include <ftw.h>
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,9 +52,36 @@
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
 
-#define TEST_DB_PATH "/tmp/lightnvr_unit_authorization_test.db"
+static char test_directory[] = "/tmp/lightnvr-authorization-XXXXXX";
+static char test_db_path[sizeof(test_directory) + sizeof("/authorization.db")];
+static char *saved_lpr_master_key;
+static bool restore_lpr_environment;
+static int saved_max_streams;
 #define OPERATOR_ROLE_UUID "00000000-0000-4000-8000-000000000002"
 #define ADMIN_ROLE_UUID "00000000-0000-4000-8000-000000000001"
+
+static int remove_test_path(const char *path, const struct stat *status,
+                             int type, struct FTW *walk) {
+    (void)status; (void)type; (void)walk;
+    return remove(path);
+}
+
+static void cleanup_test_db_path(void) {
+    /* Include SQLite sidecars and initial/final backup artifacts. Never follow
+     * symlinks while removing this process's private temporary directory. */
+    if (nftw(test_directory, remove_test_path, 16, FTW_DEPTH | FTW_PHYS) != 0)
+        perror("Failed to remove authorization test directory");
+}
+
+static int initialize_test_db_path(void) {
+    if (!mkdtemp(test_directory)) return -1;
+    snprintf(test_db_path, sizeof(test_db_path), "%s/authorization.db", test_directory);
+    if (atexit(cleanup_test_db_path) != 0) {
+        cleanup_test_db_path();
+        return -1;
+    }
+    return 0;
+}
 
 static stream_config_t create_camera(const char *name, const char *tags) {
     stream_config_t stream;
@@ -256,6 +285,12 @@ static int authorize_stream_with_key(const char *api_key,
 }
 
 void setUp(void) {
+    saved_max_streams = g_config.max_streams;
+    restore_lpr_environment = false;
+    const char *key = getenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+    saved_lpr_master_key = key ? strdup(key) : NULL;
+    if (key) TEST_ASSERT_NOT_NULL(saved_lpr_master_key);
+    restore_lpr_environment = true;
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
@@ -278,6 +313,17 @@ void setUp(void) {
 void tearDown(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    g_config.max_streams = saved_max_streams;
+    int restored = 0;
+    if (restore_lpr_environment) {
+        restored = saved_lpr_master_key
+            ? setenv("LIGHTNVR_LPR_MASTER_KEY_HEX", saved_lpr_master_key, 1)
+            : unsetenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+    }
+    free(saved_lpr_master_key);
+    saved_lpr_master_key = NULL;
+    restore_lpr_environment = false;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, restored, "Failed to restore LPR environment");
 }
 
 void test_action_catalog_is_stable_and_complete(void) {
@@ -3009,7 +3055,6 @@ void test_lpr_camera_summary_uses_lpr_permissions_and_scope(void) {
         "lpr_picker_user", camera.camera_uuid,
         authorization_action_bit(AUTHZ_LPR_READ) |
             authorization_action_bit(AUTHZ_LPR_SEARCH), api_key);
-    int previous_max_streams = g_config.max_streams;
     g_config.max_streams = 16;
     g_config.web_auth_enabled = true;
     setenv("LIGHTNVR_LPR_MASTER_KEY_HEX",
@@ -3064,8 +3109,6 @@ void test_lpr_camera_summary_uses_lpr_permissions_and_scope(void) {
             cJSON_GetObjectItemCaseSensitive(json, "total")->valueint);
         cJSON_Delete(json);
     }
-    g_config.max_streams = previous_max_streams;
-    unsetenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
 }
 
 void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
@@ -3163,21 +3206,24 @@ void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
 }
 
 int main(void) {
-    unlink(TEST_DB_PATH);
-    if (init_database(TEST_DB_PATH) != 0) {
+    if (initialize_test_db_path() != 0) {
+        fprintf(stderr, "FATAL: temporary database directory setup failed\n");
+        return 1;
+    }
+    if (init_database(test_db_path) != 0) {
         fprintf(stderr, "FATAL: init_database failed\n");
         return 1;
     }
     if (db_auth_init() != 0) {
         fprintf(stderr, "FATAL: db_auth_init failed\n");
         shutdown_database();
-        unlink(TEST_DB_PATH);
+        unlink(test_db_path);
         return 1;
     }
     if (batch_delete_progress_init() != 0) {
         fprintf(stderr, "FATAL: batch delete progress init failed\n");
         shutdown_database();
-        unlink(TEST_DB_PATH);
+        unlink(test_db_path);
         return 1;
     }
     UNITY_BEGIN();
@@ -3229,6 +3275,6 @@ int main(void) {
     int result = UNITY_END();
     batch_delete_progress_cleanup();
     shutdown_database();
-    unlink(TEST_DB_PATH);
+    unlink(test_db_path);
     return result;
 }
