@@ -1963,6 +1963,15 @@ void test_action_catalog_bit_layout_matches_database(void) {
     int count = 0;
     const authorization_action_metadata_t *catalog =
         authorization_action_catalog(&count);
+    int64_t system_admin_original_bit_index = -1;
+    for (int i = 0; i < count; i++) {
+        if (strcmp(catalog[i].key, "system.admin") == 0) {
+            system_admin_original_bit_index = (int64_t)catalog[i].action;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(system_admin_original_bit_index >= 0);
+
     sqlite3 *db = get_db_handle();
     sqlite3_stmt *stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
@@ -1990,12 +1999,19 @@ void test_action_catalog_bit_layout_matches_database(void) {
                      "WHERE action_key = 'system.admin';",
                      NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(-1, db_authorization_verify_action_catalog());
+
+    stmt = NULL;
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db,
-                     "UPDATE authz_actions SET bit_index = 14 "
-                     "WHERE action_key = 'system.admin';",
-                     NULL, NULL, NULL));
+        sqlite3_prepare_v2(db,
+                           "UPDATE authz_actions SET bit_index = ? "
+                           "WHERE action_key = 'system.admin';",
+                           -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_bind_int64(stmt, 1, system_admin_original_bit_index));
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
     TEST_ASSERT_EQUAL_INT(0, db_authorization_verify_action_catalog());
 }
 
