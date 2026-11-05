@@ -178,6 +178,9 @@ export function WebRTCVideoCell({
   // Privacy mode state
   const [showPrivacyConfirm, setShowPrivacyConfirm] = useState(false);
   const [privacyActive, setPrivacyActive] = useState(!!stream.privacy_mode);
+  useEffect(() => {
+    setPrivacyActive(!!stream.privacy_mode);
+  }, [stream?.privacy_mode]);
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
   const canControlPrivacy = stream.can_control_privacy !== false;
 
