@@ -893,7 +893,7 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
     }
 
     // Extract user ID from URL
-    char id_str[16] = {0};
+    char id_str[32] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
         http_response_set_json_error(res, 400, "Invalid request path");
