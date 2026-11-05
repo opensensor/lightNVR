@@ -215,6 +215,8 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
                 return;
             }
 
+            /* Validate before narrowing: out-of-range doubles can round to
+             * 0 or 1 as floats, and very large finite values can overflow. */
             double x_val = x->valuedouble;
             double y_val = y->valuedouble;
             if (!isfinite(x_val) || !isfinite(y_val) ||

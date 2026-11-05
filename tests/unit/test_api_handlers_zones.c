@@ -134,7 +134,8 @@ static void test_invalid_coordinates_reject_the_entire_batch(void) {
     /* Raw JSON preserves overflowing numbers; cJSON serialization would turn
      * infinity into null before the handler could validate it. Include values
      * just outside the range that would round to its boundary as floats. */
-    const char *values[] = {"-0.1", "1.1", "-1e-50", "1.0000000001", "1e309", "-1e309"};
+    const char *values[] = {"-0.1", "1.1", "-1e-50", "1.0000000001",
+                            "1e300", "-1e300", "1e309", "-1e309"};
     for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
         for (int axis = 0; axis < 2; ++axis) {
             char body[1024];
