@@ -10,6 +10,14 @@
  * ZoneEditor's own mouse capture and redraw consistent with that.
  */
 
+/** Keep in sync with MAX_ZONE_POINTS in include/database/db_zones.h; the API rejects longer polygons. */
+export const MAX_ZONE_POINTS = 32;
+
+/** Returns the polygon with the point added, or the same polygon once it is full. */
+export function appendZonePoint<T>(polygon: T[], point: T): T[] {
+  return polygon.length >= MAX_ZONE_POINTS ? polygon : [...polygon, point];
+}
+
 export interface ImageLetterbox {
   offsetX: number;
   offsetY: number;

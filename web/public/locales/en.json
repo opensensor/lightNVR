@@ -1711,6 +1711,7 @@
   "zoneEditor.zoneNamePlaceholder": "Zone name",
   "zoneEditor.color": "Color:",
   "zoneEditor.pointsCount": "{count} points",
+  "zoneEditor.maxPointsReached": "A zone can have up to {count} points.",
   "zoneEditor.saveZones": "Save Zones",
   "streamsConfig.subtitle": "Configure stream settings, recording options, and detection parameters",
   "streamsConfig.basicSettings": "Basic Settings",
