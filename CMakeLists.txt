@@ -404,6 +404,9 @@ if(NOT LLHTTP_FOUND)
     # If LLHTTP_DOWNLOAD_REF is overridden to a different ref, the hashes
     # cannot be known here, so downloads proceed unverified with a warning.
     set(LLHTTP_PINNED_REF "release/v9.4.3")
+    set(LLHTTP_DOWNLOAD_REF_TYPE "tag" CACHE STRING "Type of LLHTTP_DOWNLOAD_REF: tag, branch, or commit")
+    set_property(CACHE LLHTTP_DOWNLOAD_REF_TYPE PROPERTY STRINGS tag branch commit)
+    string(TOLOWER "${LLHTTP_DOWNLOAD_REF_TYPE}" LLHTTP_DOWNLOAD_REF_TYPE)
     set(LLHTTP_REQUIRED_HASHES
         "391e7c99912abf3b1c9dd8a9c85fdeaac2663e9fa55b6f3871154d16fef8b892"
         "0f8590206fe2f264db2825401b5fb856b979ee1363dc88b06f36dc9577afb941"
@@ -415,7 +418,16 @@ if(NOT LLHTTP_FOUND)
     else()
         set(LLHTTP_VERIFY_HASHES FALSE)
     endif()
-    set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
+    if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag")
+        set(LLHTTP_REF_PATH "refs/tags/${LLHTTP_DOWNLOAD_REF}")
+    elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "branch")
+        set(LLHTTP_REF_PATH "refs/heads/${LLHTTP_DOWNLOAD_REF}")
+    elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "commit")
+        set(LLHTTP_REF_PATH "${LLHTTP_DOWNLOAD_REF}")
+    else()
+        message(FATAL_ERROR "Invalid LLHTTP_DOWNLOAD_REF_TYPE='${LLHTTP_DOWNLOAD_REF_TYPE}'. Expected one of: tag, branch, commit.")
+    endif()
+    set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_REF_PATH}")
 
     list(LENGTH LLHTTP_REQUIRED_FILES LLHTTP_REQUIRED_FILES_LEN)
     math(EXPR LLHTTP_REQUIRED_FILES_LAST "${LLHTTP_REQUIRED_FILES_LEN} - 1")
