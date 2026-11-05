@@ -48,6 +48,7 @@ import type {
 } from '../../types/live-transport.ts';
 import { classifyLiveVideoError, hasDecodedVideo, h264ReceiverCodecs, shouldRetryWithH264 } from '../../utils/live-video-errors.ts';
 import { createPushToTalk } from '../../utils/push-to-talk.ts';
+import { createPushToTalkKeyboard } from '../../utils/push-to-talk-keyboard.ts';
 import 'webrtc-adapter';
 
 declare global {
@@ -1391,6 +1392,26 @@ export function WebRTCVideoCell({
     talkSessionRef.current?.stop();
   }, []);
 
+  // Keep keyboard ownership across renders while callbacks follow current props.
+  const talkCallbacksRef = useRef({ start: startTalking, stop: stopTalking });
+  talkCallbacksRef.current = { start: startTalking, stop: stopTalking };
+  const talkKeyboardRef = useRef<ReturnType<typeof createPushToTalkKeyboard> | null>(null);
+  if (!talkKeyboardRef.current) {
+    talkKeyboardRef.current = createPushToTalkKeyboard(
+      () => { void talkCallbacksRef.current.start(); },
+      () => talkCallbacksRef.current.stop(),
+    );
+  }
+  useEffect(() => {
+    if (talkMode !== 'ptt' || audioDisabled || !stream.backchannel_enabled) return;
+    const cancel = () => talkKeyboardRef.current?.cancel();
+    window.addEventListener('blur', cancel);
+    return () => {
+      window.removeEventListener('blur', cancel);
+      cancel();
+    };
+  }, [talkMode, audioDisabled, stream.backchannel_enabled]);
+
   // Toggle talk mode handler
   const handleTalkToggle = useCallback(() => {
     if (talkMode === 'toggle') {
@@ -1792,12 +1813,17 @@ export function WebRTCVideoCell({
               title={talkMode === 'ptt'
                 ? (isTalking ? t('live.releaseToStopTalking') : t('live.holdToTalk'))
                 : (isTalking ? t('live.clickToStopTalking') : t('live.clickToStartTalking'))}
+              aria-label={talkMode === 'ptt'
+                ? (isTalking ? t('live.releaseToStopTalking') : t('live.holdToTalk'))
+                : (isTalking ? t('live.clickToStopTalking') : t('live.clickToStartTalking'))}
               onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
               onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
               onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
               onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
               onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
               onTouchCancel={talkMode === 'ptt' ? stopTalking : undefined}
+              onKeyDown={talkMode === 'ptt' ? talkKeyboardRef.current.keyDown : undefined}
+              onKeyUp={talkMode === 'ptt' ? talkKeyboardRef.current.keyUp : undefined}
               onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
               style={{
                 backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
@@ -1812,7 +1838,10 @@ export function WebRTCVideoCell({
               onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
               onFocus={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
               onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
-              onBlur={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
+              onBlur={(e) => {
+                if (talkMode === 'ptt') talkKeyboardRef.current?.cancel();
+                if (!isTalking) e.currentTarget.style.backgroundColor = 'transparent';
+              }}
             >
               {/* Microphone icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
