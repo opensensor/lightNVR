@@ -74,12 +74,19 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
 
   // Load zones from the backend API
   useEffect(() => {
+    let isActive = true;
+    setZoneList(zones);
+    setCurrentZone(null);
+    setSelectedZoneIndex(null);
+    setDraggedPoint(null);
+    setDraggedZone(null);
+    setHoveredPoint(null);
     const loadZones = async () => {
       try {
         const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
         if (response.ok) {
           const data: ZonesResponse = await response.json();
-          if (data.zones && Array.isArray(data.zones)) {
+          if (isActive && data.zones && Array.isArray(data.zones)) {
             console.log('Loaded zones from API:', data.zones);
             setZoneList(data.zones);
           }
@@ -94,15 +101,16 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     if (streamName) {
       loadZones();
     }
+    return () => { isActive = false; };
   }, [streamName]);
 
   // Load snapshot for the stream
   useEffect(() => {
+    setImageLoaded(false);
+    setSnapshotError(false);
+    setSnapshotUrl(null);
     if (streamName) {
       let isActive = true;
-      setImageLoaded(false);
-      setSnapshotError(false);
-      setSnapshotUrl('');
 
       // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
       const loadSnapshot = async () => {
@@ -595,12 +603,14 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
             <div className="flex-1 relative bg-muted rounded-lg overflow-hidden">
               {snapshotUrl && (
                 <img
+                  key={snapshotUrl}
                   ref={imageRef}
                   src={snapshotUrl}
                   alt={t('zoneEditor.streamPreviewAlt')}
                   className="hidden"
                   crossOrigin="anonymous"
-                  onLoad={() => {
+                  onLoad={(event) => {
+                    if (event.currentTarget !== imageRef.current) return;
                     clearSnapshotTimeout();
                     console.log('✅ Snapshot loaded successfully');
                     setImageLoaded(true);
@@ -608,6 +618,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
                     drawCanvas();
                   }}
                   onError={(e) => {
+                    if (e.currentTarget !== imageRef.current) return;
                     clearSnapshotTimeout();
                     console.error('❌ Failed to load snapshot:', e);
                     console.error('Snapshot URL was:', snapshotUrl);
