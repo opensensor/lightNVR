@@ -413,10 +413,16 @@ if(NOT LLHTTP_FOUND)
         "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
         "5bc82fa51b19aa8bee7d921038393fbfc74e8cc9bae0844c2d82c102fb8cfd68"
     )
-    if(LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
+    if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag" AND
+       LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
         set(LLHTTP_VERIFY_HASHES TRUE)
     else()
         set(LLHTTP_VERIFY_HASHES FALSE)
+        # A nonempty source-tree cache may belong to the default tag or a
+        # different override. Isolate alternate refs (including their type).
+        string(SHA256 LLHTTP_REF_CACHE_KEY
+               "${LLHTTP_DOWNLOAD_REF_TYPE}:${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/llhttp-${LLHTTP_REF_CACHE_KEY}")
     endif()
     if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag")
         set(LLHTTP_REF_PATH "refs/tags/${LLHTTP_DOWNLOAD_REF}")
@@ -461,7 +467,7 @@ if(NOT LLHTTP_FOUND)
         if(LLHTTP_NEEDS_DOWNLOAD)
             message(STATUS "llhttp ${LLHTTP_FILE} ${LLHTTP_DOWNLOAD_REASON}, downloading from GitHub...")
             if(NOT LLHTTP_VERIFY_HASHES)
-                message(WARNING "LLHTTP_DOWNLOAD_REF='${LLHTTP_DOWNLOAD_REF}' differs from pinned '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
+                message(WARNING "llhttp ${LLHTTP_DOWNLOAD_REF_TYPE} '${LLHTTP_DOWNLOAD_REF}' is not the pinned tag '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
             endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
