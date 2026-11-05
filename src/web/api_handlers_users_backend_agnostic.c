@@ -568,7 +568,15 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         *suffix = '\0';
     }
 
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    errno = 0;
+    char *endptr = NULL;
+    long long parsed_user_id = strtoll(id_str, &endptr, 10);
+    if (id_str[0] == '\0' || endptr == id_str || *endptr != '\0' || errno == ERANGE ||
+        parsed_user_id <= 0 || parsed_user_id > INT64_MAX) {
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
+    int64_t user_id = (int64_t)parsed_user_id;
     bool can_manage_users =
         principal_holds_global_action(&current_user, AUTHZ_USERS_MANAGE);
     bool is_self_update = !current_user.authenticated_via_scoped_token &&
