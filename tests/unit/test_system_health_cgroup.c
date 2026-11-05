@@ -1,16 +1,31 @@
+#define _XOPEN_SOURCE 700
 #include "unity.h"
 
 #include "telemetry/collectors/linux_cgroup.h"
 
+#include <ftw.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <string.h>
 
 #ifndef TEST_FIXTURE_ROOT
 #define TEST_FIXTURE_ROOT "tests/fixtures/system_health"
 #endif
 
-void setUp(void) {}
-void tearDown(void) {}
+static char temporary_root[128];
+
+static int remove_fixture(const char *path, const struct stat *status,
+                          int type, struct FTW *walk) {
+    (void)status; (void)type; (void)walk;
+    return remove(path);
+}
+
+void setUp(void) { temporary_root[0] = '\0'; }
+void tearDown(void) {
+    if (temporary_root[0]) nftw(temporary_root, remove_fixture, 16, FTW_DEPTH | FTW_PHYS);
+}
 
 static const system_health_observation_t *find_observation(
     const system_health_observation_t *items, size_t count,
@@ -322,6 +337,73 @@ static void test_v2_rejects_trailing_dotdot_membership(void) {
     TEST_ASSERT_TRUE(observation == NULL || !observation->value_valid);
 }
 
+/* Exercise the public collector with forged proc membership and real symlinks,
+ * including v1's fallback to a controller mounted directly at cgroup_root. */
+static void check_symlink_escape(bool v1, bool leaf) {
+    snprintf(temporary_root, sizeof(temporary_root), "/tmp/lightnvr-cgroup-XXXXXX");
+    TEST_ASSERT_NOT_NULL(mkdtemp(temporary_root));
+    const char *directories[] = {"proc", "proc/self", "sys", "outside", "outside/nested"};
+    char path[512], outside[512], destination[512], proc[512], sys[512];
+    for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); ++i) {
+        snprintf(path, sizeof(path), "%s/%s", temporary_root, directories[i]);
+        TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+    }
+    snprintf(proc, sizeof(proc), "%s/proc", temporary_root);
+    snprintf(sys, sizeof(sys), "%s/sys", temporary_root);
+    snprintf(path, sizeof(path), "%s/proc/self/cgroup", temporary_root);
+    FILE *file = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs(v1 ? "5:memory:/escape/nested\n" : "0::/escape/nested\n", file);
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+    const char *metric_file = v1 ? "memory.usage_in_bytes" : "memory.current";
+    snprintf(outside, sizeof(outside), "%s/outside/nested/%s", temporary_root, metric_file);
+    file = fopen(outside, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("12345\n", file);
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+
+    /* v1 checks both the named controller and the root-mounted fallback. */
+    for (int i = 0; i < (v1 ? 2 : 1); ++i) {
+        const char *controller = i == 1 ? "/memory" : "";
+        if (i == 1) {
+            snprintf(path, sizeof(path), "%s/sys/memory", temporary_root);
+            TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+        }
+        snprintf(path, sizeof(path), "%s/sys%s/escape", temporary_root, controller);
+        if (leaf) {
+            TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+            snprintf(path, sizeof(path), "%s/sys%s/escape/nested", temporary_root, controller);
+            TEST_ASSERT_EQUAL_INT(0, mkdir(path, 0700));
+            snprintf(path, sizeof(path), "%s/sys%s/escape/nested/%s",
+                     temporary_root, controller, metric_file);
+            TEST_ASSERT_EQUAL_INT(0, symlink(outside, path));
+        } else {
+            snprintf(destination, sizeof(destination), "%s/outside", temporary_root);
+            TEST_ASSERT_EQUAL_INT(0, symlink(destination, path));
+        }
+    }
+    linux_cgroup_state_t state;
+    system_health_collector_t collector;
+    system_health_observation_t items[32];
+    system_health_observation_sink_t sink = {.items = items, .capacity = 32U};
+    system_health_collect_context_t context = {
+        .monotonic_ms = 1000U, .proc_root = proc, .cgroup_root = sys
+    };
+    TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
+    TEST_ASSERT_EQUAL_INT(0, collector.collect(collector.state, &context, &sink));
+    const system_health_observation_t *observation = find_observation(
+        items, sink.count, "container.memory.current_bytes");
+    if (!observation) observation = find_observation(items, sink.count, "host.memory.current_bytes");
+    TEST_ASSERT_NOT_NULL(observation);
+    TEST_ASSERT_FALSE_MESSAGE(observation->value_valid,
+                              "must not read a metric through a symlink outside the cgroup root");
+}
+
+static void test_v2_rejects_intermediate_symlinks(void) { check_symlink_escape(false, false); }
+static void test_v1_rejects_intermediate_symlinks(void) { check_symlink_escape(true, false); }
+static void test_v2_rejects_leaf_symlinks(void) { check_symlink_escape(false, true); }
+static void test_v1_rejects_leaf_symlinks(void) { check_symlink_escape(true, true); }
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_cgroup_parsers_reject_bad_limits_and_overflow);
@@ -331,5 +413,9 @@ int main(void) {
     RUN_TEST(test_v1_common_combined_controller_layout);
     RUN_TEST(test_v1_separate_cpu_paths_and_optional_metrics);
     RUN_TEST(test_v2_rejects_trailing_dotdot_membership);
+    RUN_TEST(test_v2_rejects_intermediate_symlinks);
+    RUN_TEST(test_v1_rejects_intermediate_symlinks);
+    RUN_TEST(test_v2_rejects_leaf_symlinks);
+    RUN_TEST(test_v1_rejects_leaf_symlinks);
     return UNITY_END();
 }

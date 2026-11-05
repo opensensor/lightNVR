@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "utils/strings.h"
+#include "utils/safe_path.h"
 #include "ezxml.h"
 #include "database/db_core.h"
 #include <strings.h>
@@ -129,7 +130,7 @@ bool storage_s3_validate(const storage_target_t *target, char *error, size_t len
     return message == NULL;
 }
 
-/* The credentials directory must be an absolute, canonical path: no "." or
+/* The credentials directory must be an absolute path: no "." or
  * ".." components, no empty components, no control characters. */
 static bool safe_credentials_directory(const char *directory) {
     size_t total = directory ? strlen(directory) : 0;
@@ -158,7 +159,11 @@ static cJSON *private_json_read(const storage_target_t *target, const char *suff
     if (!safe_identifier(target->credential_ref, sizeof(target->credential_ref), false)) return NULL;
     char filename[sizeof(target->credential_ref) + 32];
     snprintf(filename, sizeof(filename), "%s%s", target->credential_ref, suffix);
-    int dir = open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    /* Anchor at / and reject symlinks in every component, not just the last. */
+    int filesystem_root = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (filesystem_root < 0) return NULL;
+    int dir = safe_path_open_directory_at(filesystem_root, directory + 1);
+    close(filesystem_root);
     if (dir < 0) return NULL;
     int descriptor = openat(dir, filename, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     close(dir);

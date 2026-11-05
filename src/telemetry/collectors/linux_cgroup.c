@@ -6,6 +6,9 @@
  */
 
 #include "telemetry/collectors/linux_cgroup.h"
+#include "utils/safe_path.h"
+
+#include <sys/stat.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -171,26 +174,31 @@ int linux_cgroup_parse_memory_events(
     return 0;
 }
 
-static cg_read_result_t read_bounded(const char *path, char *buffer,
-                                     size_t capacity) {
-    FILE *file;
-    size_t used;
-    int saved_errno;
-    if (!path || !buffer || capacity < 2U) return CG_READ_ERROR;
-    errno = 0;
-    file = fopen(path, "r");
-    if (!file) {
-        if (errno == ENOENT || errno == ENOTDIR) return CG_READ_UNSUPPORTED;
-        if (errno == EACCES || errno == EPERM) return CG_READ_PERMISSION;
-        return CG_READ_ERROR;
-    }
-    used = fread(buffer, 1, capacity - 1U, file);
-    saved_errno = ferror(file) ? errno : 0;
+static cg_read_result_t read_open_error(void) {
+    if (errno == ENOENT || errno == ENOTDIR) return CG_READ_UNSUPPORTED;
+    if (errno == EACCES || errno == EPERM) return CG_READ_PERMISSION;
+    return CG_READ_ERROR;
+}
+
+/* Takes ownership of file. */
+static cg_read_result_t read_stream_bounded(FILE *file, char *buffer,
+                                            size_t capacity) {
+    size_t used = fread(buffer, 1, capacity - 1U, file);
+    int saved_errno = ferror(file) ? (errno ? errno : EIO) : 0;
     if (!feof(file) && used == capacity - 1U) saved_errno = EOVERFLOW;
     if (fclose(file) != 0 && saved_errno == 0) saved_errno = errno;
     if (saved_errno != 0) return CG_READ_ERROR;
     buffer[used] = '\0';
     return CG_READ_OK;
+}
+
+/* Only used for the trusted proc root: /proc/self is itself a symlink. */
+static cg_read_result_t read_bounded(const char *path, char *buffer,
+                                     size_t capacity) {
+    if (!path || !buffer || capacity < 2U) return CG_READ_ERROR;
+    FILE *file = fopen(path, "r");
+    if (!file) return read_open_error();
+    return read_stream_bounded(file, buffer, capacity);
 }
 
 static bool safe_membership(const char *path) {
@@ -287,34 +295,54 @@ static cg_read_result_t read_proc_membership(const char *proc_root,
     return parse_memberships(text, out) == 0 ? CG_READ_OK : CG_READ_ERROR;
 }
 
-static bool build_path(char *out, size_t capacity, const char *root,
-                       const char *controller, const char *membership,
-                       const char *filename) {
-    const char *relative = membership;
-    int length;
-    if (!root || !membership || !filename || !safe_membership(membership))
-        return false;
-    while (*relative == '/') ++relative;
-    if (controller && *controller) {
-        length = *relative
-            ? snprintf(out, capacity, "%s/%s/%s/%s", root, controller,
-                       relative, filename)
-            : snprintf(out, capacity, "%s/%s/%s", root, controller, filename);
-    } else {
-        length = *relative
-            ? snprintf(out, capacity, "%s/%s/%s", root, relative, filename)
-            : snprintf(out, capacity, "%s/%s", root, filename);
+/* Memberships originate in proc contents. Resolve them beneath the trusted
+ * cgroup root using directory descriptors so neither intermediate nor leaf
+ * symlinks can redirect a read outside that hierarchy. */
+static cg_read_result_t read_cgroup(const char *root, const char *controller,
+                                    const char *membership, const char *filename,
+                                    char *text, size_t capacity) {
+    if (!root || !safe_membership(membership) || !filename || !*filename ||
+        strchr(filename, '/') || strcmp(filename, ".") == 0 ||
+        strcmp(filename, "..") == 0 || !text || capacity < 2U)
+        return CG_READ_ERROR;
+    int directory = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (directory < 0) return read_open_error();
+    if (controller) {
+        int next = safe_path_open_directory_at(directory, controller);
+        int saved_errno = errno;
+        close(directory);
+        errno = saved_errno;
+        if (next < 0) return read_open_error();
+        directory = next;
     }
-    return length >= 0 && (size_t)length < capacity;
+    int member = safe_path_open_directory_at(directory, membership + 1);
+    int saved_errno = errno;
+    close(directory);
+    errno = saved_errno;
+    if (member < 0) return read_open_error();
+    int descriptor = openat(member, filename,
+                            O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    saved_errno = errno;
+    close(member);
+    errno = saved_errno;
+    if (descriptor < 0) return read_open_error();
+    struct stat status;
+    if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode)) {
+        close(descriptor);
+        return CG_READ_ERROR;
+    }
+    FILE *file = fdopen(descriptor, "r");
+    if (!file) {
+        close(descriptor);
+        return CG_READ_ERROR;
+    }
+    return read_stream_bounded(file, text, capacity);
 }
 
 static cg_read_result_t read_unified(const char *root, const char *membership,
                                      const char *filename, char *text,
                                      size_t capacity) {
-    char path[CGROUP_PATH_MAX];
-    if (!build_path(path, sizeof(path), root, NULL, membership, filename))
-        return CG_READ_ERROR;
-    return read_bounded(path, text, capacity);
+    return read_cgroup(root, NULL, membership, filename, text, capacity);
 }
 
 static cg_read_result_t read_v1(const char *root, const char *membership,
@@ -325,11 +353,8 @@ static cg_read_result_t read_v1(const char *root, const char *membership,
     const char *controllers[3] = {controller, combined_controller, NULL};
     cg_read_result_t strongest = CG_READ_UNSUPPORTED;
     for (size_t i = 0; i < sizeof(controllers) / sizeof(controllers[0]); ++i) {
-        char path[CGROUP_PATH_MAX];
-        cg_read_result_t result;
-        if (!build_path(path, sizeof(path), root, controllers[i], membership,
-                        filename)) return CG_READ_ERROR;
-        result = read_bounded(path, text, capacity);
+        cg_read_result_t result = read_cgroup(root, controllers[i], membership,
+                                               filename, text, capacity);
         if (result == CG_READ_OK) return result;
         if (result == CG_READ_PERMISSION) strongest = CG_READ_PERMISSION;
         else if (result == CG_READ_ERROR && strongest != CG_READ_PERMISSION)
