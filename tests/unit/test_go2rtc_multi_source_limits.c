@@ -46,9 +46,15 @@ static void *serve(void *arg) {
         int client = accept(listen_fd, NULL, NULL);
         if (client < 0) return NULL;
         char request[sizeof(last_request)];
-        ssize_t got = recv(client, request, sizeof(request) - 1, 0);
-        size_t length = got > 0 ? (size_t)got : 0;
-        request[length] = '\0';
+        size_t length = 0;
+        request[0] = '\0';
+        while (length < sizeof(request) - 1) {
+            ssize_t got = recv(client, request + length, (sizeof(request) - 1) - length, 0);
+            if (got <= 0) break;
+            length += (size_t)got;
+            request[length] = '\0';
+            if (strstr(request, "\r\n\r\n") != NULL) break;
+        }
         pthread_mutex_lock(&request_lock);
         memcpy(last_request, request, length + 1);
         request_count++;
