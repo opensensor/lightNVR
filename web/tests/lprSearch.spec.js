@@ -287,6 +287,20 @@ describe('recording deep link', () => {
     expect(lprTimelineHref({ stream_name: 'Driveway', observed_at: '   ' }, [])).toBeNull();
   });
 
+  test.each([null, undefined, '', '   ', false, true, [], {}, NaN, Infinity, 1e20])(
+    'rejects unusable observation time %p', (observed_at) => {
+      expect(lprTimelineHref({ recording_id: 42, observed_at })).toBeNull();
+    },
+  );
+
+  test.each([0, '0', observedAt, String(observedAt)])(
+    'preserves numeric observation time %p', (observed_at) => {
+      const expected = new Date(Number(observed_at));
+      const params = new URL(lprTimelineHref({ recording_id: 42, observed_at }), 'http://localhost').searchParams;
+      expect(params.get('date')).toBe(`${expected.getFullYear()}-${String(expected.getMonth() + 1).padStart(2, '0')}-${String(expected.getDate()).padStart(2, '0')}`);
+    },
+  );
+
   test('supports UUID-only reads and retains the legacy name fallback', () => {
     expect(lprTimelineHref({ camera_uuid: CAMERA, stream_name: 'Driveway', observed_at: observedAt }, null))
       .toContain('stream=Driveway');

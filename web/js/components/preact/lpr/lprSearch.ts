@@ -275,8 +275,13 @@ export function lprTimelineHref(
   read: LprRead | null | undefined,
   streams: Array<Pick<StreamSummary, 'camera_uuid' | 'name'>> = [],
 ) {
-  const observedAt = Number(read?.observed_at);
+  const value: unknown = read?.observed_at;
+  if ((typeof value !== 'number' && typeof value !== 'string')
+      || (typeof value === 'string' && value.trim() === '')) return null;
+  const observedAt = Number(value);
   if (!Number.isFinite(observedAt)) return null;
+  const date = new Date(observedAt);
+  if (!Number.isFinite(date.getTime())) return null;
   const current = Array.isArray(streams)
     ? streams.find((stream) => stream?.camera_uuid && stream.camera_uuid === read!.camera_uuid)
     : null;
@@ -284,7 +289,6 @@ export function lprTimelineHref(
   const recordingId = Number(read?.recording_id);
   const hasRecordingId = Number.isSafeInteger(recordingId) && recordingId > 0;
   if (!hasRecordingId && !read?.camera_uuid && !streamName) return null;
-  const date = new Date(observedAt);
   const params = new URLSearchParams();
   if (hasRecordingId) {
     params.set('ids', String(recordingId));
