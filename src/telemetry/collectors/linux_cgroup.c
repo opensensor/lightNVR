@@ -908,6 +908,8 @@ static int collect_cgroup(void *opaque,
     cgroup_sample_t sample;
     cg_read_result_t membership_status;
     bool constrained;
+    bool cpu_quota_finite_now;
+    bool cpu_quota_compatible_with_baseline;
     system_health_scope_t scope;
     if (!state || !context || !sink || !context->proc_root ||
         !context->cgroup_root) return -1;
@@ -932,8 +934,17 @@ static int collect_cgroup(void *opaque,
         sample_v2(context->cgroup_root, &memberships, &sample);
     else
         sample_v1(context->cgroup_root, &memberships, &sample);
-    constrained = (sample.cpu_max_status == CG_READ_OK &&
-                   !sample.cpu_max.quota_usec.unlimited) ||
+    cpu_quota_finite_now = (sample.cpu_max_status == CG_READ_OK &&
+                            !sample.cpu_max.quota_usec.unlimited);
+    cpu_quota_compatible_with_baseline =
+        !state->cpu_valid ||
+        (state->cpu_max_status == CG_READ_OK &&
+         !state->cpu_max.quota_usec.unlimited &&
+         state->cpu_max.quota_usec.value == sample.cpu_max.quota_usec.value &&
+         state->cpu_max.period_usec == sample.cpu_max.period_usec);
+    if (!cpu_quota_finite_now || !cpu_quota_compatible_with_baseline)
+        state->cpu_valid = false;
+    constrained = cpu_quota_finite_now ||
                   finite_limit(sample.memory_max_status, &sample.memory_max) ||
                   finite_limit(sample.pids_max_status, &sample.pids_max);
     scope = constrained ? SYSTEM_HEALTH_SCOPE_CONTAINER
@@ -941,9 +952,11 @@ static int collect_cgroup(void *opaque,
     emit_cpu(state, &sample, memberships.version, scope, context, sink);
     emit_memory(state, &sample, memberships.version, scope, context, sink);
     emit_pids(&sample, scope, context, sink);
-    if (sample.cpu_stat_status == CG_READ_OK) {
+    if (sample.cpu_stat_status == CG_READ_OK && cpu_quota_finite_now) {
         state->cpu = sample.cpu_stat;
         state->sampled_monotonic_ms = context->monotonic_ms;
+        state->cpu_max_status = sample.cpu_max_status;
+        state->cpu_max = sample.cpu_max;
     } else {
         state->cpu_valid = false;
     }
@@ -951,7 +964,7 @@ static int collect_cgroup(void *opaque,
     else state->oom_valid = false;
     state->version = memberships.version;
     state->memberships = memberships;
-    if (sample.cpu_stat_status == CG_READ_OK) state->cpu_valid = true;
+    if (sample.cpu_stat_status == CG_READ_OK && cpu_quota_finite_now) state->cpu_valid = true;
     if (sample.oom_status == CG_READ_OK) state->oom_valid = true;
     return 0;
 }
