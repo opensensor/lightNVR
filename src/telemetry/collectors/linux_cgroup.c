@@ -752,7 +752,10 @@ static void emit_cpu(linux_cgroup_state_t *state, const cgroup_sample_t *sample,
     } else if (!quota_finite) {
         append_unavailable(sink, context, scope, metric,
                            SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED);
-    } else if (!state->cpu_valid || state->version != version) {
+    } else if (!state->cpu_valid || state->version != version ||
+               !state->cpu_quota_valid ||
+               state->cpu_max.quota_usec.value != sample->cpu_max.quota_usec.value ||
+               state->cpu_max.period_usec != sample->cpu_max.period_usec) {
         append_unavailable(sink, context, scope, metric,
                            SYSTEM_HEALTH_CAPABILITY_STALE);
     } else if (context->monotonic_ms <= state->sampled_monotonic_ms ||
@@ -941,6 +944,11 @@ static int collect_cgroup(void *opaque,
     emit_cpu(state, &sample, memberships.version, scope, context, sink);
     emit_memory(state, &sample, memberships.version, scope, context, sink);
     emit_pids(&sample, scope, context, sink);
+    /* Usage needs two samples with the same finite quota. Throttling uses
+     * counter deltas only, so keep its baseline even without a CPU quota. */
+    state->cpu_quota_valid = sample.cpu_stat_status == CG_READ_OK &&
+        sample.cpu_max_status == CG_READ_OK && !sample.cpu_max.quota_usec.unlimited;
+    if (state->cpu_quota_valid) state->cpu_max = sample.cpu_max;
     if (sample.cpu_stat_status == CG_READ_OK) {
         state->cpu = sample.cpu_stat;
         state->sampled_monotonic_ms = context->monotonic_ms;

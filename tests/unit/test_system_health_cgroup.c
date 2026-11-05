@@ -527,8 +527,100 @@ static void test_v1_tracks_each_controller_and_long_memberships(void) {
     }
 }
 
+
+/* Quota edits and read gaps must not normalize an interval with a new quota.
+ * Throttling remains usable because its period counters do not use the quota. */
+static void check_cpu_quota_transitions(bool v1) {
+    snprintf(temporary_root, sizeof(temporary_root), "/tmp/lightnvr-cgroup-XXXXXX");
+    TEST_ASSERT_NOT_NULL(mkdtemp(temporary_root));
+    write_membership_fixture("proc/self/cgroup", v1
+        ? "2:cpu,cpuacct:/camera\n4:memory:/camera\n" : "0::/camera\n");
+    /* Keep the scope stable even while the CPU quota is unavailable. */
+    write_membership_fixture(v1 ? "sys/memory/camera/memory.limit_in_bytes"
+                               : "sys/camera/memory.max", "1048576\n");
+    linux_cgroup_state_t state;
+    system_health_collector_t collector;
+    system_health_observation_t items[32];
+    system_health_observation_sink_t sink = {.items = items, .capacity = 32U};
+    char proc[256], sys[256];
+    snprintf(proc, sizeof(proc), "%s/proc", temporary_root);
+    snprintf(sys, sizeof(sys), "%s/sys", temporary_root);
+    system_health_collect_context_t context = {.proc_root = proc, .cgroup_root = sys};
+    TEST_ASSERT_TRUE(linux_cgroup_collector_init(&collector, &state));
+    const struct {
+        const char *quota;
+        const char *period;
+        system_health_capability_t capability;
+        float ratio;
+    } steps[] = {
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.25f},
+        {"200000", "100000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"200000", "100000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.125f},
+        {"200000", "200000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"200000", "200000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.25f},
+        {"max", "100000", SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED, 0},
+        {"max", "100000", SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.25f},
+        {"invalid", "100000", SYSTEM_HEALTH_CAPABILITY_ERROR, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.25f},
+        {NULL, "100000", v1 ? SYSTEM_HEALTH_CAPABILITY_ERROR
+                             : SYSTEM_HEALTH_CAPABILITY_UNSUPPORTED, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_STALE, 0},
+        {"100000", "100000", SYSTEM_HEALTH_CAPABILITY_AVAILABLE, 0.25f},
+    };
+    for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); ++i) {
+        char text[256];
+        const char *quota_file = v1 ? "sys/cpu,cpuacct/camera/cpu.cfs_quota_us"
+                                   : "sys/camera/cpu.max";
+        if (!steps[i].quota) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%s", temporary_root, quota_file);
+            TEST_ASSERT_EQUAL_INT(0, unlink(path));
+        } else if (v1) {
+            write_membership_fixture(quota_file,
+                strcmp(steps[i].quota, "max") == 0 ? "-1" : steps[i].quota);
+            write_membership_fixture("sys/cpu,cpuacct/camera/cpu.cfs_period_us", steps[i].period);
+        } else {
+            snprintf(text, sizeof(text), "%s %s\n", steps[i].quota, steps[i].period);
+            write_membership_fixture(quota_file, text);
+        }
+        if (v1) {
+            snprintf(text, sizeof(text), "%llu\n", (unsigned long long)(i + 1) * 250000000);
+            write_membership_fixture("sys/cpu,cpuacct/camera/cpuacct.usage", text);
+            snprintf(text, sizeof(text), "nr_periods %zu\nnr_throttled %zu\nthrottled_time %zu\n",
+                     (i + 1) * 10, i + 1, (i + 1) * 100000);
+            write_membership_fixture("sys/cpu,cpuacct/camera/cpu.stat", text);
+        } else {
+            snprintf(text, sizeof(text),
+                     "usage_usec %zu\nnr_periods %zu\nnr_throttled %zu\nthrottled_usec %zu\n",
+                     (i + 1) * 250000, (i + 1) * 10, i + 1, (i + 1) * 100);
+            write_membership_fixture("sys/camera/cpu.stat", text);
+        }
+        context.monotonic_ms = (i + 1) * 1000;
+        sink.count = 0;
+        TEST_ASSERT_EQUAL_INT(0, collector.collect(collector.state, &context, &sink));
+        const system_health_observation_t *usage = find_observation(
+            items, sink.count, "container.cpu.usage_ratio");
+        TEST_ASSERT_NOT_NULL(usage);
+        TEST_ASSERT_EQUAL(steps[i].capability, usage->capability);
+        TEST_ASSERT_EQUAL(steps[i].capability == SYSTEM_HEALTH_CAPABILITY_AVAILABLE,
+                          usage->value_valid);
+        if (usage->value_valid)
+            TEST_ASSERT_FLOAT_WITHIN(0.0001f, steps[i].ratio, (float)usage->value);
+        assert_delta_state(&sink, "container.cpu.throttled_ratio", i > 0, 0.1f);
+    }
+}
+
+static void test_v1_cpu_quota_changes_and_read_gaps(void) { check_cpu_quota_transitions(true); }
+static void test_v2_cpu_quota_changes_and_read_gaps(void) { check_cpu_quota_transitions(false); }
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_v1_cpu_quota_changes_and_read_gaps);
+    RUN_TEST(test_v2_cpu_quota_changes_and_read_gaps);
     RUN_TEST(test_cgroup_parsers_reject_bad_limits_and_overflow);
     RUN_TEST(test_v2_effective_limits_headroom_and_safe_deltas);
     RUN_TEST(test_unlimited_v2_reports_host_scope_without_fake_limits);
