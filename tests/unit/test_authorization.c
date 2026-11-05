@@ -3010,6 +3010,8 @@ void test_lpr_camera_summary_uses_lpr_permissions_and_scope(void) {
         authorization_action_bit(AUTHZ_LPR_READ) |
             authorization_action_bit(AUTHZ_LPR_SEARCH), api_key);
     int previous_max_streams = g_config.max_streams;
+    const char *original_lpr_master_key = getenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+    char *saved_lpr_master_key = original_lpr_master_key ? strdup(original_lpr_master_key) : NULL;
     g_config.max_streams = 16;
     g_config.web_auth_enabled = true;
     setenv("LIGHTNVR_LPR_MASTER_KEY_HEX",
@@ -3065,7 +3067,12 @@ void test_lpr_camera_summary_uses_lpr_permissions_and_scope(void) {
         cJSON_Delete(json);
     }
     g_config.max_streams = previous_max_streams;
-    unsetenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+    if (saved_lpr_master_key != NULL) {
+        setenv("LIGHTNVR_LPR_MASTER_KEY_HEX", saved_lpr_master_key, 1);
+        free(saved_lpr_master_key);
+    } else {
+        unsetenv("LIGHTNVR_LPR_MASTER_KEY_HEX");
+    }
 }
 
 void test_timeline_uuid_link_survives_rename_and_enforces_replay_scope(void) {
