@@ -58,6 +58,9 @@ sudo pacman -S \
     git \
     sqlite \
     ffmpeg \
+    libuv \
+    cjson \
+    zlib \
     curl \
     wget \
     mbedtls
