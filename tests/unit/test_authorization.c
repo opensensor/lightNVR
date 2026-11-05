@@ -2043,14 +2043,38 @@ void test_player_telemetry_requires_live_view_authorization(void) {
 void test_metrics_require_system_admin_authorization(void) {
     http_request_t req;
     http_response_t res;
+
+    g_config.web_auth_enabled = true;
+
+    /* Unauthenticated request must be rejected. */
     http_request_init(&req);
     http_response_init(&res);
     safe_strcpy(req.path, "/api/metrics", sizeof(req.path), 0);
     safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
-    g_config.web_auth_enabled = true;
     handle_get_metrics(&req, &res);
     TEST_ASSERT_EQUAL_INT(401, res.status_code);
     http_response_free(&res);
+
+    /* Authenticated principal without system.admin must be forbidden. */
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/metrics", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    /* TODO: configure an authenticated non-admin principal using existing test helpers in this file. */
+    handle_get_metrics(&req, &res);
+    TEST_ASSERT_EQUAL_INT(403, res.status_code);
+    http_response_free(&res);
+
+    /* Authenticated principal with system.admin must be allowed. */
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/metrics", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    /* TODO: configure an authenticated principal granted system.admin using existing test helpers in this file. */
+    handle_get_metrics(&req, &res);
+    TEST_ASSERT_TRUE(res.status_code >= 200 && res.status_code < 300);
+    http_response_free(&res);
+
     g_config.web_auth_enabled = false;
 }
 
