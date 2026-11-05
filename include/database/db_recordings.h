@@ -33,7 +33,8 @@ typedef struct {
     int height;
     int fps;
     char codec[16];
-    bool is_complete;
+    bool is_complete; // The writer has stopped; this does not guarantee playable media.
+    char playback_issue[32]; // Empty unless a media check found a problem or was inconclusive.
     char trigger_type[16];  // 'continuous', 'scheduled', 'detection', 'motion', 'manual'
     bool protected;         // If true, recording is protected from automatic deletion
     int retention_override_days;  // Custom retention period override (-1 = use stream default)
@@ -61,6 +62,17 @@ static inline const char *recording_capture_method(
     }
     return recording->trigger_type;
 }
+
+// Only conclusive media failures block playback; resource limits do not.
+static inline bool recording_playback_unavailable(const recording_metadata_t *recording) {
+    return recording &&
+        (strcmp(recording->playback_issue, "invalid_media") == 0 ||
+         strcmp(recording->playback_issue, "no_video") == 0 ||
+         strcmp(recording->playback_issue, "decode_error") == 0);
+}
+
+int finalize_recording_reconciliation(uint64_t id, time_t end_time,
+                                      uint64_t size_bytes, const char *playback_issue);
 
 // Retention tier constants
 #define RETENTION_TIER_CRITICAL   0
@@ -393,8 +405,8 @@ int get_recordings_for_pressure_cleanup_default_target(
     int max_count);
 
 /**
- * Page through recordings still marked incomplete (is_complete = 0) that started
- * before cutoff, oldest ID first. Pass after_id = 0 for the first page, which
+ * Page through interrupted recordings and completed rows with a playback issue
+ * that started before cutoff, oldest ID first. Pass after_id = 0 for the first page, which
  * snapshots *maximum_id; then keep cutoff and maximum_id and pass the last ID
  * returned. Retained rows are not revisited and new rows cannot extend the scan.
  * Rows already pending deletion are excluded.

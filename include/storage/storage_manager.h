@@ -295,9 +295,10 @@ uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const conf
  * Reconcile recordings left in an incomplete state by an unclean shutdown.
  *
  * For each is_complete=0 row older than a safety window: finalize it from the
- * on-disk file if the file is present and non-empty, otherwise prune the stale
- * row (and any empty leftover file). Recovers footage that was mid-write at
- * shutdown and prevents phantom rows from accumulating. Call once at startup
+ * on-disk file with a separate playback-check result, or prune a missing/empty
+ * file when its storage location is available. Surviving files stay visible
+ * under normal retention and protection rules even when playback is unavailable.
+ * Rows with playback issues are rechecked at each startup. Call once at startup
  * after the database and storage manager are initialized.
  *
  * @return number of rows reconciled (finalized + pruned)

@@ -2939,5 +2939,17 @@
   "system.storageTiers.pressure.high": "Above high watermark",
   "system.storageTiers.pressure.reserve": "Below reserve",
   "system.storageTiers.pressure.unavailable": "Unavailable",
-  "system.storageTiers.sharedFilesystem": "Shares a filesystem with another target"
+  "system.storageTiers.sharedFilesystem": "Shares a filesystem with another target",
+  "recordings.playbackUnavailable": "Playback unavailable",
+  "recordings.playbackUnverified": "Playback not verified",
+  "recordings.playbackIssue.invalid_media": "Recording was interrupted. Its video index is missing or unreadable.",
+  "recordings.playbackIssue.no_video": "No video track was found in this interrupted recording.",
+  "recordings.playbackIssue.decode_error": "The first video frame could not be decoded. This interrupted recording may be damaged.",
+  "recordings.playbackIssue.probe_limit": "The automatic check reached its time or read limit. This does not mean the recording is damaged; you can try playback.",
+  "recordings.playbackIssue.decoder_unavailable": "This server cannot check the video codec. Your browser may still be able to play it.",
+  "recordings.playbackIssue.probe_error": "The automatic playback check could not finish. You can try playback or download the original.",
+  "recordings.playbackRecovery": "Download the original file to attempt recovery, or delete it if it is no longer needed.",
+  "recordings.playbackRetention": "Normal retention applies. Protect this recording to keep it from automatic deletion.",
+  "recordings.playbackProtected": "This recording is protected from automatic deletion.",
+  "recordings.downloadOriginal": "Download original"
 }

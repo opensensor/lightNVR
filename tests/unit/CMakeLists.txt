@@ -250,9 +250,10 @@ target_link_options(test_api_handlers_recordings_playback PRIVATE
     "-Wl,--wrap=http_serve_file"
 )
 add_layer2_test(test_storage_manager_retention CI_UNIT)
-add_layer2_test(test_storage_reconcile_incomplete CI_UNIT CI_SANITIZER)
+add_layer2_test_with_ffmpeg(test_storage_reconcile_incomplete CI_UNIT CI_SANITIZER)
 target_link_options(test_storage_reconcile_incomplete PRIVATE
-    "-Wl,--wrap=stat" "-Wl,--wrap=lstat")
+    "-Wl,--wrap=stat" "-Wl,--wrap=lstat"
+    "-Wl,--wrap=avcodec_find_decoder" "-Wl,--wrap=av_gettime_relative")
 set_tests_properties(test_storage_reconcile_incomplete PROPERTIES TIMEOUT 60)
 add_layer2_test(test_storage_target_pressure_cleanup CI_UNIT)
 add_layer2_test(test_storage_migration CI_UNIT)

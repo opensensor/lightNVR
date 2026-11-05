@@ -35,6 +35,20 @@ describe('recordingsAPI', () => {
     jest.restoreAllMocks();
   });
 
+  test.each(['invalid_media', 'no_video', 'decode_error'])('explains %s without opening a broken player', playback_issue => {
+    const modal = jest.fn();
+    recordingsAPI.playRecording({id:42, playback_issue}, modal);
+    expect(modal).not.toHaveBeenCalled();
+    expect(showStatusMessage).toHaveBeenCalledWith(expect.stringContaining('Download the original'));
+  });
+
+  test.each(['probe_limit', 'decoder_unavailable', 'probe_error', 'future_issue', ''])('allows a playback attempt for %s', playback_issue => {
+    const modal = jest.fn();
+    recordingsAPI.playRecording({id:42, stream:'Entry', start_time:'2026-11-01T10:00:00Z', playback_issue}, modal);
+    expect(modal).toHaveBeenCalledWith('/api/recordings/play/42', expect.any(String), '/api/recordings/download/42');
+    expect(showStatusMessage).not.toHaveBeenCalled();
+  });
+
   test('checkRecordingHasDetections queries detection results with Unix seconds', async () => {
     const recording = {
       id: 42,

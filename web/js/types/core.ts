@@ -204,6 +204,8 @@ export interface Recording {
   start_time_unix: number;
   end_time_unix: number | null;
   in_progress: boolean;
+  /** Saved check result for an interrupted recording; empty means no known issue. */
+  playback_issue?: string;
   duration: number;
   /** Formatted for display, for example "12.3 MB". */
   size: string;

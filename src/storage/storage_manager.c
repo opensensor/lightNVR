@@ -33,6 +33,7 @@
 #include "database/db_lpr_reads.h"
 #include "database/db_system_settings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
+#include "video/recording_media_probe.h"
 #include "video/recording_path.h"
 #include "video/hls/hls_directory.h"
 #include "core/config.h"
@@ -2054,6 +2055,7 @@ int storage_reconcile_incomplete_recordings(void) {
     int finalized = 0;
     int pruned = 0;
     int retained = 0;
+    int unplayable = 0;
     int count;
     uint64_t after_id = 0;
     uint64_t maximum_id = 0;
@@ -2087,10 +2089,14 @@ int storage_reconcile_incomplete_recordings(void) {
             bool have_file = stat_result == 0;
 
             if (have_file && st.st_size > 0) {
-                // Footage survived — finalize it so it appears in listings.
+                // A stopped writer and playable media are separate facts. Keep
+                // all surviving files visible and governed by normal retention.
+                const char *issue = recording_media_probe_issue(batch[i].file_path);
                 time_t end_time = batch[i].end_time > 0 ? batch[i].end_time : st.st_mtime;
-                if (update_recording_metadata(batch[i].id, end_time,
-                                              (uint64_t)st.st_size, true) == 0) {
+                if (end_time < batch[i].start_time) end_time = batch[i].start_time;
+                if (finalize_recording_reconciliation(batch[i].id, end_time,
+                                                      (uint64_t)st.st_size, issue) == 0) {
+                    if (issue[0]) unplayable++;
                     finalized++;
                     reconciled++;
                 } else {
@@ -2099,7 +2105,9 @@ int storage_reconcile_incomplete_recordings(void) {
             } else if (have_file || stale_media_absence_is_authoritative(&batch[i])) {
                 // No usable media: drop the phantom row. The journaled deletion
                 // also removes any zero-byte leftover so it stops wasting an inode.
-                if (delete_stale_incomplete_recording_metadata(batch[i].id) == 0) {
+                int deleted = batch[i].is_complete ? delete_recording_metadata(batch[i].id)
+                    : delete_stale_incomplete_recording_metadata(batch[i].id);
+                if (deleted == 0) {
                     delete_recording_thumbnails(batch[i].id);
                     pruned++;
                     reconciled++;
@@ -2114,9 +2122,13 @@ int storage_reconcile_incomplete_recordings(void) {
 
     free(batch);
 
-    if (reconciled > 0 || retained > 0) {
+    if (reconciled > 0 || retained > 0 || unplayable > 0) {
         log_info("Reconciled %d incomplete recordings on startup (%d finalized, %d pruned, %d retained)",
                  reconciled, finalized, pruned, retained);
+    }
+    if (unplayable > 0) {
+        log_warn("Listed %d interrupted recordings with playback-check warnings; "
+                 "normal retention and protection rules still apply", unplayable);
     }
     return reconciled;
 }

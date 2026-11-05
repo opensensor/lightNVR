@@ -2,6 +2,8 @@
  * API functions for RecordingsView
  */
 
+import { recordingPlaybackReasonKey, recordingPlaybackUnavailable } from '../../../utils/recording-media-status.ts';
+
 import { batchDeleteStatus } from '../../../utils/batch-delete-status.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { t } from '../../../i18n.ts';
@@ -716,6 +718,10 @@ export const recordingsAPI = {
    */
   playRecording: (recording: RecordingListItem, showVideoModal: ShowVideoModal) => {
     console.log('Play recording clicked:', recording);
+    if (recordingPlaybackUnavailable(recording)) {
+      showStatusMessage(`${t(recordingPlaybackReasonKey(recording))} ${t('recordings.playbackRecovery')}`);
+      return;
+    }
 
     // Check if recording has an id property
     if (!recording.id) {
