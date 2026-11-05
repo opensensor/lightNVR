@@ -42,6 +42,9 @@ sudo dnf install -y \
     sqlite-devel \
     ffmpeg-devel \
     libcurl-devel \
+    libuv-devel \
+    cjson-devel \
+    zlib-devel \
     mbedtls-devel \
     curl \
     wget
