@@ -20,7 +20,11 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libswresample-dev \
     libavfilter-dev \
+    libuv1-dev \
+    libcjson-dev \
+    zlib1g-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
     curl \
