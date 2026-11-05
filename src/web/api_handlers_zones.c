@@ -215,21 +215,21 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
                 return;
             }
 
+            /* Validate before narrowing: out-of-range doubles can round to
+             * 0 or 1 as floats, and very large finite values can overflow. */
             double x_val = x->valuedouble;
             double y_val = y->valuedouble;
-            float x_f = (float)x_val;
-            float y_f = (float)y_val;
-            if (!isfinite(x_f) || !isfinite(y_f) ||
-                (double)x_f < 0.0 || (double)x_f > 1.0 ||
-                (double)y_f < 0.0 || (double)y_f > 1.0) {
+            if (!isfinite(x_val) || !isfinite(y_val) ||
+                x_val < 0.0 || x_val > 1.0 ||
+                y_val < 0.0 || y_val > 1.0) {
                 log_warn("Out-of-range polygon point %d at zone index %d: x=%f y=%f", j, i, x_val, y_val);
                 cJSON_Delete(json);
                 http_response_set_json_error(res, 400, "Zone polygon points must be finite and within [0.0, 1.0]");
                 return;
             }
 
-            zone->polygon[zone->polygon_count].x = x_f;
-            zone->polygon[zone->polygon_count].y = y_f;
+            zone->polygon[zone->polygon_count].x = (float)x_val;
+            zone->polygon[zone->polygon_count].y = (float)y_val;
             zone->polygon_count++;
         }
 
