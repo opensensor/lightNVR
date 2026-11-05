@@ -662,14 +662,6 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
-# Add the new FFmpeg leak detector source
-set(FFMPEG_LEAK_DETECTOR_SOURCES
-    "src/video/ffmpeg_leak_detector.c"
-)
-
-# Add the leak detector to the video sources
-list(APPEND VIDEO_SOURCES ${FFMPEG_LEAK_DETECTOR_SOURCES})
-
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
 # hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
