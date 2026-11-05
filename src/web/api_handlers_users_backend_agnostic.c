@@ -383,7 +383,17 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
 
     const char *password = password_json->valuestring;
     const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
-    int role = (role_json && cJSON_IsNumber(role_json)) ? role_json->valueint : USER_ROLE_USER;
+
+    if (role_json) {
+        if (!cJSON_IsNumber(role_json) ||
+            role_json->valuedouble != (double)((int)role_json->valuedouble)) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "role must be an integer");
+            return;
+        }
+    }
+
+    int role = role_json ? role_json->valueint : USER_ROLE_USER;
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : 1;
 
     // Validate username
