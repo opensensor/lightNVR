@@ -20,7 +20,11 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libswresample-dev \
     libavfilter-dev \
+    libuv1-dev \
+    libcjson-dev \
+    zlib1g-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
     curl \
@@ -42,6 +46,9 @@ sudo dnf install -y \
     sqlite-devel \
     ffmpeg-devel \
     libcurl-devel \
+    libuv-devel \
+    cjson-devel \
+    zlib-devel \
     mbedtls-devel \
     curl \
     wget
@@ -58,6 +65,9 @@ sudo pacman -S \
     git \
     sqlite \
     ffmpeg \
+    libuv \
+    cjson \
+    zlib \
     curl \
     wget \
     mbedtls
