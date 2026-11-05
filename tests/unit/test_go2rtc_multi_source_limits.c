@@ -19,17 +19,37 @@
 
 static int listen_fd = -1;
 static pthread_t server_thread;
-static volatile int request_count;
+static pthread_mutex_t request_lock = PTHREAD_MUTEX_INITIALIZER;
+static int request_count;
 static char last_request[8192];
+
+static int get_request_count(void) {
+    int count;
+    pthread_mutex_lock(&request_lock);
+    count = request_count;
+    pthread_mutex_unlock(&request_lock);
+    return count;
+}
+
+static void get_last_request_snapshot(char *dst, size_t dst_size) {
+    pthread_mutex_lock(&request_lock);
+    if (dst_size > 0) {
+        strncpy(dst, last_request, dst_size - 1);
+        dst[dst_size - 1] = '\0';
+    }
+    pthread_mutex_unlock(&request_lock);
+}
 
 static void *serve(void *arg) {
     (void)arg;
     for (;;) {
         int client = accept(listen_fd, NULL, NULL);
         if (client < 0) return NULL;
+        pthread_mutex_lock(&request_lock);
         ssize_t got = recv(client, last_request, sizeof(last_request) - 1, 0);
         last_request[got > 0 ? got : 0] = '\0';
         request_count++;
+        pthread_mutex_unlock(&request_lock);
         static const char reply[] =
             "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
         if (send(client, reply, sizeof(reply) - 1, MSG_NOSIGNAL) < 0) { /* test asserts on count */ }
@@ -46,12 +66,14 @@ void tearDown(void) {
 }
 
 static void test_request_that_fits_carries_every_source_and_the_name(void) {
+    char request_snapshot[sizeof(last_request)];
     const char *sources[] = {"rtsp://camera/stream", "ffmpeg:cam#video=h264"};
     TEST_ASSERT_TRUE(go2rtc_api_add_stream_multi("cam", sources, 2));
-    TEST_ASSERT_EQUAL_INT(1, request_count);
-    TEST_ASSERT_NOT_NULL(strstr(last_request, "src=rtsp%3A%2F%2Fcamera%2Fstream"));
-    TEST_ASSERT_NOT_NULL(strstr(last_request, "&src=ffmpeg%3Acam"));
-    TEST_ASSERT_NOT_NULL(strstr(last_request, "&name=cam"));
+    TEST_ASSERT_EQUAL_INT(1, get_request_count());
+    get_last_request_snapshot(request_snapshot, sizeof(request_snapshot));
+    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "src=rtsp%3A%2F%2Fcamera%2Fstream"));
+    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&src=ffmpeg%3Acam"));
+    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&name=cam"));
 }
 
 static void test_sources_past_the_request_buffer_send_nothing(void) {
@@ -61,7 +83,7 @@ static void test_sources_past_the_request_buffer_send_nothing(void) {
     memset(second, 'b', sizeof(second) - 1);
     const char *sources[] = {first, second};
     TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("cam", sources, 2));
-    TEST_ASSERT_EQUAL_INT(0, request_count);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
 static void test_source_past_the_escape_buffer_sends_nothing(void) {
@@ -70,7 +92,7 @@ static void test_source_past_the_escape_buffer_sends_nothing(void) {
     memset(long_source, 'a', LONG_SOURCE_LENGTH);
     const char *sources[] = {long_source, "b", "c", "d"};
     TEST_ASSERT_FALSE(go2rtc_api_add_stream_multi("cam", sources, 4));
-    TEST_ASSERT_EQUAL_INT(0, request_count);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
 static void test_null_source_sends_nothing(void) {
