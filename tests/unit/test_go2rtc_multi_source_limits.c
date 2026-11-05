@@ -5,11 +5,13 @@
 #define _GNU_SOURCE
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "unity.h"
@@ -45,15 +47,29 @@ static void *serve(void *arg) {
     for (;;) {
         int client = accept(listen_fd, NULL, NULL);
         if (client < 0) return NULL;
+        struct timeval timeout = {.tv_sec = 2};
+        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+            close(client);
+            continue;
+        }
         char request[sizeof(last_request)];
         size_t length = 0;
         request[0] = '\0';
         while (length < sizeof(request) - 1) {
-            ssize_t got = recv(client, request + length, (sizeof(request) - 1) - length, 0);
+            /* Force short reads so this fixture exercises header accumulation
+             * even when the loopback socket already holds the whole request. */
+            size_t chunk = sizeof(request) - 1 - length;
+            if (chunk > 7) chunk = 7;
+            ssize_t got = recv(client, request + length, chunk, 0);
+            if (got < 0 && errno == EINTR) continue;
             if (got <= 0) break;
             length += (size_t)got;
             request[length] = '\0';
             if (strstr(request, "\r\n\r\n") != NULL) break;
+        }
+        if (strstr(request, "\r\n\r\n") == NULL) {
+            close(client);
+            continue;
         }
         pthread_mutex_lock(&request_lock);
         memcpy(last_request, request, length + 1);
@@ -85,6 +101,7 @@ static void test_request_that_fits_carries_every_source_and_the_name(void) {
     TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "src=rtsp%3A%2F%2Fcamera%2Fstream"));
     TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&src=ffmpeg%3Acam%23video%3Dh264"));
     TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "&name=cam"));
+    TEST_ASSERT_NOT_NULL(strstr(request_snapshot, "\r\n\r\n"));
 }
 
 static void test_sources_past_the_request_buffer_send_nothing(void) {
@@ -129,6 +146,29 @@ static void test_truncated_stream_name_sends_nothing(void) {
     TEST_ASSERT_EQUAL_INT(0, get_request_count());
 }
 
+
+static void test_incomplete_request_is_not_published(void) {
+    struct sockaddr_in address;
+    socklen_t length = sizeof(address);
+    TEST_ASSERT_EQUAL_INT(0, getsockname(listen_fd, (struct sockaddr *)&address, &length));
+    int client = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, client);
+    int connected = connect(client, (struct sockaddr *)&address, length);
+    static const char partial[] = "PUT /api/streams?src=incomplete";
+    ssize_t sent = connected == 0 ? send(client, partial, sizeof(partial) - 1, MSG_NOSIGNAL) : -1;
+    shutdown(client, SHUT_WR);
+    char reply[128];
+    ssize_t received = connected == 0 ? recv(client, reply, sizeof(reply), 0) : -1;
+    close(client);
+    TEST_ASSERT_EQUAL_INT(0, connected);
+    TEST_ASSERT_EQUAL_INT(sizeof(partial) - 1, sent);
+    TEST_ASSERT_EQUAL_INT(0, received);
+    TEST_ASSERT_EQUAL_INT(0, get_request_count());
+    char snapshot[sizeof(last_request)];
+    get_last_request_snapshot(snapshot, sizeof(snapshot));
+    TEST_ASSERT_EQUAL_STRING("", snapshot);
+}
+
 int main(void) {
     setenv("NO_PROXY", "127.0.0.1", 1);
     setenv("no_proxy", "127.0.0.1", 1);
@@ -146,6 +186,7 @@ int main(void) {
     if (!go2rtc_api_init("127.0.0.1", ntohs(address.sin_port))) return 1;
 
     UNITY_BEGIN();
+    RUN_TEST(test_incomplete_request_is_not_published);
     RUN_TEST(test_request_that_fits_carries_every_source_and_the_name);
     RUN_TEST(test_sources_past_the_request_buffer_send_nothing);
     RUN_TEST(test_source_past_the_escape_buffer_sends_nothing);
