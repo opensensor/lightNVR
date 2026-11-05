@@ -35,7 +35,10 @@ No external archive is enabled automatically on upgrade.
    An optional `session_token` is supported. The default directory is
    `/etc/lightnvr/archive-credentials`; the filename, for example `instance`, is
    the **credential reference**. Credentials never enter the catalog or target
-   responses. Files and the final credentials directory must not be symlinks.
+   responses. Set `LIGHTNVR_ARCHIVE_CREDENTIALS_DIR` to override the directory
+   with an absolute path without `.` or `..` components. Files and every component
+   of the credentials directory path must not be symlinks; mount credentials at
+   their real path. This also applies to operator lifecycle attestations.
    Rotate by atomically replacing the file with the same owner/mode. Each request
    reads it again. Updating the target's reference also supports rotation.
 5. Add a target of type **S3-compatible bucket**. Supply the HTTPS endpoint origin

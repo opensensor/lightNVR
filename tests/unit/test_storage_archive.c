@@ -1130,6 +1130,46 @@ static void test_archive_credentials_require_private_regular_files(void) {
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, symlinked);
 }
 
+static void test_archive_credentials_reject_symlinked_directory_components(void) {
+    storage_target_t target = archive_target("credentials-path", true);
+    char *original = strdup(getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"));
+    TEST_ASSERT_NOT_NULL(original);
+    char real[512], nested[512], link[512], indirect[512], path[512], error[256];
+    snprintf(real, sizeof(real), "%s/credentials-real", root);
+    snprintf(nested, sizeof(nested), "%s/credentials-real/nested", root);
+    snprintf(link, sizeof(link), "%s/credentials-link", root);
+    snprintf(indirect, sizeof(indirect), "%s/credentials-link/nested", root);
+    snprintf(path, sizeof(path), "%s/credentials-real/nested/test-credential", root);
+    TEST_ASSERT_EQUAL_INT(0, mkdir(real, 0700));
+    TEST_ASSERT_EQUAL_INT(0, mkdir(nested, 0700));
+    TEST_ASSERT_EQUAL_INT(0, symlink(real, link));
+    FILE *file = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    fputs("{\"access_key_id\":\"fixture-access\",\"secret_access_key\":\"fixture-secret\"}", file);
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0600));
+    safe_strcpy(target.credential_ref, "test-credential", sizeof(target.credential_ref), 0);
+    uint64_t bytes;
+    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", nested, 1);
+    int direct = storage_s3_stat(&target, "missing", &bytes, error);
+    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", indirect, 1);
+    int intermediate = storage_s3_stat(&target, "missing", &bytes, error);
+    /* Point the final component at the same usable directory as well. */
+    unlink(link);
+    TEST_ASSERT_EQUAL_INT(0, symlink(nested, link));
+    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", link, 1);
+    int final = storage_s3_stat(&target, "missing", &bytes, error);
+    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", original, 1);
+    free(original);
+    unlink(link);
+    unlink(path);
+    rmdir(nested);
+    rmdir(real);
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, direct);
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, intermediate);
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, final);
+}
+
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
     snprintf(path, 1024, "%s/%s.lifecycle.json",
@@ -1707,6 +1747,7 @@ int main(void) {
     RUN_TEST(test_s3_configuration_api_and_archive_budget);
     RUN_TEST(test_multipart_cancellation_aborts_owned_upload_and_preserves_source);
     RUN_TEST(test_archive_credentials_require_private_regular_files);
+    RUN_TEST(test_archive_credentials_reject_symlinked_directory_components);
     RUN_TEST(test_scoped_credentials_use_fresh_operator_lifecycle_inspection);
     RUN_TEST(test_lifecycle_attestation_rejects_stale_mismatched_and_unsafe_files);
     RUN_TEST(test_lifecycle_attestation_cannot_override_provider_checks);
