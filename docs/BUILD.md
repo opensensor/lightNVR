@@ -307,3 +307,22 @@ If LightNVR fails to start or crashes:
 1. Check the log file for error messages: `/var/log/lightnvr/lightnvr.log`
 2. Verify that the configuration file is valid
 3. Ensure that all required directories exist and have the correct permissions
+
+### llhttp source fallback
+
+When `libllhttp` is unavailable through pkg-config, CMake downloads generated
+llhttp sources. The default `LLHTTP_DOWNLOAD_REF=release/v9.4.3` is a tag whose
+files are checked against pinned SHA-256 hashes.
+
+For alternate sources, set both `LLHTTP_DOWNLOAD_REF` and
+`LLHTTP_DOWNLOAD_REF_TYPE` (`tag`, `branch`, or `commit`). For example:
+
+```bash
+cmake -S . -B build -DLLHTTP_DOWNLOAD_REF_TYPE=branch -DLLHTTP_DOWNLOAD_REF=release
+```
+
+Alternate refs are cached separately by type and value under the build tree's
+`_deps` directory and are not checked against the default tag's hashes. To refresh
+a moving branch, remove its `_deps/llhttp-*` cache directory before reconfiguring.
+Use a full commit hash when a fixed revision is required. These options have no
+effect when CMake finds a system llhttp package.

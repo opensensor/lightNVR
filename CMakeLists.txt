@@ -404,18 +404,36 @@ if(NOT LLHTTP_FOUND)
     # If LLHTTP_DOWNLOAD_REF is overridden to a different ref, the hashes
     # cannot be known here, so downloads proceed unverified with a warning.
     set(LLHTTP_PINNED_REF "release/v9.4.3")
+    set(LLHTTP_DOWNLOAD_REF_TYPE "tag" CACHE STRING "Type of LLHTTP_DOWNLOAD_REF: tag, branch, or commit")
+    set_property(CACHE LLHTTP_DOWNLOAD_REF_TYPE PROPERTY STRINGS tag branch commit)
+    string(TOLOWER "${LLHTTP_DOWNLOAD_REF_TYPE}" LLHTTP_DOWNLOAD_REF_TYPE)
     set(LLHTTP_REQUIRED_HASHES
         "391e7c99912abf3b1c9dd8a9c85fdeaac2663e9fa55b6f3871154d16fef8b892"
         "0f8590206fe2f264db2825401b5fb856b979ee1363dc88b06f36dc9577afb941"
         "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
         "5bc82fa51b19aa8bee7d921038393fbfc74e8cc9bae0844c2d82c102fb8cfd68"
     )
-    if(LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
+    if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag" AND
+       LLHTTP_DOWNLOAD_REF STREQUAL LLHTTP_PINNED_REF)
         set(LLHTTP_VERIFY_HASHES TRUE)
     else()
         set(LLHTTP_VERIFY_HASHES FALSE)
+        # A nonempty source-tree cache may belong to the default tag or a
+        # different override. Isolate alternate refs (including their type).
+        string(SHA256 LLHTTP_REF_CACHE_KEY
+               "${LLHTTP_DOWNLOAD_REF_TYPE}:${LLHTTP_DOWNLOAD_REF}")
+        set(LLHTTP_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/llhttp-${LLHTTP_REF_CACHE_KEY}")
     endif()
-    set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
+    if(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "tag")
+        set(LLHTTP_REF_PATH "refs/tags/${LLHTTP_DOWNLOAD_REF}")
+    elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "branch")
+        set(LLHTTP_REF_PATH "refs/heads/${LLHTTP_DOWNLOAD_REF}")
+    elseif(LLHTTP_DOWNLOAD_REF_TYPE STREQUAL "commit")
+        set(LLHTTP_REF_PATH "${LLHTTP_DOWNLOAD_REF}")
+    else()
+        message(FATAL_ERROR "Invalid LLHTTP_DOWNLOAD_REF_TYPE='${LLHTTP_DOWNLOAD_REF_TYPE}'. Expected one of: tag, branch, commit.")
+    endif()
+    set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_REF_PATH}")
 
     list(LENGTH LLHTTP_REQUIRED_FILES LLHTTP_REQUIRED_FILES_LEN)
     math(EXPR LLHTTP_REQUIRED_FILES_LAST "${LLHTTP_REQUIRED_FILES_LEN} - 1")
@@ -449,7 +467,7 @@ if(NOT LLHTTP_FOUND)
         if(LLHTTP_NEEDS_DOWNLOAD)
             message(STATUS "llhttp ${LLHTTP_FILE} ${LLHTTP_DOWNLOAD_REASON}, downloading from GitHub...")
             if(NOT LLHTTP_VERIFY_HASHES)
-                message(WARNING "LLHTTP_DOWNLOAD_REF='${LLHTTP_DOWNLOAD_REF}' differs from pinned '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
+                message(WARNING "llhttp ${LLHTTP_DOWNLOAD_REF_TYPE} '${LLHTTP_DOWNLOAD_REF}' is not the pinned tag '${LLHTTP_PINNED_REF}'; downloading ${LLHTTP_FILE} without SHA-256 verification")
             endif()
             get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
             file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
@@ -662,16 +680,11 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
-# Add the new FFmpeg leak detector source
-set(FFMPEG_LEAK_DETECTOR_SOURCES
-    "src/video/ffmpeg_leak_detector.c"
-)
-
-# Add the leak detector to the video sources
-list(APPEND VIDEO_SOURCES ${FFMPEG_LEAK_DETECTOR_SOURCES})
-
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
+# hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
+# Exclude it here to avoid duplicate source listing.
+list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
 file(GLOB TELEMETRY_SOURCES "src/telemetry/*.c")
 file(GLOB HEALTH_COLLECTOR_SOURCES "src/telemetry/collectors/*.c")
 file(GLOB HEALTH_PROVIDER_SOURCES "src/telemetry/providers/*.c")
