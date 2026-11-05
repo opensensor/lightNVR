@@ -1035,14 +1035,20 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
     }
 
     // Extract user ID from URL
-    char id_str[16] = {0};
+    char id_str[64] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
 
-    int64_t user_id = strtoll(id_str, NULL, 10);
+    errno = 0;
+    char *endptr = NULL;
+    int64_t user_id = strtoll(id_str, &endptr, 10);
+    if (endptr == id_str || *endptr != '\0' || errno == ERANGE || user_id <= 0) {
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
 
     // Check if the user exists
     user_t user;
