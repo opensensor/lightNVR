@@ -63,6 +63,22 @@ describe('LPR filter state', () => {
     expect(parseDateTimeLocalValue('2024-02-29T12:34')).toBe(expected - 56000);
   });
 
+  test.each([NaN, Infinity, -Infinity, 8.64e15 + 1, -8.64e15 - 1, Number.MAX_VALUE])(
+    'returns an empty input value for an unrepresentable timestamp %p', (timestamp) => {
+      expect(toDateTimeLocalValue(timestamp)).toBe('');
+    },
+  );
+
+  test.each([0, -1000, new Date(2026, 9, 28, 15, 31).getTime()])(
+    'formats a representable timestamp %p in local time', (timestamp) => {
+      const date = new Date(timestamp);
+      const pad = (value) => String(value).padStart(2, '0');
+      expect(toDateTimeLocalValue(timestamp)).toBe(
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`,
+      );
+    },
+  );
+
   test('datetime-local values round-trip in the browser zone', () => {
     const milliseconds = new Date(2026, 9, 28, 15, 31).getTime();
     expect(parseDateTimeLocalValue(toDateTimeLocalValue(milliseconds))).toBe(milliseconds);
