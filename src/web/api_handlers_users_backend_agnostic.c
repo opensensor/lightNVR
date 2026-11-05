@@ -339,13 +339,16 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Convert user ID to integer
-    int64_t user_id = strtoll(user_id_str, NULL, 10);
-    if (user_id <= 0) {
+    // Convert user ID to integer (strict parsing with full validation)
+    errno = 0;
+    char *endptr = NULL;
+    long long parsed_id = strtoll(user_id_str, &endptr, 10);
+    if (endptr == user_id_str || *endptr != '\0' || errno == ERANGE || parsed_id <= 0) {
         log_error("Invalid user ID: %s", user_id_str);
         http_response_set_json_error(res, 400, "Invalid user ID");
         return;
     }
+    int64_t user_id = (int64_t)parsed_id;
 
     user_t user;
     int rc = db_auth_get_user_by_id(user_id, &user);
