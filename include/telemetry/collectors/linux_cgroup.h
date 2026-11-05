@@ -60,6 +60,8 @@ typedef struct {
 typedef struct {
     linux_cgroup_memberships_t memberships;
     bool cpu_valid;
+    bool cpu_quota_valid;
+    linux_cgroup_cpu_max_t cpu_max;
     bool oom_valid;
     linux_cgroup_version_t version;
     linux_cgroup_cpu_stat_t cpu;
