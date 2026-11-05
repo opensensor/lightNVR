@@ -570,11 +570,11 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    if (role_json && strcmp(user.authorization_mode, "policy") == 0) {
+    if (role_json) {
         cJSON_Delete(json_req);
         http_response_set_json_error(
             res, 400,
-            "role is compatibility metadata for policy users; update authorization grants instead");
+            "role updates are not supported via this endpoint; update authorization grants instead");
         return;
     }
 
