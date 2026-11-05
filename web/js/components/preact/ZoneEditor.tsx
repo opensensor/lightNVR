@@ -382,7 +382,13 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
     if (draggedPoint) {
       canvas.style.cursor = 'move';
       const newZones = [...zoneList];
-      newZones[draggedPoint.zoneIndex]!.polygon[draggedPoint.pointIndex] = { x, y };
+      const originalZone = newZones[draggedPoint.zoneIndex]!;
+      const newPolygon = [...originalZone.polygon];
+      newPolygon[draggedPoint.pointIndex] = { x, y };
+      newZones[draggedPoint.zoneIndex] = {
+        ...originalZone,
+        polygon: newPolygon,
+      };
       setZoneList(newZones);
     }
 
@@ -393,13 +399,16 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
       const deltaY = y - draggedZone.startY;
 
       const newZones = [...zoneList];
-      const zone = newZones[draggedZone.zoneIndex]!;
+      const originalZone = newZones[draggedZone.zoneIndex]!;
 
       // Move all points by the delta
-      zone.polygon = zone.polygon.map(point => ({
-        x: Math.max(0, Math.min(1, point.x + deltaX)),
-        y: Math.max(0, Math.min(1, point.y + deltaY))
-      }));
+      newZones[draggedZone.zoneIndex] = {
+        ...originalZone,
+        polygon: originalZone.polygon.map(point => ({
+          x: Math.max(0, Math.min(1, point.x + deltaX)),
+          y: Math.max(0, Math.min(1, point.y + deltaY))
+        })),
+      };
 
       setZoneList(newZones);
       // Update start position for next move
