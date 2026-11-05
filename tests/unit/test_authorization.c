@@ -2081,6 +2081,92 @@ void test_user_create_rejects_retired_allowed_tags_field(void) {
                           db_auth_get_user_by_username("retiredtags", &user));
 }
 
+void test_user_create_rejects_noninteger_and_out_of_range_roles(void) {
+    const char *roles[] = {"-1", "4", "0.5", "-0.5", "1e100", "-1e100",
+                           "1e999", "\"2\"", "null", "true", "{}", "[]"};
+    for (size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); i++) {
+        char body[256];
+        snprintf(body, sizeof(body),
+                 "{\"username\":\"badrole\",\"password\":\"password123\",\"role\":%s}", roles[i]);
+        cJSON *json = call_handler_path(handle_users_create, HTTP_METHOD_POST,
+                                        "/api/auth/users", body, NULL, 400);
+        cJSON_Delete(json);
+        user_t user;
+        TEST_ASSERT_NOT_EQUAL(0, db_auth_get_user_by_username("badrole", &user));
+    }
+}
+
+void test_user_create_accepts_integer_and_default_roles(void) {
+    const char *roles[] = {",\"role\":0", ",\"role\":1", ",\"role\":2", ",\"role\":3", ""};
+    for (size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); i++) {
+        char body[256];
+        snprintf(body, sizeof(body),
+                 "{\"username\":\"validrole%zu\",\"password\":\"password123\"%s}", i, roles[i]);
+        cJSON *json = call_handler_path(handle_users_create, HTTP_METHOD_POST,
+                                        "/api/auth/users", body, NULL, 200);
+        TEST_ASSERT_EQUAL_INT(i == 4 ? USER_ROLE_USER : (int)i,
+                             cJSON_GetObjectItem(json, "role")->valueint);
+        cJSON_Delete(json);
+    }
+}
+
+void test_user_update_rolls_back_every_field_and_sessions_on_failure(void) {
+    int64_t target_id = 0;
+    int64_t duplicate_id = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("atomicuser", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &target_id));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("duplicate", "password123", NULL,
+                                               USER_ROLE_VIEWER, true, &duplicate_id));
+    char token[128];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(target_id, NULL, NULL, 3600, token, sizeof(token)));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)target_id);
+    const char *body = "{\"email\":\"changed@example.com\",\"role\":1,\"is_active\":false,"
+                       "\"allowed_login_cidrs\":\"127.0.0.1\",\"password\":\"replacement123\"}";
+    sqlite3 *db = get_db_handle();
+    for (int failure = 0; failure < 5; failure++) {
+        if (failure == 0) TEST_ASSERT_EQUAL_INT(0, db_auth_set_password_lock(target_id, true));
+        if (failure == 1) TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+            "CREATE TEMP TRIGGER fail_account_update BEFORE UPDATE OF allowed_login_cidrs ON users "
+            "BEGIN SELECT RAISE(ABORT, 'CIDR write failed'); END;", NULL, NULL, NULL));
+        if (failure == 2) TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+            "CREATE TEMP TRIGGER fail_account_update BEFORE UPDATE OF password_hash ON users "
+            "BEGIN SELECT RAISE(ABORT, 'password write failed'); END;", NULL, NULL, NULL));
+        if (failure == 3) TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+            "CREATE TEMP TRIGGER fail_account_update BEFORE DELETE ON sessions "
+            "BEGIN SELECT RAISE(ABORT, 'session deletion failed'); END;", NULL, NULL, NULL));
+        const char *request = failure == 4
+            ? "{\"username\":\"duplicate\",\"password\":\"replacement123\"}" : body;
+        cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT, path,
+                                        request, NULL, failure == 0 ? 403 : failure == 4 ? 409 : 500);
+        cJSON_Delete(json);
+        TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "DROP TRIGGER IF EXISTS fail_account_update;", NULL, NULL, NULL));
+        TEST_ASSERT_EQUAL_INT(0, db_auth_set_password_lock(target_id, false));
+        user_t user;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
+        TEST_ASSERT_EQUAL_STRING("atomicuser", user.username);
+        TEST_ASSERT_EQUAL_STRING("", user.email);
+        TEST_ASSERT_EQUAL_INT(USER_ROLE_VIEWER, user.role);
+        TEST_ASSERT_TRUE(user.is_active);
+        TEST_ASSERT_FALSE(user.has_login_cidr_restriction);
+        int64_t authenticated_id = 0;
+        TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("atomicuser", "password123", &authenticated_id));
+        TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(token, &authenticated_id));
+    }
+    cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT, path, body, NULL, 200);
+    cJSON_Delete(json);
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(target_id, &user));
+    TEST_ASSERT_EQUAL_STRING("changed@example.com", user.email);
+    TEST_ASSERT_EQUAL_INT(USER_ROLE_USER, user.role);
+    TEST_ASSERT_FALSE(user.is_active);
+    TEST_ASSERT_TRUE(user.has_login_cidr_restriction);
+    int64_t authenticated_id = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, &authenticated_id));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_update_user(target_id, NULL, NULL, -1, 1));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("atomicuser", "replacement123", &authenticated_id));
+}
+
 void test_user_update_rejects_invalid_roles_before_changing_credentials(void) {
     int64_t target_id = 0;
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
@@ -2896,6 +2982,9 @@ int main(void) {
     RUN_TEST(test_metrics_require_system_admin_authorization);
     RUN_TEST(test_stream_health_filters_camera_metrics_by_live_view_scope);
     RUN_TEST(test_user_create_rejects_retired_allowed_tags_field);
+    RUN_TEST(test_user_create_rejects_noninteger_and_out_of_range_roles);
+    RUN_TEST(test_user_create_accepts_integer_and_default_roles);
+    RUN_TEST(test_user_update_rolls_back_every_field_and_sessions_on_failure);
     RUN_TEST(test_user_update_rejects_invalid_roles_before_changing_credentials);
     RUN_TEST(test_user_update_accepts_valid_and_omitted_roles);
     RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
