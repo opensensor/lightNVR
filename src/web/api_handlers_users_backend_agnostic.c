@@ -442,6 +442,15 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    /* Prevent privilege escalation: a caller with limited user-management
+     * authority must not be able to mint a built-in Admin principal. */
+    if (role == 0 && !request_is_admin(req)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(
+            res, 403, "Insufficient privileges to create admin user");
+        return;
+    }
+
     // Create the user
     int64_t user_id;
     /* Keep the row inactive until its CIDR restriction and exact policy grant
