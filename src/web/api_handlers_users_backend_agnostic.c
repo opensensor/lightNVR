@@ -640,7 +640,13 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     // Validate password if provided and not empty; apply it only after other updates succeed
     const char *password = NULL;
     int has_password_update = 0;
-    if (password_json && cJSON_IsString(password_json)) {
+    if (password_json) {
+        if (!cJSON_IsString(password_json)) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "password must be a string");
+            return;
+        }
+
         password = password_json->valuestring;
 
         // Only update if password is not empty
