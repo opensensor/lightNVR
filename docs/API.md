@@ -67,6 +67,13 @@ compatibility policies:
 | `API`    | yes      | yes       | no             |
 | `VIEWER` | yes      | typically no | no          |
 
+Creating a user requires `users.manage` and every action of the requested initial
+role over all cameras; a manager cannot create a user with broader actions or
+camera scope than its own. Scoped API tokens cannot create users. User updates
+reject a supplied `role` for both policy and legacy accounts; change grants through
+the authorization endpoint instead. If supplied, `password` must be a string;
+an empty string preserves the existing password.
+
 Write authorization is endpoint-specific. Stream creation, updates (including
 privacy mode), and deletion reject `VIEWER` with `403`, as does
 [`POST /api/motion/trigger`](#trigger-motion-event).
