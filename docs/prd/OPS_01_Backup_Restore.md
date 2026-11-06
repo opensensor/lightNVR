@@ -151,3 +151,39 @@ media targets exist.
 - Fleet 02 supplies restore authorization/audit.
 - Fleet 03 supplies operational events.
 - Storage 01 supplies target reconciliation.
+
+## Implemented SQLite publication safety (2026-11-06)
+
+This bounded change covers the existing SQLite backup/restore functions, not the
+complete archive product proposed above. The owner must quiesce the destination
+before replacement. Restore rejects an open application database; destination
+preparation also rejects a busy SQLite database rather than replacing its inode.
+It is not coordination with arbitrary external SQL clients that reopen a path.
+
+A destination with WAL/journal sidecars is first recovered/checkpointed through
+SQLite and converted to DELETE journal mode. The old main file is synced before
+remaining sidecars are removed, and the directory is synced before publication.
+A failed rename therefore leaves the old committed data readable. A successful
+rename never pairs the new main file with old recovery records.
+
+If SQLite reports a corrupt/unreadable destination, automatic restore remains
+available: copy the old main file and its existing sidecars into a sibling
+`<database>.recovery-XXXXXX/` directory first. The directory is 0700 and copied
+files are 0600; they contain plaintext recovery data. The copies use the basename
+`database.sqlite` and matching sidecar names. A `COMPLETE` marker is created only
+after all copies have been written and synced; the capture directory and its
+parent are then synced before the originals' sidecars may be removed. Any capture
+or sync failure stops publication. Incomplete capture directories are retained
+for inspection and have no completion guarantee.
+
+Recovery captures are logged and are not subject to scheduled-backup pruning.
+Keep them until the replacement is verified and any investigation is finished;
+then remove them explicitly. Disk exhaustion during capture leaves the original
+destination in place. A publication failure retains the capture. A sync failure
+*after* publication returns failure even though the replacement may already be
+visible; inspect the database rather than assuming the old version is installed.
+
+Regression tests use real committed WAL and hot rollback journals, injected
+rename/sync/ENOSPC failures, busy readers, corrupt database recovery, and process
+exit immediately before/after rename for both backup and restore. These are
+process-failure tests, not a power-loss qualification of the underlying storage.
