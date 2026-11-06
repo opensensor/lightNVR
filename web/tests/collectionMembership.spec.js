@@ -21,13 +21,13 @@ describe('collection membership', () => {
       'camera-a', 'camera-b', 'camera-c',
     ]);
     expect(request).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({
+    expect(request.mock.calls[0][0]).toMatchObject({
       collection_uuid: 'collection-a',
       page: 1,
       page_size: 200,
       facets: false,
     });
-    expect(JSON.parse(request.mock.calls[1][1].body).page).toBe(2);
+    expect(request.mock.calls[1][0].page).toBe(2);
   });
 
   test('does not call the API without a selected collection', async () => {

@@ -368,3 +368,28 @@ password change and legacy GET logout. Logout documents negotiated JSON and empt
 mutually exclusive. Setup alone exposes the secret; status/acknowledgments reject
 extra fields. Typed browser adapters validate every success, redact failures and
 never automatically retry mutations. Unavailable status cannot imply disabled MFA.
+
+
+## Fleet reads and selectors (F2)
+
+Thirteen added operations bring the partial inventory to 57 operations across
+54 paths, with 183 registered operations remaining. Fleet queries, selector
+previews, saved views, collection reads and location/tag catalogs are discoverable
+by authenticated principals, including empty camera scopes. Camera tag assignments
+require raw `live.view` discovery; each concrete handler checks the target camera.
+Discovery does not promise a particular row or grant access through stored selectors.
+
+Rows, facets, counts and organization trees use the caller's visible inventory.
+Conjunctions apply to one camera, and token authority intersects its owner. Shared
+collections expose only visible members/counts; smart selectors are redacted from
+non-owners. Private and empty foreign collections are hidden. Saved views have
+owner/shared visibility, while applying a saved selector still filters current
+camera authority. Queue counts describe the authorized inventory before search
+filters; they are not page-local totals. Runtime selector depth/node/byte bounds
+remain enforced by the native evaluator.
+
+Generated guards validate all thirteen adapter responses before consumers render
+them. Query/preview POSTs are read-only, bounded and retryable; this does not change
+mutation retry policy. Errors omit raw bodies, and catalog/query failures offer
+Retry. The backend also fixes hidden-camera totals in tag-assignment GET/PUT
+responses and a SQLite iteration guard that returned only the first saved view.

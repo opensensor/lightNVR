@@ -1,3 +1,4 @@
+import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -374,7 +375,7 @@ export function LiveBuildingPlan({
   // Shared with the Navigator (same key), used to link a plan to a location.
   const locationsQuery = useQuery<LiveLocationsResponse>({
     queryKey: ['fleet-locations'],
-    queryFn: ({ signal }) => fetchJSON('/api/locations', { signal }),
+    queryFn: ({ signal }) => listFleetLocations({signal}),
     staleTime: 60000,
   });
   const locationOptions = useMemo(() => {

@@ -441,3 +441,19 @@ does not increase the 37 accepted operations or claim automated finding closure.
   reuse diagnostics/fixtures.
 - [Superseded foundation PR](https://github.com/opensensor/lightNVR/pull/693)
   and [landed TypeScript conversion](https://github.com/opensensor/lightNVR/pull/765).
+
+
+### Fleet read contracts (F2, 2026-11-06)
+
+Identity contracts and the generated-validator quality fix are merged in #819 and
+#818. The next review slice adds thirteen fleet read/query operations, reaching
+57 covered operations / 54 paths, with 183 residual routes. Fleet inventory,
+selectors, saved views, collection reads and organization catalogs now have
+canonical schemas, generated DTOs/guards and validated browser consumers.
+
+Owned fixtures exercise scoped rows/facets/counts, same-camera conjunctions,
+private/shared objects, stale selectors and recoverable malformed responses.
+They reproduced and fixed hidden-camera tag totals and saved-view lists stopping
+after one row. See the expansion plan for qualification evidence. S1 remains a
+separate signaling/audio security slice; this PR does not claim audio isolation.
+Basic/legacy-key compatibility remains intact; encryption and Rust stay deferred.

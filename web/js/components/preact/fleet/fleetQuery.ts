@@ -220,7 +220,7 @@ export function countFleetFilters(state: FleetState): number {
     (state.collectionUuid ? 1 : 0);
 }
 
-export function facetCount(facets: FleetFacets | null | undefined, group: FleetValueFacetGroup, value: string | boolean): number {
+export function facetCount(facets: Partial<FleetFacets> | null | undefined, group: FleetValueFacetGroup, value: string | boolean): number {
   return facets?.[group]?.find((item) => String(item.value) === String(value))?.count || 0;
 }
 

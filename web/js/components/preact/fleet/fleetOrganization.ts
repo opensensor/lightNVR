@@ -1,3 +1,4 @@
+import { getCameraTagAssignments } from '../../../api/fleet.ts';
 import type {
   BoundedResult,
   BulkOrganizationChanges,
@@ -107,6 +108,7 @@ export async function applyBulkOrganization<T extends { camera_uuid: string }>(
   changes: BulkOrganizationChanges,
   fetcher: JsonFetcher,
   onProgress: (completed: number, total: number) => void = () => {},
+  readTags: (uuid: string) => Promise<{tags: {uuid: string}[]}> = uuid => getCameraTagAssignments(uuid, {timeout: 15000, retries: 1}),
 ): Promise<BulkOrganizationResult<T>> {
   let completed = 0;
   const results = await runBounded(cameras, async (camera) => {
@@ -122,10 +124,7 @@ export async function applyBulkOrganization<T extends { camera_uuid: string }>(
       }
 
       if (changes.tagOperation && changes.tagOperation !== 'none') {
-        const current = await fetcher<{ tags?: { uuid: string }[] }>(`/api/cameras/${encodeURIComponent(camera.camera_uuid)}/tags`, {
-          timeout: 15000,
-          retries: 1,
-        });
+        const current = await readTags(camera.camera_uuid);
         const nextUuids = resolveTagAssignments(
           (current.tags || []).map((tag) => tag.uuid),
           changes.tagOperation,

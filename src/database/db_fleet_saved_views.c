@@ -187,9 +187,11 @@ int db_fleet_saved_view_list_visible(
         sqlite3_bind_int(statement, 3, max_count);
     }
     int count = 0;
-    while (result == SQLITE_OK && count < max_count &&
-           (result = sqlite3_step(statement)) == SQLITE_ROW) {
-        populate(statement, &views[count++]);
+    if (result == SQLITE_OK) {
+        while (count < max_count &&
+               (result = sqlite3_step(statement)) == SQLITE_ROW) {
+            populate(statement, &views[count++]);
+        }
     }
     if (result != SQLITE_DONE && result != SQLITE_ROW) count = -1;
     if (statement) sqlite3_finalize(statement);

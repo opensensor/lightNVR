@@ -9,22 +9,28 @@ The tests are organized as follows:
 ```
 tests/
 ├── *.spec.js             # Unit tests -- run by `npm test`
-├── e2e/                  # End-to-end tests with Selenium
+├── e2e/                  # Component browser regressions and Selenium E2E
+│   ├── *.browser.spec.js # Playwright browser fixtures; no LightNVR server
 │   ├── pages/            # Page objects
 │   ├── specs/            # Test specifications
 │   └── utils/            # Test utilities
 └── setup.cjs             # Test setup (both suites)
 ```
 
-The two suites run separately:
+The suites run separately (commands below run from `web/`):
 
 | Command | Config | Scope |
 | --- | --- | --- |
 | `npm test` | `jest.config.cjs` | Unit tests only; no browser or server needed |
-| `npm run test:e2e` | `jest.e2e.config.cjs` | Selenium E2E; needs a browser and a running LightNVR server |
+| `npm run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'` | `jest.e2e.config.cjs` | Component browser regressions; needs Playwright Chromium, no LightNVR server |
+| `npm run test:e2e` | `jest.e2e.config.cjs` | All E2E, including Selenium tests requiring a running LightNVR server |
 
-E2E is excluded from `npm test` on purpose — those specs drive a real browser
-against a live server, so they cannot pass in a plain checkout.
+E2E is excluded from `npm test`. Run the component browser command as well when
+changing API adapters or their consumers; CI runs it in integration shard 1.
+These tests bundle real components with isolated HTTP fixtures. Keep fixtures
+consistent with the native contract: `e2e/fleetFixtures.js` constructs complete
+location responses and validates them before launching the browser. Malformed
+response scenarios should remain explicitly malformed.
 
 ## Page Objects
 

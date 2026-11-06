@@ -1,9 +1,12 @@
 /** Favorites filtering and server-confirmed updates in the Live grid. */
 import { test, expect, Page } from '@playwright/test';
+import { collectionFixture, collectionsFixture, cameraQueryFixture } from '../fixtures/fleet-contracts';
+
+const yardCollection = '00000000-0000-4000-8000-000000000010';
 
 const streams = [
-  { name: 'Lobby', camera_uuid: 'camera-a', tags: 'Indoor' },
-  { name: 'Yard', camera_uuid: 'camera-b', tags: 'Outdoor' },
+  { name: 'Lobby', camera_uuid: '00000000-0000-4000-8000-000000000001', tags: 'Indoor' },
+  { name: 'Yard', camera_uuid: '00000000-0000-4000-8000-000000000002', tags: 'Outdoor' },
 ].map(stream => ({
   ...stream, enabled: true, streaming_enabled: true, status: 'Running',
   availability: 'live', playback_transport: 'mse_only',
@@ -40,8 +43,8 @@ async function mockLiveApi(page: Page, initialFavorites: string[] = []) {
       '/api/setup/status': { complete: true },
       '/api/streams': { streams, total_pages: 1 },
       '/api/camera-favorites': { favorites, can_modify: true },
-      '/api/camera-collections': { collections: [{ uuid: 'yard-only', name: 'Yard only' }] },
-      '/api/fleet/cameras/query': { cameras: [streams[1]], total_pages: 1 },
+      '/api/camera-collections': collectionsFixture([collectionFixture(yardCollection, 'Yard only', 1)]),
+      '/api/fleet/cameras/query': cameraQueryFixture([streams[1]]),
     };
     await route.fulfill({ json: responses[path] || {} });
   });
@@ -55,9 +58,9 @@ async function mockLiveApi(page: Page, initialFavorites: string[] = []) {
 
 for (const livePage of ['index.html', 'hls.html']) {
   test.describe(livePage, () => {
-    for (const filter of ['tag=Outdoor', 'collection=yard-only']) {
+    for (const filter of ['tag=Outdoor', `collection=${yardCollection}`]) {
       test(`favorites combined with ${filter} show a no-match message @ui @liveview`, async ({ page }) => {
-        await mockLiveApi(page, ['camera-a']);
+        await mockLiveApi(page, ['00000000-0000-4000-8000-000000000001']);
         await page.goto(`/${livePage}?mode=mse&favorites=1&${filter}`);
         await expect(page.getByRole('button', { name: 'Favorites', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await expect(page.locator('#video-grid')).toContainText('No cameras match this scope.');
@@ -79,7 +82,7 @@ for (const livePage of ['index.html', 'hls.html']) {
       await lobbyStar.click();
       const removeStar = page.getByRole('button', { name: 'Remove Lobby from favorites', exact: true });
       await expect(removeStar).toHaveAttribute('aria-pressed', 'true');
-      expect(api.writes).toEqual([{ method: 'PUT', cameraUuid: 'camera-a' }]);
+      expect(api.writes).toEqual([{ method: 'PUT', cameraUuid: '00000000-0000-4000-8000-000000000001' }]);
 
       await page.getByRole('button', { name: 'Favorites', exact: true }).click();
       await expect(page.locator('.video-cell[data-stream-name="Lobby"]').first()).toBeVisible();
@@ -94,7 +97,7 @@ for (const livePage of ['index.html', 'hls.html']) {
       await expect(page.getByText('Could not update favorites:', { exact: false })).toBeVisible();
       await expect(removeStar).toHaveAttribute('aria-pressed', 'true');
       await expect(page.locator('.video-cell[data-stream-name="Lobby"]').first()).toBeVisible();
-      expect(api.writes.at(-1)).toEqual({ method: 'DELETE', cameraUuid: 'camera-a' });
+      expect(api.writes.at(-1)).toEqual({ method: 'DELETE', cameraUuid: '00000000-0000-4000-8000-000000000001' });
 
       api.allowWrites();
       await removeStar.click();

@@ -1,5 +1,5 @@
+import { previewFleetSelector, queryFleetCameras } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
 import { buildLocationRows } from './fleetOrganization.ts';
 import {
   CAMERA_SELECTOR_RULE_TYPE,
@@ -9,8 +9,7 @@ import {
   createCollectionRule,
   parseCollectionSelector,
   updateCollectionRuleType,
-  validateCollectionSelectorJson,
-} from './collectionSelector.ts';
+  validateCollectionSelectorJson } from './collectionSelector.ts';
 import type {
   CollectionRule,
   CollectionSelectorChange,
@@ -21,8 +20,7 @@ import type {
   LocationLike,
   LocationRow,
   TagLike,
-  Translate,
-} from '../../../types/fleet.ts';
+  Translate } from '../../../types/fleet.ts';
 
 const fieldClasses = 'rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]';
 const HEALTH_OPTIONS = ['unknown', 'up', 'degraded', 'down', 'disabled'];
@@ -77,18 +75,11 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
   useEffect(() => {
     if (values.length === 0) return undefined;
     let active = true;
-    fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...requestHeaders },
-      body: JSON.stringify({
+    queryFleetCameras({
         selector: { version: 1, expression: { op: 'camera_uuid', values } },
         page: 1,
         page_size: Math.min(values.length, 64),
-        facets: false,
-      }),
-      timeout: 15000,
-      retries: 1,
-    }).then((response) => {
+        facets: false }, {headers: { 'Content-Type': 'application/json', ...requestHeaders }, timeout: 15000, retries: 1}).then((response) => {
       if (!active) return;
       setLabels((current) => {
         const next = { ...current };
@@ -113,19 +104,12 @@ export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeader
       setLoading(true);
       setError('');
       try {
-        const response = await fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...requestHeaders },
-          body: JSON.stringify({
+        const response = await queryFleetCameras({
             selector: { version: 1, expression: { op: 'all' } },
             search: query,
             page: 1,
             page_size: 20,
-            facets: false,
-          }),
-          timeout: 15000,
-          retries: 1,
-        });
+            facets: false }, {headers: { 'Content-Type': 'application/json', ...requestHeaders }, timeout: 15000, retries: 1});
         if (!active) return;
         const cameras = response.cameras || [];
         setResults(cameras);
@@ -353,13 +337,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
     setPreviewing(true);
     setPreviewError('');
     try {
-      const result = await fetchJSON<FleetQueryResponse>('/api/fleet/selectors/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify({ selector: currentSelector, page: 1, page_size: 20, facets: false, explain: true }),
-        timeout: 20000,
-        retries: 1,
-      });
+      const result = await previewFleetSelector({ selector: currentSelector, page: 1, page_size: 20, facets: false, explain: true }, {headers: { 'Content-Type': 'application/json', ...requestHeaders }, timeout: 20000, retries: 1});
       setPreview(result);
     } catch (error) {
       setPreviewError((error as Error).message);

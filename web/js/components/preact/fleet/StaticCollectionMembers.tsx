@@ -1,5 +1,6 @@
+import { queryFleetCameras } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON, useQuery } from '../../../query-client.ts';
+import { useQuery } from '../../../query-client.ts';
 import type { FleetQueryResponse, Translate } from '../../../types/fleet.ts';
 
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -29,17 +30,12 @@ export function StaticCollectionMembers({ selectedUuids, onChange, t }: StaticCo
     page_size: 25,
     sort_by: 'name',
     sort_order: 'asc',
-    facets: false,
-  }), [debouncedSearch, page]);
+    facets: false }), [debouncedSearch, page]);
   const { data, error, isLoading } = useQuery<FleetQueryResponse>({
     queryKey: ['collection-member-picker', request],
-    queryFn: ({ signal }) => fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request), signal, timeout: 20000, retries: 1,
-    }),
+    queryFn: ({ signal }) => queryFleetCameras(request, {headers: { 'Content-Type': 'application/json' }, signal, timeout: 20000, retries: 1}),
     staleTime: 15000,
-    placeholderData: (previous) => previous,
-  });
+    placeholderData: (previous) => previous });
   const cameras = data?.cameras || [];
   const selectedOnPage = cameras.filter((camera) => selected.has(camera.camera_uuid)).length;
   const allOnPage = cameras.length > 0 && selectedOnPage === cameras.length;

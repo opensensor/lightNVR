@@ -298,5 +298,54 @@
       "Legacy logout: negotiated JSON or empty 302 with Location; expired cookies and actual session revocation.",
       "No automatic mutation retries; stale enrollment responses discarded and secret state cleared on close/context change."
     ]
+  },
+  "fleet_reads": {
+    "operations": [
+      "queryFleetCameras",
+      "previewFleetSelector",
+      "listFleetViews",
+      "getFleetView",
+      "listCameraCollections",
+      "getCameraCollection",
+      "getCameraCollectionMembers",
+      "previewCameraCollection",
+      "listFleetLocations",
+      "getFleetLocation",
+      "listFleetTags",
+      "getFleetTag",
+      "getCameraTagAssignments"
+    ],
+    "cases": [
+      {
+        "principal": "administrator",
+        "inventory": "A and B; full counts and configuration flags"
+      },
+      {
+        "principal": "viewer A / token A",
+        "inventory": "A only; filtered rows, facets, organization and tag-assignment counts",
+        "camera_B": 403
+      },
+      {
+        "principal": "read A + configure B",
+        "inventory": "A only; A cannot be configured; no cross-camera conjunction"
+      },
+      {
+        "principal": "authenticated empty scope",
+        "inventory": "empty rows/facets; discovery still offers inventory queries",
+        "camera_tag_discovery": "absent"
+      },
+      {
+        "principal": "anonymous",
+        "discovery": 401,
+        "query": 401
+      }
+    ],
+    "acceptance": [
+      "Shared collections expose only visible members/counts; smart selectors redacted from non-owners; private and empty foreign collections return 404.",
+      "Owned/shared saved views list every matching row; private foreign views return 404. Stored selectors never grant camera authority.",
+      "Tag assignment GET and PUT responses use the same visible counts as the tag catalog.",
+      "Malformed query/catalog responses never render payloads; explicit Retry recovers.",
+      "Basic and legacy keys preserve existing access; scoped tokens intersect owner authority."
+    ]
   }
 }
