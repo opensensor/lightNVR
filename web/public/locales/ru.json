@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Выше верхнего порога",
   "system.storageTiers.pressure.reserve": "Ниже резерва",
   "system.storageTiers.pressure.unavailable": "Недоступно",
-  "system.storageTiers.sharedFilesystem": "Использует одну файловую систему с другим хранилищем"
+  "system.storageTiers.sharedFilesystem": "Использует одну файловую систему с другим хранилищем",
+  "streams.streamUpdateQueued": "Обновление потока в очереди; обновление текущего состояния.",
+  "auth.sessionVerificationUnavailable": "Не удалось проверить сеанс. Попробуйте ещё раз.",
+  "apiDocs.title": "Справочник API",
+  "apiDocs.intro": "Документация API только для чтения для текущего сеанса.",
+  "apiDocs.loading": "Проверка сеанса и загрузка доступных операций…",
+  "apiDocs.denied": "Войдите с учётной записью, которой разрешён просмотр справочника API.",
+  "apiDocs.unavailable": "Не удалось загрузить справочник API. Попробуйте ещё раз.",
+  "apiDocs.partial": "Этот справочник охватывает выбранные API. Отсутствие операций не означает отказ в доступе.",
+  "apiDocs.empty": "В этом справочнике нет доступных операций API для текущего сеанса."
 }

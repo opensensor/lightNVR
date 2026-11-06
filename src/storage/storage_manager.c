@@ -82,6 +82,8 @@ static struct {
     uint64_t total_space;
     uint64_t used_space;
     uint64_t reserved_space;
+    uint64_t startup_recording_id;
+    bool startup_recording_boundary_valid;
 } storage_manager = {
     .storage_path = "",
     .max_size = 0,
@@ -255,6 +257,17 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
     }
 
     log_info("Storage manager initialized with path: %s", storage_path);
+
+    /* main calls init_storage_manager after DB migration, before stream/HTTP
+     * initialization or recording threads. Capture here, synchronously: the
+     * controller may not run until after new writers start. AUTOINCREMENT and
+     * ID-less recording inserts keep every later writer above this boundary.
+     * Never replace a failed/empty capture with a background MAX(id) query. */
+    storage_manager.startup_recording_boundary_valid =
+        db_recordings_capture_startup_boundary(&storage_manager.startup_recording_id) == 0;
+    if (!storage_manager.startup_recording_boundary_valid) {
+        log_error("Failed to capture startup recording boundary; startup reconciliation will be skipped");
+    }
 
     /* Registration must precede system_health_start(). Scheduled refreshes
      * only wake this bounded slow-tier collector. */
@@ -1762,7 +1775,11 @@ static void* unified_storage_controller_func(void *arg) {
 
     // Reconcile recordings interrupted by an unclean shutdown (finalize survivors,
     // prune phantom rows). Done once on startup, off the main init path.
-    storage_reconcile_incomplete_recordings();
+    if (storage_manager.startup_recording_boundary_valid) {
+        if (storage_reconcile_startup_recordings(storage_manager.startup_recording_id) < 0) {
+            log_error("Startup recording reconciliation failed");
+        }
+    }
 
     // If we started already under capacity pressure, enforce the target now
     // rather than waiting for the first standard cycle (up to 15 minutes).
@@ -2036,19 +2053,21 @@ static bool stale_media_absence_is_authoritative(const recording_metadata_t *rec
 }
 
 // Reconcile recordings interrupted by an unclean shutdown (is_complete = 0).
-int storage_reconcile_incomplete_recordings(void) {
+static int reconcile_incomplete_recordings(bool startup, uint64_t startup_maximum_id) {
+    if (startup && startup_maximum_id > INT64_MAX) return -1;
+    if (startup && startup_maximum_id == 0) return 0;
     // Only touch rows old enough to be certain they are not actively recording.
     const int STALE_WINDOW_SEC = 3600;         // 1 hour
     const int RECONCILE_BATCH   = 500;
 
     if (get_db_handle() == NULL) {
-        return 0;
+        return startup ? -1 : 0;
     }
 
     recording_metadata_t *batch = calloc(RECONCILE_BATCH, sizeof(recording_metadata_t));
     if (!batch) {
         log_error("Reconcile: failed to allocate batch buffer");
-        return 0;
+        return startup ? -1 : 0;
     }
 
     int reconciled = 0;
@@ -2058,12 +2077,15 @@ int storage_reconcile_incomplete_recordings(void) {
     int unplayable = 0;
     int count;
     uint64_t after_id = 0;
-    uint64_t maximum_id = 0;
+    uint64_t maximum_id = startup_maximum_id;
     const time_t cutoff = time(NULL) - STALE_WINDOW_SEC;
 
     do {
-        count = get_stale_incomplete_recordings_page(batch, RECONCILE_BATCH, cutoff,
-                                                     after_id, &maximum_id);
+        count = startup
+            ? get_startup_incomplete_recordings_page(batch, RECONCILE_BATCH,
+                                                     after_id, maximum_id)
+            : get_stale_incomplete_recordings_page(batch, RECONCILE_BATCH, cutoff,
+                                                   after_id, &maximum_id);
         if (count <= 0) break;
 
         for (int i = 0; i < count; i++) {
@@ -2130,5 +2152,13 @@ int storage_reconcile_incomplete_recordings(void) {
         log_warn("Listed %d interrupted recordings with playback-check warnings; "
                  "normal retention and protection rules still apply", unplayable);
     }
-    return reconciled;
+    return startup && count < 0 ? -1 : reconciled;
+}
+
+int storage_reconcile_incomplete_recordings(void) {
+    return reconcile_incomplete_recordings(false, 0);
+}
+
+int storage_reconcile_startup_recordings(uint64_t maximum_id) {
+    return reconcile_incomplete_recordings(true, maximum_id);
 }

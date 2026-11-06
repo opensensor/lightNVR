@@ -85,6 +85,10 @@ int db_recording_tag_get_all_unique(char tags[][MAX_TAG_LENGTH], int max_tags);
 int db_recording_tag_get_unique_for_streams(
     const char *const *stream_names, int stream_count,
     char tags[][MAX_TAG_LENGTH], int max_tags);
+/* Authorized capture UUIDs; an empty scope yields no facets. */
+int db_recording_tag_get_unique_for_cameras(
+    const char *const *camera_uuids, int camera_count,
+    char tags[][MAX_TAG_LENGTH], int max_tags);
 
 /**
  * Add a tag to multiple recordings at once.

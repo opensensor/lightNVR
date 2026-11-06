@@ -5,7 +5,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { defineConfig } from 'vite';
 import { resolve, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import legacy from '@vitejs/plugin-legacy';
+import legacy, { cspHashes } from '@vitejs/plugin-legacy';
 import prefresh from '@prefresh/vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
@@ -16,6 +16,45 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MISSING_APP_JS_IMPORTERS = ['streams.html'];
 const MIN_COMPRESSION_SIZE_BYTES = 1024;
 const legacyBrowserSupport = process.env.LIGHTNVR_WEB_LEGACY !== 'false';
+const swaggerVendorFiles = new Map([
+  ['swagger-ui-bundle-5.34.1.js', 'swagger-ui-bundle.js'],
+  ['swagger-ui-5.34.1.css', 'swagger-ui.css'],
+  ['LICENSE', 'LICENSE'],
+  ['swagger-ui-bundle.js.LICENSE.txt', 'swagger-ui-bundle.js.LICENSE.txt'],
+]);
+
+// Copy the pinned, self-contained distribution as bytes. It never enters the
+// React-to-Preact alias pipeline or a normal application's module graph.
+const apiDocsVendorPlugin = () => ({
+  name: 'api-docs-standalone-vendor',
+  async buildStart() {
+    const metadata = JSON.parse(await fsPromises.readFile(resolve(__dirname, 'node_modules/swagger-ui-dist/package.json'), 'utf8'));
+    if (metadata.version !== '5.34.1') throw new Error('Review the API explorer before changing Swagger UI 5.34.1');
+  },
+  transformIndexHtml(html, context) {
+    if (basename(context.filename) !== 'api-docs.html') return html;
+    return html.replace('__API_DOCS_LEGACY_HASHES__', cspHashes.map(hash => `'sha256-${hash}'`).join(' '));
+  },
+  async generateBundle() {
+    for (const [output, input] of swaggerVendorFiles) {
+      this.emitFile({ type: 'asset', fileName: `api-docs-vendor/${output}`,
+        source: await fsPromises.readFile(resolve(__dirname, 'node_modules/swagger-ui-dist', input)) });
+    }
+  },
+  configureServer(server) {
+    server.middlewares.use(async (request, response, next) => {
+      const prefix = '/api-docs-vendor/';
+      const pathname = request.url?.split('?')[0] || '';
+      if (!pathname.startsWith(prefix)) return next();
+      const source = swaggerVendorFiles.get(pathname.slice(prefix.length));
+      if (!source) { response.statusCode = 404; response.end(); return; }
+      try {
+        response.setHeader('Content-Type', source.endsWith('.js') ? 'text/javascript' : source.endsWith('.css') ? 'text/css' : 'text/plain');
+        response.end(await fsPromises.readFile(resolve(__dirname, 'node_modules/swagger-ui-dist', source)));
+      } catch (error) { next(error); }
+    });
+  },
+});
 const configuredLocales = new Set(
   (process.env.LIGHTNVR_WEB_LOCALES || '')
     .split(',')
@@ -191,6 +230,7 @@ export default defineConfig({
         plates: resolve(__dirname, 'plates.html'),
         users: resolve(__dirname, 'users.html'),
         hls: resolve(__dirname, 'hls.html'),
+        'api-docs': resolve(__dirname, 'api-docs.html'),
       },
       output: {
         // Ensure CSS files are properly named and placed, with hashes for cache busting
@@ -215,6 +255,7 @@ export default defineConfig({
 
   // Configure plugins
   plugins: [
+    apiDocsVendorPlugin(),
     ...(process.env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
       org: 'opensensor-engineering', project: 'lightnvr-web',
       authToken: process.env.SENTRY_AUTH_TOKEN,

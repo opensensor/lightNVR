@@ -187,7 +187,7 @@ function SnapshotPlaceholder({ label }: { label: string }) {
  *
  * @param {Object} props
  * @param {Object} props.stream                 Stream record from /api/streams
- * @param {boolean} props.canModifyStreams      Whether user may edit/delete
+ * @param {boolean} props.canModifyStreams      Existing clone/delete/bulk control gate
  * @param {boolean} props.shouldHideCredentials Whether to mask URL creds
  * @param {boolean} props.selectionMode         Whether bulk-select is active
  * @param {boolean} props.isSelected            Whether THIS card is selected
@@ -213,6 +213,9 @@ export function StreamCard({
   onDisable,
   t
 }: StreamCardProps) {
+  // The covered PUT/edit workflow follows the server's camera-specific decision.
+  // Clone, delete and bulk controls retain their separate existing gate.
+  const canUpdateStream = stream.can_configure === true;
   const [snapshotBroken, setSnapshotBroken] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const snapshotContainerRef = useRef<HTMLDivElement | null>(null);
@@ -230,7 +233,7 @@ export function StreamCard({
     ? t('streams.recordingModesList', { modes: modes.join(', ') })
     : t('streams.notRecording');
   const transportLabel = protocolLabel(stream);
-  const hasAdminLauncher = !shouldHideCredentials &&
+  const hasAdminLauncher = stream.can_configure && !shouldHideCredentials &&
     /^https?:\/\//i.test(stream.admin_url || '');
 
   const finishSnapshotRequest = () => {
@@ -338,7 +341,6 @@ export function StreamCard({
               color: 'white',
               opacity: stream.enabled ? 1 : 0.6
             }}
-            title={stream.error_message || undefined}
           >
             {statusLabel}
           </span>
@@ -429,7 +431,7 @@ export function StreamCard({
             </a>
           )}
 
-          {canModifyStreams && (
+          {canUpdateStream && (
             <button
               type="button"
               class="p-1.5 rounded-md min-h-11 min-w-11 inline-flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
@@ -470,7 +472,7 @@ export function StreamCard({
 
           {/* Enable/Disable toggle — network-bound, so AsyncButton
               so the #399 rapid-tap double-submit can't fire twice. */}
-          {canModifyStreams && (
+          {canUpdateStream && (
             stream.enabled ? (
               <AsyncButton
                 type="button"
@@ -530,7 +532,7 @@ export function StreamCard({
             </button>
           )}
 
-          {!canModifyStreams && !hasAdminLauncher && (
+          {!canUpdateStream && !canModifyStreams && !hasAdminLauncher && (
             <span class="text-muted-foreground text-xs">—</span>
           )}
         </div>

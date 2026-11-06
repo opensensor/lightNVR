@@ -17,6 +17,13 @@
 #include "database/db_storage_targets.h"
 
 // Recording metadata structure
+/* Capture identity is authoritative. Only legacy NULL/empty UUIDs resolve
+ * through the current name. Never resolve an authorized name into a UUID here. */
+#define DB_CAPTURE_CAMERA_IDENTITY_SQL(alias) \
+    "COALESCE(NULLIF(" alias ".camera_uuid,''),(SELECT camera_uuid FROM streams WHERE name=" alias ".stream_name))"
+#define DB_CAPTURE_CAMERA_MATCH_SQL(left, right) \
+    DB_CAPTURE_CAMERA_IDENTITY_SQL(left) " = " DB_CAPTURE_CAMERA_IDENTITY_SQL(right)
+
 typedef struct {
     uint64_t id;
     char stream_name[64];
@@ -175,6 +182,15 @@ int get_recording_count(time_t start_time, time_t end_time,
                        const char * const *allowed_streams, int allowed_streams_count,
                        const char *tag_filter, const char *capture_method_filter,
                        bool include_in_progress);
+/* Explicit authorized UUID scope; NULL/zero scope returns no rows.
+ * stream_name remains an optional historical-name predicate. HTTP callers
+ * intersect requested current names with their captured fleet before calling. */
+int get_recording_count_for_cameras(time_t start_time, time_t end_time,
+                       const char *stream_name, int has_detection,
+                       const char *detection_label, int protected_filter,
+                       const char * const *camera_uuids, int camera_count,
+                       const char *tag_filter, const char *capture_method_filter,
+                       bool include_in_progress);
 
 /**
  * Get paginated recording metadata from the database with sorting.
@@ -211,6 +227,19 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
                                    const char * const *allowed_streams, int allowed_streams_count,
+                                   const char *tag_filter, const char *capture_method_filter,
+                                   bool include_in_progress);
+/* Explicit authorized UUID scope; NULL/zero scope returns no rows.
+ * stream_name remains an optional historical-name predicate. HTTP callers
+ * intersect requested current names with their captured fleet before calling. */
+int get_recording_metadata_paginated_for_cameras(time_t start_time, time_t end_time,
+                                   const char *stream_name, int has_detection,
+                                   const char *detection_label,
+                                   int protected_filter,
+                                   const char *sort_field, const char *sort_order,
+                                   recording_metadata_t *metadata,
+                                   int limit, int offset,
+                                   const char * const *camera_uuids, int camera_count,
                                    const char *tag_filter, const char *capture_method_filter,
                                    bool include_in_progress);
 
@@ -310,6 +339,9 @@ int get_recordings_for_retention(const char *stream_name,
 int get_protected_recordings_count(const char *stream_name);
 int get_protected_recordings_count_for_streams(
     const char *const *stream_names, int stream_count);
+int get_protected_recordings_count_for_cameras(
+    const char *const *camera_uuids, int camera_count);
+
 
 /**
  * Get recordings for quota enforcement.
@@ -415,6 +447,18 @@ int get_recordings_for_pressure_cleanup_default_target(
  */
 int get_stale_incomplete_recordings_page(recording_metadata_t *recordings, int max_count,
                                          time_t cutoff, uint64_t after_id, uint64_t *maximum_id);
+
+/* Capture before this process starts any recording/HTTP writers. Recordings
+ * use AUTOINCREMENT IDs; supported inserts never supply or reuse an ID.
+ * Returns 0 on success (including an empty boundary of zero), -1 on failure.
+ * Failure clears the output and must not authorize an unrestricted scan. */
+int db_recordings_capture_startup_boundary(uint64_t *maximum_id);
+
+/* No age exclusion, but never reads beyond the caller's immutable boundary.
+ * Unlike the stale helper, page one does not replace maximum_id. A boundary
+ * of zero is empty even if new recordings have since been inserted. */
+int get_startup_incomplete_recordings_page(recording_metadata_t *recordings,
+    int max_count, uint64_t after_id, uint64_t maximum_id);
 
 /**
  * Get total storage bytes used by a stream from the database

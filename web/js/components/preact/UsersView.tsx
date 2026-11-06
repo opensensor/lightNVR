@@ -3,7 +3,7 @@
  * Preact component for the user management page
  */
 
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
@@ -209,6 +209,7 @@ export function UsersView() {
     }
   });
 
+  const clearLoginLockoutInFlight = useRef(false);
   const clearLoginLockoutMutation = useMutation<ClearLoginLockoutResponse, Error, number>({
     mutationFn: async (userId) => {
       return await fetchJSON<ClearLoginLockoutResponse>(`/api/auth/users/${userId}/login-lockout/clear`, {
@@ -226,7 +227,8 @@ export function UsersView() {
     onError: (error) => {
       console.error('Error clearing login lockout:', error);
       showStatusMessage(t('users.loginLockoutClearError', { message: error.message }), 'error', 8000);
-    }
+    },
+    onSettled: () => { clearLoginLockoutInFlight.current = false; }
   });
 
   const { mutateAsync: addUserMutateAsync } = addUserMutation;
@@ -281,7 +283,9 @@ export function UsersView() {
   }, [selectedUser, deleteUserMutation]);
 
   const handleClearLoginLockout = useCallback(() => {
-    if (!selectedUser?.id) return;
+    if (!selectedUser?.id || clearLoginLockoutInFlight.current) return;
+    // Gate repeat events before the observer's pending render reaches the button.
+    clearLoginLockoutInFlight.current = true;
 
     console.log('Clearing login lockout for user:', selectedUser.id, selectedUser.username);
     clearLoginLockoutMutation.mutate(selectedUser.id);
@@ -484,7 +488,7 @@ export function UsersView() {
           handleInputChange={handleInputChange}
           handleEditUser={handleEditUser}
           handleClearLoginLockout={handleClearLoginLockout}
-          isClearingLoginLockout={clearLoginLockoutMutation.isPending}
+          isClearingLoginLockout={clearLoginLockoutMutation.isLoading}
           showRoleField={selectedUser!.authorization_mode !== 'policy'}
           onClose={closeModal}
         />

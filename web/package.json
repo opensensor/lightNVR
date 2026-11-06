@@ -30,6 +30,7 @@
     "htm": "^3.1.1",
     "preact": "^11.1.1",
     "qrcode": "^1.5.4",
+    "swagger-ui-dist": "5.34.1",
     "tailwindcss": "^4.3.3",
     "tinykeys": "^4.0.1",
     "webrtc-adapter": "^9.0.6"

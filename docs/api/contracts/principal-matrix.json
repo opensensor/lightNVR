@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "cameras": [
+    "A",
+    "B"
+  ],
+  "cases": [
+    {
+      "id": "anonymous",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "No credential, auth enabled, demo disabled",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "admin",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getStreamFull",
+        "updateStream",
+        "getOpenApi"
+      ],
+      "assertions": "All pilot operations; still authorize each call",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "viewer_a",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getStreamFull",
+        "getOpenApi"
+      ],
+      "assertions": "live.view on A; direct B forbidden; redacted full",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "configure_a_only",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "updateStream",
+        "getOpenApi"
+      ],
+      "assertions": "Configure A does not imply live.view; list is empty",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "mixed_scope",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getStreamFull",
+        "updateStream",
+        "getOpenApi"
+      ],
+      "assertions": "Read A/B, configure A; full and redacted per resource",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "split_actions",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getStreamFull",
+        "updateStream",
+        "getOpenApi"
+      ],
+      "assertions": "Read A, configure B; no same-resource configured full variant",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "empty_scope",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getOpenApi"
+      ],
+      "assertions": "Valid selector matches zero cameras",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "admin_read_token_a",
+      "discovery_status": 200,
+      "expected_operations": [
+        "listStreams",
+        "getStreamFull",
+        "getOpenApi"
+      ],
+      "assertions": "Broad owner narrowed by token action and A scope",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "owner_two_tokens",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "Two same-owner tokens with disjoint A/B scopes; compare direct calls and no cross-token caching",
+      "expected_operations_are_exhaustive": false
+    },
+    {
+      "id": "expired_token",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "Expiry independently checked; no cookie fallback in test context",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "revoked_token",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "Next request rejected after revocation",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "inactive_owner",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "Next request rejected after deactivation",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "demo_anonymous",
+      "discovery_status": 403,
+      "expected_operations": [],
+      "assertions": "Synthetic demo principal is not personalized discovery",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "auth_disabled",
+      "discovery_status": 403,
+      "expected_operations": [],
+      "assertions": "Synthetic admin must not expose administrative projection",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "health_selector",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "Raw/runtime/live observations reproduce operation-specific selector differences",
+      "expected_operations_are_exhaustive": false
+    },
+    {
+      "id": "cookie_with_token",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "Existing session precedence preserved, separate from cookie-free token tests",
+      "expected_operations_are_exhaustive": false
+    },
+    {
+      "id": "password_change_required",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "Session/Basic gate preserved; separately test scoped token exemption",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "cidr_rejected",
+      "discovery_status": 401,
+      "expected_operations": [],
+      "assertions": "Effective peer restrictions preserved",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "snapshot_failure",
+      "discovery_status": 500,
+      "expected_operations": [],
+      "assertions": "No canonical fallback; generic JSON error",
+      "expected_operations_are_exhaustive": true
+    },
+    {
+      "id": "concurrent_policy_change",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "One coherent DB observation; next request sees change",
+      "expected_operations_are_exhaustive": false
+    },
+    {
+      "id": "membership_change",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "Collection and tag membership are from same DB observation",
+      "expected_operations_are_exhaustive": false
+    },
+    {
+      "id": "authenticated_demo",
+      "discovery_status": 200,
+      "expected_operations": [],
+      "assertions": "Real identity retains camera.configure decisions: demo mode has no blanket Streams mutation restriction. Confirm direct update and discovery agree over HTTP.",
+      "expected_operations_are_exhaustive": false
+    }
+  ],
+  "common_assertions": [
+    "Cache-Control private,no-store on responses",
+    "No camera/user/token/grant identifiers or credentials in projected examples/metadata",
+    "Valid local refs and no hidden unreachable components",
+    "Denied/invalid writes preserve configuration",
+    "Mixed-permission rows do not imply all-resource privilege",
+    "No whole-API coverage claim from partial spec"
+  ]
+}

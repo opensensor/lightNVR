@@ -52,11 +52,12 @@ void fleet_health_apply_go2rtc_activity(
     }
 }
 
-void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras,
+int fleet_health_capture_go2rtc_activity(fleet_camera_t *cameras,
                                          int camera_count) {
-    if (!cameras || camera_count <= 0 ||
+    if (camera_count < 0 || (!cameras && camera_count > 0)) return -1;
+    if (camera_count == 0 ||
         !go2rtc_integration_is_initialized()) {
-        return;
+        return 0;
     }
 
     go2rtc_stream_activity_t *activity =
@@ -66,7 +67,7 @@ void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras,
     if (!activity || !substream_names) {
         free(activity);
         free(substream_names);
-        return;
+        return -1;
     }
 
     size_t activity_count = 0;
@@ -94,4 +95,9 @@ void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras,
     }
     free(substream_names);
     free(activity);
+    return 0;
+}
+
+void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras, int count) {
+    (void)fleet_health_capture_go2rtc_activity(cameras, count);
 }

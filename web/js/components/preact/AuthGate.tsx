@@ -147,20 +147,47 @@ export function RequiredPasswordChange({ session }: { session: SessionInfo }) {
 export function AuthGate({ children }: { children?: ComponentChildren }) {
   const { t } = useI18n();
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    validateSession().then((result) => {
-      if (!active) return;
-      if (!result.valid) {
+    const controller = new AbortController();
+    setUnavailable(false);
+    const cleared = () => {
+      controller.abort();
+      setSession(null);
+      setUnavailable(false);
+    };
+    window.addEventListener('lightnvr:auth-cleared', cleared);
+    validateSession({signal: controller.signal}).then((result) => {
+      if (!active || controller.signal.aborted) return;
+      if (result.status === 'invalid') {
         clearAuthState();
         redirectToLogin('session_expired');
         return;
       }
+      if (!result.valid) {
+        setUnavailable(true);
+        return;
+      }
       setSession(result);
     });
-    return () => { active = false; };
-  }, []);
+    return () => {
+      active = false;
+      controller.abort();
+      window.removeEventListener('lightnvr:auth-cleared', cleared);
+    };
+  }, [attempt]);
+
+  if (!session && unavailable) {
+    return <section className="flex min-h-screen flex-col items-center justify-center gap-4" role="alert">
+      <p>{t('auth.sessionVerificationUnavailable')}</p>
+      <button type="button" className="btn btn-primary" onClick={() => setAttempt(value => value + 1)}>
+        {t('common.retry')}
+      </button>
+    </section>;
+  }
 
   if (!session) {
     return <div className="flex min-h-screen items-center justify-center">{t('common.loading')}</div>;

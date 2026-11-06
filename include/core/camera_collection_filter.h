@@ -9,6 +9,7 @@
 #define LIGHTNVR_CAMERA_COLLECTION_FILTER_H
 
 #include <stdbool.h>
+#include <sqlite3.h>
 
 #include "core/authorization.h"
 #include "core/camera_selector.h"
@@ -36,6 +37,9 @@ camera_collection_filter_result_t camera_collection_filter_load(
 camera_collection_filter_result_t
 camera_collection_filter_load_for_authorization(
     const char *collection_uuid, camera_collection_filter_t *filter);
+/* Shared authorization collection read through a borrowed snapshot connection. */
+camera_collection_filter_result_t camera_collection_filter_load_on_connection(
+    sqlite3 *connection, const char *collection_uuid, camera_collection_filter_t *filter);
 void camera_collection_filter_free(camera_collection_filter_t *filter);
 bool camera_collection_filter_matches(
     const camera_collection_filter_t *filter, const fleet_camera_t *camera);

@@ -169,3 +169,25 @@ Vite uses a slightly different output structure than Snowpack:
 - The migration maintains the same functionality as the Snowpack build
 - Vite provides better performance and more features
 - The build process is faster with Vite
+
+## Generated API contracts
+
+`npm run contracts:generate -- --target=web` from the repository root generates
+`web/generated/api/schema.d.ts`, `validators.js` and `validators.d.ts` from the
+canonical OpenAPI JSON. The directory is entirely generated; put adapters and
+form-state helpers under `web/js/api/`, not in generated output. `contracts:check`
+fails on drift or extra files without modifying them.
+
+Standalone validator JS lives outside the handwritten `web/js` tree. It is not
+checked application TypeScript merely because adjacent declarations exist.
+Generator/drift tests and positive/negative runtime fixtures establish the
+boundary; declarations accept `unknown` and have strict consumer tests with
+library checking enabled. Preserve the existing handwritten JS allowlist and
+all application TS checks. No Ajv schema compiler is loaded in the browser.
+
+`swagger-ui-dist` is reserved for the separate API docs entry. Use the standalone
+prebundled distribution without routing its internal runtime through Preact
+aliases. Never import it from shared page entries. T15 supplies the docs-only
+entry and verifies that normal application pages do not fetch those assets.
+See [contract toolchain](../docs/api/contracts/toolchain.md) for commands and
+artifact interfaces.

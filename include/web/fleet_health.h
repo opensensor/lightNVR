@@ -27,5 +27,7 @@ void fleet_health_apply_go2rtc_activity(
  * camera. If go2rtc is busy, retain the runtime health already observed. */
 void fleet_health_enrich_go2rtc_activity(fleet_camera_t *cameras,
                                          int camera_count);
+/* Allocation errors return -1; disabled/unavailable go2rtc keeps runtime facts. */
+int fleet_health_capture_go2rtc_activity(fleet_camera_t *cameras, int camera_count);
 
 #endif /* LIGHTNVR_WEB_FLEET_HEALTH_H */

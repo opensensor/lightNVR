@@ -10,6 +10,16 @@ or hardware acceptance may still remain where the individual PRD says so.
 
 ## Active PRDs
 
+### Engineering
+
+| PRD | Topic | Current state |
+| --- | --- | --- |
+| [Engineering 01 — Hardening & Permission-Aware API Contracts](ENG_01_Safety_Contracts_TypeScript.md) | Canonical OpenAPI JSON, discovery scoped to the current user/token, API validation, and operational regressions | Locally accepted on 2026-11-05: 33 contracted operations, recording authorization/recovery hardening and explicit follow-on scope; TS/TSX already landed in #765; Rust remains postponed |
+
+Engineering 01 was restored from the superseded #693 PRD and rewritten against
+current `main`. Its earlier engineering-foundation task tracker is retired.
+The other roadmap entries below retain their separately dated status reviews.
+
 ### UX / Design
 
 | PRD | Topic | Driving issues |

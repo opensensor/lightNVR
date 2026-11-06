@@ -5,9 +5,10 @@
  * @tags @ui @streams
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { StreamsPage } from '../pages/StreamsPage';
 import { CONFIG, USERS, login, sleep, getAuthHeader } from '../fixtures/test-fixtures';
+import { streamSummary, streamSummaryPage } from '../fixtures/stream-summary';
 
 /**
  * Check if the lightNVR server is responsive
@@ -209,7 +210,7 @@ test.describe('Streams Page @ui @streams', () => {
     const MOCK_STREAM_NAME = 'test_pattern';
 
     // Minimal stream list + full-detail stubs for route-based clone tests
-    async function setupCloneMocks(page: any) {
+    async function setupCloneMocks(page: Page) {
       await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
         json: { streams: [{
           name: MOCK_STREAM_NAME,
@@ -356,23 +357,13 @@ test.describe('Streams Page @ui @streams', () => {
     test('should link to the configured camera admin page', async ({ page }) => {
       const adminUrl = 'https://camera.example/admin';
       await page.route(/\/api\/streams(?:\?.*)?$/, route => route.fulfill({
-        json: {
-          streams: [{
-            name: 'admin_link_camera',
-            admin_url: adminUrl,
-            enabled: true,
-            status: 'Running',
-            width: 1920,
-            height: 1080,
-            fps: 25,
-            codec: 'h264',
-            protocol: 0,
-            record: true,
-            can_configure: true,
-          }],
-          total: 1,
-          total_pages: 1,
-        },
+        json: streamSummaryPage([streamSummary('admin_link_camera', {
+          admin_url: adminUrl,
+          width: 1920,
+          height: 1080,
+          fps: 25,
+          record: true,
+        })]),
       }));
 
       const streamsPage = new StreamsPage(page);

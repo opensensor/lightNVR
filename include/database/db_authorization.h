@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 #include "core/config.h"
 #include "database/db_auth.h"
@@ -99,6 +100,12 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
 int db_authorization_get_policy_version(int64_t *version);
 /* Request-side metadata read without waiting for the shared writer. */
 int db_authorization_get_policy_version_readonly(int64_t *version);
+
+/* Borrowed connection: caller owns its transaction and synchronization. */
+int db_authorization_get_policy_version_on_connection(sqlite3 *db, int64_t *version);
+int db_authorization_load_user_grants_on_connection(sqlite3 *db, int64_t user_id,
+    const char *action_key, authorization_grant_t **grants, int *grant_count,
+    int64_t *policy_version);
 
 /* Create a validated user grant and bump the policy version atomically. */
 int db_authorization_create_user_grant(

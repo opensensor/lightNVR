@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Über der oberen Schwelle",
   "system.storageTiers.pressure.reserve": "Unter der Reserve",
   "system.storageTiers.pressure.unavailable": "Nicht verfügbar",
-  "system.storageTiers.sharedFilesystem": "Teilt ein Dateisystem mit einem anderen Ziel"
+  "system.storageTiers.sharedFilesystem": "Teilt ein Dateisystem mit einem anderen Ziel",
+  "streams.streamUpdateQueued": "Stream-Aktualisierung eingereiht; aktueller Status wird neu geladen.",
+  "auth.sessionVerificationUnavailable": "Deine Sitzung konnte nicht überprüft werden. Versuche es erneut.",
+  "apiDocs.title": "API-Referenz",
+  "apiDocs.intro": "Schreibgeschützte API-Dokumentation für deine aktuelle Sitzung.",
+  "apiDocs.loading": "Sitzung wird überprüft und verfügbare Operationen werden geladen…",
+  "apiDocs.denied": "Melde dich mit einem Konto an, das die API-Referenz ansehen darf.",
+  "apiDocs.unavailable": "Die API-Referenz konnte nicht geladen werden. Versuche es erneut.",
+  "apiDocs.partial": "Diese Referenz umfasst ausgewählte APIs. Fehlende Operationen bedeuten keine Zugriffsverweigerung.",
+  "apiDocs.empty": "Für die aktuelle Sitzung sind in dieser Referenz keine API-Operationen verfügbar."
 }

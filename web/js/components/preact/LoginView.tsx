@@ -222,13 +222,14 @@ export function LoginView() {
         console.log('Login successful, proceeding to redirect');
 
         if (data.must_change_password) {
-          window.location.href = '/index.html';
+          window.location.replace('/index.html');
           return;
         }
 
-        // Redirect to the requested page, or the index if none / unsafe.
+        // Replace the login entry so Back cannot mount it again and revoke
+        // the fresh session via the stale-session logout effect.
         const urlParams = new URLSearchParams(window.location.search);
-        window.location.href = safeRedirectPath(urlParams.get('redirect'));
+        window.location.replace(safeRedirectPath(urlParams.get('redirect')));
       } else {
         // Failed login
         setIsLoggingIn(false);
@@ -272,7 +273,7 @@ export function LoginView() {
         console.log('TOTP verification successful, proceeding to redirect');
 
         const redirectParams = new URLSearchParams(window.location.search);
-        window.location.href = safeRedirectPath(redirectParams.get('redirect'));
+        window.location.replace(safeRedirectPath(redirectParams.get('redirect')));
       } else {
         const data = await response.json() as { error?: string };
         setIsLoggingIn(false);

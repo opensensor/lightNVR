@@ -237,6 +237,11 @@ add_layer2_test(test_api_handlers_investigation_bookmarks)
 add_layer2_test(test_db_camera_collections)
 add_layer2_test(test_api_handlers_camera_collections)
 add_layer2_test(test_db_recordings_extended CI_UNIT CI_SANITIZER)
+add_layer2_test(test_recording_camera_scope CI_UNIT CI_SANITIZER)
+target_link_options(test_recording_camera_scope PRIVATE
+    -Wl,--wrap=db_open_readonly_connection
+    -Wl,--wrap=sqlite3_step)
+set_tests_properties(test_recording_camera_scope PROPERTIES TIMEOUT 30)
 add_layer2_test(test_api_handlers_recordings_list)
 add_layer2_test(test_recording_transcode)
 add_layer2_test(test_api_handlers_recordings_playback CI_UNIT)
@@ -274,6 +279,30 @@ target_link_options(test_api_handlers_zones PRIVATE
 add_layer2_test(test_db_events CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_auth CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
+add_layer2_test(test_openapi_projection CI_UNIT CI_SANITIZER)
+target_link_options(test_openapi_projection PRIVATE
+    "-Wl,--wrap=authorization_snapshot_camera_count"
+    "-Wl,--wrap=authorization_snapshot_allows_non_scoped_identity"
+    "-Wl,--wrap=authorization_snapshot_evaluate")
+set_tests_properties(test_openapi_projection PROPERTIES TIMEOUT 30)
+add_layer2_test(test_api_handlers_openapi CI_UNIT CI_SANITIZER)
+target_link_options(test_api_handlers_openapi PRIVATE
+    "-Wl,--wrap=authorization_snapshot_create"
+    "-Wl,--wrap=openapi_project"
+    "-Wl,--wrap=http_response_set_body"
+    "-Wl,--wrap=cJSON_PrintUnformatted")
+set_tests_properties(test_api_handlers_openapi PROPERTIES TIMEOUT 30)
+add_layer3_test(test_libuv_handler_lifecycle CI_UNIT CI_SANITIZER)
+set_tests_properties(test_libuv_handler_lifecycle PROPERTIES TIMEOUT 25)
+add_layer2_test(test_authorization_snapshot CI_UNIT CI_SANITIZER)
+target_link_options(test_authorization_snapshot PRIVATE
+    -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc
+    -Wl,--wrap=sqlite3_prepare_v2 -Wl,--wrap=time
+    -Wl,--wrap=metrics_get_max_streams -Wl,--wrap=metrics_snapshot_all
+    -Wl,--wrap=authorization_evaluate_in_context
+    -Wl,--wrap=go2rtc_integration_is_initialized
+    -Wl,--wrap=go2rtc_api_get_stream_activity)
+set_tests_properties(test_authorization_snapshot PROPERTIES TIMEOUT 30)
 add_layer2_test(test_api_handlers_users CI_UNIT)
 add_layer2_test(test_audit_log CI_SANITIZER)
 add_layer2_test(test_audit_summary CI_SANITIZER)

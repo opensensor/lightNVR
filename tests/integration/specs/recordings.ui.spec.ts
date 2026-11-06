@@ -5,7 +5,7 @@
  * @tags @ui @recordings
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { RecordingsPage } from '../pages/RecordingsPage';
 import { USERS, login, sleep } from '../fixtures/test-fixtures';
 import { serveRecordingMedia } from '../fixtures/recording-media';
@@ -375,7 +375,7 @@ test.describe('Recordings Page @ui @recordings', () => {
       });
 
       await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:12');
-      await expect.poll(() => page.locator('#video-preview-modal video').evaluate(video => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
+      await expect.poll(() => page.locator('#video-preview-modal video').evaluate((video: HTMLVideoElement & {controlsList?: DOMTokenList}) => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
       await expect(page.locator('#detection-overlay-checkbox')).toBeEnabled();
 
       await page.locator('#detection-overlay-checkbox').check();
@@ -562,7 +562,7 @@ test.describe('Recordings Page @ui @recordings', () => {
 
   test.describe('i18n — table column headers and toolbar labels', () => {
     /** Shared route setup for recordings table i18n tests */
-    async function setupRecordingsMocks(page: any) {
+    async function setupRecordingsMocks(page: Page) {
       await page.addInitScript(() => {
         localStorage.setItem('recordings_view_mode', 'table');
       });

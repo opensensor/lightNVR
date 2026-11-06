@@ -862,23 +862,56 @@ int httpd_authorize_stream_action_with_context(
     return 1;
 }
 
+int httpd_evaluate_camera_identity_action(const user_t *user,
+    authorization_action_t action, const char *camera_uuid,
+    const char *legacy_stream_name, authorization_evaluation_t *evaluation) {
+    if (!user || !evaluation) return -1;
+    memset(evaluation, 0, sizeof(*evaluation));
+    fleet_camera_t camera = {0};
+    int result = camera_uuid && camera_uuid[0]
+        ? db_fleet_camera_find_by_uuid_readonly(camera_uuid, &camera)
+        : db_fleet_camera_find_by_name_readonly(legacy_stream_name, &camera);
+    if (result != 0) return result;
+    return authorization_evaluate(user, action, &camera, evaluation);
+}
+
 int httpd_authorize_camera_identity_action_with_context(
     const http_request_t *req, http_response_t *res,
     authorization_action_t action, const char *camera_uuid,
     const char *legacy_stream_name, user_t *user, fleet_camera_t *camera,
     authorization_evaluation_t *evaluation) {
-    if (camera_uuid && camera_uuid[0] != '\0') {
-        stream_config_t stream;
-        memset(&stream, 0, sizeof(stream));
-        if (get_stream_config_by_uuid(camera_uuid, &stream) != 0) {
-            http_response_set_json_error(res, 404, "Camera not found");
-            return 0;
-        }
+    if (!camera_uuid || !camera_uuid[0]) {
         return httpd_authorize_stream_action_with_context(
-            req, res, action, stream.name, user, camera, evaluation);
+            req, res, action, legacy_stream_name, user, camera, evaluation);
     }
-    return httpd_authorize_stream_action_with_context(
-        req, res, action, legacy_stream_name, user, camera, evaluation);
+    if (!req || !res || !user || !camera || !evaluation) return 0;
+    memset(user, 0, sizeof(*user));
+    memset(camera, 0, sizeof(*camera));
+    memset(evaluation, 0, sizeof(*evaluation));
+    /* Preserve UUID route's resource-not-found ordering, but retain the UUID
+     * lookup result for authorization rather than looking the name up again. */
+    int result = db_fleet_camera_find_by_uuid_readonly(camera_uuid, camera);
+    if (result > 0) {
+        http_response_set_json_error(res, 404, "Camera not found");
+        return 0;
+    }
+    if (!httpd_check_action_access(req, user)) {
+        audit_log_authorization(req, NULL, action, NULL, NULL, "denied");
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return 0;
+    }
+    if (result < 0 || authorization_evaluate(user, action, camera, evaluation) != 0) {
+        audit_log_authorization(req, user, action, camera, result < 0 ? NULL : evaluation, "error");
+        http_response_set_json_error(res, 500, "Authorization policy evaluation failed");
+        return 0;
+    }
+    if (evaluation->decision != AUTHZ_DECISION_ALLOW) {
+        audit_log_authorization(req, user, action, camera, evaluation, "denied");
+        http_response_set_json_error(res, 403, "Forbidden");
+        return 0;
+    }
+    audit_log_authorization(req, user, action, camera, evaluation, "allowed");
+    return 1;
 }
 
 void httpd_sanitize_attachment_filename(const char *input, char *output,

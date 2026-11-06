@@ -14,11 +14,18 @@ enforced by `GET /api/authorization/actions`.
 | `GET /api/setup/status` | Intentional public setup state |
 | `POST /api/setup/status` | Public only until setup completes; afterward one centralized `system.admin` decision and audited outcome |
 | `GET /api/health`, `GET /api/health/hls` | Intentional deployment health probes |
+| `GET /api/openapi.json` | Authenticated current-principal projection; rejects synthetic auth-disabled/anonymous-demo principals; camera eligibility and conditional models reuse the central evaluator with captured raw/runtime/live observations; private/no-store and fail closed |
 | `GET /api/metrics` | `system.admin`; stream-labelled operational metrics are not an anonymous probe |
 | Login configuration/login/TOTP-login | Public authentication flow with throttling and login-outcome audit |
 | Logout/verify/session/trusted-device routes | Authenticated identity lifecycle; self-service identity checks, with cross-user administration mapped to `users.manage` |
 | TOTP setup/verify/disable/status | Session/Basic/legacy-key self-service, or effective `users.manage`; a scoped token cannot use owner identity as a bypass |
 | `POST /api/telemetry/player` | Authenticated and centrally evaluated as `live.view` for the submitted stream |
+
+The [OpenAPI coverage map](../api/contracts/coverage.json) identifies the subset
+with executable schemas. Discovery is descriptive and partial, not an alternative
+authorization boundary or an inventory of accessible camera identities. Its
+[read-only explorer and observation semantics](../api/contracts/design.md) retain
+the operation-specific resource facts used by existing handlers.
 
 ## Camera reads and live media
 
@@ -83,8 +90,14 @@ does not imply plate visibility. General event notifications contain only an
 opaque read UUID and cannot be used to bypass these read/search boundaries.
 
 Every recording ID/path resolves to recording metadata and a camera before a
-resource action is evaluated. Client-supplied collection expansion is never an
-authorization boundary.
+resource action is evaluated. A nonempty captured UUID is authoritative across
+name reuse and renames; only NULL/empty UUID rows fall back to the current camera
+with the stored stream name. List/count/facet/timeline predicates carry UUIDs
+from the authorized fleet, and detection enrichment uses the same identity.
+Client-supplied collection expansion is never an authorization boundary.
+Filtered deletion captures server-owned UUID scope before dispatch. Otherwise
+valid mixed unauthorized fixed batches fail before any mutation/job; an earlier
+operational 404/409 may still abort the entire batch without effects.
 
 ## System, users, storage, and events
 

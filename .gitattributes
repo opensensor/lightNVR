@@ -9,3 +9,10 @@
 *.webp binary
 *.mp4 binary
 *.webm binary
+
+## Patch context preserves upstream indentation and blank lines.
+patches/go2rtc/*.patch -whitespace
+
+## Deterministic contract outputs; review their canonical source and generator.
+include/web/openapi_document_generated.h linguist-generated=true
+web/generated/api/* linguist-generated=true

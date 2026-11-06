@@ -21,9 +21,22 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - name: Install web dependencies
         run: npm ci --prefix web
+      - name: Install root contract and browser test types
+        run: npm ci
+      - name: Validate deterministic API contracts
+        run: |
+          npm run contracts:lint
+          npm run contracts:check
+          npm run contracts:test-tools
+          npm run contracts:typecheck
+          node --test tests/contracts/fixtures/schema/validate.mjs
+      - name: Type-check root integration and load tooling
+        run: npm run test:typecheck
       - name: Type-check web UI
         run: npm run typecheck --prefix web
       - name: Lint web UI

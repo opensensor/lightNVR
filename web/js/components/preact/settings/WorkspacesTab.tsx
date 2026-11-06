@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
 import { fetchJSON, useMutation, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import {
@@ -32,6 +32,7 @@ export function WorkspacesTab({ t }: WorkspacesTabProps) {
     { timeout: 10000, retries: 1 }
   );
   const [visibility, setVisibility] = useState(() => workspaceVisibilityFromResponse());
+  const saveInFlight = useRef(false);
 
   useEffect(() => {
     if (data) setVisibility(workspaceVisibilityFromResponse(data));
@@ -58,9 +59,13 @@ export function WorkspacesTab({ t }: WorkspacesTabProps) {
     onError: (saveError) => {
       showStatusMessage(t('workspaces.saveError', { message: saveError.message }), 'error', 6000);
     },
+    onSettled: () => { saveInFlight.current = false; },
   });
 
   const toggle = (key: string, visible: boolean) => {
+    // Checkbox events can repeat before the pending render disables the control.
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
     const next = { ...visibility, [key]: visible };
     setVisibility(next);
     mutation.mutate({ [key]: visible });
@@ -97,7 +102,7 @@ export function WorkspacesTab({ t }: WorkspacesTabProps) {
                   type="checkbox"
                   className="h-5 w-5 shrink-0 rounded border-input"
                   checked={visibility[workspace.key as WorkspaceKey] !== false}
-                  disabled={!workspace.configurable || mutation.isPending}
+                  disabled={!workspace.configurable || mutation.isLoading}
                   onChange={(event) => toggle(workspace.key as string, event.currentTarget.checked)}
                   aria-label={t('workspaces.showWorkspace', { name: label })}
                 />

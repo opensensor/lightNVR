@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Au-dessus du seuil haut",
   "system.storageTiers.pressure.reserve": "Sous la réserve",
   "system.storageTiers.pressure.unavailable": "Indisponible",
-  "system.storageTiers.sharedFilesystem": "Partage un système de fichiers avec une autre cible"
+  "system.storageTiers.sharedFilesystem": "Partage un système de fichiers avec une autre cible",
+  "streams.streamUpdateQueued": "Mise à jour du flux en attente ; actualisation de l’état actuel.",
+  "auth.sessionVerificationUnavailable": "Impossible de vérifier votre session. Réessayez.",
+  "apiDocs.title": "Référence de l’API",
+  "apiDocs.intro": "Documentation de l’API en lecture seule pour votre session actuelle.",
+  "apiDocs.loading": "Vérification de votre session et chargement des opérations disponibles…",
+  "apiDocs.denied": "Connectez-vous avec un compte autorisé à consulter la référence de l’API.",
+  "apiDocs.unavailable": "Impossible de charger la référence de l’API. Réessayez.",
+  "apiDocs.partial": "Cette référence couvre certaines API. Les opérations absentes ne signifient pas un accès refusé.",
+  "apiDocs.empty": "Aucune opération d’API n’est disponible dans cette référence pour la session actuelle."
 }

@@ -65,36 +65,15 @@ static int load_location_ancestors(fleet_camera_t *camera,
     return 0;
 }
 
-static void finish_fleet_read(sqlite3 *db, pthread_mutex_t *mutex) {
-    if (mutex) pthread_mutex_unlock(mutex);
-    else db_close_readonly_connection(db);
-}
-
-static int load_fleet_cameras(const char *stream_name, bool readonly,
-                              fleet_camera_t **cameras, int *count) {
-    if (!cameras || !count) return -1;
+static int load_fleet_cameras_on_connection(sqlite3 *db,
+    const char *stream_name, fleet_camera_t **cameras, int *count, bool by_uuid) {
+    if (!db || !cameras || !count) return -1;
     *cameras = NULL;
     *count = 0;
-
-    sqlite3 *db = NULL;
-    pthread_mutex_t *mutex = NULL;
-    if (readonly) {
-        if (db_open_readonly_connection(&db) != 0) return -1;
-        sqlite3_busy_timeout(db, 1000);
-        /* Keep the count and joined rows on the same committed snapshot. */
-        if (sqlite3_exec(db, "BEGIN;", NULL, NULL, NULL) != SQLITE_OK) {
-            db_close_readonly_connection(db);
-            return -1;
-        }
-    } else {
-        db = get_db_handle();
-        if (!db) return -1;
-        mutex = get_db_mutex();
-        pthread_mutex_lock(mutex);
-    }
     sqlite3_stmt *stmt = NULL;
     const char *count_sql = stream_name
-        ? "SELECT count(*) FROM streams WHERE name = ?;"
+        ? (by_uuid ? "SELECT count(*) FROM streams WHERE camera_uuid = ?;"
+                   : "SELECT count(*) FROM streams WHERE name = ?;")
         : "SELECT count(*) FROM streams;";
     int rc = sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL);
     if (rc == SQLITE_OK && stream_name) {
@@ -110,17 +89,14 @@ static int load_fleet_cameras(const char *stream_name, bool readonly,
     }
     if (camera_count < 0) {
         log_error("Failed to count fleet cameras: %s", sqlite3_errmsg(db));
-        finish_fleet_read(db, mutex);
         return -1;
     }
     if (camera_count == 0) {
-        finish_fleet_read(db, mutex);
         return 0;
     }
 
     fleet_camera_t *loaded = calloc((size_t)camera_count, sizeof(*loaded));
     if (!loaded) {
-        finish_fleet_read(db, mutex);
         return -1;
     }
 
@@ -156,11 +132,10 @@ static int load_fleet_cameras(const char *stream_name, bool readonly,
         "ORDER BY s.camera_uuid, tag.label COLLATE NOCASE;";
     char sql[4096];
     int written = snprintf(sql, sizeof(sql), "%s%s%s", select_prefix,
-                           stream_name ? "WHERE s.name = ? " : "",
+                           stream_name ? (by_uuid ? "WHERE s.camera_uuid = ? " : "WHERE s.name = ? ") : "",
                            select_suffix);
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         free(loaded);
-        finish_fleet_read(db, mutex);
         return -1;
     }
 
@@ -169,7 +144,6 @@ static int load_fleet_cameras(const char *stream_name, bool readonly,
         log_error("Failed to prepare fleet inventory query: %s",
                   sqlite3_errmsg(db));
         free(loaded);
-        finish_fleet_read(db, mutex);
         return -1;
     }
     if (stream_name) {
@@ -248,22 +222,51 @@ static int load_fleet_cameras(const char *stream_name, bool readonly,
     if (rc != SQLITE_DONE || loaded_count != camera_count) {
         log_error("Failed to load fleet inventory: %s", sqlite3_errmsg(db));
         free(loaded);
-        finish_fleet_read(db, mutex);
         return -1;
     }
-    finish_fleet_read(db, mutex);
 
     *cameras = loaded;
     *count = loaded_count;
     return 0;
 }
 
+static int load_fleet_cameras(const char *stream_name, bool readonly,
+                              fleet_camera_t **cameras, int *count, bool by_uuid) {
+    if (!cameras || !count) return -1;
+    *cameras = NULL;
+    *count = 0;
+    sqlite3 *db = NULL;
+    pthread_mutex_t *mutex = NULL;
+    if (readonly) {
+        if (db_open_readonly_connection(&db) != 0) return -1;
+        sqlite3_busy_timeout(db, 1000);
+        if (sqlite3_exec(db, "BEGIN;", NULL, NULL, NULL) != SQLITE_OK) {
+            db_close_readonly_connection(db);
+            return -1;
+        }
+    } else {
+        db = get_db_handle();
+        if (!db) return -1;
+        mutex = get_db_mutex();
+        pthread_mutex_lock(mutex);
+    }
+    int result = load_fleet_cameras_on_connection(db, stream_name, cameras, count, by_uuid);
+    if (mutex) pthread_mutex_unlock(mutex);
+    else db_close_readonly_connection(db);
+    return result;
+}
+
+int db_fleet_camera_load_on_connection(sqlite3 *db,
+                                       fleet_camera_t **cameras, int *count) {
+    return load_fleet_cameras_on_connection(db, NULL, cameras, count, false);
+}
+
 int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
-    return load_fleet_cameras(NULL, false, cameras, count);
+    return load_fleet_cameras(NULL, false, cameras, count, false);
 }
 
 int db_fleet_camera_load_readonly(fleet_camera_t **cameras, int *count) {
-    return load_fleet_cameras(NULL, true, cameras, count);
+    return load_fleet_cameras(NULL, true, cameras, count, false);
 }
 
 static int find_camera_by_name(const char *stream_name, bool readonly,
@@ -271,7 +274,7 @@ static int find_camera_by_name(const char *stream_name, bool readonly,
     if (!stream_name || stream_name[0] == '\0' || !camera) return -1;
     fleet_camera_t *loaded = NULL;
     int count = 0;
-    if (load_fleet_cameras(stream_name, readonly, &loaded, &count) != 0) return -1;
+    if (load_fleet_cameras(stream_name, readonly, &loaded, &count, false) != 0) return -1;
     if (count == 0) return 1;
     if (count != 1) {
         free(loaded);
@@ -291,21 +294,37 @@ int db_fleet_camera_find_by_name_readonly(const char *stream_name,
     return find_camera_by_name(stream_name, true, camera);
 }
 
-void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
-    if (!cameras || count <= 0) return;
+int db_fleet_camera_find_by_uuid_readonly(const char *camera_uuid, fleet_camera_t *camera) {
+    if (!camera_uuid || !camera_uuid[0] || !camera) return -1;
+    fleet_camera_t *loaded = NULL;
+    int count = 0;
+    if (load_fleet_cameras(camera_uuid, true, &loaded, &count, true) != 0) return -1;
+    if (count != 1) { free(loaded); return count == 0 ? 1 : -1; }
+    *camera = loaded[0];
+    free(loaded);
+    return 0;
+}
+
+int fleet_camera_capture_runtime_health(fleet_camera_t *cameras, int count) {
+    if (count == 0) return 0;
+    if (!cameras || count < 0) return -1;
     int maximum = metrics_get_max_streams();
-    if (maximum <= 0) return;
+    if (maximum <= 0) return 0;
     stream_metrics_t *metrics = calloc((size_t)maximum, sizeof(*metrics));
-    if (!metrics) return;
+    if (!metrics) return -1;
     int metric_count = metrics_snapshot_all(metrics, maximum);
     time_t now = time(NULL);
+    if (metric_count < 0 || metric_count > maximum || now < 0) {
+        free(metrics);
+        return -1;
+    }
 
     size_t table_size = 1;
     while (table_size < (size_t)(metric_count * 2 + 1)) table_size <<= 1;
     int *metric_index = malloc(table_size * sizeof(*metric_index));
     if (!metric_index) {
         free(metrics);
-        return;
+        return -1;
     }
     for (size_t i = 0; i < table_size; i++) metric_index[i] = -1;
     for (int i = 0; i < metric_count; i++) {
@@ -383,4 +402,9 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
     }
     free(metric_index);
     free(metrics);
+    return 0;
+}
+
+void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
+    (void)fleet_camera_capture_runtime_health(cameras, count);
 }

@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Вище верхнього порогу",
   "system.storageTiers.pressure.reserve": "Нижче резерву",
   "system.storageTiers.pressure.unavailable": "Недоступно",
-  "system.storageTiers.sharedFilesystem": "Використовує одну файлову систему з іншим сховищем"
+  "system.storageTiers.sharedFilesystem": "Використовує одну файлову систему з іншим сховищем",
+  "streams.streamUpdateQueued": "Оновлення потоку в черзі; оновлення поточного стану.",
+  "auth.sessionVerificationUnavailable": "Не вдалося перевірити сеанс. Спробуйте ще раз.",
+  "apiDocs.title": "Довідник API",
+  "apiDocs.intro": "Документація API лише для читання для поточного сеансу.",
+  "apiDocs.loading": "Перевірка сеансу та завантаження доступних операцій…",
+  "apiDocs.denied": "Увійдіть з обліковим записом, якому дозволено переглядати довідник API.",
+  "apiDocs.unavailable": "Не вдалося завантажити довідник API. Спробуйте ще раз.",
+  "apiDocs.partial": "Цей довідник охоплює вибрані API. Відсутність операцій не означає відмову в доступі.",
+  "apiDocs.empty": "У цьому довіднику немає доступних операцій API для поточного сеансу."
 }

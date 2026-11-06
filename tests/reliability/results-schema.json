@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lightnvr.local/test/reliability-result.schema.json",
+  "title": "LightNVR bounded reliability qualification result",
+  "type": "object",
+  "required": ["format_version", "scenario", "status", "artifacts", "evidence", "bounds", "observations"],
+  "properties": {
+    "format_version": {"const": 1},
+    "scenario": {"type": "string", "minLength": 1},
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "artifacts": {"type": "string", "minLength": 1},
+    "evidence": {
+      "type": "object",
+      "required": ["head", "source_sha256", "manifest", "binary_sha256"],
+      "properties": {
+        "head": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_sha256": {"$ref": "#/$defs/sha256"},
+        "go2rtc_sha256": {"$ref": "#/$defs/sha256"},
+        "go2rtc_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "manifest": {
+          "type": "array", "minItems": 1,
+          "items": {"type": "object", "required": ["path", "sha256"],
+                    "properties": {"path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}}
+        }
+      }
+    },
+    "bounds": {"type": "object", "minProperties": 1},
+    "observations": {"type": "object"},
+    "qualification": {"type": "string"},
+    "error": {"type": "string"},
+    "cleanup_error": {"type": "string"}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+  "allOf": [{"if": {"properties": {"status": {"const": "passed"}}},
+             "then": {"required": ["qualification"], "not": {"anyOf": [{"required": ["error"]}, {"required": ["cleanup_error"]}]}}}]
+}

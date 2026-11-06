@@ -52,17 +52,13 @@ export type AppQueryOptions<
   placeholderData?: TQueryFnData | ((previous?: undefined) => TQueryFnData | undefined);
 };
 
-/**
- * TanStack's mutation result, plus the `isPending` that StreamsView, UsersView,
- * cameraFavorites, and WorkspacesTab read. That is the v5 name: query-core 4.x
- * reports `isLoading` and never sets `isPending`, so it is always undefined.
- */
+/** Mutation result from the installed query-core version (`isLoading` while running). */
 export type AppMutationResult<
   TData = unknown,
   TError = Error,
   TVariables = void,
   TContext = unknown,
-> = UseMutationResult<TData, TError, TVariables, TContext> & { isPending?: undefined };
+> = UseMutationResult<TData, TError, TVariables, TContext>;
 
 /**
  * Fetch options for the JSON mutation helpers. They merge `headers` with object

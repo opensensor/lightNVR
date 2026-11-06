@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Boven de hoge drempel",
   "system.storageTiers.pressure.reserve": "Onder de reserve",
   "system.storageTiers.pressure.unavailable": "Niet beschikbaar",
-  "system.storageTiers.sharedFilesystem": "Deelt een bestandssysteem met een ander doel"
+  "system.storageTiers.sharedFilesystem": "Deelt een bestandssysteem met een ander doel",
+  "streams.streamUpdateQueued": "Streamupdate in wachtrij; huidige status wordt vernieuwd.",
+  "auth.sessionVerificationUnavailable": "Je sessie kan niet worden geverifieerd. Probeer het opnieuw.",
+  "apiDocs.title": "API-referentie",
+  "apiDocs.intro": "Alleen-lezen API-documentatie voor je huidige sessie.",
+  "apiDocs.loading": "Je sessie verifiëren en beschikbare bewerkingen laden…",
+  "apiDocs.denied": "Log in met een account dat de API-referentie mag bekijken.",
+  "apiDocs.unavailable": "De API-referentie kan niet worden geladen. Probeer het opnieuw.",
+  "apiDocs.partial": "Deze referentie omvat geselecteerde API’s. Ontbrekende bewerkingen betekenen niet dat toegang is geweigerd.",
+  "apiDocs.empty": "Voor de huidige sessie zijn in deze referentie geen API-bewerkingen beschikbaar."
 }

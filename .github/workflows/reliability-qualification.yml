@@ -1,0 +1,157 @@
+name: Bounded Recovery Qualification (manual)
+
+# Deliberately opt-in: this is not a PR/push gate or a branch-protection check.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    container: debian:sid-slim
+    timeout-minutes: 45
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - name: Install coherent native and media dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git patch build-essential cmake pkg-config python3 \
+            ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libswresample-dev libavfilter-dev libsqlite3-dev libuv1-dev libllhttp-dev \
+            libcurl4-openssl-dev libcjson-dev libmbedtls-dev libyaml-dev zlib1g-dev \
+            util-linux xz-utils
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.22.1'
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.1'
+          cache: false
+
+      - name: Create unprivileged qualification owner
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          useradd --create-home --uid 2000 qualification
+          mkdir -p build/reliability-private/tmp build/reliability-public
+          chmod 700 build/reliability-private build/reliability-private/tmp
+          chown -R qualification:qualification "$GITHUB_WORKSPACE"
+
+      - name: Build current managed recorder and capture provenance
+        id: current
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          git submodule update --init --depth 1 go2rtc third_party/faac > build/reliability-private/current-submodules.log 2>&1
+          sh scripts/apply-go2rtc-patches.sh > build/reliability-private/current-go-patch.log 2>&1
+          python3 tests/reliability/test_go2rtc_patch.py > build/reliability-private/go-patch-tests.log 2>&1
+          (cd go2rtc && go build -trimpath -ldflags '-s -w' -o go2rtc .) > build/reliability-private/current-go-build.log 2>&1
+          npm ci --no-audit --no-fund > build/reliability-private/npm.log 2>&1
+          # API/media fixtures need a directory, not a separately qualified UI build.
+          mkdir -p web/dist
+          cmake --fresh -S . -B build/reliability-current \
+            -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF -DENABLE_LITERT=OFF -DENABLE_GO2RTC=ON \
+            -DGO2RTC_BINARY_PATH="$GITHUB_WORKSPACE/go2rtc/go2rtc" \
+            -DENABLE_MQTT=OFF -DENABLE_SSL=ON > build/reliability-private/current-configure.log 2>&1
+          cmake --build build/reliability-current --target lightnvr test_storage_reconcile_incomplete -j2 > build/reliability-private/current-build.log 2>&1
+          ctest --test-dir build/reliability-current --output-on-failure --no-tests=error \
+            -R '^test_storage_reconcile_incomplete$' > build/reliability-private/reconcile-test.log 2>&1
+          python3 tests/reliability/prepare-upgrade.py capture-current \
+            --binary build/reliability-current/bin/lightnvr --go2rtc go2rtc/go2rtc \
+            --output build/reliability-private/current-build.json
+          SH
+
+      - name: Build exact historical release and emit new upgrade manifest
+        id: prior
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          # No parent Go patch is ever applied to this historical checkout.
+          python3 tests/reliability/prepare-upgrade.py prepare \
+            --output build/reliability-private/prior-build --jobs 2 \
+            --current-binary build/reliability-current/bin/lightnvr \
+            --current-go2rtc go2rtc/go2rtc \
+            --current-build-manifest build/reliability-private/current-build.json
+          SH
+
+      - name: Qualify fresh interrupted-recording recovery
+        if: ${{ !cancelled() && steps.current.outcome == 'success' }}
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          python3 tests/reliability/interrupted-recording.py \
+            --binary build/reliability-current/bin/lightnvr --go2rtc go2rtc/go2rtc \
+            --build-manifest build/reliability-private/current-build.json \
+            --output build/reliability-private/interrupted > build/reliability-private/interrupted.log 2>&1
+          SH
+
+      - name: Qualify bounded storage faults
+        if: ${{ !cancelled() && steps.current.outcome == 'success' }}
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          python3 tests/reliability/storage-faults.py \
+            --binary build/reliability-current/bin/lightnvr > build/reliability-private/storage.log 2>&1
+          SH
+
+      - name: Qualify reconnect and overlapping lifecycle
+        if: ${{ !cancelled() && steps.current.outcome == 'success' }}
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          python3 tests/reliability/lifecycle.py \
+            --binary build/reliability-current/bin/lightnvr --go2rtc go2rtc/go2rtc \
+            --build-manifest build/reliability-private/current-build.json --cycles 3 \
+            --output build/reliability-private/lifecycle > build/reliability-private/lifecycle.log 2>&1
+          SH
+
+      - name: Qualify genuine historical upgrade
+        if: ${{ !cancelled() && steps.current.outcome == 'success' && steps.prior.outcome == 'success' }}
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
+          python3 tests/reliability/upgrade.py \
+            --binary build/reliability-current/bin/lightnvr \
+            --fixture-manifest build/reliability-private/prior-build/upgrade-manifest.json \
+            --output build/reliability-private/upgrade > build/reliability-private/upgrade.log 2>&1
+          SH
+
+      - name: Validate every required report and publish only allowlisted fields
+        if: always()
+        run: |
+          runuser -u qualification -- sh -eu <<'SH'
+          cd "$GITHUB_WORKSPACE"
+          python3 tests/reliability/prepare-upgrade.py summarize \
+            --reports-root build/reliability-private \
+            --build-manifest build/reliability-private/current-build.json \
+            --output build/reliability-public/status.json
+          SH
+
+      - name: Upload credential-free status and provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bounded-recovery-status
+          path: build/reliability-public/status.json
+          if-no-files-found: error
+          retention-days: 14
+          # Never upload reliability-private, raw results, configs, DBs, media or traces.

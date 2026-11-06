@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Powyżej górnego progu",
   "system.storageTiers.pressure.reserve": "Poniżej rezerwy",
   "system.storageTiers.pressure.unavailable": "Niedostępne",
-  "system.storageTiers.sharedFilesystem": "Współdzieli system plików z innym miejscem docelowym"
+  "system.storageTiers.sharedFilesystem": "Współdzieli system plików z innym miejscem docelowym",
+  "streams.streamUpdateQueued": "Aktualizacja strumienia w kolejce; odświeżanie bieżącego stanu.",
+  "auth.sessionVerificationUnavailable": "Nie można zweryfikować sesji. Spróbuj ponownie.",
+  "apiDocs.title": "Dokumentacja API",
+  "apiDocs.intro": "Dokumentacja API tylko do odczytu dla bieżącej sesji.",
+  "apiDocs.loading": "Weryfikowanie sesji i ładowanie dostępnych operacji…",
+  "apiDocs.denied": "Zaloguj się na konto z uprawnieniami do przeglądania dokumentacji API.",
+  "apiDocs.unavailable": "Nie można załadować dokumentacji API. Spróbuj ponownie.",
+  "apiDocs.partial": "Ta dokumentacja obejmuje wybrane API. Brak operacji nie oznacza odmowy dostępu.",
+  "apiDocs.empty": "W tej dokumentacji nie ma dostępnych operacji API dla bieżącej sesji."
 }

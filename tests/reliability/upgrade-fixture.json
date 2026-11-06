@@ -1,0 +1,80 @@
+{
+  "format_version": 1,
+  "prior": {
+    "tag": "0.45.3",
+    "revision": "c82d6ed17c7e8ec9038bf4ebcdaa96d3b8cd8163",
+    "commit_date": "2026-11-01T08:14:53-05:00",
+    "ancestor_of_execution_head": true,
+    "execution_head": "dea6094a731c86debb03cc1c75d0251ab3b96cec",
+    "checkout": "build/eng-api-T28-prior",
+    "binary": "build/eng-api-T28-prior/native/bin/lightnvr",
+    "binary_sha256": "118c0ac764306eddd051a1447b2e1961a164c66662f627e90cf67be8f017f5da",
+    "go2rtc": "build/eng-api-T28-prior/go2rtc/go2rtc",
+    "go2rtc_sha256": "8a08d35b3e12550489d6430a44f99e7a40f56ebd166230a1edb43d8a2c36e5d4",
+    "last_migration": "0089",
+    "source_sha256": "f748a955c9d4524d5c226b577baa81f9e6cf3cbb4b110dd0d6e35fb17196780c",
+    "source_manifest": "build/eng-api-T28-prior/native/source-evidence.json",
+    "submodules": {
+      "go2rtc": "6986a1b3f122651b318a957534da44bb4c65e271",
+      "third_party/faac": "eb4928a76fd075f9bab20e8195df84f937da289b"
+    },
+    "build_environment": {
+      "PKG_CONFIG_LIBDIR": "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig",
+      "PKG_CONFIG_PATH": "/home/matteius/opensensor/lightNVR/build/eng-api-T25-deps/sysroot/usr/lib/x86_64-linux-gnu/pkgconfig"
+    },
+    "configure_command": [
+      "cmake",
+      "--fresh",
+      "-S",
+      "build/eng-api-T28-prior",
+      "-B",
+      "build/eng-api-T28-prior/native",
+      "-DCMAKE_BUILD_TYPE=Debug",
+      "-DBUILD_TESTS=OFF",
+      "-DENABLE_SOD=OFF",
+      "-DENABLE_LITERT=OFF",
+      "-DENABLE_GO2RTC=ON",
+      "-DGO2RTC_BINARY_PATH=/home/matteius/opensensor/lightNVR/build/eng-api-T28-prior/go2rtc/go2rtc",
+      "-DENABLE_MQTT=OFF",
+      "-DENABLE_SSL=ON",
+      "-DCMAKE_C_FLAGS=-isystem /usr/include/x86_64-linux-gnu",
+      "-DCMAKE_CXX_FLAGS=-isystem /usr/include/x86_64-linux-gnu"
+    ],
+    "build_command": [
+      "cmake",
+      "--build",
+      "build/eng-api-T28-prior/native",
+      "--target",
+      "lightnvr",
+      "-j6"
+    ],
+    "go_build_command": [
+      "go",
+      "build",
+      "-trimpath",
+      "-ldflags",
+      "-s -w",
+      "-o",
+      "go2rtc",
+      "."
+    ]
+  },
+  "current": {
+    "go2rtc": "go2rtc/go2rtc",
+    "build_manifest": "build/eng-api-T28/evidence.json",
+    "last_migration": "0091"
+  },
+  "fixture": {
+    "synthetic_source": "owned FFmpeg testsrc2 via prior managed go2rtc",
+    "principals": [
+      "admin",
+      "camera-scoped viewer",
+      "read-only token owned by admin",
+      "anonymous"
+    ],
+    "preserve_original": true,
+    "relocation": "copy installation, replace private absolute paths and reserved ports only; no schema or migration-history edits",
+    "current_starts": 2,
+    "claim": "forward upgrade only; no downgrade or physical-device qualification"
+  }
+}

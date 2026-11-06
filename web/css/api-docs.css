@@ -1,0 +1,19 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f5f7fa; }
+body { margin: 0; }
+.docs-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 3rem); background: #172033; color: #fff; }
+.docs-header a { color: inherit; text-decoration: none; padding: .5rem; }
+.docs-brand { font-weight: 700; font-size: 1.2rem; }
+.docs-header nav { display: flex; flex-wrap: wrap; gap: .5rem; }
+main { max-width: 1440px; margin: auto; padding: 1rem clamp(1rem, 4vw, 3rem) 3rem; }
+.docs-intro { padding: 1rem 0; }
+h1 { margin-bottom: .5rem; }
+button { padding: .65rem 1rem; min-height: 44px; border: 1px solid #475569; border-radius: .3rem; background: #fff; color: #172033; cursor: pointer; }
+a:focus-visible, button:focus-visible { outline: 3px solid #2275bb; outline-offset: 3px; }
+#docs-status { border-inline-start: 3px solid #2275bb; padding: .8rem 1rem; background: #e9f1fa; }
+#docs-status[role="alert"] { border-color: #a22832; background: #fff0f1; }
+#api-reference { background: #fff; border-radius: .4rem; }
+/* Defense in depth: the component plugin removes these controls entirely. */
+.swagger-ui .auth-wrapper, .swagger-ui .authorization__btn,
+.swagger-ui .authorize, .swagger-ui .try-out, .swagger-ui .execute-wrapper,
+.swagger-ui .download-url-wrapper { display: none !important; }
+@media (max-width: 600px) { .docs-header { align-items: flex-start; flex-direction: column; } }

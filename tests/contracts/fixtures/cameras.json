@@ -1,0 +1,4 @@
+[
+  {"name":"A","url":"rtsp://127.0.0.1:9/contract-a","enabled":false,"streaming_enabled":false,"record":false,"onvif_username":"fixture-camera-user","onvif_password":"fixture-camera-secret","admin_url":"http://127.0.0.1:9/admin-a"},
+  {"name":"B","url":"rtsp://127.0.0.1:9/contract-b","enabled":false,"streaming_enabled":false,"record":false,"onvif_username":"fixture-camera-user","onvif_password":"fixture-camera-secret","admin_url":"http://127.0.0.1:9/admin-b"}
+]

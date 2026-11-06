@@ -439,22 +439,33 @@ db_api_token_result_t db_api_token_authenticate(
 
 db_api_token_result_t db_api_token_get_active(const char *token_uuid,
                                               api_token_t *token) {
-    if (!token_uuid || token_uuid[0] == '\0' || !token) {
-        return DB_API_TOKEN_INVALID;
-    }
+    if (!token_uuid || !token_uuid[0] || !token) return DB_API_TOKEN_INVALID;
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
     if (!db || !mutex) return DB_API_TOKEN_ERROR;
     pthread_mutex_lock(mutex);
+    db_api_token_result_t result = db_api_token_get_active_on_connection(
+        db, (int64_t)time(NULL), token_uuid, token);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+db_api_token_result_t db_api_token_get_active_on_connection(sqlite3 *db,
+    int64_t observed_at, const char *token_uuid, api_token_t *token) {
+    if (observed_at < 0) return DB_API_TOKEN_ERROR;
+    if (!db || !token_uuid || token_uuid[0] == '\0' || !token) {
+        return DB_API_TOKEN_INVALID;
+    }
     char sql[640];
     snprintf(sql, sizeof(sql),
              "SELECT %s FROM authz_api_tokens WHERE uuid=? AND "
-             "revoked_at IS NULL AND expires_at>strftime('%%s','now') LIMIT 1;",
+             "revoked_at IS NULL AND expires_at>? LIMIT 1;",
              token_select_fields());
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, token_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 2, observed_at);
         rc = sqlite3_step(stmt);
     }
     db_api_token_result_t result = DB_API_TOKEN_NOT_FOUND;
@@ -465,6 +476,5 @@ db_api_token_result_t db_api_token_get_active(const char *token_uuid,
         result = DB_API_TOKEN_ERROR;
     }
     if (stmt) sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
     return result;
 }

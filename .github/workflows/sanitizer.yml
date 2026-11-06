@@ -60,6 +60,8 @@ jobs:
         run: |
           cd build
           echo "Running tests with ASan + UBSan enabled..."
+          # Snapshot, projection, discovery handler and HTTP worker ownership
+          # regressions belong to this label beside their CMake registrations.
           ctest --output-on-failure --no-tests=error -V -L '^ci-sanitizer$'
 
       - name: Smoke test - start and stop service

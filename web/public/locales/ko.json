@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "상한 임계값 초과",
   "system.storageTiers.pressure.reserve": "예약 공간 미만",
   "system.storageTiers.pressure.unavailable": "사용할 수 없음",
-  "system.storageTiers.sharedFilesystem": "다른 대상과 파일 시스템을 공유함"
+  "system.storageTiers.sharedFilesystem": "다른 대상과 파일 시스템을 공유함",
+  "streams.streamUpdateQueued": "스트림 업데이트가 대기열에 추가되었습니다. 현재 상태를 새로 고치는 중입니다.",
+  "auth.sessionVerificationUnavailable": "세션을 확인할 수 없습니다. 다시 시도하세요.",
+  "apiDocs.title": "API 참조",
+  "apiDocs.intro": "현재 세션을 위한 읽기 전용 API 문서입니다.",
+  "apiDocs.loading": "세션을 확인하고 사용 가능한 작업을 불러오는 중…",
+  "apiDocs.denied": "API 참조를 볼 수 있는 계정으로 로그인하세요.",
+  "apiDocs.unavailable": "API 참조를 불러올 수 없습니다. 다시 시도하세요.",
+  "apiDocs.partial": "이 참조는 일부 API만 다룹니다. 누락된 작업이 접근 거부를 의미하지는 않습니다.",
+  "apiDocs.empty": "현재 세션에 대해 이 참조에서 사용 가능한 API 작업이 없습니다."
 }

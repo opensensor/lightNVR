@@ -199,6 +199,10 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 int get_recording_detection_summaries(
     const recording_metadata_t *recordings, int count,
     recording_detection_summary_t *summaries);
+/* Capture-aware variant for authorized recording read boundaries. */
+int get_recording_detection_summaries_for_cameras(
+    const recording_metadata_t *recordings, int count,
+    recording_detection_summary_t *summaries);
 
 /**
  * Same as get_recording_detection_summaries() but on a caller-supplied
@@ -208,6 +212,9 @@ int get_recording_detection_summaries(
  * sqlite3_progress_handler()).
  */
 int get_recording_detection_summaries_on_connection(
+    sqlite3 *db, const recording_metadata_t *recordings, int count,
+    recording_detection_summary_t *summaries);
+int get_recording_detection_summaries_for_cameras_on_connection(
     sqlite3 *db, const recording_metadata_t *recordings, int count,
     recording_detection_summary_t *summaries);
 
@@ -248,6 +255,15 @@ int get_unique_detection_labels_for_streams(
  */
 int get_unique_detection_labels_for_streams_on_connection(
     sqlite3 *db, const char *const *stream_names, int stream_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels);
+
+/* Authorized capture-UUID facets; NULL/empty captures use current-name
+ * fallback. Both walks use two bound variables regardless of fleet size. */
+int get_unique_detection_labels_for_cameras(
+    const char *const *camera_uuids, int camera_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels);
+int get_unique_detection_labels_for_cameras_on_connection(
+    sqlite3 *db, const char *const *camera_uuids, int camera_count,
     char labels[][MAX_LABEL_LENGTH], int max_labels);
 
 /**

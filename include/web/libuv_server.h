@@ -105,6 +105,7 @@ typedef struct libuv_connection {
 
     // Thread pool offloading (uv_queue_work)
     bool handler_on_worker;             // Handler is running on a thread pool worker
+    bool close_completed;              // Loop-owned: TCP closed, worker may still own request/response
     void *go2rtc_websocket;            // Owned by go2rtc_websocket.c
     void *archive_stream;              // Owned by recording_archive.c
     bool deferred_file_serve;           // File serving deferred until back on loop thread

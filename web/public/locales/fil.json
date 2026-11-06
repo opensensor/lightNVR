@@ -2716,5 +2716,14 @@
   "system.storageTiers.pressure.high": "Lampas sa high watermark",
   "system.storageTiers.pressure.reserve": "Mas mababa sa reserve",
   "system.storageTiers.pressure.unavailable": "Hindi available",
-  "system.storageTiers.sharedFilesystem": "Kahati ng ibang target sa isang filesystem"
+  "system.storageTiers.sharedFilesystem": "Kahati ng ibang target sa isang filesystem",
+  "streams.streamUpdateQueued": "Nakapila ang pag-update ng stream; nire-refresh ang kasalukuyang estado.",
+  "auth.sessionVerificationUnavailable": "Hindi ma-verify ang iyong session. Subukang muli.",
+  "apiDocs.title": "Sanggunian ng API",
+  "apiDocs.intro": "Dokumentasyon ng API na para sa pagbasa lamang para sa kasalukuyang session.",
+  "apiDocs.loading": "Bineberipika ang session at nilo-load ang mga available na operasyon…",
+  "apiDocs.denied": "Mag-sign in gamit ang account na pinapayagang tingnan ang sanggunian ng API.",
+  "apiDocs.unavailable": "Hindi ma-load ang sanggunian ng API. Subukang muli.",
+  "apiDocs.partial": "Piling API ang saklaw ng sangguniang ito. Ang mga nawawalang operasyon ay hindi nangangahulugang tinanggihan ang access.",
+  "apiDocs.empty": "Walang available na operasyon ng API sa sangguniang ito para sa kasalukuyang session."
 }

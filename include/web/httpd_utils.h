@@ -211,6 +211,12 @@ int httpd_authorize_stream_action_with_context(
  * legacy_stream_name is consulted only for pre-migration rows whose UUID is
  * unresolved. This prevents a camera rename from orphaning authorized media.
  */
+/* Batch equivalent: 0 means evaluated, 1 missing identity, -1 DB/policy error.
+ * A nonempty UUID never falls back to the supplied historical display name. */
+int httpd_evaluate_camera_identity_action(const user_t *user,
+    authorization_action_t action, const char *camera_uuid,
+    const char *legacy_stream_name, authorization_evaluation_t *evaluation);
+
 int httpd_authorize_camera_identity_action_with_context(
     const http_request_t *req, http_response_t *res,
     authorization_action_t action, const char *camera_uuid,

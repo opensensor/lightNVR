@@ -33,19 +33,31 @@ static void copy_column(char *destination, size_t destination_size,
 
 int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
                                       authorization_grant_t **grants,
-                                      int *grant_count,
-                                      int64_t *policy_version) {
-    if (!grants || !grant_count || user_id <= 0 || !action_key ||
+                                      int *grant_count, int64_t *policy_version) {
+    if (!grants || !grant_count || user_id <= 0 || !action_key || !action_key[0]) return -1;
+    *grants = NULL;
+    *grant_count = 0;
+    if (policy_version) *policy_version = 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+    pthread_mutex_lock(mutex);
+    int result = db_authorization_load_user_grants_on_connection(
+        db, user_id, action_key, grants, grant_count, policy_version);
+    pthread_mutex_unlock(mutex);
+    return result;
+}
+
+int db_authorization_load_user_grants_on_connection(sqlite3 *db, int64_t user_id,
+    const char *action_key, authorization_grant_t **grants,
+    int *grant_count, int64_t *policy_version) {
+    if (!db || !grants || !grant_count || user_id <= 0 || !action_key ||
         action_key[0] == '\0') {
         return -1;
     }
     *grants = NULL;
     *grant_count = 0;
     if (policy_version) *policy_version = 0;
-
-    sqlite3 *db = get_db_handle();
-    pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex) return -1;
 
     const char *sql =
         "SELECT g.uuid, g.role_uuid, r.name, g.scope_type, "
@@ -58,7 +70,6 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
         "ORDER BY g.created_at, g.uuid "
         "LIMIT ?;";
 
-    pthread_mutex_lock(mutex);
     sqlite3_stmt *stmt = NULL;
     if (policy_version) {
         int version_rc = sqlite3_prepare_v2(
@@ -66,7 +77,6 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
             &stmt, NULL);
         if (version_rc != SQLITE_OK || sqlite3_step(stmt) != SQLITE_ROW) {
             if (stmt) sqlite3_finalize(stmt);
-            pthread_mutex_unlock(mutex);
             return -1;
         }
         *policy_version = sqlite3_column_int64(stmt, 0);
@@ -77,7 +87,6 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare authorization grant query: %s",
                   sqlite3_errmsg(db));
-        pthread_mutex_unlock(mutex);
         return -1;
     }
     sqlite3_bind_int64(stmt, 1, user_id);
@@ -89,7 +98,6 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
         calloc((size_t)capacity, sizeof(*loaded));
     if (!loaded) {
         sqlite3_finalize(stmt);
-        pthread_mutex_unlock(mutex);
         return -1;
     }
 
@@ -132,7 +140,6 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
                     stmt, 5);
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(mutex);
 
     if (rc != SQLITE_DONE) {
         free(loaded);
@@ -147,7 +154,7 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
     return 0;
 }
 
-static int get_policy_version_on_connection(sqlite3 *db, int64_t *version) {
+int db_authorization_get_policy_version_on_connection(sqlite3 *db, int64_t *version) {
     if (!version) return -1;
     *version = 0;
     if (!db) return -1;
@@ -168,7 +175,7 @@ static int get_policy_version_on_connection(sqlite3 *db, int64_t *version) {
 int db_authorization_get_policy_version(int64_t *version) {
     pthread_mutex_t *mutex = get_db_mutex();
     pthread_mutex_lock(mutex);
-    int result = get_policy_version_on_connection(get_db_handle(), version);
+    int result = db_authorization_get_policy_version_on_connection(get_db_handle(), version);
     pthread_mutex_unlock(mutex);
     return result;
 }
@@ -179,7 +186,7 @@ int db_authorization_get_policy_version_readonly(int64_t *version) {
     sqlite3 *connection = NULL;
     if (db_open_readonly_connection(&connection) != 0) return -1;
     sqlite3_busy_timeout(connection, 1000);
-    int result = get_policy_version_on_connection(connection, version);
+    int result = db_authorization_get_policy_version_on_connection(connection, version);
     db_close_readonly_connection(connection);
     return result;
 }
