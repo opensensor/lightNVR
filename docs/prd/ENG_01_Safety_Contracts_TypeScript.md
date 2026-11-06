@@ -9,7 +9,7 @@ The identity/MFA boundary correction merged in [PR #808](https://github.com/open
 The session/trusted-device contract and Settings slice is implemented for review;
 the remaining MFA/password/logout contract work follows. Rust remains deferred.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-06 against main at `f3b0f4ff8838cf2f54327ef50c38e85d2fa1a67d`.
+**Reconciled**: 2026-11-06 against main at `7aa0968045cc427e1a1eb018290c1706a83873ef`.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
@@ -20,8 +20,8 @@ bump after the reconciliation baseline). The authoritative task/evidence log is
 
 **Current follow-up**: [engineering API expansion](../../engineering-api-expansion-plan.md)
 and [bounded identity contracts plan](../../engineering-identity-contracts-plan.md).
-Main contains 33 accepted operations / 30 paths. The session/device follow-up
-adds four operations for 37 operations / 34 paths and 203 residual registered
+PR #809 merged the session/device follow-up. Main now contains 37 accepted
+operations / 34 paths and 203 residual registered
 operations; its bounded acceptance receipt is in the identity plan. Main's forked go2rtc pins `6c311990` including rejected
 HTTP response cleanup; the temporary parent patch delivery has been removed.
 Main at `b9d3ac61` has successful hosted [Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42215794378),

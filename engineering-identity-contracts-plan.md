@@ -1,11 +1,11 @@
 # F1: Identity self-service and MFA contracts
 
 Status: F1a's MFA/session correction merged in PR #808. F1b and the four-route
-part of F1d are implemented together for review: session/trusted-device list and
+part of F1d merged together in PR #809: session/trusted-device list and
 revoke, permission-aware discovery, generated validation and Settings consumption.
 The contract has 37 operations / 34 paths, with 203 residual routes. The remaining
 seven identity operations still target 44 accepted operations when qualified.
-Baseline main `f3b0f4ff`, following merged PRs #805–#808.
+Baseline main `7aa09680`, following merged PRs #805–#809.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
@@ -193,9 +193,10 @@ Production asset isolation passes for Live, Streams, Recordings, Settings and th
 API explorer; only the explorer requests Swagger vendor assets. The modern-script
 validator chunk in the default build is 328181 raw bytes versus the previous
 358973 (-30792, about 8.6%). Vite reports 36.78 kB gzip versus 30.87 kB (+5.91 kB).
-Runtime generation now fails fast on invalid responses; this removes redundant
-error-accumulator guards reported by CodeQL, while retaining non-mutating
-validation and sanitized diagnostics. The gzip cost remains a measured tradeoff.
+Runtime generation now fails fast on invalid responses, while retaining
+non-mutating validation and sanitized diagnostics. It did not eliminate the
+generated-code maintenance findings; see the expansion plan's post-merge report
+checkpoint. The gzip cost remains a measured tradeoff.
 Settings now consumes this shared validator chunk; unused guard splitting and
 target-hardware capacity remain separate follow-ups. No new discovery latency,
 whole-process memory or device qualification claim is made by this slice.
@@ -205,3 +206,7 @@ The full branch C/C++ CodeQL scan at 99ffe05e (run 42252922921, analysis
 baseline, with no additions or removals by rule, file and diagnostic. Hosted patch
 coverage is assessed after all instrumented jobs upload, rather than from the
 initial unit-only report.
+
+PR #809 subsequently merged with all hosted checks and patch coverage passing.
+The expansion plan records the remaining quality/security report inventory and
+its distinction from this slice's completed behavioral qualification.
