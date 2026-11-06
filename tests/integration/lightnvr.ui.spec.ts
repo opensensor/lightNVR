@@ -85,14 +85,17 @@ test.describe('LightNVR Login', () => {
 
   test('should allow trusted-device force-MFA login without blocking blank code entry', async ({ page }) => {
     await page.route('**/api/auth/login/config', async route => {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      // Preserve the complete native contract while selecting this UI scenario.
       await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+        response,
+        json: {
+          ...await response.json(),
           force_mfa_on_login: true,
           remember_device_enabled: true,
           trusted_device_days: 30,
-        }),
+        },
       });
     });
 
