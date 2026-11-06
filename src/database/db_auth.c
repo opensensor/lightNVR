@@ -1638,6 +1638,107 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     return 0;
 }
 
+/* The connection mutex also excludes legacy helpers that do not take the
+ * application mutex, preventing them from joining this short transaction. */
+static sqlite3 *lock_mfa_database(void) {
+    pthread_mutex_lock(get_db_mutex());
+    sqlite3 *db = get_db_handle();
+    if (!db) { pthread_mutex_unlock(get_db_mutex()); return NULL; }
+    sqlite3_mutex_enter(sqlite3_db_mutex(db));
+    return db;
+}
+static void unlock_mfa_database(sqlite3 *db) {
+    sqlite3_mutex_leave(sqlite3_db_mutex(db));
+    pthread_mutex_unlock(get_db_mutex());
+}
+
+int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
+                                const char *user_agent, char *token, size_t token_size) {
+    if (!token || token_size < 33 || generate_random_string(token, 32) != 0) return -1;
+    sqlite3 *db = lock_mfa_database();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    const char *sql = "INSERT INTO sessions (user_id, token, created_at, last_activity_at, "
+        "idle_expires_at, expires_at, ip_address, user_agent, mfa_pending, mfa_attempts) "
+        "SELECT id, ?1, ?2, ?2, ?2 + 300, ?2 + 300, ?3, ?4, 1, 0 "
+        "FROM users WHERE id = ?5 AND is_active = 1 AND totp_enabled = 1;";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, time(NULL));
+        sqlite3_bind_text(stmt, 3, ip_address ? ip_address : "", -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 4, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 5, user_id);
+        if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1) result = 0;
+    }
+    sqlite3_finalize(stmt);
+    unlock_mfa_database(db);
+    if (result != 0) token[0] = '\0';
+    return result;
+}
+
+int db_auth_validate_mfa_challenge(const char *token, int64_t *user_id,
+                                  const char *ip_address, const char *user_agent) {
+    if (!token || strnlen(token, 33) != 32 || !user_id) return -1;
+    sqlite3 *db = lock_mfa_database();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    const char *sql = "SELECT s.id, s.user_id FROM sessions s JOIN users u ON u.id = s.user_id "
+        "WHERE s.token = ? AND s.mfa_pending = 1 AND s.mfa_attempts < 5 "
+        "AND s.expires_at > ? AND u.is_active = 1 AND u.totp_enabled = 1 "
+        "AND s.ip_address = ? AND s.user_agent = ?;";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) goto rollback;
+    sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, time(NULL));
+    sqlite3_bind_text(stmt, 3, ip_address ? ip_address : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) != SQLITE_ROW) goto rollback;
+    int64_t id = sqlite3_column_int64(stmt, 0);
+    int64_t owner = sqlite3_column_int64(stmt, 1);
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE sessions SET mfa_attempts = mfa_attempts + 1 WHERE id = ?;",
+                           -1, &stmt, NULL) != SQLITE_OK) goto rollback;
+    sqlite3_bind_int64(stmt, 1, id);
+    if (sqlite3_step(stmt) != SQLITE_DONE || sqlite3_changes(db) != 1) goto rollback;
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    if (sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) goto rollback;
+    *user_id = owner;
+    result = 0;
+    goto done;
+rollback:
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+done:
+    sqlite3_finalize(stmt);
+    unlock_mfa_database(db);
+    return result;
+}
+
+int db_auth_consume_mfa_challenge(const char *token, int64_t user_id) {
+    if (!token || strnlen(token, 33) != 32) return -1;
+    sqlite3 *db = lock_mfa_database();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    const char *sql = "DELETE FROM sessions WHERE token = ? AND user_id = ? "
+        "AND mfa_pending = 1 AND mfa_attempts BETWEEN 1 AND 5 AND expires_at > ? "
+        "AND user_id IN (SELECT id FROM users WHERE is_active = 1 AND totp_enabled = 1);";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, user_id);
+        sqlite3_bind_int64(stmt, 3, time(NULL));
+        if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1) result = 0;
+    }
+    sqlite3_finalize(stmt);
+    unlock_mfa_database(db);
+    return result;
+}
+
 /**
  * Validate a session token
  */
@@ -1670,12 +1771,14 @@ int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
      *   0 id, 1 user_id, 2 expires_at, 3 idle_expires_at, 4 last_activity_at,
      *   5 is_active, 6 ip_address, 7 user_agent
      */
+    /* The MFA discriminator is mandatory: a missing/broken schema must fail
+     * closed, never fall back to accepting pending rows as sessions. */
     char sql[512];
     int select_written = snprintf(sql, sizeof(sql),
                            "SELECT s.id, s.user_id, s.expires_at, %s, %s, u.is_active, %s, %s "
                            "FROM sessions s "
                            "JOIN users u ON s.user_id = u.id "
-                           "WHERE s.token = ?;",
+                           "WHERE s.token = ? AND s.mfa_pending = 0;",
                            has_idle_expires_column ? "s.idle_expires_at" : "s.expires_at",
                            has_tracking_columns ? "COALESCE(s.last_activity_at, s.created_at)" : "0",
                            has_ip_column ? "COALESCE(s.ip_address, '')" : "''",
@@ -1964,28 +2067,16 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
     bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
     time_t now = time(NULL);
 
-    const char *sql = has_idle_expires_column && has_last_activity_column
-        ? "SELECT id, user_id, token, created_at, "
-          "COALESCE(last_activity_at, created_at), "
-          "COALESCE(idle_expires_at, expires_at), "
-          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-          "FROM sessions WHERE user_id = ? "
-          "AND expires_at >= ? "
-          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
-          "ORDER BY COALESCE(last_activity_at, created_at) DESC LIMIT ?;"
-        : has_idle_expires_column
-        ? "SELECT id, user_id, token, created_at, "
-          "created_at, COALESCE(idle_expires_at, expires_at), "
-          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-          "FROM sessions WHERE user_id = ? "
-          "AND expires_at >= ? "
-          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
-          "ORDER BY created_at DESC LIMIT ?;"
-        : "SELECT id, user_id, token, created_at, "
-          "created_at, expires_at, expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-          "FROM sessions WHERE user_id = ? "
-          "AND expires_at >= ? "
-          "ORDER BY created_at DESC LIMIT ?;";
+    char sql[768];
+    snprintf(sql, sizeof(sql),
+        "SELECT id, user_id, token, created_at, %s, %s, expires_at, "
+        "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+        "FROM sessions WHERE user_id = ? AND mfa_pending = 0 AND expires_at >= ? %s "
+        "ORDER BY %s DESC LIMIT ?;",
+        has_last_activity_column ? "COALESCE(last_activity_at, created_at)" : "created_at",
+        has_idle_expires_column ? "COALESCE(idle_expires_at, expires_at)" : "expires_at",
+        has_idle_expires_column ? "AND (idle_expires_at IS NULL OR idle_expires_at >= ?)" : "",
+        has_last_activity_column ? "COALESCE(last_activity_at, created_at)" : "created_at");
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);

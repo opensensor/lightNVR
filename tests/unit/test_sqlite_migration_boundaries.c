@@ -7,6 +7,7 @@
 #include <sqlite3.h>
 #include "unity.h"
 #include "database/sqlite_migrate.h"
+#include "database/db_embedded_migrations.h"
 
 static char root[128], directory[192], path[256], outside[256];
 static sqlite3 *db;
@@ -220,8 +221,38 @@ static void test_migration_version_is_bound_as_data(void) {
     TEST_ASSERT_EQUAL_INT(0, migrate_up(migration, NULL)); assert_sentinel();
     TEST_ASSERT_EQUAL_INT(1, migrate_down(migration)); assert_sentinel();
 }
+/* Exercise the shipped migration through the real runner, including rollback.
+ * Legacy MFA rows cannot be classified, so only those users must reauthenticate. */
+static void test_mfa_upgrade_revokes_ambiguous_sessions_and_down_removes_challenges(void) {
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TABLE users(id INTEGER PRIMARY KEY, totp_enabled INTEGER);"
+        "CREATE TABLE sessions(id INTEGER PRIMARY KEY, user_id INTEGER, token TEXT);"
+        "INSERT INTO users VALUES(1,1),(2,0);"
+        "INSERT INTO sessions VALUES(1,1,'old-mfa'),(2,2,'ordinary');",
+        NULL, NULL, NULL));
+    const migration_t *mfa = NULL;
+    for (size_t i = 0; i < EMBEDDED_MIGRATIONS_COUNT; ++i)
+        if (strcmp(embedded_migrations_data[i].version, "0093") == 0) mfa = &embedded_migrations_data[i];
+    TEST_ASSERT_NOT_NULL(mfa);
+    migrate_config_t config = {.embedded_migrations = mfa, .embedded_count = 1};
+    migration = migrate_init(db, &config);
+    TEST_ASSERT_NOT_NULL(migration);
+    TEST_ASSERT_EQUAL_INT(0, migrate_up(migration, NULL));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM sessions WHERE user_id=1"));
+    TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM sessions WHERE token='ordinary' AND mfa_pending=0 AND mfa_attempts=0"));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "INSERT INTO sessions VALUES(3,1,'completed',0,0),(4,1,'pending',1,2);",
+        NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(1, migrate_down(migration));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM sessions WHERE token='pending'"));
+    TEST_ASSERT_EQUAL_INT(2, scalar("SELECT count(*) FROM sessions WHERE token IN ('ordinary','completed')"));
+    TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM pragma_table_info('sessions') WHERE name IN ('mfa_pending','mfa_attempts')"));
+    assert_sentinel();
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_mfa_upgrade_revokes_ambiguous_sessions_and_down_removes_challenges);
     RUN_TEST(test_valid_tracking_name_applies_reloads_and_rolls_back);
     RUN_TEST(test_double_quote_in_identifier_round_trips);
     RUN_TEST(test_apostrophe_in_quoted_identifier_round_trips);

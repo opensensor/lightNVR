@@ -564,6 +564,125 @@ static void test_admin_bootstrap_serializes_with_storage_transactions(void) {
     TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
 }
 
+static int64_t challenge_user(char token[33]) {
+    int64_t user_id;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("challenge", "password", NULL, USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_totp_secret(user_id, "JBSWY3DPEHPK3PXP"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_enable_totp(user_id, true));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_mfa_challenge(user_id, "127.0.0.1", "fixture", token, 33));
+    return user_id;
+}
+
+void test_mfa_challenge_is_not_a_session_and_is_consumed_once(void) {
+    char pending[33], session[33];
+    int64_t owner = challenge_user(pending), found = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(pending, &found));
+    session_t sessions[32];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_list_user_sessions(owner, sessions, 32));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT64(owner, found);
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(pending, owner + 1));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(owner, "127.0.0.1", "fixture", 300, session, sizeof(session)));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(session, &found));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(session, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(session, owner));
+    TEST_ASSERT_EQUAL_INT(1, db_auth_list_user_sessions(owner, sessions, 32));
+}
+
+void test_mfa_challenge_attempt_limit_expiry_and_context(void) {
+    char pending[33];
+    int64_t owner = challenge_user(pending), found = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.2", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "other"));
+    for (int attempt = 0; attempt < 5; ++attempt)
+        TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT64(owner, found);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE sessions SET expires_at=0 WHERE mfa_pending=1;", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_mfa_challenge(owner, "127.0.0.1", "fixture", pending, sizeof(pending)));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user_sessions(owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+}
+
+void test_missing_mfa_discriminator_fails_closed(void) {
+    char pending[33], authenticated[33];
+    int64_t owner = challenge_user(pending), found = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(owner, "127.0.0.1", "fixture", 300,
+                                                  authenticated, sizeof(authenticated)));
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "ALTER TABLE sessions RENAME COLUMN mfa_pending TO unavailable_pending;", NULL, NULL, NULL));
+    int pending_result = db_auth_validate_session(pending, &found);
+    int full_result = db_auth_validate_session(authenticated, &found);
+    session_t sessions[4];
+    int listed = db_auth_list_user_sessions(owner, sessions, 4);
+    int restored = sqlite3_exec(db,
+        "ALTER TABLE sessions RENAME COLUMN unavailable_pending TO mfa_pending;", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, restored);
+    TEST_ASSERT_NOT_EQUAL(0, pending_result);
+    TEST_ASSERT_NOT_EQUAL(0, full_result);
+    TEST_ASSERT_EQUAL_INT(-1, listed);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(authenticated, &found));
+}
+
+void test_mfa_database_failures_leave_no_partial_credentials_or_transaction(void) {
+    char pending[33], rejected[33] = "unchanged";
+    int64_t owner = challenge_user(pending), found = 0;
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TRIGGER reject_challenge_check BEFORE UPDATE ON sessions "
+        "BEGIN SELECT RAISE(ABORT,'fixture update failure'); END;", NULL, NULL, NULL));
+    int checked = db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture");
+    bool autocommit = sqlite3_get_autocommit(db);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "DROP TRIGGER reject_challenge_check;", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, checked);
+    TEST_ASSERT_TRUE(autocommit);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TRIGGER reject_challenge_delete BEFORE DELETE ON sessions "
+        "BEGIN SELECT RAISE(ABORT,'fixture delete failure'); END;", NULL, NULL, NULL));
+    int consumed = db_auth_consume_mfa_challenge(pending, owner);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "DROP TRIGGER reject_challenge_delete;", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, consumed);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_consume_mfa_challenge(pending, owner));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TRIGGER reject_challenge_insert BEFORE INSERT ON sessions "
+        "BEGIN SELECT RAISE(ABORT,'fixture insert failure'); END;", NULL, NULL, NULL));
+    int created = db_auth_create_mfa_challenge(owner, "127.0.0.1", "fixture", rejected, sizeof(rejected));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "DROP TRIGGER reject_challenge_insert;", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, created);
+    TEST_ASSERT_EQUAL_STRING("", rejected);
+    session_t sessions[4];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_list_user_sessions(owner, sessions, 4));
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(db));
+}
+
+static char concurrent_challenge[33];
+static int64_t concurrent_owner;
+static void *consume_challenge(void *argument) {
+    int *result = argument;
+    *result = db_auth_consume_mfa_challenge(concurrent_challenge, concurrent_owner);
+    return NULL;
+}
+void test_concurrent_mfa_completion_has_exactly_one_winner(void) {
+    concurrent_owner = challenge_user(concurrent_challenge);
+    int64_t found;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(concurrent_challenge, &found, "127.0.0.1", "fixture"));
+    pthread_t threads[2];
+    int results[2];
+    for (int i = 0; i < 2; ++i)
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[i], NULL, consume_challenge, &results[i]));
+    for (int i = 0; i < 2; ++i) pthread_join(threads[i], NULL);
+    TEST_ASSERT_EQUAL_INT(1, (results[0] == 0) + (results[1] == 0));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -574,6 +693,11 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_admin_bootstrap_serializes_with_storage_transactions);
+    RUN_TEST(test_mfa_challenge_is_not_a_session_and_is_consumed_once);
+    RUN_TEST(test_mfa_challenge_attempt_limit_expiry_and_context);
+    RUN_TEST(test_concurrent_mfa_completion_has_exactly_one_winner);
+    RUN_TEST(test_missing_mfa_discriminator_fails_closed);
+    RUN_TEST(test_mfa_database_failures_leave_no_partial_credentials_or_transaction);
     RUN_TEST(test_auth_init_creates_admin);
     RUN_TEST(test_auth_init_flags_only_fresh_fallback_admin);
     RUN_TEST(test_auth_init_configured_password_skips_requirement);

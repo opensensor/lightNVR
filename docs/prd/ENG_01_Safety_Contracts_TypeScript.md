@@ -4,10 +4,11 @@
 are merged in [PR #804](https://github.com/opensensor/lightNVR/pull/804).
 Recording pathname/export integrity is merged in [PR #805](https://github.com/opensensor/lightNVR/pull/805),
 and minimatch remediation in [PR #806](https://github.com/opensensor/lightNVR/pull/806).
-The recording CodeQL correction is under review in [PR #807](https://github.com/opensensor/lightNVR/pull/807);
-identity/MFA boundary review and contract expansion follow. Rust remains deferred.
+The recording CodeQL correction is merged in [PR #807](https://github.com/opensensor/lightNVR/pull/807).
+The identity/MFA boundary correction is under review in [PR #808](https://github.com/opensensor/lightNVR/pull/808);
+identity contract expansion follows. Rust remains deferred.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-06 against main at `6ddf77764e1f5553a839ff4c19ad456c3a334480`.
+**Reconciled**: 2026-11-06 against main at `98c7a9ac19001ddc988cc7dfa21accca20457b32`.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.

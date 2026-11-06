@@ -373,6 +373,17 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     bool must_change_password =
         authenticated_user.must_change_password && !g_config.demo_mode;
 
+    // Form login cannot complete a challenge. Send MFA accounts to the JSON
+    // login UI instead of creating a password-only authenticated session.
+    if (is_form && authenticated_user.totp_enabled) {
+        audit_log_login(req, &authenticated_user, username, "password", "denied", "mfa_required");
+        http_response_add_header(res, "Location", "/login.html");
+        res->status_code = 302;
+        res->body = NULL;
+        res->body_length = 0;
+        return;
+    }
+
     // Check if user has TOTP enabled (only for API/JSON requests)
     // A pending password change must never weaken MFA: an account carrying
     // both still completes its TOTP challenge first, and only then gets the
@@ -437,7 +448,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
                 // Standard two-step MFA flow
                 // Create a short-lived pending MFA session (5 minutes)
                 char totp_token[33];
-                rc = db_auth_create_session(user_id, effective_client_ip, req->user_agent, 300, totp_token, sizeof(totp_token));
+                rc = db_auth_create_mfa_challenge(user_id, effective_client_ip, req->user_agent, totp_token, sizeof(totp_token));
                 if (rc != 0) {
                     log_error("Failed to create pending MFA session for user: %s", username);
                     audit_log_login(req, &authenticated_user, username,

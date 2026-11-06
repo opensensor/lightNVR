@@ -1,7 +1,9 @@
 # F1: Identity self-service and MFA contracts
 
-Status: planned, not implemented. Baseline main `b9d3ac61`, following merged
-PR #804. This is the next API slice after recording-integrity acceptance.
+Status: F1a boundary review in progress; the session/MFA security correction is
+implemented in [PR #808](https://github.com/opensensor/lightNVR/pull/808), but the
+11-operation contract expansion is not accepted. Baseline main `98c7a9ac`,
+following merged PRs #805/#806/#807.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
@@ -74,3 +76,64 @@ this 11-operation scope, not all identity administration or device authorization
 F2 fleet reads follows F1 acceptance. Plan S1 audio/signaling authorization as a
 separate security slice ahead of broad F10 device controls. Target hardware,
 longer recovery qualification and Rust remain separate decisions.
+
+
+## F1a security preflight: pending MFA sessions (2026-11-06)
+
+The owned real-server baseline reproduced a password-verified `totp_token`
+authenticating as a normal session before completing MFA. The legacy form-login
+branch also issued a session without the JSON MFA challenge. These are behavioral
+fixes to land before publishing the wider identity contract.
+
+The correction stores pending challenges separately from authenticated sessions
+using an explicit state in the sessions table. Normal session validation and
+listing exclude pending rows. A challenge expires after five minutes, allows
+five code checks, is bound to the issuing IP/user agent, and must be atomically
+consumed before a full session or trusted-device cookie can be issued. Recheck
+active/MFA state and the account's current source restriction at completion.
+Regular session tokens cannot be used as challenges. Password changes revoke
+pending challenges along with the user's sessions. MFA-enabled form login
+redirects to the JSON login UI without issuing credentials.
+
+Migration 0093 requires existing MFA-enabled users to sign in again once: their
+old pending and authenticated rows cannot be distinguished reliably. Other users
+retain sessions. Downgrade deletes pending rows before removing their state
+columns, so a challenge cannot become a regular session on rollback. Existing
+trusted-device policy and Basic/legacy-key API authentication remain unchanged;
+this slice hardens session issuance, not every supported credential class.
+
+Regression acceptance includes pending cookies on protected endpoints, full-token
+rejection at the completion endpoint, replay, simultaneous completion with only
+one session/device, numeric wrong-code exhaustion, expiry, client-context and
+source restrictions, account/MFA disablement, password revocation, trusted-device
+revocation, form-login behavior, cross-owner consumption, and actual migration
+upgrade/rollback. Run the native unit and sanitizer labels plus the complete
+real-server API suite, not only the new cases. No canonical operations or UI
+consumers are counted as accepted by this preflight.
+
+Remaining F1 decisions: complete the principal matrix and lifecycle/parser work,
+then publish the 11-operation schema and typed consumers. The five-check limit is
+per challenge, not an account-wide TOTP throttle. The existing TOTP time window
+permits a valid code on separate challenges; challenge single-use does not imply
+time-step replay prevention. Account-wide throttling/time-step policy and Basic
+or legacy-key MFA semantics must be explicit before claiming broader MFA coverage.
+
+
+Local preflight validation: all 86 native ci-unit and all 61 ASan/UBSan
+ci-sanitizer tests pass, including database fault/rollback and missing-discriminator
+regressions. All 61 real-server API tests pass with zero retries (six new MFA
+cases); contract/root test type checks, canonical generation drift, migration
+embedding and documentation links pass. Optimized Release gcov/LCOV intersects
+92/93 changed executable C lines (98.9%) across the auth database and two handlers.
+This is a local changed-line measurement, not branch coverage or a hosted Codecov
+result. Receipts are under build/f1-qualified-*, build/f1-fault-* and build/f1-pr/.
+
+
+After PR #807 merged, PR #808 targets main and contains only the identity
+correction and plan updates. Hosted validation at `72c0fd02` passed
+[Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42233280978),
+[Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42233285534),
+[Static Analysis](https://github.com/opensensor/lightNVR/actions/runs/42233289267)
+and [CodeQL](https://github.com/opensensor/lightNVR/actions/runs/42233293791).
+The subsequent main merge and status reconciliation do not alter native or web
+application sources; normal main-targeted PR checks rerun on the updated head.
