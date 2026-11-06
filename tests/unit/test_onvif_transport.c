@@ -84,7 +84,7 @@ static void test_soap_authentication_body_is_not_forwarded_to_redirect_target(vo
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, 500L);
     char url[128]; snprintf(url, sizeof(url), "http://127.0.0.1:%u/onvif/events?token=fixture-token", port);
     char *response = perform_onvif_request_locked(handle, url, "fixture-user", "fixture-password",
-        "<GetServices/>", ONVIF_ACTION_GET_SERVICES, NULL);
+        "<GetServices/>", ONVIF_OPERATION_GET_SERVICES, NULL);
     curl_easy_cleanup(handle);
     TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
     TEST_ASSERT_EQUAL_INT(0, server_failed);
@@ -102,7 +102,7 @@ static void test_invalid_endpoint_is_rejected_before_transfer(void) {
                          "http://fixture-user:fixture-secret@127.0.0.1/test"};
     for (size_t i = 0; i < sizeof(urls)/sizeof(urls[0]); ++i) {
         TEST_ASSERT_NULL(perform_onvif_request_locked(handle, urls[i], "user", "password",
-            "<GetServices/>", ONVIF_ACTION_GET_SERVICES, NULL));
+            "<GetServices/>", ONVIF_OPERATION_GET_SERVICES, NULL));
     }
     curl_easy_cleanup(handle);
     TEST_ASSERT_NULL(strstr(log_capture, "fixture-secret"));
@@ -181,8 +181,109 @@ static void test_duplicate_fallback_logs_only_fixed_service_name(void) {
     TEST_ASSERT_NULL(strstr(log_capture, "fixture-password"));
 }
 
+/* Independent wire expectations: changing a SOAP identifier to HTTPS breaks
+ * the protocol even when the transport endpoint itself uses HTTPS. */
+static const char *const expected_actions[] = {
+    "http://www.onvif.org/ver10/device/wsdl/GetServices",
+    "http://www.onvif.org/ver10/events/wsdl/EventPortType/CreatePullPointSubscriptionRequest",
+    "http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest",
+    "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/RenewRequest",
+    "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeRequest"
+};
+static const onvif_operation_t fixture_operations[] = {
+    ONVIF_OPERATION_GET_SERVICES, ONVIF_OPERATION_CREATE_PULLPOINT,
+    ONVIF_OPERATION_PULL_MESSAGES, ONVIF_OPERATION_RENEW, ONVIF_OPERATION_UNSUBSCRIBE
+};
+
+static void *operation_server(void *unused) {
+    (void)unused;
+    for (size_t i = 0; i < sizeof(expected_actions) / sizeof(expected_actions[0]); ++i) {
+        struct pollfd wait = {.fd = origin, .events = POLLIN};
+        if (poll(&wait, 1, 3000) != 1) { server_failed = 1; return NULL; }
+        int client = accept(origin, NULL, NULL);
+        if (client < 0) { server_failed = 2; return NULL; }
+        struct timeval timeout = {.tv_sec = 3};
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        char request[8192] = {0}; size_t used = 0;
+        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
+            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
+            if (n <= 0) { server_failed = 3; break; }
+            used += (size_t)n; request[used] = '\0';
+        }
+        char header[512], element[512], destination_element[512];
+        snprintf(header, sizeof(header), "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"\r\n", expected_actions[i]);
+        snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
+        snprintf(destination_element, sizeof(destination_element), "<wsa:To>%s/onvif/fixture?x=1&amp;y=2</wsa:To>", advertised_endpoint);
+        const char target[] = "POST /onvif/fixture?x=1&y=2 HTTP/";
+        if (strncmp(request, target, strlen(target)) != 0 ||
+            !strstr(request, header) || !strstr(request, element) ||
+            !strstr(request, destination_element) || !strstr(request, "<Fixture/>")) server_failed = 4;
+        const char response[] = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n<Envelope/>";
+        if (send(client, response, sizeof(response) - 1, MSG_NOSIGNAL) != (ssize_t)(sizeof(response) - 1)) server_failed = 5;
+        close(client);
+    }
+    return NULL;
+}
+
+static void test_every_operation_preserves_action_headers_and_transport_destination(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    snprintf(advertised_endpoint, sizeof(advertised_endpoint), "http://127.0.0.1:%u", port);
+    char url[512]; snprintf(url, sizeof(url), "%s/onvif/fixture?x=1&y=2", advertised_endpoint);
+    CURL *handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(handle);
+    curl_easy_setopt(handle, CURLOPT_PROXY, "");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, operation_server, NULL));
+    bool responses_ok = true;
+    for (size_t i = 0; i < sizeof(fixture_operations) / sizeof(fixture_operations[0]); ++i) {
+        char *response = perform_onvif_request_locked(handle, url, NULL, NULL,
+            "<Fixture/>", fixture_operations[i], NULL);
+        if (!response || strcmp(response, "<Envelope/>") != 0) responses_ok = false;
+        free(response);
+    }
+    curl_easy_cleanup(handle);
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_TRUE(responses_ok);
+}
+
+static void test_https_destination_preserves_standard_soap_action_identifiers(void) {
+    for (size_t i = 0; i < sizeof(fixture_operations) / sizeof(fixture_operations[0]); ++i) {
+        char *soap = create_onvif_request(NULL, NULL, "<Fixture/>", fixture_operations[i],
+                                         "https://127.0.0.1/onvif/fixture");
+        TEST_ASSERT_NOT_NULL(soap);
+        char element[512];
+        snprintf(element, sizeof(element), "<wsa:Action>%s</wsa:Action>", expected_actions[i]);
+        bool correct_action = strstr(soap, element) != NULL;
+        bool correct_destination = strstr(soap, "<wsa:To>https://127.0.0.1/onvif/fixture</wsa:To>") != NULL;
+        free(soap);
+        TEST_ASSERT_TRUE(correct_action);
+        TEST_ASSERT_TRUE(correct_destination);
+    }
+}
+
+static void test_invalid_operation_is_rejected_before_transfer(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    char url[128]; snprintf(url, sizeof(url), "http://127.0.0.1:%u/unused", port);
+    CURL *handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(handle);
+    const onvif_operation_t invalid[] = {(onvif_operation_t)-1, ONVIF_OPERATION_COUNT, (onvif_operation_t)(ONVIF_OPERATION_COUNT + 1)};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        TEST_ASSERT_NULL(create_onvif_request(NULL, NULL, "<Fixture/>", invalid[i], url));
+        TEST_ASSERT_NULL(perform_onvif_request_locked(handle, url, NULL, NULL, "<Fixture/>", invalid[i], NULL));
+    }
+    curl_easy_cleanup(handle);
+    struct pollfd pending = {.fd = origin, .events = POLLIN};
+    TEST_ASSERT_EQUAL_INT(0, poll(&pending, 1, 0));
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_every_operation_preserves_action_headers_and_transport_destination);
+    RUN_TEST(test_invalid_operation_is_rejected_before_transfer);
+    RUN_TEST(test_https_destination_preserves_standard_soap_action_identifiers);
     RUN_TEST(test_soap_authentication_body_is_not_forwarded_to_redirect_target);
     RUN_TEST(test_invalid_endpoint_is_rejected_before_transfer);
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);

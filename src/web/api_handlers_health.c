@@ -771,8 +771,10 @@ void init_health_check_system(void) {
     // without TLS support that falls back to HTTP.
     g_health_check_tls = httpd_secure_cookies();
     snprintf(g_health_check_url, sizeof(g_health_check_url),
-             "%s://127.0.0.1:%d/api/health?liveness=true",
-             g_health_check_tls ? "https" : "http", config.web_port);
+             g_health_check_tls
+                 ? "https://127.0.0.1:%d/api/health?liveness=true"
+                 : "http://127.0.0.1:%d/api/health?liveness=true",
+             config.web_port);
 
     log_info("Health check system initialized with URL: %s", g_health_check_url);
 }
