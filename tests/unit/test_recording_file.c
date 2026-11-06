@@ -12,8 +12,16 @@
 #include "unity.h"
 #include "video/recording_file.h"
 #include "video/recording_path.h"
+#include "utils/uuid.h"
 
 static char directory[128], path[256];
+static const char *injected_uuid;
+int __real_lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]);
+int __wrap_lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
+    if (!injected_uuid) return __real_lightnvr_uuid_generate_v4(output);
+    snprintf(output, LIGHTNVR_UUID_STRING_SIZE, "%s", injected_uuid);
+    return 0;
+}
 static int write_error, close_error;
 ssize_t __real_write(int fd, const void *buffer, size_t size);
 int __real_close(int fd);
@@ -30,9 +38,11 @@ void setUp(void) {
     strcpy(directory, "/tmp/lightnvr_recording_file_XXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
     snprintf(path, sizeof(path), "%s/recording.mp4", directory);
+    injected_uuid = NULL;
     write_error = close_error = 0;
 }
 void tearDown(void) {
+    injected_uuid = NULL;
     write_error = close_error = 0;
     unlink(path);
     rmdir(directory);
@@ -159,8 +169,29 @@ void test_timestamp_reuse_rollback_and_process_restart_get_fresh_paths(void) {
     snprintf(camera_dir, sizeof(camera_dir), "%s/camera", directory);
     rmdir(camera_dir);
 }
+void test_generated_component_rejects_separators_and_traversal(void) {
+    config_t config = {0};
+    config.record_mp4_directly = true;
+    snprintf(config.mp4_storage_path, sizeof(config.mp4_storage_path), "%s", directory);
+    strcpy(config.mp4_directory_format, MP4_DIRECTORY_FORMAT_FLAT);
+    const char *invalid[] = {"../escape", "part/child", "part\\child", "part..child"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        char output[MAX_PATH_LENGTH] = "unchanged";
+        injected_uuid = invalid[i];
+        int result = prepare_mp4_recording_path(&config, "camera", 1700000000,
+                                                 output, sizeof(output));
+        injected_uuid = NULL;
+        TEST_ASSERT_EQUAL_INT(-1, result);
+        TEST_ASSERT_EQUAL_STRING("unchanged", output);
+    }
+    char camera_dir[256];
+    snprintf(camera_dir, sizeof(camera_dir), "%s/camera", directory);
+    rmdir(camera_dir);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_generated_component_rejects_separators_and_traversal);
     RUN_TEST(test_permissions_are_private_even_with_permissive_umask);
     RUN_TEST(test_exclusive_open_preserves_existing_file);
     RUN_TEST(test_symlink_is_not_followed);

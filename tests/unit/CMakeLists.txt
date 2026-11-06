@@ -532,6 +532,7 @@ target_link_options(test_detection_io_recovery PRIVATE
 set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
 add_layer3_test(test_udt_recording CI_UNIT CI_SANITIZER)
 target_link_options(test_udt_recording PRIVATE
+    "-Wl,--wrap=lightnvr_uuid_generate_v4"
     "-Wl,--wrap=recording_file_open"
     "-Wl,--wrap=go2rtc_stream_get_rtsp_url"
 )
@@ -561,7 +562,8 @@ add_layer3_test(test_recording_export_io CI_UNIT CI_SANITIZER)
 target_link_options(test_recording_export_io PRIVATE
     "-Wl,--wrap=get_recording_metadata_by_id" "-Wl,--wrap=storage_source_resolve")
 add_layer3_test(test_recording_file CI_UNIT CI_SANITIZER)
-target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=close")
+target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=close"
+    "-Wl,--wrap=lightnvr_uuid_generate_v4")
 
 add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
 target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
