@@ -44,7 +44,7 @@ for (const name of [...files.keys()].filter(n => n.endsWith('.html'))) {
   const assets = [...seen].sort();
   entries[name] = {bytes: assets.reduce((n,f) => n+files.get(f).size,0), gzipBytes: assets.reduce((n,f) => n+gzipSync(files.get(f).bytes,{level:9}).length,0), files: assets};
 }
-const git = (...args) => execFileSync('git',args,{encoding:'utf8'}).trim();
+const git = (...args) => execFileSync('git',args,{encoding:'utf8',maxBuffer:64*1024*1024}).trim();
 async function sourceDigest(paths) {
   const names = [...new Set(git('ls-files','--cached','--others','--exclude-standard','--',...paths).split('\n').filter(Boolean))].sort();
   const hash = createHash('sha256');

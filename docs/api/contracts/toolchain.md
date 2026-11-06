@@ -69,6 +69,22 @@ They do not expose instance paths, input values, arbitrary property names,
 request bodies, credentials or Ajv `params`. Diagnostics are replaced on each
 call, so consumers should capture them immediately if needed.
 
+Ajv 8.20 uses the reviewed emitters in `scripts/contracts/validator-codegen.mjs`.
+Required fields use explicit branches; each property has an independent validity
+temporary. Internal errors use arrays throughout, with union rollback truncating
+them to the previous length. Public errors still normalize to `null` on success
+and expose only `keyword`/`schemaPath`. Unused private message strings are not
+emitted. The original MIT attribution is retained alongside the emitters.
+
+Pinned Terser 5.48 performs conservative dead-code and unused-temporary removal,
+without unsafe transforms, name/property mangling, or analysis exclusions. Output
+remains readable and deterministic. The supported profile is non-mutating and
+fail-fast; generation rejects changing it to `$data`, defaults, removal or
+all-errors mode. Keep the unmodified-Ajv differential tests and full JavaScript
+CodeQL quality scan when upgrading Ajv or changing these emitters. The tests
+compare validity, exact sanitized diagnostics and input preservation across all
+exported guards; standard generator tests cover strict compilation and drift.
+
 `contracts:check` regenerates into temporary storage, compares expected bytes
 and checks for unexpected files in the generated web directory. It never repairs
 drift. Generation replaces unexpected files in its exclusively owned generated

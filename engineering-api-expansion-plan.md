@@ -417,3 +417,39 @@ Gate the encryption implementation on fixtures for all consumers, including the
 read-only go2rtc config generator and child YAML files, plus a documented recovery
 exercise. Continue the remaining F1c MFA/password work after this bounded pass;
 Rust remains deferred.
+
+## Generated validator quality follow-up (2026-11-06)
+
+Following merged PRs #815–#817, the requested standard-findings cleanup fixes
+runtime generation itself. The earlier compiler-only experiments above remain
+historical evidence; the implemented approach changes the repeated emission
+patterns that caused the reports. Required fields no longer assign property names
+inside conditions, validity temporaries are independent per property, and error
+accumulators no longer need null-allocation guards. A pinned conservative optimizer
+removes dead temporaries and unreachable statements. There are no query exclusions,
+alert dismissals or manual edits to generated validators.
+
+Full local CodeQL 2.27.4 / JavaScript queries 2.5.0 analysis of all 463 tracked
+JS/TS/JSON source inputs reports zero standard quality findings. The previous
+reported groups were 453 useless conditionals, 243 useless assignments, 37
+unneeded defensive checks and seven unreachable statements. Hosted score/closure
+is still a separate result after the new head is analyzed.
+
+The unchanged Ajv compiler serves as an independent oracle for all 50 exported
+guards: 5,109 comparisons (630 valid / 4,479 invalid) preserve acceptance, exact
+sanitized diagnostics and input data. Eight generator/tooling tests and all 805
+frontend tests pass. All 79 API cases, 16 browser cases and the production
+asset-isolation check pass against the rebuilt native application and stable
+production web assets. The final browser validator chunk is about 319.87 kB raw /
+34.07 kB gzip versus the previous 328,181 raw bytes / 36.78 kB gzip. This is a
+workstation asset measurement, not embedded CPU/memory qualification.
+
+The go2rtc dependency follow-up is merged: fork PR #3 / lightNVR PR #817 pins
+x/net v0.62.0 and the patched crypto revision. Module checks, the unchanged upstream
+test-failure comparison, govulncheck and Trivy binary scans pass. A full production
+container rebuild also reports zero OS or go2rtc vulnerabilities in Trivy 0.76.2.
+GitHub alert state depends on the new main image scan.
+
+Next work remains F1d's seven identity contracts and typed consumers, F1e
+acceptance, then F2 fleet reads and the separately reviewed S1 signaling boundary.
+Basic/key compatibility is preserved; Rust and encryption remain deferred.

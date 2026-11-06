@@ -32,6 +32,7 @@
     "openapi-typescript": "7.13.0",
     "playwright": "^1.62.1",
     "sharp": "^0.35.5",
+    "terser": "5.48.0",
     "typescript": "5.9.3"
   }
 }
