@@ -562,3 +562,7 @@ target_link_options(test_recording_export_io PRIVATE
     "-Wl,--wrap=get_recording_metadata_by_id" "-Wl,--wrap=storage_source_resolve")
 add_layer3_test(test_recording_file CI_UNIT CI_SANITIZER)
 target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=close")
+
+add_layer1_test(test_uuid CI_UNIT CI_SANITIZER)
+target_sources(test_uuid PRIVATE ${CMAKE_SOURCE_DIR}/src/utils/uuid.c)
+target_link_options(test_uuid PRIVATE "-Wl,--wrap=getrandom" "-Wl,--wrap=fread")

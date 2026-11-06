@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <libavutil/error.h>
 #include "unity.h"
@@ -36,6 +37,18 @@ void tearDown(void) {
     unlink(path);
     rmdir(directory);
 }
+void test_permissions_are_private_even_with_permissive_umask(void) {
+    AVIOContext *io = NULL;
+    mode_t previous = umask(0);
+    int result = recording_file_open(&io, path);
+    umask(previous); // Restore process-wide state before assertions can abort.
+    TEST_ASSERT_EQUAL_INT(0, result);
+    struct stat st;
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &st));
+    TEST_ASSERT_EQUAL_UINT32(0600, st.st_mode & 0777);
+    TEST_ASSERT_EQUAL_INT(0, recording_file_close(&io));
+}
+
 void test_exclusive_open_preserves_existing_file(void) {
     AVIOContext *first = NULL, *second = NULL;
     TEST_ASSERT_EQUAL_INT(0, recording_file_open(&first, path));
@@ -148,6 +161,7 @@ void test_timestamp_reuse_rollback_and_process_restart_get_fresh_paths(void) {
 }
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_permissions_are_private_even_with_permissive_umask);
     RUN_TEST(test_exclusive_open_preserves_existing_file);
     RUN_TEST(test_symlink_is_not_followed);
     RUN_TEST(test_concurrent_open_has_one_owner);

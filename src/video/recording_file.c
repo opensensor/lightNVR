@@ -51,7 +51,7 @@ int recording_file_open(AVIOContext **context, const char *path) {
         av_free(buffer);
         return AVERROR(ENOMEM);
     }
-    *fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    *fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
     if (*fd < 0) {
         int error = AVERROR(errno);
         av_freep(&io->buffer);
