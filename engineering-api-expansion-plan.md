@@ -2,14 +2,14 @@
 
 Status: F0 checkpoint, F12 and F16 merged in PR #805; recording security
 follow-up merged in PR #807. F1 boundary correction merged in PR #808. The four-operation session/device
-contract and Settings slice is implemented for review; the other seven F1
+contract and Settings slice merged in PR #809; the other seven F1
 operations remain pending. Other slices remain proposed.
 
 Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
 and [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md). Baseline:
-`f3b0f4ff8838cf2f54327ef50c38e85d2fa1a67d` on main (2026-11-06), after
+`7aa0968045cc427e1a1eb018290c1706a83873ef` on main (2026-11-06), after
 PR #805 recording integrity, PR #806 minimatch remediation, PR #807 recording security
-and PR #808 MFA/session separation. TS/TSX conversion is complete. Automated Rust conversion,
+PR #808 MFA/session separation and PR #809 session/device contracts. TS/TSX conversion is complete. Automated Rust conversion,
 synchronization with C and a second backend remain deferred.
 
 ## Ownership and acceptance
@@ -273,3 +273,56 @@ then the 11-operation canonical contract and actual UI consumers. Keep behaviora
 security fixes separately reviewable from generated schema changes. F2 fleet
 reads follows F1 acceptance; S1 audio/signaling authorization remains a separate
 security slice. Rust remains deferred.
+
+
+## Post-merge report checkpoint (2026-11-06)
+
+PR #809 merged at `7aa09680`. All 18 PR checks, including real-server contracts,
+three browser shards, sanitizers and hosted patch coverage, passed. Green checks
+mean the jobs completed; they do not mean the report dashboards are empty.
+
+| Report | Observed state | Disposition |
+|---|---|---|
+| Code Quality standard findings | 740 open, all in `web/generated/api/validators.js`: 453 constant conditions, 243 unused assignments, 37 defensive checks, 7 unreachable statements | Ajv-generated control flow; retain generator ownership and deterministic drift checks. Do not hand-edit generated output or equate these maintenance findings with 740 security vulnerabilities. |
+| Code scanning | 18 open C/C++ security alerts, all predating #809 | Keep open pending the transport/storage review below. Main analysis `2113689691` contains 22 results, matching the previous full-branch scan by rule, file and diagnostic; result count includes more than the open-alert count. |
+| Dependabot | No open alerts | No dependency change required by this checkpoint. |
+| Secret scanning | Repository API reports this feature disabled | No secret-scanning clean-state claim; configuration unchanged. |
+| AI findings | Existing [PR #810](https://github.com/opensensor/lightNVR/pull/810) exposes an upgrade-harness ancestry bug | Reproduced and regression-tested below. The complete AI dashboard was unavailable through the connected browser; this is not a claim that it contains only one finding. |
+
+The prior fail-fast generator change did **not** eliminate the generated quality
+backlog. CodeQL CLI 2.27.4 / JavaScript queries 2.5.0 (matching hosted analysis)
+measured a compiler-only experiment at 730 results; changing reference sharing
+and required-field generation still left 456. Those experiments were discarded:
+changing runtime generation solely to improve a maintenance score does not fix
+an application defect. No analysis exclusions, alert dismissals, query weakening,
+or experimental dependency/artifact changes are included. GitHub's
+[interpretation guidance](https://docs.github.com/en/code-security/how-tos/maintain-quality-code/interpret-results)
+explicitly distinguishes generated-code maintenance results from source
+maintainability. F13 remains the place for measured validator-size/performance work.
+
+PR #810 checks ancestry in the current repository, which contains the execution
+HEAD, instead of a reusable historical clone that may not contain that object.
+Two real-Git regressions exercise `prepare()`: a valid reused clone succeeds and
+records the correct provenance; an unrelated execution HEAD fails and emits no
+success manifest. Build/tool probing is mocked; Git ancestry and manifest output
+are real. The valid-reuse test fails against the old line. All eight qualification
+cleanup/preparation tests pass locally, and the existing contract CI job runs them.
+This is a harness correction, not a new end-to-end upgrade qualification claim.
+
+Prioritize the remaining reports as bounded security work before broadening
+fleet contracts:
+
+1. **Transport evidence:** review #14/#264 (RTSP probes), #270/#271/#272 and
+   #334–#337 (ONVIF), and #345 (loopback health). Trace actual destinations,
+   credential-bearing bytes, redirects and TLS behavior; distinguish XML namespace
+   URLs from transport URLs. Add protocol/credential-leak regressions. Preserve
+   explicit compatibility with HTTP-only cameras and the health listener's actual
+   transport. Dismissal requires evidence per finding; none is dismissed here.
+2. **Credentials at rest:** review #64/#63/#267 (configuration) and
+   #181/#183/#185/#307/#316 (stream/event-destination SQLite records). Document
+   required recoverable secrets, file/backup permissions, key custody, migration,
+   rotation and recovery before choosing encryption or a secret-store boundary.
+   Hashing outbound camera/destination passwords cannot replace recoverable storage.
+3. Continue F1c's MFA/password boundary and replay/throttling decisions, then the
+   remaining seven identity contracts. Fleet reads follow that acceptance. Rust
+   remains deferred.
