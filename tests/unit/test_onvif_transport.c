@@ -9,6 +9,8 @@
 static char log_capture[8192];
 static int origin, destination, server_failed;
 static unsigned short destination_port;
+static char advertised_endpoint[256];
+static int fallback_requests;
 
 void __wrap__log_message_ctx(log_level_t level, const char *component, const char *stream,
                             const char *format, ...) {
@@ -28,6 +30,7 @@ void setUp(void) {
 }
 void tearDown(void) {
     initialized = false;
+    if (curl_handle) { curl_easy_cleanup(curl_handle); curl_handle = NULL; }
     if (origin >= 0) close(origin);
     if (destination >= 0) close(destination);
     curl_global_cleanup();
@@ -116,10 +119,73 @@ static void test_trace_never_logs_headers_or_curl_notes(void) {
     TEST_ASSERT_NULL(strstr(log_capture, "Authorization"));
 }
 
+static void *fallback_server(void *unused) {
+    (void)unused;
+    const char *paths[] = {"/onvif/device_service", "/onvif/service",
+                           "/onvif/event_service", "/onvif/Events"};
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+        struct pollfd wait = {.fd = origin, .events = POLLIN};
+        if (poll(&wait, 1, 3000) != 1) { server_failed = 1; return NULL; }
+        int client = accept(origin, NULL, NULL);
+        if (client < 0) { server_failed = 2; return NULL; }
+        struct timeval timeout = {.tv_sec = 3};
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        char request[8192] = {0}; size_t used = 0;
+        while (used < sizeof(request) - 1 && !strstr(request, "</s:Envelope>")) {
+            ssize_t n = recv(client, request + used, sizeof(request) - 1 - used, 0);
+            if (n <= 0) { server_failed = 3; break; }
+            used += (size_t)n; request[used] = '\0';
+        }
+        char target[128]; snprintf(target, sizeof(target), "POST %s HTTP/", paths[i]);
+        if (strncmp(request, target, strlen(target)) != 0) server_failed = 4;
+        ++fallback_requests;
+        char body[1024] = {0};
+        if (i == 0) snprintf(body, sizeof(body),
+            "<Envelope><Body><GetServicesResponse><Service>"
+            "<Namespace>http://www.onvif.org/ver10/events/wsdl</Namespace>"
+            "<XAddr>%s</XAddr></Service></GetServicesResponse></Body></Envelope>",
+            advertised_endpoint);
+        char response[1400];
+        int length = snprintf(response, sizeof(response),
+            "HTTP/1.1 %s\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+            i == 0 ? "200 OK" : "500 Failed", strlen(body), body);
+        size_t sent = 0;
+        while (sent < (size_t)length) {
+            ssize_t n = send(client, response + sent, (size_t)length - sent, MSG_NOSIGNAL);
+            if (n <= 0) { server_failed = 5; break; }
+            sent += (size_t)n;
+        }
+        close(client);
+    }
+    return NULL;
+}
+
+static void test_duplicate_fallback_logs_only_fixed_service_name(void) {
+    unsigned short port;
+    origin = listen_local(&port);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, origin);
+    char base[128]; snprintf(base, sizeof(base), "http://127.0.0.1:%u", port);
+    snprintf(advertised_endpoint, sizeof(advertised_endpoint), "%s/onvif/service", base);
+    fallback_requests = 0;
+    curl_handle = create_curl_handle(); TEST_ASSERT_NOT_NULL(curl_handle);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, "");
+    pthread_t worker;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&worker, NULL, fallback_server, NULL));
+    onvif_subscription_t *subscription = get_subscription(base, "fixture-user", "fixture-password");
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(worker, NULL));
+    TEST_ASSERT_EQUAL_INT(0, server_failed);
+    TEST_ASSERT_EQUAL_INT(4, fallback_requests);
+    TEST_ASSERT_NULL(subscription);
+    TEST_ASSERT_NOT_NULL(strstr(log_capture, "Skipping already-tried event endpoint: onvif/service"));
+    TEST_ASSERT_NULL(strstr(log_capture, "Skipping already-tried event endpoint: http"));
+    TEST_ASSERT_NULL(strstr(log_capture, "fixture-password"));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_soap_authentication_body_is_not_forwarded_to_redirect_target);
     RUN_TEST(test_invalid_endpoint_is_rejected_before_transfer);
     RUN_TEST(test_trace_never_logs_headers_or_curl_notes);
+    RUN_TEST(test_duplicate_fallback_logs_only_fixed_service_name);
     return UNITY_END();
 }
