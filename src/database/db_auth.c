@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 
 #include "database/db_auth.h"
+#include "core/totp.h"
 #include "database/db_authorization.h"
 #include "database/db_core.h"
 #include "database/db_schema_cache.h"  // For cached_column_exists
@@ -852,6 +853,32 @@ int db_auth_update_user(int64_t user_id, const char *username, const char *email
     return 0;
 }
 
+static sqlite3 *lock_auth_database(void);
+static void unlock_auth_database(sqlite3 *db);
+static int identity_source_allowed_locked(sqlite3 *db, int64_t user_id, const char *ip);
+static int change_password_locked(int64_t user_id, const char *new_password);
+
+/* Caller holds the application/connection locks and a transaction. */
+static int revoke_credentials_locked(sqlite3 *db, int64_t user_id, const char *keep_session) {
+    const char *statements[] = {
+        "DELETE FROM sessions WHERE user_id=?1 AND (?2 IS NULL OR token<>?2 OR mfa_pending=1);",
+        "DELETE FROM trusted_devices WHERE user_id=?1;"
+    };
+    for (size_t i = 0; i < sizeof(statements) / sizeof(statements[0]); ++i) {
+        sqlite3_stmt *stmt = NULL;
+        if (sqlite3_prepare_v2(db, statements[i], -1, &stmt, NULL) != SQLITE_OK) return -1;
+        sqlite3_bind_int64(stmt, 1, user_id);
+        if (i == 0) {
+            if (keep_session && *keep_session) sqlite3_bind_text(stmt, 2, keep_session, -1, SQLITE_STATIC);
+            else sqlite3_bind_null(stmt, 2);
+        }
+        int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) return -1;
+    }
+    return 0;
+}
+
 int db_auth_update_user_account(int64_t user_id, const char *username,
                                 const char *email, int role, int is_active,
                                 const char *password, bool set_login_cidrs,
@@ -898,11 +925,11 @@ int db_auth_update_user_account(int64_t user_id, const char *username,
         sqlite3_finalize(stmt);
     }
     if (rc == 0 && password) {
-        int password_rc = db_auth_change_password(user_id, password);
+        int password_rc = change_password_locked(user_id, password);
         rc = password_rc == -2 ? -3 : (password_rc == 0 ? 0 : -1);
     }
     if (rc == 0 && (password || is_active == 0)) {
-        rc = db_auth_delete_user_sessions(user_id);
+        rc = revoke_credentials_locked(db, user_id, NULL);
     }
     if (rc == 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) rc = -1;
     if (rc != 0) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
@@ -915,7 +942,7 @@ done:
 /**
  * Change a user's password
  */
-int db_auth_change_password(int64_t user_id, const char *new_password) {
+static int change_password_locked(int64_t user_id, const char *new_password) {
     if (!new_password) {
         log_error("New password is required");
         return -1;
@@ -1042,8 +1069,32 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
 
     sqlite3_finalize(stmt);
 
-    log_info("Password changed successfully for user: %lld", (long long)user_id);
     return 0;
+}
+
+int db_auth_change_password_verified(int64_t user_id, const char *new_password,
+                                     const char *old_password) {
+    if (!new_password) return -1;
+    sqlite3 *db = lock_auth_database();
+    if (!db) return -1;
+    int result = -1;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    if (old_password && db_auth_verify_password(user_id, old_password) != 0) {
+        result = -4;
+    } else {
+        result = change_password_locked(user_id, new_password);
+        if (result == 0) result = revoke_credentials_locked(db, user_id, NULL);
+    }
+    if (result == 0 && sqlite3_exec(db, "COMMIT", NULL, NULL, NULL) != SQLITE_OK) result = -1;
+    if (result != 0) sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+done:
+    unlock_auth_database(db);
+    if (result == 0) log_info("Password changed and browser credentials revoked for user: %lld", (long long)user_id);
+    return result;
+}
+
+int db_auth_change_password(int64_t user_id, const char *new_password) {
+    return db_auth_change_password_verified(user_id, new_password, NULL);
 }
 
 /**
@@ -1652,13 +1703,20 @@ static void unlock_auth_database(sqlite3 *db) {
     pthread_mutex_unlock(get_db_mutex());
 }
 
-int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
+int db_auth_create_mfa_challenge_verified(int64_t user_id, const char *password, const char *ip_address,
                                 const char *user_agent, char *token, size_t token_size) {
+    if (token && token_size) token[0] = '\0';
     if (!token || token_size < 33 || generate_random_string(token, 32) != 0) return -1;
     sqlite3 *db = lock_auth_database();
-    if (!db) return -1;
+    if (!db) { token[0] = '\0'; return -1; }
     sqlite3_stmt *stmt = NULL;
-    int result = -1;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    result = identity_source_allowed_locked(db, user_id, ip_address);
+    if (result == 0 && password && db_auth_verify_password(user_id, password) != 0)
+        result = DB_AUTH_IDENTITY_INVALID;
+    if (result != 0) goto rollback;
+    result = DB_AUTH_IDENTITY_ERROR;
     const char *sql = "INSERT INTO sessions (user_id, token, created_at, last_activity_at, "
         "idle_expires_at, expires_at, ip_address, user_agent, mfa_pending, mfa_attempts) "
         "SELECT id, ?1, ?2, ?2, ?2 + 300, ?2 + 300, ?3, ?4, 1, 0 "
@@ -1671,10 +1729,21 @@ int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
         sqlite3_bind_int64(stmt, 5, user_id);
         if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1) result = 0;
     }
+    sqlite3_finalize(stmt); stmt = NULL;
+    if (result == 0 && sqlite3_exec(db, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) goto done;
+    if (result == 0) result = DB_AUTH_IDENTITY_ERROR;
+rollback:
+    sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+done:
     sqlite3_finalize(stmt);
     unlock_auth_database(db);
     if (result != 0) token[0] = '\0';
     return result;
+}
+
+int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
+                                const char *user_agent, char *token, size_t token_size) {
+    return db_auth_create_mfa_challenge_verified(user_id, NULL, ip_address, user_agent, token, token_size);
 }
 
 int db_auth_validate_mfa_challenge(const char *token, int64_t *user_id,
@@ -2476,8 +2545,6 @@ int db_auth_get_totp_info(int64_t user_id, char *secret, size_t secret_size, boo
     *enabled = sqlite3_column_int(stmt, 1) != 0;
     sqlite3_finalize(stmt);
 
-    /* Return -1 if no secret is configured */
-    if (secret[0] == '\0') return -1;
     return 0;
 }
 
@@ -2485,43 +2552,23 @@ int db_auth_get_totp_info(int64_t user_id, char *secret, size_t secret_size, boo
  * Set or clear the TOTP secret for a user
  */
 int db_auth_set_totp_secret(int64_t user_id, const char *secret) {
-    sqlite3 *db = get_db_handle();
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
-    if (!cached_column_exists("users", "totp_secret")) {
-        log_error("totp_secret column not available");
-        return -1;
-    }
-
-    sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-        "UPDATE users SET totp_secret = ?, updated_at = ? WHERE id = ?;",
-        -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare TOTP update: %s", sqlite3_errmsg(db));
-        return -1;
-    }
-
-    if (secret) {
+    if (!secret || !*secret) return db_auth_disable_totp(user_id, NULL);
+    sqlite3 *db = lock_auth_database();
+    if (!db) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3_stmt *stmt = NULL;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_prepare_v2(db,
+        "UPDATE users SET totp_secret=?1,updated_at=?2,totp_setup_expires_at=?2+600,totp_last_used_step=-1 "
+        "WHERE id=?3 AND totp_enabled=0;", -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, secret, -1, SQLITE_STATIC);
-    } else {
-        sqlite3_bind_null(stmt, 1);
+        sqlite3_bind_int64(stmt, 2, time(NULL));
+        sqlite3_bind_int64(stmt, 3, user_id);
+        if (sqlite3_step(stmt) == SQLITE_DONE)
+            result = sqlite3_changes(db) == 1 ? 0 : DB_AUTH_IDENTITY_CONFLICT;
     }
-    sqlite3_bind_int64(stmt, 2, (int64_t)time(NULL));
-    sqlite3_bind_int64(stmt, 3, user_id);
-
-    rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-
-    if (rc != SQLITE_DONE) {
-        log_error("Failed to update TOTP secret: %s", sqlite3_errmsg(db));
-        return -1;
-    }
-
-    return 0;
+    unlock_auth_database(db);
+    return result;
 }
 
 /**
@@ -2649,4 +2696,232 @@ bool db_auth_ip_allowed_for_user(const user_t *user, const char *client_ip) {
     }
 
     return false;
+}
+
+/* F1c credential transitions: every public operation holds both connection and
+ * application locks, and commits verification/replay state with its effects. */
+static int finish_identity_transaction(sqlite3 *db, int result) {
+    if (result != DB_AUTH_IDENTITY_ERROR &&
+        sqlite3_exec(db, "COMMIT", NULL, NULL, NULL) != SQLITE_OK)
+        result = DB_AUTH_IDENTITY_ERROR;
+    if (result == DB_AUTH_IDENTITY_ERROR) sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL);
+    return result;
+}
+
+static int identity_source_allowed_locked(sqlite3 *db, int64_t user_id, const char *ip) {
+    sqlite3_stmt *stmt = NULL;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_prepare_v2(db, "SELECT is_active,allowed_login_cidrs FROM users WHERE id=?",
+                         -1, &stmt, NULL) != SQLITE_OK) return result;
+    sqlite3_bind_int64(stmt, 1, user_id);
+    int step = sqlite3_step(stmt);
+    if (step == SQLITE_ROW) {
+        user_t user = {.id = user_id};
+        const char *cidrs = (const char *)sqlite3_column_text(stmt, 1);
+        if (cidrs && strlen(cidrs) >= sizeof(user.allowed_login_cidrs)) {
+            result = DB_AUTH_IDENTITY_INVALID;
+        } else {
+            if (cidrs) safe_strcpy(user.allowed_login_cidrs, cidrs, sizeof(user.allowed_login_cidrs), 0);
+            user.has_login_cidr_restriction = cidrs && *cidrs;
+            result = sqlite3_column_int(stmt, 0) && db_auth_ip_allowed_for_user(&user, ip)
+                ? 0 : DB_AUTH_IDENTITY_INVALID;
+        }
+    } else if (step == SQLITE_DONE) result = DB_AUTH_IDENTITY_INVALID;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+/* No schema-cache calls under the connection mutex: startup migrations provide
+ * this schema, and a missing security column must fail closed. */
+static int insert_identity_session_locked(sqlite3 *db, int64_t user_id,
+        const char *ip, const char *agent, char token[33]) {
+    if (generate_random_string(token, 32) != 0) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO sessions(user_id,token,created_at,last_activity_at,idle_expires_at,expires_at,ip_address,user_agent,mfa_pending,mfa_attempts) "
+        "VALUES(?1,?2,?3,?3,?4,?5,?6,?7,0,0)", -1, &stmt, NULL) != SQLITE_OK)
+        return DB_AUTH_IDENTITY_ERROR;
+    int64_t now = time(NULL), expires = now + default_session_absolute_expiry_seconds();
+    int64_t idle = now + default_session_idle_expiry_seconds();
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_text(stmt, 2, token, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, now);
+    sqlite3_bind_int64(stmt, 4, idle < expires ? idle : expires);
+    sqlite3_bind_int64(stmt, 5, expires);
+    sqlite3_bind_text(stmt, 6, ip ? ip : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, agent ? agent : "", -1, SQLITE_STATIC);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : DB_AUTH_IDENTITY_ERROR;
+}
+
+/* A failed or replayed OTP increments the shared account window; a successful
+ * OTP consumes its time step. The caller commits these changes even on INVALID.
+ * New challenges, password success and repeated setup do not clear the bucket. */
+static int check_account_totp_locked(sqlite3 *db, int64_t user_id, const char *code,
+                                    bool enrollment) {
+    sqlite3_stmt *stmt = NULL;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    const char *sql = "SELECT totp_secret,totp_enabled,totp_last_used_step,totp_failed_attempts,"
+        "totp_window_started_at,totp_setup_expires_at,is_active FROM users WHERE id=?";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return result;
+    sqlite3_bind_int64(stmt, 1, user_id);
+    int step = sqlite3_step(stmt);
+    if (step != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return step == SQLITE_DONE ? DB_AUTH_IDENTITY_INVALID : result;
+    }
+    char secret[64] = {0};
+    const char *stored = (const char *)sqlite3_column_text(stmt, 0);
+    bool enabled = sqlite3_column_int(stmt, 1) != 0;
+    int64_t last = sqlite3_column_int64(stmt, 2);
+    int64_t attempts = sqlite3_column_int64(stmt, 3);
+    int64_t started = sqlite3_column_int64(stmt, 4);
+    int64_t setup_expiry = sqlite3_column_int64(stmt, 5);
+    bool active = sqlite3_column_int(stmt, 6) != 0;
+    bool valid_secret = stored && *stored && strlen(stored) < sizeof(secret);
+    if (valid_secret) safe_strcpy(secret, stored, sizeof(secret), 0);
+    sqlite3_finalize(stmt); stmt = NULL;
+    int64_t now = time(NULL);
+    if (now < 0) return result;
+    if (!active || !valid_secret || (enrollment ? enabled || setup_expiry <= now : !enabled))
+        return DB_AUTH_IDENTITY_CONFLICT;
+    int window = g_config.login_rate_limit_window_seconds >= 10 ? g_config.login_rate_limit_window_seconds : 300;
+    int limit = g_config.login_rate_limit_max_attempts > 0 ? g_config.login_rate_limit_max_attempts : 5;
+    if (started <= now - window) { started = now; attempts = 0; }
+    if (g_config.login_rate_limit_enabled && attempts >= limit) return DB_AUTH_IDENTITY_LIMITED;
+    int64_t matched = -1;
+    bool accepted = totp_match_step(secret, code, (time_t)now, &matched) == 0 && matched > last;
+    if (accepted) {
+        sql = "UPDATE users SET totp_last_used_step=?2,totp_failed_attempts=0,totp_window_started_at=0,"
+              "totp_enabled=1,totp_setup_expires_at=0,updated_at=?3 WHERE id=?1";
+    } else {
+        sql = "UPDATE users SET totp_failed_attempts=?2,totp_window_started_at=?3 WHERE id=?1";
+    }
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return result;
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_int64(stmt, 2, accepted ? matched : attempts < INT64_MAX ? attempts + 1 : attempts);
+    sqlite3_bind_int64(stmt, 3, accepted ? now : started);
+    if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1)
+        result = accepted ? 0 : DB_AUTH_IDENTITY_INVALID;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int db_auth_verify_totp_enrollment(int64_t user_id, const char *code, const char *keep_session) {
+    sqlite3 *db = lock_auth_database();
+    if (!db) return DB_AUTH_IDENTITY_ERROR;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    result = check_account_totp_locked(db, user_id, code, true);
+    if (result == 0 && revoke_credentials_locked(db, user_id, keep_session) != 0)
+        result = DB_AUTH_IDENTITY_ERROR;
+    result = finish_identity_transaction(db, result);
+done:
+    unlock_auth_database(db);
+    return result;
+}
+
+int db_auth_disable_totp(int64_t user_id, const char *keep_session) {
+    sqlite3 *db = lock_auth_database();
+    if (!db) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3_stmt *stmt = NULL;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    if (sqlite3_prepare_v2(db, "UPDATE users SET totp_secret=NULL,totp_enabled=0,"
+        "totp_last_used_step=-1,totp_setup_expires_at=0,totp_failed_attempts=0,totp_window_started_at=0,"
+        "updated_at=? WHERE id=?", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, time(NULL));
+        sqlite3_bind_int64(stmt, 2, user_id);
+        if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1)
+            result = revoke_credentials_locked(db, user_id, keep_session);
+    }
+    sqlite3_finalize(stmt);
+    result = finish_identity_transaction(db, result);
+done:
+    unlock_auth_database(db);
+    return result;
+}
+
+int db_auth_complete_totp_login(int64_t user_id, const char *code,
+        const char *challenge, const char *password, const char *ip, const char *agent,
+        int trusted_seconds, char session[33], char trusted[33]) {
+    if (session) session[0] = '\0';
+    if (trusted) trusted[0] = '\0';
+    if (!session || !trusted || (!challenge == !password)) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3 *db = lock_auth_database();
+    if (!db) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3_stmt *stmt = NULL;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    result = identity_source_allowed_locked(db, user_id, ip);
+    if (result != 0) goto finish;
+    if (challenge) {
+        const char *sql = "SELECT id FROM sessions WHERE token=?1 AND user_id=?2 AND mfa_pending=1 "
+            "AND mfa_attempts BETWEEN 1 AND 5 AND expires_at>?3 AND ip_address=?4 AND user_agent=?5";
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) { result = -1; goto finish; }
+        sqlite3_bind_text(stmt, 1, challenge, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, user_id);
+        sqlite3_bind_int64(stmt, 3, time(NULL));
+        sqlite3_bind_text(stmt, 4, ip ? ip : "", -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 5, agent ? agent : "", -1, SQLITE_STATIC);
+        int step = sqlite3_step(stmt);
+        result = step == SQLITE_ROW ? 0 : step == SQLITE_DONE ? DB_AUTH_IDENTITY_INVALID : DB_AUTH_IDENTITY_ERROR;
+        sqlite3_finalize(stmt); stmt = NULL;
+        if (result != 0) goto finish;
+    } else if (db_auth_verify_password(user_id, password) != 0) {
+        result = DB_AUTH_IDENTITY_INVALID; goto finish;
+    }
+    result = check_account_totp_locked(db, user_id, code, false);
+    if (result != 0) goto finish;
+    if (challenge) {
+        if (sqlite3_prepare_v2(db, "DELETE FROM sessions WHERE token=? AND user_id=? AND mfa_pending=1",
+                             -1, &stmt, NULL) != SQLITE_OK) { result = -1; goto finish; }
+        sqlite3_bind_text(stmt, 1, challenge, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, user_id);
+        result = sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1 ? 0 : -1;
+        sqlite3_finalize(stmt); stmt = NULL;
+        if (result != 0) goto finish;
+    }
+    result = insert_identity_session_locked(db, user_id, ip, agent, session);
+    if (result == 0 && trusted_seconds > 0)
+        result = db_auth_create_trusted_device(user_id, ip, agent, trusted_seconds, trusted, 33);
+finish:
+    result = finish_identity_transaction(db, result);
+done:
+    sqlite3_finalize(stmt);
+    unlock_auth_database(db);
+    if (result != 0) session[0] = trusted[0] = '\0';
+    return result;
+}
+
+int db_auth_create_password_session(int64_t user_id, const char *password,
+        const char *trusted_token, const char *ip, const char *agent, char session[33]) {
+    if (session) session[0] = '\0';
+    if (!session || !password) return DB_AUTH_IDENTITY_ERROR;
+    sqlite3 *db = lock_auth_database();
+    if (!db) return DB_AUTH_IDENTITY_ERROR;
+    int result = DB_AUTH_IDENTITY_ERROR;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) goto done;
+    result = identity_source_allowed_locked(db, user_id, ip);
+    if (result != 0) goto finish;
+    if (db_auth_verify_password(user_id, password) != 0) { result = DB_AUTH_IDENTITY_INVALID; goto finish; }
+    if (sqlite3_prepare_v2(db, "SELECT totp_enabled FROM users WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) { result = -1; goto finish; }
+    sqlite3_bind_int64(stmt, 1, user_id);
+    if (sqlite3_step(stmt) != SQLITE_ROW) { result = -1; goto finish; }
+    bool needs_mfa = sqlite3_column_int(stmt, 0) != 0;
+    sqlite3_finalize(stmt); stmt = NULL;
+    if (needs_mfa && (!trusted_token || !*trusted_token || db_auth_validate_trusted_device(user_id, trusted_token) != 0)) {
+        result = DB_AUTH_IDENTITY_INVALID; goto finish;
+    }
+    result = insert_identity_session_locked(db, user_id, ip, agent, session);
+finish:
+    sqlite3_finalize(stmt); stmt = NULL;
+    result = finish_identity_transaction(db, result);
+done:
+    sqlite3_finalize(stmt);
+    unlock_auth_database(db);
+    if (result != 0) session[0] = '\0';
+    return result;
 }

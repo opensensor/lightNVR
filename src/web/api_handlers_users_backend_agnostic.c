@@ -924,27 +924,22 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
     bool forced_own_change = current_user.must_change_password &&
                              is_own_password && !g_config.demo_mode;
 
-    // Non-admins and forced first-login sessions must provide old password
+    const char *old_password = NULL;
     if (!can_manage_users || forced_own_change) {
-        if (!old_password_json || !cJSON_IsString(old_password_json)) {
+        if (!cJSON_IsString(old_password_json)) {
             cJSON_Delete(json_req);
             http_response_set_json_error(res, 400, "Current password is required");
             return;
         }
-
-        const char *old_password = old_password_json->valuestring;
-
-        // Verify old password
-        rc = db_auth_verify_password(target_user_id, old_password);
-        if (rc != 0) {
-            cJSON_Delete(json_req);
-            http_response_set_json_error(res, 401, "Current password is incorrect");
-            return;
-        }
+        old_password = old_password_json->valuestring;
     }
 
-    // Change the password
-    rc = db_auth_change_password(target_user_id, new_password);
+    rc = db_auth_change_password_verified(target_user_id, new_password, old_password);
+    if (rc == -4) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 401, "Current password is incorrect");
+        return;
+    }
     if (rc == -2) {
         // Password changes are locked for this user
         cJSON_Delete(json_req);
@@ -960,8 +955,6 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         return;
     }
 
-    db_auth_delete_user_sessions(target_user_id);
-    log_info("Invalidated all sessions for user %lld after password change", (long long)target_user_id);
 
     cJSON_Delete(json_req);
 
@@ -976,7 +969,7 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
     if (is_own_password) {
         httpd_clear_session_cookie(res);
     }
-    if (forced_own_change) {
+    if (is_own_password) {
         httpd_clear_trusted_device_cookie(res);
     }
 

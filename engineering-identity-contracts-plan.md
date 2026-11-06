@@ -5,7 +5,8 @@ part of F1d merged together in PR #809: session/trusted-device list and
 revoke, permission-aware discovery, generated validation and Settings consumption.
 The contract has 37 operations / 34 paths, with 203 residual routes. The remaining
 seven identity operations still target 44 accepted operations when qualified.
-Baseline main `7aa09680`, following merged PRs #805–#809.
+F1c behavior is implemented for review against main `4a0dfda2`, following
+merged PRs #812–#814. The earlier F1b baseline was `7aa09680`.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
@@ -210,3 +211,76 @@ initial unit-only report.
 PR #809 subsequently merged with all hosted checks and patch coverage passing.
 The expansion plan records the remaining quality/security report inventory and
 its distinction from this slice's completed behavioral qualification.
+
+## F1c password and TOTP behavior (2026-11-06)
+
+Implemented on main baseline `4a0dfda2`, following merged quality PRs #812–#814.
+This increment qualifies security behavior before F1d publishes the seven
+remaining identity operations and adds typed Login/AuthGate/TOTP consumers.
+The canonical count remains 37 operations / 34 paths, with 203 residual routes.
+
+Basic authentication and legacy API keys retain their existing password/TOTP
+management access, as explicitly requested. Self-service and effective
+`users.manage` checks remain distinct; scoped tokens use their owner's effective
+permissions intersected with token actions. This does not require an MFA-verified
+browser session for management, revoke API keys on password changes, or encrypt
+stored camera credentials. Password hashing migration is a separate follow-up.
+
+The corrected boundaries are:
+
+- A successful password change atomically verifies the required old password,
+  writes the new credential, and revokes all sessions, pending MFA challenges and
+  trusted devices. Administrative resets retain their existing policy. Login
+  issuance rechecks the current password and MFA state inside its transaction.
+- TOTP setup cannot overwrite an enabled secret. Pending setup expires after ten
+  minutes; the authorized secret response is private/no-store and URI labels are
+  escaped. IDs must be complete positive decimal int64 values with the expected
+  route suffix. Status contains only configuration/enabled booleans.
+- Enrollment and disable atomically change MFA state and revoke other sessions,
+  all challenges and remembered devices. The initiating owner's cookie session
+  is retained; an administrator managing another account retains none of that
+  account's sessions. A failed revocation rolls back the state change.
+- A successful OTP consumes its time step once across enrollment, inline login
+  (including force-MFA mode) and challenge completion. The accepted ±1-step window
+  remains; a consumed step or any older step cannot authenticate again. Reuse is
+  rejected even when the configurable attempt limiter is disabled.
+- Incorrect/replayed codes share a durable account attempt window across new
+  challenges and inline login. It uses the existing login limiter enabled/max/
+  window settings (default five attempts per 300 seconds). A new challenge,
+  password success or repeated setup cannot reset it; successful OTP validation
+  or window expiry resets failures. The existing five-check challenge cap remains.
+- Challenge consumption, OTP state, session creation and optional remembered-device
+  creation commit together. Failure issues no credentials and leaves the code
+  available for retry after a database error. Verification still checks current
+  active-account/source policy and challenge context/expiry.
+
+Migration 0094 preserves existing enabled secrets and authenticated sessions.
+Old unfinished enrollments have no expiry and must restart setup. Downgrade
+removes pending challenges before dropping replay/attempt columns. Database
+reopen tests verify attempt/replay persistence; missing security columns fail
+closed. Restoring an older database also restores its older replay state, so this
+is not protection against administrative database rollback.
+
+The single-use decision follows [RFC 6238 section 5.2](https://www.rfc-editor.org/rfc/rfc6238#section-5.2).
+The shared retry bucket follows the account-level rate-limit requirement for
+short OTP outputs in [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html).
+These references justify these controls, not a claim of overall standards compliance.
+
+Next: F1d's seven schemas and typed consumers, including actionable expired-setup,
+replayed-code and cooldown errors, then F1e integrated acceptance. F2 fleet reads
+and S1 signaling authorization keep their previous order. Encryption remains an
+opt-in design/migration decision; Rust remains deferred. Code finding closure
+requires post-change analysis and is not inferred from passing behavior tests.
+
+F1c local qualification: 91 native ci-unit suites and 67 ASan/UBSan
+ci-sanitizer suites pass. The complete API run passed 78 cases; the final focused
+run passed all 11 new hardening cases including the subsequently added force-MFA
+case (79 distinct API cases overall). All 16 browser cases pass. Final focused
+native/sanitizer checks, test type checks, canonical generation drift, embedded
+migration consistency and documentation links pass. Six initial security
+regressions were first reproduced as failures on main.
+
+Optimized Release gcov/LCOV intersects 366/385 changed executable C lines (95.1%),
+including the extracted TOTP helpers. This is local line coverage, not branch
+coverage or a hosted Codecov result. Receipts are in `build/f1c/`. No scanner
+finding is marked closed by this local qualification.

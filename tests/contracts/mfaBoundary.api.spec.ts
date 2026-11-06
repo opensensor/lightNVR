@@ -88,6 +88,10 @@ test('five failed MFA checks exhaust a challenge without issuing credentials',as
   expect(counts(server,user)?.sessions).toBe(0);
   expect((await ok(server,'/api/auth/trusted-devices',user)).trusted_devices).toEqual([]);
   const fresh=await challenge(server,user);
+  expect((await complete(server,fresh)).response.status).toBe(429);
+  // A fresh challenge retains account failures; expire only the owned fixture's
+  // persisted window to prove recovery without a wall-clock sleep.
+  database(server,'UPDATE users SET totp_window_started_at=0 WHERE id=?',[user.id!]);
   expect((await complete(server,fresh)).response.status).toBe(200);
 });
 
