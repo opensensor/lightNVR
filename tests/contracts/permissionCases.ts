@@ -77,6 +77,8 @@ export function operationIds(doc: Json): string[] {
 export const identityManagementOps=['changePassword','disableTotp','getTotpStatus','setupTotp','verifyTotp'];
 export const identityOps=[...identityManagementOps,'completeTotpLogin','legacyLogout','createUserToken','getClientConfig','getLoginConfig','listAuthSessions','listTrustedDevices','listUserTokens','login','logout','revokeAuthSession','revokeTrustedDevice','revokeUserToken','verifyIdentity'].sort();
 export const scopedIdentityOps=['completeTotpLogin','getClientConfig','getLoginConfig','legacyLogout','login','logout'];
+export const fleetCommonOps=['queryFleetCameras','previewFleetSelector','listFleetViews','getFleetView','listCameraCollections','getCameraCollection','getCameraCollectionMembers','previewCameraCollection','listFleetLocations','getFleetLocation','listFleetTags','getFleetTag'];
+export const fleetOps=[...fleetCommonOps,'getCameraTagAssignments'];
 export const recordingCommonOps=['getTimelineSegmentsByIds','listRecordingDetectionLabels','listRecordingTags','listRecordings'];
 export const recordingReplayOps=['getRecording','getRecordingTags','getRecordingThumbnail','getTimelineSegments','playRecording'];
 export const recordingJobOps=['downloadRecordingExport','getRecordingDeletionProgress','getRecordingExportStatus'];
@@ -90,7 +92,7 @@ export function expectedRecordingActionOps(identity:Identity):string[]{
   return [...recordingJobOps,...(groups.includes('protect')?recordingProtectOps:[]),...(groups.includes('delete')?recordingDeleteOps:[]),...(groups.includes('export')?recordingExportOps:[])].sort();
 }
 export function expectedRecordingOps(identity:Identity):string[]{return [...recordingCommonOps,...(identity.recordingReplay?recordingReplayOps:[])].sort();}
-export function nonRecordingOperationIds(doc:Json):string[]{return operationIds(doc).filter(id=>!recordingCommonOps.includes(id)&&!recordingReplayOps.includes(id)&&!recordingActionOps.includes(id));}
+export function nonRecordingOperationIds(doc:Json):string[]{return operationIds(doc).filter(id=>!recordingCommonOps.includes(id)&&!recordingReplayOps.includes(id)&&!recordingActionOps.includes(id)&&!fleetOps.includes(id));}
 export function pilotOperationIds(doc: Json): string[] { return operationIds(doc).filter(id=>allOps.includes(id)); }
 export const readOps=['getOpenApi','getStreamFull','listStreams'];
 export const allOps=['getOpenApi','getStreamFull','listStreams','updateStream'];
@@ -106,9 +108,9 @@ export async function discovery(server:Server, identity:Identity, info:TestInfo,
   valid('OpenApiDocument',body);
   const ids=operationIds(body);
   expect(nonRecordingOperationIds(body).filter(id=>!allOps.includes(id))).toEqual(identity.tokenId ? [...scopedIdentityOps,...(identity.identityManagement?identityManagementOps:[])].sort() : identityOps);
-  expect(ids.filter(id=>!allOps.includes(id)&&!identityOps.includes(id)&&!recordingActionOps.includes(id))).toEqual(expectedRecordingOps(identity));
+  expect(ids.filter(id=>!allOps.includes(id)&&!identityOps.includes(id)&&!recordingActionOps.includes(id)&&!fleetOps.includes(id))).toEqual(expectedRecordingOps(identity));
   expect(ids.filter(id=>recordingActionOps.includes(id))).toEqual(expectedRecordingActionOps(identity));
-  expect([...body['x-lightnvr-coverage'].covered_operations].sort()).toEqual([...allOps,...identityOps,...recordingCommonOps,...recordingReplayOps,...recordingActionOps].sort());
+  expect([...body['x-lightnvr-coverage'].covered_operations].sort()).toEqual([...allOps,...identityOps,...fleetOps,...recordingCommonOps,...recordingReplayOps,...recordingActionOps].sort());
   expect(body['x-lightnvr-coverage'].partial).toBe(true);
   expect(body['x-lightnvr-coverage'].canonical_revision).toMatch(/^[a-f0-9]{64}$/);
   expect(body.servers).toEqual([{url:'../',description:canonical.servers[0].description}]);

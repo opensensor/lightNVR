@@ -1,3 +1,4 @@
+import type { components } from '../../generated/api/schema';
 /**
  * Shapes for the fleet explorer, camera collections, saved views, and event
  * routing, read from src/web/api_handlers_fleet.c, _fleet_views.c,
@@ -121,103 +122,30 @@ export interface FleetCameraLocation {
   path: string;
 }
 
-export interface FleetCamera {
-  camera_uuid: string;
-  name: string;
-  address: string;
-  enabled: boolean;
-  recording_mode: string;
-  health: string;
-  availability: string;
-  health_changed_at: number;
-  last_frame_ts: number;
-  first_video_at: number;
-  last_recording_at: number;
-  current_fps: number;
-  recording_active: boolean;
-  can_configure: boolean;
-  manufacturer: string;
-  model: string;
-  capabilities: string[];
-  location: FleetCameraLocation;
-  tags: FleetCameraTag[];
-  matched_clauses?: unknown[];
-}
+export type FleetCamera = components['schemas']['FleetCamera'];
 
 export interface FleetFacetValue {
   value: string | boolean;
   count: number;
 }
 
-export interface FleetFacetEntity {
-  uuid: string;
-  /** Not emitted when the facet row has an empty label. */
-  label?: string;
-  count: number;
-}
+export type FleetFacetEntity = components['schemas']['FleetFacetEntity'];
 
-export interface FleetFacets {
-  health?: FleetFacetValue[];
-  enabled?: FleetFacetValue[];
-  recording_mode?: FleetFacetValue[];
-  availability?: FleetFacetValue[];
-  tags?: FleetFacetEntity[];
-  locations?: FleetFacetEntity[];
-}
+export type FleetFacets = components['schemas']['FleetFacets'];
 
 export type FleetValueFacetGroup = 'health' | 'enabled' | 'recording_mode' | 'availability';
 
-export interface FleetOperationalQueue {
-  key: string;
-  severity: string;
-  count: number;
-  remediation?: string;
-  oldest_unresolved_at: number | null;
-  selector: FleetSelectorInput;
-}
+export type FleetOperationalQueue = components['schemas']['FleetOperationalQueue'];
 
-export interface FleetQueryResponse {
-  selector_version?: number;
-  queue_version?: number;
-  preview?: boolean;
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
-  sort_by?: string;
-  sort_order?: string;
-  collection_uuid?: string;
-  cameras: FleetCamera[];
-  queues?: FleetOperationalQueue[];
-  /** Only present when the request set `facets`. */
-  facets?: FleetFacets;
-}
+export type FleetQueryResponse = components['schemas']['FleetQueryResponse'];
 
 // ---------------------------------------------------------------------------
 // Saved views
 // ---------------------------------------------------------------------------
 
-export interface FleetSavedView {
-  uuid: string;
-  name: string;
-  is_shared: boolean;
-  owned: boolean;
-  selector: FleetSelector;
-  search: string;
-  collection_uuid: string | null;
-  columns?: string[];
-  sort_by: string;
-  sort_order: string;
-  revision: number;
-  created_at?: number;
-  updated_at?: number;
-}
+export type FleetSavedView = components['schemas']['FleetSavedView'];
 
-export interface FleetSavedViewsResponse {
-  views?: FleetSavedView[];
-  count?: number;
-  can_share?: boolean;
-}
+export type FleetSavedViewsResponse = components['schemas']['FleetSavedViewsResponse'];
 
 /** The part of a saved view that fleetStateFromSavedView reads. */
 export interface FleetSavedViewInput {
@@ -251,25 +179,11 @@ export interface LocationLike {
   sort_order?: number;
 }
 
-export interface FleetLocation {
-  uuid: string;
-  parent_uuid: string | null;
-  name: string;
-  type: string;
-  sort_order: number;
-  is_system: boolean;
-  metadata?: Record<string, unknown>;
-  child_count: number;
-  camera_count: number;
-  created_at?: number;
-  updated_at?: number;
-}
+export type FleetLocation = components['schemas']['FleetLocation'];
 
 export type LocationRow<T extends LocationLike = FleetLocation> = T & { depth: number; path: string };
 
-export interface FleetLocationsResponse {
-  locations?: FleetLocation[];
-}
+export type FleetLocationsResponse = components['schemas']['FleetLocationsResponse'];
 
 /** All that the selector builder reads from a tag. */
 export interface TagLike {
@@ -277,19 +191,9 @@ export interface TagLike {
   label: string;
 }
 
-export interface FleetTag {
-  uuid: string;
-  label: string;
-  color: string;
-  description: string;
-  camera_count: number;
-  created_at?: number;
-  updated_at?: number;
-}
+export type FleetTag = components['schemas']['FleetTag'];
 
-export interface FleetTagsResponse {
-  tags?: FleetTag[];
-}
+export type FleetTagsResponse = components['schemas']['FleetTagsResponse'];
 
 export interface BulkOrganizationChanges {
   locationUuid?: string;
@@ -315,37 +219,13 @@ export type BoundedResult<R> =
 // Collections
 // ---------------------------------------------------------------------------
 
-export interface CameraCollection {
-  uuid: string;
-  name: string;
-  description: string;
-  type: string;
-  shared: boolean;
-  owner_user_id?: number | null;
-  member_count?: number;
-  effective_count: number;
-  created_at?: number;
-  updated_at?: number;
-  selector?: FleetSelector | null;
-  selector_redacted?: boolean;
-}
+export type CameraCollection = components['schemas']['CameraCollection'];
 
-export interface CameraCollectionsResponse {
-  collections?: CameraCollection[];
-  count?: number;
-}
+export type CameraCollectionsResponse = components['schemas']['CameraCollectionsResponse'];
 
-export interface CameraCollectionMembersResponse {
-  collection_uuid?: string;
-  camera_uuids?: string[];
-  count?: number;
-}
+export type CameraCollectionMembersResponse = components['schemas']['CameraCollectionMembersResponse'];
 
-export interface CameraCollectionPreview {
-  collection_uuid?: string;
-  matched_count: number;
-  sample: { camera_uuid: string; name: string; location_path?: string }[];
-}
+export type CameraCollectionPreview = components['schemas']['CameraCollectionPreview'];
 
 export interface CameraCollectionPayload {
   name: string;

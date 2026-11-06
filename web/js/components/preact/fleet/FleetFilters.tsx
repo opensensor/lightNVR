@@ -40,7 +40,7 @@ function FilterGroup({ title, children }: FilterGroupProps) {
 
 export interface FleetFiltersProps {
   state: FleetState;
-  facets?: FleetFacets;
+  facets?: Partial<FleetFacets>;
   locations?: LocationRow[];
   collections?: CameraCollection[];
   onChange: FleetStateChange;

@@ -84,7 +84,20 @@
       "disableTotp",
       "getTotpStatus",
       "setupTotp",
-      "verifyTotp"
+      "verifyTotp",
+      "queryFleetCameras",
+      "previewFleetSelector",
+      "listFleetViews",
+      "getFleetView",
+      "listCameraCollections",
+      "getCameraCollection",
+      "getCameraCollectionMembers",
+      "previewCameraCollection",
+      "listFleetLocations",
+      "getFleetLocation",
+      "listFleetTags",
+      "getFleetTag",
+      "getCameraTagAssignments"
     ],
     "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout."
   },
@@ -150,7 +163,22 @@
     "PasswordChangeRequest",
     "PasswordChangedResponse",
     "LoginMfaChallenge",
-    "LoginSuccess"
+    "LoginSuccess",
+    "FleetQueryRequest",
+    "FleetPreviewRequest",
+    "FleetQueryResponse",
+    "FleetPreviewResponse",
+    "FleetSavedView",
+    "FleetSavedViewsResponse",
+    "FleetLocation",
+    "FleetLocationsResponse",
+    "FleetTag",
+    "FleetTagsResponse",
+    "CameraTagAssignmentsResponse",
+    "CameraCollection",
+    "CameraCollectionsResponse",
+    "CameraCollectionMembersResponse",
+    "CameraCollectionPreview"
   ],
   "paths": {
     "/api/streams": {
@@ -5496,6 +5524,1289 @@
           }
         ]
       }
+    },
+    "/api/fleet/cameras/query": {
+      "post": {
+        "operationId": "queryFleetCameras",
+        "summary": "Query authorized fleet cameras",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetQueryRequest"
+              }
+            }
+          }
+        },
+        "description": "Read-only query over live.view-filtered, runtime-enriched inventory. Rows, totals and facets use matching authorized cameras; operational queues use all authorized cameras before query filters. can_configure is evaluated separately for each returned camera. Unknown collection is 404; out-of-range pages may be empty with nonzero totals. No stream credentials are returned."
+      }
+    },
+    "/api/fleet/selectors/preview": {
+      "post": {
+        "operationId": "previewFleetSelector",
+        "summary": "Preview a selector over authorized fleet cameras",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetPreviewRequest"
+              }
+            }
+          }
+        },
+        "description": "Read-only query over live.view-filtered, runtime-enriched inventory. Rows, totals and facets use matching authorized cameras; operational queues use all authorized cameras before query filters. can_configure is evaluated separately for each returned camera. Unknown collection is 404; out-of-range pages may be empty with nonzero totals. No stream credentials are returned."
+      }
+    },
+    "/api/fleet/views": {
+      "get": {
+        "operationId": "listFleetViews",
+        "summary": "List owned and shared fleet views",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSavedViewsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice."
+      }
+    },
+    "/api/fleet/views/{uuid}": {
+      "get": {
+        "operationId": "getFleetView",
+        "summary": "Read an owned or shared fleet view",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice."
+      }
+    },
+    "/api/camera-collections": {
+      "get": {
+        "operationId": "listCameraCollections",
+        "summary": "List visible camera collections",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollectionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      }
+    },
+    "/api/camera-collections/{uuid}": {
+      "get": {
+        "operationId": "getCameraCollection",
+        "summary": "Read a visible camera collection",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      }
+    },
+    "/api/camera-collections/{uuid}/members": {
+      "get": {
+        "operationId": "getCameraCollectionMembers",
+        "summary": "Read authorized static collection members",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollectionMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only static collections have explicit members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      }
+    },
+    "/api/camera-collections/{uuid}/preview": {
+      "post": {
+        "operationId": "previewCameraCollection",
+        "summary": "Preview authorized collection matches",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraCollectionPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation."
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "operationId": "listFleetLocations",
+        "summary": "List visible camera locations",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLocationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      }
+    },
+    "/api/locations/{uuid}": {
+      "get": {
+        "operationId": "getFleetLocation",
+        "summary": "Read a visible camera location",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetLocation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      }
+    },
+    "/api/camera-tags": {
+      "get": {
+        "operationId": "listFleetTags",
+        "summary": "List visible camera tags",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTagsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      }
+    },
+    "/api/camera-tags/{uuid}": {
+      "get": {
+        "operationId": "getFleetTag",
+        "summary": "Read a visible camera tag",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "authenticated"
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      }
+    },
+    "/api/cameras/{uuid}/tags": {
+      "get": {
+        "operationId": "getCameraTagAssignments",
+        "summary": "Read tags for an authorized camera",
+        "tags": [
+          "Fleet"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "camera",
+          "requirements": [
+            {
+              "action": "live.view",
+              "resource": "raw"
+            }
+          ]
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authorized read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraTagAssignmentsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request/path or selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable authenticated principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Camera or action access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or invisible object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database, authorization or serialization failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "description": "Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication."
+      }
     }
   },
   "components": {
@@ -9369,6 +10680,1092 @@
         "required": [
           "success",
           "must_change_password"
+        ],
+        "additionalProperties": false
+      },
+      "FleetSelector": {
+        "$ref": "#/components/schemas/TokenSelector"
+      },
+      "FleetQueryRequest": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "facets": {
+            "type": "boolean"
+          },
+          "explain": {
+            "type": "boolean"
+          },
+          "availability": {
+            "enum": [
+              "all",
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Read-only POST. Defaults: all selector, page 1, page_size 50, name/asc, facets true, explain false, availability all. Server enforces UTF-8 byte length for search and bounded selector parsing; an invalid or stale selector never grants visibility."
+      },
+      "FleetPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "facets": {
+            "type": "boolean"
+          },
+          "explain": {
+            "type": "boolean"
+          },
+          "availability": {
+            "enum": [
+              "all",
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Read-only POST. Defaults: all selector, page 1, page_size 50, name/asc, facets true, explain false, availability all. Server enforces UTF-8 byte length for search and bounded selector parsing; an invalid or stale selector never grants visibility."
+      },
+      "FleetCamera": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "recording_mode": {
+            "enum": [
+              "off",
+              "continuous",
+              "detection"
+            ]
+          },
+          "health": {
+            "enum": [
+              "unknown",
+              "up",
+              "degraded",
+              "down",
+              "disabled"
+            ]
+          },
+          "availability": {
+            "enum": [
+              "live",
+              "offline",
+              "never_connected",
+              "disabled"
+            ]
+          },
+          "health_changed_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_frame_ts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "first_video_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_recording_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "current_fps": {
+            "type": "number"
+          },
+          "recording_active": {
+            "type": "boolean"
+          },
+          "can_configure": {
+            "type": "boolean"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "onvif",
+                "ptz",
+                "backchannel"
+              ]
+            }
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "uuid": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "uuid",
+              "name",
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "uuid",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "matched_clauses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "name",
+          "address",
+          "enabled",
+          "recording_mode",
+          "health",
+          "availability",
+          "health_changed_at",
+          "last_frame_ts",
+          "first_video_at",
+          "last_recording_at",
+          "current_fps",
+          "recording_active",
+          "can_configure",
+          "manufacturer",
+          "model",
+          "capabilities",
+          "location",
+          "tags"
+        ],
+        "additionalProperties": false
+      },
+      "FleetFacetEntity": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "FleetFacets": {
+        "type": "object",
+        "properties": {
+          "health": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "enum": [
+                    "unknown",
+                    "up",
+                    "degraded",
+                    "down",
+                    "disabled"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "enabled": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "boolean"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recording_mode": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "enum": [
+                    "off",
+                    "continuous",
+                    "detection"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "availability": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "enum": [
+                    "live",
+                    "offline",
+                    "never_connected",
+                    "disabled"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetFacetEntity"
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetFacetEntity"
+            }
+          }
+        },
+        "required": [
+          "health",
+          "enabled",
+          "recording_mode",
+          "availability",
+          "tags",
+          "locations"
+        ],
+        "additionalProperties": false
+      },
+      "FleetOperationalQueue": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remediation": {
+            "type": "string"
+          },
+          "oldest_unresolved_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          }
+        },
+        "required": [
+          "key",
+          "severity",
+          "count",
+          "remediation",
+          "oldest_unresolved_at",
+          "selector"
+        ],
+        "additionalProperties": false
+      },
+      "FleetQueryResponse": {
+        "type": "object",
+        "properties": {
+          "selector_version": {
+            "const": 1
+          },
+          "queue_version": {
+            "const": 1
+          },
+          "preview": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetCamera"
+            },
+            "maxItems": 200
+          },
+          "queues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetOperationalQueue"
+            }
+          },
+          "facets": {
+            "$ref": "#/components/schemas/FleetFacets"
+          }
+        },
+        "required": [
+          "selector_version",
+          "queue_version",
+          "preview",
+          "page",
+          "page_size",
+          "total",
+          "total_pages",
+          "sort_by",
+          "sort_order",
+          "cameras",
+          "queues"
+        ],
+        "additionalProperties": false
+      },
+      "FleetPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "selector_version": {
+            "const": 1
+          },
+          "queue_version": {
+            "const": 1
+          },
+          "preview": {
+            "const": true
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetCamera"
+            },
+            "maxItems": 50
+          },
+          "queues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetOperationalQueue"
+            }
+          },
+          "facets": {
+            "$ref": "#/components/schemas/FleetFacets"
+          }
+        },
+        "required": [
+          "selector_version",
+          "queue_version",
+          "preview",
+          "page",
+          "page_size",
+          "total",
+          "total_pages",
+          "sort_by",
+          "sort_order",
+          "cameras",
+          "queues"
+        ],
+        "additionalProperties": false
+      },
+      "FleetSavedView": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "is_shared": {
+            "type": "boolean"
+          },
+          "owned": {
+            "type": "boolean"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "search": {
+            "type": "string"
+          },
+          "collection_uuid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort_by": {
+            "enum": [
+              "name",
+              "camera_uuid",
+              "location",
+              "health",
+              "enabled",
+              "recording_mode",
+              "address"
+            ]
+          },
+          "sort_order": {
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "is_shared",
+          "owned",
+          "selector",
+          "search",
+          "collection_uuid",
+          "columns",
+          "sort_by",
+          "sort_order",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "FleetSavedViewsResponse": {
+        "type": "object",
+        "properties": {
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetSavedView"
+            },
+            "maxItems": 256
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "can_share": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "views",
+          "count",
+          "can_share"
+        ],
+        "additionalProperties": false
+      },
+      "FleetLocation": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "parent_uuid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "sort_order": {
+            "type": "integer"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "child_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "parent_uuid",
+          "name",
+          "type",
+          "sort_order",
+          "is_system",
+          "metadata",
+          "child_count",
+          "camera_count",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "FleetLocationsResponse": {
+        "type": "object",
+        "properties": {
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetLocation"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unassigned_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "locations",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "FleetTag": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "label",
+          "color",
+          "description",
+          "camera_count",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "FleetTagsResponse": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetTag"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "tags",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "CameraTagAssignmentsResponse": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetTag"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "tags",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollection": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "static",
+              "smart"
+            ]
+          },
+          "shared": {
+            "type": "boolean"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "member_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FleetSelector"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selector_redacted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "description",
+          "type",
+          "shared",
+          "owner_user_id",
+          "member_count",
+          "effective_count",
+          "created_at",
+          "updated_at",
+          "selector",
+          "selector_redacted"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollectionsResponse": {
+        "type": "object",
+        "properties": {
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CameraCollection"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "collections",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollectionMembersResponse": {
+        "type": "object",
+        "properties": {
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "camera_uuids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "collection_uuid",
+          "camera_uuids",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "CameraCollectionPreview": {
+        "type": "object",
+        "properties": {
+          "collection_uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "matched_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "camera_uuid": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "location_path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "camera_uuid",
+                "name",
+                "location_path"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "collection_uuid",
+          "matched_count",
+          "sample"
         ],
         "additionalProperties": false
       }

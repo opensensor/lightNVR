@@ -1,3 +1,4 @@
+import { listCameraCollections, listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
@@ -230,9 +231,9 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }: AccessPolic
         fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessCollectionsResponse>('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessLocationsResponse>('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessTagsResponse>('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
+        listCameraCollections({headers: getAuthHeaders(), cache: 'no-store'}),
+        listFleetLocations({headers: getAuthHeaders(), cache: 'no-store'}),
+        listFleetTags({headers: getAuthHeaders(), cache: 'no-store'}),
       ]);
       setActions(actionResponse.actions || []);
       setRoles(roleResponse.roles || []);

@@ -1,15 +1,15 @@
+import { listCameraCollections, queryFleetCameras } from '../../../api/fleet.ts';
 import { useMemo } from 'preact/hooks';
-import { fetchJSON, useQuery } from '../../../query-client.ts';
+import { useQuery } from '../../../query-client.ts';
 import type {
   CameraCollection,
   CameraCollectionsResponse,
   FleetQueryResponse,
-  JsonFetcher,
 } from '../../../types/fleet.ts';
 
 const COLLECTION_PAGE_SIZE = 200;
 
-export async function fetchCollectionCameraUuids(collectionUuid: string | null | undefined, request: JsonFetcher = fetchJSON, signal?: AbortSignal): Promise<string[]> {
+export async function fetchCollectionCameraUuids(collectionUuid: string | null | undefined, request: (body: unknown, options: import('../../../api/fleet.ts').FleetRequestOptions) => Promise<FleetQueryResponse> = queryFleetCameras, signal?: AbortSignal): Promise<string[]> {
   if (!collectionUuid) return [];
 
   const cameraUuids: string[] = [];
@@ -17,23 +17,12 @@ export async function fetchCollectionCameraUuids(collectionUuid: string | null |
   let totalPages: number;
 
   do {
-    const response = await request<FleetQueryResponse>('/api/fleet/cameras/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        collection_uuid: collectionUuid,
-        selector: { version: 1, expression: { op: 'all' } },
-        page,
-        page_size: COLLECTION_PAGE_SIZE,
-        sort_by: 'camera_uuid',
-        sort_order: 'asc',
-        facets: false,
-        explain: false,
-      }),
-      signal,
-      timeout: 20000,
-      retries: 1,
-    });
+    const response = await request({
+      collection_uuid: collectionUuid,
+      selector: {version: 1, expression: {op: 'all'}},
+      page, page_size: COLLECTION_PAGE_SIZE, sort_by: 'camera_uuid',
+      sort_order: 'asc', facets: false, explain: false,
+    }, {signal, timeout: 20000, retries: 1});
     (response.cameras || []).forEach((camera) => {
       if (camera.camera_uuid) cameraUuids.push(camera.camera_uuid);
     });
@@ -52,12 +41,10 @@ export interface CollectionMembership {
 }
 
 export function useCollectionMembership(collectionUuid: string | null | undefined): CollectionMembership {
-  const collectionsQuery = useQuery<CameraCollectionsResponse>(['camera-collections'], '/api/camera-collections', {}, {
-    staleTime: 30000,
-  });
+  const collectionsQuery = useQuery<CameraCollectionsResponse>({queryKey: ['camera-collections'], queryFn: ({signal}) => listCameraCollections({signal}), staleTime: 30000 });
   const membershipQuery = useQuery<string[]>({
     queryKey: ['camera-collection-membership', collectionUuid],
-    queryFn: ({ signal }) => fetchCollectionCameraUuids(collectionUuid, fetchJSON, signal),
+    queryFn: ({ signal }) => fetchCollectionCameraUuids(collectionUuid, undefined, signal),
     enabled: Boolean(collectionUuid),
     staleTime: 30000,
   });

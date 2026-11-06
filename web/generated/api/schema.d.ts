@@ -331,6 +331,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/camera-collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List visible camera collections
+         * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
+         */
+        get: operations["listCameraCollections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-collections/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a visible camera collection
+         * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
+         */
+        get: operations["getCameraCollection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-collections/{uuid}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read authorized static collection members
+         * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
+         */
+        get: operations["getCameraCollectionMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-collections/{uuid}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview authorized collection matches
+         * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
+         */
+        post: operations["previewCameraCollection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List visible camera tags
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         */
+        get: operations["listFleetTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-tags/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a visible camera tag
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         */
+        get: operations["getFleetTag"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cameras/{uuid}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read tags for an authorized camera
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         */
+        get: operations["getCameraTagAssignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/client-config": {
         parameters: {
             query?: never;
@@ -343,6 +483,126 @@ export interface paths {
          * @description Any usable principal, including scoped tokens, can read this intentionally limited shape. Existing auth-disabled/demo behavior remains; this is not public in normal authenticated mode.
          */
         get: operations["getClientConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/cameras/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query authorized fleet cameras
+         * @description Read-only query over live.view-filtered, runtime-enriched inventory. Rows, totals and facets use matching authorized cameras; operational queues use all authorized cameras before query filters. can_configure is evaluated separately for each returned camera. Unknown collection is 404; out-of-range pages may be empty with nonzero totals. No stream credentials are returned.
+         */
+        post: operations["queryFleetCameras"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/selectors/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a selector over authorized fleet cameras
+         * @description Read-only query over live.view-filtered, runtime-enriched inventory. Rows, totals and facets use matching authorized cameras; operational queues use all authorized cameras before query filters. can_configure is evaluated separately for each returned camera. Unknown collection is 404; out-of-range pages may be empty with nonzero totals. No stream credentials are returned.
+         */
+        post: operations["previewFleetSelector"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List owned and shared fleet views
+         * @description Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice.
+         */
+        get: operations["listFleetViews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/views/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an owned or shared fleet view
+         * @description Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice.
+         */
+        get: operations["getFleetView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List visible camera locations
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         */
+        get: operations["listFleetLocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a visible camera location
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         */
+        get: operations["getFleetLocation"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1072,6 +1332,44 @@ export interface components {
         };
         /** @description Real credential identity, auth-disabled synthetic admin, or unauthenticated demo viewer. Synthetic modes do not authorize personalized discovery. */
         AuthVerifyResponse: components["schemas"]["AuthVerifiedIdentity"] | components["schemas"]["AuthDisabledIdentity"] | components["schemas"]["AuthDemoIdentity"];
+        CameraCollection: {
+            created_at: number;
+            description: string;
+            effective_count: number;
+            member_count: number;
+            name: string;
+            owner_user_id: number | null;
+            selector: components["schemas"]["FleetSelector"] | null;
+            selector_redacted: boolean;
+            shared: boolean;
+            /** @enum {unknown} */
+            type: "static" | "smart";
+            updated_at: number;
+            uuid: string;
+        };
+        CameraCollectionMembersResponse: {
+            camera_uuids: string[];
+            collection_uuid: string;
+            count: number;
+        };
+        CameraCollectionPreview: {
+            collection_uuid: string;
+            matched_count: number;
+            sample: {
+                camera_uuid: string;
+                location_path: string;
+                name: string;
+            }[];
+        };
+        CameraCollectionsResponse: {
+            collections: components["schemas"]["CameraCollection"][];
+            count: number;
+        };
+        CameraTagAssignmentsResponse: {
+            camera_uuid: string;
+            count: number;
+            tags: components["schemas"]["FleetTag"][];
+        };
         /** @description Safe browser playback configuration only. Deliberately closed shape: no storage paths, integrations, private settings or credentials. go2rtc_available may stay true while its lifecycle guard is busy. */
         ClientConfig: {
             api_key?: never;
@@ -1103,6 +1401,203 @@ export interface components {
         CredentialRevoked: {
             /** @constant */
             success: true;
+        };
+        FleetCamera: {
+            address: string;
+            /** @enum {unknown} */
+            availability: "live" | "offline" | "never_connected" | "disabled";
+            camera_uuid: string;
+            can_configure: boolean;
+            capabilities: ("onvif" | "ptz" | "backchannel")[];
+            current_fps: number;
+            enabled: boolean;
+            first_video_at: number;
+            /** @enum {unknown} */
+            health: "unknown" | "up" | "degraded" | "down" | "disabled";
+            health_changed_at: number;
+            last_frame_ts: number;
+            last_recording_at: number;
+            location: {
+                name: string;
+                path: string;
+                uuid: string;
+            };
+            manufacturer: string;
+            matched_clauses?: string[];
+            model: string;
+            name: string;
+            recording_active: boolean;
+            /** @enum {unknown} */
+            recording_mode: "off" | "continuous" | "detection";
+            tags: {
+                label: string;
+                uuid: string;
+            }[];
+        };
+        FleetFacetEntity: {
+            count: number;
+            label?: string;
+            uuid: string;
+        };
+        FleetFacets: {
+            availability: {
+                count: number;
+                /** @enum {unknown} */
+                value: "live" | "offline" | "never_connected" | "disabled";
+            }[];
+            enabled: {
+                count: number;
+                value: boolean;
+            }[];
+            health: {
+                count: number;
+                /** @enum {unknown} */
+                value: "unknown" | "up" | "degraded" | "down" | "disabled";
+            }[];
+            locations: components["schemas"]["FleetFacetEntity"][];
+            recording_mode: {
+                count: number;
+                /** @enum {unknown} */
+                value: "off" | "continuous" | "detection";
+            }[];
+            tags: components["schemas"]["FleetFacetEntity"][];
+        };
+        FleetLocation: {
+            camera_count: number;
+            child_count: number;
+            created_at: number;
+            is_system: boolean;
+            metadata: {
+                [key: string]: unknown;
+            };
+            name: string;
+            parent_uuid: string | null;
+            sort_order: number;
+            type: string;
+            updated_at: number;
+            uuid: string;
+        };
+        FleetLocationsResponse: {
+            count: number;
+            locations: components["schemas"]["FleetLocation"][];
+            unassigned_uuid?: string;
+        };
+        FleetOperationalQueue: {
+            count: number;
+            key: string;
+            oldest_unresolved_at: number | null;
+            remediation: string;
+            selector: components["schemas"]["FleetSelector"];
+            severity: string;
+        };
+        /** @description Read-only POST. Defaults: all selector, page 1, page_size 50, name/asc, facets true, explain false, availability all. Server enforces UTF-8 byte length for search and bounded selector parsing; an invalid or stale selector never grants visibility. */
+        FleetPreviewRequest: {
+            /** @enum {unknown} */
+            availability?: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_uuid?: string;
+            collection_uuid?: string;
+            explain?: boolean;
+            facets?: boolean;
+            page?: number;
+            page_size?: number;
+            search?: string;
+            selector?: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FleetPreviewResponse: {
+            cameras: components["schemas"]["FleetCamera"][];
+            collection_uuid?: string;
+            facets?: components["schemas"]["FleetFacets"];
+            page: number;
+            page_size: number;
+            /** @constant */
+            preview: true;
+            /** @constant */
+            queue_version: 1;
+            queues: components["schemas"]["FleetOperationalQueue"][];
+            /** @constant */
+            selector_version: 1;
+            /** @enum {unknown} */
+            sort_by: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order: "asc" | "desc";
+            total: number;
+            total_pages: number;
+        };
+        /** @description Read-only POST. Defaults: all selector, page 1, page_size 50, name/asc, facets true, explain false, availability all. Server enforces UTF-8 byte length for search and bounded selector parsing; an invalid or stale selector never grants visibility. */
+        FleetQueryRequest: {
+            /** @enum {unknown} */
+            availability?: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_uuid?: string;
+            collection_uuid?: string;
+            explain?: boolean;
+            facets?: boolean;
+            page?: number;
+            page_size?: number;
+            search?: string;
+            selector?: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FleetQueryResponse: {
+            cameras: components["schemas"]["FleetCamera"][];
+            collection_uuid?: string;
+            facets?: components["schemas"]["FleetFacets"];
+            page: number;
+            page_size: number;
+            preview: boolean;
+            /** @constant */
+            queue_version: 1;
+            queues: components["schemas"]["FleetOperationalQueue"][];
+            /** @constant */
+            selector_version: 1;
+            /** @enum {unknown} */
+            sort_by: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order: "asc" | "desc";
+            total: number;
+            total_pages: number;
+        };
+        FleetSavedView: {
+            collection_uuid: string | null;
+            columns: string[];
+            created_at: number;
+            is_shared: boolean;
+            name: string;
+            owned: boolean;
+            revision: number;
+            search: string;
+            selector: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order: "asc" | "desc";
+            updated_at: number;
+            uuid: string;
+        };
+        FleetSavedViewsResponse: {
+            can_share: boolean;
+            count: number;
+            views: components["schemas"]["FleetSavedView"][];
+        };
+        FleetSelector: components["schemas"]["TokenSelector"];
+        FleetTag: {
+            camera_count: number;
+            color: string;
+            created_at: number;
+            description: string;
+            label: string;
+            updated_at: number;
+            uuid: string;
+        };
+        FleetTagsResponse: {
+            count: number;
+            tags: components["schemas"]["FleetTag"][];
         };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
@@ -3213,6 +3708,480 @@ export interface operations {
             };
         };
     };
+    listCameraCollections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollectionsResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollection"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getCameraCollectionMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollectionMembersResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Only static collections have explicit members. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollectionPreview"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFleetTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTagsResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTag"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getCameraTagAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraTagAssignmentsResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getClientConfig: {
         parameters: {
             query?: never;
@@ -3241,6 +4210,408 @@ export interface operations {
                 };
             };
             /** @description Internal or policy evaluation failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    queryFleetCameras: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetQueryResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewFleetSelector: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetPreviewResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFleetViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedViewsResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedView"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFleetLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocationsResponse"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful authorized read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocation"];
+                };
+            };
+            /** @description Invalid request/path or selector. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable authenticated principal. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Camera or action access denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible object. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database, authorization or serialization failure. */
             500: {
                 headers: {
                     [name: string]: unknown;

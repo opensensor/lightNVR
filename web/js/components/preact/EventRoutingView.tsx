@@ -1,3 +1,4 @@
+import { listFleetLocations, listFleetTags } from '../../api/fleet.ts';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
@@ -188,8 +189,8 @@ export function EventRoutingView() {
   const destinationsQuery = useQuery<EventDestinationsResponse, RequestError>(['event-destinations'], '/api/event-destinations', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const catalogQuery = useQuery<EventCatalogResponse, RequestError>(['event-catalog'], '/api/events/catalog', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 60000 });
   const healthRegistryQuery = useQuery<HealthPolicySettings>(['settings-health-registry'], '/api/settings', { cache: 'no-store', timeout: 15000, retries: 0 }, { staleTime: 60000 });
-  const locationsQuery = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
-  const tagsQuery = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
+  const locationsQuery = useQuery<FleetLocationsResponse>({queryKey: ['fleet-locations'], queryFn: ({signal}) => listFleetLocations({signal}), staleTime: 60000 });
+  const tagsQuery = useQuery<FleetTagsResponse>({queryKey: ['fleet-tags'], queryFn: ({signal}) => listFleetTags({signal}), staleTime: 60000 });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

@@ -9,7 +9,8 @@
     "Recording-read slice covers nine current UI routes, including play prepare/transcode variants and thumbnails. Timeline manifest/play, files/check and protected-list remain later because the current UI does not call them. Byte ranges are protocol contracts, not JSON payload validation.",
     "Recording-action slice covers twelve protection/retention, tags, deletion, direct download and export-job routes. Retention override is explicitly included by the engineering plan. Job discovery is authenticated; concrete access requires exact creator user and scoped-token identity. Mixed otherwise-valid unauthorized batches fail before mutation/job creation. Operational missing/incomplete/protected failures retain their documented early or partial-result semantics. These jobs expose no cancellation endpoint or cancelled state. Legacy file-path deletion and synchronization remain later.",
     "Session/trusted-device self-service adds four operations: real session/Basic/legacy key owners only, no scoped-token principal. Lists retain the explicit 32-entry cap; revocation and cookie clearing are independent of that cap. IDs are canonical positive safe integers. MFA/password/logout expansion remains pending.",
-    "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success."
+    "F1d adds MFA completion/enrollment/status, password change and legacy logout. Self-service or effective users.manage discovery; concrete target authorization remains enforced. Seven operations, 44 total. Login and MFA consumers validate responses before claiming success.",
+    "F2 covers 13 read/query/preview operations: fleet queries, saved view reads, collection list/detail/members/preview, locations, tags and camera tags. Data remains filtered independently of discovery; mutations are F4. Total 57 operations, 183 residual."
   ],
   "operations": [
     {
@@ -110,8 +111,10 @@
       "handler": "handle_get_locations",
       "source": "src/web/libuv_api_handlers.c",
       "line": 116,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "listFleetLocations",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -128,8 +131,10 @@
       "handler": "handle_get_location",
       "source": "src/web/libuv_api_handlers.c",
       "line": 118,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getFleetLocation",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",
@@ -236,8 +241,10 @@
       "handler": "handle_get_camera_tags",
       "source": "src/web/libuv_api_handlers.c",
       "line": 144,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "listFleetTags",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -263,8 +270,10 @@
       "handler": "handle_get_camera_tag",
       "source": "src/web/libuv_api_handlers.c",
       "line": 150,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getFleetTag",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",
@@ -290,8 +299,10 @@
       "handler": "handle_get_camera_tag_assignments",
       "source": "src/web/libuv_api_handlers.c",
       "line": 156,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getCameraTagAssignments",
+      "eligibility": "camera"
     },
     {
       "method": "PUT",
@@ -308,8 +319,10 @@
       "handler": "handle_post_fleet_camera_query",
       "source": "src/web/libuv_api_handlers.c",
       "line": 162,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "queryFleetCameras",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -317,8 +330,10 @@
       "handler": "handle_post_fleet_selector_preview",
       "source": "src/web/libuv_api_handlers.c",
       "line": 164,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "previewFleetSelector",
+      "eligibility": "authenticated"
     },
     {
       "method": "GET",
@@ -326,8 +341,10 @@
       "handler": "handle_get_fleet_saved_views",
       "source": "src/web/libuv_api_handlers.c",
       "line": 166,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "listFleetViews",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -344,8 +361,10 @@
       "handler": "handle_get_fleet_saved_view",
       "source": "src/web/libuv_api_handlers.c",
       "line": 170,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getFleetView",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",
@@ -434,8 +453,10 @@
       "handler": "handle_get_camera_collections",
       "source": "src/web/libuv_api_handlers.c",
       "line": 196,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "listCameraCollections",
+      "eligibility": "authenticated"
     },
     {
       "method": "POST",
@@ -452,8 +473,10 @@
       "handler": "handle_get_camera_collection_members",
       "source": "src/web/libuv_api_handlers.c",
       "line": 200,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getCameraCollectionMembers",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",
@@ -470,8 +493,10 @@
       "handler": "handle_post_camera_collection_preview",
       "source": "src/web/libuv_api_handlers.c",
       "line": 204,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "previewCameraCollection",
+      "eligibility": "authenticated"
     },
     {
       "method": "GET",
@@ -479,8 +504,10 @@
       "handler": "handle_get_camera_collection",
       "source": "src/web/libuv_api_handlers.c",
       "line": 206,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "coverage": "fleet-read",
+      "classification": "protected-review-per-route",
+      "operation_id": "getCameraCollection",
+      "eligibility": "authenticated"
     },
     {
       "method": "PUT",

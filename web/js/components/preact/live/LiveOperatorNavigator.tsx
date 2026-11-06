@@ -1,3 +1,4 @@
+import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -139,7 +140,7 @@ export function LiveOperatorNavigator({
   });
   const locationsQuery = useQuery<LiveLocationsResponse>({
     queryKey: ['fleet-locations'],
-    queryFn: ({ signal }) => fetchJSON('/api/locations', { signal }),
+    queryFn: ({ signal }) => listFleetLocations({signal}),
     staleTime: 60000,
   });
   const layoutsQuery = useQuery<LiveLayoutsResponse>({

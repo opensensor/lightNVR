@@ -3,8 +3,8 @@
 Status: F1a's MFA/session correction merged in PR #808. F1b and the four-route
 part of F1d merged together in PR #809: session/trusted-device list and
 revoke, permission-aware discovery, generated validation and Settings consumption.
-F1c merged in PR #816. F1d/F1e now implement the remaining seven identity
-operations for review on top of the generated-validator quality fix (#818).
+F1c merged in PR #816. F1d/F1e merged in #819 with the remaining seven identity operations, on top of
+the merged generated-validator quality fix (#818).
 The contract has 44 operations / 41 paths, with 196 residual routes. This does
 not claim all user administration or scoped signaling is covered.
 See [expansion plan](engineering-api-expansion-plan.md) and

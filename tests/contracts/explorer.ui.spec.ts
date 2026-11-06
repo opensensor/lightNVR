@@ -1,6 +1,6 @@
 import {test as base,expect,type Browser,type Page,type BrowserContext} from '@playwright/test';
 import {startFixture,type ContractFixture} from './fixture-server.mjs';
-import {createUser,role,policy,cameraScope,ok,identityOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
+import {createUser,role,policy,cameraScope,ok,identityOps,fleetOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
 import {startProxy} from './proxy-fixture.mjs';
 const test=base.extend<{server:ContractFixture}>({server:async({},use,info)=>{
   const server=await startFixture({webRoot:process.env.LIGHTNVR_CONTRACT_WEB_ROOT});
@@ -34,9 +34,9 @@ async function rendered(page:Page,ops:string[]) {
   await expect.poll(()=>page.evaluate(()=>window.contractExplorerProbe.renders.at(-1)?.ops)).toEqual([...ops].sort());
 }
 const pilotRead=['getOpenApi','getStreamFull','listStreams'];
-const read=[...identityOps,...recordingCommonOps,...recordingReplayOps,...recordingJobOps,...recordingExportOps,...pilotRead];
-const all=[...identityOps,...recordingCommonOps,...recordingReplayOps,...recordingActionOps,...pilotRead,'updateStream'];
-const configured=[...identityOps,...recordingCommonOps,...recordingJobOps,...pilotRead,'updateStream'];
+const read=[...identityOps,...fleetOps,...recordingCommonOps,...recordingReplayOps,...recordingJobOps,...recordingExportOps,...pilotRead];
+const all=[...identityOps,...fleetOps,...recordingCommonOps,...recordingReplayOps,...recordingActionOps,...pilotRead,'updateStream'];
+const configured=[...identityOps,...fleetOps,...recordingCommonOps,...recordingJobOps,...pilotRead,'updateStream'];
 for(const principal of ['admin','viewer','configurator']) test(`${principal}: real-session explorer operations, conditional models, keyboard and read-only network`,async({server,browser})=>{
   let custom:Identity|undefined;
   if(principal==='configurator'){

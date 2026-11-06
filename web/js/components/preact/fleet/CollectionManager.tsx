@@ -1,3 +1,4 @@
+import { getCameraCollectionMembers, previewCameraCollection } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -6,7 +7,6 @@ import { CollectionSelectorBuilder } from './CollectionSelectorBuilder.tsx';
 import { StaticCollectionMembers } from './StaticCollectionMembers.tsx';
 import type {
   CameraCollection,
-  CameraCollectionMembersResponse,
   CameraCollectionPayload,
   CameraCollectionPreview,
   CollectionEditorSpec,
@@ -95,7 +95,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }: Colle
         </label>
         <label className="text-sm font-medium">
           {t('collections.type')}
-          <select className={`${fieldClasses} mt-1`} value={form.type} onChange={(event) => setForm({ ...form, type: event.currentTarget.value })}>
+          <select className={`${fieldClasses} mt-1`} value={form.type} onChange={(event) => setForm({ ...form, type: event.currentTarget.value === 'smart' ? 'smart' : 'static' })}>
             <option value="static">{t('collections.type.static')}</option>
             <option value="smart">{t('collections.type.smart')}</option>
           </select>
@@ -218,9 +218,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
     }
     setPreviewingUuid(collection.uuid);
     try {
-      const result = await fetchJSON<CameraCollectionPreview>(`/api/camera-collections/${collection.uuid}/preview`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', timeout: 20000, retries: 1,
-      });
+      const result = await previewCameraCollection(collection.uuid, {timeout: 20000, retries: 1});
       setPreviews((current) => ({ ...current, [collection.uuid]: result }));
     } catch (error) {
       showStatusMessage(t('collections.preview.error', { message: (error as Error).message }), 'error', 8000);
@@ -234,7 +232,7 @@ export function CollectionManager({ collections, loading, isAdmin, locations, ta
     try {
       let members: string[] = [];
       if (collection.type === 'static') {
-        const response = await fetchJSON<CameraCollectionMembersResponse>(`/api/camera-collections/${collection.uuid}/members`, { timeout: 20000, retries: 1 });
+        const response = await getCameraCollectionMembers(collection.uuid, {timeout: 20000, retries: 1});
         members = response.camera_uuids || [];
       }
       setEditorSpec({ collection, members });
