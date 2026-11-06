@@ -564,6 +564,69 @@ static void test_admin_bootstrap_serializes_with_storage_transactions(void) {
     TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
 }
 
+static int64_t challenge_user(char token[33]) {
+    int64_t user_id;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("challenge", "password", NULL, USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_totp_secret(user_id, "JBSWY3DPEHPK3PXP"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_enable_totp(user_id, true));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_mfa_challenge(user_id, "127.0.0.1", "fixture", token, 33));
+    return user_id;
+}
+
+void test_mfa_challenge_is_not_a_session_and_is_consumed_once(void) {
+    char pending[33], session[33];
+    int64_t owner = challenge_user(pending), found = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(pending, &found));
+    session_t sessions[32];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_list_user_sessions(owner, sessions, 32));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT64(owner, found);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(owner, "127.0.0.1", "fixture", 300, session, sizeof(session)));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(session, &found));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(session, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(session, owner));
+    TEST_ASSERT_EQUAL_INT(1, db_auth_list_user_sessions(owner, sessions, 32));
+}
+
+void test_mfa_challenge_attempt_limit_expiry_and_context(void) {
+    char pending[33];
+    int64_t owner = challenge_user(pending), found = 0;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.2", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "other"));
+    for (int attempt = 0; attempt < 5; ++attempt)
+        TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+    TEST_ASSERT_EQUAL_INT64(owner, found);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(get_db_handle(),
+        "UPDATE sessions SET expires_at=0 WHERE mfa_pending=1;", NULL, NULL, NULL));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_consume_mfa_challenge(pending, owner));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_mfa_challenge(owner, "127.0.0.1", "fixture", pending, sizeof(pending)));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user_sessions(owner));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_mfa_challenge(pending, &found, "127.0.0.1", "fixture"));
+}
+
+static char concurrent_challenge[33];
+static int64_t concurrent_owner;
+static void *consume_challenge(void *argument) {
+    int *result = argument;
+    *result = db_auth_consume_mfa_challenge(concurrent_challenge, concurrent_owner);
+    return NULL;
+}
+void test_concurrent_mfa_completion_has_exactly_one_winner(void) {
+    concurrent_owner = challenge_user(concurrent_challenge);
+    int64_t found;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_mfa_challenge(concurrent_challenge, &found, "127.0.0.1", "fixture"));
+    pthread_t threads[2];
+    int results[2];
+    for (int i = 0; i < 2; ++i)
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[i], NULL, consume_challenge, &results[i]));
+    for (int i = 0; i < 2; ++i) pthread_join(threads[i], NULL);
+    TEST_ASSERT_EQUAL_INT(1, (results[0] == 0) + (results[1] == 0));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -574,6 +637,9 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_admin_bootstrap_serializes_with_storage_transactions);
+    RUN_TEST(test_mfa_challenge_is_not_a_session_and_is_consumed_once);
+    RUN_TEST(test_mfa_challenge_attempt_limit_expiry_and_context);
+    RUN_TEST(test_concurrent_mfa_completion_has_exactly_one_winner);
     RUN_TEST(test_auth_init_creates_admin);
     RUN_TEST(test_auth_init_flags_only_fresh_fallback_admin);
     RUN_TEST(test_auth_init_configured_password_skips_requirement);

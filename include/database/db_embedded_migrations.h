@@ -2114,6 +2114,16 @@ static const char migration_0092_up[] =
 static const char migration_0092_down[] =
     "DROP INDEX IF EXISTS idx_detections_legacy_stream_label;";
 
+static const char migration_0093_up[] =
+    "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE totp_enabled = 1);\n"
+    "ALTER TABLE sessions ADD COLUMN mfa_pending INTEGER NOT NULL DEFAULT 0 CHECK (mfa_pending IN (0, 1));\n"
+    "ALTER TABLE sessions ADD COLUMN mfa_attempts INTEGER NOT NULL DEFAULT 0;";
+
+static const char migration_0093_down[] =
+    "DELETE FROM sessions WHERE mfa_pending = 1;\n"
+    "ALTER TABLE sessions DROP COLUMN mfa_attempts;\n"
+    "ALTER TABLE sessions DROP COLUMN mfa_pending;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2759,8 +2769,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0092_down,
         .is_embedded = true
     },
+    {
+        .version = "0093",
+        .description = "separate_mfa_challenges",
+        .sql_up = migration_0093_up,
+        .sql_down = migration_0093_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 92
+#define EMBEDDED_MIGRATIONS_COUNT 93
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

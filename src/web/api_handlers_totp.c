@@ -175,6 +175,8 @@ static int totp_generate(const char *secret_b32, uint64_t time_step) {
 int totp_verify(const char *secret_b32, const char *code_str) {
     if (!secret_b32 || !code_str || strlen(code_str) != 6) return -1;
 
+    for (int i = 0; i < 6; ++i)
+        if (code_str[i] < '0' || code_str[i] > '9') return -1;
     int provided_code = (int)strtol(code_str, NULL, 10);
     uint64_t current_time = (uint64_t)time(NULL);
     uint64_t time_step = current_time / 30;
@@ -516,13 +518,22 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
 
     /* Validate the pending MFA session token */
     int64_t user_id;
-    int rc = db_auth_validate_session_with_context(token_json->valuestring, &user_id,
+    int rc = db_auth_validate_mfa_challenge(token_json->valuestring, &user_id,
                                                    effective_client_ip,
                                                    req->user_agent);
     if (rc != 0) {
         cJSON_Delete(body);
         audit_log_login(req, NULL, "", "password_totp", "denied",
                         "invalid_mfa_session");
+        http_response_set_json_error(res, 401, "Invalid or expired MFA token. Please login again.");
+        return;
+    }
+
+    user_t challenge_owner;
+    if (db_auth_get_user_by_id(user_id, &challenge_owner) != 0 ||
+        !db_auth_ip_allowed_for_user(&challenge_owner, effective_client_ip)) {
+        db_auth_delete_session(token_json->valuestring);
+        cJSON_Delete(body);
         http_response_set_json_error(res, 401, "Invalid or expired MFA token. Please login again.");
         return;
     }
@@ -553,8 +564,12 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    /* Delete the pending short-lived session */
-    db_auth_delete_session(token_json->valuestring);
+    /* A concurrent completion may have consumed this challenge already. */
+    if (db_auth_consume_mfa_challenge(token_json->valuestring, user_id) != 0) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 401, "Invalid or expired MFA token. Please login again.");
+        return;
+    }
 
     cJSON_Delete(body);
 

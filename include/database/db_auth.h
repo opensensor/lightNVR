@@ -231,6 +231,15 @@ int db_auth_set_password_lock(int64_t user_id, bool locked);
 int db_auth_create_session(int64_t user_id, const char *ip_address, const char *user_agent,
                           int expiry_seconds, char *token, size_t token_size);
 
+/* Password-verified challenges cannot authenticate requests. Each is bound to
+ * its original client context, expires after five minutes, allows five checks,
+ * and must be consumed exactly once before issuing an authenticated session. */
+int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
+                                const char *user_agent, char *token, size_t token_size);
+int db_auth_validate_mfa_challenge(const char *token, int64_t *user_id,
+                                  const char *ip_address, const char *user_agent);
+int db_auth_consume_mfa_challenge(const char *token, int64_t user_id);
+
 /**
  * @brief Validate a session token
  *
