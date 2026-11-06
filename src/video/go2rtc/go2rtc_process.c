@@ -362,6 +362,8 @@ static pid_t g_process_pid = -1;
 static unsigned long long g_process_start_ticks = 0;
 static bool g_initialized = false;
 static bool g_using_external_service = false; // true when init detected a live service
+/* Exact final --config argument of the last successfully launched child. */
+static char g_managed_listener_policy[512];
 static bool g_created_config_symlink = false;
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
@@ -1044,7 +1046,7 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     // RTSP configuration - use configured port or default to 8554
     int rtsp_port = global_config->go2rtc_rtsp_port > 0 ? global_config->go2rtc_rtsp_port : 8554;
     fprintf(config_file, "\nrtsp:\n");
-    fprintf(config_file, "  listen: \":%d\"\n", rtsp_port);
+    fprintf(config_file, "  listen: \"127.0.0.1:%d\"\n", rtsp_port);
 
     // WebRTC configuration for NAT traversal
     if (global_config->go2rtc_webrtc_enabled) {
@@ -1843,6 +1845,20 @@ const char *go2rtc_process_get_override_path(void) {
     return g_override_path;
 }
 
+bool go2rtc_process_get_listener_policy(char *policy, size_t capacity) {
+    if (!policy || capacity == 0) return false;
+    policy[0] = '\0';
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_CHECK, false, false, &guard))
+        return false;
+    bool available = g_initialized && !g_using_external_service &&
+                     g_process_pid > 0 && g_managed_listener_policy[0] &&
+                     strlen(g_managed_listener_policy) < capacity;
+    if (available) strcpy(policy, g_managed_listener_policy);
+    go2rtc_lifecycle_end(&guard, available);
+    return available;
+}
+
 const char *go2rtc_process_get_config_path(void) {
     return g_config_path;
 }
@@ -2413,7 +2429,22 @@ static bool go2rtc_process_start_locked(int api_port) {
                           && override_path[0] != '\0'
                           && access(override_path, R_OK) == 0);
 
-    char *argv[6];
+    /* Apply last using go2rtc's own merge semantics. Overrides (including
+     * aliases, environment expansion and builds without libyaml) cannot
+     * reopen direct HTTP/RTSP access around LightNVR authorization. The
+     * WebRTC ICE listener remains externally reachable for negotiated media.
+     * An independently managed service is outside this launch policy. */
+    char listener_policy[sizeof(g_managed_listener_policy)];
+    int managed_api_port = api_port > 0 ? api_port : 1984;
+    int managed_rtsp_port = g_config.go2rtc_rtsp_port > 0 ? g_config.go2rtc_rtsp_port : 8554;
+    if (managed_api_port > 65535 || managed_rtsp_port > 65535) {
+        log_error("Invalid managed go2rtc listener port");
+        return false;
+    }
+    snprintf(listener_policy, sizeof(listener_policy),
+        "{\"api\":{\"listen\":\"127.0.0.1:%d\",\"tls_listen\":\"\",\"unix_listen\":\"\"},"
+        "\"rtsp\":{\"listen\":\"127.0.0.1:%d\"}}", managed_api_port, managed_rtsp_port);
+    char *argv[8];
     int ai = 0;
     argv[ai++] = (char *)"go2rtc";
     argv[ai++] = (char *)"--config";
@@ -2422,6 +2453,8 @@ static bool go2rtc_process_start_locked(int api_port) {
         argv[ai++] = (char *)"--config";
         argv[ai++] = (char *)override_path;
     }
+    argv[ai++] = (char *)"--config";
+    argv[ai++] = listener_policy;
     argv[ai] = NULL;
 
     if (have_override) {
@@ -2431,6 +2464,7 @@ static bool go2rtc_process_start_locked(int api_port) {
         log_info("Executing go2rtc with command: %s --config %s",
                  resolved_binary, g_config_path);
     }
+    log_info("Managed go2rtc listener policy (applied last): %s", listener_policy);
     log_info("Using go2rtc log file: %s", log_path);
 
     // Fork a new process
@@ -2597,6 +2631,7 @@ static bool go2rtc_process_start_locked(int api_port) {
         g_process_pid = pid;
         g_process_start_ticks = start_ticks;
         g_using_external_service = false;
+        strcpy(g_managed_listener_policy, listener_policy);
         g_last_start_time = time(NULL);  /* T4b crash-loop bookkeeping */
         log_info("Verified go2rtc serving PID: %d", pid);
 
@@ -2743,6 +2778,7 @@ static void go2rtc_process_cleanup_locked(void) {
     g_process_pid = -1;
     g_process_start_ticks = 0;
     g_using_external_service = false;
+    g_managed_listener_policy[0] = '\0';
     g_created_config_symlink = false;
     g_api_port = 1984;
     g_initialized = false;

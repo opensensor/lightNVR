@@ -438,6 +438,9 @@ if(ENABLE_GO2RTC)
     endif()
     add_layer2_test_with_curl(test_go2rtc_binary_detection)
     add_layer2_test_with_curl(test_go2rtc_two_config_merge)
+    add_layer3_test(test_go2rtc_managed_listeners)
+    set_tests_properties(test_go2rtc_managed_listeners PROPERTIES TIMEOUT 90)
+    add_layer2_test_with_curl(test_go2rtc_server_info CI_UNIT CI_SANITIZER)
 endif()
 
 # ====================================================================

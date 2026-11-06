@@ -481,8 +481,9 @@ HTTP configuration binds to loopback. The remaining gap is authorization within
 that transport. `go2rtc_proxy_authorize_request` checks `live.view` for WebRTC,
 WebSocket and HLS; the WebSocket relay forwards frames after its initial check.
 Neither fact establishes separate `audio.listen` / `audio.talk` enforcement.
-The generated RTSP listener still binds all interfaces, and administrator config
-overrides can change exposure. These are explicit deployment boundaries to resolve.
+At the start of S1, the generated RTSP listener still bound all interfaces and
+administrator overrides could change exposure. The first S1 increment below
+resolves the direct listeners for managed children.
 
 Keep S1 separate from fleet schema changes and deliver it in this dependency order:
 
@@ -502,10 +503,39 @@ Keep S1 separate from fleet schema changes and deliver it in this dependency ord
    If enforcement needs the maintained fork, review its change and parent pin
    separately, with real media and reconnect evidence before claiming isolation.
 
-S1 is not yet implemented or qualified. Keep the authorization action catalog's
-unenforced status until the bypass and established-session tests pass. Fleet
+S1 audio authorization is not yet implemented or qualified. Keep the authorization
+action catalog's unenforced status until the bypass and established-session tests pass. Fleet
 organization writes (F4) and identity administration/audit (F3) remain the next
 contract families after this security boundary.
+
+### S1a: managed direct-listener boundary (2026-11-06)
+
+The operator chose loopback-only managed RTSP over preserving external direct
+RTSP clients. The generated RTSP listener now uses `127.0.0.1`; a final native
+go2rtc configuration argument pins HTTP and RTSP to LightNVR's configured ports
+after saved overrides and disables extra HTTPS and Unix API listeners. The
+policy uses go2rtc's parser and works without libyaml validation. Other override
+fields, including the API prefix and stream definitions, still merge. The
+effective-config response and existing preview warnings show the final policy.
+
+Real-process qualification launches the pinned fork through LightNVR's supervisor,
+then restarts it with IPv4 and IPv6 wildcard overrides, a valid alternate HTTPS
+certificate and a Unix socket path. It checks the exact loopback binding, blocked
+alternate listeners, reachable WebRTC ICE transport, surviving stream definitions,
+and five decoded video frames over local RTSP after each override restart. This
+found and fixed the status parser's assumption that RTSP listeners always start
+with `:`; custom ports now survive host-qualified listen addresses. A separate
+HTTP fixture covers IPv4, IPv6, wildcard and invalid port responses. Both tests
+are included in the hosted go2rtc job.
+
+This increment does not establish audio isolation. Independently managed go2rtc
+services and administrator-enabled tunnels/bridges remain explicit deployment
+boundaries. Loopback processes are trusted. Next, build the audio permission
+matrix against actual WebRTC SDP and MSE codecs, enforce directions inside the
+maintained fork, and bound established-peer authority. Closing a signaling socket
+alone is insufficient: the current fork's WebRTC peer can outlive its WebSocket.
+Qualify native/proxy HLS and token/session revocation before changing either audio
+action's `enforced` flag. Basic and legacy API-key compatibility remains required.
 
 
 ## F2 local qualification receipt (2026-11-06)

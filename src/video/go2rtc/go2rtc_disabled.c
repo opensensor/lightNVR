@@ -97,6 +97,10 @@ int go2rtc_process_generate_override_file(const char *override_path) {
     UNUSED(override_path); return 0;
 }
 const char *go2rtc_process_get_override_path(void) { return NULL; }
+bool go2rtc_process_get_listener_policy(char *policy, size_t capacity) {
+    if (policy && capacity) policy[0] = '\0';
+    return false;
+}
 const char *go2rtc_process_get_config_path(void)   { return NULL; }
 void go2rtc_process_clear_override_quarantine(void) {}
 void go2rtc_process_validate_existing_override_on_upgrade(void) {}

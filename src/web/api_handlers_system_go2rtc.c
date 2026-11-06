@@ -291,6 +291,14 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
      * if nothing was readable, just ["go2rtc.yaml"] when no override exists,
      * etc.  Plus an explicit override_in_use boolean for callers that want
      * a one-shot signal without parsing the array. */
+    char listener_policy[512];
+    bool managed_policy = go2rtc_process_get_listener_policy(listener_policy, sizeof(listener_policy));
+    cJSON_AddStringToObject(root, "managed_listener_policy", listener_policy);
+    if (managed_policy) {
+        add_warning(warnings, "Managed listener policy is applied after overrides: %s", listener_policy);
+    } else {
+        add_warning(warnings, "No managed listener policy recorded. External go2rtc services must restrict their own HTTP and RTSP listeners.");
+    }
     cJSON *order = cJSON_CreateArray();
     if (order) {
         if (base_loaded) {
@@ -298,6 +306,9 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
         }
         if (override_loaded) {
             cJSON_AddItemToArray(order, cJSON_CreateString("override.yaml"));
+        }
+        if (managed_policy) {
+            cJSON_AddItemToArray(order, cJSON_CreateString("managed_listener_policy"));
         }
         cJSON_AddItemToObject(root, "merged_source_order", order);
     }
