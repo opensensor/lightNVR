@@ -528,6 +528,13 @@ with `:`; custom ports now survive host-qualified listen addresses. A separate
 HTTP fixture covers IPv4, IPv6, wildcard and invalid port responses. Both tests
 are included in the hosted go2rtc job.
 
+Local validation on merged #821: 97 release ci-unit tests and 72 ASan/UBSan
+ci-sanitizer tests pass. The real-process listener/media fixture passes in the
+release build without libyaml; the libyaml-enabled sanitizer variant also
+exercises the custom API prefix. Coverage reaches 32/32 changed executable lines
+in the three enabled implementation files, not exhaustive branch/fault coverage.
+The disabled-go2rtc implementation builds successfully. Documentation links pass.
+
 This increment does not establish audio isolation. Independently managed go2rtc
 services and administrator-enabled tunnels/bridges remain explicit deployment
 boundaries. Loopback processes are trusted. Next, build the audio permission
