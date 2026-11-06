@@ -820,6 +820,7 @@ set(REBUILD_RECORDINGS_SOURCES
     src/storage/storage_s3.c
     src/storage/storage_deletion.c
     src/ezxml/ezxml.c
+    src/video/recording_file.c
     src/video/recording_path.c
     src/database/db_schema.c
     src/database/db_schema_cache.c

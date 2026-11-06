@@ -241,6 +241,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     metrics_set_recording_active(stream_name, true);
 
     // Main loop to record segments
+    bool segment_attempted = false;
     while (thread_ctx->running && !thread_ctx->shutdown_requested) {
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
@@ -388,9 +389,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
         // Check if it's time to create a new segment based on segment duration
         // Force segment rotation every segment_duration seconds
-        if (segment_duration > 0) {
+        if (segment_duration > 0 || segment_attempted) {
             time_t elapsed_time = current_time - thread_ctx->writer->last_rotation_time;
-            if (elapsed_time >= segment_duration) {
+            if (segment_attempted || elapsed_time >= segment_duration) {
                 log_info("Time to create new segment for stream %s (elapsed time: %ld seconds, segment duration: %d seconds)",
                          stream_name, (long)elapsed_time, segment_duration);
 
@@ -563,6 +564,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                            on_segment_started_cb, on_segment_activity_cb, thread_ctx,
                            &thread_ctx->shutdown_requested);
         time_t segment_end = time(NULL);
+        // A completed or failed attempt always gets a new path on the next
+        // iteration, including same-second retries and wall-clock rollback.
+        segment_attempted = true;
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,
@@ -650,15 +654,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->video_params_detected = false;
             }
 
-            // Write the next attempt to a new file, but rotate through the normal
-            // finalization path instead of swapping output_path here: until then
-            // current_recording_id still describes the file that just failed, and
-            // a new path would leave the next file with no recording row at all.
-            // The backoff below is at least 1 s, so the rotated timestamp differs.
-            if (thread_ctx->writer && segment_duration > 0) {
-                thread_ctx->writer->last_rotation_time = time(NULL) - segment_duration;
-            }
-
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",
                     backoff_seconds, stream_name, thread_ctx->retry_count);
 
@@ -700,21 +695,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         (unsigned long long)thread_ctx->writer->current_recording_id,
                         (unsigned long long)size_bytes);
             }
-        }
-
-        // BUGFIX (#315): Guarantee a new segment is created on the next loop
-        // iteration, even when record_segment exits up to 1 second early (the
-        // "within 1 second of duration limit" optimisation in mp4_segment_recorder.c
-        // sets waiting_for_final_keyframe at elapsed >= duration-1).  Without this,
-        // the wall-clock elapsed_time check at the top of the loop sees
-        // (segment_duration - 1) < segment_duration and skips rotation, so
-        // record_segment is called again with the *same* output path, truncating
-        // and overwriting the just-completed recording.
-        //
-        // Setting last_rotation_time to exactly segment_duration seconds in the
-        // past ensures elapsed_time >= segment_duration on the very next check.
-        if (thread_ctx->writer && segment_duration > 0) {
-            thread_ctx->writer->last_rotation_time = time(NULL) - segment_duration;
         }
     }
 

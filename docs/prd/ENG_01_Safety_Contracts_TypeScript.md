@@ -1,19 +1,28 @@
 # PRD — Engineering Hardening and Permission-Aware API Contracts
 
-**Status**: Locally accepted working-tree implementation — TS/TSX conversion
-already landed; permission-aware Streams, identity/token and recording read/action
-contracts, root test typing and bounded recovery qualification are complete for
-the executed plan. Remaining API/device work is explicitly proposed separately.
-Validation was recorded before PR creation; hosted results are not claimed here.
+**Status**: TS/TSX migration and the first permission-aware API hardening wave
+are merged in [PR #804](https://github.com/opensensor/lightNVR/pull/804).
+Recording pathname/export integrity is the active follow-up; identity/MFA
+contract expansion is planned next. Rust remains deferred.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-05 against `main` at `8455d00577e122b82bd128427b3ed402da66b3e9` (0.46.2 source line)
+**Reconciled**: 2026-11-06 against main at `b9d3ac6194e412122c45943e6161d526e9e8d075`.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
 
-**Execution baseline**: `dea6094a731c86debb03cc1c75d0251ab3b96cec` (0.46.3 version
+**Original execution baseline**: `dea6094a731c86debb03cc1c75d0251ab3b96cec` (0.46.3 version
 bump after the reconciliation baseline). The authoritative task/evidence log is
 [engineering-api-contracts-plan.md](../../engineering-api-contracts-plan.md).
+
+**Current follow-up**: [engineering API expansion](../../engineering-api-expansion-plan.md)
+and [bounded identity contracts plan](../../engineering-identity-contracts-plan.md).
+The accepted contract remains 33 operations / 30 paths, with 207 residual
+registered operations. Main's forked go2rtc pins `6c311990` including rejected
+HTTP response cleanup; the temporary parent patch delivery has been removed.
+Main at `b9d3ac61` has successful hosted [Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42215794378),
+[Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42215794273),
+and [Static Analysis](https://github.com/opensensor/lightNVR/actions/runs/42215794248).
+These results predate the active recording-integrity changes.
 
 ## 1. History and current direction
 
@@ -42,7 +51,7 @@ is **postponed**. Contracts and compatibility tests should be reusable if that
 work resumes, but no Rust code, translator, synchronization service, or second
 release pipeline is part of the active phases.
 
-## 2. What had landed at the main baseline
+## 2. Historical main baseline before PR #804
 
 “Landed” below means present in the inspected source, not comprehensive product
 acceptance or physical-device qualification.
@@ -319,8 +328,8 @@ without timestamp aging; full/read-only/permission/unavailable storage; bounded
 disconnect/reconnect and concurrent lifecycle work; and an actual 0.45.3 copied
 installation upgraded from 0089 through 0092 with the original untouched. Media
 decode, protected hashes, durable IDs and database integrity are checked together.
-The go2rtc response-close repair is delivered as a parent-repository patch with
-clean-checkout tests; libuv shutdown keeps finite in-flight handlers alive until
+The go2rtc response-close repair was initially delivered as a parent patch;
+main now pins the repair and regression in the maintained go2rtc fork; libuv shutdown keeps finite in-flight handlers alive until
 their work completes. Arbitrarily blocked handlers and longer device soaks are
 outside these bounded qualifications.
 
@@ -332,11 +341,12 @@ high water is 267.90/267.98 MiB; default/modern installed assets are 14,946,302 
 See [performance evidence](../api/contracts/performance.md) for distributions,
 methodology and the remaining metrics-buffer/unused-validator costs.
 
-Two concrete follow-ups remain: second-resolution recording filenames can reuse
-paths, and the ZIP writer does not detect every read/write/close failure. Tests
-prove the documented detected job errors and successful archive integrity, not
-universal I/O failure atomicity. Physical cameras, active-media capacity, remote
-archive/HEVC paths and hosted workflow runs remain unobserved. Contract CI now
+The T29 review identified two follow-ups: second-resolution pathname reuse and
+unchecked ZIP I/O failures. F12/F16 now address these in the active follow-up PR;
+its acceptance and limits are tracked in the expansion plan. The T29 tests proved
+detected job errors and successful archive integrity, not universal I/O failure
+atomicity. Physical cameras, active-media capacity and remote archive/HEVC
+qualification remain outstanding. Hosted results are recorded at the top of this PRD. Contract CI now
 explicitly runs API/browser cases; a manual reliability workflow reproduces the
 four operational scenarios and uploads only sanitized status. No repository
 merge restrictions or CodeQL backlog gates were added.

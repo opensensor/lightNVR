@@ -16,6 +16,13 @@ static mp4_writer_t writer;
 static mp4_writer_thread_t reader;
 static char test_dir[64];
 static row_t rows[MAX_ROWS];
+static bool rollback;
+static time_t clock_value = 1700000000;
+time_t __wrap_time(time_t *value) {
+    if (value) *value = clock_value;
+    return clock_value;
+}
+
 static int row_count, segment_calls, paths_prepared, placement_failures, placement_waits;
 
 static void write_file(const char *path, size_t size) {
@@ -45,6 +52,10 @@ int __wrap_update_stream_storage_cache_add_recording(const char *name, uint64_t 
 }
 
 int __wrap_av_usleep(unsigned usec) {
+    if (rollback && usec == 500000) {
+        clock_value -= 3600;
+        rollback = false;
+    }
     if (usec == 1000000) placement_waits++;
     return 0;
 }
@@ -87,6 +98,8 @@ int __wrap_record_segment(const char *url, const char *path, int duration, int a
 }
 
 void setUp(void) {
+    rollback = false;
+    clock_value = 1700000000;
     g_config.max_streams = MAX_STREAMS;
     strcpy(test_dir, "/tmp/lightnvr_retry_pairing_XXXXXX");
     TEST_ASSERT_NOT_NULL(mkdtemp(test_dir));
@@ -135,8 +148,15 @@ static void test_blocked_placement_waits_and_keeps_the_rows_paired(void) {
     TEST_ASSERT_EQUAL_INT(2, placement_waits);
 }
 
+static void test_clock_rollback_keeps_new_file_and_row_pairing(void) {
+    rollback = true;
+    mp4_writer_rtsp_thread(&reader);
+    assert_each_file_kept_its_own_row();
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_clock_rollback_keeps_new_file_and_row_pairing);
     RUN_TEST(test_failed_segment_finalizes_its_row_before_the_retry_file);
     RUN_TEST(test_blocked_placement_waits_and_keeps_the_rows_paired);
     return UNITY_END();
