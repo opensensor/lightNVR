@@ -33,7 +33,6 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
-#include "core/url_utils.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
 #include "database/database_manager.h"
@@ -53,6 +52,26 @@
 
 // Mutex for manifest creation
 static pthread_mutex_t manifest_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Callers provide a nonempty, already-authorized segment inventory. */
+static int closest_timeline_segment(const timeline_segment_t *segments, int count,
+                                    time_t start_time) {
+    int selected = 0;
+    double min_distance = -1;
+    for (int i = 0; i < count; i++) {
+        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
+            return i;
+        }
+        double distance = start_time < segments[i].start_time
+            ? difftime(segments[i].start_time, start_time)
+            : difftime(start_time, segments[i].end_time);
+        if (min_distance < 0 || distance < min_distance) {
+            min_distance = distance;
+            selected = i;
+        }
+    }
+    return selected;
+}
 
 static int get_timeline_segments_for_identity(
     const char *identity, bool by_camera_uuid, time_t start_time,
@@ -893,30 +912,9 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Find the segment that contains the start time, or the closest one
-    int64_t recording_id = 0;
-    int64_t min_distance = INT64_MAX;
-
-    for (int i = 0; i < count; i++) {
-        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
-            // Found exact match
-            recording_id = (int64_t)segments[i].id;
-            break;
-        }
-
-        // Calculate distance to this segment
-        int64_t distance;
-        if (start_time < segments[i].start_time) {
-            distance = segments[i].start_time - start_time;
-        } else {
-            distance = start_time - segments[i].end_time;
-        }
-
-        if (distance < min_distance) {
-            min_distance = distance;
-            recording_id = (int64_t)segments[i].id;
-        }
-    }
+    // Find the segment that contains the start time, or the closest one.
+    int selected = closest_timeline_segment(segments, count, start_time);
+    uint64_t recording_id = segments[selected].id;
 
     free(segments);
 
@@ -935,7 +933,8 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
     // Set redirect response
     res->status_code = 302;
     http_response_add_header(res, "Location", redirect_url);
-    http_response_add_header(res, "Content-Length", "0");
+    // The backend emits Content-Length from the empty response body. Adding it
+    // here as well produces an invalid redirect with duplicate length headers.
 
     log_info("Successfully handled GET /api/timeline/play request");
 }
@@ -955,6 +954,7 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
         log_warn("Limiting manifest to %d segments (requested %d)", MAX_MANIFEST_SEGMENTS, segment_count);
         segment_count = MAX_MANIFEST_SEGMENTS;
     }
+    int selected = closest_timeline_segment(segments, segment_count, start_time);
     
     // Create a temporary directory for the manifest
     char temp_dir[MAX_PATH_LENGTH];
@@ -968,8 +968,8 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     
     // Generate a unique manifest filename
     char manifest_filename[MAX_PATH_LENGTH];
-    snprintf(manifest_filename, sizeof(manifest_filename), "%s/manifest_%ld_%s_%ld.m3u8",
-            temp_dir, (long)time(NULL), segments[0].stream_name, (long)start_time);
+    snprintf(manifest_filename, sizeof(manifest_filename), "%s/manifest_%ld_%llu_%ld.m3u8",
+            temp_dir, (long)time(NULL), (unsigned long long)segments[selected].id, (long)start_time);
     
     // Lock mutex for manifest creation
     pthread_mutex_lock(&manifest_mutex);
@@ -995,27 +995,18 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     fprintf(manifest, "#EXT-X-MEDIA-SEQUENCE:0\n");
     fprintf(manifest, "#EXT-X-ALLOW-CACHE:YES\n");
     
-    // Find the maximum segment duration for EXT-X-TARGETDURATION
-    double max_duration = 0;
-    for (int i = 0; i < segment_count; i++) {
-        double duration = difftime(segments[i].end_time, segments[i].start_time);
-        if (duration > max_duration) {
-            max_duration = duration;
-        }
-    }
+    double duration = difftime(segments[selected].end_time, segments[selected].start_time);
     // Round up to the nearest integer and add a small buffer
-    int target_duration = (int)max_duration + 1;
+    int target_duration = (int)duration + 1;
     fprintf(manifest, "#EXT-X-TARGETDURATION:%d\n", target_duration);
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME * 3];
-    simple_url_escape(segments[0].stream_name, encoded_name, MAX_STREAM_NAME * 3);
-    
     // Create a single segment for the entire timeline
-    // This simplifies playback and avoids issues with segment transitions
-    fprintf(manifest, "#EXTINF:%.6f,\n", max_duration);
-    fprintf(manifest, "/api/timeline/play?stream=%s&start=%ld\n", 
-            encoded_name, (long)start_time);
+    // Bind playback to the captured recording, never its historical camera
+    // name: that name may now belong to a different camera. The recording
+    // endpoint rechecks current permission when the media is requested.
+    fprintf(manifest, "#EXTINF:%.6f,\n", duration);
+    fprintf(manifest, "/api/recordings/play/%llu\n",
+            (unsigned long long)segments[selected].id);
     
     // Write manifest end
     fprintf(manifest, "#EXT-X-ENDLIST\n");

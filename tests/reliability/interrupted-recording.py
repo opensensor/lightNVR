@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import ExitStack
 import hashlib
 import http.server
 import json
@@ -14,6 +15,7 @@ import signal
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -89,6 +91,35 @@ def run_evidence(command, directory, name, timeout=30):
     return result
 
 
+def finalize_report(report, directory, cleanup):
+    """Attempt every cleanup and retain evidence without swallowing cancellation."""
+    if sys.exception() is not None:
+        report['status'] = 'failed'
+
+    def run_cleanup(key, action):
+        completed = False
+        try:
+            action()
+            completed = True
+        except Exception as error:
+            report[key] = str(error)
+        finally:
+            # KeyboardInterrupt/SystemExit must propagate, including during
+            # cleanup, but must never leave a previously passed result intact.
+            if not completed:
+                report['status'] = 'failed'
+
+    def write_report():
+        (directory / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
+
+    # ExitStack attempts remaining callbacks even when one raises an interrupt.
+    # Register in reverse to preserve the declared recorder/source/check order.
+    with ExitStack() as stack:
+        stack.callback(write_report)
+        for key, action in reversed(cleanup):
+            stack.callback(run_cleanup, key, action)
+
+
 class SyntheticSource:
     """Loopback HTTP MPEG-TS source; each owned FFmpeg producer has a one-second GOP."""
     def __init__(self, directory):
@@ -129,6 +160,8 @@ class SyntheticSource:
                         self.wfile.write(chunk)
                         self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
+                    # Recorder shutdown and injected disconnects close this
+                    # streaming response normally; the producer is reaped below.
                     pass
                 finally:
                     if proc.poll() is None:
@@ -308,7 +341,7 @@ stun_enabled = false
 
     def stop(self, crash=False):
         if self.process is None:
-            return
+            return 0.0
         self.children()
         started = time.monotonic()
         timed_out = False
@@ -538,22 +571,14 @@ def qualify(binary, go2rtc, directory, build_manifest=None, diagnostic_age=False
     except QualificationBlocked as error:
         report['status'] = 'blocked'
         report['qualification'] = str(error)
-    except BaseException as error:
+    except Exception as error:
         report['error'] = str(error)
         (directory / 'failure.txt').write_text(traceback.format_exc())
     finally:
-        try:
-            recorder.stop()
-        except BaseException as error:
-            report['status'] = 'failed'
-            report['cleanup_error'] = str(error)
+        cleanup = [('cleanup_error', recorder.stop)]
         if source:
-            try:
-                source.stop()
-            except BaseException as error:
-                report['status'] = 'failed'
-                report['source_cleanup_error'] = str(error)
-        (directory / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
+            cleanup.append(('source_cleanup_error', source.stop))
+        finalize_report(report, directory, cleanup)
     return report
 
 

@@ -323,21 +323,12 @@ def qualify(binary, go2rtc, directory, cycles, build_manifest=None):
         report['status'] = 'passed'
         report['qualification'] = ('Owned source disconnect/reconnect, overlapping manual stop/stop/start, '
             'and one SIGTERM overlapping stop/start HTTP requests; same-path/clock-rollback collisions excluded.')
-    except BaseException as error:
+    except Exception as error:
         report['error'] = str(error)
         (directory / 'failure.txt').write_text(traceback.format_exc())
     finally:
-        try:
-            recorder.stop()
-        except BaseException as error:
-            report['status'] = 'failed'
-            report['cleanup_error'] = str(error)
-        try:
-            source.stop()
-        except BaseException as error:
-            report['status'] = 'failed'
-            report['source_cleanup_error'] = str(error)
-        (directory / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
+        fixture.finalize_report(report, directory, [
+            ('cleanup_error', recorder.stop), ('source_cleanup_error', source.stop)])
     return report
 
 

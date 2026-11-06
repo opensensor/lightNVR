@@ -1,6 +1,6 @@
 import {test as base,expect,type Browser,type Page,type BrowserContext} from '@playwright/test';
 import {startFixture,type ContractFixture} from './fixture-server.mjs';
-import {createUser,role,policy,cameraScope,ok,admin,identityOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
+import {createUser,role,policy,cameraScope,ok,identityOps,recordingCommonOps,recordingReplayOps,recordingActionOps,recordingJobOps,recordingExportOps,type Identity} from './permissionCases';
 import {startProxy} from './proxy-fixture.mjs';
 const test=base.extend<{server:ContractFixture}>({server:async({},use,info)=>{
   const server=await startFixture({webRoot:process.env.LIGHTNVR_CONTRACT_WEB_ROOT});
@@ -83,9 +83,9 @@ test('logout, login as viewer and back navigation never restore the administrato
     await page.locator('#username').fill(server.credentials.viewer.username);await page.locator('#password').fill(server.credentials.viewer.password);
     await page.locator('#login-form button[type=submit]').click();await page.waitForURL(url=>!url.pathname.endsWith('/login.html'));
     await page.goBack();
-    // Login's redirect may replace the history entry; reopen docs through actual
-    // navigation when the previous entry is login rather than the reference.
-    if(!page.url().endsWith('/api-docs.html'))await page.goto(`${server.baseURL}/api-docs.html`);
+    // Successful login must replace its history entry: revisiting the login
+    // page would clear the newly issued session on mount.
+    await expect(page).toHaveURL(`${server.baseURL}/api-docs.html`);
     await rendered(page,read);await expect(page.locator('.opblock-put')).toHaveCount(0);
     await page.evaluate(()=>{window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));});
     await expect(page.locator('#api-reference')).toBeEmpty();

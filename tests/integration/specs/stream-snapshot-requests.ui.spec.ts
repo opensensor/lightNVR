@@ -1,18 +1,16 @@
 import { test, expect } from '@playwright/test';
+import { streamSummary, streamSummaryPage } from '../fixtures/stream-summary';
 
 test('snapshot requests stay stable until a camera is re-enabled @ui @streams', async ({ page }) => {
   const snapshotUrls: string[] = [];
-  const streams = ['cam_a', 'cam_b', 'cam_c'].map(name => ({
-    name, camera_uuid: name, enabled: true, streaming_enabled: true,
-    status: 'Running', availability: 'live', can_configure: true,
-    width: 640, height: 480, fps: 15, codec: 'h264', protocol: 0,
-    record: false, tags: '', playback_transport: 'mse_only',
-  }));
+  const streams = ['cam_a', 'cam_b', 'cam_c'].map(name => streamSummary(name));
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/streams/cam_a') {
-      streams[0].enabled = route.request().method() === 'PUT';
-      await route.fulfill({ json: { success: true } });
+      const enabling = route.request().method() === 'PUT';
+      streams[0].enabled = enabling;
+      await route.fulfill({ status: enabling ? 202 : 200,
+        json: { success: true, message: enabling ? 'Stream update queued' : 'Stream disabled' } });
       return;
     }
     if (path === '/go2rtc/api/frame.jpeg') {
@@ -29,7 +27,7 @@ test('snapshot requests stay stable until a camera is re-enabled @ui @streams', 
         authenticated: true, username: 'admin', role: 'admin', role_id: 0,
         auth_enabled: false,
       },
-      '/api/streams': { streams, total: 3, total_pages: 1, page: 1, page_size: 50 },
+      '/api/streams': streamSummaryPage(streams),
       '/api/detection/models': { models: [] },
     };
     await route.fulfill({ json: responses[path] || {} });

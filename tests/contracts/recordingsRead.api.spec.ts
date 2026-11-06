@@ -83,6 +83,97 @@ test('timelines filter requested IDs, counts and ranges without revealing hidden
   }
 });
 
+test('recording reads fail closed on policy lookup failure and recover without empty or partial success',async({server})=>{
+  const fixture=seedRecordings(server);
+  const replay=await createUser(server,'read_policy_failure');
+  const permission=await role(server,'Read policy failure',['recordings.replay']);
+  await policy(server,replay,[{role_uuid:permission,scope:cameraScope(server.cameras.A.camera_uuid)}]);
+  expect(sortedIds((await page(server,replay)).recordings)).toEqual(replayIds);
+  // Only this fixture's policy table is unavailable; authentication and the
+  // recording/media rows remain intact. A failed authorization read is not an
+  // empty authorized inventory, even after a successful request warmed counts.
+  database(server,'ALTER TABLE authz_grants RENAME TO contract_read_grants_unavailable');
+  try {
+    for(const route of ['/api/recordings?limit=all','/api/recordings/tags','/api/recordings/detection-labels',
+      '/api/recordings/protected','/api/recordings/protected?stream=A',
+      `/api/recordings/${ids.playable}`,`/api/recordings/${ids.playable}/tags`,
+      `/api/timeline/segments?stream=A&${timelineQuery(fixture)}`,
+      `/api/timeline/manifest?stream=A&${timelineQuery(fixture)}`,
+      `/api/timeline/play?stream=A&start=${fixture.start}`,
+      `/api/timeline/segments-by-ids?ids=${ids.playable},${ids.hidden}`]) {
+      const failed=await wire(server,route,replay);
+      expect(failed.response.status,route).toBe(500);safeDenied(failed.body,server,fixture);
+      expect(Object.keys(failed.body)).toEqual(['error']);
+    }
+  } finally {database(server,'ALTER TABLE contract_read_grants_unavailable RENAME TO authz_grants');}
+  expect(sortedIds((await page(server,replay)).recordings)).toEqual(replayIds);
+  expect((await ok(server,'/api/recordings/tags',replay)).tags).toEqual(['visible-tag']);
+});
+
+// These existing endpoints remain outside the OpenAPI slice. Their changed
+// capture-identity authorization still needs real HTTP regression coverage.
+test('protected recording counts use captured UUIDs across name reuse and camera renames',async({server})=>{
+  const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
+  for(const id of [ids.playable,historical.visible,historical.hidden])
+    database(server,'UPDATE recordings SET protected=1 WHERE id=?',[id]);
+  expect(await ok(server,'/api/recordings/protected',viewer)).toEqual({protected_count:2});
+  expect(await ok(server,'/api/recordings/protected?stream=A',viewer)).toEqual({protected_count:2,stream_name:'A'});
+  expect(await ok(server,'/api/recordings/protected',admin)).toEqual({protected_count:3});
+  expect(await ok(server,'/api/recordings/protected?stream=B',admin)).toEqual({protected_count:1,stream_name:'B'});
+  const noReplay=await token(server);
+  expect(await ok(server,'/api/recordings/protected',noReplay)).toEqual({protected_count:0});
+  for(const [route,identity,status] of [
+    ['/api/recordings/protected?stream=B',viewer,403],
+    ['/api/recordings/protected?stream=A',noReplay,403],
+    ['/api/recordings/protected',anonymous,401],
+    ['/api/recordings/protected?stream=A',anonymous,401],
+  ] as const) {
+    const denied=await wire(server,route,identity);expect(denied.response.status).toBe(status);safeDenied(denied.body,server,fixture);
+  }
+  database(server,'UPDATE streams SET name=? WHERE camera_uuid=?',['Renamed-A',server.cameras.A.camera_uuid]);
+  expect(await ok(server,'/api/recordings/protected',viewer)).toEqual({protected_count:2});
+  expect(await ok(server,'/api/recordings/protected?stream=Renamed-A',viewer)).toEqual({protected_count:2,stream_name:'Renamed-A'});
+  const oldName=await wire(server,'/api/recordings/protected?stream=A',viewer);
+  expect(oldName.response.status).toBe(404);safeDenied(oldName.body,server,fixture);
+});
+
+test('timeline manifests and playback keep captured ownership across reused and renamed camera names',async({server})=>{
+  const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
+  // Isolate the historical pair from current recordings and give both the
+  // same time window: selecting a reused name instead of UUID would swap them.
+  const start=fixture.start-7200;
+  for(const id of [historical.visible,historical.hidden])
+    database(server,'UPDATE recordings SET start_time=?,end_time=? WHERE id=?',[start,start+2,id]);
+  const query=`start=${encodeURIComponent(new Date((start-1)*1000).toISOString())}&end=${encodeURIComponent(new Date((start+3)*1000).toISOString())}`;
+  const bReplay=await token(server,admin,cameraScope(server.cameras.B.camera_uuid),['recordings.replay'],undefined,true);
+  async function check(name:string,identity:Identity,id:number) {
+    const manifest=await server.request(`/api/timeline/manifest?stream=${name}&${query}`,{principal:'anonymous',headers:identity.headers});
+    expect(manifest.status).toBe(200);expect(manifest.headers.get('content-type')).toMatch(/^application\/vnd\.apple\.mpegurl/);
+    const text=await manifest.text();expect(text).toContain('#EXTM3U');expect(text).toContain('#EXTINF:2.000000,');
+    const links=text.split(/\r?\n/).filter(line=>line&&!line.startsWith('#'));
+    expect(links).toHaveLength(1);
+    const link=new URL(links[0],server.baseURL);
+    expect(link.origin).toBe(server.baseURL);expect(link.pathname).toBe(`/api/recordings/play/${id}`);
+    const playback=await server.request(`${link.pathname}${link.search}`,{principal:'anonymous',headers:identity.headers,redirect:'manual'});
+    expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(fixture.bytes);
+    for(const requested of [start-1,start+1,start+3]) {
+      const direct=await server.request(`/api/timeline/play?stream=${name}&start=${requested}`,{principal:'anonymous',headers:identity.headers,redirect:'manual'});
+      expect(direct.status).toBe(302);expect(direct.headers.get('location')).toBe(`/api/recordings/play/${id}`);
+    }
+  }
+  await check('A',viewer,historical.visible);await check('B',bReplay,historical.hidden);
+  for(const [name,identity] of [['B',viewer],['A',bReplay]] as const) {
+    for(const route of [`/api/timeline/manifest?stream=${name}&${query}`,`/api/timeline/play?stream=${name}&start=${start+1}`]) {
+      const denied=await wire(server,route,identity);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);
+    }
+  }
+  database(server,'UPDATE streams SET name=? WHERE camera_uuid=?',['Renamed-A',server.cameras.A.camera_uuid]);
+  await check('Renamed-A',viewer,historical.visible);
+  for(const route of [`/api/timeline/manifest?stream=A&${query}`,`/api/timeline/play?stream=A&start=${start+1}`]) {
+    const missing=await wire(server,route,viewer);expect(missing.response.status).toBe(404);safeDenied(missing.body,server,fixture);
+  }
+});
+
 test('real playable bytes support prefix, suffix, open and clamped ranges; invalid ranges match current protocol',async({server})=>{
   const fixture=seedRecordings(server);expect(fixture.probe).toMatchObject({streams:[{codec_name:'h264',codec_type:'video',width:96,height:64}]});
   const full=await media(server,ids.playable);expect(full.status).toBe(200);expect(full.headers.get('content-type')).toBe('video/mp4');expect(full.headers.get('accept-ranges')).toBe('bytes, bytes');expect(Number(full.headers.get('content-length'))).toBe(fixture.bytes.length);expect(Buffer.from(await full.arrayBuffer())).toEqual(fixture.bytes);

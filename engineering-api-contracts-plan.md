@@ -743,3 +743,33 @@ remaining limitations. The [follow-on plan](engineering-api-expansion-plan.md)
 is proposed work, not an instruction to execute another wave. No blocked task,
 hosted-run claim, physical-device claim or Rust conversion is hidden in this
 completion record.
+
+## PR #804 review follow-up — 2026-11-06
+
+- Fixed the failing explorer history regression: successful password, forced
+  password-change and MFA login replace the login history entry. Back navigation
+  now returns directly to the reference instead of mounting the login page and
+  revoking the newly issued session. The test requires that actual navigation;
+  it no longer masks the failure by navigating to the reference a second time.
+- Repaired both failing Streams integration fixtures with complete generated
+  contract fields and the HTTP 202 queued-update acknowledgment. A shared typed
+  fixture builder validates mock summaries before the browser consumes them.
+- Addressed the twelve automated review comments. Reliability qualifiers catch
+  operational exceptions while allowing cancellation to propagate, attempt all
+  remaining cleanup, and persist a failed result even if cleanup is interrupted.
+  Added focused failure/cancellation regression tests to the contract CI job.
+- Instrumented the optimized real-server contract build with atomic coverage
+  counters. CI uploads an explicit source-only LCOV report under `api-contracts`;
+  fixture credentials, payloads, logs and traces remain outside that upload.
+  Added policy-failure and deletion-selector tests that assert denied operations
+  do not change metadata, files or queued work.
+- Coverage-driven tests for protected counts and legacy timeline playback found
+  a manifest still using a historical camera name. Manifest links now bind to
+  the selected recording ID and its duration; media requests recheck that
+  recording's captured identity. Real-media regressions cover both owners after
+  name reuse, denied cross-camera requests, and a subsequent camera rename.
+  Following the legacy playback redirect also exposed duplicate Content-Length
+  headers; the handler now leaves response framing to the HTTP backend.
+- Local review evidence is retained under `build/pr804-review/`. The earlier
+  acceptance receipt remains a historical record of its original build; this
+  follow-up does not claim a new managed-media or physical-device qualification.

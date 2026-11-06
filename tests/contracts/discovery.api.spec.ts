@@ -1,4 +1,4 @@
-import {test,expect,admin,anonymous,viewer,wire,ok,createUser,role,policy,token,cameraScope,database,discovery,pilotOperationIds as operationIds,allOps,readOps,emptyOps,lintProjections,privateResponse,valid,type Identity} from './permissionCases';
+import {test,expect,admin,anonymous,viewer,wire,ok,createUser,role,policy,token,cameraScope,database,discovery,pilotOperationIds as operationIds,allOps,readOps,emptyOps,lintProjections,valid,type Identity} from './permissionCases';
 
 const configureOps=['getOpenApi','listStreams','updateStream'];
 test('anonymous: discovery is private JSON 401 without canonical fallback',async({server},info)=>{

@@ -254,28 +254,25 @@ def qualify(binary, manifest, directory):
             'two current-version starts within the declared deadlines, with the original '
             'installation preserved. No downgrade or physical-device qualification.')
         report['status'] = 'passed'
-    except BaseException as error:
+    except Exception as error:
         report['error'] = str(error)
         report['traceback'] = traceback.format_exc()
     finally:
+        cleanup = []
         for name, recorder in [('current', current), ('prior', prior)]:
             if recorder:
-                try:
-                    recorder.stop()
-                    for sock in recorder.reservations:
-                        sock.close()
-                except BaseException as error:
-                    report['status'] = 'failed'; report[f'{name}_cleanup_error'] = str(error)
+                cleanup.append((f'{name}_cleanup_error', recorder.stop))
+                cleanup.extend((f'{name}_reservation_cleanup_error', sock.close)
+                               for sock in recorder.reservations)
         if source:
-            try:
-                source.stop()
-            except BaseException as error:
-                report['status'] = 'failed'; report['source_cleanup_error'] = str(error)
+            cleanup.append(('source_cleanup_error', source.stop))
         if seal is not None:
-            report['observations']['original_untouched_after_cleanup'] = hashes(original) == seal
-            if not report['observations']['original_untouched_after_cleanup']:
-                report['status'] = 'failed'; report['original_preservation_error'] = 'Original hashes changed'
-        (directory / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
+            def check_original():
+                report['observations']['original_untouched_after_cleanup'] = hashes(original) == seal
+                if not report['observations']['original_untouched_after_cleanup']:
+                    raise AssertionError('Original hashes changed')
+            cleanup.append(('original_preservation_error', check_original))
+        fixture.finalize_report(report, directory, cleanup)
     return report
 
 

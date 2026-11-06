@@ -152,6 +152,44 @@ test('single and mixed deletion preserve protection and capture identity before 
   await jsonResult(server,`/api/recordings/${ids.sibling}`,deleter,'DELETE',undefined,404,'ApiError');
 });
 
+test('recording mutations reject unavailable policy before changing metadata or dispatching work',async({server})=>{
+  seedRecordings(server);
+  const owner=await actor(server,'write_policy_failure',['evidence.protect','recording.delete','recordings.export']);
+  database(server,'ALTER TABLE authz_grants RENAME TO contract_write_grants_unavailable');
+  try {
+    for(const [route,method,body] of [
+      [`/api/recordings/${ids.playable}/protect`,'PUT',{protected:true}],
+      [`/api/recordings/${ids.playable}/retention`,'PUT',{retention_days:7}],
+      [`/api/recordings/${ids.playable}/tags`,'PUT',{tags:['policy-failure']}],
+      ['/api/recordings/batch-protect','POST',{ids:[ids.playable,ids.sibling],protected:true}],
+      ['/api/recordings/batch-tags','POST',{ids:[ids.playable,ids.sibling],add:['policy-failure']}],
+      [`/api/recordings/${ids.playable}`,'DELETE',undefined],
+      ['/api/recordings/batch-delete','POST',{ids:[ids.playable,ids.sibling]}],
+      ['/api/recordings/batch-delete','POST',{filter:{stream:'A'}}],
+      ['/api/recordings/batch-delete','POST',{filter:{}}],
+      [`/api/recordings/download/${ids.playable}`,'GET',undefined],
+      ['/api/recordings/batch-download','POST',{ids:[ids.playable,ids.sibling]}],
+    ] as const) await deniedUnchanged(server,[ids.playable,ids.sibling,ids.hidden],route,owner,method,body,500);
+  } finally {database(server,'ALTER TABLE contract_write_grants_unavailable RENAME TO authz_grants');}
+  await jsonResult(server,`/api/recordings/${ids.playable}/protect`,owner,'PUT',{protected:true},200,'RecordingProtectionResult');
+  expect(state(server,[ids.playable])[0].row?.protected).toBe(1);
+});
+
+test('filtered deletion validates selectors before dispatch and an empty collection cannot widen scope',async({server})=>{
+  seedRecordings(server);const owner=await actor(server,'filter_validation',['recording.delete']);
+  for(const [filter,status] of [
+    [{stream:'A,B'},403], [{stream:'unknown-camera'},403], [{},403],
+    [{stream:'x'.repeat(256)},400], [{stream:',,,'},400],
+    [{stream:'A',collection_uuid:'00000000-0000-4000-8000-000000000099'},404],
+  ] as const) await deniedUnchanged(server,[ids.playable,ids.sibling,ids.hidden],'/api/recordings/batch-delete',owner,'POST',{filter},status);
+  const collection=await ok(server,'/api/camera-collections',admin,'POST',{name:'Empty deletion collection',type:'static',shared:true});
+  const before=state(server,[ids.playable,ids.sibling,ids.hidden]);
+  const accepted=await jsonResult(server,'/api/recordings/batch-delete',admin,'POST',
+    {filter:{collection_uuid:collection.uuid}},202,'RecordingDeletionJobAccepted');
+  expect(await deletionDone(server,accepted.job_id,admin)).toMatchObject({status:'complete',total:0,succeeded:0,failed:0});
+  expect(state(server,[ids.playable,ids.sibling,ids.hidden])).toEqual(before);
+});
+
 test('deletion jobs enforce exact creator and token identity and complete with correct effects',async({server})=>{
   const fixture=seedRecordings(server);const owner=await actor(server,'delete_job_owner',['recording.delete']);
   const other=await actor(server,'delete_job_other',['recording.delete']);
