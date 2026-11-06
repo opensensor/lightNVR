@@ -326,3 +326,92 @@ fleet contracts:
 3. Continue F1c's MFA/password boundary and replay/throttling decisions, then the
    remaining seven identity contracts. Fleet reads follow that acceptance. Rust
    remains deferred.
+
+
+## Credential transport and storage: compatibility-first pass
+
+Baseline: main `2b2d8006` after #810. The user supports encryption but does not
+want a disruptive rollout. This pass tightens permissions and transport boundaries;
+it introduces no required key, encrypted-row migration, or HTTP-only camera ban.
+
+### Implemented behavior
+
+- Both native RTSP preflight callers use one bounded socket helper. It parses only
+  the host/port and sends constant `OPTIONS *` bytes. URL userinfo, private paths,
+  queries and fragments are never sent by this probe. An RTSP 401/404/405 confirms
+  server availability; FFmpeg still performs resource/authentication validation.
+  This replaces the previous unreliable interpretation of an OPTIONS 404 as a
+  missing stream. The socket exchange has a two-second budget after DNS lookup;
+  system hostname resolution itself is not deadline-bounded by this helper.
+- ONVIF detection accepts HTTP(S) endpoints without userinfo/control characters,
+  restricts curl protocols, explicitly disables redirects, and preserves TLS
+  peer/hostname checks. HTTP compatibility remains. SOAP credentials must never
+  follow a 307 to another destination. Trace output records header byte counts,
+  not raw headers, request targets or curl notes. Advertised service/subscription
+  endpoints are omitted from logs; shared URL logging drops query/fragment data.
+  This is not a same-origin policy for camera-advertised endpoints or a complete
+  TLS-only transport policy; those need camera compatibility fixtures.
+- Config and generated go2rtc YAML rewrites check regular-file identity and a
+  single link, establish 0600, then truncate/write. Permission failure stops the
+  write and preserves old contents. Symlink/special-file targets are rejected;
+  operators must configure a regular file rather than an alias for managed writes.
+- Writable SQLite startup tightens the database and existing WAL/SHM/journal files
+  to 0600 before opening connections. New databases and backup staging files are
+  created privately rather than relying on the process umask. Backup-cycle
+  directories are 0700. Read-only startup leaves permissions/content unchanged.
+  Existing exported backups, externally managed read-only configs and filesystem
+  snapshots are not rewritten or scrubbed; operators retain responsibility for
+  their access controls. Services reading managed files must use the service
+  owner or an explicit privileged export, rather than group/world readability.
+- Plaintext credentials remain recoverable by the running service. Owner-only
+  permissions do not encrypt disks, backups or snapshots and do not resolve the
+  eight cleartext-storage alerts. No alert dismissal or query exclusion is part
+  of this change. The loopback health URL matches the actual local listener and
+  carries no credentials; HTTP namespaces in SOAP must not be replaced with HTTPS.
+
+Regression coverage captures actual RTSP bytes and a real ONVIF 307 exchange,
+checks forbidden endpoint schemes/userinfo and trace secrecy, exercises fresh and
+legacy SQLite/WAL modes under umask 000, verifies read-only initialization and
+backup source preservation, and injects go2rtc chmod failure. Existing full
+native, sanitizer and contract suites remain the acceptance gates. A full branch
+CodeQL result, not just an empty PR diff, determines which alerts are resolved.
+
+### Opt-in encryption migration design (not enabled in this pass)
+
+1. **Inventory and format.** Cover stream main/substream/detection/admin/publish
+   URLs, ONVIF passwords, source overrides, event-destination credentials, global
+   MQTT/TURN settings and DB-backed go2rtc override YAML. Treat whole URL/override
+   values as secret-bearing; extracting only a password misses query tokens and
+   embedded provider credentials. Trace every read/write/backup/config-generation
+   path before declaring the inventory complete. Use explicit version/key metadata
+   so a legacy plaintext password cannot be mistaken for an encrypted envelope.
+2. **Operator-controlled key custody.** Require an explicit opt-in and an external,
+   owner-readable key file or secret mount, separate from database/config backups.
+   Do not silently generate a required key or reuse the LPR key. Persist only key
+   identifiers with ciphertext. Document provisioning, container/service access,
+   recovery and a successful restore rehearsal before activating encryption.
+3. **Authenticated encryption.** Reuse maintained mbedTLS primitives with a reviewed
+   versioned AEAD format, checked random nonces, and associated data binding the
+   stable camera/destination identity, field and format version. Decrypt before
+   application length checks; never truncate an envelope into existing fixed-size
+   cleartext buffers. Wipe transient key/secret buffers where practical. Public
+   DTOs and logs continue to exclude secrets; ciphertext is not a public credential.
+4. **Migration and recovery.** Quiesce writers and migrate transactionally through
+   an explicit tool/action. Preserve a verified recovery path; interruption must
+   leave either the old or the encrypted version usable. Define WAL, journal,
+   freelist and temporary-file handling. Old backups/snapshots can retain plaintext;
+   do not silently delete them or claim forensic erasure. Missing/wrong keys or
+   failed authentication must fail closed for secret consumers, without replacing
+   ciphertext with empty/plaintext values or restarting an uncontrolled camera loop.
+5. **Rotation and rollback.** Support identified current/previous keys during a
+   resumable re-encryption operation. Backup manifests identify required key IDs
+   without embedding key material. Restore tests cover absent/wrong keys, older
+   plaintext installs, mixed migration interruption, and key rotation. Returning
+   to plaintext requires an explicit authenticated operator action and working key;
+   never silently downgrade on an error. The default unencrypted installation
+   remains supported until a separately reviewed deprecation policy exists.
+
+Gate the encryption implementation on fixtures for all consumers, including the
+read-only go2rtc config generator and child YAML files, plus a documented recovery
+exercise. Continue the remaining F1c MFA/password work after this bounded pass;
+Rust remains deferred.

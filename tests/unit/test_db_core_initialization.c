@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -23,11 +24,23 @@ static void remove_if_present(const char *path) {
 }
 
 static void remove_database_files(void) {
-    static const char *suffixes[] = {"", "-wal", "-shm", "-journal"};
+    static const char *suffixes[] = {"", "-wal", "-shm", "-journal", ".bak", ".private-backup", ".private-backup.tmp"};
     char path[512];
     for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
         snprintf(path, sizeof(path), "%s%s", TEST_DB_PATH, suffixes[i]);
         remove_if_present(path);
+    }
+    /* A new database creates an initial timestamped backup even when shutdown
+     * backups are disabled. Remove only regular entries in this owned fixture. */
+    DIR *directory = opendir(TEST_BACKUP_DIR);
+    if (directory) {
+        struct dirent *entry;
+        while ((entry = readdir(directory))) {
+            if (entry->d_name[0] == '.') continue;
+            snprintf(path, sizeof(path), "%s/%s", TEST_BACKUP_DIR, entry->d_name);
+            remove_if_present(path);
+        }
+        closedir(directory);
     }
 }
 
@@ -112,6 +125,7 @@ void test_read_only_initialization_cannot_write(void) {
     shutdown_database();
     TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &after));
     TEST_ASSERT_EQUAL_INT64(before.st_size, after.st_size);
+    TEST_ASSERT_EQUAL_UINT(before.st_mode, after.st_mode);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
     TEST_ASSERT_EQUAL_INT64(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
 }
@@ -163,8 +177,68 @@ void test_writable_initialization_removes_only_stale_backup_artifacts(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
 }
 
+static void assert_database_private(void) {
+    static const char *suffixes[] = {"", "-wal", "-shm"};
+    char path[512];
+    for (size_t i = 0; i < sizeof(suffixes)/sizeof(suffixes[0]); ++i) {
+        snprintf(path, sizeof(path), "%s%s", TEST_DB_PATH, suffixes[i]);
+        struct stat info;
+        TEST_ASSERT_EQUAL_INT(0, stat(path, &info));
+        TEST_ASSERT_EQUAL_UINT(0600, info.st_mode & 0777);
+    }
+}
+
+static void test_new_database_and_sidecars_are_private_with_permissive_umask(void) {
+    mode_t previous = umask(0);
+    int result = init_database_ex(TEST_DB_PATH, DB_INIT_NO_BACKUP);
+    umask(previous);
+    TEST_ASSERT_EQUAL_INT(0, result);
+    assert_database_private();
+}
+
+static void test_writable_startup_tightens_legacy_database_and_wal_permissions(void) {
+    sqlite3 *fixture = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &fixture));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(fixture,
+        "PRAGMA journal_mode=WAL; CREATE TABLE sample(value TEXT);"
+        "INSERT INTO sample VALUES('preserved');", NULL, NULL, NULL));
+    int persist = 1;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_file_control(fixture, "main", SQLITE_FCNTL_PERSIST_WAL, &persist));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(fixture));
+    static const char *suffixes[] = {"", "-wal", "-shm"};
+    char path[512];
+    for (size_t i = 0; i < sizeof(suffixes)/sizeof(suffixes[0]); ++i) {
+        snprintf(path, sizeof(path), "%s%s", TEST_DB_PATH, suffixes[i]);
+        TEST_ASSERT_EQUAL_INT(0, chmod(path, 0666));
+    }
+    TEST_ASSERT_EQUAL_INT(0, init_database_ex(TEST_DB_PATH, DB_INIT_NO_BACKUP));
+    assert_database_private();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(), "SELECT value FROM sample", -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("preserved", sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+}
+
+static void test_backup_copy_is_private_without_changing_source_permissions(void) {
+    create_readable_database();
+    TEST_ASSERT_EQUAL_INT(0, chmod(TEST_DB_PATH, 0644));
+    mode_t previous = umask(0);
+    int result = backup_database(TEST_DB_PATH, TEST_DB_PATH ".private-backup", false);
+    umask(previous);
+    TEST_ASSERT_EQUAL_INT(0, result);
+    struct stat info;
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH ".private-backup", &info));
+    TEST_ASSERT_EQUAL_UINT(0600, info.st_mode & 0777);
+    TEST_ASSERT_EQUAL_INT(0, stat(TEST_DB_PATH, &info));
+    TEST_ASSERT_EQUAL_UINT(0644, info.st_mode & 0777);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_new_database_and_sidecars_are_private_with_permissive_umask);
+    RUN_TEST(test_writable_startup_tightens_legacy_database_and_wal_permissions);
+    RUN_TEST(test_backup_copy_is_private_without_changing_source_permissions);
     RUN_TEST(test_read_only_initialization_cannot_write);
     RUN_TEST(test_writable_initialization_removes_only_stale_backup_artifacts);
     return UNITY_END();

@@ -165,6 +165,15 @@ static int get_backup_directory(char *backup_dir, size_t backup_dir_size) {
         return -1;
     }
 
+    int directory_fd = open(backup_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory_fd < 0) return -1;
+    int private_result = fchmod(directory_fd, 0700);
+    close(directory_fd);
+    if (private_result != 0) {
+        log_error("Cannot restrict database backup directory permissions");
+        return -1;
+    }
+
     return 0;
 }
 
@@ -937,6 +946,32 @@ int maybe_run_scheduled_database_backup(void) {
 }
 
 // Initialize the database
+/* Startup only, before this process opens SQLite connections: closing a raw
+ * descriptor for a live SQLite inode could release its POSIX locks. Existing
+ * sidecars can contain credentials too. Read-only initialization bypasses this. */
+static int private_database_file(const char *path, bool create) {
+    int flags = O_RDWR | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+    int fd = open(path, flags | (create ? O_CREAT : 0), 0600);
+    if (fd < 0) return !create && errno == ENOENT ? 0 : -1;
+    struct stat info;
+    int result = -1;
+    if (fstat(fd, &info) == 0 && S_ISREG(info.st_mode) && info.st_nlink == 1 &&
+        fchmod(fd, 0600) == 0) result = 0;
+    close(fd);
+    return result;
+}
+
+static int private_existing_database_files(const char *path) {
+    static const char *suffixes[] = {"", "-wal", "-shm", "-journal"};
+    char file[PATH_MAX];
+    for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
+        int length = snprintf(file, sizeof(file), "%s%s", path, suffixes[i]);
+        if (length < 0 || (size_t)length >= sizeof(file) ||
+            private_database_file(file, false) != 0) return -1;
+    }
+    return 0;
+}
+
 int init_database(const char *db_path) {
     return init_database_ex(db_path, DB_INIT_DEFAULT);
 }
@@ -1063,6 +1098,11 @@ int init_database_ex(const char *db_path, unsigned flags) {
         scheduled_backup_draining = false;
         pthread_mutex_unlock(&scheduled_backup_lock);
         return 0;
+    }
+
+    if (private_existing_database_files(db_path) != 0) {
+        log_error("Cannot restrict database/sidecar permissions; refusing writable initialization");
+        return -1;
     }
 
     // Check if database already exists
@@ -1210,10 +1250,17 @@ int init_database_ex(const char *db_path, unsigned flags) {
     // Free the directory path, invalidating the dir pointer
     free(dir_path);
 
+    /* Create privately before SQLite opens it, so new journals/WAL inherit 0600
+     * even with a permissive umask. Do not change the process-wide umask. */
+    if (private_database_file(db_path, true) != 0) {
+        log_error("Cannot create private database file");
+        return -1;
+    }
+
     // Open database with extended options for better error handling
     log_info("Opening database at: %s", db_path);
     rc = sqlite3_open_v2(db_path, &db,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                        SQLITE_OPEN_READWRITE |
                         SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_PRIVATECACHE,
                         NULL);
     if (rc != SQLITE_OK) {

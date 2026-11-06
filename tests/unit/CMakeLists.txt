@@ -145,7 +145,7 @@ target_sources(test_stream_frame_rate PRIVATE
 # Layer 2: lightnvr_lib tests — compiled functions + optional SQLite
 # ====================================================================
 add_layer2_test(test_config CI_UNIT CI_SANITIZER)
-add_layer2_test(test_db_core_initialization)
+add_layer2_test(test_db_core_initialization CI_UNIT CI_SANITIZER)
 add_layer2_test(test_sqlite_migration_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)
@@ -163,6 +163,9 @@ add_layer2_test(test_detection_config CI_UNIT CI_SANITIZER)
 add_layer2_test_with_curl(test_detection_model_motion CI_UNIT CI_SANITIZER)
 add_layer2_test_with_curl(test_detection_system_onvif)
 add_layer3_test(test_onvif_poll_recovery)
+add_layer3_test(test_onvif_transport CI_UNIT CI_SANITIZER)
+target_link_options(test_onvif_transport PRIVATE "-Wl,--wrap=_log_message_ctx")
+set_tests_properties(test_onvif_transport PROPERTIES TIMEOUT 20)
 target_link_options(test_onvif_poll_recovery PRIVATE
     "-Wl,--wrap=detect_motion_onvif" "-Wl,--wrap=av_usleep"
 )
@@ -191,7 +194,8 @@ if(TARGET lightnvr-ffmpeg-guard)
         "$<TARGET_FILE:lightnvr-ffmpeg-guard>"
         "$<TARGET_FILE:test_ffmpeg_guard_probe>")
 endif()
-add_layer2_test_with_curl(test_url_utils CI_UNIT)
+add_layer2_test_with_curl(test_url_utils CI_UNIT CI_SANITIZER)
+add_layer2_test_with_curl(test_rtsp_probe CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_streams CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_detection_engines)
 add_layer2_test(test_db_lpr_reads)
@@ -415,7 +419,8 @@ if(ENABLE_GO2RTC)
     set_tests_properties(test_go2rtc_unregister_recovery PROPERTIES TIMEOUT 60)
 endif()
 if(ENABLE_GO2RTC)
-    add_layer2_test_with_curl(test_go2rtc_process_config_generation)
+    add_layer2_test_with_curl(test_go2rtc_process_config_generation CI_UNIT CI_SANITIZER)
+    target_link_options(test_go2rtc_process_config_generation PRIVATE "-Wl,--wrap=fchmod")
     if(TARGET lightnvr-ffmpeg-guard)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         add_test(NAME test_go2rtc_live_transcode COMMAND ${Python3_EXECUTABLE}

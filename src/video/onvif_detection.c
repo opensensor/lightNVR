@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
+#include "core/url_utils.h"
 #include <cjson/cJSON.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -172,29 +173,40 @@ static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, v
     return realsize;
 }
 
-/* Opt-in libcurl trace for diagnosing camera-side connection handling
- * (LIGHTNVR_ONVIF_CURL_TRACE=1). Only curl's own notes and the HTTP headers are
- * logged; request and response bodies are not, so credentials, digests and
- * event payloads never reach the log. */
+/* Trace only event sizes. Headers, request targets and curl's free-form notes
+ * can contain URL tokens, Authorization or Set-Cookie values. */
 static int curl_trace_callback(CURL *handle, curl_infotype type, char *data,
                                size_t size, void *userp) {
     (void)handle;
     (void)userp;
+    (void)data;
     const char *prefix;
     switch (type) {
-        case CURLINFO_TEXT: prefix = "*"; break;
         case CURLINFO_HEADER_OUT: prefix = ">"; break;
         case CURLINFO_HEADER_IN: prefix = "<"; break;
         default: return 0;
     }
-    while (size > 0 && (data[size - 1] == '\n' || data[size - 1] == '\r')) size--;
-    if (size > 0) log_info("ONVIF curl %s %.*s", prefix, (int)size, data);
+    log_info("ONVIF curl %s headers: %zu bytes (content omitted)", prefix, size);
     return 0;
 }
 
 static CURL *create_curl_handle(void) {
     CURL *handle = curl_easy_init();
     if (!handle) return NULL;
+    /* SOAP bodies carry authentication material. Never forward them through
+     * redirects or allow camera-advertised endpoints to select other protocols. */
+#if LIBCURL_VERSION_NUM >= 0x075500
+    CURLcode allowed = curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "http,https");
+#else
+    CURLcode allowed = curl_easy_setopt(handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+#endif
+    if (allowed != CURLE_OK ||
+        curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L) != CURLE_OK ||
+        curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 1L) != CURLE_OK ||
+        curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 2L) != CURLE_OK) {
+        curl_easy_cleanup(handle);
+        return NULL;
+    }
     if (getenv("LIGHTNVR_ONVIF_CURL_TRACE")) {
         curl_easy_setopt(handle, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(handle, CURLOPT_DEBUGFUNCTION, curl_trace_callback);
@@ -327,7 +339,11 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
         return NULL;
     }
 
-    log_debug("ONVIF Detection: Sending request to %s", full_url);
+    if (!url_is_http_endpoint(full_url)) {
+        log_error("Rejected invalid ONVIF HTTP(S) endpoint");
+        return NULL;
+    }
+    log_debug("ONVIF Detection: Sending SOAP request");
 
     /* Use full_url as the WS-Addressing To, which is exactly what the request
      * is being POSTed to. */
@@ -807,7 +823,7 @@ static char *discover_event_service_url(const char *url, const char *username, c
     }
 
     if (event_url) {
-        log_info("ONVIF: Discovered event service URL: %s", event_url);
+        log_info("ONVIF: Discovered event service endpoint");
     } else {
         log_warn("ONVIF: Could not find XAddr for events service in GetServices response");
     }
@@ -875,7 +891,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
     char attempted_event_url[512] = {0};
 
     if (discovered_url) {
-        log_info("ONVIF: Sending CreatePullPointSubscription to discovered URL: %s", discovered_url);
+        log_info("ONVIF: Sending CreatePullPointSubscription to discovered endpoint");
         safe_strcpy(attempted_event_url, discovered_url,
                     sizeof(attempted_event_url), 0);
         response = send_onvif_request_to_url(discovered_url, username, password, request_body,
@@ -957,8 +973,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         apply_subscription_lease(&subscriptions[slot], lease_seconds);
         subscriptions[slot].active = true;
         
-        log_info("Successfully created ONVIF subscription for %s at %s (lease: %d seconds)",
-                 url, subscription_address, lease_seconds);
+        log_info("Successfully created ONVIF subscription (lease: %d seconds)", lease_seconds);
         free(subscription_address);
         pthread_mutex_unlock(&subscription_mutex);
         return &subscriptions[slot];
@@ -1475,14 +1490,13 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     bool transport_dropped = false;
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
-        log_debug("ONVIF Detection: Sending PullMessages to %s", subscription->subscription_address);
+        log_debug("ONVIF Detection: Sending PullMessages to subscription endpoint");
         response = send_subscription_request(subscription, request_body,
                                              ONVIF_ACTION_PULL_MESSAGES,
                                              &transport_dropped);
     } else {
         // Legacy fallback: extract last path component and re-append under /onvif/
-        log_warn("ONVIF Detection: subscription_address is not a full URL ('%s'), using legacy path extraction",
-                 subscription->subscription_address);
+        log_warn("ONVIF Detection: subscription address is relative; using legacy path extraction");
         char *service = extract_service_name(subscription->subscription_address);
         if (service) {
             response = send_onvif_request(subscription->camera_url,

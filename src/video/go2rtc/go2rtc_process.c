@@ -1003,9 +1003,16 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     // Use 0600 permissions so credentials written to the go2rtc config file
     // are not world-readable. open()+fdopen() instead of fopen() lets us specify
     // the mode explicitly without relying on the process umask.
-    int config_fd = open(config_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int config_fd = open(config_path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0600);
     if (config_fd < 0) {
         log_error("Failed to open go2rtc config file for writing: %s", config_path);
+        return false;
+    }
+    struct stat private_config;
+    if (fstat(config_fd, &private_config) != 0 || !S_ISREG(private_config.st_mode) ||
+        private_config.st_nlink != 1 || fchmod(config_fd, 0600) != 0 || ftruncate(config_fd, 0) != 0) {
+        log_error("Cannot prepare private go2rtc config file");
+        close(config_fd);
         return false;
     }
     FILE *config_file = fdopen(config_fd, "w");
@@ -1170,7 +1177,12 @@ static bool go2rtc_process_generate_config_locked(const char *config_path, int a
     // second `--config` argument, letting go2rtc merge the two YAMLs with
     // its native yaml.v3 logic.
 
-    fclose(config_file);
+    int write_failed = ferror(config_file);
+    if (fclose(config_file) != 0) write_failed = 1;
+    if (write_failed) {
+        log_error("Failed to write go2rtc configuration file");
+        return false;
+    }
     log_info("Generated go2rtc configuration file: %s", config_path);
 
     // Intentionally do not dump generated config contents to logs.
@@ -1756,7 +1768,7 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
      * (not fopen) so we can specify the create-mode explicitly and so umask
      * cannot loosen the permissions. */
     int fd = open(override_path,
-                  O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                  O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
                   0600);
     if (fd < 0) {
         log_error("Failed to open go2rtc override file %s for writing: %s",
@@ -1765,18 +1777,20 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
         return -1;
     }
 
-    /* Belt-and-braces: chmod again in case the file pre-existed with looser
-     * perms and O_TRUNC kept the inode. */
-    if (fchmod(fd, 0600) != 0) {
-        log_warn("fchmod(%s, 0600) failed: %s; continuing with existing filesystem permissions",
-                 override_path, strerror(errno));
+    struct stat private_override;
+    if (fstat(fd, &private_override) != 0 || !S_ISREG(private_override.st_mode) ||
+        private_override.st_nlink != 1 || fchmod(fd, 0600) != 0 || ftruncate(fd, 0) != 0) {
+        log_error("Cannot prepare private go2rtc override file");
+        close(fd);
+        free(content);
+        return -1;
     }
 
     size_t written = 0;
     while (written < content_len) {
         ssize_t n = write(fd, content + written, content_len - written);
-        if (n < 0) {
-            if (errno == EINTR) continue;
+        if (n <= 0) {
+            if (n < 0 && errno == EINTR) continue;
             log_error("Write to go2rtc override file %s failed: %s",
                       override_path, strerror(errno));
             close(fd);

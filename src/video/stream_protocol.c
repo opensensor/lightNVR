@@ -21,6 +21,7 @@
 #include <stdatomic.h>
 
 #include "video/stream_protocol.h"
+#include "video/rtsp_probe.h"
 #include "core/url_utils.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
@@ -127,142 +128,7 @@ bool is_multicast_url(const char *url) {
     return false;
 }
 
-/**
- * Check if an RTSP stream exists by sending a simple HTTP request
- * This is a lightweight check to avoid FFmpeg crashes when trying to connect to non-existent streams
- *
- * @param url The RTSP URL to check
- * @return true if the stream exists, false otherwise
- */
-static bool check_rtsp_stream_exists(const char *url) {
-    char safe_url[MAX_URL_LENGTH] = {0};
 
-    if (!url || strncmp(url, "rtsp://", 7) != 0) {
-        return true; // Not an RTSP URL, assume it exists
-    }
-
-    if (url_redact_for_logging(url, safe_url, sizeof(safe_url)) != 0) {
-        safe_strcpy(safe_url, "[invalid-url]", sizeof(safe_url), 0);
-    }
-
-    // Extract the host and port from the URL
-    char host[256] = {0};
-    int port = 554; // Default RTSP port
-
-    // Skip the rtsp:// prefix
-    const char *host_start = url + 7;
-
-    // Skip any authentication info (user:pass@)
-    const char *at_sign = strchr(host_start, '@');
-    if (at_sign) {
-        host_start = at_sign + 1;
-    }
-
-    // Find the end of the host part
-    const char *host_end = strchr(host_start, ':');
-    if (!host_end) {
-        host_end = strchr(host_start, '/');
-        if (!host_end) {
-            host_end = host_start + strlen(host_start);
-        }
-    }
-
-    // Copy the host part
-    size_t host_len = host_end - host_start;
-    if (host_len >= sizeof(host)) {
-        host_len = sizeof(host) - 1;
-    }
-    memcpy(host, host_start, host_len);
-    host[host_len] = '\0';
-
-    // Extract the port if specified
-    if (*host_end == ':') {
-        port = (int)strtol(host_end + 1, NULL, 10);
-        if (port <= 0) {
-            port = 554; // Default RTSP port
-        }
-    }
-
-    // Create a socket
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        log_error("Failed to create socket for RTSP check");
-        return true; // Assume the stream exists if we can't check
-    }
-
-    // Set a short timeout for the connection
-    struct timeval tv;
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
-
-    // Connect to the server
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-
-    // Convert hostname to IP address
-    const struct hostent *he = gethostbyname(host);
-    if (!he) {
-        log_error("Failed to resolve hostname: %s", host);
-        close(sock);
-        return true; // Assume the stream exists if we can't resolve the hostname
-    }
-
-    memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
-
-    // Connect to the server
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        log_error("Failed to connect to RTSP server: %s:%d", host, port);
-        close(sock);
-        return false; // Stream doesn't exist if we can't connect to the server
-    }
-
-    // Extract the path part of the URL
-    const char *path = strchr(host_start, '/');
-    if (!path) {
-        path = "/";
-    }
-
-    // Send a simple RTSP OPTIONS request
-    char request[1024];
-    snprintf(request, sizeof(request),
-             "OPTIONS %s RTSP/1.0\r\n"
-             "CSeq: 1\r\n"
-             "User-Agent: LightNVR\r\n"
-             "\r\n",
-             path);
-
-    // codeql[cpp/cleartext-transmission] - RTSP is an inherently unencrypted protocol;
-    // RTSPS (RTSP over TLS) is rarely supported by IP cameras. The OPTIONS request
-    // path does not contain credentials (userinfo is in the URL authority, not the path).
-    if (send(sock, request, strlen(request), 0) < 0) {
-        log_error("Failed to send RTSP OPTIONS request");
-        close(sock);
-        return false; // Stream doesn't exist if we can't send the request
-    }
-
-    // Receive the response
-    char response[1024] = {0};
-    ssize_t bytes_received = recv(sock, response, sizeof(response) - 1, 0);
-    close(sock);
-
-    if (bytes_received <= 0) {
-        log_error("Failed to receive RTSP OPTIONS response");
-        return false; // Stream doesn't exist if we don't get a response
-    }
-
-    // Check if the response contains "404 Not Found"
-    if (strstr(response, "404 Not Found") != NULL) {
-        log_error("RTSP stream not found (404): %s", safe_url);
-        return false; // Stream doesn't exist
-    }
-
-    // Stream exists
-    return true;
-}
 
 /**
  * Open input stream with appropriate options based on protocol
@@ -323,11 +189,13 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         avformat_close_input(input_ctx);
     }
 
-    // Check if the RTSP stream exists before trying to connect
+    // Check server availability without forwarding credentials or resource tokens.
     if (strncmp(local_url, "rtsp://", 7) == 0) {
-        if (!check_rtsp_stream_exists(local_url)) {
-            log_error("RTSP stream does not exist: %s", safe_url);
-            return AVERROR(ENOENT); // Return "No such file or directory" error
+        char host[256];
+        int port;
+        if (rtsp_probe_server(local_url, host, sizeof(host), &port) != 0) {
+            log_error("RTSP server probe failed: %s", safe_url);
+            return AVERROR(EHOSTUNREACH);
         }
     }
 

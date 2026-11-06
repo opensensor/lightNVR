@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <dirent.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,13 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "utils/yaml_validate.h"
 
-void setUp(void) {}
+static bool fail_private_chmod;
+int __real_fchmod(int fd, mode_t mode);
+int __wrap_fchmod(int fd, mode_t mode) {
+    if (fail_private_chmod) { errno = EPERM; return -1; }
+    return __real_fchmod(fd, mode);
+}
+void setUp(void) { fail_private_chmod = false; }
 void tearDown(void) {}
 
 static char *read_text_file(const char *path) {
@@ -164,6 +171,31 @@ void test_generate_startup_config_writes_db_override_file(void) {
     TEST_ASSERT_NOT_NULL(base_contents);
     TEST_ASSERT_NULL_MESSAGE(strstr(base_contents, "  level: trace"),
                              "Base config must not contain DB-backed override content");
+
+    /* Existing files must be private too, regardless of the creation umask. */
+    TEST_ASSERT_EQUAL_INT(0, chmod(config_path, 0666));
+    TEST_ASSERT_EQUAL_INT(0, chmod(override_path, 0666));
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config("/bin/true", config_dir, g_config.go2rtc_api_port));
+    struct stat mode;
+    TEST_ASSERT_EQUAL_INT(0, stat(config_path, &mode));
+    TEST_ASSERT_EQUAL_UINT(0600, mode.st_mode & 0777);
+    TEST_ASSERT_EQUAL_INT(0, stat(override_path, &mode));
+    TEST_ASSERT_EQUAL_UINT(0600, mode.st_mode & 0777);
+
+    /* Failure to establish private permissions must not truncate or replace
+     * the previous configuration, nor continue to write credential material. */
+    fail_private_chmod = true;
+    bool base_result = go2rtc_process_generate_config(config_path, g_config.go2rtc_api_port);
+    int override_result = go2rtc_process_generate_override_file(override_path);
+    fail_private_chmod = false;
+    TEST_ASSERT_FALSE(base_result);
+    TEST_ASSERT_EQUAL_INT(-1, override_result);
+    char *unchanged = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(unchanged);
+    TEST_ASSERT_EQUAL_STRING(base_contents, unchanged); free(unchanged);
+    unchanged = read_text_file(override_path);
+    TEST_ASSERT_NOT_NULL(unchanged);
+    TEST_ASSERT_EQUAL_STRING(override_contents, unchanged); free(unchanged);
 
     free(base_contents);
     free(override_contents);

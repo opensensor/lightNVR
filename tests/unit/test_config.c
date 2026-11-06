@@ -843,10 +843,54 @@ void test_env_integer_whitespace_handling(void) {
  * main
  * ================================================================ */
 
+void test_save_config_tightens_existing_permissions_before_writing_secrets(void) {
+    char directory[] = "/tmp/lightnvr_private_config_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    FILE *old = fopen(path, "w");
+    TEST_ASSERT_NOT_NULL(old);
+    fputs("old content", old); fclose(old);
+    TEST_ASSERT_EQUAL_INT(0, chmod(path, 0666));
+    load_default_config(&cfg);
+    snprintf(cfg.mqtt_password, sizeof(cfg.mqtt_password), "synthetic-private-password");
+    mode_t previous = umask(0);
+    int saved = save_config(&cfg, path);
+    umask(previous);
+    struct stat info;
+    TEST_ASSERT_EQUAL_INT(0, saved);
+    TEST_ASSERT_EQUAL_INT(0, stat(path, &info));
+    TEST_ASSERT_EQUAL_UINT(0600, info.st_mode & 0777);
+    unlink(path); rmdir(directory);
+}
+
+void test_save_config_rejects_hardlinks_without_truncation_or_mode_change(void) {
+    char directory[] = "/tmp/lightnvr_config_link_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH], original[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", directory);
+    snprintf(original, sizeof(original), "%s/original.ini", directory);
+    FILE *file = fopen(original, "w"); TEST_ASSERT_NOT_NULL(file);
+    fputs("preserve-me", file); fclose(file);
+    TEST_ASSERT_EQUAL_INT(0, chmod(original, 0640));
+    TEST_ASSERT_EQUAL_INT(0, link(original, path));
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(-1, save_config(&cfg, path));
+    struct stat info;
+    TEST_ASSERT_EQUAL_INT(0, stat(original, &info));
+    TEST_ASSERT_EQUAL_UINT(0640, info.st_mode & 0777);
+    file = fopen(original, "r"); TEST_ASSERT_NOT_NULL(file);
+    char text[32] = {0}; fread(text, 1, sizeof(text)-1, file); fclose(file);
+    TEST_ASSERT_EQUAL_STRING("preserve-me", text);
+    unlink(path); unlink(original); rmdir(directory);
+}
+
 int main(void) {
     init_logger();
 
     UNITY_BEGIN();
+    RUN_TEST(test_save_config_tightens_existing_permissions_before_writing_secrets);
+    RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
 
     RUN_TEST(test_stream_config_t_size_under_16k);
     RUN_TEST(test_max_stream_ceiling_is_valid);
