@@ -234,11 +234,35 @@ static void test_backup_copy_is_private_without_changing_source_permissions(void
     TEST_ASSERT_EQUAL_UINT(0644, info.st_mode & 0777);
 }
 
+static void test_private_backup_creation_failure_is_reported_and_can_retry(void) {
+    create_readable_database();
+    TEST_ASSERT_EQUAL_INT(-1, access(TEST_BACKUP_DIR, F_OK));
+    TEST_ASSERT_EQUAL_INT(ENOENT, errno);
+    /* A missing parent allows stale-file cleanup but prevents creation of the
+     * private staging inode, independently of root/non-root test privileges. */
+    TEST_ASSERT_EQUAL_INT(-1, backup_database(TEST_DB_PATH,
+                                            TEST_BACKUP_DIR "/missing.sqlite", false));
+    TEST_ASSERT_EQUAL_INT(-1, access(TEST_BACKUP_DIR "/missing.sqlite", F_OK));
+    TEST_ASSERT_EQUAL_INT(0, backup_database(TEST_DB_PATH,
+                                           TEST_DB_PATH ".private-backup", false));
+    sqlite3 *copy = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open_v2(TEST_DB_PATH ".private-backup",
+                                                  &copy, SQLITE_OPEN_READONLY, NULL));
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(copy, "SELECT value FROM sample",
+                                                     -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_STRING("unchanged", sqlite3_column_text(stmt, 0));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_finalize(stmt));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(copy));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_new_database_and_sidecars_are_private_with_permissive_umask);
     RUN_TEST(test_writable_startup_tightens_legacy_database_and_wal_permissions);
     RUN_TEST(test_backup_copy_is_private_without_changing_source_permissions);
+    RUN_TEST(test_private_backup_creation_failure_is_reported_and_can_retry);
     RUN_TEST(test_read_only_initialization_cannot_write);
     RUN_TEST(test_writable_initialization_removes_only_stale_backup_artifacts);
     return UNITY_END();

@@ -422,9 +422,13 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
     int private_fd = open(temp_path, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (private_fd < 0) {
         log_error("Failed to create private backup staging file: %s", strerror(errno));
+        rc = SQLITE_CANTOPEN;
         goto cleanup;
     }
-    if (close(private_fd) != 0) goto cleanup;
+    if (close(private_fd) != 0) {
+        rc = SQLITE_IOERR_CLOSE;
+        goto cleanup;
+    }
 
     // Open the destination database
     rc = sqlite3_open_v2(temp_path, &dest_db,
