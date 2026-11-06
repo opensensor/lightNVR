@@ -77,9 +77,16 @@
       "listAuthSessions",
       "revokeAuthSession",
       "listTrustedDevices",
-      "revokeTrustedDevice"
+      "revokeTrustedDevice",
+      "completeTotpLogin",
+      "legacyLogout",
+      "changePassword",
+      "disableTotp",
+      "getTotpStatus",
+      "setupTotp",
+      "verifyTotp"
     ],
-    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions."
+    "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout."
   },
   "x-lightnvr-validators": [
     "StreamSummaryPage",
@@ -131,7 +138,19 @@
     "RecordingExportStatus",
     "AuthSessionsResponse",
     "TrustedDevicesResponse",
-    "CredentialRevoked"
+    "CredentialRevoked",
+    "TotpLoginRequest",
+    "TotpLoginResponse",
+    "TotpCodeRequest",
+    "TotpSetupResponse",
+    "TotpStatusResponse",
+    "TotpChangedResponse",
+    "PasswordSelfChange",
+    "PasswordAdminReset",
+    "PasswordChangeRequest",
+    "PasswordChangedResponse",
+    "LoginMfaChallenge",
+    "LoginSuccess"
   ],
   "paths": {
     "/api/streams": {
@@ -738,7 +757,7 @@
           "version": 1,
           "kind": "public"
         },
-        "description": "Public credential submission. Successful JSON login sets the HttpOnly session cookie; MFA challenge returns totp_required/totp_token without a cookie. Optional inline TOTP is described; separate TOTP completion/enrollment remains unspecified. Form submissions redirect for success, credential rejection and rate limit. Form parsing uses username/password only; JSON optional fields are not form inputs.",
+        "description": "Public credential submission. Successful JSON login sets the HttpOnly session cookie; MFA challenge returns totp_required/totp_token without a cookie. Optional inline TOTP is described; MFA completion and enrollment have separate identity contracts. Form submissions redirect for success, credential rejection and rate limit. Form parsing uses username/password only; JSON optional fields are not form inputs.",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4685,6 +4704,798 @@
           }
         ]
       }
+    },
+    "/api/auth/login/totp": {
+      "post": {
+        "operationId": "completeTotpLogin",
+        "summary": "Complete an MFA login challenge",
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "public"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpLoginResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Authenticated session; optional trusted device if enabled and requested."
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Enrollment expired or state changed; refresh status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOTP attempts are account-throttled. Do not automatically retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpLoginRequest"
+              }
+            }
+          }
+        },
+        "description": "Consumes an unexpired password-verified challenge bound to the issuing IP/user agent. Six-digit codes are single-use per account time step; account throttling applies. Success sets an HttpOnly session cookie, and optionally a trusted-device cookie. Never automatically retry a completion after an ambiguous response."
+      }
+    },
+    "/api/auth/users/{id}/totp/setup": {
+      "post": {
+        "operationId": "setupTotp",
+        "summary": "Start MFA enrollment",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetupResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Principal lacks self-service or effective users.manage; password may be locked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target user not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Enrollment expired or state changed; refresh status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOTP attempts are account-throttled. Do not automatically retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ],
+        "description": "A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Returns enrollment secret only here; setup expires after ten minutes. Replacing pending enrollment invalidates the previous secret. An enabled account returns 409."
+      }
+    },
+    "/api/auth/users/{id}/totp/verify": {
+      "post": {
+        "operationId": "verifyTotp",
+        "summary": "Verify and enable MFA",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpChangedResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Principal lacks self-service or effective users.manage; password may be locked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target user not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Enrollment expired or state changed; refresh status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOTP attempts are account-throttled. Do not automatically retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpCodeRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ],
+        "description": "A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Consumes a fresh enrollment code, enables MFA and revokes other sessions/challenges/trusted devices. The initiating authenticated session is retained."
+      }
+    },
+    "/api/auth/users/{id}/totp/disable": {
+      "post": {
+        "operationId": "disableTotp",
+        "summary": "Disable MFA",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpChangedResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Principal lacks self-service or effective users.manage; password may be locked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target user not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Enrollment expired or state changed; refresh status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOTP attempts are account-throttled. Do not automatically retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ],
+        "description": "A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Disables MFA, erases the secret and revokes other sessions/challenges/trusted devices. The initiating authenticated session is retained."
+      }
+    },
+    "/api/auth/users/{id}/totp/status": {
+      "get": {
+        "operationId": "getTotpStatus",
+        "summary": "Read MFA enrollment status",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpStatusResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Principal lacks self-service or effective users.manage; password may be locked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target user not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ],
+        "description": "A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Returns enabled/configured booleans without secrets. Unavailability is not evidence that MFA is disabled."
+      }
+    },
+    "/api/auth/users/{id}/password": {
+      "put": {
+        "operationId": "changePassword",
+        "summary": "Change or reset a password",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "identity_management"
+        },
+        "responses": {
+          "200": {
+            "description": "Validated success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordChangedResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Includes no-store; authentication data must not be cached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credential, current password, challenge or code (including replay).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Principal lacks self-service or effective users.manage; password may be locked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target user not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal/database failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "maxLength": 19
+            }
+          }
+        ],
+        "description": "A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Requires old_password for self-service without users.manage and for a forced own password change. Success atomically changes the password and revokes sessions, pending challenges and trusted devices. Changing your own password clears browser cookies. Basic/key compatibility remains supported."
+      }
+    },
+    "/logout": {
+      "get": {
+        "operationId": "legacyLogout",
+        "summary": "End a browser session using the legacy route",
+        "tags": [
+          "Identity"
+        ],
+        "security": [],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "public"
+        },
+        "description": "Public and idempotent. Deletes the session from the supplied cookie and clears session/trusted-device cookies. Does not revoke Basic credentials, legacy API keys or scoped API tokens. JSON200 requires Accept containing application/json or X-Requested-With; otherwise302 redirects to login.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Browser/form redirect; Location identifies the next page and no JSON body is required.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative application page."
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Accept",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Use application/json for the JSON success envelope."
+          },
+          {
+            "name": "X-Requested-With",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Presence also selects the JSON success envelope."
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -6265,7 +7076,8 @@
           "password_hash": false,
           "token_hash": false,
           "totp_secret": false,
-          "totp_token": false
+          "totp_token": false,
+          "totp_required": false
         },
         "required": [
           "success",
@@ -6291,7 +7103,10 @@
           "password": false,
           "password_hash": false,
           "token_hash": false,
-          "totp_secret": false
+          "totp_secret": false,
+          "success": false,
+          "redirect": false,
+          "must_change_password": false
         },
         "required": [
           "totp_required",
@@ -8370,6 +9185,192 @@
             "const": true
           }
         }
+      },
+      "TotpLoginRequest": {
+        "type": "object",
+        "properties": {
+          "totp_token": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "remember_device": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "totp_token",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "TotpLoginResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "redirect": {
+            "const": "/index.html"
+          }
+        },
+        "required": [
+          "success",
+          "redirect"
+        ],
+        "additionalProperties": false
+      },
+      "TotpCodeRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "TotpSetupResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "secret": {
+            "type": "string",
+            "pattern": "^[A-Z2-7]{32}$",
+            "readOnly": true
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^otpauth://totp/",
+            "readOnly": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "secret",
+          "otpauth_uri",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "TotpStatusResponse": {
+        "type": "object",
+        "properties": {
+          "totp_enabled": {
+            "type": "boolean"
+          },
+          "totp_configured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "totp_enabled",
+          "totp_configured"
+        ],
+        "additionalProperties": false
+      },
+      "TotpChangedResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordSelfChange": {
+        "type": "object",
+        "properties": {
+          "old_password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "new_password": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "old_password",
+          "new_password"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordAdminReset": {
+        "type": "object",
+        "properties": {
+          "old_password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "new_password": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordChangeRequest": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PasswordSelfChange"
+          },
+          {
+            "$ref": "#/components/schemas/PasswordAdminReset",
+            "x-lightnvr-visibility": {
+              "version": 1,
+              "kind": "global",
+              "requirements": [
+                {
+                  "action": "users.manage",
+                  "resource": "raw"
+                }
+              ]
+            }
+          }
+        ],
+        "description": "New password must contain at least eight UTF-8 bytes. Self-service requires the current password; effective users.manage can reset passwords except its own forced first-login change. Locked/default-password rules are enforced by the server."
+      },
+      "PasswordChangedResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "must_change_password": {
+            "const": false
+          }
+        },
+        "required": [
+          "success",
+          "must_change_password"
+        ],
+        "additionalProperties": false
       }
     }
   }

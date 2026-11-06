@@ -28,6 +28,7 @@ test('self-service credential discovery and handlers agree for Basic, legacy key
   }
   for(const actions of [['live.view'],['users.manage']]) {
     const scoped=await token(server,admin,{type:'all'},actions);
+    scoped.identityManagement = actions[0] === 'users.manage';
     const doc=await discovery(server,scoped,info,`token-${actions[0]}`);
     for(const [route] of routes) {
       expect(doc.paths).not.toHaveProperty(route);expect(doc.paths).not.toHaveProperty(`${route}/{id}`);

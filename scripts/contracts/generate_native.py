@@ -15,8 +15,8 @@ def predicate(value):
     if not isinstance(value, dict) or value.get('version') != 1 or isinstance(value.get('version'), bool):
         raise ValueError('Authorization predicate requires integer version 1')
     kind = value.get('kind')
-    expected = {'version', 'kind'} if kind in ('authenticated', 'public', 'non_scoped_identity') else {'version', 'kind', 'requirements'}
-    if set(value) != expected or kind not in ('authenticated', 'public', 'non_scoped_identity', 'camera', 'global'):
+    expected = {'version', 'kind'} if kind in ('authenticated', 'public', 'non_scoped_identity', 'identity_management') else {'version', 'kind', 'requirements'}
+    if set(value) != expected or kind not in ('authenticated', 'public', 'non_scoped_identity', 'identity_management', 'camera', 'global'):
         raise ValueError('Unsupported authorization predicate kind or keys')
     if kind in ('camera', 'global'):
         requirements = value['requirements']

@@ -42,14 +42,14 @@ Every covered operation has `x-lightnvr-authorization`:
 ```
 
 Kinds are `authenticated`, `camera`, `global`, `public`, and
-`non_scoped_identity` (T22 additive handoff). `camera` means
+`non_scoped_identity` (T22 additive handoff) and `identity_management` (F1d). `camera` means
 there exists one current camera satisfying **every** requirement, including
 token restrictions. Different resources in requirements select raw/runtime/live
 observations of that same camera. `global` evaluates all requirements with NULL
 camera. `authenticated` needs no action and permits useful empty-list discovery.
 `public` describes public operations when added to the canonical contract; it
 does not make discovery itself public. Requirements are mandatory/nonempty for
-camera/global and absent for authenticated/public/non_scoped_identity. Unknown keys, kinds, versions,
+camera/global and absent for authenticated/public/non_scoped_identity/identity_management. Unknown keys, kinds, versions,
 action names, or resource values are errors, not permissive defaults.
 
 Resource names are `raw` (DB), `runtime` (one captured metrics enrichment), and
@@ -348,3 +348,23 @@ The Settings consumer validates redacted lists and exact success acknowledgments
 never automatically retries DELETE, and refetches after ambiguous failures.
 See the [identity acceptance receipt](../../../engineering-identity-contracts-plan.md)
 for validation, credential-class decisions and remaining MFA/password scope.
+
+
+### MFA/password identity management (F1d)
+
+`identity_management` has exactly `version: 1` and `kind`. It permits discovery
+for a non-scoped personal principal, or a principal with effective global
+`users.manage`, including scoped owner/action/scope intersection. Native projection
+uses the same authorization snapshot evaluation as other global actions; failures
+abort projection. This does not grant arbitrary target-user access: handlers
+restrict self-service to the current account and require `users.manage` otherwise.
+The password request's administrative reset alternative is visible only to an
+effective manager. Forced first-login self changes still require the old password.
+Basic and legacy-key compatibility is preserved.
+
+Seven added operations cover MFA completion, four enrollment/status operations,
+password change and legacy GET logout. Logout documents negotiated JSON and empty
+302 redirects with cookie clearing. Login's challenge and success variants are
+mutually exclusive. Setup alone exposes the secret; status/acknowledgments reject
+extra fields. Typed browser adapters validate every success, redact failures and
+never automatically retry mutations. Unavailable status cannot imply disabled MFA.

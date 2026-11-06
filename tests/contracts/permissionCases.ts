@@ -11,7 +11,7 @@ export {expect, cameraScope};
 export type Server = ContractFixture;
 export type Json = Record<string, any>; // Test inspection only; all wire bodies additionally pass runtime schemas.
 export type RecordingAction = 'protect' | 'delete' | 'export';
-export type Identity = {headers: Record<string,string>; id?: number; username?: string; password?: string; tokenId?: string; recordingReplay?: boolean; recordingActions?: readonly RecordingAction[]};
+export type Identity = {headers: Record<string,string>; id?: number; username?: string; password?: string; tokenId?: string; identityManagement?: boolean; recordingReplay?: boolean; recordingActions?: readonly RecordingAction[]};
 export const admin: Identity = {headers:{Authorization:basic({username:'admin',password:'ContractAdmin123!'})},id:1,recordingReplay:true,recordingActions:['protect','delete','export']};
 export const anonymous: Identity = {headers:{}};
 export const viewer: Identity = {headers:{Authorization:basic({username:'contract_viewer',password:'ContractViewer123!'})},id:2,recordingReplay:true,recordingActions:['export']};
@@ -74,8 +74,9 @@ export function operationIds(doc: Json): string[] {
 }
 // Independently authored coverage expectations: new operations are asserted too,
 // while pilot operation assertions retain their original camera-permission scope.
-export const identityOps=['createUserToken','getClientConfig','getLoginConfig','listAuthSessions','listTrustedDevices','listUserTokens','login','logout','revokeAuthSession','revokeTrustedDevice','revokeUserToken','verifyIdentity'];
-export const scopedIdentityOps=['getClientConfig','getLoginConfig','login','logout'];
+export const identityManagementOps=['changePassword','disableTotp','getTotpStatus','setupTotp','verifyTotp'];
+export const identityOps=[...identityManagementOps,'completeTotpLogin','legacyLogout','createUserToken','getClientConfig','getLoginConfig','listAuthSessions','listTrustedDevices','listUserTokens','login','logout','revokeAuthSession','revokeTrustedDevice','revokeUserToken','verifyIdentity'].sort();
+export const scopedIdentityOps=['completeTotpLogin','getClientConfig','getLoginConfig','legacyLogout','login','logout'];
 export const recordingCommonOps=['getTimelineSegmentsByIds','listRecordingDetectionLabels','listRecordingTags','listRecordings'];
 export const recordingReplayOps=['getRecording','getRecordingTags','getRecordingThumbnail','getTimelineSegments','playRecording'];
 export const recordingJobOps=['downloadRecordingExport','getRecordingDeletionProgress','getRecordingExportStatus'];
@@ -104,7 +105,7 @@ export async function discovery(server:Server, identity:Identity, info:TestInfo,
   if(status!==200){valid('ApiError',body);expect(body).not.toHaveProperty('paths');return body;}
   valid('OpenApiDocument',body);
   const ids=operationIds(body);
-  expect(nonRecordingOperationIds(body).filter(id=>!allOps.includes(id))).toEqual(identity.tokenId ? scopedIdentityOps : identityOps);
+  expect(nonRecordingOperationIds(body).filter(id=>!allOps.includes(id))).toEqual(identity.tokenId ? [...scopedIdentityOps,...(identity.identityManagement?identityManagementOps:[])].sort() : identityOps);
   expect(ids.filter(id=>!allOps.includes(id)&&!identityOps.includes(id)&&!recordingActionOps.includes(id))).toEqual(expectedRecordingOps(identity));
   expect(ids.filter(id=>recordingActionOps.includes(id))).toEqual(expectedRecordingActionOps(identity));
   expect([...body['x-lightnvr-coverage'].covered_operations].sort()).toEqual([...allOps,...identityOps,...recordingCommonOps,...recordingReplayOps,...recordingActionOps].sort());

@@ -12,6 +12,7 @@
  */
 import type { t as translate } from '../i18n.ts';
 import type { User } from './core.ts';
+import type { components } from '../../generated/api/schema';
 
 export type Translate = typeof translate;
 
@@ -55,18 +56,10 @@ export interface ClearLoginLockoutResponse {
 }
 
 /** GET /api/auth/users/:id/totp/status */
-export interface TotpStatusResponse {
-  totp_enabled: boolean;
-  totp_configured?: boolean;
-}
+export type TotpStatusResponse = components['schemas']['TotpStatusResponse'];
 
 /** POST /api/auth/users/:id/totp/setup */
-export interface TotpSetupResponse {
-  success?: boolean;
-  secret: string;
-  otpauth_uri: string;
-  message?: string;
-}
+export type TotpSetupResponse = components['schemas']['TotpSetupResponse'];
 
 // ---------------------------------------------------------------------------
 // Authorization catalog, roles, and policy

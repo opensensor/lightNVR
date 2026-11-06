@@ -7,24 +7,8 @@ import { useState, useRef, useEffect } from 'preact/hooks';
 import { useI18n } from '../../i18n.ts';
 import LanguageSelector from './common/LanguageSelector.tsx';
 
-interface LoginConfigResponse {
-  force_mfa_on_login?: boolean;
-  remember_device_enabled?: boolean;
-  trusted_device_days?: number;
-}
-
-interface LoginRequestBody {
-  username: string;
-  password: string;
-  totp_code?: string;
-  remember_device?: boolean;
-}
-
-interface LoginResponse {
-  totp_required?: boolean;
-  totp_token?: string;
-  must_change_password?: boolean;
-}
+import { login, completeTotpLogin, getLoginConfig, logout, AuthenticationRequestError } from '../../api/authentication.ts';
+import type { LoginRequest } from '../../api/authentication.ts';
 
 /**
  * Returns a safe same-origin redirect path from a candidate URL string.
@@ -70,6 +54,8 @@ export function LoginView() {
   const [rememberDeviceEnabled, setRememberDeviceEnabled] = useState(false);
   const [trustedDeviceDays, setTrustedDeviceDays] = useState(30);
   const [rememberDevice, setRememberDevice] = useState(false);
+  const [configState, setConfigState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [configAttempt, setConfigAttempt] = useState(0);
   const abortControllerRef = useRef<AbortController>(null);
   const staleSessionLogoutRef = useRef<Promise<unknown>>(null);
   const { t, locale } = useI18n();
@@ -87,28 +73,24 @@ export function LoginView() {
   // bouncing the user straight back to the login page.
   useEffect(() => {
     staleSessionLogoutRef.current =
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+      logout()
         .catch(() => {})
         .finally(() => { staleSessionLogoutRef.current = null; });
   }, []);
 
-  // Fetch login config to determine if force MFA is enabled
+  // A missing/malformed configuration is unavailable, never a guessed MFA policy.
   useEffect(() => {
-    async function fetchLoginConfig() {
-      try {
-        const response = await fetch('/api/auth/login/config');
-        if (response.ok) {
-          const data = await response.json() as LoginConfigResponse;
-          setForceMfaEnabled(data.force_mfa_on_login || false);
-          setRememberDeviceEnabled(data.remember_device_enabled || false);
-          setTrustedDeviceDays(data.trusted_device_days || 30);
-        }
-      } catch (error) {
-        console.warn('Failed to fetch login config:', error);
-      }
-    }
-    fetchLoginConfig();
-  }, []);
+    const controller = new AbortController();
+    setConfigState('loading');
+    getLoginConfig({signal: controller.signal}).then(data => {
+      if (controller.signal.aborted) return;
+      setForceMfaEnabled(data.force_mfa_on_login);
+      setRememberDeviceEnabled(data.remember_device_enabled);
+      setTrustedDeviceDays(data.trusted_device_days);
+      setConfigState('ready');
+    }).catch(() => { if (!controller.signal.aborted) setConfigState('unavailable'); });
+    return () => controller.abort();
+  }, [configAttempt]);
 
   // Check URL for error, auth_required, or logout parameter
   useEffect(() => {
@@ -147,152 +129,70 @@ export function LoginView() {
     };
   }, []);
 
-  // Handle login form submission
+  // A pending request owns the state until cancelled. Never retry credential mutations.
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
-
+    if (isLoggingIn || configState !== 'ready') return;
     if (!username || !password) {
-      setErrorMessage(t('login.error.enterUsernamePassword'));
-      return;
+      setErrorMessage(t('login.error.enterUsernamePassword')); return;
     }
-
-    // When force MFA is enabled and a TOTP code is provided, validate it's 6 digits
-    if (forceMfaEnabled && forceMfaTotpCode && forceMfaTotpCode.length > 0 && forceMfaTotpCode.length !== 6) {
-      setErrorMessage(t('login.error.codeSixDigits'));
-      return;
+    if (forceMfaEnabled && forceMfaTotpCode && !/^[0-9]{6}$/.test(forceMfaTotpCode)) {
+      setErrorMessage(t('login.error.codeSixDigits')); return;
     }
-
-    // Abort any previous in-flight login request before starting a new one
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    setIsLoggingIn(true);
-    setErrorMessage('');
-
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsLoggingIn(true); setErrorMessage('');
     try {
-      // Wait for the stale-session logout fired on mount, so its
-      // cookie-clearing response cannot land after (and wipe out) the
-      // session cookie issued by this login.
-      if (staleSessionLogoutRef.current) {
-        await staleSessionLogoutRef.current;
+      // Do not let a late logout response clear the freshly issued login cookie.
+      await staleSessionLogoutRef.current;
+      if (controller.signal.aborted) return;
+      const body: LoginRequest = {username, password};
+      if (forceMfaEnabled && forceMfaTotpCode) body.totp_code = forceMfaTotpCode;
+      if (rememberDeviceEnabled) body.remember_device = rememberDevice;
+      const data = await login(body, {signal: controller.signal});
+      if (controller.signal.aborted) return;
+      setPassword(''); setForceMfaTotpCode('');
+      if (data.kind === 'challenge') {
+        setTotpRequired(true); setTotpToken(data.token); return;
       }
-
-      // Build login request body
-      const loginBody: LoginRequestBody = { username, password };
-      if (forceMfaEnabled && forceMfaTotpCode) {
-        loginBody.totp_code = forceMfaTotpCode;
-      }
-      if (rememberDeviceEnabled) {
-        loginBody.remember_device = rememberDevice;
-      }
-
-      // Make login request with an explicit timeout using AbortController
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-      let response;
-      try {
-        response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(loginBody),
-          signal: controller.signal
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      if (response.ok) {
-        const data = await response.json() as LoginResponse;
-
-        // Check if TOTP verification is required (two-step flow, only when force MFA is off)
-        if (data.totp_required && data.totp_token) {
-          setTotpRequired(true);
-          setTotpToken(data.totp_token);
-          setIsLoggingIn(false);
-          setErrorMessage('');
-          return;
-        }
-
-        // Successful login (no TOTP required or force MFA verified)
-        console.log('Login successful, proceeding to redirect');
-
-        if (data.must_change_password) {
-          window.location.replace('/index.html');
-          return;
-        }
-
-        // Replace the login entry so Back cannot mount it again and revoke
-        // the fresh session via the stale-session logout effect.
-        const urlParams = new URLSearchParams(window.location.search);
-        window.location.replace(safeRedirectPath(urlParams.get('redirect')));
-      } else {
-        // Failed login
-        setIsLoggingIn(false);
-        if (response.status === 429) {
-          setErrorMessage(t('login.error.rateLimited'));
-        } else {
-          setErrorMessage(t('login.error.invalidCredentials'));
-        }
-        if (forceMfaEnabled) {
-          setForceMfaTotpCode('');
-        }
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      // Reset login state on error
-      setIsLoggingIn(false);
-      setErrorMessage(t('login.error.generic'));
+      const params = new URLSearchParams(window.location.search);
+      window.location.replace(data.mustChangePassword ? '/index.html' : safeRedirectPath(params.get('redirect')));
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return;
+      setForceMfaTotpCode('');
+      setErrorMessage(t(error instanceof AuthenticationRequestError && error.status === 429 ? 'login.error.rateLimited' :
+        error instanceof AuthenticationRequestError && error.status === 401 ? 'login.error.invalidCredentials' : 'login.error.generic'));
+    } finally {
+      if (!controller.signal.aborted) setIsLoggingIn(false);
     }
   };
 
-  // Handle TOTP code submission
   const handleTotpSubmit = async (e: Event) => {
     e.preventDefault();
-
-    if (!totpCode || totpCode.length !== 6) {
-      setErrorMessage(t('login.error.enterVerificationCode'));
-      return;
+    if (isLoggingIn) return;
+    if (!/^[0-9]{6}$/.test(totpCode)) {
+      setErrorMessage(t('login.error.enterVerificationCode')); return;
     }
-
-    setIsLoggingIn(true);
-    setErrorMessage('');
-
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsLoggingIn(true); setErrorMessage('');
     try {
-      const response = await fetch('/api/auth/login/totp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totp_token: totpToken, code: totpCode, remember_device: rememberDevice }),
-      });
-
-      if (response.ok) {
-        console.log('TOTP verification successful, proceeding to redirect');
-
-        const redirectParams = new URLSearchParams(window.location.search);
-        window.location.replace(safeRedirectPath(redirectParams.get('redirect')));
-      } else {
-        const data = await response.json() as { error?: string };
-        setIsLoggingIn(false);
-
-        if (response.status === 401 && data.error && data.error.includes('expired')) {
-          // Token expired, go back to password step
-          setTotpRequired(false);
-          setTotpToken('');
-          setTotpCode('');
-          setErrorMessage(t('login.error.mfaExpired'));
-        } else {
-          setErrorMessage(data.error || t('login.error.invalidVerificationCode'));
-          setTotpCode('');
-        }
-      }
-    } catch (error) {
-      console.error('TOTP verification error:', error);
-      setIsLoggingIn(false);
-      setErrorMessage(t('login.error.generic'));
+      await completeTotpLogin({totp_token: totpToken, code: totpCode, remember_device: rememberDevice}, {signal: controller.signal});
+      if (controller.signal.aborted) return;
+      setTotpToken(''); setTotpCode('');
+      const params = new URLSearchParams(window.location.search);
+      window.location.replace(safeRedirectPath(params.get('redirect')));
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return;
+      setTotpCode('');
+      // Both expired challenges and invalid/replayed codes can return 401. Do
+      // not classify by a server-provided string; Back to login restarts safely.
+      setErrorMessage(t(error instanceof AuthenticationRequestError && error.status === 429 ? 'login.error.rateLimited' :
+        error instanceof AuthenticationRequestError && error.status === 401 ? 'login.error.invalidVerificationCode' : 'login.error.generic'));
+    } finally {
+      if (!controller.signal.aborted) setIsLoggingIn(false);
     }
   };
 
@@ -315,7 +215,7 @@ export function LoginView() {
 
   const forceMfaCodeLength = forceMfaTotpCode.replace(/[^0-9]/g, '').length;
   const hasPartialForceMfaCode = forceMfaEnabled && forceMfaCodeLength > 0 && forceMfaCodeLength !== 6;
-  const isPrimarySubmitDisabled = isLoggingIn || !username || !password || hasPartialForceMfaCode;
+  const isPrimarySubmitDisabled = configState !== 'ready' || isLoggingIn || !username || !password || hasPartialForceMfaCode;
 
   return (
     <section id="login-page" className="page flex items-center justify-center min-h-screen">
@@ -331,6 +231,10 @@ export function LoginView() {
           </div>
         )}
 
+        {configState === 'unavailable' && <div role="alert" className="mb-4">
+          <p>{t('login.error.generic')}</p>
+          <button type="button" className="btn-secondary" onClick={() => setConfigAttempt(value => value + 1)}>{t('common.retry')}</button>
+        </div>}
         {!totpRequired ? (
           <form id="login-form" className="space-y-6" onSubmit={handleSubmit}>
             <div className="form-group">
@@ -447,6 +351,8 @@ export function LoginView() {
                   type="button"
                   className="text-sm text-muted-foreground hover:underline"
                   onClick={() => {
+                    abortControllerRef.current?.abort();
+                    setIsLoggingIn(false);
                     setTotpRequired(false);
                     setTotpToken('');
                     setTotpCode('');

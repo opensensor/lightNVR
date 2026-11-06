@@ -65,7 +65,8 @@ F1..F14,F16 -> F15
   validation for review (37 covered operations / 34 paths; 203 residual). The
   F1c password/TOTP behavior is implemented for review with preserved Basic/key
   compatibility, durable replay/throttling and atomic revocation. The remaining
-  seven identity schemas and typed consumers are still pending. See
+  seven identity schemas and typed consumers are implemented for review on #818
+  (44 covered operations / 41 paths; 196 residual). See
   [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors
@@ -453,3 +454,19 @@ GitHub alert state depends on the new main image scan.
 Next work remains F1d's seven identity contracts and typed consumers, F1e
 acceptance, then F2 fleet reads and the separately reviewed S1 signaling boundary.
 Basic/key compatibility is preserved; Rust and encryption remain deferred.
+
+
+## F1d identity contract implementation (2026-11-06)
+
+The remaining seven identity operations now have canonical schemas, snapshot
+projection, generated types/guards and validated Login/AuthGate/MFA consumers.
+Self-service and scoped management remain distinct, and password-reset authority
+is pruned from non-manager discovery. See the
+[identity qualification receipt](engineering-identity-contracts-plan.md) for
+native, sanitizer, browser, semantic-equivalence, coverage and asset evidence.
+All 467 tracked JS/TS/JSON inputs retain zero standard quality findings in the
+full local CodeQL suite. GitHub now marks both go2rtc alerts #351/#352 fixed.
+
+F2 fleet reads and selectors follows this review; S1 signaling/audio authorization
+will be delivered separately. No credential-encryption migration or Rust work is
+included, and Basic/legacy-key compatibility is retained.

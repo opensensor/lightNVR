@@ -86,11 +86,12 @@ test('logout, login as viewer and back navigation never restore the administrato
     // Successful login must replace its history entry: revisiting the login
     // page would clear the newly issued session on mount.
     await expect(page).toHaveURL(`${server.baseURL}/api-docs.html`);
-    await rendered(page,read);await expect(page.locator('.opblock-put')).toHaveCount(0);
+    // Viewer self-service now includes PUT password; stream writes remain hidden.
+    await rendered(page,read);await expect(page.locator('.opblock[id$="-updateStream"]')).toHaveCount(0);
     await page.evaluate(()=>{window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));});
     await expect(page.locator('#api-reference')).toBeEmpty();
     await page.evaluate(()=>{window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));});
-    await rendered(page,read);await expect(page.locator('.opblock-put')).toHaveCount(0);
+    await rendered(page,read);await expect(page.locator('.opblock[id$="-updateStream"]')).toHaveCount(0);
   }finally{await context.close();}
 });
 
@@ -109,7 +110,7 @@ test('real cookie account change while an admin response is delayed cannot publi
     await page.evaluate(()=>{window.contractExplorerProbe.renders=[];window.contractExplorerProbe.forbidWrites=true;});release();
     await rendered(page,read);
     expect(await page.evaluate(()=>window.contractExplorerProbe.renders.some(record=>record.forbidden))).toBe(false);
-    await expect(page.locator('.opblock-put')).toHaveCount(0);
+    await expect(page.locator('.opblock[id$="-updateStream"]')).toHaveCount(0);
   }finally{release?.();await context.close();}
 });
 

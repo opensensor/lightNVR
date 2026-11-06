@@ -159,3 +159,10 @@ artifacts remain the responsibility of T4/T6/T8, not claimed by these smoke test
 Primary tool references: [OpenAPI TypeScript Node API](https://openapi-ts.dev/node),
 [Ajv standalone generation](https://ajv.js.org/standalone.html),
 [Swagger UI configuration](https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/).
+
+
+Format-plus-pattern validators can repeat an identical internal error-counter
+comparison after optimization. The generator collapses only strict comparisons
+of numeric literals and Ajv counter locals, then reruns conservative cleanup.
+Property access, calls and coercive comparisons are deliberately untouched.
+Differential tests and full quality analysis remain required after schema growth.
