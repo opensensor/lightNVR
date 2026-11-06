@@ -251,5 +251,52 @@
       "Database failure is 500, preserves credentials and does not clear cookies.",
       "Settings validates list and revoke responses; malformed replies cannot show successful revocation."
     ]
+  },
+  "mfa_password_lifecycle": {
+    "operations": [
+      "completeTotpLogin",
+      "setupTotp",
+      "verifyTotp",
+      "disableTotp",
+      "getTotpStatus",
+      "changePassword",
+      "legacyLogout"
+    ],
+    "cases": [
+      {
+        "principal": "session / Basic / legacy header / bearer key",
+        "discovery": "personal management present; password reset alternative requires effective users.manage",
+        "own": "allowed (current password for non-manager password change)",
+        "other": "403 without effective users.manage"
+      },
+      {
+        "principal": "scoped users.manage token",
+        "discovery": "management present, no personal session/device lifecycle",
+        "target": "owner permission intersected with token action and scope"
+      },
+      {
+        "principal": "other scoped token",
+        "discovery": "management absent",
+        "own_or_other": 403
+      },
+      {
+        "principal": "anonymous / pending MFA",
+        "discovery_status": 401,
+        "management": 401,
+        "completion": "pending challenge plus fresh code only; does not confer general API access"
+      },
+      {
+        "principal": "password-change-required session / Basic",
+        "discovery_status": 401,
+        "password": "own password change requires old password even for bootstrap admin"
+      }
+    ],
+    "acceptance": [
+      "Exact generated and projected success schemas; enrollment secret only in setup response.",
+      "Password reset alternative removed from non-manager projections.",
+      "Expired/replayed/throttled codes and ambiguous mutations cannot show browser success.",
+      "Legacy logout: negotiated JSON or empty 302 with Location; expired cookies and actual session revocation.",
+      "No automatic mutation retries; stale enrollment responses discarded and secret state cleared on close/context change."
+    ]
   }
 }

@@ -10,7 +10,7 @@ export interface paths {
         put?: never;
         /**
          * Start an authenticated session
-         * @description Public credential submission. Successful JSON login sets the HttpOnly session cookie; MFA challenge returns totp_required/totp_token without a cookie. Optional inline TOTP is described; separate TOTP completion/enrollment remains unspecified. Form submissions redirect for success, credential rejection and rate limit. Form parsing uses username/password only; JSON optional fields are not form inputs.
+         * @description Public credential submission. Successful JSON login sets the HttpOnly session cookie; MFA challenge returns totp_required/totp_token without a cookie. Optional inline TOTP is described; MFA completion and enrollment have separate identity contracts. Form submissions redirect for success, credential rejection and rate limit. Form parsing uses username/password only; JSON optional fields are not form inputs.
          */
         post: operations["login"];
         delete?: never;
@@ -33,6 +33,26 @@ export interface paths {
         get: operations["getLoginConfig"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete an MFA login challenge
+         * @description Consumes an unexpired password-verified challenge bound to the issuing IP/user agent. Six-digit codes are single-use per account time step; account throttling applies. Success sets an HttpOnly session cookie, and optionally a trusted-device cookie. Never automatically retry a completion after an ambiguous response.
+         */
+        post: operations["completeTotpLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -134,6 +154,106 @@ export interface paths {
          * @description Session, Basic or legacy key personal self-service only. Scoped tokens, including users.manage tokens, cannot resolve a principal here; a valid session cookie retains existing precedence. Ownership is always the authenticated account, including administrators. Synthetic auth-disabled principals are rejected. Responses are private, no-store; credential material is never returned. The ID must be a canonical positive decimal safe integer without signs, leading zeros, escapes or trailing path segments. Revocation is independent of the 32-entry list limit, can remove expired records, and excludes pending MFA sessions. Current-cookie clearing uses the exact removed credential. Missing or another owner’s ID returns the same 404; database failure is 500. A successful revoke invalidates future use, but does not cancel already-authorized in-flight requests.
          */
         delete: operations["revokeTrustedDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change or reset a password
+         * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Requires old_password for self-service without users.manage and for a forced own password change. Success atomically changes the password and revokes sessions, pending challenges and trusted devices. Changing your own password clears browser cookies. Basic/key compatibility remains supported.
+         */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable MFA
+         * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Disables MFA, erases the secret and revokes other sessions/challenges/trusted devices. The initiating authenticated session is retained.
+         */
+        post: operations["disableTotp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start MFA enrollment
+         * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Returns enrollment secret only here; setup expires after ten minutes. Replacing pending enrollment invalidates the previous secret. An enabled account returns 409.
+         */
+        post: operations["setupTotp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/totp/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read MFA enrollment status
+         * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Returns enabled/configured booleans without secrets. Unavailability is not evidence that MFA is disabled.
+         */
+        get: operations["getTotpStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/totp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify and enable MFA
+         * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Consumes a fresh enrollment code, enables MFA and revokes other sessions/challenges/trusted devices. The initiating authenticated session is retained.
+         */
+        post: operations["verifyTotp"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -728,6 +848,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * End a browser session using the legacy route
+         * @description Public and idempotent. Deletes the session from the supplied cookie and clears session/trusted-device cookies. Does not revoke Basic credentials, legacy API keys or scoped API tokens. JSON200 requires Accept containing application/json or X-Requested-With; otherwise302 redirects to login.
+         */
+        get: operations["legacyLogout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1026,9 +1166,12 @@ export interface components {
         };
         LoginMfaChallenge: {
             api_key?: never;
+            must_change_password?: never;
             password?: never;
             password_hash?: never;
+            redirect?: never;
             secret?: never;
+            success?: never;
             token_hash?: never;
             /** @constant */
             totp_required: true;
@@ -1060,6 +1203,7 @@ export interface components {
             /** @constant */
             success: true;
             token_hash?: never;
+            totp_required?: never;
             totp_secret?: never;
             totp_token?: never;
         } & {
@@ -1126,6 +1270,22 @@ export interface components {
             "x-lightnvr-coverage": components["schemas"]["OpenApiCoverage"];
         } & {
             [key: string]: unknown;
+        };
+        PasswordAdminReset: {
+            new_password: string;
+            old_password?: string;
+        };
+        PasswordChangedResponse: {
+            /** @constant */
+            must_change_password: false;
+            /** @constant */
+            success: true;
+        };
+        /** @description New password must contain at least eight UTF-8 bytes. Self-service requires the current password; effective users.manage can reset passwords except its own forced first-login change. Locked/default-password rules are enforced by the server. */
+        PasswordChangeRequest: components["schemas"]["PasswordSelfChange"] | components["schemas"]["PasswordAdminReset"];
+        PasswordSelfChange: {
+            new_password: string;
+            old_password: string;
         };
         /** @enum {string} */
         PlaybackTransport: "auto" | "webrtc_only" | "mse_only" | "hls_only" | "webrtc_then_mse" | "mse_then_hls";
@@ -1861,6 +2021,37 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        TotpChangedResponse: {
+            message: string;
+            /** @constant */
+            success: true;
+        };
+        TotpCodeRequest: {
+            code: string;
+        };
+        TotpLoginRequest: {
+            code: string;
+            remember_device?: boolean;
+            totp_token: string;
+        };
+        TotpLoginResponse: {
+            /** @constant */
+            redirect: "/index.html";
+            /** @constant */
+            success: true;
+        };
+        TotpSetupResponse: {
+            message: string;
+            /** Format: uri */
+            readonly otpauth_uri: string;
+            readonly secret: string;
+            /** @constant */
+            success: true;
+        };
+        TotpStatusResponse: {
+            totp_configured: boolean;
+            totp_enabled: boolean;
+        };
         TrustedDevice: {
             created_at: number;
             current: boolean;
@@ -1977,6 +2168,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginConfig"];
+                };
+            };
+        };
+    };
+    completeTotpLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    /** @description Authenticated session; optional trusted device if enabled and requested. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpLoginResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Enrollment expired or state changed; refresh status. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description TOTP attempts are account-throttled. Do not automatically retry. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -2281,6 +2545,418 @@ export interface operations {
                 headers: {
                     /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
                     "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordChangedResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Principal lacks self-service or effective users.manage; password may be locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target user not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    disableTotp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpChangedResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Principal lacks self-service or effective users.manage; password may be locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target user not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Enrollment expired or state changed; refresh status. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description TOTP attempts are account-throttled. Do not automatically retry. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setupTotp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetupResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Principal lacks self-service or effective users.manage; password may be locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target user not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Enrollment expired or state changed; refresh status. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description TOTP attempts are account-throttled. Do not automatically retry. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getTotpStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpStatusResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Principal lacks self-service or effective users.manage; password may be locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target user not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    verifyTotp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Leading zeroes are accepted by the handler; browser adapters require safe positive integer IDs. Concrete self-service targets only the current account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    /** @description Includes no-store; authentication data must not be cached. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpChangedResponse"];
+                };
+            };
+            /** @description Invalid path or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid credential, current password, challenge or code (including replay). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Principal lacks self-service or effective users.manage; password may be locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target user not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Enrollment expired or state changed; refresh status. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description TOTP attempts are account-throttled. Do not automatically retry. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Internal/database failure. */
+            500: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -4509,6 +5185,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiError"];
                 };
+            };
+        };
+    };
+    legacyLogout: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Use application/json for the JSON success envelope. */
+                Accept?: string;
+                /** @description Presence also selects the JSON success envelope. */
+                "X-Requested-With"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
+            };
+            /** @description Browser/form redirect; Location identifies the next page and no JSON body is required. */
+            302: {
+                headers: {
+                    /** @description Relative application page. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

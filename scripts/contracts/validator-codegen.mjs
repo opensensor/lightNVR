@@ -80,3 +80,26 @@ export function normalizeErrorAccumulators(source) {
   }]);
   try{return ts.createPrinter().printFile(result.transformed[0]);}finally{result.dispose();}
 }
+
+/** Ajv can repeat the same local error-count check for pattern + format. Only
+ * collapse identical strict comparisons of internal counters and literals;
+ * property reads, calls, coercive comparisons and arbitrary expressions stay.
+ */
+export function normalizeRepeatedCounterChecks(source) {
+  const ast = ts.createSourceFile('validators.js', source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.JS);
+  const atom = node => ts.isNumericLiteral(node) || (ts.isIdentifier(node) && /^(?:errors|_errs[0-9]+)$/.test(node.text));
+  const comparison = node => ts.isBinaryExpression(node) &&
+    [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind) &&
+    atom(node.left) && atom(node.right);
+  const result = ts.transform(ast, [ctx => root => {
+    const visit = node => {
+      if (ts.isBinaryExpression(node) &&
+          [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken].includes(node.operatorToken.kind) &&
+          comparison(node.left) && comparison(node.right) && node.left.getText(ast) === node.right.getText(ast)) return node.left;
+      return ts.visitEachChild(node, visit, ctx);
+    };
+    return ts.visitNode(root, visit);
+  }]);
+  try { return ts.createPrinter().printFile(result.transformed[0]); }
+  finally { result.dispose(); }
+}

@@ -6,8 +6,9 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import QRCode from 'qrcode';
 import { useI18n } from '../../../i18n.ts';
 import { AsyncButton } from '../AsyncButton.tsx';
-import type { ApiErrorBody, User } from '../../../types/core.ts';
-import type { GetAuthHeaders, TotpSetupResponse, TotpStatusResponse } from '../../../types/users.ts';
+import type { User } from '../../../types/core.ts';
+import type { GetAuthHeaders } from '../../../types/users.ts';
+import { getTotpStatus, setupTotp, verifyTotp, disableTotp, AuthenticationRequestError } from '../../../api/authentication.ts';
 import { useEscapeKey } from '../../../hooks/useEscapeKey.ts';
 
 export interface TotpSetupModalProps {
@@ -27,7 +28,7 @@ export interface TotpSetupModalProps {
  * @returns {JSX.Element} TOTP setup modal
  */
 export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: TotpSetupModalProps) {
-  useEscapeKey(onClose);
+  useEscapeKey(() => close());
   const [step, setStep] = useState('loading'); // 'loading', 'status', 'setup', 'verify', 'enabled'
   const [otpauthUri, setOtpauthUri] = useState('');
   const [secret, setSecret] = useState('');
@@ -37,113 +38,82 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: Tot
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { t } = useI18n();
 
+  const context = useRef<AbortController | null>(null);
+  const pending = useRef(false);
   const stopPropagation = (e: Event) => e.stopPropagation();
+  const clearEnrollment = () => { setSecret(''); setOtpauthUri(''); setVerifyCode(''); };
+  const close = () => { context.current?.abort(); clearEnrollment(); onClose(); };
 
   const fetchStatus = useCallback(async () => {
+    context.current?.abort();
+    const controller = new AbortController();
+    context.current = controller;
+    pending.current = false;
+    setSecret(''); setOtpauthUri(''); setVerifyCode(''); setError(''); setStep('loading');
     try {
-      const res = await fetch(`/api/auth/users/${user.id}/totp/status`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const data: TotpStatusResponse = await res.json();
-        setTotpEnabled(data.totp_enabled);
-        setStep('status');
-      } else {
-        // TOTP columns may not exist yet
-        setTotpEnabled(false);
-        setStep('status');
-      }
-    } catch (err) {
-      console.error('Error fetching TOTP status:', err);
-      setStep('status');
+      const data = await getTotpStatus(user.id, {headers: getAuthHeaders(), signal: controller.signal});
+      if (controller.signal.aborted) return;
+      setTotpEnabled(data.totp_enabled); setStep('status');
+    } catch {
+      if (!controller.signal.aborted) { setStep('unavailable'); setError(t('users.networkErrorDuringMfaSetup')); }
     }
-  }, [user.id, getAuthHeaders]);
+  }, [user.id, getAuthHeaders, t]);
 
-  // Fetch current TOTP status on mount or when dependencies change
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
+    return () => { context.current?.abort(); };
   }, [fetchStatus]);
 
-  // Render QR code when otpauthUri changes
   useEffect(() => {
+    let active = true;
     if (otpauthUri && canvasRef.current) {
       QRCode.toCanvas(canvasRef.current, otpauthUri, {
-        width: 256,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' }
-      }).catch((err: unknown) => console.error('QR Code error:', err));
+        width: 256, margin: 2, color: { dark: '#000000', light: '#ffffff' }
+      }).catch(() => { if (active) setError(t('users.mfaSetupFailed')); });
     }
-  }, [otpauthUri, step]);
+    return () => { active = false; };
+  }, [otpauthUri, step, t]);
 
-  const handleSetup = async () => {
-    setError('');
+  const mutate = async (action: 'setup' | 'verify' | 'disable') => {
+    const controller = context.current;
+    if (pending.current || !controller || controller.signal.aborted) return;
+    pending.current = true; setError('');
+    const options = {headers: getAuthHeaders(), signal: controller.signal};
     try {
-      const res = await fetch(`/api/auth/users/${user.id}/totp/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
-      });
-      if (res.ok) {
-        const data: TotpSetupResponse = await res.json();
-        setOtpauthUri(data.otpauth_uri);
-        setSecret(data.secret);
-        setStep('setup');
+      if (action === 'setup') {
+        const data = await setupTotp(user.id, options);
+        if (controller.signal.aborted) return;
+        setOtpauthUri(data.otpauth_uri); setSecret(data.secret); setStep('setup');
       } else {
-        const data: ApiErrorBody = await res.json();
-        setError(data.error || t('users.mfaSetupFailed'));
+        if (action === 'verify') await verifyTotp(user.id, verifyCode, options);
+        else await disableTotp(user.id, options);
+        if (controller.signal.aborted) return;
+        clearEnrollment(); setTotpEnabled(action === 'verify');
+        setStep(action === 'verify' ? 'enabled' : 'status');
+        onSuccess?.();
       }
-    } catch (err) {
-      setError(t('users.networkErrorDuringMfaSetup'));
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return;
+      setVerifyCode('');
+      const status = error instanceof AuthenticationRequestError ? error.status : undefined;
+      setError(t(status === 429 ? 'login.error.rateLimited' : status === 401 ? 'users.invalidVerificationCode' : 'users.mfaSetupFailed'));
+      // An ambiguous mutation may have applied. Refresh the real state before
+      // offering another mutation; never infer disabled/enabled from an error.
+      if (status !== 401 && status !== 429) { clearEnrollment(); setStep('unavailable'); }
+    } finally {
+      if (context.current === controller) pending.current = false;
     }
   };
-
+  const handleSetup = () => mutate('setup');
+  const handleDisable = () => mutate('disable');
   const handleVerify = async (e: Event) => {
     e.preventDefault();
-    setError('');
-    if (verifyCode.length !== 6) {
-      setError(t('users.enterSixDigitCode'));
-      return;
-    }
-    try {
-      const res = await fetch(`/api/auth/users/${user.id}/totp/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ code: verifyCode })
-      });
-      if (res.ok) {
-        setStep('enabled');
-        if (onSuccess) onSuccess();
-      } else {
-        const data: ApiErrorBody = await res.json();
-        setError(data.error || t('users.invalidVerificationCode'));
-        setVerifyCode('');
-      }
-    } catch (err) {
-      setError(t('users.networkErrorDuringVerification'));
-    }
-  };
-
-  const handleDisable = async () => {
-    setError('');
-    try {
-      const res = await fetch(`/api/auth/users/${user.id}/totp/disable`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
-      });
-      if (res.ok) {
-        setTotpEnabled(false);
-        setStep('status');
-        if (onSuccess) onSuccess();
-      } else {
-        const data: ApiErrorBody = await res.json();
-        setError(data.error || t('users.disableMfaFailed'));
-      }
-    } catch (err) {
-      setError(t('users.networkErrorDuringDisableMfa'));
-    }
+    if (!/^[0-9]{6}$/.test(verifyCode)) { setError(t('users.enterSixDigitCode')); return; }
+    await mutate('verify');
   };
 
   return (
-    <div role="presentation" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div role="presentation" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={close}>
       <div role="presentation" className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">{t('users.mfaSetupNamed', { username: user.username })}</h2>
 
@@ -154,6 +124,8 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: Tot
         {step === 'loading' && (
           <div className="text-center py-4">{t('common.loading')}</div>
         )}
+
+        {step === 'unavailable' && <AsyncButton className="btn-secondary w-full" onClick={fetchStatus}>{t('common.retry')}</AsyncButton>}
 
         {step === 'status' && !totpEnabled && (
           <div>
@@ -238,7 +210,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }: Tot
         )}
 
         <div className="flex justify-end mt-4">
-          <button className="btn-secondary" onClick={onClose}>
+          <button className="btn-secondary" onClick={close}>
             {step === 'enabled' ? t('common.done') : t('common.close')}
           </button>
         </div>

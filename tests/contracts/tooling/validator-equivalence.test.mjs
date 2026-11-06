@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {root, schemaDocument, generateArtifacts} from '../../../scripts/contracts/generate.mjs';
-import {configureContractCodegen} from '../../../scripts/contracts/validator-codegen.mjs';
+import {configureContractCodegen, normalizeRepeatedCounterChecks} from '../../../scripts/contracts/validator-codegen.mjs';
 
 // The oracle is unmodified Ajv. Exercise every public guard against independent
 // valid seeds and property/type mutations, comparing diagnostics and no-effects.
@@ -85,4 +85,12 @@ test('optimized canonical validators agree with unmodified Ajv across all export
 test('custom emitters fail closed for unsupported mutating or exhaustive profiles',()=>{
   for(const options of [{allErrors:true},{$data:true},{useDefaults:true},{removeAdditional:true}])
     assert.throws(()=>configureContractCodegen(new Ajv2020(options)),/reviewed non-mutating/);
+});
+
+
+test('repeated counter checks collapse without folding property reads or calls',()=>{
+  const result=normalizeRepeatedCounterChecks('if (0 === _errs5 && 0 === _errs5) check(); if (a.x === 0 && a.x === 0) check(); if (f() === 0 && f() === 0) check();');
+  assert.match(result,/if \(0 === _errs5\)/);
+  assert.match(result,/a\.x === 0 && a\.x === 0/);
+  assert.match(result,/f\(\) === 0 && f\(\) === 0/);
 });

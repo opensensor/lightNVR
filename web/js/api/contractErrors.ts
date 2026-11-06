@@ -1,7 +1,9 @@
 /** Only stable operation names enter error messages; never URLs or wire data. */
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
-type ContractOperation = StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+import type { AuthenticationOperation } from './authentication.ts';
+
+type ContractOperation = AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
@@ -15,7 +17,7 @@ export class ContractValidationError extends Error {
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = ['updateStream', 'revokeAuthSession', 'revokeTrustedDevice'].includes(operation) && phase === 'response';
+    this.mayHaveApplied = ['updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
   }
 }
 

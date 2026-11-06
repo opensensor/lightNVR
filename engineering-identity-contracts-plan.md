@@ -3,10 +3,10 @@
 Status: F1a's MFA/session correction merged in PR #808. F1b and the four-route
 part of F1d merged together in PR #809: session/trusted-device list and
 revoke, permission-aware discovery, generated validation and Settings consumption.
-The contract has 37 operations / 34 paths, with 203 residual routes. The remaining
-seven identity operations still target 44 accepted operations when qualified.
-F1c behavior is implemented for review against main `4a0dfda2`, following
-merged PRs #812–#814. The earlier F1b baseline was `7aa09680`.
+F1c merged in PR #816. F1d/F1e now implement the remaining seven identity
+operations for review on top of the generated-validator quality fix (#818).
+The contract has 44 operations / 41 paths, with 196 residual routes. This does
+not claim all user administration or scoped signaling is covered.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
@@ -284,3 +284,39 @@ Optimized Release gcov/LCOV intersects 366/385 changed executable C lines (95.1%
 including the extracted TOTP helpers. This is local line coverage, not branch
 coverage or a hosted Codecov result. Receipts are in `build/f1c/`. No scanner
 finding is marked closed by this local qualification.
+
+
+## F1d/F1e implementation receipt (2026-11-06)
+
+Publish MFA completion, setup/verify/disable/status, password change and legacy
+GET logout with their actual status, cookie, redirect and revocation semantics.
+`identity_management` discovers self-service for non-scoped credentials or
+management for effective `users.manage`; concrete target checks stay in handlers.
+The administrative password-reset schema alternative is pruned for non-managers.
+Basic and legacy-key compatibility is unchanged. Login success and MFA challenge
+are exclusive variants, and only enrollment setup returns the secret.
+
+The authentication adapter validates config, login, completion, enrollment,
+status, password and logout responses. It uses same-origin credentials, private
+requests, bounded cancellation and no automatic mutation retries. Failure messages
+exclude raw server data. Login retains logout-before-login cookie ordering and
+safe history replacement. AuthGate cannot leave the password gate on malformed
+acknowledgments. MFA status failure offers Retry; ambiguous writes refresh status
+before more changes. Close/context changes abort requests and clear enrollment
+state; a late response cannot expose another account's secret.
+
+Local qualification includes 91 Release native cases, 67 ASan/UBSan cases,
+833 frontend tests, 82 real-server API cases, all 21 browser cases,
+production asset isolation, ten generator/tooling tests and 5,901 differential validator
+comparisons across all 62 guards. All five changed executable C lines are covered
+by local optimized Release gcov/LCOV; this is line intersection, not branch or
+hosted coverage. The full tracked-source CodeQL standard quality scan (467 inputs)
+reports zero findings. An additional duplicated internal counter comparison
+emitted for format-plus-pattern schemas is normalized without folding property
+reads or calls; semantic diagnostics and nonmutation remain oracle-tested.
+
+The production validator chunk is approximately 355.83 kB raw / 39.95 kB gzip,
+versus #818's 319.87 / 34.07. This includes the broader validated auth consumers;
+it is an asset cost, not a claim about embedded runtime performance. The next
+contract family is F2 fleet reads; S1 signaling/audio stays a separate security PR.
+Encryption and Rust remain deferred.

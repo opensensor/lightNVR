@@ -14,7 +14,8 @@ static unsigned allowed[2];
 static const char *expected_resource;
 static int global_calls;
 static bool non_scoped_identity = true;
-void setUp(void) { input = output = NULL; mode = 0; non_scoped_identity = true; evaluation_error = 0; global_calls = 0; expected_resource = NULL; allowed[0] = allowed[1] = 0; }
+static bool global_allowed = true;
+void setUp(void) { input = output = NULL; mode = 0; non_scoped_identity = true; global_allowed = true; evaluation_error = 0; global_calls = 0; expected_resource = NULL; allowed[0] = allowed[1] = 0; }
 void tearDown(void) { allocation_limit = -1; cJSON_InitHooks(NULL); cJSON_Delete(input); cJSON_Delete(output); }
 static cJSON *get(const cJSON *j, const char *key) { return cJSON_GetObjectItemCaseSensitive(j, key); }
 static int access_rule(void *ctx, const cJSON *predicate) {
@@ -34,7 +35,7 @@ int __wrap_authorization_snapshot_evaluate(authorization_snapshot_t *s, authoriz
     (void)s;
     if (evaluation_error) return -1;
     if (expected_resource) TEST_ASSERT_EQUAL_STRING(expected_resource, resource);
-    if (index == -1) { global_calls++; result->decision = AUTHZ_DECISION_ALLOW; }
+    if (index == -1) { global_calls++; result->decision = global_allowed ? AUTHZ_DECISION_ALLOW : AUTHZ_DECISION_DENY; }
     else result->decision = (allowed[index] & (1u << action)) ? AUTHZ_DECISION_ALLOW : AUTHZ_DECISION_DENY;
     return 0;
 }
@@ -54,7 +55,7 @@ static cJSON *schemas(void) { return get(get(output, "components"), "schemas"); 
 static void test_canonical_admin_immutable(void) {
     canonical(); char *before = cJSON_PrintUnformatted(input); project();
     char *after = cJSON_PrintUnformatted(input); TEST_ASSERT_EQUAL_STRING(before, after); free(before); free(after);
-    TEST_ASSERT_EQUAL_INT(34, cJSON_GetArraySize(get(output, "paths")));
+    TEST_ASSERT_EQUAL_INT(41, cJSON_GetArraySize(get(output, "paths")));
     TEST_ASSERT_NULL(get(output, "x-lightnvr-validators"));
     TEST_ASSERT_NOT_NULL(get(get(schemas(), "OpenApiDocument"), "properties"));
     TEST_ASSERT_NOT_NULL(get(get(get(schemas(), "OpenApiDocument"), "properties"), "x-lightnvr-coverage"));
@@ -251,10 +252,25 @@ static void test_non_scoped_identity_adapter(void) {
     TEST_ASSERT_EQUAL_INT(0, global_calls);
 }
 
+static void test_identity_management_adapter(void) {
+    parse("{\"version\":1,\"kind\":\"identity_management\"}");
+    authorization_snapshot_t *snapshot = (authorization_snapshot_t *)&mode;
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    TEST_ASSERT_EQUAL_INT(0, global_calls);
+    non_scoped_identity = false; expected_resource = "raw";
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    TEST_ASSERT_EQUAL_INT(1, global_calls);
+    global_allowed = false;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+    evaluation_error = 1;
+    TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(snapshot, input));
+    TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(NULL, input));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_canonical_admin_immutable); RUN_TEST(test_viewer_prunes_variants); RUN_TEST(test_empty_valid);
-    RUN_TEST(test_non_scoped_identity_adapter); RUN_TEST(test_callback_failure); RUN_TEST(test_bad_predicates_even_hidden);
+    RUN_TEST(test_identity_management_adapter); RUN_TEST(test_non_scoped_identity_adapter); RUN_TEST(test_callback_failure); RUN_TEST(test_bad_predicates_even_hidden);
     RUN_TEST(test_cycles_pointers_literals_links_discriminator); RUN_TEST(test_missing_external_and_bad_escaped_refs);
     RUN_TEST(test_empty_union_fails); RUN_TEST(test_misplaced_or_duplicate_metadata);
     RUN_TEST(test_named_encoding_and_server_variable_maps); RUN_TEST(test_definitions_preserve_referenced_components);

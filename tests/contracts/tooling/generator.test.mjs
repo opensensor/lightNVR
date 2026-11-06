@@ -74,6 +74,7 @@ test('generation rejects unsupported policy metadata, remote/dynamic references 
     doc=>{doc.paths['/api/fixture'].get['x-lightnvr-authorization'].typo=true;},
     doc=>{doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind:'non_scoped_identity',requirements:[]};},
     doc=>{doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind:'non_scoped_identity',extra:true};},
+    doc=>{doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind:'identity_management',requirements:[]};},
     doc=>{doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind:'camera',requirements:[{action:'super.admin',resource:'raw'}]};},
     doc=>{delete doc.paths['/api/fixture'].get['x-lightnvr-authorization'];},
     doc=>{doc.components.schemas.Identity.$ref='https://example.invalid/remote.json';},
@@ -117,9 +118,9 @@ test('independent OpenAPI lint checks canonical and actual projection files, rej
   execFileSync(process.execPath,[path.join(root,'scripts/contracts/lint.mjs'),'--projections',projections],{stdio:'pipe'});
 });
 
-test('non-scoped identity metadata accepts only the reviewed version-1 simple shape', async () => {
+for (const kind of ['non_scoped_identity','identity_management']) test(`${kind} metadata accepts only the reviewed version-1 simple shape`, async () => {
   const doc=JSON.parse(await readFile(source,'utf8'));
-  doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind:'non_scoped_identity'};
+  doc.paths['/api/fixture'].get['x-lightnvr-authorization']={version:1,kind};
   const candidate=path.join(directory,'non-scoped.json');
   await writeFile(candidate,JSON.stringify(doc));
   assert.equal((await generateArtifacts(candidate)).size,4);
