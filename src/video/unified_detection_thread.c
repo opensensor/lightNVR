@@ -24,6 +24,9 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include "utils/uuid.h"
+#include "video/recording_file.h"
+#include "telemetry/recording_io_metrics.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2567,14 +2570,17 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
         }
     }
 
-    // Generate output filename with timestamp
+    // Independent clips can start in the same second or after clock rollback.
     struct tm tm_buf;
-    const struct tm *tm_info = localtime_r(&now, &tm_buf);
-    char timestamp[32];
-    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
-
-    snprintf(ctx->current_recording_path, sizeof(ctx->current_recording_path),
-             "%s/detection_%s.mp4", ctx->output_dir, timestamp);
+    char timestamp[32], uuid[LIGHTNVR_UUID_STRING_SIZE];
+    if (!localtime_r(&now, &tm_buf) ||
+        !strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm_buf) ||
+        lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+    int path_length = snprintf(ctx->current_recording_path,
+        sizeof(ctx->current_recording_path), "%s/detection_%s_%s.mp4",
+        ctx->output_dir, timestamp, uuid);
+    if (path_length < 0 || (size_t)path_length >= sizeof(ctx->current_recording_path))
+        return -1;
     size_t root_length = strlen(ctx->placement.target_root);
     if (strncmp(ctx->current_recording_path, ctx->placement.target_root,
                 root_length) != 0 ||
@@ -2592,6 +2598,18 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     ctx->mp4_writer = mp4_writer_create(ctx->current_recording_path, ctx->stream_name);
     if (!ctx->mp4_writer) {
         log_error("[%s] Failed to create MP4 writer", ctx->stream_name);
+        return -1;
+    }
+    // Own the pathname before creating a detection catalog row. Keep this
+    // descriptor through lazy codec initialization; never reserve then reopen.
+    int open_result = recording_file_open(&ctx->mp4_writer->reserved_output,
+                                           ctx->current_recording_path);
+    if (open_result < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_OPEN, open_result);
+        mp4_writer_close(ctx->mp4_writer);
+        ctx->mp4_writer = NULL;
+        ctx->current_recording_path[0] = '\0';
         return -1;
     }
     ctx->mp4_writer->placement = ctx->placement;

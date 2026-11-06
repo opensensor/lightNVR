@@ -129,6 +129,8 @@ static void open_fixture(int keyframe_interval_seconds) {
 
 static void record_and_check_boundary(int expected_camera_seconds,
                                       int expected_segment_seconds) {
+    /* Each segment owns a fresh path; this fixture reuses its scratch name. */
+    unlink(output_path);
     TEST_ASSERT_EQUAL_INT(0, record_segment(
         source_path, output_path, 30, 0, &input, &segment,
         NULL, NULL, NULL, NULL));
@@ -208,6 +210,7 @@ void test_writer_keeps_faststart_snapshot_after_live_update(void) {
         config_set_mp4_faststart(&g_config, !enabled);
         mp4_writer_close(writer);
         check_faststart_layout(enabled);
+        unlink(output_path);
     }
     av_packet_free(&packet);
 }
@@ -235,8 +238,42 @@ void test_read_only_storage_write_stops_the_segment(void) {
     TEST_ASSERT_EQUAL_INT(10, write_calls);
 }
 
+static void assert_existing_footage(void) {
+    char bytes[32] = {0};
+    FILE *file = fopen(output_path, "rb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_UINT(18, fread(bytes, 1, sizeof(bytes), file));
+    TEST_ASSERT_EQUAL_STRING("protected footage\n", bytes);
+    fclose(file);
+}
+
+void test_both_writers_refuse_existing_footage(void) {
+    open_fixture(10);
+    FILE *file = fopen(output_path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_UINT(18, fwrite("protected footage\n", 1, 18, file));
+    fclose(file);
+    TEST_ASSERT_EQUAL_INT(AVERROR(EEXIST), record_segment(
+        source_path, output_path, 30, 0, &input, &segment,
+        NULL, NULL, NULL, NULL));
+    assert_existing_footage();
+    /* record_segment closes the input on failure; reopen for the packet writer. */
+    TEST_ASSERT_EQUAL_INT(0, avformat_open_input(&input, source_path, NULL, NULL));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, avformat_find_stream_info(input, NULL));
+    AVPacket *packet = av_packet_alloc();
+    TEST_ASSERT_EQUAL_INT(0, av_read_frame(input, packet));
+    mp4_writer_t *writer = mp4_writer_create(output_path, "collision-test");
+    TEST_ASSERT_NOT_NULL(writer);
+    mp4_writer_set_audio(writer, 0);
+    TEST_ASSERT_LESS_THAN_INT(0, mp4_writer_initialize(writer, packet, input->streams[0]));
+    mp4_writer_close(writer);
+    av_packet_free(&packet);
+    assert_existing_footage();
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_both_writers_refuse_existing_footage);
     RUN_TEST(test_keyframe_at_duration_closes_current_segment_and_starts_next);
     RUN_TEST(test_non_keyframe_at_duration_waits_for_next_keyframe);
     RUN_TEST(test_segments_snapshot_live_faststart_setting_at_open);

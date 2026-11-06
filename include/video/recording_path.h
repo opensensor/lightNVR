@@ -37,7 +37,7 @@ int build_mp4_recording_directory(const config_t *config,
                                   char *output,
                                   size_t output_size);
 
-/** Build a timestamped MP4 path and create its directory when needed. */
+/** Build a timestamped, randomly suffixed MP4 path and create its directory when needed. */
 int prepare_mp4_recording_path(const config_t *config,
                                const char *stream_name,
                                time_t timestamp,

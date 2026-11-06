@@ -7,6 +7,7 @@
 #include "unity.h"
 #include "core/config.h"
 #include "video/mp4_writer_internal.h"
+#include "video/recording_file.h"
 
 static AVFormatContext *input;
 static AVPacket *pcm, *aac;
@@ -101,6 +102,7 @@ static void check_writer_round_trip(int samples) {
     int fd = mkstemp(path);
     TEST_ASSERT_GREATER_OR_EQUAL(0, fd);
     close(fd);
+    unlink(path);  // The writer must create its own file exclusively.
     writer = mp4_writer_create(path, "audio-test");
     TEST_ASSERT_NOT_NULL(writer);
     TEST_ASSERT_EQUAL_INT(0, avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", path));
@@ -109,7 +111,7 @@ static void check_writer_round_trip(int samples) {
     TEST_ASSERT_EQUAL_INT(0, avcodec_parameters_copy(out->codecpar, params));
     out->time_base = (AVRational){1, params->sample_rate};
     writer->audio.stream_idx = out->index;
-    TEST_ASSERT_EQUAL_INT(0, avio_open(&writer->output_ctx->pb, path, AVIO_FLAG_WRITE));
+    TEST_ASSERT_EQUAL_INT(0, recording_file_open(&writer->output_ctx->pb, path));
     TEST_ASSERT_EQUAL_INT(0, avformat_write_header(writer->output_ctx, NULL));
     writer->is_initialized = 1;
 

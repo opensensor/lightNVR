@@ -18,6 +18,7 @@
  * - Managing segment rotation
  */
 
+#include "video/recording_file.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -171,7 +172,7 @@ static void release_all_recording_file_cache(int *cache_fd,
     }
 
     /* The MP4 faststart trailer can revisit earlier pages, so release the
-     * entire file after avio_closep(), not only the last incremental range. */
+     * entire file after recording_file_close(), not only the last incremental range. */
     int release_rc = file_cache_flush_and_release(*cache_fd, 0, 0);
     if (release_rc != 0) {
         log_warn("Failed to release recording page cache for %s: %s",
@@ -897,22 +898,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     // Log the output file path for debugging
     log_debug("Attempting to open output file: %s", output_file);
 
-    // Remove any existing output file before opening.
-    // Call unlink() directly without a prior stat() check to avoid a
-    // time-of-check time-of-use (TOCTOU) race condition. ENOENT simply
-    // means the file did not exist, which is fine.
-    if (unlink(output_file) != 0 && errno != ENOENT) {
-        int unlink_error = errno;
-        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
-                                    RECORDING_IO_OPERATION_FILESYSTEM,
-                                    unlink_error);
-        log_warn("Failed to remove existing output file: %s (error: %s)",
-                output_file, strerror(unlink_error));
-        // Continue anyway, avio_open might still succeed (e.g. overwrite)
-    }
-
     // Open output file
-    ret = avio_open(&output_ctx->pb, output_file, AVIO_FLAG_WRITE);
+    ret = recording_file_open(&output_ctx->pb, output_file);
     if (ret < 0) {
         recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
                                     RECORDING_IO_OPERATION_OPEN, ret);
@@ -1944,7 +1931,7 @@ cleanup:
         // Close output file if it was opened
         if (output_ctx->pb) {
             log_debug("Closing output file");
-            int close_ret = avio_closep(&output_ctx->pb);
+            int close_ret = recording_file_close(&output_ctx->pb);
             if (close_ret < 0) {
                 recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
                                             RECORDING_IO_OPERATION_CLOSE,

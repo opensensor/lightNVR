@@ -1,11 +1,12 @@
 # Engineering API expansion: next bounded slices
 
-Status: proposed follow-on work; not authorized for execution by this file.
+Status: F0 checkpoint, F12 and F16 authorized for the recording-integrity PR.
+F1 is planned only; other slices remain proposed.
 
 Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
 and [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md). Baseline:
-`dea6094a731c86debb03cc1c75d0251ab3b96cec` plus accepted working-tree changes
-recorded there. TS/TSX conversion is complete. Automated Rust conversion,
+`b9d3ac6194e412122c45943e6161d526e9e8d075` on main (2026-11-06), after
+merged PR #804 and the go2rtc fork pin update. TS/TSX conversion is complete. Automated Rust conversion,
 synchronization with C and a second backend remain deferred.
 
 ## Ownership and acceptance
@@ -31,7 +32,8 @@ device and authorized scope. No branch-protection changes or broad C rewrite.
 F0 -> F1 -> F3
    -> F2 -> F4 -> F5 -> F6
 F1 -> F7 -------------> F8 (also F4)
-   -> F9 -> F10
+F0 -> F9 -> F10
+F0 -> S1 (audio/signaling authorization; before F10 acceptance)
 F2 -> F11
 F0 -> F12
 F0 -> F16
@@ -44,14 +46,18 @@ F1..F14,F16 -> F15
 - **ownership**: Integration owner; route inventory, coverage and this plan.
 - **description**: Start after T29 acceptance. Compare every literal registration, including multiline/conditional calls; assign every residual operation a slice below or explicit later disposition. Freeze credential classes, wire errors, feature flags and fixture limits. Before delegation, expand the broad F4/F10/F11 families into concrete task IDs, dependencies, exact files and bounded acceptance criteria.
 - **validation**: No missing/duplicate/stale method-route entries; accepted counts agree with canonical and native tests.
-- **status**: Not started
+- **status**: Current-wave checkpoint complete: 33 accepted operations / 30 paths,
+  207 residual registered operations (240 total); no contract expansion in F12/F16.
+  Full residual assignment and F4/F10/F11 decomposition remain required before
+  those families execute. F1 is bounded in the linked plan below.
 
 ### F1: Identity self-service and MFA
 - **depends_on**: [F0]
 - **ownership**: Auth/TOTP handlers, password handling in `api_handlers_users_backend_agnostic.c` and tests; Login/AuthGate/TOTP modal and SettingsView self-service consumers.
 - **description**: Sessions/trusted-devices list/revoke; login TOTP completion; user TOTP setup/verify/disable/status; password changes and legacy GET `/logout`. Distinguish legacy keys from scoped tokens.
 - **validation**: Owner/other-user/admin/token matrix, challenge expiry/replay, actual revocation, secret exclusion and denied no-effects.
-- **status**: Not started
+- **status**: Planning complete; implementation not started. See
+  [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors
 - **depends_on**: [F0]
@@ -126,9 +132,9 @@ F1..F14,F16 -> F15
 ### F12: Recording pathname collision safety
 - **depends_on**: [F0]
 - **ownership**: Recording path creation/writer boundary and focused native/media tests.
-- **description**: Reproduce same-second filenames, restart reuse and wall-clock rollback. Current second-resolution paths can reuse filenames; startup ID reconciliation does not establish file identity. Choose the smallest proven writer fix after reproducing overwrite.
+- **description**: Reproduce same-second filenames, restart reuse and wall-clock rollback. Use random UUID suffixes, exclusive creation by both MP4 writers, and attempt-driven rotation independent of clock movement. Preserve writer/file ownership and existing catalog finalization order.
 - **validation**: Forced identical timestamps/rollback never alter existing or protected file hashes; new rows/files remain paired through crash/failure cleanup. Document close/publication/ownership before lifecycle changes.
-- **status**: Not started
+- **status**: Implemented in the recording-integrity branch; validation receipt below.
 
 ### F13: Target capacity and active-media measurements
 - **depends_on**: [F0]
@@ -154,6 +160,77 @@ F1..F14,F16 -> F15
 ### F16: Recording export I/O failure handling
 - **depends_on**: [F0]
 - **ownership**: ZIP writer in `src/web/api_handlers_recordings_batch_download.c` and isolated failure regressions; serialize against other recording job edits.
-- **description**: T24 source review found unchecked ZIP output writes/close and source-read failures. Existing tests prove explicit missing-source/member-count errors, successful ZIP bytes and owner binding; they do not establish failure atomicity for all filesystem faults. Reproduce output ENOSPC/EIO, close failure and source truncation/read races before choosing the smallest repair.
+- **description**: T24 source review found unchecked ZIP output writes/close and source-read failures. Existing tests prove explicit missing-source/member-count errors, successful ZIP bytes and owner binding; they do not establish failure atomicity for all filesystem faults. Copy from one source descriptor, derive CRC from copied bytes, detect size/metadata changes, check all ZIP writes/seeks/source and archive closes, and publish only after successful close.
 - **validation**: Process-local fault injection into owned fixtures; failed archives never become complete or downloadable, temporary files are cleaned safely, source/protected hashes remain intact, and successful archives pass independent CRC/content/decode checks. Define completion versus durability explicitly; do not imply power-loss guarantees from successful buffered writes.
-- **status**: Not started
+- **status**: Implemented in the recording-integrity branch; validation receipt below.
+
+
+### S1: Audio and signaling authorization boundary
+- **depends_on**: [F0]; independent of F9, required before F10 action-isolation acceptance.
+- **ownership**: Go2rtc proxy/signaling and audio consumers; separate security PR.
+- **description**: Inventory browser-direct go2rtc WebRTC/audio paths, then choose
+  a LightNVR-mediated or narrowly scoped expiring authorization boundary using
+  the existing evaluator. Specify listen versus talk permissions, stream identity,
+  token scope, expiry/revocation and what deployment exposure remains possible.
+- **validation**: Denied listen/talk cannot negotiate or receive media through
+  alternate direct/proxy paths. Test owner/token/camera intersections and revoked
+  access with an owned go2rtc fixture; browser hiding alone is not enforcement.
+- **status**: Prioritized for a separate bounded plan; not implemented here.
+
+## Recording integrity execution receipt (2026-11-06)
+
+This wave leaves the accepted API inventory unchanged. F12 owns recording path,
+exclusive AVIO file creation and segment retry/rotation. F16 owns the batch ZIP
+worker and its isolated fault tests. Neither changes authentication, JSON schemas,
+Rust scope or branch protection. The next API implementation is F1, followed by
+F2 fleet reads; S1 can proceed as a separately reviewed security slice.
+
+F12 keeps filename timestamp prefixes and adds random UUIDs. Path preparation
+creates directories only; the writer atomically owns a new file with O_EXCL.
+An existing file or symlink is refused, never deleted, reopened or truncated.
+The owned descriptor stays attached to custom AVIO until flush/close. Failures
+leave only the new attempt's possible partial file for existing reconciliation;
+no cleanup is permitted to unlink an unowned collision. Continuous-recording rows are still created at first keyframe and finalized
+before switching to the next pathname. Detection clips reserve and retain their
+file descriptor before their early catalog row, then transfer it to the muxer
+at first keyframe (or close it if the clip stops before initialization).
+Every attempted segment rotates even if the wall clock goes backwards.
+
+F16 publishes a temporary archive only when every member, header, directory,
+seek and close succeeds. CRC and size describe bytes read from one descriptor;
+size/mtime/ctime checks reject observed concurrent source changes. It is not a
+filesystem snapshot. A successful close establishes a completed archive, not
+fsync or power-loss durability. Failed jobs retain no downloadable path and
+remove only their own mkstemp file. Existing job ownership checks remain in force.
+
+Validation on the integrated branch:
+
+- Release: all 85 selected ci-unit tests passed; updated audio/export fixtures
+  also passed their focused reruns. Debug: all 60 ci-sanitizer tests passed with
+  ASan/UBSan and leak detection. Both new suites are selected in both CI lanes.
+- 55 real-server API contract tests passed with zero retries. Successful ZIPs
+  were independently checked by Python zipfile and decoded with FFmpeg; missing
+  source jobs returned error and result 409. Existing owner/token isolation passed.
+- Native regressions cover concurrent exclusive opens, symlinks, same timestamps,
+  another process, rollback, both real MP4 writers and faststart on/off, detection
+  collision without a new catalog row, retry row/file pairing, every archive
+  write position (zero/short writes), ENOSPC/EIO, source read/close/change/size
+  failures, archive close/seek failures and empty-source CRC/size.
+- Fresh managed Debug binary plus fork go2rtc passed the owned SIGKILL/restart
+  scenario: immediate reconciliation, protected hashes/IDs, playback/decode,
+  idempotent second restart and SQLite integrity. Receipt is retained under
+  build/recording-integrity-recovery/result.json; native source manifest SHA-256
+  is `664b12abfc60b822f6b52ad1f086599f8913a8ed85d97747911487c53cb1c90c`.
+- Local Release gcov/LCOV intersection with changed executable C lines is
+  137/147 (93.2%). This optimized local measurement is not a hosted Codecov result.
+- Contract generation/drift, documentation links and diff whitespace checks pass.
+
+Reproduce native checks with BUILD_TESTS enabled, SOD/LiteRT/MQTT disabled,
+SSL enabled, and coherent system FFmpeg headers/libraries. Use Release coverage
+flags --coverage and -fprofile-update=atomic; Debug enables sanitizers. Run
+`ctest -L ci-unit --output-on-failure` and the Debug ci-sanitizer label. The
+[recovery harness](tests/reliability/README.md) documents managed go2rtc setup;
+this run uses the fork pin's freshly built binary. Logs and build trees are under
+build/recording-integrity*. Hosted results belong to the PR checks, separately
+from this local receipt. No hardware, long-duration soak or power-loss
+qualification is claimed.

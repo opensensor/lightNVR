@@ -9,6 +9,7 @@
  * Core implementation of MP4 writer for storing camera streams
  */
 
+#include "video/recording_file.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -241,7 +242,7 @@ void mp4_writer_close(mp4_writer_t *writer) {
         }
 
         if (writer->output_ctx->pb) {
-            int close_ret = avio_closep(&writer->output_ctx->pb);
+            int close_ret = recording_file_close(&writer->output_ctx->pb);
             if (close_ret < 0) {
                 recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
                                             RECORDING_IO_OPERATION_CLOSE,
@@ -259,6 +260,13 @@ void mp4_writer_close(mp4_writer_t *writer) {
 
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
+    }
+
+    // A detection clip may stop before its first keyframe initializes the muxer.
+    int reserved_close = recording_file_close(&writer->reserved_output);
+    if (reserved_close < 0) {
+        recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
+                                    RECORDING_IO_OPERATION_CLOSE, reserved_close);
     }
 
     /* ------------------------------------------------------------------ *
@@ -283,7 +291,7 @@ void mp4_writer_close(mp4_writer_t *writer) {
                      writer->output_path, strerror(stat_error));
         }
 
-        /* Use st.st_mtime as end_time baseline: after avio_closep() this is the
+        /* Use st.st_mtime as end_time baseline: after recording_file_close() this is the
          * actual wall-clock moment the last byte was written to disk, and it does
          * not depend on writer->creation_time matching the DB start_time.
          *

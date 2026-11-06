@@ -14,6 +14,7 @@
 
 #include "core/path_utils.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 
 bool mp4_directory_format_is_valid(const char *value) {
     return value &&
@@ -140,8 +141,10 @@ static int prepare_at_root(const config_t *config, const char *root,
     char timestamp_text[32];
     if (strftime(timestamp_text, sizeof(timestamp_text),
                  "%Y%m%d_%H%M%S", &tm_buf) == 0) return -1;
-    int written = snprintf(output, output_size, "%s/recording_%s.mp4",
-                           directory, timestamp_text);
+    char uuid[LIGHTNVR_UUID_STRING_SIZE];
+    if (lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+    int written = snprintf(output, output_size, "%s/recording_%s_%s.mp4",
+                           directory, timestamp_text, uuid);
     return (written < 0 || (size_t)written >= output_size) ? -1 : 0;
 }
 

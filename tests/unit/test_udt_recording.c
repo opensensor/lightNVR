@@ -44,6 +44,21 @@ static AVFormatContext *input;      /* what the UDT believes it is reading */
 static int64_t cursor;              /* monotonically increasing packet index */
 static int64_t audio_pts;
 
+static bool force_path_collision;
+static char collision_path[PATH_MAX];
+int __real_recording_file_open(AVIOContext **context, const char *path);
+int __wrap_recording_file_open(AVIOContext **context, const char *path) {
+    if (force_path_collision) {
+        force_path_collision = false;
+        safe_strcpy(collision_path, path, sizeof(collision_path), 0);
+        FILE *existing = fopen(path, "wb");
+        TEST_ASSERT_NOT_NULL(existing);
+        TEST_ASSERT_EQUAL_UINT(9, fwrite("protected", 1, 9, existing));
+        fclose(existing);
+    }
+    return __real_recording_file_open(context, path);
+}
+
 /* ---- helpers ------------------------------------------------------------ */
 
 static void sql(const char *statement) {
@@ -379,6 +394,24 @@ static void test_start_recording_audio_variants(void) {
         avformat_free_context(input);
         input = NULL;
     }
+}
+
+static void test_collision_does_not_publish_detection_row_or_alter_file(void) {
+    build_input(AV_CODEC_ID_NONE);
+    int64_t before = scalar("SELECT count(*) FROM recordings", 0);
+    force_path_collision = true;
+    TEST_ASSERT_EQUAL_INT(-1, udt_start_recording(ctx));
+    TEST_ASSERT_FALSE(force_path_collision);
+    TEST_ASSERT_NULL(ctx->mp4_writer);
+    TEST_ASSERT_EQUAL_UINT64(0, atomic_load(&ctx->current_recording_id));
+    TEST_ASSERT_EQUAL_INT64(before, scalar("SELECT count(*) FROM recordings", 0));
+    FILE *existing = fopen(collision_path, "rb");
+    char data[16] = {0};
+    TEST_ASSERT_NOT_NULL(existing);
+    TEST_ASSERT_EQUAL_UINT(9, fread(data, 1, sizeof(data), existing));
+    fclose(existing);
+    TEST_ASSERT_EQUAL_STRING("protected", data);
+    unlink(collision_path);
 }
 
 /* A paused/unavailable storage target blocks the clip without side effects. */
@@ -781,6 +814,7 @@ int main(void) {
     RUN_TEST(test_detection_stream_hand_off);
     RUN_TEST(test_onvif_onset_fast_path);
     RUN_TEST(test_start_recording_audio_variants);
+    RUN_TEST(test_collision_does_not_publish_detection_row_or_alter_file);
     RUN_TEST(test_blocked_placement_does_not_start);
     RUN_TEST(test_stop_fallback_and_noop);
     RUN_TEST(test_runtime_engine_config);

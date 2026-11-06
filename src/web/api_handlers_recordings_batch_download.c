@@ -40,7 +40,7 @@
 /* ─── ZIP primitives ─────────────────────────────────────────────────── */
 
 static uint32_t s_crc_table[256];
-static int s_crc_init = 0;
+static pthread_once_t s_crc_once = PTHREAD_ONCE_INIT;
 
 static void init_crc32(void) {
     for (uint32_t i = 0; i < 256; i++) {
@@ -49,96 +49,94 @@ static void init_crc32(void) {
             c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
         s_crc_table[i] = c;
     }
-    s_crc_init = 1;
 }
 
-static uint32_t crc32_of_file(const char *path, uint64_t *size_out) {
-    if (!s_crc_init) init_crc32();
-    FILE *f = fopen(path, "rb");
-    if (!f) { if (size_out) *size_out = 0; return 0; }
-    uint32_t crc = 0xFFFFFFFFu;
-    uint64_t total = 0;
-    uint8_t buf[65536];
-    size_t n;
-    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        for (size_t i = 0; i < n; i++)
-            crc = (crc >> 8) ^ s_crc_table[(crc ^ buf[i]) & 0xFF];
-        total += n;
-    }
-    fclose(f);
-    if (size_out) *size_out = total;
-    return ~crc;
+static int zip_write_u16(FILE *f, uint16_t v) {
+    const uint8_t bytes[] = {v & 0xff, (v >> 8) & 0xff};
+    return fwrite(bytes, 1, sizeof(bytes), f) == sizeof(bytes) ? 0 : -1;
+}
+static int zip_write_u32(FILE *f, uint32_t v) {
+    const uint8_t bytes[] = {v & 0xff, (v >> 8) & 0xff,
+                             (v >> 16) & 0xff, (v >> 24) & 0xff};
+    return fwrite(bytes, 1, sizeof(bytes), f) == sizeof(bytes) ? 0 : -1;
 }
 
-static void zip_write_u16(FILE *f, uint16_t v) {
-    fputc(v & 0xFF, f);
-    fputc((v >> 8) & 0xFF, f);
-}
-static void zip_write_u32(FILE *f, uint32_t v) {
-    fputc((int)(v & 0xFFU), f); fputc((int)((v >> 8) & 0xFFU), f);
-    fputc((int)((v >> 16) & 0xFFU), f); fputc((int)((v >> 24) & 0xFFU), f);
-}
-
-/* Write local file header; returns offset before writing */
-static uint32_t zip_write_local_header(FILE *zip, const char *name,
-                                        uint32_t crc, uint32_t size,
-                                        uint16_t dos_date, uint16_t dos_time) {
-    uint16_t namelen = (uint16_t)strlen(name);
-    zip_write_u32(zip, 0x04034b50u);  /* signature */
-    zip_write_u16(zip, 20);           /* version needed */
-    zip_write_u16(zip, 0);            /* flags */
-    zip_write_u16(zip, 0);            /* compression: STORED */
-    zip_write_u16(zip, dos_time);
-    zip_write_u16(zip, dos_date);
-    zip_write_u32(zip, crc);
-    zip_write_u32(zip, size);         /* compressed size */
-    zip_write_u32(zip, size);         /* uncompressed size */
-    zip_write_u16(zip, namelen);
-    zip_write_u16(zip, 0);            /* extra field length */
-    fwrite(name, 1, namelen, zip);
-    return 30 + namelen;
+static int zip_write_local_header(FILE *zip, const char *name,
+                                  uint16_t dos_date, uint16_t dos_time) {
+    uint16_t len = (uint16_t)strlen(name);
+    /* CRC and sizes are patched after a single read of the opened source. */
+    return zip_write_u32(zip, 0x04034b50u) || zip_write_u16(zip, 20) ||
+        zip_write_u16(zip, 0) || zip_write_u16(zip, 0) ||
+        zip_write_u16(zip, dos_time) || zip_write_u16(zip, dos_date) ||
+        zip_write_u32(zip, 0) || zip_write_u32(zip, 0) ||
+        zip_write_u32(zip, 0) || zip_write_u16(zip, len) ||
+        zip_write_u16(zip, 0) || fwrite(name, 1, len, zip) != len;
 }
 
-
-
-/* Write central directory entry */
-static void zip_write_central_entry(FILE *zip, const char *name,
-                                     uint32_t crc, uint32_t size,
-                                     uint16_t dos_date, uint16_t dos_time,
-                                     uint32_t local_offset) {
-    uint16_t namelen = (uint16_t)strlen(name);
-    zip_write_u32(zip, 0x02014b50u);
-    zip_write_u16(zip, 20); zip_write_u16(zip, 20);
-    zip_write_u16(zip, 0);  zip_write_u16(zip, 0);
-    zip_write_u16(zip, dos_time); zip_write_u16(zip, dos_date);
-    zip_write_u32(zip, crc); zip_write_u32(zip, size); zip_write_u32(zip, size);
-    zip_write_u16(zip, namelen); zip_write_u16(zip, 0); zip_write_u16(zip, 0);
-    zip_write_u16(zip, 0); zip_write_u16(zip, 0); zip_write_u32(zip, 0);
-    zip_write_u32(zip, local_offset);
-    fwrite(name, 1, namelen, zip);
+static int zip_write_central_entry(FILE *zip, const char *name,
+                                   uint32_t crc, uint32_t size,
+                                   uint16_t dos_date, uint16_t dos_time,
+                                   uint32_t local_offset) {
+    uint16_t len = (uint16_t)strlen(name);
+    return zip_write_u32(zip, 0x02014b50u) ||
+        zip_write_u16(zip, 20) || zip_write_u16(zip, 20) ||
+        zip_write_u16(zip, 0) || zip_write_u16(zip, 0) ||
+        zip_write_u16(zip, dos_time) || zip_write_u16(zip, dos_date) ||
+        zip_write_u32(zip, crc) || zip_write_u32(zip, size) || zip_write_u32(zip, size) ||
+        zip_write_u16(zip, len) || zip_write_u16(zip, 0) || zip_write_u16(zip, 0) ||
+        zip_write_u16(zip, 0) || zip_write_u16(zip, 0) || zip_write_u32(zip, 0) ||
+        zip_write_u32(zip, local_offset) || fwrite(name, 1, len, zip) != len;
 }
 
-static void zip_write_eocd(FILE *zip, uint16_t entry_count,
-                            uint32_t cd_size, uint32_t cd_offset) {
-    zip_write_u32(zip, 0x06054b50u);
-    zip_write_u16(zip, 0); zip_write_u16(zip, 0);
-    zip_write_u16(zip, entry_count); zip_write_u16(zip, entry_count);
-    zip_write_u32(zip, cd_size); zip_write_u32(zip, cd_offset);
-    zip_write_u16(zip, 0);
+static int zip_write_eocd(FILE *zip, uint16_t count,
+                          uint32_t cd_size, uint32_t cd_offset) {
+    return zip_write_u32(zip, 0x06054b50u) ||
+        zip_write_u16(zip, 0) || zip_write_u16(zip, 0) ||
+        zip_write_u16(zip, count) || zip_write_u16(zip, count) ||
+        zip_write_u32(zip, cd_size) || zip_write_u32(zip, cd_offset) ||
+        zip_write_u16(zip, 0);
 }
 
-static uint64_t zip_copy_file(FILE *zip, const char *path) {
+/* The same descriptor supplies bytes, size and CRC. Detect ordinary concurrent
+ * truncation/growth/modification; this is not a snapshot or durability promise. */
+static int zip_copy_file(FILE *zip, const char *path, uint32_t offset,
+                         uint32_t max_size, uint32_t *size, uint32_t *crc) {
     FILE *src = fopen(path, "rb");
-    if (!src) return 0;
-    uint8_t buf[65536];
-    size_t n; uint64_t total = 0;
-    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
-    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-        fwrite(buf, 1, n, zip); total += n;
+    if (!src) return -1;
+    struct stat before, after;
+    int failed = fstat(fileno(src), &before) != 0;
+    if (!failed && (!S_ISREG(before.st_mode) || before.st_size < 0 ||
+                   (uint64_t)before.st_size > max_size)) failed = 1;
+    pthread_once(&s_crc_once, init_crc32);
+    uint8_t buffer[65536];
+    uint64_t total = 0;
+    uint32_t checksum = 0xffffffffu;
+    while (!failed) {
+        size_t n = fread(buffer, 1, sizeof(buffer), src);
+        if (n == 0) break;
+        total += n;
+        if (total > (uint64_t)before.st_size ||
+            fwrite(buffer, 1, n, zip) != n) { failed = 1; break; }
+        for (size_t i = 0; i < n; ++i)
+            checksum = (checksum >> 8) ^ s_crc_table[(checksum ^ buffer[i]) & 0xff];
     }
-    fclose(src);
-    return total;
+    if (ferror(src)) failed = 1;
+    if (!failed && (fstat(fileno(src), &after) != 0 ||
+        total != (uint64_t)before.st_size || after.st_size != before.st_size ||
+        after.st_mtim.tv_sec != before.st_mtim.tv_sec ||
+        after.st_mtim.tv_nsec != before.st_mtim.tv_nsec ||
+        after.st_ctim.tv_sec != before.st_ctim.tv_sec ||
+        after.st_ctim.tv_nsec != before.st_ctim.tv_nsec)) failed = 1;
+    if (fclose(src) != 0) failed = 1;
+    if (failed) return -1;
+    off_t end = ftello(zip);
+    if (end < 0 || fseeko(zip, (off_t)offset + 14, SEEK_SET) != 0 ||
+        zip_write_u32(zip, ~checksum) || zip_write_u32(zip, (uint32_t)total) ||
+        zip_write_u32(zip, (uint32_t)total) || fseeko(zip, end, SEEK_SET) != 0)
+        return -1;
+    *size = (uint32_t)total;
+    *crc = ~checksum;
+    return 0;
 }
 
 /* ─── Job tracking ────────────────────────────────────────────────────── */
@@ -379,6 +377,7 @@ static void *zip_worker(void *arg) {
     }
     int entry_count = 0;
     uint32_t data_offset = 0;
+    bool io_failed = false;
 
     for (int i = 0; i < job.id_count; i++) {
         recording_metadata_t rec = {0};
@@ -402,33 +401,28 @@ static void *zip_worker(void *arg) {
             }
         }
         if (source != STORAGE_SOURCE_READY) goto next;
-        struct stat st;
-        if (stat(rec.file_path, &st) != 0) { log_warn("zip_worker: file missing: %s", rec.file_path); goto next; }
-
-        // This writer uses ZIP32; reject overflow instead of emitting a corrupt export.
-        if (st.st_size < 0 || (uint64_t)st.st_size + data_offset + 65536 > UINT32_MAX) goto next;
-
-        /* Build entry name: stream_YYYY-MM-DDTHH-mm-ss.ext */
+        /* Reserve all central-directory space before accepting a ZIP32 member. */
+        const uint32_t reserve = MAX_DL_IDS * (46 + 127) + 30 + 127 + 22;
+        if (data_offset > UINT32_MAX - reserve) goto next;
         const char *base = strrchr(rec.file_path, '/');
-        base = base ? base+1 : rec.file_path;
+        base = base ? base + 1 : rec.file_path;
+        if (strlen(base) >= sizeof(entries[entry_count].name)) goto next;
         safe_strcpy(entries[entry_count].name, base, sizeof(entries[entry_count].name), 0);
-
-        uint64_t fsize = 0;
-        uint32_t crc   = crc32_of_file(rec.file_path, &fsize);
-        entries[entry_count].crc  = crc;
-        entries[entry_count].size = (uint32_t)(fsize & 0xFFFFFFFFu);
         entries[entry_count].offset = data_offset;
-
-        struct tm tm_info; localtime_r(&rec.start_time, &tm_info);
+        struct tm tm_info;
+        if (!localtime_r(&rec.start_time, &tm_info)) goto next;
         entries[entry_count].dos_date = to_dos_date(&tm_info);
         entries[entry_count].dos_time = to_dos_time(&tm_info);
-
-        uint32_t hdr_size = zip_write_local_header(zip,
-            entries[entry_count].name, crc, entries[entry_count].size,
-            entries[entry_count].dos_date, entries[entry_count].dos_time);
-        data_offset += hdr_size;
-        uint64_t written = zip_copy_file(zip, rec.file_path);
-        data_offset += (uint32_t)written;
+        if (zip_write_local_header(zip, entries[entry_count].name,
+                entries[entry_count].dos_date, entries[entry_count].dos_time) ||
+            zip_copy_file(zip, rec.file_path, data_offset,
+                UINT32_MAX - data_offset - reserve,
+                &entries[entry_count].size, &entries[entry_count].crc) != 0) {
+            io_failed = true;
+            break;
+        }
+        data_offset += 30 + (uint32_t)strlen(entries[entry_count].name) +
+                       entries[entry_count].size;
         entry_count++;
 
         next:
@@ -441,38 +435,42 @@ static void *zip_worker(void *arg) {
     /* Write central directory */
     uint32_t cd_start = data_offset;
     uint32_t cd_size  = 0;
-    long pos_before = ftell(zip);
-    for (int i = 0; i < entry_count; i++) {
+    for (int i = 0; !io_failed && i < entry_count; i++) {
         uint16_t namelen = (uint16_t)strlen(entries[i].name);
-        zip_write_central_entry(zip, entries[i].name, entries[i].crc, entries[i].size,
-                                entries[i].dos_date, entries[i].dos_time, entries[i].offset);
+        if (zip_write_central_entry(zip, entries[i].name, entries[i].crc, entries[i].size,
+                entries[i].dos_date, entries[i].dos_time, entries[i].offset))
+            io_failed = true;
         cd_size += 46 + namelen;
     }
-    (void)pos_before;
-    zip_write_eocd(zip, (uint16_t)entry_count, cd_size, cd_start);
-    fclose(zip);
+    if (!io_failed && zip_write_eocd(zip, (uint16_t)entry_count, cd_size, cd_start))
+        io_failed = true;
+    /* fclose flushes buffered bytes and can be the first observed write error. */
+    if (fclose(zip) != 0) io_failed = true;
     free(entries);
 
-    /* Store temp path and mark complete */
+    bool complete = !io_failed && entry_count == job.id_count;
+    /* Publish only a fully written, successfully closed archive. */
     pthread_mutex_lock(&s_dl_mutex);
     slot = find_dl_job(job_id);
     if (slot>=0) {
         safe_strcpy(s_dl_jobs[slot].tmp_path, tmp_template, sizeof(s_dl_jobs[slot].tmp_path), 0);
-        s_dl_jobs[slot].status = entry_count == job.id_count ? DL_COMPLETE : DL_ERROR;
-        if (entry_count != job.id_count) {
-            safe_strcpy(s_dl_jobs[slot].error, "Export incomplete: a recording was unavailable or ZIP size exceeded 4 GiB", 256, 0);
+        s_dl_jobs[slot].status = complete ? DL_COMPLETE : DL_ERROR;
+        if (!complete) {
+            safe_strcpy(s_dl_jobs[slot].error, "Export incomplete: source unavailable, changed, oversized, or archive I/O failed", 256, 0);
             unlink(tmp_template);
             s_dl_jobs[slot].tmp_path[0] = 0;
         }
         s_dl_jobs[slot].current    = job.id_count;
         s_dl_jobs[slot].updated_at = time(NULL);
     }
+    if (slot < 0) unlink(tmp_template);
     pthread_mutex_unlock(&s_dl_mutex);
     audit_batch_archive_job(
-        &job, entry_count == job.id_count ? "success" : "failure",
-        entry_count == job.id_count ? "completed" : "partial_archive",
+        &job, complete ? "success" : "failure",
+        complete ? "completed" : "archive_failed",
         entry_count);
-    log_info("zip_worker: completed job %s -> %s (%d entries)", job_id, tmp_template, entry_count);
+    log_info("zip_worker: %s job %s -> %s (%d entries)",
+             complete ? "completed" : "failed", job_id, tmp_template, entry_count);
     return NULL;
 }
 

@@ -9,6 +9,7 @@
  * Utility functions for MP4 writer
  */
 
+#include "video/recording_file.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1944,7 +1945,13 @@ skip_audio_stream:
     }
 
     // Open output file
-    ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
+    if (writer->reserved_output) {
+        writer->output_ctx->pb = writer->reserved_output;
+        writer->reserved_output = NULL;
+        ret = 0;
+    } else {
+        ret = recording_file_open(&writer->output_ctx->pb, writer->output_path);
+    }
     if (ret < 0) {
         recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
                                     RECORDING_IO_OPERATION_OPEN, ret);
@@ -1978,7 +1985,7 @@ skip_audio_stream:
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write header for MP4 writer: %s", error_buf);
-        int close_ret = avio_closep(&writer->output_ctx->pb);
+        int close_ret = recording_file_close(&writer->output_ctx->pb);
         if (close_ret < 0) {
             recording_io_report_failure(RECORDING_IO_RESOURCE_RECORDING,
                                         RECORDING_IO_OPERATION_CLOSE,

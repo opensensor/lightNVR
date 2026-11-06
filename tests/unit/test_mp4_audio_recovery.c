@@ -10,6 +10,10 @@
 #include "video/mp4_writer_internal.h"
 
 static char test_dir[128], source_path[160], output_path[160];
+static int output_index;
+static void next_output(void) {
+    snprintf(output_path, sizeof(output_path), "%s/segment_%d.mp4", test_dir, ++output_index);
+}
 static AVFormatContext *input;
 static segment_info_t segment;
 static int interrupt_after;
@@ -36,6 +40,7 @@ void __wrap_cleanup_audio_transcoder(const char *name) {
 }
 
 void setUp(void) {
+    output_index = 0;
     saved_audio_disabled = g_config.audio_disabled;
     g_config.audio_disabled = false;
     g_config.max_streams = MAX_STREAMS;
@@ -57,7 +62,10 @@ void tearDown(void) {
     av_packet_free(&segment.pending_video_keyframe);
     cleanup_audio_transcoder("audio-recovery");
     unlink(source_path);
-    unlink(output_path);
+    for (int i = 1; i <= output_index; ++i) {
+        snprintf(output_path, sizeof(output_path), "%s/segment_%d.mp4", test_dir, i);
+        unlink(output_path);
+    }
     rmdir(test_dir);
 }
 
@@ -193,6 +201,7 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
     open_fixture(codec);
     set_audio_voice_enhancement("audio-recovery", enhance);
     for (int n = 0; n < 2; n++) {
+        next_output();
         TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 2, 1,
             &input, &segment, NULL, NULL, NULL, NULL));
         TEST_ASSERT_NOT_NULL(input);
@@ -202,6 +211,7 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
     TEST_ASSERT_EQUAL_INT(0, audio_resets);
 
     interrupt_after = 80;
+    next_output();
     TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 10, 1,
         &input, &segment, NULL, NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(-1, interrupt_after);
@@ -217,6 +227,7 @@ static void check_recovery(enum AVCodecID codec, bool enhance) {
         strcpy(segment.stream_name, "audio-recovery");
     } // EOF/input errors retry within the same reader and keep segment_info.
     set_audio_voice_enhancement("audio-recovery", enhance);
+    next_output();
     TEST_ASSERT_EQUAL_INT(0, record_segment(source_path, output_path, 2, 1,
         &input, &segment, NULL, NULL, NULL, NULL));
     check_playable_audio(true);

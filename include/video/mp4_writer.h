@@ -40,6 +40,9 @@ struct mp4_writer {
     char stream_name[MAX_STREAM_NAME];
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     AVFormatContext *output_ctx;
+    // Detection clips reserve their file before publishing a catalog row.
+    // Transferred to output_ctx->pb at initialization, or closed on abandonment.
+    AVIOContext *reserved_output;
     int video_stream_idx;
     int has_audio;            // Flag indicating if audio is enabled
     int64_t first_dts;        // First video DTS

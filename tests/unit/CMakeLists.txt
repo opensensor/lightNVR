@@ -477,6 +477,7 @@ target_link_options(test_mp4_segment_boundaries PRIVATE
     "-Wl,--wrap=av_interleaved_write_frame")
 add_layer3_test(test_mp4_segment_retry_pairing CI_UNIT)
 target_link_options(test_mp4_segment_retry_pairing PRIVATE
+    "-Wl,--wrap=time"
     "-Wl,--wrap=record_segment" "-Wl,--wrap=av_usleep"
     "-Wl,--wrap=get_stream_config_by_name" "-Wl,--wrap=storage_should_pause_recording"
     "-Wl,--wrap=prepare_placed_mp4_recording_path"
@@ -531,6 +532,7 @@ target_link_options(test_detection_io_recovery PRIVATE
 set_tests_properties(test_detection_io_recovery PROPERTIES TIMEOUT 30)
 add_layer3_test(test_udt_recording CI_UNIT CI_SANITIZER)
 target_link_options(test_udt_recording PRIVATE
+    "-Wl,--wrap=recording_file_open"
     "-Wl,--wrap=go2rtc_stream_get_rtsp_url"
 )
 target_compile_definitions(test_udt_recording PRIVATE
@@ -553,3 +555,10 @@ foreach(SYSTEM_HEALTH_TEST_FRAGMENT IN LISTS SYSTEM_HEALTH_TEST_FRAGMENTS)
 endforeach()
 
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")
+
+# Recording integrity regressions use private files and process-local faults.
+add_layer3_test(test_recording_export_io CI_UNIT CI_SANITIZER)
+target_link_options(test_recording_export_io PRIVATE
+    "-Wl,--wrap=get_recording_metadata_by_id" "-Wl,--wrap=storage_source_resolve")
+add_layer3_test(test_recording_file CI_UNIT CI_SANITIZER)
+target_link_options(test_recording_file PRIVATE "-Wl,--wrap=write" "-Wl,--wrap=close")
