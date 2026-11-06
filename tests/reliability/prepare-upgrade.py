@@ -176,7 +176,7 @@ def prepare(args):
         source_file = output / 'prior-source.json'
         write_json(source_file, source)
         execution_head = git(ROOT, 'rev-parse', 'HEAD')
-        run(['git', '-C', checkout, 'merge-base', '--is-ancestor', REVISION, execution_head])
+        git(ROOT, 'merge-base', '--is-ancestor', REVISION, execution_head)
         tools = {'python': platform.python_version(), 'platform': platform.platform(),
                  **{tool: run(command).splitlines()[0] for tool, command in {
                      'cmake': ['cmake', '--version'], 'cc': ['cc', '--version'], 'go': ['go', 'version'],
