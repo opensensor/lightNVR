@@ -1,7 +1,7 @@
 # Engineering API expansion: next bounded slices
 
 Status: F0 checkpoint, F12 and F16 merged in PR #805; recording security
-follow-up is under review in PR #807. F1 boundary review is next; its contract
+follow-up is under review in PR #807. F1 boundary review is in progress; its contract
 expansion is not accepted. Other slices remain proposed.
 
 Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
@@ -57,7 +57,9 @@ F1..F14,F16 -> F15
 - **ownership**: Auth/TOTP handlers, password handling in `api_handlers_users_backend_agnostic.c` and tests; Login/AuthGate/TOTP modal and SettingsView self-service consumers.
 - **description**: Sessions/trusted-devices list/revoke; login TOTP completion; user TOTP setup/verify/disable/status; password changes and legacy GET `/logout`. Distinguish legacy keys from scoped tokens.
 - **validation**: Owner/other-user/admin/token matrix, challenge expiry/replay, actual revocation, secret exclusion and denied no-effects.
-- **status**: Planning complete; implementation not started. See
+- **status**: F1a security preflight implemented for review: pending MFA tokens
+  are distinct from sessions, and completion consumes a bounded challenge once.
+  Full principal/lifecycle coverage and the 11-operation contract remain pending. See
   [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors

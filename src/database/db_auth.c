@@ -1771,17 +1771,18 @@ int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
      *   0 id, 1 user_id, 2 expires_at, 3 idle_expires_at, 4 last_activity_at,
      *   5 is_active, 6 ip_address, 7 user_agent
      */
+    /* The MFA discriminator is mandatory: a missing/broken schema must fail
+     * closed, never fall back to accepting pending rows as sessions. */
     char sql[512];
     int select_written = snprintf(sql, sizeof(sql),
                            "SELECT s.id, s.user_id, s.expires_at, %s, %s, u.is_active, %s, %s "
                            "FROM sessions s "
                            "JOIN users u ON s.user_id = u.id "
-                           "WHERE s.token = ?%s;",
+                           "WHERE s.token = ? AND s.mfa_pending = 0;",
                            has_idle_expires_column ? "s.idle_expires_at" : "s.expires_at",
                            has_tracking_columns ? "COALESCE(s.last_activity_at, s.created_at)" : "0",
                            has_ip_column ? "COALESCE(s.ip_address, '')" : "''",
-                           has_ua_column ? "COALESCE(s.user_agent, '')" : "''",
-                           cached_column_exists("sessions", "mfa_pending") ? " AND s.mfa_pending = 0" : "");
+                           has_ua_column ? "COALESCE(s.user_agent, '')" : "''");
     if (select_written < 0 || (size_t)select_written >= sizeof(sql)) {
         log_error("Failed to build session lookup SQL");
         return -1;
@@ -2070,12 +2071,11 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
     snprintf(sql, sizeof(sql),
         "SELECT id, user_id, token, created_at, %s, %s, expires_at, "
         "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-        "FROM sessions WHERE user_id = ? AND expires_at >= ? %s %s "
+        "FROM sessions WHERE user_id = ? AND mfa_pending = 0 AND expires_at >= ? %s "
         "ORDER BY %s DESC LIMIT ?;",
         has_last_activity_column ? "COALESCE(last_activity_at, created_at)" : "created_at",
         has_idle_expires_column ? "COALESCE(idle_expires_at, expires_at)" : "expires_at",
         has_idle_expires_column ? "AND (idle_expires_at IS NULL OR idle_expires_at >= ?)" : "",
-        cached_column_exists("sessions", "mfa_pending") ? "AND mfa_pending = 0" : "",
         has_last_activity_column ? "COALESCE(last_activity_at, created_at)" : "created_at");
 
     sqlite3_stmt *stmt;

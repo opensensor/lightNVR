@@ -13,6 +13,15 @@ function code(step=Math.floor(Date.now()/30000)) {
   const digest=createHmac('sha1',key).update(counter).digest();
   return ((digest.readUInt32BE(digest[19]!&15)&0x7fffffff)%1000000).toString().padStart(6,'0');
 }
+function wrongCode() {
+  const step=Math.floor(Date.now()/30000);
+  const valid=new Set([-2,-1,0,1,2].map(offset=>code(step+offset)));
+  for(let value=0;value<1000000;value++) {
+    const candidate=value.toString().padStart(6,'0');
+    if(!valid.has(candidate)) return candidate;
+  }
+  throw new Error('Unable to select invalid fixture code');
+}
 function counts(server:Server,user:Identity) {
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
   try {return db.prepare('SELECT sum(mfa_pending=0) AS sessions,sum(mfa_pending=1) AS challenges FROM sessions WHERE user_id=?').get(user.id!);} finally {db.close();}
@@ -72,7 +81,7 @@ test('concurrent MFA completions issue exactly one session and trusted device',a
 test('five failed MFA checks exhaust a challenge without issuing credentials',async({server})=>{
   const user=await mfaUser(server), pending=await challenge(server,user);
   for(let i=0;i<5;i++) {
-    const result=await complete(server,pending,'nototp',true);
+    const result=await complete(server,pending,wrongCode(),true);
     expect(result.response.status).toBe(401);expect(result.response.headers.get('set-cookie')).toBeNull();
   }
   expect((await complete(server,pending)).response.status).toBe(401);
@@ -104,4 +113,19 @@ test('legacy form login cannot bypass an MFA account challenge',async({server})=
   expect(response.status).toBe(302);expect(response.headers.get('location')).toBe('/login.html');
   expect(response.headers.get('set-cookie')).toBeNull();
   expect(counts(server,user)?.sessions??0).toBe(0);
+});
+
+
+test('disabling MFA or its account invalidates an outstanding challenge',async({server})=>{
+  const user=await mfaUser(server);
+  for(const column of ['totp_enabled','is_active']) {
+    const pending=await challenge(server,user);
+    database(server,`UPDATE users SET ${column}=0 WHERE id=?`,[user.id!]);
+    const result=await complete(server,pending,code(),true);
+    expect(result.response.status).toBe(401);
+    expect(result.response.headers.get('set-cookie')).toBeNull();
+    expect(counts(server,user)?.sessions).toBe(0);
+    database(server,`UPDATE users SET ${column}=1 WHERE id=?`,[user.id!]);
+  }
+  expect((await ok(server,'/api/auth/trusted-devices',user)).trusted_devices).toEqual([]);
 });
