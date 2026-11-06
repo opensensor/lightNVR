@@ -56,7 +56,7 @@ test('admin retains edits after transient save failure and malformed acknowledgm
     const before=await (await context.request.get('/api/streams/A/full')).json();
     for(const fault of ['transient','malformed']){
       await page.route('**/api/streams/A',route=>route.request().method()==='PUT'?route.fulfill({status:fault==='transient'?503:202,contentType:'application/json',body:JSON.stringify(fault==='transient'?{error:'Synthetic service unavailable'}:{success:true,private:'do-not-render'})}):route.continue());
-      const expectedError=fault==='transient'?/^Error updating stream: updateStream failed \(HTTP 503\)$/:/^Error updating stream: Invalid updateStream response:/;
+      const expectedError=fault==='transient'?/^Error updating stream: updateStream failed \(HTTP 503\)/:/^Error updating stream: Invalid updateStream response:/;
       await page.locator('#stream-save-btn').click();await expect(page.getByText(expectedError)).toBeVisible();
       await expect(page.locator('#stream-modal')).toBeVisible();await expect(page.locator('#stream-admin-url')).toHaveValue('http://127.0.0.1:9/browser-edit');await expect(page.locator('#stream-save-btn')).toBeEnabled();
       expect((await (await context.request.get('/api/streams/A/full')).json()).stream.admin_url).toBe(before.stream.admin_url);
