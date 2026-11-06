@@ -182,8 +182,7 @@ retain their previous order and scope. Rust remains deferred.
 
 F1b local qualification: 86 native ci-unit tests, 61 ASan/UBSan ci-sanitizer
 tests and 68 real-server API cases pass (seven new lifecycle cases). The 16
-browser cases include three real Settings scenarios; the original full run
-passed 15 and its one ambiguous error locator was corrected and passed on rerun.
+browser cases all pass, including three real Settings scenarios.
 All 805 frontend tests across 69 suites pass, including 21 new adapter cases.
 Root/web type checks, web lint, canonical/projected lint, all six generator-tool
 tests, generated drift and documentation links pass. Local optimized Release
@@ -192,8 +191,17 @@ or a hosted Codecov measurement. Build/test receipts are retained in build/f1b/.
 
 Production asset isolation passes for Live, Streams, Recordings, Settings and the
 API explorer; only the explorer requests Swagger vendor assets. The modern-script
-validator chunk in the default build is 377157 raw bytes versus the previous
-358973 (+18184, about 5.1%). Vite reports 32.48 kB gzip versus 30.87 kB (+1.61 kB).
+validator chunk in the default build is 328181 raw bytes versus the previous
+358973 (-30792, about 8.6%). Vite reports 36.78 kB gzip versus 30.87 kB (+5.91 kB).
+Runtime generation now fails fast on invalid responses; this removes redundant
+error-accumulator guards reported by CodeQL, while retaining non-mutating
+validation and sanitized diagnostics. The gzip cost remains a measured tradeoff.
 Settings now consumes this shared validator chunk; unused guard splitting and
 target-hardware capacity remain separate follow-ups. No new discovery latency,
 whole-process memory or device qualification claim is made by this slice.
+
+The full branch C/C++ CodeQL scan at 99ffe05e (run 42252922921, analysis
+2113509966) retains exactly the 22 existing findings from the recording-hardening
+baseline, with no additions or removals by rule, file and diagnostic. Hosted patch
+coverage is assessed after all instrumented jobs upload, rather than from the
+initial unit-only report.

@@ -188,7 +188,10 @@ Native output: `include/web/openapi_document_generated.h`, C byte array plus
 length/revision, deterministic Python generation. Web output:
 `web/generated/api/schema.d.ts`, `validators.js`, `validators.d.ts`; validator
 exports keyed by named component schemas, accepting unknown and returning a
-boolean type guard with sanitized diagnostics. T3 may refine filenames only
+boolean type guard with sanitized diagnostics. Production validators fail fast
+on invalid payloads (`allErrors: false`); diagnostics are not an exhaustive error
+report. Union branches may still yield multiple errors. Validation never coerces
+or mutates the response. T3 may refine filenames only
 with an explicit handoff before T8. No handwritten files in generated directory.
 Types alone do not validate JSON. Do not relax `web/js` escape restrictions.
 

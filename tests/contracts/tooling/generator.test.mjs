@@ -31,6 +31,11 @@ test('2020-12 standalone validators preserve data, validate formats/unions/null/
     assert.ok(validators.validateFixture.errors.length);
     for(const error of validators.validateFixture.errors) assert.deepEqual(Object.keys(error).sort(),['keyword','schemaPath']);
   }
+  const multipleInvalid = {...value, count: '0', created: 'not-a-date'};
+  const savedInvalid = structuredClone(multipleInvalid);
+  assert.equal(validators.validateFixture(multipleInvalid), false);
+  assert.equal(validators.validateFixture.errors.length, 1);
+  assert.deepEqual(multipleInvalid, savedInvalid);
   assert.equal(validators.validateTuple(['first',2]),true);
   assert.equal(validators.validateTuple(['first','2']),false);
   assert.equal(validators.validateTuple(['first',2,3]),false);
