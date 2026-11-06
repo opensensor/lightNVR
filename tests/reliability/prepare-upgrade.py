@@ -153,8 +153,8 @@ def prepare(args):
             commands['clone_command'] = ['git', 'clone', '--no-hardlinks', '--no-checkout', str(ROOT), str(checkout)]
             run(commands['clone_command'], log=output / 'clone.log')
             git(checkout, 'checkout', '--detach', REVISION)
-            # The old release supplies the URLs and immutable gitlinks. Do not run
-            # scripts/apply-go2rtc-patches.sh inside this historical checkout.
+            # The old release supplies the URLs and immutable gitlinks. Do not
+            # replace its go2rtc revision with the current parent's pin.
             run(['git', '-C', checkout, 'submodule', 'update', '--init', '--depth', '1', *PINS],
                 log=output / 'submodules.log')
             verify_checkout(checkout)
@@ -218,7 +218,6 @@ def capture(args):
     evidence = fixture.source_evidence(args.binary.resolve(), args.go2rtc.resolve())
     require(evidence['build_flags']['ENABLE_GO2RTC'] == 'ON', 'Managed build required')
     evidence['go2rtc_diff_sha256'] = hashlib.sha256(git(ROOT / 'go2rtc', 'diff', 'HEAD').encode()).hexdigest()
-    evidence['parent_go_patch_sha256'] = sha(ROOT / 'patches/go2rtc/0001-close-rejected-http-responses.patch')
     write_json(args.output, evidence)
     print('Current build provenance captured')
     return 0

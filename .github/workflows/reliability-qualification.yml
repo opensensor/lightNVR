@@ -20,7 +20,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            ca-certificates curl git patch build-essential cmake pkg-config python3 \
+            ca-certificates curl git build-essential cmake pkg-config python3 \
             ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
             libswresample-dev libavfilter-dev libsqlite3-dev libuv1-dev libllhttp-dev \
             libcurl4-openssl-dev libcjson-dev libmbedtls-dev libyaml-dev zlib1g-dev \
@@ -56,8 +56,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
           git submodule update --init --depth 1 go2rtc third_party/faac > build/reliability-private/current-submodules.log 2>&1
-          sh scripts/apply-go2rtc-patches.sh > build/reliability-private/current-go-patch.log 2>&1
-          python3 tests/reliability/test_go2rtc_patch.py > build/reliability-private/go-patch-tests.log 2>&1
+          (cd go2rtc && go test -race ./internal/http -count=1 -timeout=60s) > build/reliability-private/go-http-tests.log 2>&1
           (cd go2rtc && go build -trimpath -ldflags '-s -w' -o go2rtc .) > build/reliability-private/current-go-build.log 2>&1
           npm ci --no-audit --no-fund > build/reliability-private/npm.log 2>&1
           # API/media fixtures need a directory, not a separately qualified UI build.
@@ -81,7 +80,7 @@ jobs:
           runuser -u qualification -- sh -eu <<'SH'
           cd "$GITHUB_WORKSPACE"
           export TMPDIR="$GITHUB_WORKSPACE/build/reliability-private/tmp"
-          # No parent Go patch is ever applied to this historical checkout.
+          # The historical checkout retains its original go2rtc gitlink.
           python3 tests/reliability/prepare-upgrade.py prepare \
             --output build/reliability-private/prior-build --jobs 2 \
             --current-binary build/reliability-current/bin/lightnvr \

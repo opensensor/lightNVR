@@ -586,7 +586,7 @@ The `depends_on` fields are authoritative; the graph groups some edges for reada
 - **validation**: Clean isolated checkout patch/idempotence/mismatch checks, Go race regression, build-hook review.
 - **status**: Completed
 - **log**: Parent-tracked patch1d60c408 carries exact tested source/test; Docker and both existing CI Go build steps apply it with explicit patch dependency. Three delivery regressions verify actual application on metadata-free pristine source, idempotence/unrelated-edit preservation, and mismatch/partial-application failure before writes. The pristine test caught GNU patch reverse auto-detection; forced reverse dry-run fixes that false-positive. Fresh isolated pinned Go checkout matches original repaired files exactly, passes full HTTP race tests and all503/404/500 focused subtests, and builds production-style binary. Evidence build/eng-api-T27c-patch-evidence.json; shell/YAML/diff checks pass. No submodule commit/pointer change; no hosted/container-build claim.
-- **files edited/created**: `patches/go2rtc/0001-close-rejected-http-responses.patch`, `patches/go2rtc/README.md`, `scripts/apply-go2rtc-patches.sh`, `tests/reliability/test_go2rtc_patch.py`, `Dockerfile`, `.github/workflows/integration-test.yml`, `docs/api/contracts/recovery-evidence.md`.
+- **files edited/created**: Temporary patch, README, application script and delivery tests (retired by the fork delivery below); `Dockerfile`, `.github/workflows/integration-test.yml`, `docs/api/contracts/recovery-evidence.md`. The original delivery files remain in commit `8ce4b265`.
 
 ### T28a: Make recovery qualification portable to CI
 - **depends_on**: [T27, T28]
@@ -773,3 +773,16 @@ completion record.
 - Local review evidence is retained under `build/pr804-review/`. The earlier
   acceptance receipt remains a historical record of its original build; this
   follow-up does not claim a new managed-media or physical-device qualification.
+
+## go2rtc fork delivery — 2026-11-06
+
+At the maintainer's request, the T27a response-close fix and its regression test
+are committed to `opensensor/go2rtc`'s tracked `dev` branch as
+`6c31199036913edbff0c3546c74469dfe593ff00`. LightNVR main now pins that commit.
+This supersedes T27c's temporary patch delivery: Docker and CI build the
+committed submodule directly, while the HTTP race regression remains in CI.
+Upgrade provenance no longer requires the removed patch file. Historical
+upgrade pins and the original acceptance receipts retain their dated evidence.
+Validation: a fresh remote checkout passes the HTTP package race tests and a
+production-style Go build. Provenance capture works without the removed patch;
+documentation links, workflow YAML and reliability cleanup regressions pass.

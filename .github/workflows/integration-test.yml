@@ -489,7 +489,7 @@ jobs:
             libmbedtls-dev \
             libyaml-dev \
             lcov \
-            golang-go patch python3 \
+            golang-go python3 \
             ffmpeg \
             curl \
             ca-certificates \
@@ -502,8 +502,6 @@ jobs:
 
       - name: Build go2rtc from vendored submodule
         run: |
-          python3 tests/reliability/test_go2rtc_patch.py
-          sh scripts/apply-go2rtc-patches.sh
           cd go2rtc
           go test -race ./internal/http -count=1 -timeout=60s
           CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
@@ -632,7 +630,7 @@ jobs:
             ffmpeg \
             curl \
             jq \
-            golang-go patch \
+            golang-go \
             procps
 
       - name: Checkout
@@ -658,7 +656,6 @@ jobs:
 
       - name: Build go2rtc from source
         run: |
-          sh scripts/apply-go2rtc-patches.sh
           # Build go2rtc from the opensensor fork submodule
           cd go2rtc
           echo "Building go2rtc from source..."

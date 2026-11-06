@@ -121,16 +121,20 @@ in `/tmp/lightnvr-T27a-go-red.log`; `go test -race ./internal/http -count=1
 -timeout=60s` passed afterward in `/tmp/lightnvr-T27a-go-green.log`. Successful
 producer ownership and unrelated media handlers are unchanged.
 
-The initial repair lived in the go2rtc submodule working tree. No submodule
-commit or parent pointer update was made. T27c now delivers the same source and
-regression as a [parent-tracked patch](../../../patches/go2rtc/README.md), applied
-before current Docker/CI source builds. Local source builds use
-`sh scripts/apply-go2rtc-patches.sh` first. Historical upgrade builds retain the
-original unpatched release. Evidence records the pinned revision,
-exact tracked diff and SHA-256, and both changed source/test contents and hashes;
-a fresh checkout of the pinned revision alone does **not** include the repair.
+The initial repair lived in the go2rtc submodule working tree. T27c delivered
+the same source and regression through a parent-tracked patch while retaining
+the original `6986a1b` pin. Those historical runs record that revision, the
+exact tracked diff and SHA-256, and both changed source/test contents and hashes.
 The rebuilt diagnostic go2rtc executable has SHA-256
 `1784534bdaf809a11eb0bb4e38cbc354cccf0273c6e3f7e86faf41f5ceabab0b`.
+
+After #804 merged, the fix and regression were committed directly to the
+maintained fork as [opensensor/go2rtc `6c31199`](https://github.com/opensensor/go2rtc/commit/6c31199036913edbff0c3546c74469dfe593ff00).
+The parent now pins that commit; a fresh submodule checkout includes the repair.
+The temporary patch, application script and build hooks have been retired.
+Current provenance records the go2rtc revision, source diff and binary hash.
+Historical upgrade fixtures still build their original unmodified release pin;
+the dated binary hashes and qualification results above are not rewritten.
 
 The first post-repair diagnostic (`/tmp/lightnvr-lifecycle-g8smr8cn/result.json`)
 passed unchanged reconnect resource bounds: recorder FDs 21/21/21/21 and

@@ -11,7 +11,7 @@ production SLOs.
 Build the pinned go2rtc source and a fresh managed-integration native binary:
 
 ```sh
-sh scripts/apply-go2rtc-patches.sh
+git submodule update --init go2rtc
 (cd go2rtc && go build -trimpath -ldflags '-s -w' -o go2rtc .)
 cmake -S . -B build/eng-api-T25 -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON \
   -DENABLE_SOD=OFF -DENABLE_LITERT=OFF -DENABLE_GO2RTC=ON \

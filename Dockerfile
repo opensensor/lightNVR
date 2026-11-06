@@ -92,7 +92,7 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       > /etc/apt/preferences.d/nodejs && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-      git patch cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
+      git cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       apt-get install -y --no-install-recommends \
         clang:amd64 binutils-arm-linux-gnueabihf:amd64 && \
@@ -263,7 +263,6 @@ RUN mkdir -p /usr/lib/pkgconfig && \
 # Build go2rtc from the opensensor/go2rtc dev submodule, including AlexxIT/dev.
 # Go 1.26 is installed from Debian sid packages
 RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
-    sh /opt/scripts/apply-go2rtc-patches.sh /opt/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)
     cd /opt/go2rtc && \
     GOTOOLCHAIN=auto go mod tidy && \
