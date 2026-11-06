@@ -802,10 +802,6 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
 
     if (sync_path_to_disk(restore_path) != 0) goto cleanup;
 
-    /* With no live handles, stale sidecars belong to the replaced database
-     * inode. Remove them before the atomic publish so they cannot be replayed
-     * against the restored main file or back a mismatched mmap. */
-    if (remove_database_sidecars(db_path) != 0) goto cleanup;
     if (rename(restore_path, db_path) != 0) {
         log_error("Failed to publish restored database %s -> %s: %s",
                   restore_path, db_path, strerror(errno));
@@ -815,6 +811,11 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
         sync_parent_directory(db_path) != 0) {
         goto cleanup;
     }
+
+    /* With no live handles, stale sidecars belong to the replaced database
+     * inode. Remove them after successful atomic publish so a rename failure
+     * cannot destructively strip sidecars from the still-live old database. */
+    if (remove_database_sidecars(db_path) != 0) goto cleanup;
 
     log_info("Database restored successfully from backup");
     result = 0;
