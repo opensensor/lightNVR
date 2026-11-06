@@ -452,10 +452,16 @@ int url_build_onvif_service_url(const char *url, int onvif_port,
     }
 
     /* Set service path; use "/" as a placeholder when none was requested
-     * (the trailing slash is stripped below). */
+     * (the trailing slash is stripped below).
+     * A non-empty service_path must start with '/'; otherwise reject it. */
     {
-        const char *path =
-            (service_path && service_path[0] == '/') ? service_path : "/";
+        const char *path = "/";
+        if (service_path && service_path[0] != '\0') {
+            if (service_path[0] != '/') {
+                goto cleanup;
+            }
+            path = service_path;
+        }
         if (curl_url_set(handle, CURLUPART_PATH, path, 0) != CURLUE_OK) {
             goto cleanup;
         }
