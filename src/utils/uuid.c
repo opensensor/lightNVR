@@ -49,6 +49,12 @@ static int random_bytes(unsigned char *buffer, size_t length) {
     return count == length ? 0 : -1;
 }
 
+/* Accept any byte, but return only one lowercase hexadecimal character. */
+static char hex_digit(unsigned char value) {
+    static const char alphabet[] = "0123456789abcdef";
+    return alphabet[value & 0x0fU];
+}
+
 int lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
     if (!output) return -1;
     unsigned char bytes[16];
@@ -57,13 +63,12 @@ int lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
     bytes[8] = (unsigned char)((bytes[8] & 0x3fU) | 0x80U);
     /* Map entropy to a fixed alphabet rather than propagating formatted input
      * into paths. Every output byte is a literal hex digit or separator. */
-    static const char hex[] = "0123456789abcdef";
     size_t position = 0;
     for (size_t index = 0; index < sizeof(bytes); ++index) {
         if (index == 4 || index == 6 || index == 8 || index == 10)
             output[position++] = '-';
-        output[position++] = hex[bytes[index] >> 4];
-        output[position++] = hex[bytes[index] & 0x0fU];
+        output[position++] = hex_digit((unsigned char)(bytes[index] >> 4));
+        output[position++] = hex_digit(bytes[index]);
     }
     output[position] = '\0';
     return 0;
