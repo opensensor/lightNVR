@@ -49,18 +49,27 @@ static int random_bytes(unsigned char *buffer, size_t length) {
     return count == length ? 0 : -1;
 }
 
+/* Accept any byte, but return only one lowercase hexadecimal character. */
+static char hex_digit(unsigned char value) {
+    static const char alphabet[] = "0123456789abcdef";
+    return alphabet[value & 0x0fU];
+}
+
 int lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
     if (!output) return -1;
     unsigned char bytes[16];
     if (random_bytes(bytes, sizeof(bytes)) != 0) return -1;
     bytes[6] = (unsigned char)((bytes[6] & 0x0fU) | 0x40U);
     bytes[8] = (unsigned char)((bytes[8] & 0x3fU) | 0x80U);
-    int written = snprintf(
-        output, LIGHTNVR_UUID_STRING_SIZE,
-        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
-        "%02x%02x%02x%02x%02x%02x",
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-        bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12],
-        bytes[13], bytes[14], bytes[15]);
-    return written == LIGHTNVR_UUID_STRING_SIZE - 1 ? 0 : -1;
+    /* Map entropy to a fixed alphabet rather than propagating formatted input
+     * into paths. Every output byte is a literal hex digit or separator. */
+    size_t position = 0;
+    for (size_t index = 0; index < sizeof(bytes); ++index) {
+        if (index == 4 || index == 6 || index == 8 || index == 10)
+            output[position++] = '-';
+        output[position++] = hex_digit((unsigned char)(bytes[index] >> 4));
+        output[position++] = hex_digit(bytes[index]);
+    }
+    output[position] = '\0';
+    return 0;
 }

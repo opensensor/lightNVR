@@ -2576,6 +2576,7 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     if (!localtime_r(&now, &tm_buf) ||
         !strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm_buf) ||
         lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+    if (strchr(uuid, '/') || strchr(uuid, '\\') || strstr(uuid, "..")) return -1;
     int path_length = snprintf(ctx->current_recording_path,
         sizeof(ctx->current_recording_path), "%s/detection_%s_%s.mp4",
         ctx->output_dir, timestamp, uuid);
