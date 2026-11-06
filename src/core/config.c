@@ -1758,7 +1758,7 @@ int save_config(const config_t *config, const char *path) {
     }
 
     int config_fd = openat(dir_fd, validated_filename,
-                           O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC,
+                           O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
                            0600);
     close(dir_fd);
     if (config_fd < 0) {
@@ -1772,8 +1772,16 @@ int save_config(const config_t *config, const char *path) {
         close(config_fd);
         return -1;
     }
-    if (!S_ISREG(config_stat.st_mode)) {
-        log_error("Config save target is not a regular file: %s", canonical_save_path);
+    if (!S_ISREG(config_stat.st_mode) || config_stat.st_nlink != 1) {
+        log_error("Config save target must be a regular file with one link: %s", canonical_save_path);
+        close(config_fd);
+        return -1;
+    }
+
+    /* open's creation mode does not tighten an existing file. Restrict access
+     * before truncating or writing credentials; failures preserve old content. */
+    if (fchmod(config_fd, 0600) != 0 || ftruncate(config_fd, 0) != 0) {
+        log_error("Could not prepare private config file: %s", strerror(errno));
         close(config_fd);
         return -1;
     }
@@ -2034,8 +2042,13 @@ int save_config(const config_t *config, const char *path) {
     // Stream configurations are stored exclusively in the database.
     // Do NOT write [stream.X] sections here.
     
-    fclose(file);
-    
+    int write_failed = ferror(file);
+    if (fclose(file) != 0) write_failed = 1;
+    if (write_failed) {
+        log_error("Failed to write config file: %s", canonical_save_path);
+        return -1;
+    }
+
     // We don't need to save stream configurations when saving settings
     // This was causing the server to hang due to database locks
     // Stream configurations are managed separately through the streams API

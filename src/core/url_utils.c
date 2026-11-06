@@ -14,6 +14,64 @@
 #include <string.h>
 #include <strings.h>
 
+static bool url_has_controls(const char *url) {
+    if (!url) return true;
+    for (const unsigned char *p = (const unsigned char *)url; *p; ++p)
+        if (*p <= 0x20 || *p == 0x7f) return true;
+    return false;
+}
+
+bool url_is_http_endpoint(const char *url) {
+    if (url_has_controls(url)) return false;
+    CURLU *parsed = curl_url();
+    if (!parsed) return false;
+    char *scheme = NULL, *host = NULL;
+    bool valid = curl_url_set(parsed, CURLUPART_URL, url, CURLU_DISALLOW_USER) == CURLUE_OK &&
+        curl_url_get(parsed, CURLUPART_SCHEME, &scheme, 0) == CURLUE_OK &&
+        (!strcasecmp(scheme, "http") || !strcasecmp(scheme, "https")) &&
+        curl_url_get(parsed, CURLUPART_HOST, &host, 0) == CURLUE_OK && host[0];
+    curl_free(scheme);
+    curl_free(host);
+    curl_url_cleanup(parsed);
+    return valid;
+}
+
+int url_rtsp_endpoint(const char *url, char *host, size_t host_size, int *port) {
+    if (!host || !host_size || !port) return -1;
+    host[0] = '\0';
+    *port = 0;
+    if (url_has_controls(url)) return -1;
+    CURLU *parsed = curl_url();
+    if (!parsed) return -1;
+    char *scheme = NULL, *hostname = NULL, *port_text = NULL;
+    int result = -1;
+    if (curl_url_set(parsed, CURLUPART_URL, url, CURLU_NON_SUPPORT_SCHEME) != CURLUE_OK ||
+        curl_url_get(parsed, CURLUPART_SCHEME, &scheme, 0) != CURLUE_OK ||
+        strcasecmp(scheme, "rtsp") ||
+        curl_url_get(parsed, CURLUPART_HOST, &hostname, 0) != CURLUE_OK) goto done;
+    CURLUcode rc = curl_url_get(parsed, CURLUPART_PORT, &port_text, 0);
+    if (rc != CURLUE_OK && rc != CURLUE_NO_PORT) goto done;
+    long number = port_text ? strtol(port_text, NULL, 10) : 554;
+    if (number < 1 || number > 65535) goto done;
+    const char *start = hostname;
+    size_t length = strlen(hostname);
+    if (length > 2 && hostname[0] == '[' && hostname[length - 1] == ']') {
+        ++start;
+        length -= 2;
+    }
+    if (!length || length >= host_size) goto done;
+    memcpy(host, start, length);
+    host[length] = '\0';
+    *port = (int)number;
+    result = 0;
+done:
+    curl_free(scheme);
+    curl_free(hostname);
+    curl_free(port_text);
+    curl_url_cleanup(parsed);
+    return result;
+}
+
 static int copy_string(const char *src, char *dst, size_t dst_size) {
     if (!src || !dst || dst_size == 0) {
         return -1;
@@ -453,7 +511,10 @@ int url_redact_for_logging(const char *url, char *out_url, size_t out_size) {
         return -1;
     }
 
-    if (url_strip_credentials(url, out_url, out_size) == 0) {
+    if (!url_has_controls(url) && url_strip_credentials(url, out_url, out_size) == 0) {
+        /* Query strings and go2rtc fragment options may carry bearer secrets. */
+        char *private_suffix = strpbrk(out_url, "?#");
+        if (private_suffix) *private_suffix = '\0';
         return 0;
     }
 

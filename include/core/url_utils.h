@@ -77,9 +77,16 @@ int url_build_onvif_device_service_url(const char *url, int onvif_port,
                                        char *out_url, size_t out_size);
 
 /**
- * Redact credentials for safe logging.
+ * Redact URL userinfo, query strings and fragments for logging.
+ * Control characters produce an invalid-URL placeholder.
  */
 int url_redact_for_logging(const char *url, char *out_url, size_t out_size);
+
+/** Parse only the connection endpoint of an RTSP URL; never return its secrets. */
+int url_rtsp_endpoint(const char *url, char *host, size_t host_size, int *port);
+
+/** HTTP(S) endpoint with a host and no embedded userinfo or control characters. */
+bool url_is_http_endpoint(const char *url);
 
 /**
  * Format the URL for the API endpoint with query parameters (simple method)

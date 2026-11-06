@@ -48,6 +48,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/url_utils.h"
+#include "video/rtsp_probe.h"
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
@@ -653,136 +654,7 @@ static int interruptible_sleep_ms(int total_ms, hls_unified_thread_ctx_t *ctx,
     return 0;  // Completed normally
 }
 
-/**
- * Check RTSP connection by sending an OPTIONS request
- *
- * @param rtsp_url The RTSP URL to check
- * @param host Buffer to store the extracted hostname
- * @param port Pointer to store the extracted port
- * @return 0 on success, negative on error
- */
-static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
-    if (!rtsp_url || !host || !port || strncmp(rtsp_url, "rtsp://", 7) != 0) {
-        return -1;
-    }
 
-    // Skip the rtsp:// prefix
-    const char *host_start = rtsp_url + 7;
-
-    // Skip any authentication info (user:pass@)
-    const char *at_sign = strchr(host_start, '@');
-    if (at_sign) {
-        host_start = at_sign + 1;
-    }
-
-    // Find the end of the host part
-    const char *host_end = strchr(host_start, ':');
-    if (!host_end) {
-        host_end = strchr(host_start, '/');
-        if (!host_end) {
-            host_end = host_start + strlen(host_start);
-        }
-    }
-
-    // Copy the host part with bounds checking
-    size_t host_len = host_end - host_start;
-    if (host_len >= 256) {
-        host_len = 255;
-    }
-    if (host_len == 0) {
-        // Empty hostname
-        return -1;
-    }
-    memcpy(host, host_start, host_len);
-    host[host_len] = '\0';
-
-    // Extract the port if specified
-    *port = 554; // Default RTSP port
-    if (*host_end == ':') {
-        const char *port_start = host_end + 1;
-        char *port_end;
-        long port_val = strtol(port_start, &port_end, 10);
-        if (port_start == port_end || port_val <= 0 || port_val > 65535) {
-            *port = 554; // Invalid port, use default
-        } else {
-            *port = (int)port_val;
-        }
-    }
-
-    // Create a socket with error handling
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        log_error("Failed to create socket for RTSP connection check: %s", strerror(errno));
-        return -1;
-    }
-
-    // Set a short timeout for the connection
-    struct timeval tv;
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ||
-        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
-        log_warn("Failed to set socket timeout: %s", strerror(errno));
-        // Continue anyway
-    }
-
-    // Connect to the server
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(*port);
-
-    // Convert hostname to IP address
-    const struct hostent *he = gethostbyname(host);
-    if (!he) {
-        close(sock);
-        return -1;
-    }
-
-    memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
-
-    // Connect to the server
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        close(sock);
-        return -1;
-    }
-
-    // Extract the path part of the URL
-    const char *path = strchr(host_start, '/');
-    if (!path) {
-        path = "/";
-    }
-
-    // Send a simple RTSP OPTIONS request
-    char request[1024];
-    snprintf(request, sizeof(request),
-             "OPTIONS %s RTSP/1.0\r\n"
-             "CSeq: 1\r\n"
-             "User-Agent: LightNVR\r\n"
-             "\r\n",
-             path);
-
-    if (send(sock, request, strlen(request), 0) < 0) {
-        close(sock);
-        return -1;
-    }
-
-    // Receive the response
-    char response[1024] = {0};
-    ssize_t bytes_received = recv(sock, response, sizeof(response) - 1, 0);
-    close(sock);
-
-    if (bytes_received <= 0) {
-        return -1;
-    }
-
-    // Check if the response contains "404 Not Found"
-    if (strstr(response, "404 Not Found") != NULL) {
-        return -1;
-    }
-
-    return 0;
-}
 
 /**
  * Unified HLS thread function
@@ -966,12 +838,12 @@ void *hls_unified_thread_func(void *arg) {
                 // Close any existing connection first
                 safe_cleanup_resources(&input_ctx, NULL, NULL);
 
-                // Check if the RTSP URL exists before trying to connect
+                // Probe availability without sending any resource URL or credentials.
                 if (strncmp(ctx->rtsp_url, "rtsp://", 7) == 0) {
                     char host[256] = {0};
                     int port = 554; // Default RTSP port
 
-                    if (check_rtsp_connection(ctx->rtsp_url, host, &port) < 0) {
+                    if (rtsp_probe_server(ctx->rtsp_url, host, sizeof(host), &port) < 0) {
                         log_error("Failed to connect to RTSP server: %s:%d", host, port);
 
                         // Mark connection as invalid

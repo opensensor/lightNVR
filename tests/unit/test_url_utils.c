@@ -54,9 +54,14 @@ void test_url_redact_for_logging_removes_camera_credentials(void) {
         "rtsp://camera-user:p%40ssword@camera.local:8554/live?profile=main#transport=tcp",
         url, sizeof(url)));
     TEST_ASSERT_EQUAL_STRING(
-        "rtsp://camera.local:8554/live?profile=main#transport=tcp", url);
+        "rtsp://camera.local:8554/live", url);
     TEST_ASSERT_NULL(strstr(url, "camera-user"));
     TEST_ASSERT_NULL(strstr(url, "p%40ssword"));
+    TEST_ASSERT_NULL(strstr(url, "profile"));
+    TEST_ASSERT_EQUAL_INT(0, url_redact_for_logging("rtsp://camera/live?token=secret#password=secret", url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING("rtsp://camera/live", url);
+    TEST_ASSERT_EQUAL_INT(0, url_redact_for_logging("rtsp://camera/live\r\nsecret", url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING("[invalid-url]", url);
 }
 
 void test_url_extract_credentials_decodes_values(void) {
@@ -179,8 +184,41 @@ void test_publish_url_rejects_overlong_destination(void) {
     TEST_ASSERT_FALSE(publish_url_list_is_valid(list));
 }
 
+static void test_rtsp_endpoint_separates_authority_from_private_resource(void) {
+    char host[256]; int port;
+    TEST_ASSERT_EQUAL_INT(0, url_rtsp_endpoint("rtsp://user:p%40ss@camera:8554/private?token=secret@other:99#fragment", host, sizeof(host), &port));
+    TEST_ASSERT_EQUAL_STRING("camera", host);
+    TEST_ASSERT_EQUAL_INT(8554, port);
+    TEST_ASSERT_EQUAL_INT(0, url_rtsp_endpoint("rtsp://camera/path@other:99", host, sizeof(host), &port));
+    TEST_ASSERT_EQUAL_STRING("camera", host);
+    TEST_ASSERT_EQUAL_INT(554, port);
+    TEST_ASSERT_EQUAL_INT(0, url_rtsp_endpoint("rtsp://user:pass@[::1]:8554/live", host, sizeof(host), &port));
+    TEST_ASSERT_EQUAL_STRING("::1", host);
+    TEST_ASSERT_EQUAL_INT(8554, port);
+    const char *invalid[] = {"rtsp://camera:65536/x", "rtsp://camera:0/x", "rtsp://camera:abc/x",
+        "rtsp://camera/live\r\nAuthorization: secret", "rtsp:///", "https://camera/live", NULL};
+    for (size_t i = 0; i < sizeof(invalid)/sizeof(invalid[0]); ++i) {
+        TEST_ASSERT_EQUAL_INT(-1, url_rtsp_endpoint(invalid[i], host, sizeof(host), &port));
+        TEST_ASSERT_EQUAL_STRING("", host);
+        TEST_ASSERT_EQUAL_INT(0, port);
+    }
+    TEST_ASSERT_EQUAL_INT(-1, url_rtsp_endpoint("rtsp://camera/live", host, 3, &port));
+}
+
+static void test_http_endpoint_rejects_other_protocols_userinfo_and_controls(void) {
+    TEST_ASSERT_TRUE(url_is_http_endpoint("http://camera:80/onvif/events?subscription=1"));
+    TEST_ASSERT_TRUE(url_is_http_endpoint("https://[::1]:443/onvif/events"));
+    const char *invalid[] = {"file:///etc/passwd", "ftp://camera/events", "rtsp://camera/live",
+        "http://user:secret@camera/events", "https://user@camera/events", "http://@camera/events",
+        "http://camera/path\r\nInjected: yes", "http://", NULL};
+    for (size_t i = 0; i < sizeof(invalid)/sizeof(invalid[0]); ++i)
+        TEST_ASSERT_FALSE(url_is_http_endpoint(invalid[i]));
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_rtsp_endpoint_separates_authority_from_private_resource);
+    RUN_TEST(test_http_endpoint_rejects_other_protocols_userinfo_and_controls);
     RUN_TEST(test_url_apply_credentials_injects_credentials);
     RUN_TEST(test_url_apply_credentials_replaces_existing_credentials);
     RUN_TEST(test_url_apply_credentials_preserves_fragment_suffix);
