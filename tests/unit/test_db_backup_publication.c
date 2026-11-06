@@ -17,6 +17,17 @@
 static char root[128], source[256], destination[256];
 static bool fail_rename, fail_sync, fail_old_sync, fail_capture, published, sidecars_at_publish;
 static int crash_at_publish, publish_attempts;
+typedef enum {
+    RECOVERY_SYNC_NONE,
+    RECOVERY_SYNC_DATABASE,
+    RECOVERY_SYNC_WAL,
+    RECOVERY_SYNC_MARKER,
+    RECOVERY_SYNC_DIRECTORY,
+    RECOVERY_SYNC_PARENT
+} recovery_sync_point_t;
+static recovery_sync_point_t fail_recovery_sync;
+static int recovery_sync_failures;
+static bool recovery_directory_synced;
 
 int __real_rename(const char *, const char *);
 int __real_fsync(int);
@@ -57,14 +68,42 @@ int __wrap_rename(const char *from, const char *to) {
     return result;
 }
 
+/* Identify the actual recovery descriptor, never the original database or
+ * staging replacement. The parent fault is armed only after the capture
+ * directory has been synced, so an earlier parent sync cannot satisfy it. */
+static recovery_sync_point_t recovery_sync_point(int fd) {
+    char link[64], path[512], prefix[300];
+    snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+    ssize_t length = readlink(link, path, sizeof(path) - 1);
+    if (length < 0) return RECOVERY_SYNC_NONE;
+    path[length] = '\0';
+    if (recovery_directory_synced && !strcmp(path, root)) return RECOVERY_SYNC_PARENT;
+    snprintf(prefix, sizeof(prefix), "%s.recovery-", destination);
+    if (strncmp(path, prefix, strlen(prefix))) return RECOVERY_SYNC_NONE;
+    const char *entry = strchr(path + strlen(prefix), '/');
+    if (!entry) return RECOVERY_SYNC_DIRECTORY;
+    if (!strcmp(entry, "/database.sqlite")) return RECOVERY_SYNC_DATABASE;
+    if (!strcmp(entry, "/database.sqlite-wal")) return RECOVERY_SYNC_WAL;
+    if (!strcmp(entry, "/COMPLETE")) return RECOVERY_SYNC_MARKER;
+    return RECOVERY_SYNC_NONE;
+}
+
 int __wrap_fsync(int fd) {
+    recovery_sync_point_t point = recovery_sync_point(fd);
+    if (fail_recovery_sync != RECOVERY_SYNC_NONE && point == fail_recovery_sync) {
+        ++recovery_sync_failures;
+        errno = EIO;
+        return -1;
+    }
     if (fail_sync && published) { errno = EIO; return -1; }
     struct stat opened, old;
     if (fail_old_sync && fstat(fd, &opened) == 0 && stat(destination, &old) == 0 &&
         opened.st_dev == old.st_dev && opened.st_ino == old.st_ino) {
         errno = EIO; return -1;
     }
-    return __real_fsync(fd);
+    int result = __real_fsync(fd);
+    if (result == 0 && point == RECOVERY_SYNC_DIRECTORY) recovery_directory_synced = true;
+    return result;
 }
 
 static void clear_fixture(void) {
@@ -128,6 +167,9 @@ static void prepare_fixture(bool hot_journal) {
     clear_fixture();
     fail_rename = fail_sync = fail_old_sync = fail_capture = published = sidecars_at_publish = false;
     crash_at_publish = publish_attempts = 0;
+    fail_recovery_sync = RECOVERY_SYNC_NONE;
+    recovery_sync_failures = 0;
+    recovery_directory_synced = false;
     create_database(source, "replacement");
     create_database(destination, "old-main");
     fflush(NULL);
@@ -160,6 +202,9 @@ void setUp(void) {
     load_default_config(&g_config);
     fail_rename = fail_sync = fail_old_sync = fail_capture = published = sidecars_at_publish = false;
     crash_at_publish = publish_attempts = 0;
+    fail_recovery_sync = RECOVERY_SYNC_NONE;
+    recovery_sync_failures = 0;
+    recovery_directory_synced = false;
 }
 void tearDown(void) { clear_fixture(); TEST_ASSERT_EQUAL_INT(0, rmdir(root)); }
 
@@ -295,6 +340,9 @@ static void assert_recovery_capture(bool complete) {
 static void corrupt_fixture(void) {
     clear_fixture();
     published = sidecars_at_publish = false; publish_attempts = 0;
+    fail_recovery_sync = RECOVERY_SYNC_NONE;
+    recovery_sync_failures = 0;
+    recovery_directory_synced = false;
     create_database(source, "replacement");
     write_bytes(destination, "not-a-sqlite-database");
     char wal[300]; snprintf(wal, sizeof(wal), "%s-wal", destination);
@@ -326,34 +374,34 @@ static void test_recovery_copy_failure_preserves_original_and_stops_publish(void
     }
 }
 
-static void test_recovery_copy_fsync_failure_preserves_original_and_stops_publish(void) {
+static void assert_recovery_sync_failure(recovery_sync_point_t point) {
     for (int restore = 0; restore < 2; ++restore) {
         corrupt_fixture();
-        fail_sync = true;
+        fail_recovery_sync = point;
         int result = replace(restore);
-        fail_sync = false;
+        fail_recovery_sync = RECOVERY_SYNC_NONE;
+        TEST_ASSERT_EQUAL_INT(1, recovery_sync_failures);
         TEST_ASSERT_EQUAL_INT(-1, result);
         TEST_ASSERT_EQUAL_INT(0, publish_attempts);
+        TEST_ASSERT_FALSE(published);
         assert_bytes(destination, "not-a-sqlite-database");
         char wal[300]; snprintf(wal, sizeof(wal), "%s-wal", destination);
         assert_bytes(wal, "operator-recovery-state");
-        assert_recovery_capture(false);
+        /* Marker/directory fsync fails after COMPLETE has been created. Its
+         * presence alone does not prove durability or permit publication. */
+        assert_recovery_capture(point >= RECOVERY_SYNC_MARKER);
     }
 }
 
+static void test_recovery_copy_fsync_failure_preserves_original_and_stops_publish(void) {
+    assert_recovery_sync_failure(RECOVERY_SYNC_DATABASE);
+    assert_recovery_sync_failure(RECOVERY_SYNC_WAL);
+    assert_recovery_sync_failure(RECOVERY_SYNC_MARKER);
+}
+
 static void test_recovery_copy_directory_fsync_failure_preserves_original_and_stops_publish(void) {
-    for (int restore = 0; restore < 2; ++restore) {
-        corrupt_fixture();
-        fail_old_sync = true;
-        int result = replace(restore);
-        fail_old_sync = false;
-        TEST_ASSERT_EQUAL_INT(-1, result);
-        TEST_ASSERT_EQUAL_INT(0, publish_attempts);
-        assert_bytes(destination, "not-a-sqlite-database");
-        char wal[300]; snprintf(wal, sizeof(wal), "%s-wal", destination);
-        assert_bytes(wal, "operator-recovery-state");
-        assert_recovery_capture(false);
-    }
+    assert_recovery_sync_failure(RECOVERY_SYNC_DIRECTORY);
+    assert_recovery_sync_failure(RECOVERY_SYNC_PARENT);
 }
 
 static void test_corrupt_recovery_copy_survives_failed_rename(void) {
