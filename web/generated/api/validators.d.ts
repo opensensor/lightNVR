@@ -7,8 +7,10 @@ export declare const validateApiTokenCreateRequest: ContractValidator<components
 export declare const validateApiTokenCreated: ContractValidator<components["schemas"]["ApiTokenCreated"]>;
 export declare const validateApiTokenList: ContractValidator<components["schemas"]["ApiTokenList"]>;
 export declare const validateApiTokenMetadata: ContractValidator<components["schemas"]["ApiTokenMetadata"]>;
+export declare const validateAuthSessionsResponse: ContractValidator<components["schemas"]["AuthSessionsResponse"]>;
 export declare const validateAuthVerifyResponse: ContractValidator<components["schemas"]["AuthVerifyResponse"]>;
 export declare const validateClientConfig: ContractValidator<components["schemas"]["ClientConfig"]>;
+export declare const validateCredentialRevoked: ContractValidator<components["schemas"]["CredentialRevoked"]>;
 export declare const validateLiveStreamSummaryPage: ContractValidator<components["schemas"]["LiveStreamSummaryPage"]>;
 export declare const validateLoginConfig: ContractValidator<components["schemas"]["LoginConfig"]>;
 export declare const validateLoginRequest: ContractValidator<components["schemas"]["LoginRequest"]>;
@@ -49,3 +51,4 @@ export declare const validateStreamSummaryPage: ContractValidator<components["sc
 export declare const validateStreamUpdateAccepted: ContractValidator<components["schemas"]["StreamUpdateAccepted"]>;
 export declare const validateStreamUpdateRequest: ContractValidator<components["schemas"]["StreamUpdateRequest"]>;
 export declare const validateSuccessResponse: ContractValidator<components["schemas"]["SuccessResponse"]>;
+export declare const validateTrustedDevicesResponse: ContractValidator<components["schemas"]["TrustedDevicesResponse"]>;

@@ -204,16 +204,16 @@ export function AuthTab({
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.sessionAndDeviceManagement')}</h3>
         <div class="mb-6">
           <h4 class="font-medium mb-2">{t('settings.activeSessions')}</h4>
-          <div class="space-y-3">
+          <div class="space-y-3" role="list" aria-label={t('settings.activeSessions')}>
             {authSessionsLoading ? (
               <p class="text-sm text-muted-foreground">{t('settings.loadingSessions')}</p>
             ) : authSessionsIsError ? (
-              <p class="text-sm text-destructive">{t('settings.failedToLoadSessions', { message: authSessionsError?.message || '' })}</p>
+              <p role="alert" class="text-sm text-destructive">{t('settings.failedToLoadSessions', { message: authSessionsError?.message || '' })}</p>
             ) : ((authSessionsData?.sessions || []).length === 0 ? (
               <p class="text-sm text-muted-foreground">{t('settings.noActiveSessionsFound')}</p>
             ) : (
               (authSessionsData?.sessions || []).map((session) => (
-                <div key={session.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div key={session.id} role="listitem" class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div class="text-sm">
                     <div class="font-medium">{session.current ? t('settings.currentSession') : t('settings.sessionNumber', { id: session.id })}</div>
                     <div class="text-muted-foreground">{t('settings.lastActive')}: {formatTimestamp(session.last_activity_at)}</div>
@@ -237,16 +237,16 @@ export function AuthTab({
         </div>
         <div>
           <h4 class="font-medium mb-2">{t('settings.trustedDevices')}</h4>
-          <div class="space-y-3">
+          <div class="space-y-3" role="list" aria-label={t('settings.trustedDevices')}>
             {trustedDevicesLoading ? (
               <p class="text-sm text-muted-foreground">{t('settings.loadingTrustedDevices')}</p>
             ) : trustedDevicesIsError ? (
-              <p class="text-sm text-destructive">{t('settings.failedToLoadTrustedDevices', { message: trustedDevicesError?.message || '' })}</p>
+              <p role="alert" class="text-sm text-destructive">{t('settings.failedToLoadTrustedDevices', { message: trustedDevicesError?.message || '' })}</p>
             ) : ((trustedDevicesData?.trusted_devices || []).length === 0 ? (
               <p class="text-sm text-muted-foreground">{t('settings.noRememberedDevicesFound')}</p>
             ) : (
               (trustedDevicesData?.trusted_devices || []).map((device) => (
-                <div key={device.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div key={device.id} role="listitem" class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div class="text-sm">
                     <div class="font-medium">{device.current ? t('settings.thisDevice') : t('settings.trustedDeviceNumber', { id: device.id })}</div>
                     <div class="text-muted-foreground">{t('settings.lastUsed')}: {formatTimestamp(device.last_used_at)}</div>

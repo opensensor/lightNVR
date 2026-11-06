@@ -2366,6 +2366,349 @@ function validate93(data, { instancePath = "", parentData, parentDataProperty, r
 }
 validate93.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var __contract_ApiTokenMetadata = validate91;
+var __contract_AuthSessionsResponse = validate129;
+function validate129(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+  let vErrors = null;
+  let errors = 0;
+  const evaluated0 = validate129.evaluated;
+  if (evaluated0.dynamicProps) {
+    evaluated0.props = void 0;
+  }
+  if (evaluated0.dynamicItems) {
+    evaluated0.items = void 0;
+  }
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.sessions === void 0) {
+      const err0 = { instancePath, schemaPath: "#/required", keyword: "required", params: { missingProperty: "sessions" }, message: "must have required property 'sessions'" };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    for (const key0 in data) {
+      if (!(key0 === "sessions")) {
+        const err1 = { instancePath, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: key0 }, message: "must NOT have additional properties" };
+        if (vErrors === null) {
+          vErrors = [err1];
+        } else {
+          vErrors.push(err1);
+        }
+        errors++;
+      }
+    }
+    if (data.sessions !== void 0) {
+      let data0 = data.sessions;
+      if (Array.isArray(data0)) {
+        if (data0.length > 32) {
+          const err2 = { instancePath: instancePath + "/sessions", schemaPath: "#/properties/sessions/maxItems", keyword: "maxItems", params: { limit: 32 }, message: "must NOT have more than 32 items" };
+          if (vErrors === null) {
+            vErrors = [err2];
+          } else {
+            vErrors.push(err2);
+          }
+          errors++;
+        }
+        const len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0];
+          if (data1 && typeof data1 == "object" && !Array.isArray(data1)) {
+            if (data1.id === void 0) {
+              const err3 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
+              if (vErrors === null) {
+                vErrors = [err3];
+              } else {
+                vErrors.push(err3);
+              }
+              errors++;
+            }
+            if (data1.created_at === void 0) {
+              const err4 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "created_at" }, message: "must have required property 'created_at'" };
+              if (vErrors === null) {
+                vErrors = [err4];
+              } else {
+                vErrors.push(err4);
+              }
+              errors++;
+            }
+            if (data1.expires_at === void 0) {
+              const err5 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "expires_at" }, message: "must have required property 'expires_at'" };
+              if (vErrors === null) {
+                vErrors = [err5];
+              } else {
+                vErrors.push(err5);
+              }
+              errors++;
+            }
+            if (data1.ip_address === void 0) {
+              const err6 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "ip_address" }, message: "must have required property 'ip_address'" };
+              if (vErrors === null) {
+                vErrors = [err6];
+              } else {
+                vErrors.push(err6);
+              }
+              errors++;
+            }
+            if (data1.user_agent === void 0) {
+              const err7 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "user_agent" }, message: "must have required property 'user_agent'" };
+              if (vErrors === null) {
+                vErrors = [err7];
+              } else {
+                vErrors.push(err7);
+              }
+              errors++;
+            }
+            if (data1.current === void 0) {
+              const err8 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "current" }, message: "must have required property 'current'" };
+              if (vErrors === null) {
+                vErrors = [err8];
+              } else {
+                vErrors.push(err8);
+              }
+              errors++;
+            }
+            if (data1.last_activity_at === void 0) {
+              const err9 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "last_activity_at" }, message: "must have required property 'last_activity_at'" };
+              if (vErrors === null) {
+                vErrors = [err9];
+              } else {
+                vErrors.push(err9);
+              }
+              errors++;
+            }
+            if (data1.idle_expires_at === void 0) {
+              const err10 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/required", keyword: "required", params: { missingProperty: "idle_expires_at" }, message: "must have required property 'idle_expires_at'" };
+              if (vErrors === null) {
+                vErrors = [err10];
+              } else {
+                vErrors.push(err10);
+              }
+              errors++;
+            }
+            for (const key1 in data1) {
+              if (!(key1 === "id" || key1 === "created_at" || key1 === "expires_at" || key1 === "ip_address" || key1 === "user_agent" || key1 === "current" || key1 === "last_activity_at" || key1 === "idle_expires_at")) {
+                const err11 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: key1 }, message: "must NOT have additional properties" };
+                if (vErrors === null) {
+                  vErrors = [err11];
+                } else {
+                  vErrors.push(err11);
+                }
+                errors++;
+              }
+            }
+            if (data1.id !== void 0) {
+              let data2 = data1.id;
+              if (!(typeof data2 == "number" && (!(data2 % 1) && !isNaN(data2)) && isFinite(data2))) {
+                const err12 = { instancePath: instancePath + "/sessions/" + i0 + "/id", schemaPath: "#/$defs/AuthSession/properties/id/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err12];
+                } else {
+                  vErrors.push(err12);
+                }
+                errors++;
+              }
+              if (typeof data2 == "number" && isFinite(data2)) {
+                if (data2 > 9007199254740991 || isNaN(data2)) {
+                  const err13 = { instancePath: instancePath + "/sessions/" + i0 + "/id", schemaPath: "#/$defs/AuthSession/properties/id/maximum", keyword: "maximum", params: { comparison: "<=", limit: 9007199254740991 }, message: "must be <= 9007199254740991" };
+                  if (vErrors === null) {
+                    vErrors = [err13];
+                  } else {
+                    vErrors.push(err13);
+                  }
+                  errors++;
+                }
+                if (data2 < 1 || isNaN(data2)) {
+                  const err14 = { instancePath: instancePath + "/sessions/" + i0 + "/id", schemaPath: "#/$defs/AuthSession/properties/id/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+                  if (vErrors === null) {
+                    vErrors = [err14];
+                  } else {
+                    vErrors.push(err14);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.created_at !== void 0) {
+              let data3 = data1.created_at;
+              if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3))) {
+                const err15 = { instancePath: instancePath + "/sessions/" + i0 + "/created_at", schemaPath: "#/$defs/AuthSession/properties/created_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err15];
+                } else {
+                  vErrors.push(err15);
+                }
+                errors++;
+              }
+              if (typeof data3 == "number" && isFinite(data3)) {
+                if (data3 < 0 || isNaN(data3)) {
+                  const err16 = { instancePath: instancePath + "/sessions/" + i0 + "/created_at", schemaPath: "#/$defs/AuthSession/properties/created_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err16];
+                  } else {
+                    vErrors.push(err16);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.expires_at !== void 0) {
+              let data4 = data1.expires_at;
+              if (!(typeof data4 == "number" && (!(data4 % 1) && !isNaN(data4)) && isFinite(data4))) {
+                const err17 = { instancePath: instancePath + "/sessions/" + i0 + "/expires_at", schemaPath: "#/$defs/AuthSession/properties/expires_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err17];
+                } else {
+                  vErrors.push(err17);
+                }
+                errors++;
+              }
+              if (typeof data4 == "number" && isFinite(data4)) {
+                if (data4 < 0 || isNaN(data4)) {
+                  const err18 = { instancePath: instancePath + "/sessions/" + i0 + "/expires_at", schemaPath: "#/$defs/AuthSession/properties/expires_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err18];
+                  } else {
+                    vErrors.push(err18);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.ip_address !== void 0) {
+              let data5 = data1.ip_address;
+              if (typeof data5 === "string") {
+                if (func1(data5) > 45) {
+                  const err19 = { instancePath: instancePath + "/sessions/" + i0 + "/ip_address", schemaPath: "#/$defs/AuthSession/properties/ip_address/maxLength", keyword: "maxLength", params: { limit: 45 }, message: "must NOT have more than 45 characters" };
+                  if (vErrors === null) {
+                    vErrors = [err19];
+                  } else {
+                    vErrors.push(err19);
+                  }
+                  errors++;
+                }
+              } else {
+                const err20 = { instancePath: instancePath + "/sessions/" + i0 + "/ip_address", schemaPath: "#/$defs/AuthSession/properties/ip_address/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                if (vErrors === null) {
+                  vErrors = [err20];
+                } else {
+                  vErrors.push(err20);
+                }
+                errors++;
+              }
+            }
+            if (data1.user_agent !== void 0) {
+              let data6 = data1.user_agent;
+              if (typeof data6 === "string") {
+                if (func1(data6) > 255) {
+                  const err21 = { instancePath: instancePath + "/sessions/" + i0 + "/user_agent", schemaPath: "#/$defs/AuthSession/properties/user_agent/maxLength", keyword: "maxLength", params: { limit: 255 }, message: "must NOT have more than 255 characters" };
+                  if (vErrors === null) {
+                    vErrors = [err21];
+                  } else {
+                    vErrors.push(err21);
+                  }
+                  errors++;
+                }
+              } else {
+                const err22 = { instancePath: instancePath + "/sessions/" + i0 + "/user_agent", schemaPath: "#/$defs/AuthSession/properties/user_agent/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                if (vErrors === null) {
+                  vErrors = [err22];
+                } else {
+                  vErrors.push(err22);
+                }
+                errors++;
+              }
+            }
+            if (data1.current !== void 0) {
+              if (typeof data1.current !== "boolean") {
+                const err23 = { instancePath: instancePath + "/sessions/" + i0 + "/current", schemaPath: "#/$defs/AuthSession/properties/current/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+                if (vErrors === null) {
+                  vErrors = [err23];
+                } else {
+                  vErrors.push(err23);
+                }
+                errors++;
+              }
+            }
+            if (data1.last_activity_at !== void 0) {
+              let data8 = data1.last_activity_at;
+              if (!(typeof data8 == "number" && (!(data8 % 1) && !isNaN(data8)) && isFinite(data8))) {
+                const err24 = { instancePath: instancePath + "/sessions/" + i0 + "/last_activity_at", schemaPath: "#/$defs/AuthSession/properties/last_activity_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err24];
+                } else {
+                  vErrors.push(err24);
+                }
+                errors++;
+              }
+              if (typeof data8 == "number" && isFinite(data8)) {
+                if (data8 < 0 || isNaN(data8)) {
+                  const err25 = { instancePath: instancePath + "/sessions/" + i0 + "/last_activity_at", schemaPath: "#/$defs/AuthSession/properties/last_activity_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err25];
+                  } else {
+                    vErrors.push(err25);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.idle_expires_at !== void 0) {
+              let data9 = data1.idle_expires_at;
+              if (!(typeof data9 == "number" && (!(data9 % 1) && !isNaN(data9)) && isFinite(data9))) {
+                const err26 = { instancePath: instancePath + "/sessions/" + i0 + "/idle_expires_at", schemaPath: "#/$defs/AuthSession/properties/idle_expires_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err26];
+                } else {
+                  vErrors.push(err26);
+                }
+                errors++;
+              }
+              if (typeof data9 == "number" && isFinite(data9)) {
+                if (data9 < 0 || isNaN(data9)) {
+                  const err27 = { instancePath: instancePath + "/sessions/" + i0 + "/idle_expires_at", schemaPath: "#/$defs/AuthSession/properties/idle_expires_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err27];
+                  } else {
+                    vErrors.push(err27);
+                  }
+                  errors++;
+                }
+              }
+            }
+          } else {
+            const err28 = { instancePath: instancePath + "/sessions/" + i0, schemaPath: "#/$defs/AuthSession/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            if (vErrors === null) {
+              vErrors = [err28];
+            } else {
+              vErrors.push(err28);
+            }
+            errors++;
+          }
+        }
+      } else {
+        const err29 = { instancePath: instancePath + "/sessions", schemaPath: "#/properties/sessions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        if (vErrors === null) {
+          vErrors = [err29];
+        } else {
+          vErrors.push(err29);
+        }
+        errors++;
+      }
+    }
+  } else {
+    const err30 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    if (vErrors === null) {
+      vErrors = [err30];
+    } else {
+      vErrors.push(err30);
+    }
+    errors++;
+  }
+  validate129.errors = vErrors;
+  return errors === 0;
+}
+validate129.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var __contract_AuthVerifyResponse = validate79;
 function validate79(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
   let vErrors = null;
@@ -3626,6 +3969,72 @@ function validate80(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate80.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
+var __contract_CredentialRevoked = validate131;
+function validate131(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+  let vErrors = null;
+  let errors = 0;
+  const evaluated0 = validate131.evaluated;
+  if (evaluated0.dynamicProps) {
+    evaluated0.props = void 0;
+  }
+  if (evaluated0.dynamicItems) {
+    evaluated0.items = void 0;
+  }
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.success === void 0) {
+      const err0 = { instancePath, schemaPath: "#/required", keyword: "required", params: { missingProperty: "success" }, message: "must have required property 'success'" };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    for (const key0 in data) {
+      if (!(key0 === "success")) {
+        const err1 = { instancePath, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: key0 }, message: "must NOT have additional properties" };
+        if (vErrors === null) {
+          vErrors = [err1];
+        } else {
+          vErrors.push(err1);
+        }
+        errors++;
+      }
+    }
+    if (data.success !== void 0) {
+      let data0 = data.success;
+      if (typeof data0 !== "boolean") {
+        const err2 = { instancePath: instancePath + "/success", schemaPath: "#/properties/success/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+        if (vErrors === null) {
+          vErrors = [err2];
+        } else {
+          vErrors.push(err2);
+        }
+        errors++;
+      }
+      if (true !== data0) {
+        const err3 = { instancePath: instancePath + "/success", schemaPath: "#/properties/success/const", keyword: "const", params: { allowedValue: true }, message: "must be equal to constant" };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+  } else {
+    const err4 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate131.errors = vErrors;
+  return errors === 0;
+}
+validate131.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 var __contract_LiveStreamSummaryPage = validate52;
 var schema33 = { "type": "string", "enum": ["auto", "webrtc_only", "mse_only", "hls_only", "webrtc_then_mse", "mse_then_hls"] };
 var schema46 = { "type": "object", "properties": { "camera_uuid": { "type": "string" }, "name": { "type": "string" }, "location_uuid": { "type": "string" }, "location_name": { "type": "string" }, "location_path": { "type": "string" }, "codec": { "type": "string" }, "tags": { "type": "string" }, "enabled": { "type": "boolean" }, "record": { "type": "boolean" }, "record_on_schedule": { "type": "boolean" }, "detection_based_recording": { "type": "boolean" }, "isOnvif": { "type": "boolean" }, "recording_active": { "type": "boolean" }, "width": { "type": "integer" }, "height": { "type": "integer" }, "fps": { "type": "integer" }, "protocol": { "type": "integer" }, "first_video_at": { "type": "integer", "description": "Unix seconds; zero means not observed." }, "last_frame_ts": { "type": "integer", "description": "Unix seconds; zero means not observed." }, "last_recording_at": { "type": "integer", "description": "Unix seconds; zero means not observed." }, "current_fps": { "type": "number" }, "status": { "$ref": "#/$defs/StreamStatus" }, "availability": { "type": "string", "enum": ["live", "offline", "never_connected", "disabled"] } }, "required": ["camera_uuid", "name", "location_uuid", "location_name", "location_path", "codec", "tags", "enabled", "record", "record_on_schedule", "detection_based_recording", "isOnvif", "recording_active", "width", "height", "fps", "protocol", "first_video_at", "last_frame_ts", "last_recording_at", "current_fps", "status", "availability"], "additionalProperties": true, "description": "Administrative and live summary fields. Unlike detail, summary rows contain no input URL, credentials or error_message." };
@@ -14404,6 +14813,317 @@ function validate97(data, { instancePath = "", parentData, parentDataProperty, r
   return errors === 0;
 }
 validate97.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
+var __contract_TrustedDevicesResponse = validate130;
+function validate130(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+  let vErrors = null;
+  let errors = 0;
+  const evaluated0 = validate130.evaluated;
+  if (evaluated0.dynamicProps) {
+    evaluated0.props = void 0;
+  }
+  if (evaluated0.dynamicItems) {
+    evaluated0.items = void 0;
+  }
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.trusted_devices === void 0) {
+      const err0 = { instancePath, schemaPath: "#/required", keyword: "required", params: { missingProperty: "trusted_devices" }, message: "must have required property 'trusted_devices'" };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    for (const key0 in data) {
+      if (!(key0 === "trusted_devices")) {
+        const err1 = { instancePath, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: key0 }, message: "must NOT have additional properties" };
+        if (vErrors === null) {
+          vErrors = [err1];
+        } else {
+          vErrors.push(err1);
+        }
+        errors++;
+      }
+    }
+    if (data.trusted_devices !== void 0) {
+      let data0 = data.trusted_devices;
+      if (Array.isArray(data0)) {
+        if (data0.length > 32) {
+          const err2 = { instancePath: instancePath + "/trusted_devices", schemaPath: "#/properties/trusted_devices/maxItems", keyword: "maxItems", params: { limit: 32 }, message: "must NOT have more than 32 items" };
+          if (vErrors === null) {
+            vErrors = [err2];
+          } else {
+            vErrors.push(err2);
+          }
+          errors++;
+        }
+        const len0 = data0.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          let data1 = data0[i0];
+          if (data1 && typeof data1 == "object" && !Array.isArray(data1)) {
+            if (data1.id === void 0) {
+              const err3 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
+              if (vErrors === null) {
+                vErrors = [err3];
+              } else {
+                vErrors.push(err3);
+              }
+              errors++;
+            }
+            if (data1.created_at === void 0) {
+              const err4 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "created_at" }, message: "must have required property 'created_at'" };
+              if (vErrors === null) {
+                vErrors = [err4];
+              } else {
+                vErrors.push(err4);
+              }
+              errors++;
+            }
+            if (data1.expires_at === void 0) {
+              const err5 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "expires_at" }, message: "must have required property 'expires_at'" };
+              if (vErrors === null) {
+                vErrors = [err5];
+              } else {
+                vErrors.push(err5);
+              }
+              errors++;
+            }
+            if (data1.ip_address === void 0) {
+              const err6 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "ip_address" }, message: "must have required property 'ip_address'" };
+              if (vErrors === null) {
+                vErrors = [err6];
+              } else {
+                vErrors.push(err6);
+              }
+              errors++;
+            }
+            if (data1.user_agent === void 0) {
+              const err7 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "user_agent" }, message: "must have required property 'user_agent'" };
+              if (vErrors === null) {
+                vErrors = [err7];
+              } else {
+                vErrors.push(err7);
+              }
+              errors++;
+            }
+            if (data1.current === void 0) {
+              const err8 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "current" }, message: "must have required property 'current'" };
+              if (vErrors === null) {
+                vErrors = [err8];
+              } else {
+                vErrors.push(err8);
+              }
+              errors++;
+            }
+            if (data1.last_used_at === void 0) {
+              const err9 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/required", keyword: "required", params: { missingProperty: "last_used_at" }, message: "must have required property 'last_used_at'" };
+              if (vErrors === null) {
+                vErrors = [err9];
+              } else {
+                vErrors.push(err9);
+              }
+              errors++;
+            }
+            for (const key1 in data1) {
+              if (!(key1 === "id" || key1 === "created_at" || key1 === "expires_at" || key1 === "ip_address" || key1 === "user_agent" || key1 === "current" || key1 === "last_used_at")) {
+                const err10 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: key1 }, message: "must NOT have additional properties" };
+                if (vErrors === null) {
+                  vErrors = [err10];
+                } else {
+                  vErrors.push(err10);
+                }
+                errors++;
+              }
+            }
+            if (data1.id !== void 0) {
+              let data2 = data1.id;
+              if (!(typeof data2 == "number" && (!(data2 % 1) && !isNaN(data2)) && isFinite(data2))) {
+                const err11 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/id", schemaPath: "#/$defs/TrustedDevice/properties/id/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err11];
+                } else {
+                  vErrors.push(err11);
+                }
+                errors++;
+              }
+              if (typeof data2 == "number" && isFinite(data2)) {
+                if (data2 > 9007199254740991 || isNaN(data2)) {
+                  const err12 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/id", schemaPath: "#/$defs/TrustedDevice/properties/id/maximum", keyword: "maximum", params: { comparison: "<=", limit: 9007199254740991 }, message: "must be <= 9007199254740991" };
+                  if (vErrors === null) {
+                    vErrors = [err12];
+                  } else {
+                    vErrors.push(err12);
+                  }
+                  errors++;
+                }
+                if (data2 < 1 || isNaN(data2)) {
+                  const err13 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/id", schemaPath: "#/$defs/TrustedDevice/properties/id/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+                  if (vErrors === null) {
+                    vErrors = [err13];
+                  } else {
+                    vErrors.push(err13);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.created_at !== void 0) {
+              let data3 = data1.created_at;
+              if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3))) {
+                const err14 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/created_at", schemaPath: "#/$defs/TrustedDevice/properties/created_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err14];
+                } else {
+                  vErrors.push(err14);
+                }
+                errors++;
+              }
+              if (typeof data3 == "number" && isFinite(data3)) {
+                if (data3 < 0 || isNaN(data3)) {
+                  const err15 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/created_at", schemaPath: "#/$defs/TrustedDevice/properties/created_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err15];
+                  } else {
+                    vErrors.push(err15);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.expires_at !== void 0) {
+              let data4 = data1.expires_at;
+              if (!(typeof data4 == "number" && (!(data4 % 1) && !isNaN(data4)) && isFinite(data4))) {
+                const err16 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/expires_at", schemaPath: "#/$defs/TrustedDevice/properties/expires_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err16];
+                } else {
+                  vErrors.push(err16);
+                }
+                errors++;
+              }
+              if (typeof data4 == "number" && isFinite(data4)) {
+                if (data4 < 0 || isNaN(data4)) {
+                  const err17 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/expires_at", schemaPath: "#/$defs/TrustedDevice/properties/expires_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err17];
+                  } else {
+                    vErrors.push(err17);
+                  }
+                  errors++;
+                }
+              }
+            }
+            if (data1.ip_address !== void 0) {
+              let data5 = data1.ip_address;
+              if (typeof data5 === "string") {
+                if (func1(data5) > 45) {
+                  const err18 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/ip_address", schemaPath: "#/$defs/TrustedDevice/properties/ip_address/maxLength", keyword: "maxLength", params: { limit: 45 }, message: "must NOT have more than 45 characters" };
+                  if (vErrors === null) {
+                    vErrors = [err18];
+                  } else {
+                    vErrors.push(err18);
+                  }
+                  errors++;
+                }
+              } else {
+                const err19 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/ip_address", schemaPath: "#/$defs/TrustedDevice/properties/ip_address/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                if (vErrors === null) {
+                  vErrors = [err19];
+                } else {
+                  vErrors.push(err19);
+                }
+                errors++;
+              }
+            }
+            if (data1.user_agent !== void 0) {
+              let data6 = data1.user_agent;
+              if (typeof data6 === "string") {
+                if (func1(data6) > 255) {
+                  const err20 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/user_agent", schemaPath: "#/$defs/TrustedDevice/properties/user_agent/maxLength", keyword: "maxLength", params: { limit: 255 }, message: "must NOT have more than 255 characters" };
+                  if (vErrors === null) {
+                    vErrors = [err20];
+                  } else {
+                    vErrors.push(err20);
+                  }
+                  errors++;
+                }
+              } else {
+                const err21 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/user_agent", schemaPath: "#/$defs/TrustedDevice/properties/user_agent/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                if (vErrors === null) {
+                  vErrors = [err21];
+                } else {
+                  vErrors.push(err21);
+                }
+                errors++;
+              }
+            }
+            if (data1.current !== void 0) {
+              if (typeof data1.current !== "boolean") {
+                const err22 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/current", schemaPath: "#/$defs/TrustedDevice/properties/current/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+                if (vErrors === null) {
+                  vErrors = [err22];
+                } else {
+                  vErrors.push(err22);
+                }
+                errors++;
+              }
+            }
+            if (data1.last_used_at !== void 0) {
+              let data8 = data1.last_used_at;
+              if (!(typeof data8 == "number" && (!(data8 % 1) && !isNaN(data8)) && isFinite(data8))) {
+                const err23 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/last_used_at", schemaPath: "#/$defs/TrustedDevice/properties/last_used_at/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+                if (vErrors === null) {
+                  vErrors = [err23];
+                } else {
+                  vErrors.push(err23);
+                }
+                errors++;
+              }
+              if (typeof data8 == "number" && isFinite(data8)) {
+                if (data8 < 0 || isNaN(data8)) {
+                  const err24 = { instancePath: instancePath + "/trusted_devices/" + i0 + "/last_used_at", schemaPath: "#/$defs/TrustedDevice/properties/last_used_at/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" };
+                  if (vErrors === null) {
+                    vErrors = [err24];
+                  } else {
+                    vErrors.push(err24);
+                  }
+                  errors++;
+                }
+              }
+            }
+          } else {
+            const err25 = { instancePath: instancePath + "/trusted_devices/" + i0, schemaPath: "#/$defs/TrustedDevice/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            if (vErrors === null) {
+              vErrors = [err25];
+            } else {
+              vErrors.push(err25);
+            }
+            errors++;
+          }
+        }
+      } else {
+        const err26 = { instancePath: instancePath + "/trusted_devices", schemaPath: "#/properties/trusted_devices/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        if (vErrors === null) {
+          vErrors = [err26];
+        } else {
+          vErrors.push(err26);
+        }
+        errors++;
+      }
+    }
+  } else {
+    const err27 = { instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    if (vErrors === null) {
+      vErrors = [err27];
+    } else {
+      vErrors.push(err27);
+    }
+    errors++;
+  }
+  validate130.errors = vErrors;
+  return errors === 0;
+}
+validate130.evaluated = { "props": true, "dynamicProps": false, "dynamicItems": false };
 function validateApiError(value) {
   const valid = __contract_ApiError(value);
   validateApiError.errors = valid ? null : (__contract_ApiError.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
@@ -14434,6 +15154,12 @@ function validateApiTokenMetadata(value) {
   return valid;
 }
 validateApiTokenMetadata.errors = null;
+function validateAuthSessionsResponse(value) {
+  const valid = __contract_AuthSessionsResponse(value);
+  validateAuthSessionsResponse.errors = valid ? null : (__contract_AuthSessionsResponse.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
+  return valid;
+}
+validateAuthSessionsResponse.errors = null;
 function validateAuthVerifyResponse(value) {
   const valid = __contract_AuthVerifyResponse(value);
   validateAuthVerifyResponse.errors = valid ? null : (__contract_AuthVerifyResponse.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
@@ -14446,6 +15172,12 @@ function validateClientConfig(value) {
   return valid;
 }
 validateClientConfig.errors = null;
+function validateCredentialRevoked(value) {
+  const valid = __contract_CredentialRevoked(value);
+  validateCredentialRevoked.errors = valid ? null : (__contract_CredentialRevoked.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
+  return valid;
+}
+validateCredentialRevoked.errors = null;
 function validateLiveStreamSummaryPage(value) {
   const valid = __contract_LiveStreamSummaryPage(value);
   validateLiveStreamSummaryPage.errors = valid ? null : (__contract_LiveStreamSummaryPage.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
@@ -14686,14 +15418,22 @@ function validateSuccessResponse(value) {
   return valid;
 }
 validateSuccessResponse.errors = null;
+function validateTrustedDevicesResponse(value) {
+  const valid = __contract_TrustedDevicesResponse(value);
+  validateTrustedDevicesResponse.errors = valid ? null : (__contract_TrustedDevicesResponse.errors || []).map(({ keyword, schemaPath }) => ({ keyword, schemaPath }));
+  return valid;
+}
+validateTrustedDevicesResponse.errors = null;
 export {
   validateApiError,
   validateApiTokenCreateRequest,
   validateApiTokenCreated,
   validateApiTokenList,
   validateApiTokenMetadata,
+  validateAuthSessionsResponse,
   validateAuthVerifyResponse,
   validateClientConfig,
+  validateCredentialRevoked,
   validateLiveStreamSummaryPage,
   validateLoginConfig,
   validateLoginRequest,
@@ -14733,5 +15473,6 @@ export {
   validateStreamSummaryPage,
   validateStreamUpdateAccepted,
   validateStreamUpdateRequest,
-  validateSuccessResponse
+  validateSuccessResponse,
+  validateTrustedDevicesResponse
 };

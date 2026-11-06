@@ -312,34 +312,10 @@ export interface SettingsTabProps {
 // Auth sessions and trusted devices: api_handlers_auth_backend_agnostic.c
 // ---------------------------------------------------------------------------
 
-export interface AuthSession {
-  id: number;
-  created_at?: number;
-  last_activity_at?: number;
-  idle_expires_at?: number;
-  expires_at?: number;
-  ip_address?: string;
-  user_agent?: string;
-  current?: boolean;
-}
-
-export interface AuthSessionsResponse {
-  sessions?: AuthSession[];
-}
-
-export interface TrustedDevice {
-  id: number;
-  created_at?: number;
-  last_used_at?: number;
-  expires_at?: number;
-  ip_address?: string;
-  user_agent?: string;
-  current?: boolean;
-}
-
-export interface TrustedDevicesResponse {
-  trusted_devices?: TrustedDevice[];
-}
+export type AuthSession = import('../../generated/api/schema').components['schemas']['AuthSession'];
+export type AuthSessionsResponse = import('../../generated/api/schema').components['schemas']['AuthSessionsResponse'];
+export type TrustedDevice = import('../../generated/api/schema').components['schemas']['TrustedDevice'];
+export type TrustedDevicesResponse = import('../../generated/api/schema').components['schemas']['TrustedDevicesResponse'];
 
 /** The part of a revoke mutation AuthTab uses. */
 export interface RevokeMutation {

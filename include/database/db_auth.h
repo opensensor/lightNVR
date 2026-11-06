@@ -297,9 +297,14 @@ int db_auth_cleanup_sessions(void);
  */
 int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_count);
 
-/**
- * @brief Delete a single session by ID for a user.
- */
+/* Owner-scoped, atomic revocation: 0 deleted, 1 absent/other owner, -1 DB error.
+ * deleted_current is set only after success; pending MFA rows are not sessions. */
+int db_auth_revoke_session(int64_t user_id, int64_t session_id,
+                           const char *current_token, bool *deleted_current);
+int db_auth_revoke_trusted_device(int64_t user_id, int64_t device_id,
+                                  const char *current_token, bool *deleted_current);
+
+/** Delete a single session by ID for a user (internal cleanup helper). */
 int db_auth_delete_session_by_id(int64_t user_id, int64_t session_id);
 
 /**

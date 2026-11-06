@@ -1,19 +1,21 @@
 /** Only stable operation names enter error messages; never URLs or wire data. */
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
+type ContractOperation = StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
   readonly mayHaveApplied: boolean;
 
   constructor(
-    readonly operation: StreamOperation,
+    readonly operation: ContractOperation,
     readonly phase: 'request' | 'response',
     readonly schema: string,
     readonly status?: number,
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = operation === 'updateStream' && phase === 'response';
+    this.mayHaveApplied = ['updateStream', 'revokeAuthSession', 'revokeTrustedDevice'].includes(operation) && phase === 'response';
   }
 }
 

@@ -5,10 +5,11 @@ are merged in [PR #804](https://github.com/opensensor/lightNVR/pull/804).
 Recording pathname/export integrity is merged in [PR #805](https://github.com/opensensor/lightNVR/pull/805),
 and minimatch remediation in [PR #806](https://github.com/opensensor/lightNVR/pull/806).
 The recording CodeQL correction is merged in [PR #807](https://github.com/opensensor/lightNVR/pull/807).
-The identity/MFA boundary correction is under review in [PR #808](https://github.com/opensensor/lightNVR/pull/808);
-identity contract expansion follows. Rust remains deferred.
+The identity/MFA boundary correction merged in [PR #808](https://github.com/opensensor/lightNVR/pull/808).
+The session/trusted-device contract and Settings slice is implemented for review;
+the remaining MFA/password/logout contract work follows. Rust remains deferred.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-06 against main at `98c7a9ac19001ddc988cc7dfa21accca20457b32`.
+**Reconciled**: 2026-11-06 against main at `f3b0f4ff8838cf2f54327ef50c38e85d2fa1a67d`.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
@@ -19,8 +20,9 @@ bump after the reconciliation baseline). The authoritative task/evidence log is
 
 **Current follow-up**: [engineering API expansion](../../engineering-api-expansion-plan.md)
 and [bounded identity contracts plan](../../engineering-identity-contracts-plan.md).
-The accepted contract remains 33 operations / 30 paths, with 207 residual
-registered operations. Main's forked go2rtc pins `6c311990` including rejected
+Main contains 33 accepted operations / 30 paths. The session/device follow-up
+adds four operations for 37 operations / 34 paths and 203 residual registered
+operations; its bounded acceptance receipt is in the identity plan. Main's forked go2rtc pins `6c311990` including rejected
 HTTP response cleanup; the temporary parent patch delivery has been removed.
 Main at `b9d3ac61` has successful hosted [Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42215794378),
 [Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42215794273),
