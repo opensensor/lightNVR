@@ -632,15 +632,16 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         dest_cache_fd = -1;
     }
 
+    if (rename(temp_path, dest_path) != 0) {
+        log_error("Failed to publish backup %s -> %s: %s", temp_path, dest_path, strerror(errno));
+        rc = SQLITE_IOERR;
+        goto cleanup;
+    }
+
     /* A previous backup produced in WAL mode may have sidecars beside the
      * published path. They cannot be paired with this replacement inode. */
     if (remove_database_sidecars(dest_path) != 0) {
         rc = SQLITE_IOERR_DELETE;
-        goto cleanup;
-    }
-    if (rename(temp_path, dest_path) != 0) {
-        log_error("Failed to publish backup %s -> %s: %s", temp_path, dest_path, strerror(errno));
-        rc = SQLITE_IOERR;
         goto cleanup;
     }
 
