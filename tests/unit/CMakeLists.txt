@@ -146,6 +146,9 @@ target_sources(test_stream_frame_rate PRIVATE
 # ====================================================================
 add_layer2_test(test_config CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_core_initialization CI_UNIT CI_SANITIZER)
+add_layer2_test(test_db_backup_publication CI_UNIT CI_SANITIZER)
+target_link_options(test_db_backup_publication PRIVATE -Wl,--wrap=rename -Wl,--wrap=fsync -Wl,--wrap=write)
+set_tests_properties(test_db_backup_publication PROPERTIES TIMEOUT 30)
 add_layer2_test(test_sqlite_migration_boundaries CI_UNIT CI_SANITIZER)
 set_tests_properties(test_sqlite_migration_boundaries PROPERTIES TIMEOUT 20)
 add_layer2_test(test_logger CI_UNIT CI_SANITIZER)

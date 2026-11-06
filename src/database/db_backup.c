@@ -273,6 +273,120 @@ static int sync_parent_directory(const char *path) {
     return 0;
 }
 
+/* Preserve an unreadable destination before discarding any of its recovery
+ * records. The owner has quiesced it; copies are private, fsynced and retained
+ * for operator recovery. Never clean up an incomplete capture automatically. */
+static int retain_database_recovery_files(const char *path) {
+    char directory[PATH_MAX], source[PATH_MAX], target[PATH_MAX];
+    int length = snprintf(directory, sizeof(directory), "%s.recovery-XXXXXX", path);
+    if (length < 0 || (size_t)length >= sizeof(directory) || !mkdtemp(directory)) return -1;
+    static const char *suffixes[] = {"", "-wal", "-shm", "-journal"};
+    for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
+        length = snprintf(source, sizeof(source), "%s%s", path, suffixes[i]);
+        int target_length = snprintf(target, sizeof(target), "%s/database.sqlite%s", directory, suffixes[i]);
+        if (length < 0 || (size_t)length >= sizeof(source) || target_length < 0 ||
+            (size_t)target_length >= sizeof(target)) goto failed;
+        int input = open(source, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        if (input < 0) {
+            if (i != 0 && errno == ENOENT) continue;
+            goto failed;
+        }
+        struct stat info;
+        if (fstat(input, &info) != 0 || !S_ISREG(info.st_mode)) { close(input); goto failed; }
+        int output = open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (output < 0) { close(input); goto failed; }
+        bool copied = true;
+        char buffer[8192];
+        for (;;) {
+            ssize_t count = read(input, buffer, sizeof(buffer));
+            if (count < 0 && errno == EINTR) continue;
+            if (count == 0) break;
+            if (count < 0) { copied = false; break; }
+            ssize_t written = 0;
+            while (written < count) {
+                ssize_t n = write(output, buffer + written, (size_t)(count - written));
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) { copied = false; break; }
+                written += n;
+            }
+            if (!copied) break;
+        }
+        if (copied && fsync(output) != 0) copied = false;
+        if (close(output) != 0) copied = false;
+        if (close(input) != 0) copied = false;
+        if (!copied) goto failed;
+    }
+    length = snprintf(target, sizeof(target), "%s/COMPLETE", directory);
+    if (length < 0 || (size_t)length >= sizeof(target)) goto failed;
+    int marker = open(target, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (marker < 0) goto failed;
+    int synced = fsync(marker);
+    int closed = close(marker);
+    if (synced != 0 || closed != 0 || sync_parent_directory(target) != 0 ||
+        sync_parent_directory(directory) != 0) goto failed;
+    log_warn("Unreadable database recovery files retained at %s before replacement", directory);
+    return 0;
+failed:
+    log_error("Cannot retain database recovery files at %s; original destination will not be replaced", directory);
+    return -1;
+}
+
+/* The destination must be quiesced by its owner. A leftover WAL or hot journal
+ * can contain the only recoverable old state: unlinking it before rename loses
+ * data on publication failure, while unlinking it afterwards pairs a new inode
+ * with old recovery records. Let SQLite recover/checkpoint the old database and
+ * durably make it self-contained BEFORE removing sidecars or replacing it.
+ * If SQLite cannot read the old database, preserve a durable recovery copy
+ * before removing sidecars so automatic restore of corrupt databases still works. */
+static int prepare_database_replacement(const char *path) {
+    static const char *suffixes[] = {"-wal", "-shm", "-journal"};
+    bool has_sidecars = false;
+    char candidate[PATH_MAX];
+    struct stat info;
+    for (size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
+        int length = snprintf(candidate, sizeof(candidate), "%s%s", path, suffixes[i]);
+        if (length < 0 || (size_t)length >= sizeof(candidate)) return -1;
+        if (lstat(candidate, &info) == 0) {
+            if (!S_ISREG(info.st_mode)) return -1;
+            has_sidecars = true;
+        } else if (errno != ENOENT) {
+            return -1;
+        }
+    }
+    if (!has_sidecars) return 0;
+    if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) return -1;
+
+    sqlite3 *old = NULL;
+    sqlite3_stmt *mode = NULL;
+    int rc = sqlite3_open_v2(path, &old, SQLITE_OPEN_READWRITE | SQLITE_OPEN_PRIVATECACHE, NULL);
+    if (rc == SQLITE_OK) preserve_wal_sidecars(old, path);
+    if (rc == SQLITE_OK) rc = sqlite3_exec(old,
+        "PRAGMA locking_mode=EXCLUSIVE; PRAGMA synchronous=FULL;"
+        "SELECT count(*) FROM sqlite_schema;", NULL, NULL, NULL);
+    if (rc == SQLITE_OK) rc = sqlite3_prepare_v2(old, "PRAGMA journal_mode=DELETE", -1, &mode, NULL);
+    if (rc == SQLITE_OK) {
+        int step = sqlite3_step(mode);
+        const unsigned char *value = step == SQLITE_ROW ? sqlite3_column_text(mode, 0) : NULL;
+        rc = value && strcmp((const char *)value, "delete") == 0 ? SQLITE_OK
+             : step == SQLITE_ROW || step == SQLITE_DONE ? SQLITE_ERROR : step;
+    }
+    sqlite3_finalize(mode);
+    if (old) {
+        int close_rc = sqlite3_close(old);
+        if (rc == SQLITE_OK) rc = close_rc;
+    }
+    if (rc != SQLITE_OK) {
+        if ((rc & 0xff) != SQLITE_CORRUPT && (rc & 0xff) != SQLITE_NOTADB) {
+            log_error("Cannot safely prepare database replacement: %s", sqlite3_errstr(rc));
+            return -1;
+        }
+        if (retain_database_recovery_files(path) != 0) return -1;
+    }
+    if (sync_path_to_disk(path) != 0 || remove_database_sidecars(path) != 0 ||
+        sync_parent_directory(path) != 0) return -1;
+    return 0;
+}
+
 /* Run a SQLite self-check pragma (integrity_check or quick_check) and treat
  * anything other than a single "ok" row as failure. */
 static int run_check_pragma(sqlite3 *db_handle, const char *path_label,
@@ -632,16 +746,13 @@ int backup_database(const char *source_path, const char *dest_path, bool abortab
         dest_cache_fd = -1;
     }
 
-    if (rename(temp_path, dest_path) != 0) {
-        log_error("Failed to publish backup %s -> %s: %s", temp_path, dest_path, strerror(errno));
+    if (prepare_database_replacement(dest_path) != 0) {
         rc = SQLITE_IOERR;
         goto cleanup;
     }
-
-    /* A previous backup produced in WAL mode may have sidecars beside the
-     * published path. They cannot be paired with this replacement inode. */
-    if (remove_database_sidecars(dest_path) != 0) {
-        rc = SQLITE_IOERR_DELETE;
+    if (rename(temp_path, dest_path) != 0) {
+        log_error("Failed to publish backup %s -> %s: %s", temp_path, dest_path, strerror(errno));
+        rc = SQLITE_IOERR;
         goto cleanup;
     }
 
@@ -803,6 +914,7 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
 
     if (sync_path_to_disk(restore_path) != 0) goto cleanup;
 
+    if (prepare_database_replacement(db_path) != 0) goto cleanup;
     if (rename(restore_path, db_path) != 0) {
         log_error("Failed to publish restored database %s -> %s: %s",
                   restore_path, db_path, strerror(errno));
@@ -812,11 +924,6 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
         sync_parent_directory(db_path) != 0) {
         goto cleanup;
     }
-
-    /* With no live handles, stale sidecars belong to the replaced database
-     * inode. Remove them after successful atomic publish so a rename failure
-     * cannot destructively strip sidecars from the still-live old database. */
-    if (remove_database_sidecars(db_path) != 0) goto cleanup;
 
     log_info("Database restored successfully from backup");
     result = 0;
