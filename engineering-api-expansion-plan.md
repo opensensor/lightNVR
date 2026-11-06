@@ -1,12 +1,13 @@
 # Engineering API expansion: next bounded slices
 
-Status: F0 checkpoint, F12 and F16 authorized for the recording-integrity PR.
-F1 is planned only; other slices remain proposed.
+Status: F0 checkpoint, F12 and F16 merged in PR #805; recording security
+follow-up is under review in PR #807. F1 boundary review is next; its contract
+expansion is not accepted. Other slices remain proposed.
 
 Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
 and [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md). Baseline:
-`b9d3ac6194e412122c45943e6161d526e9e8d075` on main (2026-11-06), after
-merged PR #804 and the go2rtc fork pin update. TS/TSX conversion is complete. Automated Rust conversion,
+`6ddf77764e1f5553a839ff4c19ad456c3a334480` on main (2026-11-06), after
+PR #805 recording integrity and PR #806 minimatch remediation. TS/TSX conversion is complete. Automated Rust conversion,
 synchronization with C and a second backend remain deferred.
 
 ## Ownership and acceptance
@@ -134,7 +135,8 @@ F1..F14,F16 -> F15
 - **ownership**: Recording path creation/writer boundary and focused native/media tests.
 - **description**: Reproduce same-second filenames, restart reuse and wall-clock rollback. Use random UUID suffixes, exclusive creation by both MP4 writers, and attempt-driven rotation independent of clock movement. Preserve writer/file ownership and existing catalog finalization order.
 - **validation**: Forced identical timestamps/rollback never alter existing or protected file hashes; new rows/files remain paired through crash/failure cleanup. Document close/publication/ownership before lifecycle changes.
-- **status**: Implemented in the recording-integrity branch; validation receipt below.
+- **status**: Merged in PR #805; validation receipt below. Recording file/path security
+  is being qualified separately in PR #807.
 
 ### F13: Target capacity and active-media measurements
 - **depends_on**: [F0]
@@ -162,7 +164,8 @@ F1..F14,F16 -> F15
 - **ownership**: ZIP writer in `src/web/api_handlers_recordings_batch_download.c` and isolated failure regressions; serialize against other recording job edits.
 - **description**: T24 source review found unchecked ZIP output writes/close and source-read failures. Existing tests prove explicit missing-source/member-count errors, successful ZIP bytes and owner binding; they do not establish failure atomicity for all filesystem faults. Copy from one source descriptor, derive CRC from copied bytes, detect size/metadata changes, check all ZIP writes/seeks/source and archive closes, and publish only after successful close.
 - **validation**: Process-local fault injection into owned fixtures; failed archives never become complete or downloadable, temporary files are cleaned safely, source/protected hashes remain intact, and successful archives pass independent CRC/content/decode checks. Define completion versus durability explicitly; do not imply power-loss guarantees from successful buffered writes.
-- **status**: Implemented in the recording-integrity branch; validation receipt below.
+- **status**: Merged in PR #805; validation receipt below. Recording file/path security
+  is being qualified separately in PR #807.
 
 
 ### S1: Audio and signaling authorization boundary
@@ -234,3 +237,31 @@ this run uses the fork pin's freshly built binary. Logs and build trees are unde
 build/recording-integrity*. Hosted results belong to the PR checks, separately
 from this local receipt. No hardware, long-duration soak or power-loss
 qualification is claimed.
+
+
+## Security follow-up and next acceptance (2026-11-06)
+
+[PR #806](https://github.com/opensensor/lightNVR/pull/806) is merged. The web
+lockfile resolves affected minimatch 7–10 dependencies to 11.0.5 through a
+scoped override; the unaffected callable 3.x dependency remains compatible.
+Clean installation, dependency-tree validation, web lint/typecheck, 784 Jest
+cases and production build passed. This does not clear unrelated npm advisories.
+
+[PR #807](https://github.com/opensensor/lightNVR/pull/807) addresses new recording
+CodeQL alerts #346–#350: explicit owner-only creation permissions, fixed-alphabet
+UUID encoding and rejection of path syntax before constructing either recording
+filename. Native tests exercise umask zero, both entropy sources and invalid
+components in both recording modes. All 86 ci-unit tests pass; the initial fix
+passed all 61 sanitizer tests and managed crash/restart qualification, and the
+added component guards pass focused sanitizer tests. C/C++ security-extended
+CodeQL now runs on PRs as well as main. Acceptance must inspect a full branch
+analysis for these existing alerts; a PR scan reporting zero new findings alone
+is not evidence that main's findings are fixed. Hosted results are recorded on
+the PR, without dismissals or suppression changes.
+
+Resume F1 after this recording correction: first freeze and test pending-MFA
+versus authenticated-session boundaries, then session/trusted-device lifecycle,
+then the 11-operation canonical contract and actual UI consumers. Keep behavioral
+security fixes separately reviewable from generated schema changes. F2 fleet
+reads follows F1 acceptance; S1 audio/signaling authorization remains a separate
+security slice. Rust remains deferred.

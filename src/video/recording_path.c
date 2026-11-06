@@ -143,6 +143,8 @@ static int prepare_at_root(const config_t *config, const char *root,
                  "%Y%m%d_%H%M%S", &tm_buf) == 0) return -1;
     char uuid[LIGHTNVR_UUID_STRING_SIZE];
     if (lightnvr_uuid_generate_v4(uuid) != 0) return -1;
+    // A generated identifier is one path component, never a path expression.
+    if (strchr(uuid, '/') || strchr(uuid, '\\') || strstr(uuid, "..")) return -1;
     int written = snprintf(output, output_size, "%s/recording_%s_%s.mp4",
                            directory, timestamp_text, uuid);
     return (written < 0 || (size_t)written >= output_size) ? -1 : 0;

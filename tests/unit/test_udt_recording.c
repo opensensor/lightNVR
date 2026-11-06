@@ -44,6 +44,14 @@ static AVFormatContext *input;      /* what the UDT believes it is reading */
 static int64_t cursor;              /* monotonically increasing packet index */
 static int64_t audio_pts;
 
+static const char *injected_uuid;
+int __real_lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]);
+int __wrap_lightnvr_uuid_generate_v4(char output[LIGHTNVR_UUID_STRING_SIZE]) {
+    if (!injected_uuid) return __real_lightnvr_uuid_generate_v4(output);
+    safe_strcpy(output, injected_uuid, LIGHTNVR_UUID_STRING_SIZE, 0);
+    return 0;
+}
+
 static bool force_path_collision;
 static char collision_path[PATH_MAX];
 int __real_recording_file_open(AVIOContext **context, const char *path);
@@ -393,6 +401,21 @@ static void test_start_recording_audio_variants(void) {
         TEST_ASSERT_EQUAL_INT(0, udt_stop_recording(ctx));
         avformat_free_context(input);
         input = NULL;
+    }
+}
+
+static void test_detection_path_rejects_invalid_generated_component(void) {
+    build_input(AV_CODEC_ID_NONE);
+    int64_t before = scalar("SELECT count(*) FROM recordings", 0);
+    const char *invalid[] = {"../escape", "part/child", "part\\child", "part..child"};
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        injected_uuid = invalid[i];
+        int result = udt_start_recording(ctx);
+        injected_uuid = NULL;
+        TEST_ASSERT_EQUAL_INT(-1, result);
+        TEST_ASSERT_NULL(ctx->mp4_writer);
+        TEST_ASSERT_EQUAL_UINT64(0, atomic_load(&ctx->current_recording_id));
+        TEST_ASSERT_EQUAL_INT64(before, scalar("SELECT count(*) FROM recordings", 0));
     }
 }
 
@@ -814,6 +837,7 @@ int main(void) {
     RUN_TEST(test_detection_stream_hand_off);
     RUN_TEST(test_onvif_onset_fast_path);
     RUN_TEST(test_start_recording_audio_variants);
+    RUN_TEST(test_detection_path_rejects_invalid_generated_component);
     RUN_TEST(test_collision_does_not_publish_detection_row_or_alter_file);
     RUN_TEST(test_blocked_placement_does_not_start);
     RUN_TEST(test_stop_fallback_and_noop);
