@@ -27,6 +27,14 @@
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_auth_test.db"
 
+static time_t security_time;
+time_t __real_time(time_t *);
+time_t __wrap_time(time_t *value) {
+    if (!security_time) return __real_time(value);
+    if (value) *value=security_time;
+    return security_time;
+}
+
 static void clear_users(void) {
     sqlite3 *db = get_db_handle();
     /* Remove non-admin users to keep db_auth_init's default admin */
@@ -37,6 +45,10 @@ static void clear_users(void) {
 }
 
 void setUp(void) {
+    security_time=0;
+    g_config.login_rate_limit_enabled=true;
+    g_config.login_rate_limit_max_attempts=5;
+    g_config.login_rate_limit_window_seconds=300;
     g_config.web_password[0] = '\0';
     g_config.demo_mode = false;
     clear_users();
@@ -731,6 +743,143 @@ static void test_revocation_database_error_never_clears_cookie(void) {
     TEST_ASSERT_TRUE(sqlite3_get_autocommit(db));
 }
 
+static int64_t security_scalar(int64_t user_id, const char *sql) {
+    sqlite3_stmt *stmt=NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,sqlite3_prepare_v2(get_db_handle(),sql,-1,&stmt,NULL));
+    sqlite3_bind_int64(stmt,1,user_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW,sqlite3_step(stmt));
+    int64_t value=sqlite3_column_int64(stmt,0);
+    sqlite3_finalize(stmt);return value;
+}
+static int64_t security_user(bool enabled) {
+    security_time=1111111111;
+    int64_t id=0;
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_user("security","password123",NULL,USER_ROLE_USER,true,&id));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_set_totp_secret(id,"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"));
+    if(enabled) TEST_ASSERT_EQUAL_INT(0,db_auth_enable_totp(id,true));
+    return id;
+}
+static void security_sql(const char *sql) {
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,sqlite3_exec(get_db_handle(),sql,NULL,NULL,NULL));
+}
+static void test_totp_session_failure_rolls_back_code_and_challenge(void) {
+    int64_t id=security_user(true),found;
+    char pending[33],session[33],trusted[33];
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_mfa_challenge(id,"127.0.0.1","fixture",pending,sizeof(pending)));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_validate_mfa_challenge(pending,&found,"127.0.0.1","fixture"));
+    security_sql("CREATE TRIGGER fail_security_insert BEFORE INSERT ON trusted_devices BEGIN SELECT RAISE(ABORT,'fixture'); END");
+    int result=db_auth_complete_totp_login(id,"050471",pending,NULL,"127.0.0.1","fixture",300,session,trusted);
+    security_sql("DROP TRIGGER fail_security_insert");
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_ERROR,result);
+    TEST_ASSERT_EQUAL_STRING("",session);TEST_ASSERT_EQUAL_STRING("",trusted);
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
+    TEST_ASSERT_EQUAL_INT64(-1,security_scalar(id,"SELECT totp_last_used_step FROM users WHERE id=?"));
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=? AND mfa_pending=1"));
+    TEST_ASSERT_EQUAL_INT64(0,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=? AND mfa_pending=0"));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_complete_totp_login(id,"050471",pending,NULL,"127.0.0.1","fixture",300,session,trusted));
+}
+static void test_totp_enable_and_disable_roll_back_when_revocation_fails(void) {
+    int64_t id=security_user(false);
+    char session[33],trusted[33];
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_session(id,"127.0.0.1","fixture",300,session,sizeof(session)));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_trusted_device(id,"127.0.0.1","fixture",300,trusted,sizeof(trusted)));
+    security_sql("CREATE TRIGGER fail_security_delete BEFORE DELETE ON trusted_devices BEGIN SELECT RAISE(ABORT,'fixture'); END");
+    int enabled=db_auth_verify_totp_enrollment(id,"050471",session);
+    security_sql("DROP TRIGGER fail_security_delete");
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_ERROR,enabled);
+    TEST_ASSERT_EQUAL_INT64(0,security_scalar(id,"SELECT totp_enabled FROM users WHERE id=?"));
+    TEST_ASSERT_EQUAL_INT64(-1,security_scalar(id,"SELECT totp_last_used_step FROM users WHERE id=?"));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_verify_totp_enrollment(id,"050471",session));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_session(id,"127.0.0.1","other",300,trusted,sizeof(trusted)));
+    security_sql("CREATE TRIGGER fail_security_disable BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT,'fixture'); END");
+    int disabled=db_auth_disable_totp(id,session);
+    security_sql("DROP TRIGGER fail_security_disable");
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_ERROR,disabled);
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT totp_enabled FROM users WHERE id=?"));
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_disable_totp(id,session));
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=?"));
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT totp_secret IS NULL FROM users WHERE id=?"));
+}
+static void test_password_verification_and_revocation_are_atomic(void) {
+    int64_t id=security_user(true);
+    char session[33],trusted[33],pending[33];
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_session(id,"127.0.0.1","fixture",300,session,sizeof(session)));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_trusted_device(id,"127.0.0.1","fixture",300,trusted,sizeof(trusted)));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_create_mfa_challenge(id,"127.0.0.1","fixture",pending,sizeof(pending)));
+    security_sql("CREATE TRIGGER fail_security_revoke BEFORE DELETE ON trusted_devices BEGIN SELECT RAISE(ABORT,'fixture'); END");
+    int result=db_auth_change_password_verified(id,"newpassword123","password123");
+    security_sql("DROP TRIGGER fail_security_revoke");
+    TEST_ASSERT_EQUAL_INT(-1,result);
+    TEST_ASSERT_EQUAL_INT(0,db_auth_verify_password(id,"password123"));
+    TEST_ASSERT_EQUAL_INT64(2,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=?"));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_change_password_verified(id,"newpassword123","password123"));
+    TEST_ASSERT_EQUAL_INT(-4,db_auth_change_password_verified(id,"anotherpassword","password123"));
+    TEST_ASSERT_EQUAL_INT64(0,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=?"));
+    TEST_ASSERT_EQUAL_INT64(0,security_scalar(id,"SELECT count(*) FROM trusted_devices WHERE user_id=?"));
+    TEST_ASSERT_NOT_EQUAL(0,db_auth_create_mfa_challenge_verified(id,"password123","127.0.0.1","fixture",pending,sizeof(pending)));
+    TEST_ASSERT_EQUAL_STRING("",pending);
+}
+typedef struct {int64_t id;char challenge[33];int result;} security_completion_t;
+static void *security_complete(void *arg) {
+    security_completion_t *request=arg;char session[33],trusted[33];
+    request->result=db_auth_complete_totp_login(request->id,"050471",request->challenge,NULL,"127.0.0.1","fixture",300,session,trusted);
+    return NULL;
+}
+static void test_two_challenges_cannot_consume_one_totp_step(void) {
+    int64_t id=security_user(true),found;
+    security_completion_t requests[2]={{.id=id},{.id=id}};
+    pthread_t threads[2];
+    for(int i=0;i<2;++i) {
+        TEST_ASSERT_EQUAL_INT(0,db_auth_create_mfa_challenge(id,"127.0.0.1","fixture",requests[i].challenge,33));
+        TEST_ASSERT_EQUAL_INT(0,db_auth_validate_mfa_challenge(requests[i].challenge,&found,"127.0.0.1","fixture"));
+    }
+    for(int i=0;i<2;++i) TEST_ASSERT_EQUAL_INT(0,pthread_create(&threads[i],NULL,security_complete,&requests[i]));
+    for(int i=0;i<2;++i) pthread_join(threads[i],NULL);
+    TEST_ASSERT_EQUAL_INT(1,(requests[0].result==0)+(requests[1].result==0));
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=? AND mfa_pending=0"));
+    TEST_ASSERT_EQUAL_INT64(1,security_scalar(id,"SELECT count(*) FROM trusted_devices WHERE user_id=?"));
+}
+static void test_totp_window_and_replay_survive_database_reopen(void) {
+    int64_t id=security_user(true);
+    char session[33],trusted[33];
+    g_config.login_rate_limit_enabled=true;g_config.login_rate_limit_max_attempts=2;g_config.login_rate_limit_window_seconds=300;
+    for(int i=0;i<2;++i) TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_INVALID,
+        db_auth_complete_totp_login(id,"000000",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+    shutdown_database();
+    TEST_ASSERT_EQUAL_INT(0,init_database_ex(TEST_DB_PATH,DB_INIT_NO_BACKUP));
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_LIMITED,
+        db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+    security_sql("UPDATE users SET totp_window_started_at=0");
+    TEST_ASSERT_EQUAL_INT(0,db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+    shutdown_database();
+    TEST_ASSERT_EQUAL_INT(0,init_database_ex(TEST_DB_PATH,DB_INIT_NO_BACKUP));
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_INVALID,
+        db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+}
+
+static void test_missing_replay_column_cannot_issue_credentials(void) {
+    int64_t id=security_user(true);
+    char session[33],trusted[33];
+    security_sql("ALTER TABLE users RENAME COLUMN totp_last_used_step TO hidden_replay_step");
+    int result=db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",300,session,trusted);
+    security_sql("ALTER TABLE users RENAME COLUMN hidden_replay_step TO totp_last_used_step");
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_ERROR,result);
+    TEST_ASSERT_EQUAL_STRING("",session);TEST_ASSERT_EQUAL_STRING("",trusted);
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(get_db_handle()));
+    TEST_ASSERT_EQUAL_INT64(0,security_scalar(id,"SELECT count(*) FROM sessions WHERE user_id=?"));
+}
+static void test_disabling_rate_limit_does_not_disable_replay_protection(void) {
+    int64_t id=security_user(true);
+    char session[33],trusted[33];
+    g_config.login_rate_limit_enabled=false;
+    for(int i=0;i<6;++i) TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_INVALID,
+        db_auth_complete_totp_login(id,"000000",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+    TEST_ASSERT_EQUAL_INT(0,db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+    TEST_ASSERT_EQUAL_INT(DB_AUTH_IDENTITY_INVALID,
+        db_auth_complete_totp_login(id,"050471",NULL,"password123","127.0.0.1","fixture",0,session,trusted));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -740,6 +889,13 @@ int main(void) {
     db_auth_init();
 
     UNITY_BEGIN();
+    RUN_TEST(test_missing_replay_column_cannot_issue_credentials);
+    RUN_TEST(test_disabling_rate_limit_does_not_disable_replay_protection);
+    RUN_TEST(test_totp_session_failure_rolls_back_code_and_challenge);
+    RUN_TEST(test_totp_enable_and_disable_roll_back_when_revocation_fails);
+    RUN_TEST(test_password_verification_and_revocation_are_atomic);
+    RUN_TEST(test_two_challenges_cannot_consume_one_totp_step);
+    RUN_TEST(test_totp_window_and_replay_survive_database_reopen);
     RUN_TEST(test_owned_revocation_identifies_cookie_and_preserves_other_credentials);
     RUN_TEST(test_revocation_database_error_never_clears_cookie);
     RUN_TEST(test_admin_bootstrap_serializes_with_storage_transactions);

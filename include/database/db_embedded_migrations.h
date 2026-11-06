@@ -2124,6 +2124,20 @@ static const char migration_0093_down[] =
     "ALTER TABLE sessions DROP COLUMN mfa_attempts;\n"
     "ALTER TABLE sessions DROP COLUMN mfa_pending;";
 
+static const char migration_0094_up[] =
+    "ALTER TABLE users ADD COLUMN totp_last_used_step INTEGER NOT NULL DEFAULT -1;\n"
+    "ALTER TABLE users ADD COLUMN totp_failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (totp_failed_attempts >= 0);\n"
+    "ALTER TABLE users ADD COLUMN totp_window_started_at INTEGER NOT NULL DEFAULT 0;\n"
+    "ALTER TABLE users ADD COLUMN totp_setup_expires_at INTEGER NOT NULL DEFAULT 0;";
+
+static const char migration_0094_down[] =
+    "-- Pending challenges must not survive removal of replay protection.\n"
+    "DELETE FROM sessions WHERE mfa_pending = 1;\n"
+    "ALTER TABLE users DROP COLUMN totp_setup_expires_at;\n"
+    "ALTER TABLE users DROP COLUMN totp_window_started_at;\n"
+    "ALTER TABLE users DROP COLUMN totp_failed_attempts;\n"
+    "ALTER TABLE users DROP COLUMN totp_last_used_step;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -2776,8 +2790,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0093_down,
         .is_embedded = true
     },
+    {
+        .version = "0094",
+        .description = "totp_replay_and_attempts",
+        .sql_up = migration_0094_up,
+        .sql_down = migration_0094_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 93
+#define EMBEDDED_MIGRATIONS_COUNT 94
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

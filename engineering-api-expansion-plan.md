@@ -63,7 +63,9 @@ F1..F14,F16 -> F15
 - **status**: MFA/session preflight merged in PR #808. F1b and the four-route
   portion of F1d now implement session/device lifecycle, schemas and Settings
   validation for review (37 covered operations / 34 paths; 203 residual). The
-  remaining seven identity operations and F1c decisions are not accepted. See
+  F1c password/TOTP behavior is implemented for review with preserved Basic/key
+  compatibility, durable replay/throttling and atomic revocation. The remaining
+  seven identity schemas and typed consumers are still pending. See
   [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors

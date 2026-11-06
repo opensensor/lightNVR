@@ -285,6 +285,8 @@ target_link_options(test_api_handlers_zones PRIVATE
     "-Wl,--wrap=httpd_authorize_stream_action")
 add_layer2_test(test_db_events CI_UNIT CI_SANITIZER)
 add_layer2_test(test_db_auth CI_UNIT CI_SANITIZER)
+target_link_options(test_db_auth PRIVATE "-Wl,--wrap=time")
+add_layer2_test(test_totp CI_UNIT CI_SANITIZER)
 add_layer2_test(test_authorization CI_UNIT)
 add_layer2_test(test_openapi_projection CI_UNIT CI_SANITIZER)
 target_link_options(test_openapi_projection PRIVATE

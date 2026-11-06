@@ -250,8 +250,33 @@ static void test_mfa_upgrade_revokes_ambiguous_sessions_and_down_removes_challen
     assert_sentinel();
 }
 
+static void test_totp_replay_migration_preserves_enabled_accounts(void) {
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TABLE users(id INTEGER PRIMARY KEY,totp_secret TEXT,totp_enabled INTEGER);"
+        "CREATE TABLE sessions(id INTEGER PRIMARY KEY,mfa_pending INTEGER);"
+        "INSERT INTO users VALUES(1,'existing-secret',1),(2,'pending-secret',0);"
+        "INSERT INTO sessions VALUES(1,0),(2,1);", NULL,NULL,NULL));
+    const migration_t *otp = NULL;
+    for (size_t i=0; i<EMBEDDED_MIGRATIONS_COUNT; ++i)
+        if (strcmp(embedded_migrations_data[i].version,"0094")==0) otp=&embedded_migrations_data[i];
+    TEST_ASSERT_NOT_NULL(otp);
+    migrate_config_t config={.embedded_migrations=otp,.embedded_count=1};
+    migration=migrate_init(db,&config);
+    TEST_ASSERT_NOT_NULL(migration);
+    TEST_ASSERT_EQUAL_INT(0,migrate_up(migration,NULL));
+    TEST_ASSERT_EQUAL_INT(1,scalar("SELECT count(*) FROM users WHERE id=1 AND totp_enabled=1 AND totp_secret='existing-secret' AND totp_last_used_step=-1 AND totp_failed_attempts=0"));
+    TEST_ASSERT_EQUAL_INT(0,scalar("SELECT totp_setup_expires_at FROM users WHERE id=2"));
+    TEST_ASSERT_EQUAL_INT(2,scalar("SELECT count(*) FROM sessions"));
+    TEST_ASSERT_EQUAL_INT(1,migrate_down(migration));
+    TEST_ASSERT_EQUAL_INT(1,scalar("SELECT count(*) FROM sessions WHERE mfa_pending=0"));
+    TEST_ASSERT_EQUAL_INT(0,scalar("SELECT count(*) FROM sessions WHERE mfa_pending=1"));
+    TEST_ASSERT_EQUAL_INT(0,scalar("SELECT count(*) FROM pragma_table_info('users') WHERE name='totp_last_used_step'"));
+    TEST_ASSERT_EQUAL_INT(1,scalar("SELECT count(*) FROM users WHERE id=1 AND totp_enabled=1 AND totp_secret='existing-secret'"));
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_totp_replay_migration_preserves_enabled_accounts);
     RUN_TEST(test_mfa_upgrade_revokes_ambiguous_sessions_and_down_removes_challenges);
     RUN_TEST(test_valid_tracking_name_applies_reloads_and_rolls_back);
     RUN_TEST(test_double_quote_in_identifier_round_trips);

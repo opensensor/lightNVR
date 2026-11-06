@@ -139,6 +139,11 @@ int db_auth_update_user_account(int64_t user_id, const char *username,
  * @return 0 on success, non-zero on failure
  */
 int db_auth_change_password(int64_t user_id, const char *new_password);
+/* Atomic old-password verification, update, session/challenge/device revocation.
+ * NULL old_password is for an independently authorized administrator reset.
+ * -4 means the supplied old password is no longer valid. */
+int db_auth_change_password_verified(int64_t user_id, const char *new_password,
+                                     const char *old_password);
 
 /**
  * @brief Delete a user
@@ -231,11 +236,30 @@ int db_auth_set_password_lock(int64_t user_id, bool locked);
 int db_auth_create_session(int64_t user_id, const char *ip_address, const char *user_agent,
                           int expiry_seconds, char *token, size_t token_size);
 
+/* Credential-transition results distinguish denial, throttling and DB failure. */
+enum {
+    DB_AUTH_IDENTITY_ERROR = -1,
+    DB_AUTH_IDENTITY_INVALID = -2,
+    DB_AUTH_IDENTITY_LIMITED = -3,
+    DB_AUTH_IDENTITY_CONFLICT = -4
+};
+int db_auth_verify_totp_enrollment(int64_t user_id, const char *code, const char *keep_session);
+int db_auth_disable_totp(int64_t user_id, const char *keep_session);
+/* Exactly one of challenge/password identifies the password proof. Credential
+ * buffers are 33 bytes and are empty unless the entire transaction commits. */
+int db_auth_complete_totp_login(int64_t user_id, const char *code,
+        const char *challenge, const char *password, const char *ip, const char *agent,
+        int trusted_seconds, char session[33], char trusted[33]);
+int db_auth_create_password_session(int64_t user_id, const char *password,
+        const char *trusted_token, const char *ip, const char *agent, char session[33]);
+
 /* Password-verified challenges cannot authenticate requests. Each is bound to
  * its original client context, expires after five minutes, allows five checks,
  * and must be consumed exactly once before issuing an authenticated session. */
 int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
                                 const char *user_agent, char *token, size_t token_size);
+int db_auth_create_mfa_challenge_verified(int64_t user_id, const char *password,
+        const char *ip_address, const char *user_agent, char *token, size_t token_size);
 int db_auth_validate_mfa_challenge(const char *token, int64_t *user_id,
                                   const char *ip_address, const char *user_agent);
 int db_auth_consume_mfa_challenge(const char *token, int64_t user_id);
@@ -356,7 +380,7 @@ int db_auth_get_role_id(const char *role_name);
  * @param secret Buffer to store the base32-encoded TOTP secret
  * @param secret_size Size of the secret buffer
  * @param enabled Pointer to store whether TOTP is enabled
- * @return 0 on success (secret exists), -1 if no secret configured or error
+ * @return 0 on successful read (secret may be empty), -1 on missing user or error
  */
 int db_auth_get_totp_info(int64_t user_id, char *secret, size_t secret_size, bool *enabled);
 

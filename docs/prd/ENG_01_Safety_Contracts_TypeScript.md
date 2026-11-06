@@ -413,6 +413,20 @@ No native rebuild, camera soak, physical benchmark or future contract tests were
 run as part of that original restoration; subsequent local execution is recorded
 above and in the task log.
 
+### F1c password/TOTP follow-up
+
+Following merged quality PRs #812–#814, the next implementation hardens password
+changes and MFA state before expanding discovery. Password changes revoke sessions,
+pending challenges and remembered devices atomically. MFA enrollment/disable also
+revoke stale credentials while retaining the initiating owner's cookie session.
+TOTP uses durable account throttling and single-use time steps across inline and
+challenge login, with bounded pending enrollment and strict user-ID parsing.
+Basic and legacy-key compatibility is intentionally preserved. Migration 0094
+retains enabled secrets and authenticated sessions; unfinished enrollment restarts.
+See the [identity plan](../../engineering-identity-contracts-plan.md) for policy,
+validation and the remaining seven schemas/typed consumers. This behavior increment
+does not increase the 37 accepted operations or claim automated finding closure.
+
 ## 8. Related work
 
 - [Fleet 02: Scoped Authorization and Audit](FLEET_02_Scoped_Authorization_Audit.md)
