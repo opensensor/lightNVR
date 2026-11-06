@@ -536,3 +536,19 @@ UI suite: its three-field configuration was rejected by the now-complete guard.
 The fixture now preserves the real native response and overrides only its MFA
 scenario fields. The failure was reproduced locally before the correction; all
 three login cases pass afterward. Runtime validation is unchanged.
+
+### F2 component-browser CI follow-up
+
+PR #820 exposed three additional failures in the separate component-browser
+suite, which is excluded from `npm test`: plan location assignment, navigator
+location labels, and keyboard tree expansion. Their abbreviated `/api/locations`
+fixtures omitted required fields and used non-UUID identifiers. All three failures
+were reproduced locally. Shared fixture construction now supplies the complete
+native response and validates it before browser setup; linked plan references and
+assertions use valid UUIDs. Production guards remain unchanged.
+
+The exact shard-1 command,
+`npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'`,
+now passes all 69 tests across 12 suites. This is additional qualification beyond
+the 23 real-server contract browser cases above. The web testing guide now calls
+out this separate suite for API-adapter and consumer changes.

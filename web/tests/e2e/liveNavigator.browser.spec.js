@@ -4,6 +4,7 @@
  * Run with: npm --prefix web run test:e2e -- --testPathPatterns='liveNavigator\.browser\.spec\.js$'
  */
 const path = require('node:path');
+const { fleetLocations } = require('./fleetFixtures');
 
 const streams = [
   { camera_uuid: 'cam-1', name: 'Gate', availability: 'live', location_uuid: null },
@@ -30,8 +31,8 @@ async function openNavigator() {
   window.fetch = async (url, options = {}) => {
     const target = String(url);
     if (target === '/api/ui/workspaces') return json({});
-    if (target === '/api/locations') return json({ locations: [{ uuid: 'loc-1', name: 'Orchard', parent_uuid: null, sort_order: 0 }] });
-    if (target === '/api/live/plans') return json({ can_modify: true, plans: [{ uuid: 'p1', name: 'orchard48', location_uuid: 'loc-1',
+    if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
+    if (target === '/api/live/plans') return json({ can_modify: true, plans: [{ uuid: 'p1', name: 'orchard48', location_uuid: '00000000-0000-4000-8000-000000000001',
       cameras: [{ camera_uuid: 'cam-1', x: 0.2, y: 0.2 }, { camera_uuid: 'cam-2', x: 0.4, y: 0.4 }, { camera_uuid: 'cam-3', x: 0.6, y: 0.6 }] }] });
     if (target.startsWith('/api/live/layouts/') && options.method === 'PUT') {
       const body = JSON.parse(options.body);
