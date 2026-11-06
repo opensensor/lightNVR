@@ -911,8 +911,8 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             }
             if (attempted_event_url[0] != '\0' &&
                 strcmp(attempted_event_url, fallback_url) == 0) {
-                log_debug("ONVIF: Skipping already-tried event endpoint: %s",
-                          fallback_url);
+                log_debug("ONVIF: Skipping already-tried event endpoint: onvif/%s",
+                          fallback_services[i]);
                 continue;
             }
             log_info("ONVIF: Trying fallback event endpoint: onvif/%s", fallback_services[i]);
