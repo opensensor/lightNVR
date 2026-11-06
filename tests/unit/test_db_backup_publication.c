@@ -326,6 +326,36 @@ static void test_recovery_copy_failure_preserves_original_and_stops_publish(void
     }
 }
 
+static void test_recovery_copy_fsync_failure_preserves_original_and_stops_publish(void) {
+    for (int restore = 0; restore < 2; ++restore) {
+        corrupt_fixture();
+        fail_sync = true;
+        int result = replace(restore);
+        fail_sync = false;
+        TEST_ASSERT_EQUAL_INT(-1, result);
+        TEST_ASSERT_EQUAL_INT(0, publish_attempts);
+        assert_bytes(destination, "not-a-sqlite-database");
+        char wal[300]; snprintf(wal, sizeof(wal), "%s-wal", destination);
+        assert_bytes(wal, "operator-recovery-state");
+        assert_recovery_capture(false);
+    }
+}
+
+static void test_recovery_copy_directory_fsync_failure_preserves_original_and_stops_publish(void) {
+    for (int restore = 0; restore < 2; ++restore) {
+        corrupt_fixture();
+        fail_old_sync = true;
+        int result = replace(restore);
+        fail_old_sync = false;
+        TEST_ASSERT_EQUAL_INT(-1, result);
+        TEST_ASSERT_EQUAL_INT(0, publish_attempts);
+        assert_bytes(destination, "not-a-sqlite-database");
+        char wal[300]; snprintf(wal, sizeof(wal), "%s-wal", destination);
+        assert_bytes(wal, "operator-recovery-state");
+        assert_recovery_capture(false);
+    }
+}
+
 static void test_corrupt_recovery_copy_survives_failed_rename(void) {
     for (int restore = 0; restore < 2; ++restore) {
         corrupt_fixture();
@@ -360,6 +390,8 @@ int main(void) {
     RUN_TEST(test_old_database_sync_failure_prevents_publication);
     RUN_TEST(test_corrupt_database_recovery_files_are_retained_before_replacement);
     RUN_TEST(test_recovery_copy_failure_preserves_original_and_stops_publish);
+    RUN_TEST(test_recovery_copy_fsync_failure_preserves_original_and_stops_publish);
+    RUN_TEST(test_recovery_copy_directory_fsync_failure_preserves_original_and_stops_publish);
     RUN_TEST(test_corrupt_recovery_copy_survives_failed_rename);
     RUN_TEST(test_corrupt_destination_without_sidecars_can_be_replaced);
     return UNITY_END();
