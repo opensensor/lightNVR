@@ -44,15 +44,28 @@
 #include "utils/lpr_crypto.h"
 #include "ezxml.h"
 
-/* WS-Addressing action URIs for the ONVIF operations this file emits.
- * Strict ONVIF servers (Reolink, some Vivotek) reject requests that don't
- * carry a matching wsa:Action header and `action=` Content-Type parameter —
- * see #374. */
-#define ONVIF_ACTION_GET_SERVICES        "http://www.onvif.org/ver10/device/wsdl/GetServices"
-#define ONVIF_ACTION_CREATE_PULLPOINT    "http://www.onvif.org/ver10/events/wsdl/EventPortType/CreatePullPointSubscriptionRequest"
-#define ONVIF_ACTION_PULL_MESSAGES       "http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest"
-#define ONVIF_ACTION_RENEW               "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/RenewRequest"
-#define ONVIF_ACTION_UNSUBSCRIBE         "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeRequest"
+/* SOAP action identifiers are protocol metadata, not transport endpoints.
+ * Callers select an operation; the request layer resolves its URI.
+ * Keep these standardized http:// identifiers unchanged even over HTTPS. */
+typedef enum {
+    ONVIF_OPERATION_GET_SERVICES,
+    ONVIF_OPERATION_CREATE_PULLPOINT,
+    ONVIF_OPERATION_PULL_MESSAGES,
+    ONVIF_OPERATION_RENEW,
+    ONVIF_OPERATION_UNSUBSCRIBE,
+    ONVIF_OPERATION_COUNT
+} onvif_operation_t;
+
+static const char *onvif_operation_action(onvif_operation_t operation) {
+    static const char *const actions[ONVIF_OPERATION_COUNT] = {
+        [ONVIF_OPERATION_GET_SERVICES] = "http://www.onvif.org/ver10/device/wsdl/GetServices",
+        [ONVIF_OPERATION_CREATE_PULLPOINT] = "http://www.onvif.org/ver10/events/wsdl/EventPortType/CreatePullPointSubscriptionRequest",
+        [ONVIF_OPERATION_PULL_MESSAGES] = "http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest",
+        [ONVIF_OPERATION_RENEW] = "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/RenewRequest",
+        [ONVIF_OPERATION_UNSUBSCRIBE] = "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeRequest"
+    };
+    return (unsigned int)operation < ONVIF_OPERATION_COUNT ? actions[operation] : NULL;
+}
 
 /* Tapo cameras accept a ten-minute PullPoint lease and reject both the old
  * one-hour request and a request with no InitialTerminationTime (#567).
@@ -237,13 +250,15 @@ typedef struct {
 
 /*
  * Create ONVIF SOAP request with WS-Security (if credentials provided) and
- * WS-Addressing headers. `action` and `to` are the WS-Addressing action URI
- * and destination URL respectively; both are required (strict ONVIF servers
+ * WS-Addressing headers. The operation selects its action URI; `to` is the
+ * destination URL; both are required (strict ONVIF servers
  * such as Reolink reject requests missing either — #374).
  */
 static char *create_onvif_request(const char *username, const char *password,
                                   const char *request_body,
-                                  const char *action, const char *to) {
+                                  onvif_operation_t operation, const char *to) {
+    const char *action = onvif_operation_action(operation);
+    if (!action || !request_body) return NULL;
     bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
     char *security_header = NULL;
 
@@ -261,14 +276,13 @@ static char *create_onvif_request(const char *username, const char *password,
 
     if (!security_header) return NULL;
 
-    /* Build a WS-Addressing fragment if an action was provided. Using
+    /* Build the WS-Addressing fragment for the selected operation. Using
      * `urn:uuid:<v4>` for MessageID and leaving mustUnderstand off on To/Action
      * — cameras that ignore WS-Addressing shouldn't then fault because they
      * "didn't understand" an optional header. */
     char uuid[48] = {0};
     generate_uuid(uuid, sizeof(uuid));
 
-    const char *safe_action = action ? action : "";
     ezxml_t destination = ezxml_new("wsa:To");
     if (!destination) {
         free(security_header);
@@ -287,7 +301,7 @@ static char *create_onvif_request(const char *username, const char *password,
      * the security header, and the body. 2 KB of slack above those sizes is
      * plenty. */
     size_t envelope_size = strlen(request_body) + strlen(security_header)
-                           + strlen(safe_action) + strlen(destination_xml) + 2048;
+                           + strlen(action) + strlen(destination_xml) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
@@ -308,7 +322,7 @@ static char *create_onvif_request(const char *username, const char *password,
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
                 "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        uuid, destination_xml, safe_action, security_header, request_body);
+        uuid, destination_xml, action, security_header, request_body);
 
     free(security_header);
     free(destination_xml);
@@ -317,7 +331,7 @@ static char *create_onvif_request(const char *username, const char *password,
 
 /*
  * Core of one ONVIF HTTP exchange with a full URL (bypassing the base URL +
- * /onvif/ + service construction). `action` is the WS-Addressing action URI;
+ * /onvif/ + service construction). The operation resolves a WS-Addressing action URI;
  * it's also added as the `action=` parameter on the Content-Type header per
  * SOAP 1.2, which strict ONVIF servers require (#374).
  *
@@ -331,9 +345,11 @@ static char *create_onvif_request(const char *username, const char *password,
 static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
                                           const char *username,
                                           const char *password, const char *request_body,
-                                          const char *action,
+                                          onvif_operation_t operation,
                                           onvif_request_status_t *status) {
     if (status) memset(status, 0, sizeof(*status));
+    const char *action = onvif_operation_action(operation);
+    if (!action || !request_body) return NULL;
     if (!initialized || !handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
@@ -348,7 +364,7 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
     /* Use full_url as the WS-Addressing To, which is exactly what the request
      * is being POSTed to. */
     char *soap_request = create_onvif_request(username, password, request_body,
-                                              action, full_url);
+                                              operation, full_url);
     if (!soap_request) {
         log_error("Failed to create ONVIF request");
         return NULL;
@@ -359,17 +375,11 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
     curl_easy_setopt(handle, CURLOPT_POSTFIELDS, soap_request);
     curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE, strlen(soap_request));
 
-    /* Content-Type carries the SOAP 1.2 action parameter in addition to the
-     * charset. Fall back to the plain type when no action is provided. */
+    /* The same operation URI is used in SOAP 1.2 Content-Type and wsa:Action. */
     char content_type[512];
-    if (action && action[0] != '\0') {
-        snprintf(content_type, sizeof(content_type),
-                 "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"",
-                 action);
-    } else {
-        snprintf(content_type, sizeof(content_type),
-                 "Content-Type: application/soap+xml; charset=utf-8");
-    }
+    snprintf(content_type, sizeof(content_type),
+             "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"",
+             action);
 
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, content_type);
@@ -411,12 +421,12 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
         if (status) {
             log_debug("ONVIF request %s attempt failed (curl=%d, HTTP=%ld, elapsed=%.3fs, "
                       "new connections=%ld): %s",
-                      action ? action : "unknown", (int)res, http_code, elapsed,
+                      action, (int)res, http_code, elapsed,
                       new_connections, curl_easy_strerror(res));
         } else {
             log_error("ONVIF request %s failed (curl=%d, HTTP=%ld, elapsed=%.3fs, "
                       "new connections=%ld): %s",
-                      action ? action : "unknown", (int)res, http_code, elapsed,
+                      action, (int)res, http_code, elapsed,
                       new_connections, curl_easy_strerror(res));
         }
         free(chunk.memory);
@@ -425,7 +435,7 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
 
     if (http_code != 200 || chunk.size == 0) {
         log_error("ONVIF request %s failed (HTTP=%ld, response=%zu bytes, elapsed=%.3fs)",
-                  action ? action : "unknown", http_code, chunk.size, elapsed);
+                  action, http_code, chunk.size, elapsed);
         if (chunk.size > 0) {
             onvif_log_soap_fault(chunk.memory, chunk.size, "ONVIF Detection");
         }
@@ -439,10 +449,10 @@ static char *perform_onvif_request_locked(CURL *handle, const char *full_url,
 /* One-shot ONVIF request to a full URL. */
 static char *send_onvif_request_to_url(const char *full_url, const char *username,
                                        const char *password, const char *request_body,
-                                       const char *action) {
+                                       onvif_operation_t operation) {
     pthread_mutex_lock(&curl_mutex);
     char *response = perform_onvif_request_locked(curl_handle, full_url, username,
-                                                  password, request_body, action, NULL);
+                                                  password, request_body, operation, NULL);
     pthread_mutex_unlock(&curl_mutex);
     return response;
 }
@@ -450,7 +460,7 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
 // Send ONVIF request and get response
 static char *send_onvif_request(const char *url, const char *username, const char *password,
                                const char *request_body, const char *service,
-                               const char *action) {
+                               onvif_operation_t operation) {
     if (!initialized || !curl_handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
@@ -464,7 +474,7 @@ static char *send_onvif_request(const char *url, const char *username, const cha
         return NULL;
     }
 
-    return send_onvif_request_to_url(full_url, username, password, request_body, action);
+    return send_onvif_request_to_url(full_url, username, password, request_body, operation);
 }
 
 /* Return the local name of an ezxml element (strips any "prefix:" prefix). */
@@ -640,9 +650,10 @@ static bool is_transport_drop(const onvif_request_status_t *status) {
  * the retry interval even after this burst is exhausted. */
 static char *send_subscription_request(onvif_subscription_t *subscription,
                                        const char *request_body,
-                                       const char *action,
+                                       onvif_operation_t operation,
                                        bool *transport_dropped) {
     if (transport_dropped) *transport_dropped = false;
+    const char *action = onvif_operation_action(operation);
     if (!subscription || !request_body || !action) return NULL;
 
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
@@ -667,7 +678,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
                                                     subscription->subscription_address,
                                                     subscription->username,
                                                     subscription->password,
-                                                    request_body, action, &status);
+                                                    request_body, operation, &status);
             if (response || !is_transport_drop(&status) ||
                 attempts >= ONVIF_PULL_DROP_MAX_ATTEMPTS || is_shutdown_initiated()) {
                 break;
@@ -704,7 +715,7 @@ static char *send_subscription_request(onvif_subscription_t *subscription,
     return send_onvif_request(subscription->camera_url,
                               subscription->username,
                               subscription->password,
-                              request_body, last_slash + 1, action);
+                              request_body, last_slash + 1, operation);
 }
 
 /* subscription_mutex must be held by the caller. */
@@ -715,7 +726,7 @@ static bool renew_subscription_locked(onvif_subscription_t *subscription) {
         "</Renew>";
 
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_ACTION_RENEW, NULL);
+                                               ONVIF_OPERATION_RENEW, NULL);
     if (!response) return false;
 
     int lease_seconds = subscription_lease_seconds(response);
@@ -736,7 +747,7 @@ static void unsubscribe_subscription_locked(onvif_subscription_t *subscription) 
     const char *request_body =
         "<Unsubscribe xmlns=\"http://docs.oasis-open.org/wsn/b-2\"/>";
     char *response = send_subscription_request(subscription, request_body,
-                                               ONVIF_ACTION_UNSUBSCRIBE, NULL);
+                                               ONVIF_OPERATION_UNSUBSCRIBE, NULL);
     if (response) {
         free(response);
         log_debug("Unsubscribed ONVIF PullPoint for %s", subscription->camera_url);
@@ -765,7 +776,7 @@ static char *discover_event_service_url(const char *url, const char *username, c
 
     // GetServices is always sent to the standard device management endpoint
     char *response = send_onvif_request(url, username, password, request_body,
-                                        "device_service", ONVIF_ACTION_GET_SERVICES);
+                                        "device_service", ONVIF_OPERATION_GET_SERVICES);
     if (!response) {
         log_warn("ONVIF: GetServices to device_service endpoint failed");
         return NULL;
@@ -895,7 +906,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         safe_strcpy(attempted_event_url, discovered_url,
                     sizeof(attempted_event_url), 0);
         response = send_onvif_request_to_url(discovered_url, username, password, request_body,
-                                              ONVIF_ACTION_CREATE_PULLPOINT);
+                                              ONVIF_OPERATION_CREATE_PULLPOINT);
         free(discovered_url);
     }
 
@@ -917,7 +928,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             }
             log_info("ONVIF: Trying fallback event endpoint: onvif/%s", fallback_services[i]);
             response = send_onvif_request(url, username, password, request_body,
-                                          fallback_services[i], ONVIF_ACTION_CREATE_PULLPOINT);
+                                          fallback_services[i], ONVIF_OPERATION_CREATE_PULLPOINT);
         }
     }
 
@@ -1492,7 +1503,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
         log_debug("ONVIF Detection: Sending PullMessages to subscription endpoint");
         response = send_subscription_request(subscription, request_body,
-                                             ONVIF_ACTION_PULL_MESSAGES,
+                                             ONVIF_OPERATION_PULL_MESSAGES,
                                              &transport_dropped);
     } else {
         // Legacy fallback: extract last path component and re-append under /onvif/
@@ -1504,7 +1515,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
                                          subscription->password,
                                          request_body,
                                          service,
-                                         ONVIF_ACTION_PULL_MESSAGES);
+                                         ONVIF_OPERATION_PULL_MESSAGES);
             free(service);
         }
     }

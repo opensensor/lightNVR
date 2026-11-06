@@ -470,3 +470,42 @@ full local CodeQL suite. GitHub now marks both go2rtc alerts #351/#352 fixed.
 F2 fleet reads and selectors follows this review; S1 signaling/audio authorization
 will be delivered separately. No credential-encryption migration or Rust work is
 included, and Basic/legacy-key compatibility is retained.
+
+## ONVIF operation metadata and loopback transport review (2026-11-06)
+
+The seven non-HTTPS findings #270/#271/#272/#334/#335/#336/#337 point to
+WS-Addressing action identifiers, not camera destinations. The request helpers
+now accept an operation enum and resolve the five standard action URIs from one
+registry. Both the SOAP header and Content-Type action use that registry;
+unknown operations fail before transfer. The literal protocol identifiers remain
+unchanged, including their `http://` spelling. Request endpoints remain separate.
+
+The watchdog's #345 finding is handled separately: its URL is one of two explicit
+loopback formats, selected from the effective listener transport. HTTP listeners,
+HTTPS listeners and configured-TLS/plain-listener fallback retain their existing
+behavior. This does not change the probe's credential-free local trust boundary
+or TLS verification exception.
+
+An application-only Release build analyzed with CodeQL 2.27.4 / cpp-queries
+1.10.0 reproduces nine `cpp/non-https-url` findings before the change and one
+afterward. All eight listed findings disappear locally; the remaining finding is
+`onvif_discovery.c`'s HTTP/HTTPS probing. The query treats curl option payloads as
+potential URLs, including SOAP data. This refactor improves the distinction
+between protocol metadata and endpoints; the alert reduction is not evidence of
+new transport encryption. No suppressions, query exclusions, alert dismissals or
+protocol-string obfuscation are introduced.
+
+Wire regressions exercise all five operations, exact Content-Type/wsa:Action,
+request target and XML-escaped destination; HTTPS envelope checks preserve the
+same action identifiers. Invalid operations cannot initiate a connection.
+Existing redirect credential-protection and subscription retry tests remain.
+Camera HTTP compatibility, HTTPS peer/hostname verification and the no-redirect
+policy are unchanged. GitHub alert closure requires the merged-main scan.
+
+Local qualification: 92 native ci-unit tests and 68 ASan/UBSan ci-sanitizer
+tests pass, plus the focused ONVIF polling-recovery test. The final wire and
+health-probe tests were rerun after test additions. Documentation checks pass.
+The before/after CodeQL builds use identical Release options with optional
+ML/go2rtc/MQTT/Sentry integrations disabled; the changed application sources are
+included in both databases. This is a local comparison, not a claim that every
+build configuration or hosted main scan has been qualified.
