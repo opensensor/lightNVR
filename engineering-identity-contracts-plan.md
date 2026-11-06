@@ -1,9 +1,9 @@
 # F1: Identity self-service and MFA contracts
 
 Status: F1a boundary review in progress; the session/MFA security correction is
-implemented for review, but the 11-operation contract expansion is not accepted.
-Baseline main `6ddf7776`, following merged PRs #805/#806, plus the recording
-security correction in PR #807.
+implemented in [PR #808](https://github.com/opensensor/lightNVR/pull/808), but the
+11-operation contract expansion is not accepted. Baseline main `98c7a9ac`,
+following merged PRs #805/#806/#807.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
@@ -127,3 +127,13 @@ embedding and documentation links pass. Optimized Release gcov/LCOV intersects
 92/93 changed executable C lines (98.9%) across the auth database and two handlers.
 This is a local changed-line measurement, not branch coverage or a hosted Codecov
 result. Receipts are under build/f1-qualified-*, build/f1-fault-* and build/f1-pr/.
+
+
+After PR #807 merged, PR #808 targets main and contains only the identity
+correction and plan updates. Hosted validation at `72c0fd02` passed
+[Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42233280978),
+[Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42233285534),
+[Static Analysis](https://github.com/opensensor/lightNVR/actions/runs/42233289267)
+and [CodeQL](https://github.com/opensensor/lightNVR/actions/runs/42233293791).
+The subsequent main merge and status reconciliation do not alter native or web
+application sources; normal main-targeted PR checks rerun on the updated head.
