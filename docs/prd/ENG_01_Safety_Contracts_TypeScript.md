@@ -2,10 +2,12 @@
 
 **Status**: TS/TSX migration and the first permission-aware API hardening wave
 are merged in [PR #804](https://github.com/opensensor/lightNVR/pull/804).
-Recording pathname/export integrity is the active follow-up; identity/MFA
-contract expansion is planned next. Rust remains deferred.
+Recording pathname/export integrity is merged in [PR #805](https://github.com/opensensor/lightNVR/pull/805),
+and minimatch remediation in [PR #806](https://github.com/opensensor/lightNVR/pull/806).
+The recording CodeQL correction is under review in [PR #807](https://github.com/opensensor/lightNVR/pull/807);
+identity/MFA boundary review and contract expansion follow. Rust remains deferred.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-06 against main at `b9d3ac6194e412122c45943e6161d526e9e8d075`.
+**Reconciled**: 2026-11-06 against main at `6ddf77764e1f5553a839ff4c19ad456c3a334480`.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
@@ -22,7 +24,8 @@ HTTP response cleanup; the temporary parent patch delivery has been removed.
 Main at `b9d3ac61` has successful hosted [Integration Tests](https://github.com/opensensor/lightNVR/actions/runs/42215794378),
 [Sanitizer Build](https://github.com/opensensor/lightNVR/actions/runs/42215794273),
 and [Static Analysis](https://github.com/opensensor/lightNVR/actions/runs/42215794248).
-These results predate the active recording-integrity changes.
+These historical results predate PR #805. See the expansion plan's security
+follow-up receipt for the current correction and its acceptance requirements.
 
 ## 1. History and current direction
 
