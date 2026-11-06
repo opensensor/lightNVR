@@ -30,7 +30,7 @@ export function cameraQueryFixture(cameras: Pick<Camera, 'camera_uuid' | 'name'>
     selector_version: 1, queue_version: 1, preview: false, page: 1, page_size: 200,
     total: cameras.length, total_pages: cameras.length ? 1 : 0,
     sort_by: 'camera_uuid', sort_order: 'asc', queues: [],
-    cameras: cameras.map(camera => ({
+    cameras: cameras.map((camera): Camera => ({
       camera_uuid: camera.camera_uuid, name: camera.name, address: 'fixture.invalid',
       enabled: true, recording_mode: 'off', health: 'up', availability: 'live',
       health_changed_at: 1, last_frame_ts: 1, first_video_at: 1, last_recording_at: 0,
