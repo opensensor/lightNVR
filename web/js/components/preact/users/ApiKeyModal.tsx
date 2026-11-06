@@ -1,3 +1,4 @@
+import { listCameraCollections, listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.ts';
 import { formatLocalDateTime } from '../../../utils/date-utils.ts';
@@ -199,9 +200,9 @@ export function ApiKeyModal({ currentUser, getAuthHeaders, onClose }: ApiKeyModa
       const [actionResponse, tokenResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
         fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON<ApiTokensResponse>(`/api/authorization/users/${encodeURIComponent(currentUser.id)}/tokens`, { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessCollectionsResponse>('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessLocationsResponse>('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AccessTagsResponse>('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
+        listCameraCollections({headers: getAuthHeaders(), cache: 'no-store'}),
+        listFleetLocations({headers: getAuthHeaders(), cache: 'no-store'}),
+        listFleetTags({headers: getAuthHeaders(), cache: 'no-store'}),
       ]);
       setActions(selectableTokenActions(actionResponse.actions || []));
       setTokens(tokenResponse.tokens || []);

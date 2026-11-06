@@ -1,3 +1,4 @@
+import { listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 /**
  * StorageTab — Storage path, HLS path, retention, auto-delete, thumbnails,
  * DB path + backup schedule + post-backup script.
@@ -623,8 +624,8 @@ function StoragePoliciesPanel({ canModifySettings, t }: StoragePanelProps) {
   const policiesQuery = useQuery<StoragePoliciesResponse>(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
   const targetsQuery = useQuery<StorageTargetsResponse>(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
   const poolsQuery = useQuery<StoragePoolsResponse>(['storage-pools'], '/api/storage-pools', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
-  const locationsQuery = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
-  const tagsQuery = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
+  const locationsQuery = useQuery<FleetLocationsResponse>({queryKey: ['fleet-locations'], queryFn: ({signal}) => listFleetLocations({signal}), staleTime: 60000 });
+  const tagsQuery = useQuery<FleetTagsResponse>({queryKey: ['fleet-tags'], queryFn: ({signal}) => listFleetTags({signal}), staleTime: 60000 });
   const [editor, setEditor] = useState<StoragePolicyEditorState | null>(null);
   const [busyKey, setBusyKey] = useState('');
   const [deletePolicyCandidate, setDeletePolicyCandidate] = useState<StoragePolicy | null>(null);

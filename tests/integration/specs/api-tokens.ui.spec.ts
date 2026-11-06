@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { USERS, login } from '../fixtures/test-fixtures';
+import { collectionFixture, collectionsFixture, contractFixture } from '../fixtures/fleet-contracts';
+import { validateFleetLocationsResponse, validateFleetTagsResponse } from '../../../web/generated/api/validators.js';
+
+const northCollection = '00000000-0000-4000-8000-000000000010';
 
 const enforcedKeys = [
   'live.view', 'recordings.replay', 'recordings.export', 'snapshot.create',
@@ -33,11 +37,9 @@ test.describe('API token permission catalog @ui @users', () => {
         const responses: Record<string, unknown> = {
           '/api/auth/users': { users: [admin] },
           '/api/authorization/actions': { actions, count: actions.length },
-          '/api/camera-collections': { collections: [
-            { uuid: 'north', name: 'North cameras', shared: true, effective_count: 2 },
-          ] },
-          '/api/locations': { locations: [] },
-          '/api/camera-tags': { tags: [] },
+          '/api/camera-collections': collectionsFixture([collectionFixture(northCollection, 'North cameras', 2)]),
+          '/api/locations': contractFixture(validateFleetLocationsResponse, { locations: [], count: 0 }),
+          '/api/camera-tags': contractFixture(validateFleetTagsResponse, { tags: [], count: 0 }),
         };
         if (path === '/api/authorization/users/1/tokens') {
           if (route.request().method() === 'POST') {
@@ -77,7 +79,7 @@ test.describe('API token permission catalog @ui @users', () => {
       for (const scopeType of ['collection', 'selector']) {
         await scope.selectOption(scopeType);
         if (scopeType === 'collection') {
-          await dialog.getByRole('combobox', { name: /^Shared camera collection/ }).selectOption('north');
+          await dialog.getByRole('combobox', { name: /^Shared camera collection/ }).selectOption(northCollection);
         }
         await expect(createButton).toBeEnabled();
         for (const key of ['storage.configure', 'events.configure', 'users.manage', 'system.admin']) {

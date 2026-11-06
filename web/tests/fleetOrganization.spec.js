@@ -66,7 +66,7 @@ describe('fleet organization helpers', () => {
       locationUuid: 'location-a',
       tagOperation: 'add',
       tagUuids: ['new'],
-    }, fetcher);
+    }, fetcher, undefined, uuid => fetcher(`/api/cameras/${uuid}/tags`));
 
     expect(result.succeeded.map((camera) => camera.name)).toEqual(['A']);
     expect(result.failed).toHaveLength(1);

@@ -4,6 +4,7 @@
  * Run with: npm --prefix web run test:e2e -- --testPathPatterns='planEditor\.browser\.spec\.js$'
  */
 const path = require('node:path');
+const { fleetLocations } = require('./fleetFixtures');
 
 const fixturePlan = {
   uuid: 'plan-1', name: 'Orchard', revision: 1, canvas_width: 1200, canvas_height: 800,
@@ -34,7 +35,7 @@ async function openPlanBrowser() {
       return json({ ...plan, ...body, revision: plan.revision + 1 });
     }
     if (target.startsWith('/api/live/plans')) return json({ plans: [plan], can_modify: true });
-    if (target === '/api/locations') return json({ locations: [{ uuid: 'loc-1', name: 'Orchard', parent_uuid: null, sort_order: 0 }] });
+    if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
     if (target.startsWith('/api/cameras/') && options.method === 'PUT') {
       window.calls.locations.push({ url: target, body: JSON.parse(options.body) });
       return json({});
@@ -314,11 +315,11 @@ it('widens the field of view from the wedge handle and links the plan to a locat
     await page.keyboard.press('=');
     expect(await fieldNumber(page, '-fov-number', 125)).toBe(125);
 
-    await page.locator('.live-plan-location-field select').selectOption('loc-1');
+    await page.locator('.live-plan-location-field select').selectOption('00000000-0000-4000-8000-000000000001');
     await page.getByRole('button', { name: 'live.plan.save', exact: true }).click();
     await page.waitForFunction(() => window.calls.puts.length === 1);
     const [body] = await page.evaluate(() => window.calls.puts);
-    expect(body.location_uuid).toBe('loc-1');
+    expect(body.location_uuid).toBe('00000000-0000-4000-8000-000000000001');
     expect(body.cameras[0]).toMatchObject({ camera_uuid: 'cam-1', fov: 125 });
 
     // Back in view mode, offer to put the plan's cameras in that location.
@@ -326,7 +327,7 @@ it('widens the field of view from the wedge handle and links the plan to a locat
     await assign.click();
     await page.waitForFunction(() => window.calls.locations.length === 1);
     expect(await page.evaluate(() => window.calls.locations)).toEqual([{
-      url: '/api/cameras/cam-1/location', body: { location_uuid: 'loc-1' },
+      url: '/api/cameras/cam-1/location', body: { location_uuid: '00000000-0000-4000-8000-000000000001' },
     }]);
   } finally {
     await browser.close();

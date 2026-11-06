@@ -4,6 +4,7 @@
  * Run with: npm --prefix web run test:e2e -- --testPathPatterns='keyboardAccess\.browser\.spec\.js$'
  */
 const path = require('node:path');
+const { fleetLocations } = require('./fleetFixtures');
 
 const FIXTURE = `
   import { h, render, Fragment } from 'preact';
@@ -42,10 +43,10 @@ const FIXTURE = `
   const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url) => {
     if (String(url) === '/api/locations') {
-      return json({ locations: [
-        { uuid: 'loc-1', name: 'Orchard', parent_uuid: null, type: 'site' },
-        { uuid: 'loc-2', name: 'Packing', parent_uuid: 'loc-1', type: 'building' },
-      ] });
+      return json(${JSON.stringify(fleetLocations([
+        { uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard', child_count: 1 },
+        { uuid: '00000000-0000-4000-8000-000000000002', name: 'Packing', parent_uuid: '00000000-0000-4000-8000-000000000001', type: 'building' },
+      ]))});
     }
     return json({});
   };

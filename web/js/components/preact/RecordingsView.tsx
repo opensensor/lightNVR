@@ -1,3 +1,4 @@
+import { listCameraCollections } from '../../api/fleet.ts';
 /**
  * LightNVR Web Interface RecordingsView Component
  * Preact component for the recordings page
@@ -88,9 +89,7 @@ function clearStoredSelectedRecordings() {
 export function RecordingsView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const { data: collectionData } = useQuery<RecordingsCollectionsResponse>(
-    ['camera-collections'], '/api/camera-collections', {}, { staleTime: 30000 }
-  );
+  const { data: collectionData } = useQuery<RecordingsCollectionsResponse>({queryKey: ['camera-collections'], queryFn: ({signal}) => listCameraCollections({signal}), staleTime: 30000 });
   const collections = useMemo(
     () => collectionData?.collections || [],
     [collectionData]

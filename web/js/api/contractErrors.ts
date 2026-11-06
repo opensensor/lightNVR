@@ -1,9 +1,10 @@
 /** Only stable operation names enter error messages; never URLs or wire data. */
 export type StreamOperation = 'listStreams' | 'listStreamSummaries' | 'getStreamFull' | 'updateStream';
 
+import type { FleetOperation } from './fleet.ts';
 import type { AuthenticationOperation } from './authentication.ts';
 
-type ContractOperation = AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+type ContractOperation = FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';

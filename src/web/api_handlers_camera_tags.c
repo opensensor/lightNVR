@@ -407,7 +407,7 @@ void handle_post_camera_tag_merge(const http_request_t *req,
     free(json);
 }
 
-static void set_camera_assignments_json(http_response_t *res,
+static void set_camera_assignments_json(const http_request_t *req, http_response_t *res,
                                         const char *camera_uuid) {
     camera_tag_t tags[CAMERA_TAG_MAX_ASSIGNMENTS];
     int count = db_camera_tag_list_for_camera(
@@ -420,6 +420,17 @@ static void set_camera_assignments_json(http_response_t *res,
         http_response_set_json_error(res, 500, "Failed to list camera tags");
         return;
     }
+    /* Use the same visible inventory as the tag catalog. A tag assigned to
+     * this camera must not disclose how many hidden cameras also use it. */
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    bool all_fleet = false;
+    if (!load_visible_cameras(req, res, &cameras, &camera_count, &all_fleet)) return;
+    if (!all_fleet) {
+        for (int i = 0; i < count; i++)
+            tags[i].camera_count = visible_tag_camera_count(cameras, camera_count, tags[i].uuid);
+    }
+    free(cameras);
     cJSON *root = cJSON_CreateObject();
     cJSON *items = cJSON_CreateArray();
     if (!root || !items) {
@@ -457,7 +468,7 @@ void handle_get_camera_tag_assignments(const http_request_t *req,
     if (!httpd_authorize_camera_identity_action_with_context(
             req, res, AUTHZ_LIVE_VIEW, camera_uuid, NULL, &(user_t){0},
             &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) return;
-    set_camera_assignments_json(res, camera_uuid);
+    set_camera_assignments_json(req, res, camera_uuid);
 }
 
 void handle_put_camera_tag_assignments(const http_request_t *req,
@@ -502,5 +513,5 @@ void handle_put_camera_tag_assignments(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    set_camera_assignments_json(res, camera_uuid);
+    set_camera_assignments_json(req, res, camera_uuid);
 }

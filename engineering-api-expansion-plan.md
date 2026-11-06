@@ -60,13 +60,10 @@ F1..F14,F16 -> F15
 - **ownership**: Auth/TOTP handlers, password handling in `api_handlers_users_backend_agnostic.c` and tests; Login/AuthGate/TOTP modal and SettingsView self-service consumers.
 - **description**: Sessions/trusted-devices list/revoke; login TOTP completion; user TOTP setup/verify/disable/status; password changes and legacy GET `/logout`. Distinguish legacy keys from scoped tokens.
 - **validation**: Owner/other-user/admin/token matrix, challenge expiry/replay, actual revocation, secret exclusion and denied no-effects.
-- **status**: MFA/session preflight merged in PR #808. F1b and the four-route
-  portion of F1d now implement session/device lifecycle, schemas and Settings
-  validation for review (37 covered operations / 34 paths; 203 residual). The
-  F1c password/TOTP behavior is implemented for review with preserved Basic/key
-  compatibility, durable replay/throttling and atomic revocation. The remaining
-  seven identity schemas and typed consumers are implemented for review on #818
-  (44 covered operations / 41 paths; 196 residual). See
+- **status**: Complete and merged: #808 preflight, #809 session/device lifecycle,
+  #816 password/TOTP behavior, #819 remaining identity contracts and browser
+  consumers. Generated-validator quality cleanup merged in #818. F1 acceptance
+  reached 44 operations / 41 paths, with 196 residual routes. See the
   [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors
@@ -74,7 +71,11 @@ F1..F14,F16 -> F15
 - **ownership**: Fleet query/view/collection/location/tag read handlers and adapters.
 - **description**: Fleet camera query, selector preview, views, locations, tags and collection list/detail/members; consistent loaded inventory and existing evaluator.
 - **validation**: Rows/facets/counts, same-camera conjunctions, private/shared collections, empty/stale selectors and token intersections; include populated location/tag trees.
-- **status**: Not started
+- **status**: Merged in PR #820: thirteen reads/queries, generated types and
+  runtime guards, validated consumers and scoped disclosure regressions. Contract
+  coverage is now 57 operations / 54 paths, with 183 residual routes. Includes
+  fixes for camera-tag count disclosure and incomplete saved-view iteration.
+
 
 ### F3: Identity administration, policy and audit
 - **depends_on**: [F1]
@@ -471,6 +472,87 @@ F2 fleet reads and selectors follows this review; S1 signaling/audio authorizati
 will be delivered separately. No credential-encryption migration or Rust work is
 included, and Basic/legacy-key compatibility is retained.
 
+
+## S1 next implementation boundary (2026-11-06)
+
+Inspection after #818/#819 changes the starting assumption: WebRTC and MSE now
+use the same-origin `/go2rtc` proxy (`settings-utils.ts`), and generated go2rtc
+HTTP configuration binds to loopback. The remaining gap is authorization within
+that transport. `go2rtc_proxy_authorize_request` checks `live.view` for WebRTC,
+WebSocket and HLS; the WebSocket relay forwards frames after its initial check.
+Neither fact establishes separate `audio.listen` / `audio.talk` enforcement.
+The generated RTSP listener still binds all interfaces, and administrator config
+overrides can change exposure. These are explicit deployment boundaries to resolve.
+
+Keep S1 separate from fleet schema changes and deliver it in this dependency order:
+
+1. Build an owned audio/video source and go2rtc fixture. Reproduce listen/talk
+   negotiation with live-only, listen-only, talk-only and combined authority,
+   including scoped tokens, substreams and both HTTP/WebSocket paths. Inventory
+   native HLS and direct RTSP as alternative media paths before choosing enforcement.
+2. Enforce media directions at negotiation with the existing camera evaluator.
+   Use the actual SDP/media parser or a constrained transport protocol; do not
+   trust browser flags or query parameters alone. Unsupported alternate message
+   types must not bypass the checked camera or requested audio direction.
+3. Bound established-connection authority. Test session/token expiry, revocation
+   and lost owner permissions against an already playing peer. A handshake-only
+   check is insufficient; document and test any bounded revocation delay.
+4. Resolve direct listener/config-override exposure and preserve normal video-only
+   playback plus authorized audio. Keep Basic and legacy-key authentication.
+   If enforcement needs the maintained fork, review its change and parent pin
+   separately, with real media and reconnect evidence before claiming isolation.
+
+S1 is not yet implemented or qualified. Keep the authorization action catalog's
+unenforced status until the bypass and established-session tests pass. Fleet
+organization writes (F4) and identity administration/audit (F3) remain the next
+contract families after this security boundary.
+
+
+## F2 local qualification receipt (2026-11-06)
+
+Thirteen read/query operations, fifteen additional exported runtime guards and
+validated consumers are implemented for review. Native regressions cover the
+saved-view SQLite loop; scoped HTTP tests cover hidden-camera tag totals on GET
+and PUT. All 93 native ci-unit tests and 69 ASan/UBSan ci-sanitizer tests pass.
+Changed executable C lines are covered 13/13 (3 saved-view and 10 tag-handler
+lines); this is line coverage, not exhaustive branch/fault coverage.
+
+All 852 frontend tests pass. Ten generator/tooling tests pass, including 7,696
+independent comparisons across 77 guards against unmodified Ajv. Type checks,
+lint, generated drift checks, documentation links and production asset isolation
+pass. The full local CodeQL quality suite reports zero findings across 471 tracked
+JS/TS/JSON inputs. Default validator assets are 496,372 raw bytes / 52,937 gzip
+bytes, up from F1's approximately 355.83 / 39.95 kB. Target hardware resource
+qualification remains open; these are workstation measurements.
+
+All 86 real-server API cases pass. The browser suite's existing 21 cases and
+both new fleet cases pass. The fleet
+cases reject malformed rows/catalogs, restore real data on Retry and keep hidden
+camera searches empty. An initial single-letter search assertion was corrected
+to use the hidden camera UUID because search also matches UUIDs and addresses.
+
+Merged-main Integration Tests exposed a separate stale mock in the legacy login
+UI suite: its three-field configuration was rejected by the now-complete guard.
+The fixture now preserves the real native response and overrides only its MFA
+scenario fields. The failure was reproduced locally before the correction; all
+three login cases pass afterward. Runtime validation is unchanged.
+
+### F2 component-browser CI follow-up
+
+PR #820 exposed three additional failures in the separate component-browser
+suite, which is excluded from `npm test`: plan location assignment, navigator
+location labels, and keyboard tree expansion. Their abbreviated `/api/locations`
+fixtures omitted required fields and used non-UUID identifiers. All three failures
+were reproduced locally. Shared fixture construction now supplies the complete
+native response and validates it before browser setup; linked plan references and
+assertions use valid UUIDs. Production guards remain unchanged.
+
+The exact shard-1 command,
+`npm --prefix web run test:e2e -- --testPathPatterns='\.browser\.spec\.js$'`,
+now passes all 69 tests across 12 suites. This is additional qualification beyond
+the 23 real-server contract browser cases above. The web testing guide now calls
+out this separate suite for API-adapter and consumer changes.
+
 ## ONVIF operation metadata and loopback transport review (2026-11-06)
 
 The seven non-HTTPS findings #270/#271/#272/#334/#335/#336/#337 point to
@@ -509,3 +591,13 @@ The before/after CodeQL builds use identical Release options with optional
 ML/go2rtc/MQTT/Sentry integrations disabled; the changed application sources are
 included in both databases. This is a local comparison, not a claim that every
 build configuration or hosted main scan has been qualified.
+
+
+### F2 merged checkpoint
+
+PR #820 is merged at `94b628a5`. Its final full-page fixture correction also
+reproduced and repaired the four API-token catalog / favorites-collection
+failures, with all ten affected full-page cases and test type checking passing.
+The previously failing integration shard subsequently passed in hosted CI.
+F2 is complete; #821 remains the separately reviewed ONVIF metadata/loopback
+cleanup. S1 signaling/audio enforcement remains the next security slice.

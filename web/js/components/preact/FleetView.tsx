@@ -1,5 +1,6 @@
+import { listCameraCollections, listFleetLocations, listFleetTags, listFleetViews, queryFleetCameras } from '../../api/fleet.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON, useQuery } from '../../query-client.ts';
+import { useQuery } from '../../query-client.ts';
 import { useI18n } from '../../i18n.ts';
 import { validateSession } from '../../utils/auth-utils.ts';
 import { LoadingIndicator } from './LoadingIndicator.tsx';
@@ -20,8 +21,7 @@ import {
   fleetStateFromOperationalQueue,
   fleetStateFromSavedView,
   readFleetUrlState,
-  writeFleetUrlState,
-} from './fleet/fleetQuery.ts';
+  writeFleetUrlState } from './fleet/fleetQuery.ts';
 import type { ComponentChildren } from 'preact';
 import type {
   BulkOrganizationResult,
@@ -35,8 +35,7 @@ import type {
   FleetState,
   FleetStateChange,
   FleetTagsResponse,
-  Translate,
-} from '../../types/fleet.ts';
+  Translate } from '../../types/fleet.ts';
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -58,8 +57,7 @@ function StatCard({ label, value, tone = 'default' }: StatCardProps) {
     default: 'border-border',
     success: 'border-[hsl(var(--success)/0.55)]',
     warning: 'border-[hsl(var(--warning)/0.65)]',
-    danger: 'border-[hsl(var(--danger)/0.55)]',
-  };
+    danger: 'border-[hsl(var(--danger)/0.55)]' };
   return (
     <div className={`rounded-lg border-s-4 bg-card p-4 shadow-sm ${tones[tone]}`}>
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
@@ -177,48 +175,26 @@ export function FleetView({ onEditCamera }: FleetViewProps) {
 
   const { data, error, isLoading, isFetching, refetch } = useQuery<FleetQueryResponse>({
     queryKey: ['fleet-cameras', requestBody],
-    queryFn: ({ signal }) => fetchJSON<FleetQueryResponse>('/api/fleet/cameras/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal,
-      timeout: 20000,
-      retries: 1,
-    }),
+    queryFn: ({ signal }) => queryFleetCameras(requestBody, {headers: { 'Content-Type': 'application/json' }, signal, timeout: 20000, retries: 1}),
     staleTime: 15000,
     refetchInterval: 30000,
-    placeholderData: (previousData) => previousData,
-  });
+    placeholderData: (previousData) => previousData });
 
   const {
-    data: locationData,
+    data: locationData, error: locationsError,
     isLoading: locationsLoading,
-    refetch: refetchLocations,
-  } = useQuery<FleetLocationsResponse>(['fleet-locations'], '/api/locations', {}, {
-    enabled: isAdmin,
-    staleTime: 60000,
-  });
+    refetch: refetchLocations } = useQuery<FleetLocationsResponse>({queryKey: ['fleet-locations'], queryFn: ({signal}) => listFleetLocations({signal}), enabled: isAdmin, staleTime: 60000 });
   const {
-    data: tagData,
+    data: tagData, error: tagsError,
     isLoading: tagsLoading,
-    refetch: refetchTags,
-  } = useQuery<FleetTagsResponse>(['fleet-tags'], '/api/camera-tags', {}, {
-    enabled: isAdmin,
-    staleTime: 60000,
-  });
+    refetch: refetchTags } = useQuery<FleetTagsResponse>({queryKey: ['fleet-tags'], queryFn: ({signal}) => listFleetTags({signal}), enabled: isAdmin, staleTime: 60000 });
   const {
-    data: collectionData,
+    data: collectionData, error: collectionsError,
     isLoading: collectionsLoading,
-    refetch: refetchCollections,
-  } = useQuery<CameraCollectionsResponse>(['camera-collections'], '/api/camera-collections', {}, {
-    staleTime: 30000,
-  });
+    refetch: refetchCollections } = useQuery<CameraCollectionsResponse>({queryKey: ['camera-collections'], queryFn: ({signal}) => listCameraCollections({signal}), staleTime: 30000 });
   const {
-    data: savedViewsData,
-    refetch: refetchSavedViews,
-  } = useQuery<FleetSavedViewsResponse>(['fleet-saved-views'], '/api/fleet/views', {}, {
-    staleTime: 30000,
-  });
+    data: savedViewsData, error: savedViewsError,
+    refetch: refetchSavedViews } = useQuery<FleetSavedViewsResponse>({queryKey: ['fleet-saved-views'], queryFn: ({signal}) => listFleetViews({signal}), staleTime: 30000 });
 
   const updateState = useCallback<FleetStateChange>((changes, resetPage = true) => {
     setState((current) => ({ ...current, ...changes, page: resetPage ? 1 : (changes.page ?? current.page) }));
@@ -229,8 +205,7 @@ export function FleetView({ onEditCamera }: FleetViewProps) {
       ...DEFAULT_FLEET_STATE,
       pageSize: current.pageSize,
       sortBy: current.sortBy,
-      sortOrder: current.sortOrder,
-    }));
+      sortOrder: current.sortOrder }));
   }, []);
 
   const handleSort = useCallback((field: string) => {
@@ -238,8 +213,7 @@ export function FleetView({ onEditCamera }: FleetViewProps) {
       ...current,
       sortBy: field,
       sortOrder: current.sortBy === field && current.sortOrder === 'asc' ? 'desc' : 'asc',
-      page: 1,
-    }));
+      page: 1 }));
   }, []);
 
   const applySavedView = useCallback((view: FleetSavedView) => {
@@ -305,17 +279,14 @@ export function FleetView({ onEditCamera }: FleetViewProps) {
 
   const cameras = data?.cameras || [];
   const facets = data?.facets || {};
-  const locations = locationData?.locations || [];
+  const locations = locationsError ? [] : locationData?.locations || [];
   const locationRows = useMemo(() => buildLocationRows(locations), [locations]);
-  const tags = tagData?.tags || [];
-  const collections = collectionData?.collections || [];
+  const tags = tagsError ? [] : tagData?.tags || [];
+  const collections = collectionsError ? [] : collectionData?.collections || [];
   const filterCount = countFleetFilters(state);
   const hasFilter = filterCount > 0 || Boolean(state.search.trim());
   const total = data?.total || 0;
-  const queues: FleetOperationalQueue[] = data?.queues || [
-    { key: 'degraded', severity: 'warning', count: facetCount(facets, 'health', 'degraded'), oldest_unresolved_at: null, selector: { version: 1, health: ['degraded'] } },
-    { key: 'offline', severity: 'critical', count: facetCount(facets, 'health', 'down'), oldest_unresolved_at: null, selector: { version: 1, health: ['down'] } },
-  ];
+  const queues: FleetOperationalQueue[] = data?.queues || [];
   const degradedQueue = queues.find((queue) => queue.key === 'degraded') || queues[0];
   const offlineQueue = queues.find((queue) => queue.key === 'offline') || queues[1];
 
@@ -344,8 +315,15 @@ export function FleetView({ onEditCamera }: FleetViewProps) {
         <OperationalQueueCard queue={offlineQueue} locale={locale} onOpen={openQueue} t={t} />
       </section>
 
+      {(locationsError || tagsError || collectionsError || savedViewsError) && <div role="alert" className="mb-4 rounded-lg badge-danger p-3">
+        <p>{t('fleet.loadError')}</p>
+        <button type="button" className="btn-secondary mt-2" onClick={() => Promise.all([
+          refetchCollections(), refetchSavedViews(), ...(isAdmin ? [refetchLocations(), refetchTags()] : []),
+        ])}>{t('common.retry')}</button>
+      </div>}
+
       <SavedViewsBar
-        data={savedViewsData}
+        data={savedViewsError ? undefined : savedViewsData}
         state={state}
         onApply={applySavedView}
         onRefresh={refetchSavedViews}
