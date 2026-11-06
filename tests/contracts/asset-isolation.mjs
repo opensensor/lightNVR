@@ -26,7 +26,7 @@ try {
   server=await startFixture({binary,webRoot,seed:false});
   await server.json('/api/setup/status',{method:'POST',body:{complete:true}});
   browser=await chromium.launch({headless:true});
-  for(const entry of ['index.html','streams.html','recordings.html','api-docs.html']) {
+  for(const entry of ['index.html','streams.html','recordings.html','settings.html','api-docs.html']) {
     const context=await server.browserContext(browser);
     await context.route('**/*',route=>route.continue());
     const page=await context.newPage(), requests=new Set(), errors=[];

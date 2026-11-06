@@ -1,22 +1,26 @@
 # F1: Identity self-service and MFA contracts
 
-Status: F1a boundary review in progress; the session/MFA security correction is
-implemented in [PR #808](https://github.com/opensensor/lightNVR/pull/808), but the
-11-operation contract expansion is not accepted. Baseline main `98c7a9ac`,
-following merged PRs #805/#806/#807.
+Status: F1a's MFA/session correction merged in PR #808. F1b and the four-route
+part of F1d are implemented together for review: session/trusted-device list and
+revoke, permission-aware discovery, generated validation and Settings consumption.
+The contract has 37 operations / 34 paths, with 203 residual routes. The remaining
+seven identity operations still target 44 accepted operations when qualified.
+Baseline main `f3b0f4ff`, following merged PRs #805–#808.
 See [expansion plan](engineering-api-expansion-plan.md) and
 [PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 
 ## Bounded scope
 
-Add contracts and actual consumers for these 11 registered operations, preserving
-the existing 33-operation contract. The inventory target is 44 accepted operations
-and 196 residual operations if route registration remains unchanged.
+The eleven-operation identity increment is split into a reviewed four-operation
+session/device slice and seven remaining operations. The inventory target after
+all eleven remains 44 accepted operations and 196 residual operations if route
+registration remains unchanged. The session/device slice raises coverage from
+33 to 37; it does not claim acceptance of MFA configuration, password or logout.
 
 | Family | Method and registered route | Handler source |
 | --- | --- | --- |
-| Sessions | GET /api/auth/sessions; DELETE /api/auth/sessions/# | src/web/api_handlers_auth_backend_agnostic.c |
-| Trusted devices | GET /api/auth/trusted-devices; DELETE /api/auth/trusted-devices/# | src/web/api_handlers_auth_backend_agnostic.c |
+| Sessions (implemented) | GET /api/auth/sessions; DELETE /api/auth/sessions/# | src/web/api_handlers_auth_backend_agnostic.c |
+| Trusted devices (implemented) | GET /api/auth/trusted-devices; DELETE /api/auth/trusted-devices/# | src/web/api_handlers_auth_backend_agnostic.c |
 | MFA completion | POST /api/auth/login/totp | src/web/api_handlers_totp.c |
 | MFA configuration | POST /api/auth/users/#/totp/setup, /verify, /disable; GET /api/auth/users/#/totp/status | src/web/api_handlers_totp.c |
 | Password | PUT /api/auth/users/#/password | src/web/api_handlers_users_backend_agnostic.c |
@@ -137,3 +141,67 @@ correction and plan updates. Hosted validation at `72c0fd02` passed
 and [CodeQL](https://github.com/opensensor/lightNVR/actions/runs/42233293791).
 The subsequent main merge and status reconciliation do not alter native or web
 application sources; normal main-targeted PR checks rerun on the updated head.
+
+
+## F1b session/device vertical slice (2026-11-06)
+
+The four session/trusted-device list/revoke operations now use canonical OpenAPI
+and `non_scoped_identity` discovery, generated TS types and runtime guards, and
+an actual Settings adapter. Session cookies, Basic and legacy keys resolve the
+owner; scoped tokens (including users.manage) do not. Cookie precedence is
+preserved. An administrator cannot revoke another account's credential through
+these self-service endpoints. Synthetic auth-disabled principals receive 403.
+
+IDs are canonical positive decimal integers up to 9007199254740991, matching
+exact JSON/JavaScript representation. Prefixes, signs, leading zeros, encoded
+aliases and overflow fail without revocation. The router rejects extra path
+segments with 404; malformed single-segment IDs receive 400. Missing/other-owner
+records return indistinguishable 404, and database failures return 500.
+
+Lists retain their existing 32-entry cap, now specified in the schema, ordered
+by recent activity and descending ID for ties. There is no pagination in this
+slice. A single owner-filtered DELETE RETURNING identifies the removed token
+and clears its cookie independently of list order or expiry; only the completed
+delete may report success. Pending MFA rows cannot be revoked as full sessions.
+This does not cancel requests that were already authorized before revocation.
+
+Settings validates every list and acknowledgment, rejects secret-bearing or
+malformed payloads, avoids automatic retries of DELETE, and refreshes after an
+ambiguous failure without showing success. Credential query caches expire on
+unmount; requests receive cancellation signals. The current-session revoke
+causes the normal authenticated refresh to return the browser to login. All
+responses include private/no-store directives; JSON helpers also append their
+existing no-cache policy.
+
+This vertical delivery intentionally completes the four-route portion of F1d
+with F1b, rather than waiting to combine all eleven operations. Next: F1c's MFA
+configuration/password boundary and replay/throttling decisions, then the seven
+remaining schemas and Login/TOTP consumers. F2 fleet reads and S1 audio/signaling
+retain their previous order and scope. Rust remains deferred.
+
+
+F1b local qualification: 86 native ci-unit tests, 61 ASan/UBSan ci-sanitizer
+tests and 68 real-server API cases pass (seven new lifecycle cases). The 16
+browser cases all pass, including three real Settings scenarios.
+All 805 frontend tests across 69 suites pass, including 21 new adapter cases.
+Root/web type checks, web lint, canonical/projected lint, all six generator-tool
+tests, generated drift and documentation links pass. Local optimized Release
+coverage intersects all 75 changed executable C lines; this is not branch coverage
+or a hosted Codecov measurement. Build/test receipts are retained in build/f1b/.
+
+Production asset isolation passes for Live, Streams, Recordings, Settings and the
+API explorer; only the explorer requests Swagger vendor assets. The modern-script
+validator chunk in the default build is 328181 raw bytes versus the previous
+358973 (-30792, about 8.6%). Vite reports 36.78 kB gzip versus 30.87 kB (+5.91 kB).
+Runtime generation now fails fast on invalid responses; this removes redundant
+error-accumulator guards reported by CodeQL, while retaining non-mutating
+validation and sanitized diagnostics. The gzip cost remains a measured tradeoff.
+Settings now consumes this shared validator chunk; unused guard splitting and
+target-hardware capacity remain separate follow-ups. No new discovery latency,
+whole-process memory or device qualification claim is made by this slice.
+
+The full branch C/C++ CodeQL scan at 99ffe05e (run 42252922921, analysis
+2113509966) retains exactly the 22 existing findings from the recording-hardening
+baseline, with no additions or removals by rule, file and diagnostic. Hosted patch
+coverage is assessed after all instrumented jobs upload, rather than from the
+initial unit-only report.

@@ -74,7 +74,7 @@ export function operationIds(doc: Json): string[] {
 }
 // Independently authored coverage expectations: new operations are asserted too,
 // while pilot operation assertions retain their original camera-permission scope.
-export const identityOps=['createUserToken','getClientConfig','getLoginConfig','listUserTokens','login','logout','revokeUserToken','verifyIdentity'];
+export const identityOps=['createUserToken','getClientConfig','getLoginConfig','listAuthSessions','listTrustedDevices','listUserTokens','login','logout','revokeAuthSession','revokeTrustedDevice','revokeUserToken','verifyIdentity'];
 export const scopedIdentityOps=['getClientConfig','getLoginConfig','login','logout'];
 export const recordingCommonOps=['getTimelineSegmentsByIds','listRecordingDetectionLabels','listRecordingTags','listRecordings'];
 export const recordingReplayOps=['getRecording','getRecordingTags','getRecordingThumbnail','getTimelineSegments','playRecording'];

@@ -1,13 +1,14 @@
 {
   "version": 1,
-  "source_revision": "dea6094a731c86debb03cc1c75d0251ab3b96cec",
+  "source_revision": "f3b0f4ff8838cf2f54327ef50c38e85d2fa1a67d",
   "partial": true,
   "notes": [
     "Literal registrations only; wildcard semantics and conditional compilation require handler review.",
     "Non-pilot classification is an inventory disposition, not an authorization claim.",
-    "Identity/token slice covers the eight enumerated login/config/logout/verify/client-config/scoped-token lifecycle operations. Public operation definitions do not grant access to authenticated personalized discovery. User administration, legacy-key issuance, TOTP challenge completion/enrollment, session/trusted-device management and setup remain later.",
+    "Identity/token slice covers the eight enumerated login/config/logout/verify/client-config/scoped-token lifecycle operations. Public operation definitions do not grant access to authenticated personalized discovery. User administration, legacy-key issuance, TOTP challenge completion/enrollment and setup remain later.",
     "Recording-read slice covers nine current UI routes, including play prepare/transcode variants and thumbnails. Timeline manifest/play, files/check and protected-list remain later because the current UI does not call them. Byte ranges are protocol contracts, not JSON payload validation.",
-    "Recording-action slice covers twelve protection/retention, tags, deletion, direct download and export-job routes. Retention override is explicitly included by the engineering plan. Job discovery is authenticated; concrete access requires exact creator user and scoped-token identity. Mixed otherwise-valid unauthorized batches fail before mutation/job creation. Operational missing/incomplete/protected failures retain their documented early or partial-result semantics. These jobs expose no cancellation endpoint or cancelled state. Legacy file-path deletion and synchronization remain later."
+    "Recording-action slice covers twelve protection/retention, tags, deletion, direct download and export-job routes. Retention override is explicitly included by the engineering plan. Job discovery is authenticated; concrete access requires exact creator user and scoped-token identity. Mixed otherwise-valid unauthorized batches fail before mutation/job creation. Operational missing/incomplete/protected failures retain their documented early or partial-result semantics. These jobs expose no cancellation endpoint or cancelled state. Legacy file-path deletion and synchronization remain later.",
+    "Session/trusted-device self-service adds four operations: real session/Basic/legacy key owners only, no scoped-token principal. Lists retain the explicit 32-entry cap; revocation and cookie clearing are independent of that cap. IDs are canonical positive safe integers. MFA/password/logout expansion remains pending."
   ],
   "operations": [
     {
@@ -1052,36 +1053,44 @@
       "route_pattern": "/api/auth/sessions",
       "handler": "handle_auth_sessions_list",
       "source": "src/web/libuv_api_handlers.c",
-      "line": 311,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "line": 314,
+      "coverage": "identity-lifecycle",
+      "classification": "identity-self-service",
+      "operation_id": "listAuthSessions",
+      "eligibility": "non_scoped_identity"
     },
     {
       "method": "DELETE",
       "route_pattern": "/api/auth/sessions/#",
       "handler": "handle_auth_sessions_delete",
       "source": "src/web/libuv_api_handlers.c",
-      "line": 312,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "line": 315,
+      "coverage": "identity-lifecycle",
+      "classification": "identity-self-service",
+      "operation_id": "revokeAuthSession",
+      "eligibility": "non_scoped_identity"
     },
     {
       "method": "GET",
       "route_pattern": "/api/auth/trusted-devices",
       "handler": "handle_auth_trusted_devices_list",
       "source": "src/web/libuv_api_handlers.c",
-      "line": 313,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "line": 316,
+      "coverage": "identity-lifecycle",
+      "classification": "identity-self-service",
+      "operation_id": "listTrustedDevices",
+      "eligibility": "non_scoped_identity"
     },
     {
       "method": "DELETE",
       "route_pattern": "/api/auth/trusted-devices/#",
       "handler": "handle_auth_trusted_devices_delete",
       "source": "src/web/libuv_api_handlers.c",
-      "line": 314,
-      "coverage": "later",
-      "classification": "protected-review-per-route"
+      "line": 317,
+      "coverage": "identity-lifecycle",
+      "classification": "identity-self-service",
+      "operation_id": "revokeTrustedDevice",
+      "eligibility": "non_scoped_identity"
     },
     {
       "method": "GET",

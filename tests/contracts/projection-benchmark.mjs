@@ -165,7 +165,7 @@ async function prepare(server,size){
    adminReadToken:{headers:{Authorization:`Bearer ${issued.secret}`},scoped:true,expected:size?3:2}}};
 }
 const pilotIds=['getOpenApi','getStreamFull','listStreams','updateStream'];
-const identityIds=['createUserToken','getClientConfig','getLoginConfig','listUserTokens','login','logout','revokeUserToken','verifyIdentity'];
+const identityIds=['createUserToken','getClientConfig','getLoginConfig','listAuthSessions','listTrustedDevices','listUserTokens','login','logout','revokeAuthSession','revokeTrustedDevice','revokeUserToken','verifyIdentity'];
 const scopedIdentityIds=['getClientConfig','getLoginConfig','login','logout'];
 const recordingCommonIds=['getTimelineSegmentsByIds','listRecordingDetectionLabels','listRecordingTags','listRecordings'];
 const recordingReplayIds=['getRecording','getRecordingTags','getRecordingThumbnail','getTimelineSegments','playRecording'];

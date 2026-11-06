@@ -1,13 +1,15 @@
 # Engineering API expansion: next bounded slices
 
 Status: F0 checkpoint, F12 and F16 merged in PR #805; recording security
-follow-up merged in PR #807. F1 boundary correction is under review in PR #808; its contract
-expansion is not accepted. Other slices remain proposed.
+follow-up merged in PR #807. F1 boundary correction merged in PR #808. The four-operation session/device
+contract and Settings slice is implemented for review; the other seven F1
+operations remain pending. Other slices remain proposed.
 
 Continue from [the executed hardening plan](engineering-api-contracts-plan.md)
 and [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md). Baseline:
-`98c7a9ac19001ddc988cc7dfa21accca20457b32` on main (2026-11-06), after
-PR #805 recording integrity, PR #806 minimatch remediation and PR #807 recording security. TS/TSX conversion is complete. Automated Rust conversion,
+`f3b0f4ff8838cf2f54327ef50c38e85d2fa1a67d` on main (2026-11-06), after
+PR #805 recording integrity, PR #806 minimatch remediation, PR #807 recording security
+and PR #808 MFA/session separation. TS/TSX conversion is complete. Automated Rust conversion,
 synchronization with C and a second backend remain deferred.
 
 ## Ownership and acceptance
@@ -47,8 +49,9 @@ F1..F14,F16 -> F15
 - **ownership**: Integration owner; route inventory, coverage and this plan.
 - **description**: Start after T29 acceptance. Compare every literal registration, including multiline/conditional calls; assign every residual operation a slice below or explicit later disposition. Freeze credential classes, wire errors, feature flags and fixture limits. Before delegation, expand the broad F4/F10/F11 families into concrete task IDs, dependencies, exact files and bounded acceptance criteria.
 - **validation**: No missing/duplicate/stale method-route entries; accepted counts agree with canonical and native tests.
-- **status**: Current-wave checkpoint complete: 33 accepted operations / 30 paths,
+- **status**: Original-wave checkpoint complete: 33 accepted operations / 30 paths,
   207 residual registered operations (240 total); no contract expansion in F12/F16.
+  The F1b follow-up raises this to 37 operations / 34 paths and 203 residual.
   Full residual assignment and F4/F10/F11 decomposition remain required before
   those families execute. F1 is bounded in the linked plan below.
 
@@ -57,9 +60,10 @@ F1..F14,F16 -> F15
 - **ownership**: Auth/TOTP handlers, password handling in `api_handlers_users_backend_agnostic.c` and tests; Login/AuthGate/TOTP modal and SettingsView self-service consumers.
 - **description**: Sessions/trusted-devices list/revoke; login TOTP completion; user TOTP setup/verify/disable/status; password changes and legacy GET `/logout`. Distinguish legacy keys from scoped tokens.
 - **validation**: Owner/other-user/admin/token matrix, challenge expiry/replay, actual revocation, secret exclusion and denied no-effects.
-- **status**: F1a security preflight implemented for review: pending MFA tokens
-  are distinct from sessions, and completion consumes a bounded challenge once.
-  Full principal/lifecycle coverage and the 11-operation contract remain pending. See
+- **status**: MFA/session preflight merged in PR #808. F1b and the four-route
+  portion of F1d now implement session/device lifecycle, schemas and Settings
+  validation for review (37 covered operations / 34 paths; 203 residual). The
+  remaining seven identity operations and F1c decisions are not accepted. See
   [identity contracts plan](engineering-identity-contracts-plan.md).
 
 ### F2: Fleet reads and selectors

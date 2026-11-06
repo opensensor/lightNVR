@@ -197,5 +197,59 @@
     "Denied/invalid writes preserve configuration",
     "Mixed-permission rows do not imply all-resource privilege",
     "No whole-API coverage claim from partial spec"
-  ]
+  ],
+  "credential_lifecycle": {
+    "operations": [
+      "listAuthSessions",
+      "listTrustedDevices",
+      "revokeAuthSession",
+      "revokeTrustedDevice"
+    ],
+    "cases": [
+      {
+        "principal": "cookie / Basic / legacy header / legacy bearer",
+        "discovery": "present",
+        "list": "own records only, max 32",
+        "revoke_own": 200,
+        "revoke_other_owner": 404
+      },
+      {
+        "principal": "scoped token with live.view or users.manage",
+        "discovery": "absent",
+        "list": 401,
+        "revoke": 401
+      },
+      {
+        "principal": "administrator",
+        "discovery": "present",
+        "list": "own records only",
+        "revoke_other_owner": 404
+      },
+      {
+        "principal": "anonymous / pending MFA / inactive / CIDR denied",
+        "list": 401,
+        "revoke": 401
+      },
+      {
+        "principal": "password-change-required session or Basic",
+        "list": 401,
+        "revoke": 401
+      },
+      {
+        "principal": "synthetic auth-disabled",
+        "discovery_status": 403,
+        "list": 403,
+        "revoke": 403
+      }
+    ],
+    "acceptance": [
+      "Denied/invalid requests do not remove credentials or clear cookies.",
+      "Strict safe-integer IDs; malformed segment 400, extra path segments 404.",
+      "Older current credential clears its cookie even outside the first 32 records.",
+      "Two concurrent revokes yield one 200 and one 404.",
+      "Pending MFA rows are hidden and cannot be revoked as authenticated sessions.",
+      "Database failure is 500, preserves credentials and does not clear cookies.",
+      "Settings validates list and revoke responses; malformed replies cannot show successful revocation."
+    ]
+  }
 }

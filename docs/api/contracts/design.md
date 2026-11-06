@@ -188,7 +188,10 @@ Native output: `include/web/openapi_document_generated.h`, C byte array plus
 length/revision, deterministic Python generation. Web output:
 `web/generated/api/schema.d.ts`, `validators.js`, `validators.d.ts`; validator
 exports keyed by named component schemas, accepting unknown and returning a
-boolean type guard with sanitized diagnostics. T3 may refine filenames only
+boolean type guard with sanitized diagnostics. Production validators fail fast
+on invalid payloads (`allErrors: false`); diagnostics are not an exhaustive error
+report. Union branches may still yield multiple errors. Validation never coerces
+or mutates the response. T3 may refine filenames only
 with an explicit handoff before T8. No handwritten files in generated directory.
 Types alone do not validate JSON. Do not relax `web/js` escape restrictions.
 
@@ -326,3 +329,22 @@ detected, but the current writer has unchecked read/write/close paths. A complet
 status is not proof against every filesystem fault. The follow-on plan's F16
 requires a separate reproduction and focused repair; this contract does not
 claim that limitation is fixed or qualified by the successful archive fixture.
+
+
+## Session and trusted-device self-service extension
+
+The four list/revoke operations use `non_scoped_identity`, matching the actual
+handler's session/Basic/legacy-key authentication rather than administrative role
+names or a scoped token's users.manage permission. Real owners manage only their
+own credentials; synthetic identities are rejected. Their unreachable schemas
+are pruned from scoped-token discovery. The partial inventory is 37 operations,
+34 paths and 203 residual registered operations.
+
+Lists retain a documented maximum of 32 entries. Revocation uses an atomic,
+owner-filtered delete that identifies the removed cookie token, independent of
+list position or expiry. Pending MFA rows are excluded. Strict decimal safe-
+integer IDs keep native routing and generated JavaScript callers consistent.
+The Settings consumer validates redacted lists and exact success acknowledgments,
+never automatically retries DELETE, and refetches after ambiguous failures.
+See the [identity acceptance receipt](../../../engineering-identity-contracts-plan.md)
+for validation, credential-class decisions and remaining MFA/password scope.

@@ -683,6 +683,54 @@ void test_concurrent_mfa_completion_has_exactly_one_winner(void) {
     TEST_ASSERT_EQUAL_INT(1, (results[0] == 0) + (results[1] == 0));
 }
 
+static void test_owned_revocation_identifies_cookie_and_preserves_other_credentials(void) {
+    int64_t owner;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("revoker", "password", NULL, USER_ROLE_USER, true, &owner));
+    char token[33];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(owner, "127.0.0.1", "fixture", 300, token, sizeof(token)));
+    session_t row[1];
+    TEST_ASSERT_EQUAL_INT(1, db_auth_list_user_sessions(owner, row, 1));
+    bool current = true;
+    TEST_ASSERT_EQUAL_INT(1, db_auth_revoke_session(owner + 1, row[0].id, token, &current));
+    TEST_ASSERT_FALSE(current);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_revoke_session(owner, row[0].id, token, &current));
+    TEST_ASSERT_TRUE(current);
+    int64_t found;
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, &found));
+    TEST_ASSERT_EQUAL_INT(1, db_auth_revoke_session(owner, row[0].id, token, &current));
+    TEST_ASSERT_FALSE(current);
+
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_trusted_device(owner, "127.0.0.1", "fixture", 300, token, sizeof(token)));
+    trusted_device_t device[1];
+    TEST_ASSERT_EQUAL_INT(1, db_auth_list_trusted_devices(owner, device, 1));
+    TEST_ASSERT_EQUAL_INT(1, db_auth_revoke_trusted_device(owner + 1, device[0].id, token, &current));
+    TEST_ASSERT_FALSE(current);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_revoke_trusted_device(owner, device[0].id, "another-cookie", &current));
+    TEST_ASSERT_FALSE(current);
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_trusted_device(owner, token));
+}
+
+static void test_revocation_database_error_never_clears_cookie(void) {
+    int64_t owner;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("revoker", "password", NULL, USER_ROLE_USER, true, &owner));
+    char token[33];
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(owner, "127.0.0.1", "fixture", 300, token, sizeof(token)));
+    session_t row[1];
+    TEST_ASSERT_EQUAL_INT(1, db_auth_list_user_sessions(owner, row, 1));
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db,
+        "CREATE TRIGGER block_revoke BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+        NULL, NULL, NULL));
+    bool current = true;
+    int revoked = db_auth_revoke_session(owner, row[0].id, token, &current);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(db, "DROP TRIGGER block_revoke;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(-1, revoked);
+    TEST_ASSERT_FALSE(current);
+    int64_t found;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_session(token, &found));
+    TEST_ASSERT_TRUE(sqlite3_get_autocommit(db));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -692,6 +740,8 @@ int main(void) {
     db_auth_init();
 
     UNITY_BEGIN();
+    RUN_TEST(test_owned_revocation_identifies_cookie_and_preserves_other_credentials);
+    RUN_TEST(test_revocation_database_error_never_clears_cookie);
     RUN_TEST(test_admin_bootstrap_serializes_with_storage_transactions);
     RUN_TEST(test_mfa_challenge_is_not_a_session_and_is_consumed_once);
     RUN_TEST(test_mfa_challenge_attempt_limit_expiry_and_context);

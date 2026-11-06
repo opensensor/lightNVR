@@ -54,7 +54,7 @@ static cJSON *schemas(void) { return get(get(output, "components"), "schemas"); 
 static void test_canonical_admin_immutable(void) {
     canonical(); char *before = cJSON_PrintUnformatted(input); project();
     char *after = cJSON_PrintUnformatted(input); TEST_ASSERT_EQUAL_STRING(before, after); free(before); free(after);
-    TEST_ASSERT_EQUAL_INT(30, cJSON_GetArraySize(get(output, "paths")));
+    TEST_ASSERT_EQUAL_INT(34, cJSON_GetArraySize(get(output, "paths")));
     TEST_ASSERT_NULL(get(output, "x-lightnvr-validators"));
     TEST_ASSERT_NOT_NULL(get(get(schemas(), "OpenApiDocument"), "properties"));
     TEST_ASSERT_NOT_NULL(get(get(get(schemas(), "OpenApiDocument"), "properties"), "x-lightnvr-coverage"));

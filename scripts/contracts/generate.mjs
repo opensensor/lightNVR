@@ -62,7 +62,9 @@ export async function generateArtifacts(source, target = 'all') {
     const doc = JSON.parse(await readFile(source, 'utf8'));
     const names = [...(doc['x-lightnvr-validators'] || Object.keys(doc.components?.schemas || {}))].sort();
     files.set(webPaths[0], astToString(await openapiTS(doc, {alphabetize: true, defaultNonNullable: false})));
-    const ajv = new Ajv2020({strict: true, allErrors: true, allowUnionTypes: true, validateFormats: true,
+    // Runtime consumers need validity, not an exhaustive payload error report.
+    // Fail fast to bound invalid-response work and avoid redundant accumulator guards.
+    const ajv = new Ajv2020({strict: true, allErrors: false, allowUnionTypes: true, validateFormats: true,
       coerceTypes: false, useDefaults: false, removeAdditional: false, code: {source: true, esm: true}});
     addFormats(ajv);
     ajv.addSchema(schemaDocument(doc));

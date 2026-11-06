@@ -12,6 +12,8 @@ import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.tsx';
 import { ContentLoader } from './LoadingIndicator.tsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.ts';
+import { listAuthSessions, listTrustedDevices, revokeAuthSession, revokeTrustedDevice } from '../../api/identity.ts';
+import type { CredentialRevoked } from '../../api/identity.ts';
 import { AsyncButton } from './AsyncButton.tsx';
 import { validateSession } from '../../utils/auth-utils.ts';
 import { formatLocalDateTime } from '../../utils/date-utils.ts';
@@ -274,10 +276,9 @@ export function SettingsView() {
     isLoading: authSessionsLoading,
     isError: authSessionsIsError,
     error: authSessionsError
-  } = useQuery<AuthSessionsResponse>(['auth-sessions'], '/api/auth/sessions', {
-    timeout: 10000,
-    retries: 1,
-    retryDelay: 1000
+  } = useQuery<AuthSessionsResponse>({
+    queryKey: ['auth-sessions'], queryFn: ({ signal }) => listAuthSessions({ signal }),
+    staleTime: 0, cacheTime: 0, retry: false
   });
 
   const {
@@ -286,33 +287,36 @@ export function SettingsView() {
     isLoading: trustedDevicesLoading,
     isError: trustedDevicesIsError,
     error: trustedDevicesError
-  } = useQuery<TrustedDevicesResponse>(['trusted-devices'], '/api/auth/trusted-devices', {
-    timeout: 10000,
-    retries: 1,
-    retryDelay: 1000
+  } = useQuery<TrustedDevicesResponse>({
+    queryKey: ['trusted-devices'], queryFn: ({ signal }) => listTrustedDevices({ signal }),
+    staleTime: 0, cacheTime: 0, retry: false
   });
 
-  const revokeSessionMutation = useMutation<unknown, Error, number>({
+  const revokeSessionMutation = useMutation<CredentialRevoked, Error, number>({
     mutationKey: ['revokeSession'],
-    mutationFn: async (sessionId) => fetchJSON(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' }),
+    mutationFn: (sessionId) => revokeAuthSession(sessionId),
+    retry: false,
     onSuccess: () => {
       showStatusMessage(t('settings.sessionRevoked'));
       refetchAuthSessions();
     },
     onError: (error) => {
       showStatusMessage(t('settings.revokeSessionError', { message: error.message }));
+      void refetchAuthSessions();
     }
   });
 
-  const revokeTrustedDeviceMutation = useMutation<unknown, Error, number>({
+  const revokeTrustedDeviceMutation = useMutation<CredentialRevoked, Error, number>({
     mutationKey: ['revokeTrustedDevice'],
-    mutationFn: async (deviceId) => fetchJSON(`/api/auth/trusted-devices/${deviceId}`, { method: 'DELETE' }),
+    mutationFn: (deviceId) => revokeTrustedDevice(deviceId),
+    retry: false,
     onSuccess: () => {
       showStatusMessage(t('settings.trustedDeviceRevoked'));
       refetchTrustedDevices();
     },
     onError: (error) => {
       showStatusMessage(t('settings.revokeTrustedDeviceError', { message: error.message }));
+      void refetchTrustedDevices();
     }
   });
 

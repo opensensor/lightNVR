@@ -1640,14 +1640,14 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
 
 /* The connection mutex also excludes legacy helpers that do not take the
  * application mutex, preventing them from joining this short transaction. */
-static sqlite3 *lock_mfa_database(void) {
+static sqlite3 *lock_auth_database(void) {
     pthread_mutex_lock(get_db_mutex());
     sqlite3 *db = get_db_handle();
     if (!db) { pthread_mutex_unlock(get_db_mutex()); return NULL; }
     sqlite3_mutex_enter(sqlite3_db_mutex(db));
     return db;
 }
-static void unlock_mfa_database(sqlite3 *db) {
+static void unlock_auth_database(sqlite3 *db) {
     sqlite3_mutex_leave(sqlite3_db_mutex(db));
     pthread_mutex_unlock(get_db_mutex());
 }
@@ -1655,7 +1655,7 @@ static void unlock_mfa_database(sqlite3 *db) {
 int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
                                 const char *user_agent, char *token, size_t token_size) {
     if (!token || token_size < 33 || generate_random_string(token, 32) != 0) return -1;
-    sqlite3 *db = lock_mfa_database();
+    sqlite3 *db = lock_auth_database();
     if (!db) return -1;
     sqlite3_stmt *stmt = NULL;
     int result = -1;
@@ -1672,7 +1672,7 @@ int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
         if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1) result = 0;
     }
     sqlite3_finalize(stmt);
-    unlock_mfa_database(db);
+    unlock_auth_database(db);
     if (result != 0) token[0] = '\0';
     return result;
 }
@@ -1680,7 +1680,7 @@ int db_auth_create_mfa_challenge(int64_t user_id, const char *ip_address,
 int db_auth_validate_mfa_challenge(const char *token, int64_t *user_id,
                                   const char *ip_address, const char *user_agent) {
     if (!token || strnlen(token, 33) != 32 || !user_id) return -1;
-    sqlite3 *db = lock_mfa_database();
+    sqlite3 *db = lock_auth_database();
     if (!db) return -1;
     sqlite3_stmt *stmt = NULL;
     int result = -1;
@@ -1715,13 +1715,13 @@ rollback:
     sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
 done:
     sqlite3_finalize(stmt);
-    unlock_mfa_database(db);
+    unlock_auth_database(db);
     return result;
 }
 
 int db_auth_consume_mfa_challenge(const char *token, int64_t user_id) {
     if (!token || strnlen(token, 33) != 32) return -1;
-    sqlite3 *db = lock_mfa_database();
+    sqlite3 *db = lock_auth_database();
     if (!db) return -1;
     sqlite3_stmt *stmt = NULL;
     int result = -1;
@@ -1735,7 +1735,7 @@ int db_auth_consume_mfa_challenge(const char *token, int64_t user_id) {
         if (sqlite3_step(stmt) == SQLITE_DONE && sqlite3_changes(db) == 1) result = 0;
     }
     sqlite3_finalize(stmt);
-    unlock_mfa_database(db);
+    unlock_auth_database(db);
     return result;
 }
 
@@ -2072,7 +2072,7 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
         "SELECT id, user_id, token, created_at, %s, %s, expires_at, "
         "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
         "FROM sessions WHERE user_id = ? AND mfa_pending = 0 AND expires_at >= ? %s "
-        "ORDER BY %s DESC LIMIT ?;",
+        "ORDER BY %s DESC, id DESC LIMIT ?;",
         has_last_activity_column ? "COALESCE(last_activity_at, created_at)" : "created_at",
         has_idle_expires_column ? "COALESCE(idle_expires_at, expires_at)" : "expires_at",
         has_idle_expires_column ? "AND (idle_expires_at IS NULL OR idle_expires_at >= ?)" : "",
@@ -2094,7 +2094,7 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
     sqlite3_bind_int(stmt, param, max_count);
 
     int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    while (count < max_count && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         session_t *session = &sessions[count++];
         memset(session, 0, sizeof(*session));
         session->id = sqlite3_column_int64(stmt, 0);
@@ -2112,7 +2112,51 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
     }
 
     sqlite3_finalize(stmt);
-    return count;
+    return (rc == SQLITE_DONE || (rc == SQLITE_ROW && count == max_count)) ? count : -1;
+}
+
+/* DELETE RETURNING keeps ownership, removal and cookie identity in one statement.
+ * Never infer the current credential from a bounded, time-ordered list. */
+static int revoke_owned_credential(int64_t owner, int64_t id, const char *current_token,
+                                    bool *deleted_current, bool trusted_device) {
+    if (!deleted_current) return -1;
+    *deleted_current = false;
+    if (owner <= 0 || id <= 0) return 1;
+    sqlite3 *db = lock_auth_database();
+    if (!db) return -1;
+    const char *sql = trusted_device
+        ? "DELETE FROM trusted_devices WHERE user_id = ? AND id = ? RETURNING token;"
+        : "DELETE FROM sessions WHERE user_id = ? AND id = ? AND mfa_pending = 0 RETURNING token;";
+    sqlite3_stmt *stmt = NULL;
+    int result = -1;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, owner);
+        sqlite3_bind_int64(stmt, 2, id);
+        int rc = sqlite3_step(stmt);
+        if (rc == SQLITE_DONE) result = 1;
+        else if (rc == SQLITE_ROW) {
+            const char *removed_token = (const char *)sqlite3_column_text(stmt, 0);
+            bool matched = current_token && *current_token && removed_token &&
+                           strcmp(current_token, removed_token) == 0;
+            if (sqlite3_step(stmt) == SQLITE_DONE) {
+                *deleted_current = matched;
+                result = 0;
+            }
+        }
+    }
+    sqlite3_finalize(stmt);
+    unlock_auth_database(db);
+    return result;
+}
+
+int db_auth_revoke_session(int64_t user_id, int64_t session_id,
+                           const char *current_token, bool *deleted_current) {
+    return revoke_owned_credential(user_id, session_id, current_token, deleted_current, false);
+}
+
+int db_auth_revoke_trusted_device(int64_t user_id, int64_t device_id,
+                                  const char *current_token, bool *deleted_current) {
+    return revoke_owned_credential(user_id, device_id, current_token, deleted_current, true);
 }
 
 int db_auth_delete_session_by_id(int64_t user_id, int64_t session_id) {
@@ -2298,7 +2342,7 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
                                "SELECT id, user_id, created_at, COALESCE(last_used_at, created_at), expires_at, "
                                "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
                                "FROM trusted_devices WHERE user_id = ? AND expires_at >= ? "
-                               "ORDER BY COALESCE(last_used_at, created_at) DESC LIMIT ?;",
+                               "ORDER BY COALESCE(last_used_at, created_at) DESC, id DESC LIMIT ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
@@ -2310,7 +2354,7 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
     sqlite3_bind_int(stmt, 3, max_count);
 
     int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    while (count < max_count && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         trusted_device_t *device = &devices[count++];
         memset(device, 0, sizeof(*device));
         device->id = sqlite3_column_int64(stmt, 0);
@@ -2325,7 +2369,7 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
     }
 
     sqlite3_finalize(stmt);
-    return count;
+    return (rc == SQLITE_DONE || (rc == SQLITE_ROW && count == max_count)) ? count : -1;
 }
 
 int db_auth_delete_trusted_device_by_id(int64_t user_id, int64_t trusted_device_id) {

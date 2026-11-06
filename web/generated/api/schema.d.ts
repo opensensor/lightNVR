@@ -59,6 +59,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List own sessions
+         * @description Session, Basic or legacy key personal self-service only. Scoped tokens, including users.manage tokens, cannot resolve a principal here; a valid session cookie retains existing precedence. Ownership is always the authenticated account, including administrators. Synthetic auth-disabled principals are rejected. Responses are private, no-store; credential material is never returned. Returns at most 32 unexpired entries ordered by most recent activity, then descending ID. There is no pagination in this bounded contract. Pending MFA challenges are excluded from sessions.
+         */
+        get: operations["listAuthSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke own session
+         * @description Session, Basic or legacy key personal self-service only. Scoped tokens, including users.manage tokens, cannot resolve a principal here; a valid session cookie retains existing precedence. Ownership is always the authenticated account, including administrators. Synthetic auth-disabled principals are rejected. Responses are private, no-store; credential material is never returned. The ID must be a canonical positive decimal safe integer without signs, leading zeros, escapes or trailing path segments. Revocation is independent of the 32-entry list limit, can remove expired records, and excludes pending MFA sessions. Current-cookie clearing uses the exact removed credential. Missing or another owner’s ID returns the same 404; database failure is 500. A successful revoke invalidates future use, but does not cancel already-authorized in-flight requests.
+         */
+        delete: operations["revokeAuthSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/trusted-devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List own trusted devices
+         * @description Session, Basic or legacy key personal self-service only. Scoped tokens, including users.manage tokens, cannot resolve a principal here; a valid session cookie retains existing precedence. Ownership is always the authenticated account, including administrators. Synthetic auth-disabled principals are rejected. Responses are private, no-store; credential material is never returned. Returns at most 32 unexpired entries ordered by most recent activity, then descending ID. There is no pagination in this bounded contract. Pending MFA challenges are excluded from sessions.
+         */
+        get: operations["listTrustedDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/trusted-devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke own trusted device
+         * @description Session, Basic or legacy key personal self-service only. Scoped tokens, including users.manage tokens, cannot resolve a principal here; a valid session cookie retains existing precedence. Ownership is always the authenticated account, including administrators. Synthetic auth-disabled principals are rejected. Responses are private, no-store; credential material is never returned. The ID must be a canonical positive decimal safe integer without signs, leading zeros, escapes or trailing path segments. Revocation is independent of the 32-entry list limit, can remove expired records, and excludes pending MFA sessions. Current-cookie clearing uses the exact removed credential. Missing or another owner’s ID returns the same 404; database failure is 500. A successful revoke invalidates future use, but does not cancel already-authorized in-flight requests.
+         */
+        delete: operations["revokeTrustedDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/verify": {
         parameters: {
             query?: never;
@@ -811,6 +891,19 @@ export interface components {
         };
         /** @enum {string} */
         AuthorizationAction: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "storage.configure" | "events.configure" | "users.manage" | "system.admin" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete";
+        AuthSession: {
+            created_at: number;
+            current: boolean;
+            expires_at: number;
+            id: number;
+            idle_expires_at: number;
+            ip_address: string;
+            last_activity_at: number;
+            user_agent: string;
+        };
+        AuthSessionsResponse: {
+            sessions: components["schemas"]["AuthSession"][];
+        };
         AuthVerifiedIdentity: {
             api_key?: never;
             auth_absolute_timeout_hours: number;
@@ -866,6 +959,10 @@ export interface components {
             webrtc_connection_timeout_ms: number;
             webrtc_disabled: boolean;
             webrtc_ice_recovery_timeout_ms: number;
+        };
+        CredentialRevoked: {
+            /** @constant */
+            success: true;
         };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
@@ -1764,6 +1861,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        TrustedDevice: {
+            created_at: number;
+            current: boolean;
+            expires_at: number;
+            id: number;
+            ip_address: string;
+            last_used_at: number;
+            user_agent: string;
+        };
+        TrustedDevicesResponse: {
+            trusted_devices: components["schemas"]["TrustedDevice"][];
+        };
         /** @description Seven days × 24 hours, indexed day*24+hour. true permits recording in that slot; interpreted using the configured recorder schedule timezone. */
         WeeklySchedule: boolean[];
     };
@@ -1903,6 +2012,280 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listAuthSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionsResponse"];
+                };
+            };
+            /** @description No usable personal credential, including scoped-token-only, revoked/inactive/CIDR-restricted credentials or a pending password change for session/Basic authentication. Legacy keys retain their existing independent policy. */
+            401: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Synthetic auth-disabled principal has no personal credential inventory. */
+            403: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure. */
+            500: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    revokeAuthSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Canonical positive decimal safe integer; no leading zeros or encoded aliases. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    /** @description Clears session or trusted_device only when the exact current credential was removed. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialRevoked"];
+                };
+            };
+            /** @description Invalid credential ID. */
+            400: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable personal credential, including scoped-token-only, revoked/inactive/CIDR-restricted credentials or a pending password change for session/Basic authentication. Legacy keys retain their existing independent policy. */
+            401: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Synthetic auth-disabled principal has no personal credential inventory. */
+            403: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No matching owned credential. */
+            404: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure. */
+            500: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listTrustedDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrustedDevicesResponse"];
+                };
+            };
+            /** @description No usable personal credential, including scoped-token-only, revoked/inactive/CIDR-restricted credentials or a pending password change for session/Basic authentication. Legacy keys retain their existing independent policy. */
+            401: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Synthetic auth-disabled principal has no personal credential inventory. */
+            403: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure. */
+            500: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    revokeTrustedDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Canonical positive decimal safe integer; no leading zeros or encoded aliases. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    /** @description Clears session or trusted_device only when the exact current credential was removed. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialRevoked"];
+                };
+            };
+            /** @description Invalid credential ID. */
+            400: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No usable personal credential, including scoped-token-only, revoked/inactive/CIDR-restricted credentials or a pending password change for session/Basic authentication. Legacy keys retain their existing independent policy. */
+            401: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Synthetic auth-disabled principal has no personal credential inventory. */
+            403: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No matching owned credential. */
+            404: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure. */
+            500: {
+                headers: {
+                    /** @description Includes private and no-store. The common JSON response helper also appends no-cache, no-store, must-revalidate. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
             };
         };
     };
