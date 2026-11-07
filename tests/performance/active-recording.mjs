@@ -39,7 +39,8 @@ const http=createServer((req,res)=>{
  const child=spawn('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-re','-stream_loop','-1','-i',source,'-c','copy','-f','mpegts','pipe:1'],{stdio:['ignore','pipe','pipe']});
  children.add(child);childExits.push(new Promise(resolve=>child.once('close',()=>{children.delete(child);resolve();})));
  child.stdout.pipe(res);let error='';child.stderr.on('data',chunk=>{error+=chunk;});
- child.once('error',error=>res.destroy(error));child.once('exit',code=>{if(code)report.sourceError=error;res.end();});
+ child.once('error',error=>res.destroy(error));
+ child.once('exit',code=>{if(code)report.sourceError=error;});
  res.on('close',()=>child.kill('SIGTERM'));
 });
 await new Promise(resolve=>http.listen(0,'127.0.0.1',resolve));
