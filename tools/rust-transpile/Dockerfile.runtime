@@ -1,0 +1,20 @@
+# ghcr.io/opensensor/lightnvr-rs: the lightnvr runtime image with the
+# C2Rust-generated backend in place of the C binary. Web UI, go2rtc,
+# migrations, entrypoint, volumes and ports are identical to lightnvr.
+#
+#   docker buildx build --builder default -f tools/rust-transpile/Dockerfile.runtime \
+#     --build-arg BASE_IMAGE=<lightnvr runtime image> <dir containing lightnvr-rs>
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+USER root
+COPY lightnvr-rs /bin/lightnvr-rs
+# Scripts call /bin/lightnvr; point it at the Rust build and drop the C binary.
+RUN chmod 0755 /bin/lightnvr-rs \
+ && ln -sf lightnvr-rs /bin/lightnvr \
+ && if ldd /bin/lightnvr-rs | grep 'not found'; then exit 1; fi \
+ && /bin/lightnvr-rs --version
+USER 10001:10001
+
+LABEL org.opencontainers.image.title="LightNVR (lightnvr-rs)" \
+      org.opencontainers.image.description="LightNVR with the backend mechanically translated from C to Rust by C2Rust"

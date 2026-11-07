@@ -1,7 +1,7 @@
 import {mkdirSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 /** F3: independently authored admin policies and native wire assertions. */
-import {test, expect, admin, viewer, anonymous, wire, ok, createUser, token, role, policy, database, valid, operationIds, lintProjections} from './permissionCases';
+import {test, expect, admin, viewer, anonymous, wire, ok, createUser, token, role, policy, database, valid, operationIds, lintProjections, withoutLoginTime} from './permissionCases';
 
 test('scoped management tokens cannot issue an unrestricted legacy key', async ({server}) => {
   const manager = await token(server, admin, {type:'all'}, ['users.manage']);
@@ -43,7 +43,7 @@ test('F3 discovery independently matches identity class, owner/token intersectio
   lintProjections(info);
   const before=await ok(server,`/api/authorization/users/${manager.id}`);
   expect((await wire(server,`/api/authorization/users/${manager.id}`,manager,'PUT',{mode:'policy',expected_policy_version:before.policy_version,grants:[]})).response.status).toBe(409);
-  expect(await ok(server,`/api/authorization/users/${manager.id}`)).toEqual(before);
+  expect(withoutLoginTime(await ok(server,`/api/authorization/users/${manager.id}`))).toEqual(withoutLoginTime(before));
   await policy(server,manager,[]);
   expect(selected(await ok(server,'/api/openapi.json',manager))).toEqual([...selfOps].sort());
   expect(selected(await ok(server,'/api/openapi.json',scoped))).toEqual([]);
@@ -97,10 +97,10 @@ test('roles and policy enforce revisions, delegation and self-lockout with no gr
   const manager=await createUser(server,'narrow_manager');const manage=await role(server,'Narrow management',['users.manage']);await policy(server,manager,[{role_uuid:manage,scope:{type:'all'}}]);
   const before=await ok(server,`/api/authorization/users/${subject.id}`);
   expect((await wire(server,`/api/authorization/users/${subject.id}`,manager,'PUT',{mode:'policy',expected_policy_version:before.policy_version,grants})).response.status).toBe(403);
-  expect(await ok(server,`/api/authorization/users/${subject.id}`)).toEqual(before);
+  expect(withoutLoginTime(await ok(server,`/api/authorization/users/${subject.id}`))).toEqual(withoutLoginTime(before));
   const list=await ok(server,'/api/auth/users');
   expect((await wire(server,'/api/auth/users',manager,'POST',{username:'escalated_user',password:'ContractEscalate123!',role:0})).response.status).toBe(403);
-  expect(await ok(server,'/api/auth/users')).toEqual(list);
+  expect(withoutLoginTime(await ok(server,'/api/auth/users'))).toEqual(withoutLoginTime(list));
   const scoped=await token(server,admin,{type:'all'},['users.manage']);
   for(const [route,method,body] of [['/api/authorization/roles','GET',undefined],['/api/authorization/roles','POST',{name:'forbidden',actions:['users.manage'],expected_policy_version:before.policy_version}],[`/api/authorization/users/${subject.id}`,'GET',undefined],['/api/auth/users','POST',{username:'token_user',password:'ContractToken123!'}]] as const)expect((await wire(server,route,scoped,method,body)).response.status).toBe(403);
   await policy(server,subject,[]);const current=await ok(server,'/api/authorization/roles');

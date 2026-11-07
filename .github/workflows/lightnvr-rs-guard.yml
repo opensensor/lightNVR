@@ -1,0 +1,24 @@
+name: lightnvr-rs guard
+
+# Required on main: rust/ is generated from C by CI and must never be edited by
+# hand. Runs on every PR (no path filter) so the required check always reports.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: rust/ is not hand-edited
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: tools/rust-transpile/guard.sh "origin/${{ github.base_ref }}" HEAD
+        env:
+          LIGHTNVR_RS_BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com

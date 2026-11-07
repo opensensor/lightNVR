@@ -1,0 +1,5 @@
+# rust/ is generated from C by tools/rust-transpile and committed by CI.
+# Do not edit it by hand; change the C sources instead.
+/rust/                    @matteius
+/tools/rust-transpile/    @matteius
+/.github/workflows/lightnvr-rs*.yml @matteius

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
-import {test,expect,admin,anonymous,viewer,wire,ok,token,createUser,role,policy,cameraScope,discovery,nonRecordingOperationIds as operationIds,identityOps,scopedIdentityOps,allOps,privateResponse,lintProjections,type Server,type Identity} from './permissionCases';
+import {test,expect,admin,anonymous,viewer,wire,ok,token,createUser,role,policy,cameraScope,discovery,nonRecordingOperationIds as operationIds,identityOps,scopedIdentityOps,allOps,privateResponse,lintProjections,type Server,type Identity, withoutLoginTime} from './permissionCases';
 import {validateLoginRequest,validateLoginResponse,validateLoginConfig,validateAuthVerifyResponse,validateLogoutResponse,validateClientConfig,validateApiTokenCreateRequest,validateApiTokenMetadata,validateApiTokenList,validateApiTokenCreated,validateSuccessResponse} from '../../web/generated/api/validators';
 
 // Inspect only our isolated fixture. No credential rows/values are emitted.
@@ -92,14 +92,14 @@ test('Basic and legacy keys retain identity/self-service while scoped tokens can
     [`/api/authorization/users/1/tokens/${scoped.tokenId}`,'DELETE',undefined],
     ['/api/authorization/users/1','PUT',{mode:'legacy',expected_policy_version:policyBefore.policy_version,grants:[]}],
   ] as const)expect((await wire(server,route,scoped,method,body)).response.status).toBe(403);
-  expect(await inventory(server)).toEqual(before);expect(await ok(server,'/api/authorization/users/1')).toEqual(policyBefore);
+  expect(await inventory(server)).toEqual(before);expect(withoutLoginTime(await ok(server,'/api/authorization/users/1'))).toEqual(withoutLoginTime(policyBefore));
   // Even a scoped token containing users.manage cannot bypass the explicit guard.
   const manager=await token(server,admin,{type:'all'},['users.manage']);
   const managerBefore=await inventory(server);
   expect((await wire(server,'/api/authorization/users/1',manager,'PUT',{mode:'legacy',expected_policy_version:policyBefore.policy_version,grants:[]})).response.status).toBe(403);
   expect((await wire(server,'/api/authorization/users/1/tokens',manager,'POST',creation(server))).response.status).toBe(403);
   expect((await inventory(server)).tokens.map((row:{uuid:string;revoked_at:number|null})=>[row.uuid,row.revoked_at])).toEqual(managerBefore.tokens.map((row:{uuid:string;revoked_at:number|null})=>[row.uuid,row.revoked_at]));
-  expect(await ok(server,'/api/authorization/users/1')).toEqual(policyBefore);lintProjections(info);
+  expect(withoutLoginTime(await ok(server,'/api/authorization/users/1'))).toEqual(withoutLoginTime(policyBefore));lintProjections(info);
 });
 
 test('self-service token issuance is bounded by owner/requester authority and invalid writes have no effects',async({server},info)=>{
@@ -114,11 +114,11 @@ test('self-service token issuance is bounded by owner/requester authority and in
     [admin,{...request,actions:['camera.configure']}],
   ] as const) {
     expect((await wire(server,route,identity,'POST',body)).response.status).toBe(403);
-    expect(await inventory(server,viewer)).toEqual(before);expect(await ok(server,`/api/authorization/users/${viewer.id}`)).toEqual(policyBefore);
+    expect(await inventory(server,viewer)).toEqual(before);expect(withoutLoginTime(await ok(server,`/api/authorization/users/${viewer.id}`))).toEqual(withoutLoginTime(policyBefore));
   }
   for(const body of [{...request,description:''},{...request,actions:[]},{...request,actions:['unknown.action']},{...request,expires_at:1},{...request,expires_at:Math.floor(Date.now()/1000)+367*86400},{...request,scope:{type:'invalid'}}]) {
     expect((await wire(server,route,viewer,'POST',body)).response.status).toBe(400);
-    expect(await inventory(server,viewer)).toEqual(before);expect(await ok(server,`/api/authorization/users/${viewer.id}`)).toEqual(policyBefore);
+    expect(await inventory(server,viewer)).toEqual(before);expect(withoutLoginTime(await ok(server,`/api/authorization/users/${viewer.id}`))).toEqual(withoutLoginTime(policyBefore));
   }
   expect((await wire(server,'/api/authorization/users/1/tokens',viewer)).response.status).toBe(403);
   expect((await wire(server,`${route}/not-a-uuid`,viewer,'DELETE')).response.status).toBe(400);
@@ -137,7 +137,7 @@ test('self-service token issuance is bounded by owner/requester authority and in
   const removed=await wire(server,`${route}/${issued.body.token.uuid}`,viewer,'DELETE');expect(removed.response.status).toBe(200);expect(validateSuccessResponse(removed.body)).toBe(true);
   expect((await wire(server,'/api/streams/A/full',credential)).response.status).toBe(401);
   const deniedDiscovery=await wire(server,'/api/openapi.json',credential);expect(deniedDiscovery.response.status).toBe(401);privateResponse(deniedDiscovery.response);
-  expect(await ok(server,`/api/authorization/users/${viewer.id}`)).toEqual(policyBefore);lintProjections(info);
+  expect(withoutLoginTime(await ok(server,`/api/authorization/users/${viewer.id}`))).toEqual(withoutLoginTime(policyBefore));lintProjections(info);
 });
 
 test('synthetic identity variants remain explicit without synthetic discovery access',async({server},info)=>{
@@ -173,11 +173,11 @@ test('users.manage cannot delegate token scope beyond the requester even for a b
   const before=await inventory(server);
   for(const scope of [{type:'all'},cameraScope(server.cameras.B.camera_uuid)]) {
     expect((await wire(server,'/api/authorization/users/1/tokens',manager,'POST',{...creation(server),scope})).response.status).toBe(403);
-    expect(await inventory(server)).toEqual(before);expect(await ok(server,'/api/authorization/users/1')).toEqual(policyBefore);
+    expect(await inventory(server)).toEqual(before);expect(withoutLoginTime(await ok(server,'/api/authorization/users/1'))).toEqual(withoutLoginTime(policyBefore));
   }
   const issued=await wire(server,'/api/authorization/users/1/tokens',manager,'POST',creation(server));
   expect(issued.response.status).toBe(201);expect(validateApiTokenCreated(issued.body)).toBe(true);
   const revoked=await wire(server,`/api/authorization/users/1/tokens/${issued.body.token.uuid}`,manager,'DELETE');
   expect(revoked.response.status).toBe(200);expect(validateSuccessResponse(revoked.body)).toBe(true);
-  expect(await ok(server,'/api/authorization/users/1')).toEqual(policyBefore);
+  expect(withoutLoginTime(await ok(server,'/api/authorization/users/1'))).toEqual(withoutLoginTime(policyBefore));
 });

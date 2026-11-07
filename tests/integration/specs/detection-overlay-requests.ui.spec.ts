@@ -64,7 +64,11 @@ test('slow detection polls do not overlap and stop when overlays close @ui @live
     await page.clock.runFor(4000);
     await expect.poll(() => detectionRequests).toBe(1);
     expect(abortedRequests).toBe(0);
-    await page.getByRole('button', { name: 'Hide All Detection Overlays', exact: true }).click();
+    // The toggle has a stable name; aria-pressed carries the shown/hidden state.
+    const overlayToggle = page.getByRole('button', { name: 'Detections', exact: true });
+    await expect(overlayToggle).toHaveAttribute('aria-pressed', 'true');
+    await overlayToggle.click();
+    await expect(overlayToggle).toHaveAttribute('aria-pressed', 'false');
     // Flush the component's scheduled render/unmount without reaching timeout.
     await page.clock.runFor(100);
     await expect.poll(() => abortedRequests).toBe(1);

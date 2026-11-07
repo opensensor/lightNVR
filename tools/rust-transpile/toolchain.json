@@ -1,0 +1,33 @@
+{
+  "comment": "Pins for generating rust/ from C. Changing any value regenerates every module; do it in a dedicated PR.",
+  "c2rust_repository": "https://github.com/immunant/c2rust.git",
+  "c2rust_revision": "10c776738db3f6b202dd1cade85fcdd3c1ada6f8",
+  "rust_toolchain": "nightly-2026-03-03",
+  "rust_edition": "2024",
+  "clang_major": 21,
+  "cmake_options": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "BUILD_TESTS": "OFF",
+    "ENABLE_SOD": "ON",
+    "ENABLE_GO2RTC": "ON",
+    "ENABLE_MQTT": "ON",
+    "ENABLE_SSL": "ON",
+    "ENABLE_S3_ARCHIVE": "ON",
+    "ENABLE_AUDIO_FILTERS": "ON",
+    "ENABLE_AUDIO_DENOISE": "ON",
+    "ENABLE_LITERT": "OFF",
+    "ENABLE_SENTRY": "OFF",
+    "LIGHTNVR_PROFILE": "full"
+  },
+  "translation_defines": ["CURL_DISABLE_TYPECHECK"],
+  "per_file_defines": {
+    "src/sod/sod.c": ["STBI_NO_SIMD"]
+  },
+  "main_executable_targets": ["lightnvr_lib.dir/", "lightnvr.dir/", "/sod.dir/"],
+  "native_static_libraries": ["llhttp_lib", "inih_lib", "faac_lib"],
+  "native_system_libraries": [
+    "uv", "avformat", "avcodec", "swscale", "swresample", "avutil", "avfilter",
+    "sqlite3", "curl", "z", "mbedtls", "mbedx509", "mbedcrypto", "cjson", "mosquitto",
+    "atomic", "pthread", "dl", "rt", "m"
+  ]
+}

@@ -29,6 +29,11 @@ export const test = base.extend<{server: Server}>({
 const canonical: Json = JSON.parse(readFileSync('docs/api/openapi.json','utf8'));
 const ajv = new Ajv2020({strict:false,allErrors:true}); addFormats(ajv);
 ajv.addSchema({$id:'urn:lightnvr:canonical',components:canonical.components});
+/** Every helper request authenticates, which updates last_login at one-second
+ * resolution, so before/after "no side effect" comparisons of user data ignore it. */
+export function withoutLoginTime<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value, (key, item) => key === 'last_login' ? 0 : item));
+}
 export function valid(name: string, body: unknown) {
   const validator=ajv.compile({$ref:`urn:lightnvr:canonical#/components/schemas/${name}`});
   expect(validator(body), `${name}: ${JSON.stringify(validator.errors)}`).toBe(true);

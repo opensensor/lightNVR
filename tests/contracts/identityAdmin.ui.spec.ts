@@ -1,5 +1,5 @@
 /** Actual UsersView and administration modals, built UI against owned native fixtures. */
-import {test,expect,ok,database} from './permissionCases';
+import {test,expect,ok,database, withoutLoginTime} from './permissionCases';
 import {readFileSync} from 'node:fs';
 
 test('creating an account honors password lock and legacy administrator editing uses policy-safe payload',async({server,browser})=>{
@@ -54,7 +54,7 @@ test('policy editor refuses malformed acknowledgment then applies and exposes th
     const dialog=page.getByRole('dialog');await dialog.getByRole('combobox',{name:'Camera scope',exact:true}).selectOption('all');
     let calls=0;await page.route('**/api/authorization/users/2',route=>{if(route.request().method()!=='PUT')return route.continue();calls++;return route.fulfill({status:200,contentType:'application/json',body:'{"policy_version":"private-invalid-version"}'});});
     await dialog.getByRole('button',{name:'Save Changes',exact:true}).click();await expect(page.getByText(/Could not save access policy: Invalid setUserAuthorizationPolicy response/)).toBeVisible();expect(calls).toBe(1);
-    expect(await ok(server,'/api/authorization/users/2')).toEqual(before);await expect(page.getByText('Access policy saved',{exact:true})).toHaveCount(0);await expect(page.getByText('private-invalid-version')).toHaveCount(0);
+    expect(withoutLoginTime(await ok(server,'/api/authorization/users/2'))).toEqual(withoutLoginTime(before));await expect(page.getByText('Access policy saved',{exact:true})).toHaveCount(0);await expect(page.getByText('private-invalid-version')).toHaveCount(0);
     await page.unroute('**/api/authorization/users/2');await dialog.getByRole('button',{name:'Save Changes',exact:true}).click();await expect(page.getByText('Access policy saved',{exact:true})).toBeVisible();
     const after=await ok(server,'/api/authorization/users/2');expect(after.policy_version).toBeGreaterThan(before.policy_version);expect(after.grants[0].scope.type).toBe('all');
   }finally{await context.close();}

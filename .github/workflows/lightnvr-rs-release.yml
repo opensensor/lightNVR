@@ -1,0 +1,222 @@
+name: lightnvr-rs release
+
+# Publishes the generated Rust backend next to every C artifact, with names
+# mirroring the C ones:
+#   lightnvr_<ver>_sid_amd64.deb      -> lightnvr-rs_<ver>_sid_amd64.deb
+#   ghcr.io/opensensor/lightnvr:<ver> -> ghcr.io/opensensor/lightnvr-rs:<ver>
+#   (plus lightnvr-rs_<ver>_sid_amd64.tar.gz with the bare binary)
+# C2Rust inlines the target's headers, so rust/ is specific to x86_64 Debian sid;
+# arm64/armhf and trixie would each need their own generated tree.
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/opensensor/lightnvr-rs
+  C_REGISTRY_IMAGE: ghcr.io/opensensor/lightnvr
+  TRANSPILE_IMAGE: lightnvr-rs-transpile:release
+
+jobs:
+  build:
+    name: Build lightnvr-rs (sid/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+      - name: Checkout FAAC
+        run: git submodule update --init --depth 1 third_party/faac
+
+      - name: Resolve version and pins
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -n 's/^project(LightNVR VERSION \([0-9][0-9.]*\) .*/\1/p' CMakeLists.txt)
+          fi
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          for key in c2rust_revision rust_toolchain clang_major; do
+            echo "$key=$(jq -r ".$key" tools/rust-transpile/toolchain.json)" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: tools/rust-transpile
+          file: tools/rust-transpile/Dockerfile
+          tags: ${{ env.TRANSPILE_IMAGE }}
+          load: true
+          build-args: |
+            C2RUST_REVISION=${{ steps.version.outputs.c2rust_revision }}
+            RUST_TOOLCHAIN=${{ steps.version.outputs.rust_toolchain }}
+            CLANG_MAJOR=${{ steps.version.outputs.clang_major }}
+          cache-from: type=gha,scope=lightnvr-rs-transpile
+
+      - name: Verify rust/ matches this commit's C, build and smoke test
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" --tmpfs /tmp:exec,size=4g,mode=1777 \
+            -e HOME=/tmp -e CARGO_HOME=/tmp/cargo-home -e LIGHTNVR_GIT_COMMIT="${GITHUB_SHA::7}" \
+            -v "$GITHUB_WORKSPACE:/work" -w /work "$TRANSPILE_IMAGE" bash -euo pipefail -c '
+              python3 tools/rust-transpile/generate.py --native --check
+              (cd rust && cargo build --release --locked)
+              python3 tools/rust-transpile/abi-audit.py
+              npm ci --ignore-scripts
+              node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs'
+
+      - name: Package tarball
+        run: |
+          name="lightnvr-rs_${{ steps.version.outputs.version }}_sid_amd64"
+          mkdir -p "dist/$name/bin" "dist/$name/share/lightnvr-rs"
+          install -m 0755 rust/target/release/lightnvr-rs "dist/$name/bin/lightnvr-rs"
+          cp rust/MANIFEST.json "dist/$name/share/lightnvr-rs/"
+          cp -r db/migrations "dist/$name/share/lightnvr-rs/migrations"
+          cp -r config "dist/$name/share/lightnvr-rs/config"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          cp rust/target/release/lightnvr-rs dist/lightnvr-rs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-bin
+          path: |
+            dist/lightnvr-rs
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          retention-days: 7
+
+  packages:
+    name: Docker image and .deb (sid/amd64)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: lightnvr-rs-bin
+          path: dist
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Same runtime (web UI, go2rtc, migrations, entrypoint) as the C image,
+      # reusing the C workflow's registry build cache.
+      - name: Build lightnvr runtime base
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          pull: true
+          load: true
+          tags: lightnvr-runtime:local
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.C_REGISTRY_IMAGE }}:buildcache-amd64
+
+      - name: Build lightnvr-rs image
+        run: |
+          chmod 0755 dist/lightnvr-rs
+          docker buildx build --builder default --load -t lightnvr-rs:local \
+            -f tools/rust-transpile/Dockerfile.runtime \
+            --build-arg BASE_IMAGE=lightnvr-runtime:local dist
+
+      - name: Smoke test lightnvr-rs image
+        run: |
+          docker run -d --name lightnvr-rs-smoke -p 18080:8080 lightnvr-rs:local
+          for i in $(seq 1 45); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          docker logs lightnvr-rs-smoke | tail -n 30
+          test "$code" = 200
+          docker exec lightnvr-rs-smoke pgrep -x go2rtc
+          docker rm -f lightnvr-rs-smoke
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=sha,enable=${{ github.ref_type != 'tag' }}
+          labels: |
+            org.opencontainers.image.title=LightNVR (lightnvr-rs)
+            org.opencontainers.image.description=LightNVR with the backend translated from C to Rust by C2Rust
+            org.opencontainers.image.vendor=OpenSensor
+
+      - name: Push lightnvr-rs image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            docker tag lightnvr-rs:local "$tag"
+            docker push "$tag"
+          done
+
+      - name: Build lightnvr-rs .deb
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq dpkg-dev binutils >/dev/null
+          tools/rust-transpile/package-deb.sh lightnvr-runtime:local dist/lightnvr-rs \
+            "$VERSION" sid amd64 dist/deb
+
+      - name: Install-test .deb on Debian sid
+        run: |
+          docker run --rm -v "$PWD/dist/deb:/pkg" debian:sid-slim bash -euo pipefail -c '
+            apt-get update -qq
+            apt-get install -y -qq /pkg/*.deb curl >/dev/null
+            lightnvr-rs --version
+            mkdir -p /var/lib/lightnvr/data
+            lightnvr-rs -c /etc/lightnvr/lightnvr.ini >/tmp/lightnvr-rs.log 2>&1 &
+            for i in $(seq 1 30); do
+              [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ || true)" = 200 ] && exit 0
+              sleep 1
+            done
+            tail -n 40 /tmp/lightnvr-rs.log; exit 1'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-deb-sid-amd64
+          path: dist/deb/*.deb
+          retention-days: 7
+
+      - name: Attach to GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/deb/*.deb
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
