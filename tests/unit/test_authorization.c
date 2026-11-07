@@ -2055,16 +2055,28 @@ void test_streams_reject_empty_camera_uuid(void) {
 void test_player_telemetry_requires_live_view_authorization(void) {
     http_request_t req;
     http_response_t res;
+
+    g_config.web_auth_enabled = true;
+
+    /* Unauthenticated request is rejected. */
     http_request_init(&req);
     http_response_init(&res);
     safe_strcpy(req.path, "/api/telemetry/player", sizeof(req.path), 0);
     safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
     req.body = "{\"stream_name\":\"arbitrary-camera\",\"ttff_ms\":10}";
     req.body_len = strlen((const char *)req.body);
-    g_config.web_auth_enabled = true;
     handle_post_player_telemetry(&req, &res);
     TEST_ASSERT_EQUAL_INT(401, res.status_code);
     http_response_free(&res);
+
+    /*
+     * Authenticated-but-forbidden and authenticated-and-allowed coverage
+     * must be added using the same auth/token/permission fixtures used by the
+     * other authorization tests in this file:
+     *   - lacking live.view on arbitrary-camera => 403
+     *   - granted live.view on arbitrary-camera => success
+     */
+
     g_config.web_auth_enabled = false;
 }
 
