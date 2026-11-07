@@ -465,7 +465,7 @@ export function BatchDeleteModal() {
  * Opens the confirmation modal — no browser confirm() used.
  * @param {Array<number>} ids - Recording IDs to delete
  */
-export function batchDeleteRecordings(ids: number[]) {
+export function batchDeleteRecordings(ids: Array<number | string>) {
   if (!ids || ids.length === 0) {
     showStatusMessage(translate('recordings.noSelectionForDeletion'), 'warning', 5000);
     return;

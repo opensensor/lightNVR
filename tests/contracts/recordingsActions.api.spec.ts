@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync,openSync,closeSync,ftruncateSync,readFileSync,statfsSync,unlinkSync,writeFileSync} from 'node:fs';
+import {copyFileSync,existsSync,openSync,closeSync,ftruncateSync,readFileSync,statfsSync,unlinkSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {test,expect,admin,anonymous,viewer,wire,ok,valid,database,createUser,role,policy,token,cameraScope,type Identity,type Server,type Json} from './permissionCases';
@@ -289,4 +289,26 @@ test('a bounded regular export source exposes running and not_ready before compl
   await expect.poll(async()=>(await exportStatus(server,accepted.token,exporter)).status,{timeout:5000,intervals:[20,50,100]}).toBe('running');
   const result=await jsonResult(server,`/api/recordings/batch-download/result/${accepted.token}`,exporter,'GET',undefined,409,'ApiError');expect(result.error).toBe('Job is not_ready');
   expect(await exportDone(server,accepted.token,exporter)).toMatchObject({status:'complete',current:1,total:1,error:''});
+});
+
+test('batch deletion preserves adjacent large IDs through authorization and worker dispatch',async({server})=>{
+  const fixture=seedRecordings(server);
+  const exact=['9007199254740992','9007199254740993'];
+  for(const id of exact) {
+    const file=path.join(fixture.directory,`${id}.mp4`);copyFileSync(fixture.source,file);
+    database(server,`INSERT INTO recordings(id,stream_name,camera_uuid,file_path,start_time,end_time,size_bytes,is_complete)
+      SELECT ?,stream_name,camera_uuid,?,start_time,end_time,size_bytes,is_complete FROM recordings WHERE id=?`,[BigInt(id),file,ids.playable]);
+  }
+  const deleter=await actor(server,'exact_deleter',['recording.delete']);
+  const denied=await wire(server,'/api/recordings/batch-delete',deleter,'POST',{ids:[exact[1],String(ids.hidden)]});
+  expect(denied.response.status).toBe(403);expect(denied.body).not.toHaveProperty('job_id');
+  for(const id of exact) expect(existsSync(path.join(fixture.directory,`${id}.mp4`))).toBe(true);
+  const accepted=await jsonResult(server,'/api/recordings/batch-delete',deleter,'POST',
+    {ids:[exact[1],Number(exact[0]),'18446744073709551616','1junk']},202,'RecordingDeletionJobAccepted');
+  const progress=await deletionDone(server,accepted.job_id,deleter);
+  expect(progress.succeeded).toBe(1);expect(progress.failed).toBe(3);
+  expect(existsSync(path.join(fixture.directory,`${exact[0]}.mp4`))).toBe(true);
+  expect(existsSync(path.join(fixture.directory,`${exact[1]}.mp4`))).toBe(false);
+  expect(withDb(server,db=>db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE id=?').get(BigInt(exact[0]))?.n)).toBe(1);
+  expect(withDb(server,db=>db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE id=?').get(BigInt(exact[1]))?.n)).toBe(0);
 });

@@ -23,6 +23,7 @@
 #include <cjson/cJSON.h>
 
 #include "web/request_response.h"
+#include "web/recording_id.h"
 #include "web/httpd_utils.h"
 #include "web/audit_log.h"
 #include "web/batch_delete_progress.h"
@@ -398,13 +399,12 @@ static void *batch_delete_worker_thread(void *arg) {
 
         for (int i = 0; i < array_size; i++) {
             cJSON *id_item = cJSON_GetArrayItem(ids_array, i);
-            if (!id_item || !cJSON_IsNumber(id_item)) {
+            uint64_t id;
+            if (!recording_id_parse_json(id_item, &id)) {
                 log_warn("Invalid ID at index %d", i);
                 error_count++;
                 continue;
             }
-
-            uint64_t id = (uint64_t)id_item->valuedouble;
 
             // Get recording from database
             recording_metadata_t recording;
@@ -661,11 +661,11 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
     *failure_count = 0;
     cJSON *item = NULL;
     cJSON_ArrayForEach(item, ids) {
-        if (!cJSON_IsNumber(item) || item->valuedouble <= 0) {
+        uint64_t id;
+        if (!recording_id_parse_json(item, &id)) {
             (*failure_count)++;
             continue;
         }
-        uint64_t id = (uint64_t)item->valuedouble;
         recording_metadata_t recording;
         if (get_recording_metadata_by_id(id, &recording) != 0) {
             (*failure_count)++;
@@ -685,7 +685,13 @@ static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
             http_response_set_json_error(res, 403, "Forbidden");
             return 0;
         }
-        cJSON_AddItemToArray(authorized, cJSON_CreateNumber((double)id));
+        cJSON *copy = cJSON_Duplicate(item, true);
+        if (!copy || !cJSON_AddItemToArray(authorized, copy)) {
+            cJSON_Delete(copy);
+            cJSON_Delete(authorized);
+            http_response_set_json_error(res, 500, "Failed to authorize batch");
+            return 0;
+        }
     }
 
     cJSON_DeleteItemFromObjectCaseSensitive(json, "ids");

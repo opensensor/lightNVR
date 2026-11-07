@@ -30,6 +30,7 @@
 #include <cjson/cJSON.h>
 
 #include "web/request_response.h"
+#include "web/recording_id.h"
 #include "web/httpd_utils.h"
 #include "web/audit_log.h"
 #define LOG_COMPONENT "RecordingsAPI"
@@ -477,24 +478,6 @@ static void *zip_worker(void *arg) {
 
 /* ─── HTTP Handlers ───────────────────────────────────────────────────── */
 
-/* Timeline IDs above JavaScript's exact integer range arrive as decimal strings. */
-static bool parse_export_recording_id(const cJSON *item, uint64_t *id) {
-    if (cJSON_IsNumber(item)) {
-        double value = item->valuedouble;
-        if (!(value >= 1 && value <= 9007199254740991.0)) return false;
-        *id = (uint64_t)value;
-        return (double)*id == value;
-    }
-    if (!cJSON_IsString(item) || !item->valuestring || !item->valuestring[0]) return false;
-    uint64_t value = 0;
-    for (const char *p = item->valuestring; *p; p++) {
-        if (*p < '0' || *p > '9' || value > (UINT64_MAX - (unsigned)(*p - '0')) / 10) return false;
-        value = value * 10 + (unsigned)(*p - '0');
-    }
-    *id = value;
-    return value != 0;
-}
-
 /**
  * POST /api/recordings/batch-download
  * Body: { "ids": [1,2,3], "filename": "incident.zip" }
@@ -533,7 +516,7 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     // recording before any background job can read files.
     for (int i = 0; i < count; i++) {
         cJSON *item = cJSON_GetArrayItem(ids_arr, i);
-        if (!parse_export_recording_id(item, &parsed_ids[i])) {
+        if (!recording_id_parse_json(item, &parsed_ids[i])) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 400, "Invalid recording ID");
             return;
