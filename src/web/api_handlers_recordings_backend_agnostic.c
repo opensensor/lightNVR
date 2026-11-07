@@ -902,6 +902,7 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             cJSON_Delete(json);
             return;
         }
+        // cJSON_GetObjectItem is case-insensitive; duplicate date aliases were rejected above.
         if (!parse_delete_time_bound(cJSON_GetObjectItem(filter, "start"), &start_time) ||
             !parse_delete_time_bound(cJSON_GetObjectItem(filter, "end"), &end_time) ||
             (start_time && end_time && start_time > end_time)) {

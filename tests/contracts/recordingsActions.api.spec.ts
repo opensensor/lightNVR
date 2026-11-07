@@ -381,15 +381,19 @@ test('filtered deletion rejects invalid date bounds before dispatch and honors v
   const invalid=[null,42,true,{},'', 'garbage', '2026-02-30T00:00:00Z', '2026-13-01T00:00:00Z',
     '2026-01-01T24:00:00Z','2026-01-01T00:00:60Z','2026-01-01T00:00:00junk',
     '2026-01-01T00:00:00.Z','2026-01-01T00:00:00+02:00','1970-01-01T00:00:00Z','1969-12-31T23:59:59Z'];
-  for(const key of ['start','end','Start','END']) for(const bound of invalid) {
+  for(const key of ['start','end','Start','END','sTaRt','eNd']) for(const bound of invalid) {
     await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',{filter:{stream:'A',[key]:bound}},400,'ApiError');
   }
   await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
     {filter:{stream:'A',start:'2026-12-01T00:00:00Z',end:'2026-01-01T00:00:00Z'}},400,'ApiError');
   expect(state(server,all)).toEqual(before);
   const future=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
-    {filter:{stream:'A',start:'2099-01-01T00:00:00.123Z',end:'2099-01-02T00:00:00'}},202,'RecordingDeletionJobAccepted');
+    {filter:{stream:'A',sTaRt:'2099-01-01T00:00:00.123Z',eNd:'2099-01-02T00:00:00'}},202,'RecordingDeletionJobAccepted');
   expect(await deletionDone(server,future.job_id,owner)).toMatchObject({total:0,current:0,succeeded:0,failed:0});
+  expect(state(server,all)).toEqual(before);
+  const past=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
+    {filter:{stream:'A',eNd:'2000-01-01T00:00:00Z'}},202,'RecordingDeletionJobAccepted');
+  expect(await deletionDone(server,past.job_id,owner)).toMatchObject({total:0,current:0,succeeded:0,failed:0});
   expect(state(server,all)).toEqual(before);
   const job=await jsonResult(server,'/api/recordings/batch-delete',owner,'POST',
     {filter:{stream:'A',tag:'visible-tag',start:new Date((fixture.start-1)*1000).toISOString(),end:new Date((fixture.end+1)*1000).toISOString()}},202,'RecordingDeletionJobAccepted');
@@ -410,6 +414,8 @@ test('deletion filters reject unsupported or ambiguous selectors and retain real
   ]) await deniedUnchanged(server,[ids.playable,ids.sibling,ids.hidden],'/api/recordings/batch-delete',admin,'POST',{filter},400);
   for(const filter of [
     '{"start":"2099-01-01T00:00:00Z","Start":"2026-01-01T00:00:00Z"}',
+    '{"sTaRt":"2099-01-01T00:00:00Z","StArT":"2026-01-01T00:00:00Z"}',
+    '{"eNd":"2000-01-01T00:00:00Z","ENd":"2099-01-01T00:00:00Z"}',
     '{"tag":"visible-tag","tag":"hidden-tag"}',
   ]) {
     const response=await fetch(`${server.baseURL}/api/recordings/batch-delete`,{method:'POST',headers:{...admin.headers,'Content-Type':'application/json'},body:`{"filter":${filter}}`});
@@ -427,4 +433,27 @@ test('deletion filters reject unsupported or ambiguous selectors and retain real
   expect(await deletionDone(server,accepted.job_id,owner)).toMatchObject({total:1,succeeded:1,failed:0});
   expect(state(server,[ids.playable])[0]).toMatchObject({row:undefined,exists:false});
   expect(state(server,[ids.sibling,ids.hidden])).toEqual(before.slice(1));
+});
+
+
+test('recording path validation rejects encoded suffixes but ignores query-string NULs',async({server})=>{
+  const fixture=seedRecordings(server);
+  const before=state(server,[ids.playable,ids.sibling,ids.hidden]);
+  for(const pathId of [
+    '%00101','%31%30%31%00junk','101%00%3Fignored=1','101%00?ignored=1',
+    '101%2500','101%25%30%30','101%','101%0','101%GG','101%2Fjunk',
+    '101%0Gjunk','101%-0junk','101%+0junk','101%0xjunk',
+  ]) {
+    for(const method of ['GET','DELETE']) {
+      await jsonResult(server,`/api/recordings/${pathId}`,admin,method,undefined,400,'ApiError');
+    }
+    expect(state(server,[ids.playable,ids.sibling,ids.hidden])).toEqual(before);
+  }
+  // Query bytes are not part of the path identity. Encoded digits remain valid.
+  const read=await wire(server,'/api/recordings/%31%30%31?note=%00',admin);
+  expect(read.response.status).toBe(200);expect(read.body.id).toBe(ids.playable);
+  await jsonResult(server,'/api/recordings/%31%30%32?note=%00',admin,'DELETE',undefined,200,'RecordingDeletionResult');
+  expect(state(server,[ids.playable,ids.hidden])).toEqual([before[0],before[2]]);
+  expect(state(server,[ids.sibling])[0]).toMatchObject({row:undefined,exists:false});
+  expect(existsSync(path.join(fixture.directory,`${ids.sibling}.mp4`))).toBe(false);
 });
