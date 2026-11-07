@@ -1,7 +1,5 @@
 # LightNVR Installation Guide
 
-*Verified against LightNVR 0.37.x.*
-
 This document provides detailed instructions for installing LightNVR on various platforms.
 
 ## Table of Contents
