@@ -5,6 +5,7 @@
  */
 const path = require('node:path');
 const { fleetLocations, floorPlan, liveLayout } = require('./fleetFixtures');
+const {validateWorkspacesResponse,validateEvidenceSearch} = require('../../generated/api/validators.js');
 
 const streams = [
   { camera_uuid: '30000000-0000-4000-8000-000000000001', name: 'Gate', availability: 'live', location_uuid: null },
@@ -12,6 +13,34 @@ const streams = [
   { camera_uuid: '30000000-0000-4000-8000-000000000003', name: 'Shed', availability: 'live', location_uuid: null },
   { camera_uuid: '30000000-0000-4000-8000-000000000004', name: 'Office', availability: 'live', location_uuid: null },
 ];
+
+function fixture(guard, body) {
+  if (!guard(body)) throw new Error(`Invalid native navigator fixture: ${JSON.stringify(guard.errors)}`);
+  return body;
+}
+const workspaces = fixture(validateWorkspacesResponse, {
+  scope: 'user', configurable: true,
+  workspaces: ['live.navigator', 'investigation'].map(key => ({
+    key, label: key, description: 'Fixture workspace', visible: true,
+    configurable: true, authorization_unchanged: true,
+  })),
+});
+const observed = Math.floor(Date.now() / 1000) - 5;
+const search = fixture(validateEvidenceSearch, {
+  camera_count: streams.length, selector_applied: false, summary_complete: true,
+  results: [{result_id: 'detection:1', event_type: 'detection', camera_uuid: streams[0].camera_uuid,
+    start_time: observed, end_time: observed, media_available: false, known_gap: true, recording_id: null,
+    detection: {id: 1, label: 'person', confidence: 0.9, source: 'lightnvr', zone_uuid: null, track_id: null, bounding_box: null},
+    camera: {name: 'Gate', location_uuid: null, location_name: null, location_path: null},
+    thumbnail: {status: 'unavailable'}, recording: {capture_method: null, protected: null},
+  }],
+  page: {limit: 20, returned: 1, total: 1, has_more: false, next_cursor: null},
+  facets: {cameras: [], labels: [], zones: [], sources: [], event_types: [], locations: [], capture_methods: [], recording_tags: [], protection: []},
+  histogram: {bucket_seconds: 60, buckets: []},
+  coverage: {requested_start: observed - 3600, requested_end: observed + 5,
+    searched_start: observed - 3600, searched_end: observed + 5, unresolved_legacy_rows: 0,
+    spatial_metadata: {requested: false}, incomplete_reasons: [], complete: true},
+});
 
 async function openNavigator() {
   const { chromium } = require('../../../node_modules/playwright');
@@ -30,7 +59,7 @@ async function openNavigator() {
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   window.fetch = async (url, options = {}) => {
     const target = String(url);
-    if (target === '/api/ui/workspaces') return json({});
+    if (target === '/api/ui/workspaces') return json(${JSON.stringify(workspaces)});
     if (target === '/api/locations') return json(${JSON.stringify(fleetLocations([{ uuid: '00000000-0000-4000-8000-000000000001', name: 'Orchard' }]))});
     if (target === '/api/live/plans') return json({can_modify:true,plans:[${JSON.stringify(floorPlan({name:'orchard48',location_uuid:'00000000-0000-4000-8000-000000000001',cameras:streams.slice(0,3).map((stream,index)=>({camera_uuid:stream.camera_uuid,x:0.2*(index+1),y:0.2*(index+1)}))}))}]});
     const layout=${JSON.stringify(liveLayout({name:'Yard',revision:3,camera_slots:[{camera_uuid:streams[0].camera_uuid}]}))};
@@ -43,8 +72,15 @@ async function openNavigator() {
     if (target === '/api/investigations/search') {
       window.calls.searches += 1;
       if (window.calls.searches === 1) return json({ error: 'search backend down' }, 500);
-      return json({ results: [{ result_id: 'r1', event_type: 'detection', start_time: 1700000000,
-        detection: { label: 'person' }, camera: { name: 'Gate' } }] });
+      const request = JSON.parse(options.body);
+      const result = ${JSON.stringify(search)};
+      result.camera_count = request.selector.expression.values.length;
+      result.selector_applied = true;
+      result.summary_complete = request.include_summary !== false;
+      result.page.limit = request.limit;
+      result.coverage.requested_start = result.coverage.searched_start = request.start_time;
+      result.coverage.requested_end = result.coverage.searched_end = request.end_time;
+      return json(result);
     }
     return new Response('', { status: 404 });
   };
@@ -117,7 +153,8 @@ it('groups plan cameras, never spins on an empty Events scope, and updates views
     await page.locator('.live-location-row', { hasText: 'live.navigator.allCameras' }).click();
     await tab(page, 'events').click();
     await page.getByRole('alert').waitFor();
-    expect(await page.getByRole('alert').textContent()).toContain('search backend down');
+    expect(await page.getByRole('alert').textContent()).toContain('searchEvidence failed (HTTP 500).');
+    expect(await page.getByRole('alert').textContent()).not.toContain('search backend down');
     await page.getByRole('alert').getByRole('button', { name: 'live.navigator.retry' }).click();
     await page.locator('.live-event-row', { hasText: 'person' }).waitFor();
 
