@@ -805,11 +805,13 @@ export function RecordingsView() {
         return;
       }
 
+      const returnTo = `${window.location.pathname}${window.location.search}`;
       const params = new URLSearchParams({
         cameras: cameraUuids.join(','),
         start: String(paddedStart),
         end: String(paddedEnd),
         cursor: String(Math.floor(start)),
+        return_to: returnTo,
       });
       window.location.href = `investigation.html?${params.toString()}`;
     } catch (requestError) {
