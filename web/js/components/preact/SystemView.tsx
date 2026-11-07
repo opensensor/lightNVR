@@ -1,4 +1,5 @@
-import {getSystemInformation,clearSystemLogs,restartSystem} from '../../api/system.ts';
+import {ContractValidationError} from '../../api/contractErrors.ts';
+import {getSystemInformation,clearSystemLogs,restartSystem,SystemRequestError} from '../../api/system.ts';
 /**
  * LightNVR Web Interface SystemView Component
  * Preact component for the system page
@@ -200,13 +201,14 @@ export function SystemView() {
     },
     onError: (error) => {
       console.error('Error restarting system:', error);
-      // Only show error and reset state if it's not a network error
-      // (network errors are expected during restart)
-      if (error.message && !error.message.includes('fetch') && !error.message.includes('network')) {
-        showStatusMessage(t('system.restartError', { message: error.message }));
-        setIsRestarting(false);
+      // A lost or malformed acknowledgement cannot prove the write failed.
+      // Keep observing outage/recovery, without submitting another restart.
+      if ((error instanceof SystemRequestError || error instanceof ContractValidationError) && error.mayHaveApplied) {
+        showStatusMessage(t('system.systemRestartingWait'));
+        return;
       }
-      // Otherwise, the restart was likely initiated successfully and the server is shutting down
+      showStatusMessage(t('system.restartError', { message: error.message }));
+      setIsRestarting(false);
     }
   });
 

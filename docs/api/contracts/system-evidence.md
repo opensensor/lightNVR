@@ -82,3 +82,11 @@ Commands and raw logs for this development run are in ignored
 execution plan. No operator configuration, production storage or hardware camera
 was used. Builds tested here have managed go2rtc, MQTT and optional ML disabled;
 this receipt does not assert those device/provider integrations are qualified.
+
+Independent integration review found two additional consumer regressions, both
+corrected with browser evidence. Bootstrap now applies valid client-config flags
+when the independent setup-status request fails (two actual-page cases). A lost
+restart acknowledgment now uses structured `mayHaveApplied` errors to keep
+observing outage/recovery without resubmitting the restart; an explicit 403
+returns to confirmation. The lost-response case failed with zero status probes
+before the fix; both restart browser cases pass after it.
