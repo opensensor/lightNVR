@@ -168,6 +168,13 @@ add_layer2_test_with_curl(test_detection_system_onvif)
 add_layer3_test(test_onvif_poll_recovery)
 add_layer3_test(test_health_probe_transport CI_UNIT CI_SANITIZER)
 target_link_options(test_health_probe_transport PRIVATE "-Wl,--wrap=httpd_secure_cookies")
+add_layer3_test(test_go2rtc_override_status CI_UNIT CI_SANITIZER)
+set_tests_properties(test_go2rtc_override_status PROPERTIES TIMEOUT 15)
+target_link_options(test_go2rtc_override_status PRIVATE
+    "-Wl,--wrap=fstat" "-Wl,--wrap=malloc" "-Wl,--wrap=read" "-Wl,--wrap=__read_chk" "-Wl,--wrap=close"
+    "-Wl,--wrap=cJSON_AddNumberToObject" "-Wl,--wrap=go2rtc_process_get_override_path"
+    "-Wl,--wrap=go2rtc_process_try_get_pid" "-Wl,--wrap=db_get_system_setting_alloc"
+    "-Wl,--wrap=httpd_authorize_global_action")
 
 add_layer3_test(test_onvif_transport CI_UNIT CI_SANITIZER)
 target_link_options(test_onvif_transport PRIVATE "-Wl,--wrap=_log_message_ctx")

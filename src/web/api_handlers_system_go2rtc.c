@@ -20,6 +20,7 @@
 #include "core/logger.h"
 #include <cjson/cJSON.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -347,32 +348,46 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
  * pass the effective-config endpoint needs.
  */
 
-static int try_read_file(const char *path, char **out, size_t *out_len)
+/* Errors are returned explicitly: cleanup and later JSON allocations may
+ * change errno, and semantic failures do not set errno at all. */
+static int try_read_file(const char *path, char **out, size_t *out_len, int *read_error)
 {
     *out = NULL;
     *out_len = 0;
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return (errno == ENOENT) ? 0 : -1;
+    *read_error = 0;
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) {
+        if (errno == ENOENT) return 0;
+        *read_error = errno;
+        return -1;
+    }
     struct stat st;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
-        (size_t)st.st_size > EFFECTIVE_CONFIG_FILE_CAP) {
+    if (fstat(fd, &st) != 0) {
+        *read_error = errno;
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_size < 0 ||
+        (uintmax_t)st.st_size > EFFECTIVE_CONFIG_FILE_CAP) {
+        *read_error = !S_ISREG(st.st_mode) ? EINVAL : st.st_size < 0 ? EIO : EFBIG;
         close(fd);
         return -1;
     }
     char *buf = malloc((size_t)st.st_size + 1);
-    if (!buf) { close(fd); return -1; }
+    if (!buf) { *read_error = ENOMEM; close(fd); return -1; }
     size_t total = 0;
     while (total < (size_t)st.st_size) {
         ssize_t n = read(fd, buf + total, (size_t)st.st_size - total);
         if (n < 0) {
             if (errno == EINTR) continue;
+            *read_error = errno;
             free(buf); close(fd); return -1;
         }
         if (n == 0) break;
         total += (size_t)n;
     }
-    close(fd);
-    if (total != (size_t)st.st_size) { free(buf); return -1; }
+    if (close(fd) != 0) { *read_error = errno; free(buf); return -1; }
+    if (total != (size_t)st.st_size) { *read_error = EIO; free(buf); return -1; }
     buf[total] = '\0';
     *out = buf;
     *out_len = total;
@@ -412,11 +427,8 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
     size_t file_len = 0;
     int file_errno = 0;
     int file_rc = override_path
-                      ? try_read_file(override_path, &file_content, &file_len)
+                      ? try_read_file(override_path, &file_content, &file_len, &file_errno)
                       : -1;
-    if (file_rc < 0) {
-        file_errno = errno;
-    }
     bool file_present = (file_rc == 1);
     cJSON_AddBoolToObject(root, "file_present", file_present);
     cJSON_AddNumberToObject(root, "file_bytes",
@@ -424,9 +436,7 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
     if (file_rc < 0) {
         const char *file_error =
             !override_path ? "no override path"
-                           : (file_errno != 0
-                                  ? strerror(file_errno)
-                                  : "file validation failed (non-regular file or size limit exceeded)");
+                           : strerror(file_errno);
         cJSON_AddStringToObject(root, "file_read_error", file_error);
     }
 
@@ -437,7 +447,7 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
     bool content_matches = false;
     if (db_has_content && file_present && db_len == file_len) {
         content_matches = (memcmp(db_content, file_content, db_len) == 0);
-    } else if (!db_has_content && !file_present) {
+    } else if (!db_has_content && file_rc == 0) {
         /* Both empty/absent is a coherent "no override" state. */
         content_matches = true;
     }
