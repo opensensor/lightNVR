@@ -557,6 +557,7 @@
   "common.done": "Done",
   "common.copy": "Copy",
   "common.retry": "Retry",
+  "common.actionFailed": "The action failed. Please try again.",
   "common.refresh": "Refresh",
   "common.actions": "Actions",
   "common.never": "Never",
