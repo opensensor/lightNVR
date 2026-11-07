@@ -7,10 +7,9 @@ import {deviceRequest} from '../../api/device.ts';
  * service, e.g. thingino cameras). Renders nothing for non-ONVIF streams.
  */
 
-import { useState, useRef, useEffect } from 'preact/hooks';
+import { useState, useRef, useEffect, useLayoutEffect } from 'preact/hooks';
 import { useI18n } from '../../i18n.ts';
 import { showStatusMessage } from './ToastContainer.tsx';
-import type { DayNightResponse } from '../../types/live.ts';
 
 export interface DayNightControlProps {
   stream?: { name: string; isOnvif?: boolean } | null;
@@ -46,12 +45,21 @@ function AutoIcon() {
 }
 
 export function DayNightControl({ stream }: DayNightControlProps) {
+  if (!stream?.isOnvif) return null;
+  return <StreamDayNightControl key={stream.name} streamName={stream.name} />;
+}
+
+// A camera change owns a fresh set of controls, including loading/pending state.
+function StreamDayNightControl({ streamName }: { streamName: string }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<string | null>(null);      // 'auto' | 'day' | 'night' | 'unknown' | null (not yet loaded)
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<string | null>(null); // mode currently being applied
   const containerRef = useRef<HTMLSpanElement | null>(null);
+  const [controller] = useState(() => new AbortController());
+
+  useLayoutEffect(() => () => controller.abort(), [controller]);
 
   // Close the popover on outside clicks
   useEffect(() => {
@@ -65,20 +73,18 @@ export function DayNightControl({ stream }: DayNightControlProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  if (!stream?.isOnvif) {
-    return null;
-  }
-
   const fetchMode = async () => {
     setLoading(true);
     try {
-      const data = await deviceRequest('getDaynight',{name:stream.name});
+      const data = await deviceRequest('getDaynight',{name:streamName,signal:controller.signal});
+      if (controller.signal.aborted) return;
       setMode(data.mode || 'unknown');
     } catch (err) {
+      if (controller.signal.aborted) return;
       setMode('unknown');
       showStatusMessage(`${t('live.dayNightLoadFailed')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
@@ -94,13 +100,15 @@ export function DayNightControl({ stream }: DayNightControlProps) {
     if (pending) return;
     setPending(nextMode);
     try {
-      const data = await deviceRequest('setDaynight',{name:stream.name,body:{mode:nextMode}});
+      const data = await deviceRequest('setDaynight',{name:streamName,body:{mode:nextMode},signal:controller.signal});
+      if (controller.signal.aborted) return;
       setMode(data.mode || nextMode);
       showStatusMessage(t('live.dayNightApplied', { mode: t(`live.dayNightMode_${data.mode || nextMode}`) }), 'success', 3000);
     } catch (err) {
+      if (controller.signal.aborted) return;
       showStatusMessage(`${t('live.dayNightApplyFailed')}: ${(err as Error).message}`, 'error', 5000);
     } finally {
-      setPending(null);
+      if (!controller.signal.aborted) setPending(null);
     }
   };
 
