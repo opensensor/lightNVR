@@ -110,7 +110,7 @@ describe('recordingsAPI', () => {
     ).resolves.toBe(false);
   });
 
-  test('checkRecordingHasDetections returns false when timestamp parsing fails', async () => {
+  test('checkRecordingHasDetections returns false when timestamps are invalid', async () => {
     const recording = {
       id: 44,
       stream: 'front-yard',
@@ -118,15 +118,7 @@ describe('recordingsAPI', () => {
       end_time: 'invalid-timestamp'
     };
 
-    const parseSpy = jest
-      .spyOn(recordingsAPI, 'parseRecordingTimestamp')
-      .mockImplementation(() => {
-        throw new Error('parse error');
-      });
-
     await expect(recordingsAPI.checkRecordingHasDetections(recording)).resolves.toBe(false);
-
-    parseSpy.mockRestore();
   });
 
   test('checkRecordingHasDetections returns false when enhancedFetch throws an error', async () => {
