@@ -470,9 +470,9 @@ void handle_internal_media_lease(const http_request_t *req, http_response_t *res
             strcmp(principal.authentication_method, authentication_method) == 0) {
             view = authorization_evaluate(&principal, AUTHZ_LIVE_VIEW, &camera, &evaluation) == 0 &&
                    evaluation.decision == AUTHZ_DECISION_ALLOW;
-            listen = view && authorization_evaluate(&principal, AUTHZ_AUDIO_LISTEN, &camera, &evaluation) == 0 &&
+            listen = view && !g_config.audio_disabled && authorization_evaluate(&principal, AUTHZ_AUDIO_LISTEN, &camera, &evaluation) == 0 &&
                      evaluation.decision == AUTHZ_DECISION_ALLOW;
-            talk = view && authorization_evaluate(&principal, AUTHZ_AUDIO_TALK, &camera, &evaluation) == 0 &&
+            talk = view && !g_config.audio_disabled && authorization_evaluate(&principal, AUTHZ_AUDIO_TALK, &camera, &evaluation) == 0 &&
                    evaluation.decision == AUTHZ_DECISION_ALLOW;
         }
     }

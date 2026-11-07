@@ -68,6 +68,13 @@ by the seven-second check and delivered no further packets during the next
 
 Additional evidence:
 
+- Instance-wide `audio_disabled` takes precedence over both audio rights on every
+  lease refresh and native HLS request, including already-cached audio grants.
+  Two additional regression cases failed before this intersection: the lease
+  retained both audio rights, and native HLS selected the original A/V segment.
+  After the fix, the actual handler remuxes the owned segment; the FFmpeg demuxer
+  finds video and no audio. The nine-case suite passes under ASan/UBSan.
+
 - Native real SQLite authorization tests: Basic audio direction independence,
   live-view revocation, source/loopback/opaque-token/idle-expiry binding,
   immutable camera identity on `_sub` name reassignment, disabled accounts,
@@ -101,7 +108,7 @@ GO2RTC_TEST_BINARY="$PWD/build/media-authority/go2rtc" \
   -R 'test_go2rtc_managed_listeners|test_go2rtc_two_config_merge'
 ```
 
-Focused native tests passed, including all seven policy/remux cases. Managed
+Focused native tests passed, including all nine policy/remux cases. Managed
 fork process checks passed (2/2). Fork validation passed:
 
 ```sh
