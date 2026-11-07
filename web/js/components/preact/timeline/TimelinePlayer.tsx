@@ -418,7 +418,8 @@ export function TimelinePlayer({
     const currentIdx = timelineState.currentSegmentIndex;
     const allSegments = timelineState.timelineSegments;
 
-    if (!allSegments || currentIdx < 0) return;
+    // Seeking to an end frame while paused must not start the next recording.
+    if (!timelineState.isPlaying || !allSegments || currentIdx < 0) return;
 
     if (currentIdx < allSegments.length - 1) {
       const nextIndex = currentIdx + 1;
@@ -455,6 +456,8 @@ export function TimelinePlayer({
     if (suppressNativePlaybackSyncRef.current) {
       return;
     }
+    // Native end-of-media pause precedes ended; keep the intent for auto-advance.
+    if (videoRef.current?.ended) return;
     // Only sync if our own code didn't trigger the pause (e.g. during segment load)
     if (timelineState.isPlaying && !timelineState.directVideoControl) {
       timelineState.setState({ isPlaying: false });
@@ -520,9 +523,6 @@ export function TimelinePlayer({
       localTime: formatLocalDateTime(currentTime)
     });
 
-    // Directly update the time display as well
-    updateTimeDisplay(currentTime, segment);
-
     // Check if the user is controlling the cursor
     // If so, don't update the timeline state to avoid overriding the user's position
     if (timelineState.userControllingCursor) {
@@ -543,6 +543,9 @@ export function TimelinePlayer({
       console.log('TimelinePlayer: Direct video control active, not updating timeline state');
       return;
     }
+
+    // Only the drag handler owns the preview clock while scrubbing.
+    updateTimeDisplay(currentTime, segment);
 
     // Update timeline state with the current time
     timelineState.setState({
@@ -985,6 +988,17 @@ export function TimelinePlayer({
             />
           )}
 
+          <button
+            type="button"
+            data-keyboard-nav-preserve
+            className="timeline-fullscreen-button"
+            onClick={handleToggleFullscreen}
+            title={isFullscreen ? t('timeline.exitFullscreen') : t('timeline.enterFullscreen')}
+            aria-label={isFullscreen ? t('timeline.exitFullscreen') : t('timeline.enterFullscreen')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
+          </button>
+
           {/* Detection overlay canvas */}
           {detectionOverlayEnabled && !eptzEnabled && (
             <canvas
@@ -1038,7 +1052,7 @@ export function TimelinePlayer({
           a control does not exit 'fine' keyboard mode, while clicks on the empty
           background area between controls (which land on the wrapper div itself)
           are treated as page-background clicks and restore 'broad' mode. */}
-      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1">
+      <div id="timeline-player-options" className="timeline-player-options flex items-center flex-wrap gap-x-3 gap-y-1 mb-1">
         {/* Detection toggle */}
         <label className="flex items-center gap-1.5 cursor-pointer" data-keyboard-nav-preserve>
           <input
@@ -1053,16 +1067,6 @@ export function TimelinePlayer({
             {t('recordings.detections')}{detections.length > 0 ? ` (${detections.length})` : ''}
           </span>
         </label>
-
-        <button
-          type="button"
-          data-keyboard-nav-preserve
-          className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
-          onClick={handleToggleFullscreen}
-          title={isFullscreen ? t('timeline.exitFullscreen') : t('timeline.enterFullscreen')}
-        >
-          {isFullscreen ? t('timeline.exitFullscreen') : t('timeline.fullscreen')}
-        </button>
 
         {/* Action buttons — only when a segment is selected */}
         {currentSegmentId && (
@@ -1095,7 +1099,7 @@ export function TimelinePlayer({
         )}
 
         {/* Speed controls — pushed right */}
-        <div className="ms-auto">
+        <div className="ms-auto max-w-full">
           <SpeedControls />
         </div>
       </div>

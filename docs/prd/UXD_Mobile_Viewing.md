@@ -1,10 +1,10 @@
 # Mobile viewing experience
 
-**Status (2026-11-07)**: First slice merged in
-[#840](https://github.com/opensensor/lightNVR/pull/840), reviewed on main
-`c9bb7b0b`. M1–M3 below remain open. Hosted checks on the final main revision
-were queued/pending at this checkpoint; local evidence below belongs to the
-implementation revision.
+**Status (2026-11-07)**: The first slice (#840), footage-finding and shared
+Grid-style navigation (#855), return-scope correction (#856), and asynchronous
+confirmation hardening (#857) are merged. M2's populated playback workflow fixes
+and automated checks are ready for review on base `6b346f40`. Physical-device
+qualification and the complete live-camera handoff remain open.
 
 Requested 2026-11-07 after reviewing the phone live-view screenshot. Prioritize
 camera viewing, navigation and recorded playback; administration is a later
@@ -63,7 +63,7 @@ baseline. Timeline pinch/pan/fling/snap and live gestures already exist. The nex
 slices address complete phone workflows and qualification, not a replacement
 gesture implementation.
 
-### M1: Find footage on a phone — implementation ready for review
+### M1: Find footage on a phone — merged
 
 The follow-up removes the forced Table fallback when thumbnails are disabled.
 Grid uses compact metadata cards without thumbnail requests, while keeping
@@ -88,7 +88,7 @@ Acceptance:
   viewers and an actual playable recording. Verify focus restoration and phone
   preference isolation as in the existing slice.
 
-### M2: Timeline and investigation workflow — shared navigation implemented
+### M2: Timeline and investigation workflow — busy-day audit ready for review
 
 Table, Grid, Timeline, Investigation and Plates now share the Grid-style
 five-link navigation with a current-page indicator. Links retain camera/time
@@ -96,10 +96,22 @@ context and a validated local return URL carrying the original list filters,
 sort and page. Timeline and Plates still operate on one camera; Investigation
 can carry multiple cameras. The return URL retains the full list scope.
 
-The broader workflow audit remains open. Audit the existing ruler and
-gesture primitives in the complete flow: live camera → recordings → timeline or
-investigation → playback → return. Improve camera/date context and the compact
-event list where the audit demonstrates friction.
+The populated audit uses 301 Timeline entries, actual synthetic MP4 playback,
+a scoped viewer and interrupted footage. It corrects the 36-pixel playhead to a
+44-pixel target, resolves gap drops to actual footage with an explanation,
+keeps the preview clock stable during a drag, preserves play/pause intent in
+Timeline and Investigation, advances correctly from an end frame and keeps the
+playhead visible across recording changes. Phone Timeline puts the full-width video above a single playback row and scrubber.
+Camera/date collapses into a context row; speed, zoom and recording actions sit
+behind Playback options. Landscape places controls beside the wider video.
+Disclosures preserve the mounted media and remain usable with enlarged text. The [workflow receipt](../validation/timeline-workflow-2026-11-07.md)
+records touch, mouse, keyboard, rotation, RTL and reduced-motion coverage.
+
+The remaining complete flow is live camera → recordings → timeline or
+investigation → playback → return on named devices with real camera transport.
+The existing recordings-return checks pass; generated media and touch emulation
+do not qualify the live-camera handoff or device behavior. Improve camera/date
+context and the compact event list where that audit demonstrates friction.
 
 Acceptance: camera scope and time survive forward/back navigation; scrub/release
 preserves playback intent; gaps and unavailable footage have clear states;

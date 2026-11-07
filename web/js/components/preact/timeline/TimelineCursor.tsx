@@ -5,16 +5,17 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.tsx';
+import { showStatusMessage } from '../ToastContainer.tsx';
 import { useI18n } from '../../../i18n.ts';
 import type { TimelineDragPreview } from '../../../types/timeline.ts';
 import {
   findContainingSegmentIndex,
-  findNearestSegmentIndex,
   formatPlaybackTimeLabel,
   getTimelinePreviewFrameIndex,
   getLocalDayBounds,
   getTimelineDayLengthHours,
   resolvePlaybackStreamName,
+  resolveTimelineSeek,
   snapTimestampToRecordingEdge,
   timestampToTimelineOffset
 } from './timelineUtils.ts';
@@ -57,9 +58,7 @@ export function TimelineCursor() {
     }
     const segments = timelineState.timelineSegments || [];
     const containingIndex = findContainingSegmentIndex(segments, timestamp);
-    const segmentIndex = containingIndex !== -1
-      ? containingIndex
-      : findNearestSegmentIndex(segments, timestamp as number);
+    const segmentIndex = containingIndex;
     const segment = segments[segmentIndex];
     if (!segment || segment.id === null || segment.id === undefined) {
       setDragPreview(null);
@@ -138,7 +137,7 @@ export function TimelineCursor() {
       isDraggingRef.current = true;
       activePointerIdRef.current = e.pointerId;
 
-      // The 36 px hit target is clamped inside the track at either edge while
+      // The 44 px hit target is clamped inside the track at either edge while
       // the visible line remains on the exact timestamp. Preserve where the
       // pointer grabbed that line so a down/up without movement cannot seek.
       const container = cursor.parentElement;
@@ -266,26 +265,22 @@ export function TimelineCursor() {
         }
       }
 
-      // Find the segment at the drop position (exact match or closest)
-      const segs = timelineState.timelineSegments || [];
-      const containingIndex = findContainingSegmentIndex(segs, targetTimestamp);
-      const targetSegmentIndex = containingIndex !== -1
-        ? containingIndex
-        : findNearestSegmentIndex(segs, targetTimestamp);
+      const target = resolveTimelineSeek(timelineState.timelineSegments || [], targetTimestamp);
+      if (target.inGap) showStatusMessage(t('timeline.gapSeek'), 'info');
 
       const shouldResume = wasPlayingAtDragStartRef.current;
       wasPlayingAtDragStartRef.current = false;
       setDragPreview(null);
 
       timelineState.setState({
-        currentTime: targetTimestamp,
+        currentTime: target.timestamp,
         prevCurrentTime: timelineState.currentTime,
-        currentSegmentIndex: targetSegmentIndex,
-        isPlaying: shouldResume && targetSegmentIndex >= 0,
+        currentSegmentIndex: target.index,
+        isPlaying: shouldResume && target.index >= 0,
         userControllingCursor: false,
         preserveCursorPosition: false,
         cursorPositionLocked: false,
-        forceReload: targetSegmentIndex >= 0
+        forceReload: target.index >= 0
       });
     };
 
@@ -415,11 +410,11 @@ export function TimelineCursor() {
         aria-valuetext={ariaValueText}
         aria-keyshortcuts="ArrowLeft ArrowRight Space"
         style={{
-          left: `clamp(0px, calc(${position}% - 18px), calc(100% - 36px))`,
+          left: `clamp(0px, calc(${position}% - 22px), calc(100% - 44px))`,
           display: visible ? 'block' : 'none',
           pointerEvents: 'auto',
-          width: '36px',
-          height: '36px',
+          width: '44px',
+          height: '44px',
           touchAction: 'none'
         }}
       />

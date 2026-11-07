@@ -1,3 +1,4 @@
+import { usePlaybackScrub } from './usePlaybackScrub.ts';
 import { RecordingsNavigation } from '../recordings/RecordingsNavigation.tsx';
 import { evidenceJSON } from '../../../api/evidence.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -184,6 +185,7 @@ function InvestigationPlayer({
   const mediaLoadingRef = useRef(true);
   const regionAnchorRef = useRef<RegionPoint | null>(null);
   const coverageSegment = findSegmentAt(track.segments, cursor);
+  const scrub = usePlaybackScrub(playing, onPlayingChange);
   const [resolvedSegment, setResolvedSegment] = useState<InvestigationSegment | null>(null);
   const [resolvedGap, setResolvedGap] = useState<{ start: number; end: number } | null>(null);
   const segment = track.aggregated ? resolvedSegment : coverageSegment;
@@ -544,6 +546,7 @@ function InvestigationPlayer({
             </button>
             <input
               type="range"
+              {...scrub}
               min={segment.start_time}
               max={segment.end_time}
               step="0.1"
@@ -857,6 +860,7 @@ export function InvestigationView() {
   const [activeCameraUuids, setActiveCameraUuids] = useState<string[]>([]);
   const [primaryCameraUuid, setPrimaryCameraUuid] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const scrub = usePlaybackScrub(playing, setPlaying);
   const [speed, setSpeed] = useState(1);
   const [playbackMode, setPlaybackMode] = useState('wall-clock');
   const [loading, setLoading] = useState(false);
@@ -1947,13 +1951,13 @@ export function InvestigationView() {
           <input
             className="investigation-scrubber"
             type="range"
+            {...scrub}
             min={timeline.start_time}
             max={timeline.end_time}
             step="1"
             value={cursor}
             aria-label={t('investigation.sharedCursor')}
             onInput={(event) => {
-              setPlaying(false);
               setCursor(Number((event.target as HTMLInputElement).value));
             }}
           />
@@ -2003,7 +2007,6 @@ export function InvestigationView() {
                   }}
                   onPlayingChange={setPlaying}
                   onSeek={(value) => {
-                    setPlaying(false);
                     setCursor(value);
                   }}
                   t={t}
