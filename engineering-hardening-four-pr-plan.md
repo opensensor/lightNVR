@@ -8,18 +8,21 @@ execution stopped at publication; the subsequent merge checkpoint is below.
 
 ## Post-merge review (2026-11-07)
 
-All four LightNVR PRs (#835–#838) are merged, followed by #839 and mobile viewing
-#840. The implementation checkpoint is main `c9bb7b0b`. During this review, #841
-installation corrections also merged as `1fe8e0eb`; #842 playback cancellation
-remains in review with corrections.
-The supporting go2rtc #4 is still open, but main pins its published `ba99c7e`
-commit. Main hosted workflows were queued/pending when reviewed, so the original
+All four LightNVR PRs (#835–#838) are merged. The current checkpoint is main
+`aa120dde`, after the 0.47.1 version bump and #863. Mobile footage navigation
+(#855), local recovery qualification (#858), populated Timeline/Investigation
+workflows (#859), and dialog/cache follow-ups (#860–#861) are also merged.
+The supporting go2rtc #4 is merged; main pins its published `ba99c7e`
+commit. Main hosted workflows were queued/running when reviewed, so the original
 local validation below is not final hosted acceptance of the merge commit.
 
-Continue with F13 capacity and validator measurements, F14 extended recovery
-and device qualification, then F15 production reconciliation in the
-[expansion plan](engineering-api-expansion-plan.md). The first mobile slice and
-its next acceptance gates are in the [mobile viewing plan](docs/prd/UXD_Mobile_Viewing.md).
+The 2026-11-07 product decision defers remaining F13 capacity/validator
+measurements and F14 extended/device qualification. Their acceptance limits
+remain recorded in the [expansion plan](engineering-api-expansion-plan.md);
+they do not block discussion of a C-authoritative, curated Rust conversion
+experiment. No Rust implementation is committed. F15 documentation reconciliation
+proceeds separately from full production acceptance. Mobile implementation and
+deferred qualification are tracked in the [mobile viewing plan](docs/prd/UXD_Mobile_Viewing.md).
 
 ## Integration rules
 
@@ -135,5 +138,6 @@ Remaining beyond this wave: representative active-media capacity measurements
 then production-level F15 reconciliation. Legacy name-only snapshot/history data
 retains documented compatibility limits; before/after identity checks are not a
 new transaction coordinator across every concurrent device/source mutation.
-Encryption and Rust remain deferred. The original publication execution did not
+Encryption remains deferred; Rust implementation is uncommitted and its design
+is open for discussion. The original publication execution did not
 merge PRs; the subsequent merges are recorded in the checkpoint above.

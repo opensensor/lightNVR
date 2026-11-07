@@ -3,8 +3,11 @@
 **Status (2026-11-07)**: The first slice (#840), footage-finding and shared
 Grid-style navigation (#855), return-scope correction (#856), and asynchronous
 confirmation hardening (#857) are merged. M2's populated playback workflow fixes
-and automated checks are ready for review on base `6b346f40`. Physical-device
-qualification and the complete live-camera handoff remain open.
+and automated checks merged in #859, followed by dialog/cache fixes in #860–#861.
+Reconciled against main `aa120dde`. Physical-device qualification and the complete
+live-camera handoff remain open but are deferred by the 2026-11-07 product
+decision. They are reusable-frontend acceptance work, not gates for discussing
+a possible Rust backend; no Rust implementation commitment has been made.
 
 Requested 2026-11-07 after reviewing the phone live-view screenshot. Prioritize
 camera viewing, navigation and recorded playback; administration is a later
@@ -88,7 +91,7 @@ Acceptance:
   viewers and an actual playable recording. Verify focus restoration and phone
   preference isolation as in the existing slice.
 
-### M2: Timeline and investigation workflow — busy-day audit ready for review
+### M2: Timeline and investigation workflow — busy-day audit merged in #859
 
 Table, Grid, Timeline, Investigation and Plates now share the Grid-style
 five-link navigation with a current-page indicator. Links retain camera/time
@@ -119,7 +122,7 @@ filters and controls stay reachable in portrait/landscape. Cover populated and
 busy-day fixtures, keyboard/touch paths and scoped principals. Retain existing
 pinch/pan/fling/snap regressions and desktop mouse/wheel behavior.
 
-### M3: Real-device and accessibility qualification
+### M3: Real-device and accessibility qualification — deferred
 
 Supported target generation is 2024 or newer, per the product decision. No
 physical device or target NVR instance has been supplied for this pass. Viewport

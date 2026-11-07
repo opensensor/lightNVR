@@ -5,7 +5,7 @@ This folder collects Product Requirement Documents that scope larger pieces of w
 Each PRD is self-contained: problem, goals, requirements, phasing, acceptance, related issues.
 
 **Status review**: Engineering and the mobile viewing follow-up reconciled against
-`main` at `c9bb7b0b` on 2026-11-07; other entries retain their separately dated
+`main` at `aa120dde` on 2026-11-07; other entries retain their separately dated
 reviews (including the 2026-08-25 UXD baseline). “Implemented” below
 means the planned implementation slices are present; manual, beta, performance,
 or hardware acceptance may still remain where the individual PRD says so.
@@ -16,7 +16,7 @@ or hardware acceptance may still remain where the individual PRD says so.
 
 | PRD | Topic | Current state |
 | --- | --- | --- |
-| [Engineering 01 — Hardening & Permission-Aware API Contracts](ENG_01_Safety_Contracts_TypeScript.md) | Canonical OpenAPI JSON, discovery scoped to the current user/token, API validation, and operational regressions | #835–#838 merged: 232 OpenAPI operations and nine explicit protocol/internal dispositions cover the 241-route inventory. F13 capacity, F14 extended qualification and F15 production acceptance remain; Rust and encryption remain deferred |
+| [Engineering 01 — Hardening & Permission-Aware API Contracts](ENG_01_Safety_Contracts_TypeScript.md) | Canonical OpenAPI JSON, discovery scoped to the current user/token, API validation, and operational regressions | #835–#838 merged: 232 OpenAPI operations and nine explicit protocol/internal dispositions cover the 241-route inventory. Local recovery qualification merged in #858. Remaining F13/F14 deferred; F15 documentation reconciled, production acceptance open. C-authoritative curated Rust conversion is under discussion, not committed; encryption remains deferred |
 
 Engineering 01 was restored from the superseded #693 PRD and rewritten against
 current `main`. Its earlier engineering-foundation task tracker is retired.
@@ -28,8 +28,8 @@ The other roadmap entries below retain their separately dated status reviews.
 | --- | --- | --- |
 | [UXD 01 — Mobile-First UX Foundation](UXD_01_MobileFirstFoundation.md) | T1–T6 implemented; beta, Lighthouse, and final cross-device/manual outcome validation remains | [#399](https://github.com/opensensor/lightNVR/issues/399) |
 | [UXD 02 — Live View Ergonomics](UXD_02_LiveViewErgonomics.md) | P0–P3 implementation present; manual coarse-pointer, iOS/Android fullscreen, and cross-device acceptance remains | [#326](https://github.com/opensensor/lightNVR/issues/326), [#397](https://github.com/opensensor/lightNVR/issues/397), [#399](https://github.com/opensensor/lightNVR/issues/399) |
-| [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | P0–P3 implementation complete; large/busy-day, manual, and beta acceptance remains | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
-| [Mobile viewing follow-up](UXD_Mobile_Viewing.md) | First slice merged in #840: phone live controls/navigation, thumbnail recordings and inline/landscape playback. Next: footage finding without thumbnails, timeline/investigation workflows, real-device qualification | Phone live-view review, 2026-11-07 |
+| [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | P0–P3 implementation complete; populated/busy-day automated audit merged in #859. Manual/device and beta acceptance remains | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
+| [Mobile viewing follow-up](UXD_Mobile_Viewing.md) | #840 layout, #855 thumbnail-free Grid/navigation, #859 Timeline/Investigation workflows and follow-up fixes merged. Complete real-camera handoff and physical-device qualification deferred; not gates for Rust exploration | Phone live-view review, 2026-11-07 |
 
 ### Features
 

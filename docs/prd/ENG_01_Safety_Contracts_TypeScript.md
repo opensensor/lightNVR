@@ -7,11 +7,12 @@ also merged: [media authority #835](https://github.com/opensensor/lightNVR/pull/
 [fleet writes #837](https://github.com/opensensor/lightNVR/pull/837), and
 [remaining API families #838](https://github.com/opensensor/lightNVR/pull/838).
 The [integration receipt](../api/contracts/integration-evidence.md) records local
-validation and qualification limits. F13 capacity measurements and F14 extended
-recovery/device qualification remain open; F15 production acceptance depends on
-them. Merged implementation does not establish production qualification.
+validation and qualification limits. Remaining F13 capacity measurements and F14
+extended recovery/device qualification are deferred by the 2026-11-07 product
+decision. F15 documentation reconciliation proceeds now; full production
+acceptance remains open. These are not gates for Rust exploration.
 **Created**: 2026-10-31
-**Reconciled**: 2026-11-07 against main at `c9bb7b0b` after #835–#840.
+**Reconciled**: 2026-11-07 against main at `aa120dde`, after #858 recovery, #859 Timeline workflows and #863.
 **Owner**: LightNVR maintainers; name an owner when starting each implementation slice.
 **Scope**: API contracts, permission-aware discovery, runtime boundary validation,
 focused correctness fixes, operational regression coverage, and measured resource costs.
@@ -25,7 +26,7 @@ receipts. Main accounts for all 241 registrations: 232 OpenAPI operations across
 168 paths, eight media-protocol dispositions and one internal lease callback.
 The nine explicit exclusions keep discovery's `partial=true`; they are not
 unassigned JSON contract work. Main pins go2rtc `ba99c7e`, whose supporting
-[fork PR #4](https://github.com/opensensor/go2rtc/pull/4) is still open at this
+[fork PR #4](https://github.com/opensensor/go2rtc/pull/4) is merged at this
 checkpoint. The compatible fork is required for media-authority enforcement;
 independently managed go2rtc deployments retain the documented configuration limits.
 
@@ -47,9 +48,11 @@ migration sequence with the state of the released code and the next work.
 
 The TypeScript conversion and API-family expansion are implemented. One canonical
 OpenAPI contract, an authenticated projection and the read-only explorer now serve
-operators, integrations and the Preact UI. The next investment is measuring this
-expanded surface under active media, then qualifying recovery, upgrades and real
-devices. The expansion plan defines the next bounded work and acceptance gates.
+operators, integrations and the Preact UI. Active-media measurements and local
+recovery/upgrade receipts are available; remaining target/device qualification
+is deferred. The reusable frontend can continue to improve independently of
+the backend-language decision. The expansion plan preserves the outstanding
+production acceptance work without making it a prerequisite for Rust discussion.
 
 Delivery remains small, focused PRs based on current `main`. There is no plan to
 revive the foundation branch, impose required status checks/branch-protection
@@ -57,10 +60,31 @@ rules, or make release progress depend on clearing the deferred CodeQL backlog.
 Existing checks continue to run; proposed checks should report meaningful
 failures without introducing repository-level merge restrictions.
 
-A possible automated Rust implementation that follows C and reuses the web UX
-is **postponed**. Contracts and compatibility tests should be reusable if that
-work resumes, but no Rust code, translator, synchronization service, or second
-release pipeline is part of the active phases.
+### Rust exploration decision frame
+
+Automated Rust conversion is **under discussion, not committed**. The candidate
+model keeps C as the source of truth: changes to C would trigger proposed,
+curated updates to a Rust implementation, sharing the existing frontend and
+API compatibility tests. This does not authorize a translator, synchronization
+service, second backend or release pipeline as an implementation deliverable.
+
+Questions to settle before choosing a bounded experiment:
+
+- Which C module is the first conversion boundary, and what behavior must match?
+- How are C source revisions, Rust revisions and reviewed conversion decisions
+  recorded so unsupported or stale behavior is visible?
+- How does an incremental update preserve curated Rust ownership and lifetime
+  choices instead of overwriting them on each C change?
+- Which differential tests cover wire behavior, durable state, errors and
+  resource lifecycle beyond the reusable frontend/API schemas?
+- How are intentional safety improvements distinguished from unintended drift,
+  and when must a C defect be fixed rather than reproduced?
+- Does a pilot survive subsequent C changes with acceptable review effort,
+  target compatibility and runtime cost, enough to justify continued investment?
+
+Remaining F13/F14 and mobile-device qualification are deferred, not waived or
+claimed complete. They do not block this discussion. Shipping any alternate
+backend would require its own measured compatibility and qualification evidence.
 
 ## 2. Historical main baseline before PR #804
 
@@ -301,7 +325,7 @@ gates had been approved. It is superseded by the sequence below.
 | E3 — Typed pilot and explorer | Deterministic generated TS types, runtime validation, Streams adoption, separate docs UI | E1; explorer needs E2 | Drift checks, UI error-state tests, identity switching, asset/projection measurements |
 | E4 — API hardening expansion | Auth and recordings first; explicit contract execution; root test typing in a separate slice | Pilot accepted | Coverage map, real-server compatibility tests, stable wire behavior |
 | E5 — Recording/recovery qualification | Fault/upgrade tests and justified C boundary changes | E0; behavior tests before refactoring | Playability, protection, recovery and resource evidence under declared faults |
-| Deferred — Rust experiment | Separately scoped alternate implementation and synchronization evaluation | Explicit future decision | Shared UX/API compatibility, C revision provenance, divergence reporting and target cost evidence before any shipping claim |
+| Candidate — Rust experiment | Discuss C-authoritative curated conversion and synchronization; implementation uncommitted | Explicit future decision to implement | Shared UX/API compatibility, C revision provenance, divergence reporting and target cost evidence before any shipping claim |
 
 Focused bug fixes from section 4 can land alongside E1–E3. E5 starts from current
 fixtures and does not wait for the entire API to be specified. Each slice is

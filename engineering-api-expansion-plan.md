@@ -3,19 +3,21 @@
 Status (2026-11-07): F1 authentication/MFA, F2 fleet reads, F12/F16 recording
 integrity and subsequent security corrections are merged. S1 media authority,
 F3 identity administration and F4 fleet writes merged in #835, #836 and #837;
-F5–F11 merged in #838. Main `c9bb7b0b` also includes #839 fixture/documentation
-corrections and #840's first mobile viewing slice. During this review, #841
-installation corrections also merged as `1fe8e0eb`; #842 playback cancellation
-remains in review with corrections. The supporting
+F5–F11 merged in #838. Reconciled against main `aa120dde`, after the 0.47.1
+version bump and #863. Subsequent work includes mobile footage navigation
+(#855), local recovery qualification (#858), populated Timeline/Investigation
+workflows (#859), and follow-up dialog/cache fixes (#860–#861). The supporting
 [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4)
-remains open; main already pins its published `ba99c7e` commit.
+is merged; main pins its published `ba99c7e` commit.
 
 The [four-PR execution plan](engineering-hardening-four-pr-plan.md) and
 [integration receipt](docs/api/contracts/integration-evidence.md) retain the
 original local validation. Main hosted workflows were queued/pending when
 reviewed; merge status is not a claim that final hosted checks passed.
-F13 capacity measurements and F14 extended qualification remain outstanding;
-F15's final production acceptance depends on them.
+Decision (2026-11-07): defer the remaining F13 capacity measurements and F14
+extended/device qualification. They remain open production-acceptance work,
+not prerequisites for discussing a Rust experiment. F15 documentation
+reconciliation can proceed now; full production acceptance remains unclaimed.
 
 Current inventory: 241 registrations, comprising 232 OpenAPI operations across
 168 paths, eight media-protocol dispositions and one internal callback.
@@ -23,8 +25,11 @@ Discovery remains `partial=true` for the nine explicitly excluded routes.
 Historical receipts below retain their original revisions and counts. Continue
 from [the original hardening plan](engineering-api-contracts-plan.md) and
 [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
-TS/TSX conversion is complete. Automated Rust conversion, synchronization with C,
-a second backend and at-rest encryption remain deferred. Preserve Basic/key
+TS/TSX conversion is complete. Rust conversion and synchronization are under
+discussion, with no implementation commitment. The candidate model keeps C as
+the source of truth and uses C changes to propose curated Rust updates, reusing
+the frontend and compatibility tests; see the [decision frame](docs/prd/ENG_01_Safety_Contracts_TypeScript.md#rust-exploration-decision-frame).
+A second backend is not an approved deliverable. At-rest encryption remains deferred. Preserve Basic/key
 compatibility, HTTP cameras and `/etc/lightnvr` defaults.
 
 ## Ownership and acceptance
@@ -169,21 +174,21 @@ F1..F14,F16 -> F15
 - **ownership**: Performance harnesses and named target evidence; optimization requires a separately reviewed measured need.
 - **description**: Extend disabled-camera measurements to populated tags/locations/collections, realistic policies and active recording on representative hardware. Measure the remaining configured-max metrics buffer (about 11.9 MiB at 1,024 streams), snapshot/JSON memory, latency, descriptors and assets. The integrated modern validator chunk is now 2,240.15 kB raw / 218.55 kB gzip (legacy: 2,230.06 / 181.69 kB); these replace the earlier pilot sizes. Measure page loading, parse/evaluation and memory before deciding whether to split validators by consumer family.
 - **validation**: Named hardware/binaries/flags, repeated serial/concurrent samples and controls. Derive budgets from target headroom; workstation numbers are not embedded capacity or production SLOs.
-- **status**: In progress: owned active-recording and browser baselines collected; named-target acceptance remains open
+- **status**: Remaining work deferred by product decision on 2026-11-07; owned active-recording and browser baselines are retained. Named-target acceptance remains open, without blocking Rust exploration.
 
 ### F14: Longer recovery, storage and upgrade qualification
 - **depends_on**: [F13]
 - **ownership**: Reliability harnesses/release evidence; device/network/storage fixtures separately owned.
 - **description**: Extend bounded crash/reconnect/storage/upgrade runs to declared longer durations, network/object-store faults and selected hardware. Preserve exact prior-release/submodule provenance; upgrade a copied installation.
 - **validation**: Decode/DTS/gaps, protected hashes, integrity, resources and cleanup; predeclare durations/tolerances and retain failures. Distinguish hosted observations from local checks.
-- **status**: Fresh post-#857 local ten-cycle lifecycle, storage faults, immediate crash recovery and copied 0.45.3 upgrade all passed; [receipt](docs/validation/recovery-qualification-2026-11-07.md). Named-device/provider and longer-duration qualification remains open
+- **status**: Local qualification merged in #858: post-#857 ten-cycle lifecycle, storage faults, immediate crash recovery and copied 0.45.3 upgrade all passed; [receipt](docs/validation/recovery-qualification-2026-11-07.md). Remaining named-device/provider and longer-duration qualification is deferred by product decision on 2026-11-07, without blocking Rust exploration.
 
 ### F15: Reconcile coverage and the next decision
 - **depends_on**: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F16]
 - **ownership**: Integration owner; canonical, coverage, PRD and receipts.
 - **description**: Accept slices individually, then reconcile all residual route/device/protocol limits and measured costs. Rust requires a separate explicit future decision.
 - **validation**: Fresh integrated contract/native/frontend/recovery checks, exact drift/coverage and named builds; no unobserved hosted/device claims.
-- **status**: Route reconciliation complete in #838; production acceptance pending F13/F14 and final hosted results
+- **status**: Route reconciliation complete in #838; current planning documentation reconciled at `aa120dde`. Production acceptance remains pending deferred F13/F14 and final hosted results. This does not gate the Rust design discussion or commit to its implementation.
 
 ### F16: Recording export I/O failure handling
 - **depends_on**: [F0]
