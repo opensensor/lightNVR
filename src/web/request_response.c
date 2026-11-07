@@ -80,7 +80,11 @@ static int url_decode_span(const char *src, size_t src_len, char *dst, size_t ds
             // scanf accepts partial/signed values (e.g. %0G or %-0), which can
             // manufacture a NUL and hide the rest of a path identity.
             if (high >= 0 && low >= 0) {
-                dst[j++] = (char)((high << 4) | low);
+                char decoded = (char)((high << 4) | low);
+                if (decoded == '\0') {
+                    return -1;
+                }
+                dst[j++] = decoded;
                 i += 2;
             } else {
                 dst[j++] = src[i];
