@@ -27,10 +27,9 @@ export interface RestartModalProps {
  */
 export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: RestartModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null);
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [observationExpired, setObservationExpired] = useState(false);
   const [reconnectStatus, setReconnectStatus] = useState('');
   const [serverDown, setServerDown] = useState(false);
-  const maxReconnectAttempts = 60; // Try for up to 2 minutes (2s intervals)
   const { t } = useI18n();
 
   // Handle escape key (only when not restarting)
@@ -45,65 +44,69 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isRestarting, onClose]);
 
-  // Handle reconnection attempts after restart
+  // Bound observation even when a fast restart's outage is never seen.
   useEffect(() => {
+    setObservationExpired(false);
+    setServerDown(false);
     if (!isRestarting) {
-      setReconnectAttempts(0);
       setReconnectStatus('');
-      setServerDown(false);
       return;
     }
 
     setReconnectStatus(t('system.initiatingRestart'));
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    let finished = false;
+    let observedOutage = false;
+    let pollTimer: ReturnType<typeof setTimeout>;
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = setTimeout(() => {
+      finished = true;
+      clearTimeout(pollTimer);
+      controller.abort();
+      setObservationExpired(true);
+      setReconnectStatus(t('system.serverTakingLonger'));
+    }, 120000);
 
-    // First, detect when the server goes down
-    const detectShutdown = setInterval(async () => {
+    const poll = async () => {
       try {
-        await getSystemStatus({signal:AbortSignal.timeout(1000),retries:0});
-      } catch (error) {
-        // Server is down or unreachable
-        setServerDown(true);
-        setReconnectStatus(t('system.serverShuttingDown'));
-        clearInterval(detectShutdown);
-      }
-    }, 500); // Check every 500ms for shutdown
-
-    // Start checking for server to come back online
-    const checkInterval = setInterval(async () => {
-      // Only start counting attempts after server is confirmed down
-      if (serverDown) {
-        setReconnectAttempts(prev => {
-          const newAttempts = prev + 1;
-          if (newAttempts >= maxReconnectAttempts) {
-            setReconnectStatus(t('system.serverTakingLonger'));
-            clearInterval(checkInterval);
-            return newAttempts;
-          }
-          return newAttempts;
+        await getSystemStatus({
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(observedOutage ? 2000 : 1000)]),
+          retries: 0
         });
-      }
-
-      try {
-        await getSystemStatus({signal:AbortSignal.timeout(2000),retries:0});
-        if (serverDown) {
+        if (finished) return;
+        // Healthy probes alone cannot confirm that a restart occurred.
+        if (observedOutage) {
+          finished = true;
+          clearTimeout(deadline);
           setReconnectStatus(t('system.serverBackOnline'));
-          clearInterval(detectShutdown);
-          clearInterval(checkInterval);
-          setTimeout(() => window.location.reload(), 1000);
+          reloadTimer = setTimeout(() => window.location.reload(), 1000);
+          return;
         }
-      } catch (error) {
-        if (serverDown) {
-          // Server is down, waiting for it to come back
-          setReconnectStatus(t('system.waitingForServerRestart', { seconds: reconnectAttempts * 2 }));
+      } catch {
+        if (finished) return;
+        if (!observedOutage) {
+          observedOutage = true;
+          setServerDown(true);
+          setReconnectStatus(t('system.serverShuttingDown'));
+        } else {
+          setReconnectStatus(t('system.waitingForServerRestart', {
+            seconds: Math.floor((Date.now() - startedAt) / 1000)
+          }));
         }
       }
-    }, 2000); // Check every 2 seconds
+      pollTimer = setTimeout(poll, observedOutage ? 2000 : 500);
+    };
+    pollTimer = setTimeout(poll, 500);
 
     return () => {
-      clearInterval(detectShutdown);
-      clearInterval(checkInterval);
+      finished = true;
+      controller.abort();
+      clearTimeout(deadline);
+      clearTimeout(pollTimer);
+      clearTimeout(reloadTimer);
     };
-  }, [isRestarting, reconnectAttempts, serverDown, t]);
+  }, [isRestarting, t]);
 
   // Handle background click (only when not restarting)
   const handleBackgroundClick = (e: MouseEvent) => {
@@ -180,7 +183,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
                 </p>
               )}
 
-              {reconnectAttempts >= maxReconnectAttempts && (
+              {observationExpired && (
                 <button
                   className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                   onClick={() => window.location.reload()}
