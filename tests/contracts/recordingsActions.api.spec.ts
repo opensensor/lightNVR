@@ -312,3 +312,27 @@ test('batch deletion preserves adjacent large IDs through authorization and work
   expect(withDb(server,db=>db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE id=?').get(BigInt(exact[0]))?.n)).toBe(1);
   expect(withDb(server,db=>db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE id=?').get(BigInt(exact[1]))?.n)).toBe(0);
 });
+
+
+test('single deletion rejects malformed decimal paths without touching recordings',async({server})=>{
+  const fixture=seedRecordings(server);
+  const deleter=await actor(server,'strict_delete_id',['recording.delete']);
+  const before=state(server,[ids.playable,ids.sibling,ids.hidden]);
+  // Unsigned conversion of this negative value would wrap to the playable ID.
+  const wrapped=`-${(1n<<64n)-BigInt(ids.playable)}`;
+  for(const malformed of [
+    `${ids.playable}junk`,`${ids.playable}.5`,`${ids.playable}e0`,
+    `+${ids.playable}`,`%2B${ids.playable}`,`%20${ids.playable}`,`-${ids.playable}`,wrapped,
+    `${ids.playable}%00junk`,`${ids.playable}%00`,
+    '0','18446744073709551616','9'.repeat(40),
+  ]) {
+    await jsonResult(server,`/api/recordings/${malformed}`,deleter,'DELETE',undefined,400,'ApiError');
+    expect(state(server,[ids.playable,ids.sibling,ids.hidden])).toEqual(before);
+  }
+  await jsonResult(server,'/api/recordings/18446744073709551615',deleter,'DELETE',undefined,404,'ApiError');
+  // Valid percent-encoded digits still identify the intended recording.
+  const encoded=String(ids.sibling).split('').map(digit=>`%${digit.charCodeAt(0).toString(16)}`).join('');
+  await jsonResult(server,`/api/recordings/${encoded}`,deleter,'DELETE',undefined,200,'RecordingDeletionResult');
+  expect(existsSync(path.join(fixture.directory,`${ids.sibling}.mp4`))).toBe(false);
+  expect(state(server,[ids.playable,ids.hidden])).toEqual([before[0],before[2]]);
+});

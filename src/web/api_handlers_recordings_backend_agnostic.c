@@ -256,11 +256,12 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Convert ID to integer (strict validation: full string, non-zero, no overflow)
-    errno = 0;
-    char *endptr = NULL;
-    uint64_t id = strtoull(id_str, &endptr, 10);
-    if (id_str[0] == '\0' || endptr == id_str || *endptr != '\0' || errno == ERANGE || id == 0) {
+    // Check the raw path too: a decoded NUL can hide a suffix from validation.
+    const char *encoded_nul = strstr(req->path, "%00");
+    const char *query = strchr(req->path, '?');
+    uint64_t id;
+    if ((encoded_nul && (!query || encoded_nul < query)) ||
+        !recording_id_parse_decimal(id_str, &id)) {
         log_error("Invalid recording ID: %s", id_str);
         http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
