@@ -27,12 +27,15 @@ export class EventRequestError extends Error {
  }
 }
 export async function eventJSON<T=unknown>(url:string,options:EnhancedFetchOptions={}):Promise<T>{
- const method=(options.method||'GET').toUpperCase(),[pathname='',query]=url.split('?');
+ const method=(options.method||'GET').toUpperCase(),queryStart=url.indexOf('?');
+ const pathname=queryStart<0?url:url.slice(0,queryStart);
+ // A later '?' belongs to the query; do not discard bytes before validation.
+ const query=queryStart<0?'':url.slice(queryStart+1);
  const op=operations.find(operation=>operation.method===method&&operation.path.test(pathname));
  if(!op)throw new ContractValidationError('eventRequest','request','EventRoute');
  if(method==='DELETE'){
-  const params=new URLSearchParams(query),value=params.get('revision');
-  if(!value||!/^[1-9][0-9]*$/.test(value)||!Number.isSafeInteger(Number(value))||[...params.keys()].filter(key=>key==='revision').length!==1)
+  const params=new URLSearchParams(query),value=params.get('revision'),keys=[...params.keys()];
+  if(keys.length!==1||!value||!/^[1-9][0-9]*$/.test(value)||!Number.isSafeInteger(Number(value)))
    throw new ContractValidationError(op.id,'request','EventRevision');
  }
  if(op.requestGuard){
