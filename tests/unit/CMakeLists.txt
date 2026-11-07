@@ -416,6 +416,7 @@ if(ENABLE_GO2RTC)
     set_tests_properties(test_go2rtc_proxy_routing PROPERTIES TIMEOUT 15)
     add_layer2_test_with_curl(test_go2rtc_proxy_thread)
     target_link_options(test_go2rtc_proxy_thread PRIVATE
+        "-Wl,--wrap=lightnvr_uuid_generate_v4"
         "-Wl,--wrap=go2rtc_proxy_authorize_request"
         "-Wl,--wrap=libuv_send_response_ex"
         "-Wl,--wrap=curl_easy_perform"
