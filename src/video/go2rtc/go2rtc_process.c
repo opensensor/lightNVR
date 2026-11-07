@@ -1766,24 +1766,34 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
         return 0;
     }
 
-    /* Write the content to override.yaml with mode 0600. We use open()+fdopen
-     * (not fopen) so we can specify the create-mode explicitly and so umask
-     * cannot loosen the permissions. */
-    int fd = open(override_path,
-                  O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
+    /* Write to a private temporary file first, then atomically rename it over
+     * override.yaml. This preserves the previous valid file on failures. */
+    char override_tmp_path[PATH_MAX];
+    if (snprintf(override_tmp_path, sizeof(override_tmp_path), "%s.tmp.%ld",
+                 override_path, (long)getpid()) >= (int)sizeof(override_tmp_path)) {
+        log_error("Temporary path for go2rtc override file is too long: %s",
+                  override_path);
+        free(content);
+        return -1;
+    }
+
+    int fd = open(override_tmp_path,
+                  O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
                   0600);
     if (fd < 0) {
-        log_error("Failed to open go2rtc override file %s for writing: %s",
-                  override_path, strerror(errno));
+        log_error("Failed to open temporary go2rtc override file %s for writing: %s",
+                  override_tmp_path, strerror(errno));
         free(content);
         return -1;
     }
 
     struct stat private_override;
     if (fstat(fd, &private_override) != 0 || !S_ISREG(private_override.st_mode) ||
-        private_override.st_nlink != 1 || fchmod(fd, 0600) != 0 || ftruncate(fd, 0) != 0) {
-        log_error("Cannot prepare private go2rtc override file");
+        private_override.st_nlink != 1 || fchmod(fd, 0600) != 0) {
+        log_error("Cannot prepare private temporary go2rtc override file %s",
+                  override_tmp_path);
         close(fd);
+        unlink(override_tmp_path);
         free(content);
         return -1;
     }
@@ -1793,10 +1803,10 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
         ssize_t n = write(fd, content + written, content_len - written);
         if (n <= 0) {
             if (n < 0 && errno == EINTR) continue;
-            log_error("Write to go2rtc override file %s failed: %s",
-                      override_path, strerror(errno));
+            log_error("Write to temporary go2rtc override file %s failed: %s",
+                      override_tmp_path, strerror(errno));
             close(fd);
-            unlink(override_path);
+            unlink(override_tmp_path);
             free(content);
             return -1;
         }
@@ -1804,15 +1814,24 @@ static int go2rtc_process_generate_override_file_locked(const char *override_pat
     }
 
     if (fsync(fd) != 0) {
-        log_warn("fsync on go2rtc override file %s failed: %s",
-                 override_path, strerror(errno));
+        log_warn("fsync on temporary go2rtc override file %s failed: %s",
+                 override_tmp_path, strerror(errno));
         /* Non-fatal: the data is in the page cache and go2rtc will read it
          * via the same kernel; only durability across crashes is at risk. */
     }
 
     if (close(fd) != 0) {
-        log_error("close on go2rtc override file %s failed: %s",
+        log_error("close on temporary go2rtc override file %s failed: %s",
+                  override_tmp_path, strerror(errno));
+        unlink(override_tmp_path);
+        free(content);
+        return -1;
+    }
+
+    if (rename(override_tmp_path, override_path) != 0) {
+        log_error("Failed to atomically publish go2rtc override file %s: %s",
                   override_path, strerror(errno));
+        unlink(override_tmp_path);
         free(content);
         return -1;
     }
