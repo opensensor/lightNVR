@@ -410,16 +410,24 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
     /* Disk-side state. */
     char *file_content = NULL;
     size_t file_len = 0;
+    int file_errno = 0;
     int file_rc = override_path
                       ? try_read_file(override_path, &file_content, &file_len)
                       : -1;
+    if (file_rc < 0) {
+        file_errno = errno;
+    }
     bool file_present = (file_rc == 1);
     cJSON_AddBoolToObject(root, "file_present", file_present);
     cJSON_AddNumberToObject(root, "file_bytes",
                             (double)(file_present ? (long)file_len : -1L));
     if (file_rc < 0) {
-        cJSON_AddStringToObject(root, "file_read_error",
-                                override_path ? strerror(errno) : "no override path");
+        const char *file_error =
+            !override_path ? "no override path"
+                           : (file_errno != 0
+                                  ? strerror(file_errno)
+                                  : "file validation failed (non-regular file or size limit exceeded)");
+        cJSON_AddStringToObject(root, "file_read_error", file_error);
     }
 
     /* Byte-for-byte equality between what the DB holds and what got
