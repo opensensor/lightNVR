@@ -38,8 +38,36 @@ async function rendered(page:Page,ops:string[]) {
   const historical=new Set([...all,...read,...configured]);
   expect(current.filter(id=>historical.has(id)).sort()).toEqual([...ops].sort());
   await expect(page.locator('#docs-status')).toContainText('covers selected APIs');
-  await expect(page.locator('.opblock')).toHaveCount(current.length);
   await expect.poll(()=>page.evaluate(()=>window.contractExplorerProbe.renders.at(-1)?.ops)).toEqual([...current].sort());
+  await expect(page.locator('.opblock').first()).toBeVisible();
+  if(await page.locator('.operations-virtual').count()) {
+    // Swagger virtualizes large documents. Walk the real viewport and require
+    // every served operation to become reachable, rather than requiring every
+    // virtual row to exist in the DOM simultaneously.
+    const seen=new Set<string>();
+    let reachedBottom=false;
+    await page.evaluate(()=>window.scrollTo(0,0));
+    for(let step=0;step<current.length*8+20;step++) {
+      await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+      const state=await page.evaluate(()=>({
+        ids:Array.from(document.querySelectorAll('.opblock[id]'),node=>node.id),
+        top:window.scrollY,height:window.innerHeight,bottom:document.documentElement.scrollHeight,
+      }));
+      for(const id of state.ids) {
+        const operation=current.find(operation=>id.endsWith(`-${operation}`));
+        expect(operation,`Unexpected rendered operation ${id}`).toBeDefined();
+        seen.add(operation!);
+      }
+      await expect(page.getByRole('button',{name:/^(?:authorize|try it out|execute)$/i})).toHaveCount(0);
+      if(state.top+state.height>=state.bottom-1) {reachedBottom=true;break;}
+      await page.evaluate(distance=>window.scrollBy(0,distance),Math.max(1,Math.floor(state.height/2)));
+    }
+    expect(reachedBottom,'Virtualized API document must reach its final row').toBe(true);
+    expect([...seen].sort()).toEqual([...current].sort());
+    await page.evaluate(()=>window.scrollTo(0,0));
+  } else {
+    await expect(page.locator('.opblock')).toHaveCount(current.length);
+  }
 }
 const pilotRead=['getOpenApi','getStreamFull','listStreams'];
 const read=[...identityOps,...fleetOps,...recordingCommonOps,...recordingReplayOps,...recordingJobOps,...recordingExportOps,...pilotRead];
