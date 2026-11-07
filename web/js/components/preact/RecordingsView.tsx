@@ -754,12 +754,7 @@ export function RecordingsView() {
       return;
     }
     // Store current URL for "Refine Selections" back-link
-    const currentPath = window.location.pathname.split('/').pop() || 'recordings.html';
-    const recordingsReturnUrl = `recordings.html${window.location.search}`;
-    sessionStorage.setItem(
-      RECORDINGS_RETURN_URL_KEY,
-      currentPath === 'recordings.html' ? recordingsReturnUrl : `recordings.html${window.location.search}`
-    );
+    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, recordingsUrl);
     sessionStorage.setItem(RECORDINGS_SELECTED_IDS_KEY, JSON.stringify(selectedIds));
     sessionStorage.setItem(RECORDINGS_RESTORE_SELECTION_KEY, 'true');
     window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
@@ -810,13 +805,12 @@ export function RecordingsView() {
         return;
       }
 
-      const returnTo = `${window.location.pathname}${window.location.search}`;
       const params = new URLSearchParams({
         cameras: cameraUuids.join(','),
         start: String(paddedStart),
         end: String(paddedEnd),
         cursor: String(Math.floor(start)),
-        return_to: returnTo,
+        return_to: recordingsUrl,
       });
       window.location.href = `investigation.html?${params.toString()}`;
     } catch (requestError) {
