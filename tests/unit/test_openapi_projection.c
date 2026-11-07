@@ -284,11 +284,30 @@ static void test_bootstrap_setup_adapter(void) {
     TEST_ASSERT_EQUAL_INT(-1, openapi_snapshot_access(snapshot, input));
 }
 
+static void test_non_scoped_requirements_adapter(void) {
+    authorization_snapshot_t *snapshot = (authorization_snapshot_t *)&mode;
+    parse("{\"version\":1,\"kind\":\"non_scoped_global\",\"requirements\":[{\"action\":\"users.manage\",\"resource\":\"raw\"}]}");
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    global_allowed = false;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+    global_allowed = true; non_scoped_identity = false; global_calls = 0;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+    TEST_ASSERT_EQUAL_INT(0, global_calls);
+    cJSON_Delete(input); input = NULL;
+    parse("{\"version\":1,\"kind\":\"non_scoped_camera\",\"requirements\":[{\"action\":\"live.view\",\"resource\":\"live\"}]}");
+    allowed[0] = 1u << AUTHZ_LIVE_VIEW;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+    non_scoped_identity = true; expected_resource = "live";
+    TEST_ASSERT_EQUAL_INT(1, openapi_snapshot_access(snapshot, input));
+    allowed[0] = 0;
+    TEST_ASSERT_EQUAL_INT(0, openapi_snapshot_access(snapshot, input));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_bootstrap_setup_adapter);
     RUN_TEST(test_canonical_admin_immutable); RUN_TEST(test_viewer_prunes_variants); RUN_TEST(test_empty_valid);
-    RUN_TEST(test_identity_management_adapter); RUN_TEST(test_non_scoped_identity_adapter); RUN_TEST(test_callback_failure); RUN_TEST(test_bad_predicates_even_hidden);
+    RUN_TEST(test_non_scoped_requirements_adapter); RUN_TEST(test_identity_management_adapter); RUN_TEST(test_non_scoped_identity_adapter); RUN_TEST(test_callback_failure); RUN_TEST(test_bad_predicates_even_hidden);
     RUN_TEST(test_cycles_pointers_literals_links_discriminator); RUN_TEST(test_missing_external_and_bad_escaped_refs);
     RUN_TEST(test_empty_union_fails); RUN_TEST(test_misplaced_or_duplicate_metadata);
     RUN_TEST(test_named_encoding_and_server_variable_maps); RUN_TEST(test_definitions_preserve_referenced_components);

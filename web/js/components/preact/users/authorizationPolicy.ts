@@ -103,7 +103,7 @@ export function groupActionsByCategory(actions: AuthorizationAction[] = []): Aut
 }
 
 export function roleHasDestructiveActions(roleActions: string[] = [], actionCatalog: AuthorizationAction[] = []) {
-  const destructive = new Set(
+  const destructive = new Set<string>(
     actionCatalog.filter((action) => action.destructive).map((action) => action.key)
   );
   return roleActions.some((key) => destructive.has(key));
@@ -123,7 +123,7 @@ export function actionIsEnforced(action: Pick<AuthorizationAction, 'enforced'> |
 }
 
 export function unenforcedActionKeys(roleActions: string[] | null | undefined = [], actionCatalog: AuthorizationAction[] = []) {
-  const unenforced = new Set(
+  const unenforced = new Set<string>(
     actionCatalog.filter((action) => !actionIsEnforced(action)).map((action) => action.key)
   );
   return (roleActions || []).filter((key) => unenforced.has(key));

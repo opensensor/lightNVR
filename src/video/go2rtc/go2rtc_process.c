@@ -2429,8 +2429,8 @@ static bool go2rtc_process_start_locked(int api_port) {
         return false;
     }
     snprintf(listener_policy, sizeof(listener_policy),
-        "{\"api\":{\"listen\":\"127.0.0.1:%d\",\"tls_listen\":\"\",\"unix_listen\":\"\"},"
-        "\"rtsp\":{\"listen\":\"127.0.0.1:%d\"}}", managed_api_port, managed_rtsp_port);
+        "{\"api\":{\"listen\":\"127.0.0.1:%d\",\"tls_listen\":\"\",\"unix_listen\":\"\",\"media_authority_port\":%d},"
+        "\"rtsp\":{\"listen\":\"127.0.0.1:%d\"}}", managed_api_port, g_config.web_port, managed_rtsp_port);
     char *argv[8];
     int ai = 0;
     argv[ai++] = (char *)"go2rtc";

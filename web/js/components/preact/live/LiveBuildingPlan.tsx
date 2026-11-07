@@ -1,6 +1,7 @@
 import { listFleetLocations } from '../../../api/fleet.ts';
 import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks';
-import { fetchJSON, useQuery, useQueryClient } from '../../../query-client.ts';
+import { useQuery, useQueryClient } from '../../../query-client.ts';
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { ConfirmDialog, TextInputDialog } from '../common/ModalDialog.tsx';
 import { t as translate, useI18n } from '../../../i18n.ts';
@@ -369,7 +370,7 @@ export function LiveBuildingPlan({
 
   const plansQuery = useQuery<FloorPlansResponse>({
     queryKey: ['operator-floor-plans'],
-    queryFn: ({ signal }) => fetchJSON('/api/live/plans', { signal }),
+    queryFn: ({ signal }) => fleetWriteJSON('/api/live/plans', { signal }),
     staleTime: 15000,
   });
   // Shared with the Navigator (same key), used to link a plan to a location.
@@ -522,7 +523,7 @@ export function LiveBuildingPlan({
   const createPlan = async (name: string) => {
     setBusy(true);
     try {
-      const created = await fetchJSON<FloorPlan>('/api/live/plans', {
+      const created = await fleetWriteJSON<FloorPlan>('/api/live/plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -554,7 +555,7 @@ export function LiveBuildingPlan({
   const renamePlan = async (name: string) => {
     setBusy(true);
     try {
-      const updated = await fetchJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}`, {
+      const updated = await fleetWriteJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(floorPlanPayload({ ...plan!, name }, plan!.cameras)),
@@ -575,7 +576,7 @@ export function LiveBuildingPlan({
   const deletePlan = async () => {
     setBusy(true);
     try {
-      await fetchJSON(`/api/live/plans/${plan!.uuid}`, {
+      await fleetWriteJSON(`/api/live/plans/${plan!.uuid}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revision: plan!.revision }),
@@ -612,7 +613,7 @@ export function LiveBuildingPlan({
     try {
       const imageSize = await loadImageSize(file);
       const canvasSize = floorPlanCanvasFromImage(imageSize.width, imageSize.height);
-      const uploaded = await fetchJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}/background`, {
+      const uploaded = await fleetWriteJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}/background`, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
         body: file,
@@ -637,7 +638,7 @@ export function LiveBuildingPlan({
       if (canvasSize.canvas_width !== uploaded.canvas_width ||
         canvasSize.canvas_height !== uploaded.canvas_height) {
         try {
-          const resized = await fetchJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}`, {
+          const resized = await fleetWriteJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(floorPlanPayload(
@@ -664,7 +665,7 @@ export function LiveBuildingPlan({
   const removeBackground = async () => {
     setBusy(true);
     try {
-      const updated = await fetchJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}/background`, {
+      const updated = await fleetWriteJSON<FloorPlan>(`/api/live/plans/${plan!.uuid}/background`, {
         method: 'DELETE',
         timeout: 15000,
         retries: 0,
@@ -1004,7 +1005,7 @@ export function LiveBuildingPlan({
     setBusy(true);
     try {
       const { succeeded, failed } = await applyBulkOrganization(
-        unassignedPlanStreams, { locationUuid: planLocation.uuid }, fetchJSON);
+        unassignedPlanStreams, { locationUuid: planLocation.uuid }, fleetWriteJSON);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['streams'] }),
         queryClient.invalidateQueries({ queryKey: ['fleet-locations'] }),
@@ -1064,7 +1065,7 @@ export function LiveBuildingPlan({
   const savePlan = async () => {
     setBusy(true);
     try {
-      const updated = await fetchJSON<FloorPlan>(`/api/live/plans/${plan.uuid}`, {
+      const updated = await fleetWriteJSON<FloorPlan>(`/api/live/plans/${plan.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

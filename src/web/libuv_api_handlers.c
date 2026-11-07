@@ -506,6 +506,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}
     http_server_register_handler(server, "/hls/#/#", "GET", handle_direct_hls_request);
 
+    // Loopback-only opaque media lease callback, not a public API operation.
+    http_server_register_handler(server, "/api/internal/media-lease", "GET", handle_internal_media_lease);
+
     // Scoped go2rtc proxy. WebRTC SDP uses the authenticated HTTP origin;
     // the negotiated media connection still goes directly to go2rtc.
     http_server_register_handler(server, "/go2rtc/api/ws", "GET", handle_go2rtc_proxy);

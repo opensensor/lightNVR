@@ -1,4 +1,68 @@
 export interface paths {
+    "/api/audit/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/events/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export audit events
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["exportAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get audit settings
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getAuditSettings"];
+        /**
+         * Update audit settings
+         * @description Requires system.admin. All submitted fields are validated before writes. Retention saves and pruning occur before decision modes: on internal failure some work may have applied. Read settings before deciding to retry. Successful retention changes include pruned_events.
+         */
+        put: operations["updateAuditSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -159,6 +223,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List admin users
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAdminUsers"];
+        put?: never;
+        /**
+         * Create admin user
+         * @description Requires a non-scoped users.manage principal. Initial legacy role is converted to built-in policy grants; the caller may only delegate actions it holds. Returns 200. New users are provisioned inactive until policy and CIDR rules have been applied.
+         */
+        post: operations["createAdminUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get admin user
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getAdminUser"];
+        /**
+         * Update admin user
+         * @description A non-scoped owner may edit its username/email. Other fields and other users require effective users.manage. Role is rejected; use versioned policy management. CIDR input is validated before saving. Password changes invalidate existing sessions/challenges/trusted devices; locked passwords cannot change.
+         */
+        put: operations["updateAdminUser"];
+        post?: never;
+        /**
+         * Delete admin user
+         * @description Requires users.manage. Cannot delete yourself or the last legacy administrator; deletion and credential revocation are durable.
+         */
+        delete: operations["deleteAdminUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/api-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create legacy api key
+         * @description Only a non-scoped owner or non-scoped users.manage principal may rotate the legacy key. Scoped tokens are always forbidden, including tokens with users.manage. The unrestricted key is returned once; lists never expose it. Discovery does not grant access to another user.
+         */
+        post: operations["createLegacyApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/login-lockout/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear user login lockout
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        post: operations["clearUserLoginLockout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/users/{id}/password": {
         parameters: {
             query?: never;
@@ -172,6 +328,26 @@ export interface paths {
          * @description A session, Basic credential or legacy key may manage its own account. Other accounts, and all scoped-token requests, require effective users.manage (owner permission intersected with token action/scope). Discovery describes the operation; it does not grant access to an arbitrary target ID. Requires old_password for self-service without users.manage and for a forced own password change. Success atomically changes the password and revokes sessions, pending challenges and trusted devices. Changing your own password clears browser cookies. Basic/key compatibility remains supported.
          */
         put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users/{id}/password-lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set user password lock
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        put: operations["setUserPasswordLock"];
         post?: never;
         delete?: never;
         options?: never;
@@ -279,6 +455,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/authorization/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List authorization actions
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuthorizationActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List authorization roles
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["listAuthorizationRoles"];
+        put?: never;
+        /**
+         * Create authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        post: operations["createAuthorizationRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/roles/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        put: operations["updateAuthorizationRole"];
+        post?: never;
+        /**
+         * Delete authorization role
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        delete: operations["deleteAuthorizationRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate authorization
+         * @description Requires users.manage. Evaluates the target user, not a token, against a concrete existing camera for camera-scoped actions or no camera for global actions. Does not modify grants; an audit event is appended.
+         */
+        post: operations["simulateAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/authorization/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get user authorization policy
+         * @description Discovery is an operation-level capability. The server independently checks the concrete target and current effective authority. Basic credentials, session cookies and legacy keys retain their existing behavior. Mutations must not be automatically retried.
+         */
+        get: operations["getUserAuthorizationPolicy"];
+        /**
+         * Set user authorization policy
+         * @description Requires a non-scoped users.manage principal, current expected_policy_version, and mode policy. Replaces the grants atomically. Delegated actions and camera scope cannot exceed caller authority. Self-lockout is rejected. Effective permissions and scoped-token intersections are re-evaluated on subsequent requests.
+         */
+        put: operations["setUserAuthorizationPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/authorization/users/{user_id}/tokens": {
         parameters: {
             query?: never;
@@ -344,7 +632,11 @@ export interface paths {
          */
         get: operations["listCameraCollections"];
         put?: never;
-        post?: never;
+        /**
+         * CreateCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createCameraCollection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -363,9 +655,17 @@ export interface paths {
          * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
          */
         get: operations["getCameraCollection"];
-        put?: never;
+        /**
+         * UpdateCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateCameraCollection"];
         post?: never;
-        delete?: never;
+        /**
+         * DeleteCameraCollection
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteCameraCollection"];
         options?: never;
         head?: never;
         patch?: never;
@@ -383,7 +683,11 @@ export interface paths {
          * @description Collection visibility requires global camera.configure, ownership or sharing; a shared collection with zero visible live.view matches is hidden from a non-owner/non-manager. Member/effective counts and samples are scoped to authorized cameras. Smart selectors are disclosed only to the owner or manager; other readers receive null plus selector_redacted. Read-like preview performs no mutation.
          */
         get: operations["getCameraCollectionMembers"];
-        put?: never;
+        /**
+         * SetCameraCollectionMembers
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraCollectionMembers"];
         post?: never;
         delete?: never;
         options?: never;
@@ -411,6 +715,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/camera-favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListCameraFavorites
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listCameraFavorites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-favorites/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * AddCameraFavorite
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["addCameraFavorite"];
+        post?: never;
+        /**
+         * DeleteCameraFavorite
+         * @description Remove only the current user favorite, including cameras no longer visible. Idempotent; scoped tokens and demo identities cannot mutate.
+         */
+        delete: operations["deleteCameraFavorite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/camera-tags": {
         parameters: {
             query?: never;
@@ -420,11 +768,15 @@ export interface paths {
         };
         /**
          * List visible camera tags
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["listFleetTags"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createFleetTag"];
         delete?: never;
         options?: never;
         head?: never;
@@ -440,10 +792,58 @@ export interface paths {
         };
         /**
          * Read a visible camera tag
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getFleetTag"];
+        /**
+         * UpdateFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateFleetTag"];
+        post?: never;
+        /**
+         * DeleteFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFleetTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/camera-tags/{uuid}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
+        /**
+         * MergeFleetTag
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["mergeFleetTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cameras/{uuid}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * SetCameraLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraLocation"];
         post?: never;
         delete?: never;
         options?: never;
@@ -460,10 +860,14 @@ export interface paths {
         };
         /**
          * Read tags for an authorized camera
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getCameraTagAssignments"];
-        put?: never;
+        /**
+         * SetCameraTags
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["setCameraTags"];
         post?: never;
         delete?: never;
         options?: never;
@@ -688,7 +1092,11 @@ export interface paths {
          */
         get: operations["listFleetViews"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        post: operations["createFleetView"];
         delete?: never;
         options?: never;
         head?: never;
@@ -707,9 +1115,17 @@ export interface paths {
          * @description Owned and shared saved filter configurations; up to 256 list entries. Stored selector references do not grant camera access and must be reauthorized on query. Existing can_share reflects the legacy admin role, not arbitrary action grants. Mutation contracts remain outside this read slice.
          */
         get: operations["getFleetView"];
-        put?: never;
+        /**
+         * UpdateFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        put: operations["updateFleetView"];
         post?: never;
-        delete?: never;
+        /**
+         * DeleteFleetView
+         * @description Personal views are owner-managed; only administrators may share. Scoped tokens retain the existing owner identity behavior. Demo identities cannot mutate. Updates and deletion require the current revision; shared visibility does not grant modification.
+         */
+        delete: operations["deleteFleetView"];
         options?: never;
         head?: never;
         patch?: never;
@@ -749,6 +1165,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/live/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListLiveLayouts
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listLiveLayouts"];
+        put?: never;
+        /**
+         * CreateLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        post: operations["createLiveLayout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/layouts/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * UpdateLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        put: operations["updateLiveLayout"];
+        post?: never;
+        /**
+         * DeleteLiveLayout
+         * @description Personal layouts are owner-managed. Only administrators share. Scoped tokens and demo identities cannot mutate. Camera slots must all be live.view-visible; columns times rows must not exceed 36 and slots cannot exceed capacity. Updates/deletion require current revision.
+         */
+        delete: operations["deleteLiveLayout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ListFloorPlans
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["listFloorPlans"];
+        put?: never;
+        /**
+         * CreateFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        post: operations["createFloorPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans/{uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetFloorPlan
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["getFloorPlan"];
+        /**
+         * UpdateFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        put: operations["updateFloorPlan"];
+        post?: never;
+        /**
+         * DeleteFloorPlan
+         * @description Shared plan library. Requires global camera.configure and a non-scoped identity; demo identities cannot mutate. Camera placements must be visible. Updates/deletion require current revision. Omitted sketch preserves it; null clears it.
+         */
+        delete: operations["deleteFloorPlan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live/plans/{uuid}/background": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GetFloorPlanBackground
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        get: operations["getFloorPlanBackground"];
+        /**
+         * SetFloorPlanBackground
+         * @description Raw structurally validated PNG/JPEG, at most 786432 bytes. Atomic publication preserves previous bytes on invalid upload. Returns the new plan revision; no request revision is used.
+         */
+        put: operations["setFloorPlanBackground"];
+        post?: never;
+        /**
+         * DeleteFloorPlanBackground
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFloorPlanBackground"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations": {
         parameters: {
             query?: never;
@@ -758,11 +1302,15 @@ export interface paths {
         };
         /**
          * List visible camera locations
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["listFleetLocations"];
         put?: never;
-        post?: never;
+        /**
+         * CreateFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        post: operations["createFleetLocation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -778,12 +1326,20 @@ export interface paths {
         };
         /**
          * Read a visible camera location
-         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view or camera.configure can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
+         * @description Visibility and counts follow existing live.view scope; location ancestors may be included. Global live.view can expose the full organization catalog. Camera-specific tag access requires live.view on that raw camera identity; missing objects may return 404 before authentication.
          */
         get: operations["getFleetLocation"];
-        put?: never;
+        /**
+         * UpdateFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        put: operations["updateFleetLocation"];
         post?: never;
-        delete?: never;
+        /**
+         * DeleteFleetLocation
+         * @description Authorization is checked before mutation. Requests preserve existing Basic authentication and legacy API-key compatibility. Resource-specific visibility, ownership and reference checks still apply.
+         */
+        delete: operations["deleteFleetLocation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1645,6 +2201,167 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AdminActionCatalog: {
+            actions: components["schemas"]["AdminActionCatalogEntry"][];
+            count: number;
+        };
+        AdminActionCatalogEntry: {
+            camera_scoped: boolean;
+            category: string;
+            description: string;
+            destructive: boolean;
+            enforced: boolean;
+            key: components["schemas"]["AuthorizationAction"];
+            mask_bit: number;
+        };
+        AdminAuthorizationRole: {
+            actions: components["schemas"]["AuthorizationAction"][];
+            builtin: boolean;
+            created_at: number;
+            description: string;
+            name: string;
+            updated_at: number;
+            uuid: string;
+        };
+        AdminPolicyGrant: {
+            created_at: number;
+            enabled: boolean;
+            role: string;
+            role_uuid: string;
+            scope: components["schemas"]["ApiTokenStoredScope"];
+            updated_at: number;
+            uuid: string;
+        };
+        AdminPolicyWrite: {
+            expected_policy_version: number;
+            grants: ({
+                role_uuid: string;
+                scope: components["schemas"]["ApiTokenScope"];
+            } & {
+                [key: string]: unknown;
+            })[];
+            /** @constant */
+            mode: "policy";
+        } & {
+            [key: string]: unknown;
+        };
+        AdminRoleDeleted: {
+            policy_version: number;
+            /** @constant */
+            success: true;
+        };
+        AdminRoles: {
+            count: number;
+            policy_version: number;
+            roles: components["schemas"]["AdminAuthorizationRole"][];
+        };
+        AdminRoleWrite: {
+            actions: components["schemas"]["AuthorizationAction"][];
+            description?: string;
+            expected_policy_version: number;
+            name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminRoleWritten: {
+            policy_version: number;
+            role: components["schemas"]["AdminAuthorizationRole"];
+        };
+        AdminSimulation: {
+            action: components["schemas"]["AuthorizationAction"];
+            allowed: boolean;
+            explanation: string;
+            grant_uuid: string | null;
+            policy_version: number;
+            principal: {
+                authorization_mode: string;
+                id: number;
+                username: string;
+            };
+            resource: {
+                camera_uuid: string;
+                name: string;
+            } | null;
+            role: string;
+            role_uuid: string | null;
+            source: string;
+        };
+        AdminSimulationRequest: ({
+            /** @enum {string} */
+            action: "live.view" | "audio.listen" | "audio.talk" | "recordings.replay" | "recordings.export" | "snapshot.create" | "ptz.control" | "evidence.protect" | "recording.delete" | "camera.configure" | "fleet.execute_job" | "lpr.read" | "lpr.search" | "lpr.export" | "lpr.delete";
+            camera_uuid: string;
+            user_id: number;
+        } & {
+            [key: string]: unknown;
+        }) | ({
+            /** @enum {string} */
+            action: "storage.configure" | "events.configure" | "users.manage" | "system.admin";
+            camera_uuid?: never;
+            user_id: number;
+        } & {
+            [key: string]: unknown;
+        });
+        AdminUser: {
+            allowed_login_cidrs: string | null;
+            authorization_mode: string;
+            created_at: number;
+            email: string;
+            id: number;
+            is_active: boolean;
+            last_login: number;
+            must_change_password: boolean;
+            password_change_locked: boolean;
+            /** @enum {integer} */
+            role: 0 | 1 | 2 | 3;
+            /** @enum {string} */
+            role_name: "admin" | "user" | "viewer" | "api" | "unknown";
+            totp_enabled: boolean;
+            updated_at: number;
+            username: string;
+        };
+        AdminUserCreate: {
+            allowed_login_cidrs?: string | null;
+            email?: string;
+            is_active?: boolean;
+            password: string;
+            /** @enum {integer} */
+            role?: 0 | 1 | 2 | 3;
+            username: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminUserDeleted: {
+            message: string;
+            /** @constant */
+            success: true;
+        };
+        AdminUserPolicy: {
+            grant_count: number;
+            grants: components["schemas"]["AdminPolicyGrant"][];
+            /** @enum {string} */
+            mode: "legacy" | "policy";
+            policy_version: number;
+            user_id: number;
+        };
+        AdminUsers: {
+            users: components["schemas"]["AdminUser"][];
+        };
+        AdminUserUpdate: {
+            allowed_login_cidrs?: string | null;
+            allowed_tags?: never;
+            email?: string;
+            is_active?: boolean;
+            password?: "" | string;
+            role?: never;
+            username?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AdminVersionRequest: {
+            expected_policy_version: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description Most errors use a string error. YAML validation may use valid=false and error.message. Extra diagnostic fields may be added; clients must not log privileged request or response data. */
         ApiError: {
             error: string | ({
@@ -1757,6 +2474,57 @@ export interface components {
         } & {
             [key: string]: unknown;
         });
+        AuditDecisionMode: {
+            action: components["schemas"]["AuthorizationAction"];
+            category: string;
+            description: string;
+            /** @enum {string} */
+            mode: "off" | "summarize" | "record";
+        };
+        AuditEvent: {
+            action: string;
+            api_token_uuid: string | null;
+            auth_method: string;
+            details: {
+                [key: string]: unknown;
+            } | null;
+            occurred_at: number;
+            outcome: string;
+            principal_user_id: number | null;
+            principal_username: string;
+            remote_address: string;
+            request_id: string;
+            target_type: string | null;
+            target_uuid: string | null;
+            uuid: string;
+        };
+        AuditEventsPage: {
+            count: number;
+            events: components["schemas"]["AuditEvent"][];
+            page: number;
+            page_size: number;
+            total: number;
+        };
+        AuditSettings: {
+            allowed_decision_modes: components["schemas"]["AuditDecisionMode"][];
+            pruned_events?: number;
+            retention_days: number;
+            summary_window_seconds: number;
+        };
+        AuditSettingsWrite: ({
+            allowed_decision_modes?: {
+                [key: string]: "off" | "summarize" | "record";
+            };
+            retention_days?: number;
+        } & {
+            [key: string]: unknown;
+        }) | {
+            retention_days: number;
+        } | {
+            allowed_decision_modes: {
+                [key: string]: "off" | "summarize" | "record";
+            };
+        };
         AuthDemoIdentity: {
             api_key?: never;
             /** @constant */
@@ -1860,6 +2628,17 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        CameraCollectionCreate: {
+            description?: string;
+            name: string;
+            selector?: components["schemas"]["FleetSelector"];
+            shared?: boolean;
+            /** @enum {string} */
+            type: "static" | "smart";
+        };
+        CameraCollectionMembersRequest: {
+            camera_uuids: components["schemas"]["CameraUuid"][];
+        };
         CameraCollectionMembersResponse: {
             camera_uuids: string[];
             collection_uuid: string;
@@ -1878,11 +2657,45 @@ export interface components {
             collections: components["schemas"]["CameraCollection"][];
             count: number;
         };
+        CameraCollectionUpdate: {
+            description?: string;
+            name?: string;
+            selector?: components["schemas"]["FleetSelector"];
+            shared?: boolean;
+            /** @enum {string} */
+            type?: "static" | "smart";
+        };
+        CameraFavorite: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            created_at: number;
+        };
+        CameraFavoriteRemoval: {
+            removed: boolean;
+            /** @constant */
+            success: true;
+        };
+        CameraFavoritesResponse: {
+            can_modify: boolean;
+            favorites: components["schemas"]["CameraFavorite"][];
+        };
+        CameraLocationAssignment: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            location_uuid: components["schemas"]["CameraUuid"];
+            /** @constant */
+            success: true;
+        };
+        CameraLocationAssignmentRequest: {
+            location_uuid: components["schemas"]["CameraUuid"];
+        };
+        CameraTagAssignmentsRequest: {
+            tag_uuids: components["schemas"]["CameraUuid"][];
+        };
         CameraTagAssignmentsResponse: {
             camera_uuid: string;
             count: number;
             tags: components["schemas"]["FleetTag"][];
         };
+        CameraUuid: string;
         /** @description Safe browser playback configuration only. Deliberately closed shape: no storage paths, integrations, private settings or credentials. go2rtc_available may stay true while its lifecycle guard is busy. */
         ClientConfig: {
             api_key?: never;
@@ -2253,10 +3066,32 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        FleetLocationCreate: {
+            metadata?: {
+                [key: string]: unknown;
+            };
+            name: string;
+            parent_uuid?: components["schemas"]["CameraUuid"] | null;
+            sort_order?: number;
+            type?: string;
+        };
         FleetLocationsResponse: {
             count: number;
             locations: components["schemas"]["FleetLocation"][];
             unassigned_uuid?: string;
+        };
+        FleetLocationUpdate: {
+            metadata?: {
+                [key: string]: unknown;
+            };
+            name?: string;
+            parent_uuid?: components["schemas"]["CameraUuid"] | null;
+            sort_order?: number;
+            type?: string;
+        };
+        FleetMutationAck: {
+            /** @constant */
+            success: true;
         };
         FleetOperationalQueue: {
             count: number;
@@ -2339,6 +3174,9 @@ export interface components {
             total: number;
             total_pages: number;
         };
+        FleetRevisionRequest: {
+            revision: number;
+        };
         FleetSavedView: {
             collection_uuid: string | null;
             columns: string[];
@@ -2371,9 +3209,165 @@ export interface components {
             updated_at: number;
             uuid: string;
         };
+        FleetTagCreate: {
+            color?: string;
+            description?: string;
+            label: string;
+        };
+        FleetTagMergeRequest: {
+            target_uuid: components["schemas"]["CameraUuid"];
+        };
+        FleetTagMergeResult: {
+            source_uuid: components["schemas"]["CameraUuid"];
+            /** @constant */
+            success: true;
+            target_uuid: components["schemas"]["CameraUuid"];
+        };
         FleetTagsResponse: {
             count: number;
             tags: components["schemas"]["FleetTag"][];
+        };
+        FleetTagUpdate: {
+            color?: string;
+            description?: string;
+            label?: string;
+        };
+        FleetViewCreate: {
+            collection_uuid?: string;
+            columns?: string[];
+            is_shared?: boolean;
+            name: string;
+            search?: string;
+            selector: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FleetViewUpdate: {
+            collection_uuid?: string;
+            columns?: string[];
+            is_shared?: boolean;
+            name: string;
+            revision: number;
+            search?: string;
+            selector: components["schemas"]["FleetSelector"];
+            /** @enum {unknown} */
+            sort_by?: "name" | "camera_uuid" | "location" | "health" | "enabled" | "recording_mode" | "address";
+            /** @enum {unknown} */
+            sort_order?: "asc" | "desc";
+        };
+        FloorPlan: {
+            /** @enum {string|null} */
+            background_mime: "image/png" | "image/jpeg" | null;
+            cameras: components["schemas"]["FloorPlanCamera"][];
+            can_modify?: boolean;
+            canvas_height: number;
+            canvas_width: number;
+            created_at: number;
+            location_uuid: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid: components["schemas"]["CameraUuid"] | null;
+            partially_authorized: boolean;
+            revision: number;
+            sketch: components["schemas"]["FloorSketch"] | null;
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        FloorPlanCamera: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            fov: number;
+            rotation: number;
+            x: number;
+            y: number;
+        };
+        FloorPlanCameraRequest: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+            fov?: number;
+            rotation?: number;
+            x?: number;
+            y?: number;
+        };
+        FloorPlanCreate: {
+            cameras?: components["schemas"]["FloorPlanCameraRequest"][];
+            canvas_height?: number;
+            canvas_width?: number;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid?: components["schemas"]["CameraUuid"] | null;
+            sketch?: components["schemas"]["FloorSketch"] | null;
+        };
+        FloorPlanDeletion: {
+            /** @constant */
+            deleted: true;
+        };
+        FloorPlansResponse: {
+            can_modify: boolean;
+            plans: components["schemas"]["FloorPlan"][];
+        };
+        FloorPlanUpdate: {
+            cameras: components["schemas"]["FloorPlanCameraRequest"][];
+            canvas_height?: number;
+            canvas_width?: number;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            parent_plan_uuid?: components["schemas"]["CameraUuid"] | null;
+            revision: number;
+            sketch?: components["schemas"]["FloorSketch"] | null;
+        };
+        FloorSketch: {
+            shapes: (components["schemas"]["FloorSketchRect"] | components["schemas"]["FloorSketchWall"] | components["schemas"]["FloorSketchArea"] | components["schemas"]["FloorSketchLabel"])[];
+            /** @constant */
+            version: 1;
+        };
+        FloorSketchArea: {
+            id: string;
+            label?: string;
+            points: [
+                number,
+                number
+            ][];
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "area";
+        };
+        FloorSketchLabel: {
+            id: string;
+            /** @enum {string} */
+            size?: "sm" | "md" | "lg";
+            text: string;
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "label";
+            x: number;
+            y: number;
+        };
+        FloorSketchRect: {
+            filled?: boolean;
+            h: number;
+            id: string;
+            label?: string;
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "rect";
+            w: number;
+            x: number;
+            y: number;
+        };
+        FloorSketchWall: {
+            id: string;
+            label?: string;
+            points: [
+                number,
+                number
+            ][];
+            /** @enum {string} */
+            tone?: "slate" | "blue" | "green" | "amber" | "red" | "violet";
+            /** @constant */
+            type: "wall";
         };
         Go2rtcConfigurationInput: {
             override?: string;
@@ -2641,6 +3635,57 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        LegacyApiKeyCreated: {
+            api_key: string;
+            /** @constant */
+            success: true;
+        };
+        LiveCameraSlot: {
+            camera_uuid: components["schemas"]["CameraUuid"];
+        };
+        LiveLayout: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            created_at: number;
+            is_shared: boolean;
+            location_uuid: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            owned: boolean;
+            partially_authorized: boolean;
+            revision: number;
+            rows: number;
+            updated_at: number;
+            uuid: components["schemas"]["CameraUuid"];
+        };
+        LiveLayoutCreate: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            is_shared?: boolean;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            rows: number;
+        };
+        LiveLayoutsResponse: {
+            can_modify: boolean;
+            can_share: boolean;
+            count: number;
+            layouts: components["schemas"]["LiveLayout"][];
+        };
+        LiveLayoutUpdate: {
+            /** @enum {string} */
+            availability: "all" | "live" | "offline" | "never_connected" | "disabled";
+            camera_slots: components["schemas"]["LiveCameraSlot"][];
+            columns: number;
+            is_shared?: boolean;
+            location_uuid?: components["schemas"]["CameraUuid"] | null;
+            name: string;
+            revision: number;
+            rows: number;
+        };
         /** @description summary=true, surface=live. Uses the same filtered pagination envelope, with playback-specific row fields. */
         LiveStreamSummaryPage: {
             page: number;
@@ -2700,6 +3745,12 @@ export interface components {
             totp_secret?: never;
             totp_token?: never;
             trusted_device_days: number;
+        };
+        LoginLockoutCleared: {
+            cleared: boolean;
+            message: string;
+            /** @constant */
+            success: true;
         };
         LoginMfaChallenge: {
             api_key?: never;
@@ -2845,6 +3896,11 @@ export interface components {
         };
         /** @description New password must contain at least eight UTF-8 bytes. Self-service requires the current password; effective users.manage can reset passwords except its own forced first-login change. Locked/default-password rules are enforced by the server. */
         PasswordChangeRequest: components["schemas"]["PasswordSelfChange"] | components["schemas"]["PasswordAdminReset"];
+        PasswordLockRequest: {
+            locked: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         PasswordSelfChange: {
             new_password: string;
             old_password: string;
@@ -4214,6 +5270,350 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Trimmed exact filter; native field capacity applies. */
+                action?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                event_type?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                outcome?: string;
+                /** @description One-based page. */
+                page?: number;
+                /** @description Page size, including CSV exports. */
+                page_size?: number;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                principal_user_id?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                request_id?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                since?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                target_uuid?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                until?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventsPage"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    exportAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Trimmed exact filter; native field capacity applies. */
+                action?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                event_type?: string;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                outcome?: string;
+                /** @description One-based page. */
+                page?: number;
+                /** @description Page size, including CSV exports. */
+                page_size?: number;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                principal_user_id?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                request_id?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                since?: number;
+                /** @description Trimmed exact filter; native field capacity applies. */
+                target_uuid?: string;
+                /** @description Nonnegative signed 64-bit integer; since must not exceed a nonzero until. */
+                until?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One filtered page as UTF-8 CSV, quoted cells and neutralized spreadsheet formula prefixes. This is not an export of all pages. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: "attachment; filename=lightnvr-audit.csv";
+                    "X-Total-Count"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getAuditSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSettings"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAuditSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditSettings"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -4692,6 +6092,547 @@ export interface operations {
             };
         };
     };
+    listAdminUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsers"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDeleted"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createLegacyApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyApiKeyCreated"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    clearUserLoginLockout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginLockoutCleared"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     changePassword: {
         parameters: {
             query?: never;
@@ -4756,6 +6697,87 @@ export interface operations {
                 };
             };
             /** @description Internal/database failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setUserPasswordLock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordLockRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -5133,6 +7155,630 @@ export interface operations {
             };
         };
     };
+    listAuthorizationActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionCatalog"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listAuthorizationRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoles"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRoleWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleWritten"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role UUID. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRoleWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleWritten"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAuthorizationRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role UUID. */
+                uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRoleDeleted"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    simulateAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSimulationRequest"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSimulation"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getUserAuthorizationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPolicy"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setUserAuthorizationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Positive decimal signed 64-bit user ID. Browser adapters require a positive safe integer. Concrete target access is checked independently of operation discovery. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Validated success. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPolicy"];
+                };
+            };
+            /** @description Invalid path, query or body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required or credential invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Effective authority is insufficient; scoped credentials cannot perform non-scoped management operations. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Target does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Policy revision, self-lockout, immutable role, duplicate or in-use conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Database or internal failure; a mutation may already have applied. Read current state before retrying. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listUserTokens: {
         parameters: {
             query?: never;
@@ -5417,6 +8063,84 @@ export interface operations {
             };
         };
     };
+    createCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollection"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getCameraCollection: {
         parameters: {
             query?: never;
@@ -5474,6 +8198,162 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollection"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteCameraCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -5560,6 +8440,86 @@ export interface operations {
             };
         };
     };
+    setCameraCollectionMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraCollectionMembersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraCollectionMembersResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     previewCameraCollection: {
         parameters: {
             query?: never;
@@ -5627,6 +8587,232 @@ export interface operations {
             };
         };
     };
+    listCameraFavorites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavoritesResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    addCameraFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavorite"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteCameraFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraFavoriteRemoval"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listFleetTags: {
         parameters: {
             query?: never;
@@ -5682,6 +8868,84 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTag"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -5759,6 +9023,322 @@ export interface operations {
             };
         };
     };
+    updateFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTag"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mergeFleetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTagMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetTagMergeResult"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setCameraLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraLocationAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraLocationAssignment"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getCameraTagAssignments: {
         parameters: {
             query?: never;
@@ -5816,6 +9396,86 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setCameraTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraTagAssignmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraTagAssignmentsResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -6991,6 +10651,84 @@ export interface operations {
             };
         };
     };
+    createFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetViewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedView"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getFleetView: {
         parameters: {
             query?: never;
@@ -7048,6 +10786,166 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetViewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetSavedView"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -7195,6 +11093,958 @@ export interface operations {
             };
         };
     };
+    listLiveLayouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayoutsResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLayoutCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayout"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveLayoutUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveLayout"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteLiveLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listFloorPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlansResponse"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FloorPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FloorPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFloorPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlanDeletion"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact uploaded PNG/JPEG bytes, accessible only when the plan is visible. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Image too large or too short. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unsupported image content type. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFloorPlanBackground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FloorPlan"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listFleetLocations: {
         parameters: {
             query?: never;
@@ -7250,6 +12100,84 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetLocationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocation"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -7317,6 +12245,162 @@ export interface operations {
                 };
             };
             /** @description Database, authorization or serialization failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetLocationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetLocation"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteFleetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["schemas"]["CameraUuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetMutationAck"];
+                };
+            };
+            /** @description Invalid path or request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation is not allowed for this principal. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Missing or invisible resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Revision, reference or state conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Operation failed. */
             500: {
                 headers: {
                     [name: string]: unknown;

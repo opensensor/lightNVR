@@ -5,8 +5,10 @@ import type { EventOperation } from './events.ts';
 import type { SystemOperation } from './system.ts';
 import type { FleetOperation } from './fleet.ts';
 import type { AuthenticationOperation } from './authentication.ts';
+import type { AdministrationOperation } from './administration.ts';
+import type { FleetWorkspaceOperation } from './fleetWrites.ts';
 
-type ContractOperation = EventOperation | SystemOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice';
+type ContractOperation = EventOperation | SystemOperation | FleetOperation | AuthenticationOperation | StreamOperation | 'listAuthSessions' | 'listTrustedDevices' | 'revokeAuthSession' | 'revokeTrustedDevice' | AdministrationOperation | FleetWorkspaceOperation;
 
 export class ContractValidationError extends Error {
   readonly name = 'ContractValidationError';
@@ -20,7 +22,7 @@ export class ContractValidationError extends Error {
     readonly issue: 'shape' | 'json' | 'status' = 'shape',
   ) {
     super(`Invalid ${operation} ${phase}: ${schema} (${issue}).`);
-    this.mayHaveApplied = ['createEventDestination', 'updateEventDestination', 'deleteEventDestination', 'createEventRoute', 'updateEventRoute', 'deleteEventRoute', 'triggerMotion', 'updateSystemSettings', 'updateWorkspaces', 'updateSetupStatus', 'clearSystemLogs', 'createSystemBackup', 'restartSystem', 'shutdownSystem', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword'].includes(operation) && phase === 'response';
+    this.mayHaveApplied = ['createEventDestination', 'updateEventDestination', 'deleteEventDestination', 'createEventRoute', 'updateEventRoute', 'deleteEventRoute', 'triggerMotion', 'updateSystemSettings', 'updateWorkspaces', 'updateSetupStatus', 'clearSystemLogs', 'createSystemBackup', 'restartSystem', 'shutdownSystem', 'updateStream', 'revokeAuthSession', 'revokeTrustedDevice', 'login', 'logout', 'completeTotpLogin', 'setupTotp', 'verifyTotp', 'disableTotp', 'changePassword', 'createFleetLocation', 'updateFleetLocation', 'deleteFleetLocation', 'createFleetTag', 'updateFleetTag', 'deleteFleetTag', 'createCameraCollection', 'updateCameraCollection', 'deleteCameraCollection', 'setCameraLocation', 'setCameraTags', 'mergeFleetTag', 'setCameraCollectionMembers', 'createFleetView', 'updateFleetView', 'deleteFleetView', 'createLiveLayout', 'updateLiveLayout', 'deleteLiveLayout', 'addCameraFavorite', 'deleteCameraFavorite', 'createFloorPlan', 'updateFloorPlan', 'deleteFloorPlan', 'setFloorPlanBackground', 'deleteFloorPlanBackground', 'createAdminUser', 'updateAdminUser', 'deleteAdminUser', 'createLegacyApiKey', 'setUserPasswordLock', 'clearUserLoginLockout', 'createAuthorizationRole', 'updateAuthorizationRole', 'deleteAuthorizationRole', 'setUserAuthorizationPolicy', 'updateAuditSettings'].includes(operation) && phase === 'response';
   }
 }
 

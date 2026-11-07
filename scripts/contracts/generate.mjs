@@ -77,11 +77,11 @@ export async function generateArtifacts(source, target = 'all') {
     const exports = Object.fromEntries(names.map(name => [`__contract_${name}`, schemaRef(name)]));
     let raw = normalizeErrorAccumulators(standaloneCode(ajv, exports)).replace(/export const (__contract_[A-Za-z0-9_]+) = /g, 'const $1 = ');
     raw += '\n' + names.map(name => `export function validate${name}(value) {\n  const valid = __contract_${name}(value);\n  validate${name}.errors = valid ? null : (__contract_${name}.errors || []).map(({keyword, schemaPath}) => ({keyword, schemaPath}));\n  return valid;\n}\nvalidate${name}.errors = null;`).join('\n');
-    const bundle = buildSync({metafile: true, stdin: {contents: raw, resolveDir: root, sourcefile: 'standalone-validators.js'}, bundle: true, write: false,
+    const bundle = buildSync({metafile: true, preserveSymlinks: true, stdin: {contents: raw, resolveDir: root, sourcefile: 'standalone-validators.js'}, bundle: true, write: false,
       minifySyntax: true, format: 'esm', platform: 'browser', target: 'es2020', legalComments: 'none', logLevel: 'silent'});
     if (Object.values(bundle.metafile.outputs).some(output => output.imports.length)) throw new Error('Generated validators contain unresolved imports');
     for (const input of Object.keys(bundle.metafile.inputs)) {
-      if (input !== 'standalone-validators.js' && !/^node_modules\/(ajv\/dist\/runtime|ajv-formats\/dist)\//.test(input)) throw new Error(`Unexpected validator runtime input: ${input}`);
+      if (input !== 'standalone-validators.js' && input !== 'node_modules/fast-deep-equal/index.js' && !/^node_modules\/(ajv\/dist\/runtime|ajv-formats\/dist)\//.test(input)) throw new Error(`Unexpected validator runtime input: ${input}`);
     }
     // Conservative dead-code/unused-temporary elimination, with readable output.
     // No unsafe transforms, identifier/property mangling, or analysis exclusions.

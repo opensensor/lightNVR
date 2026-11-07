@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 import { showStatusMessage } from '../ToastContainer.tsx';
 import { applyBulkOrganization, buildLocationRows } from './fleetOrganization.ts';
 import type {
@@ -52,7 +52,7 @@ export function BulkOrganizeModal({ cameras, locations, tags, onComplete, onClos
       const result = await applyBulkOrganization(
         cameras,
         { locationUuid, tagOperation, tagUuids },
-        fetchJSON,
+        fleetWriteJSON,
         (completed, total) => setProgress({ completed, total })
       );
       await onComplete(result);

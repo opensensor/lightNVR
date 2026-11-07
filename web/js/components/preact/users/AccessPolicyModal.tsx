@@ -1,6 +1,6 @@
+import { administrationJSON } from '../../../api/administration.ts';
 import { listCameraCollections, listFleetLocations, listFleetTags } from '../../../api/fleet.ts';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { fetchJSON } from '../../../query-client.ts';
 import { useI18n } from '../../../i18n.ts';
 import { CameraValuePicker, CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.tsx';
 import { showStatusMessage } from '../ToastContainer.tsx';
@@ -134,7 +134,7 @@ function GrantEditor({ grant, roles, collections, locations, tags, onChange, onS
 }
 
 function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }: SimulationPanelProps) {
-  const [actionKey, setActionKey] = useState(actions[0]?.key || 'live.view');
+  const [actionKey, setActionKey] = useState<string>(actions[0]?.key || 'live.view');
   const [cameraUuids, setCameraUuids] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AuthorizationSimulationResult | null>(null);
@@ -156,7 +156,7 @@ function SimulationPanel({ user, actions, dirty, getAuthHeaders, t }: Simulation
     try {
       const body: { user_id: number; action: string; camera_uuid?: string | undefined } = { user_id: user.id, action: actionKey };
       if (cameraScoped) body.camera_uuid = cameraUuids[0];
-      setResult(await fetchJSON<AuthorizationSimulationResult>('/api/authorization/simulate', {
+      setResult(await administrationJSON<AuthorizationSimulationResult>('/api/authorization/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(body),
@@ -228,9 +228,9 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }: AccessPolic
     setError('');
     try {
       const [actionResponse, roleResponse, policyResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
-        fetchJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
-        fetchJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<AuthorizationActionsResponse>('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<AuthorizationRolesResponse>('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
+        administrationJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
         listCameraCollections({headers: getAuthHeaders(), cache: 'no-store'}),
         listFleetLocations({headers: getAuthHeaders(), cache: 'no-store'}),
         listFleetTags({headers: getAuthHeaders(), cache: 'no-store'}),
@@ -292,7 +292,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }: AccessPolic
     }
     setSaving(true);
     try {
-      const response = await fetchJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, {
+      const response = await administrationJSON<UserPolicyResponse>(`/api/authorization/users/${encodeURIComponent(user.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(buildPolicyPayload(mode, grants, policyVersion)),

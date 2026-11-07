@@ -1,3 +1,4 @@
+import { fleetWriteJSON } from '../../../api/fleetWrites.ts';
 /**
  * Per-user favorite cameras for the Live view.
  *
@@ -5,7 +6,7 @@
  * exported for unit tests; useCameraFavorites wires them to the query cache.
  */
 import { useCallback, useMemo } from 'preact/hooks';
-import { fetchJSON, useMutation, useQuery, useQueryClient } from '../../../query-client.ts';
+import { useMutation, useQuery, useQueryClient } from '../../../query-client.ts';
 import type { EnhancedFetchOptions } from '../../../fetch-utils.ts';
 import type {
   CameraFavoriteChange,
@@ -46,14 +47,14 @@ export function applyFavoriteChange(data: CameraFavoritesResponse | null | undef
   return { ...(data || EMPTY_FAVORITES), favorites };
 }
 
-export function requestFavoriteChange(cameraUuid: string, favorite: boolean, request: FavoriteRequest = fetchJSON): Promise<CameraFavoriteChangeResult> {
+export function requestFavoriteChange(cameraUuid: string, favorite: boolean, request: FavoriteRequest = fleetWriteJSON): Promise<CameraFavoriteChangeResult> {
   const url = `/api/camera-favorites/${encodeURIComponent(cameraUuid)}`;
   return request(url, { method: favorite ? 'PUT' : 'DELETE', retries: 0 });
 }
 
 export function useCameraFavorites() {
   const queryClient = useQueryClient();
-  const query = useQuery<CameraFavoritesResponse>(CAMERA_FAVORITES_QUERY_KEY, '/api/camera-favorites', {}, {
+  const query = useQuery<CameraFavoritesResponse>({queryKey: CAMERA_FAVORITES_QUERY_KEY, queryFn: ({signal}) => fleetWriteJSON<CameraFavoritesResponse>('/api/camera-favorites', {signal}),
     staleTime: 30000,
     retry: false,
   });

@@ -14,7 +14,7 @@
 /* Validate the upgrade and same-origin policy after camera authorization. */
 bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res);
 /* Event-loop only. The URL must come from go2rtc_proxy_build_url after auth. */
-void go2rtc_websocket_start(libuv_connection_t *conn, const char *url);
+void go2rtc_websocket_start(libuv_connection_t *conn, const char *url, const char *lease);
 void go2rtc_websocket_disconnected(libuv_connection_t *conn);
 void go2rtc_websocket_shutdown(uv_loop_t *loop);
 #endif

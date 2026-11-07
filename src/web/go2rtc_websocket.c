@@ -11,6 +11,7 @@
  * After the upgrade, go2rtc's media handlers use this fixed query for playback.
  */
 #ifdef HTTP_BACKEND_LIBUV
+#define _GNU_SOURCE
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include <strings.h>
 
 #include "web/go2rtc_websocket.h"
+#include "web/httpd_utils.h"
 #include "web/libuv_connection.h"
 
 #define WS_BUFFER_SIZE (64 * 1024)
@@ -242,7 +244,8 @@ static void upstream_read(uv_stream_t *stream, ssize_t count, const uv_buf_t *bu
             free(buf->base);
             return;
         }
-        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0) {
+        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0 ||
+            !strcasestr(proxy->headers, "\r\nX-LightNVR-Media-Policy: 1\r\n")) {
             fail_proxy(proxy);
             free(buf->base);
             return;
@@ -277,7 +280,7 @@ static void handshake_timeout(uv_timer_t *timer) {
     fail_proxy(timer->data);
 }
 
-void go2rtc_websocket_start(libuv_connection_t *conn, const char *url) {
+void go2rtc_websocket_start(libuv_connection_t *conn, const char *url, const char *lease) {
     websocket_proxy_t *proxy = NULL;
     if (proxy_count >= WS_CONNECTION_LIMIT || !(proxy = calloc(1, sizeof(*proxy)))) {
         http_response_set_json_error(&conn->response, 503, "WebSocket capacity reached");
@@ -291,8 +294,8 @@ void go2rtc_websocket_start(libuv_connection_t *conn, const char *url) {
     const char *key = single_header(&conn->request, "Sec-WebSocket-Key");
     int length = snprintf(proxy->handshake, sizeof(proxy->handshake),
         "GET %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\n"
-        "Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
-        target ? target : "", port, key ? key : "");
+        "Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\nX-LightNVR-Media-Lease: %s\r\nX-LightNVR-Media-TLS: %d\r\n\r\n",
+        target ? target : "", port, key ? key : "", lease, httpd_secure_cookies() ? 1 : 0);
     if (!target || port <= 0 || port > 65535 || length < 0 ||
         (size_t)length >= sizeof(proxy->handshake) ||
         uv_tcp_init(conn->server->loop, &proxy->upstream) < 0) {
