@@ -218,7 +218,7 @@ int http_request_extract_path_param(const http_request_t *req, const char *prefi
 
 int http_response_add_header(http_response_t *res, const char *name, const char *value) {
     if (!res || !name || !value) return -1;
-    if (res->num_headers >= MAX_HEADERS) return -1;
+    if (res->num_headers < 0 || res->num_headers >= MAX_HEADERS) return -1;
 
     safe_strcpy(res->headers[res->num_headers].name, name,
             sizeof(res->headers[res->num_headers].name), 0);
