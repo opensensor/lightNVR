@@ -9,6 +9,19 @@ test('system reads reject unvalidated partial data rather than presenting health
   respond({message:privateValue});await expect(call()).rejects.toBeInstanceOf(ContractValidationError);
  }
 });
+test('incident history accepts stored observations without live freshness and still rejects incomplete values',async()=>{
+ const observation={metric:'host.memory.available_ratio',resource:'host',scope:'host',capability:'available',unit:'ratio',value:0.1};
+ const incident={incident_id:'11111111-1111-4111-8111-111111111111',condition:'memory.available_low',subject:'host',scope:'host',state:'closed',severity:'warning',first_observed_at_ms:1000,last_observed_at_ms:2000,closed_at_ms:2000,reconciliation:'reconciled',revision:1,observation};
+ const body={schema_version:1,count:1,incidents:[incident],next_cursor:null};
+ respond(body);
+ await expect(getHostHealthIncidents({limit:20,include_closed:true})).resolves.toEqual(body);
+ for(const field of Object.keys(observation)){
+  const incomplete={...observation} as Record<string,unknown>;
+  delete incomplete[field];
+  respond({...body,incidents:[{...incident,observation:incomplete}]});
+  await expect(getHostHealthIncidents()).rejects.toBeInstanceOf(ContractValidationError);
+ }
+});
 test('zero-valued settings preserve intent and malformed acknowledgments may already have applied',async()=>{
  const fetch=respond({success:true,restart_required:false});
  await expect(updateSystemSettings({default_detection_threshold:0,max_storage_size:0},{retries:5})).resolves.toEqual({success:true,restart_required:false});

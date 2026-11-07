@@ -66,7 +66,7 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }: Even
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="event-destination-editor-title">
+    <div className="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="event-destination-editor-title">
       <form className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl" onSubmit={submit}>
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>

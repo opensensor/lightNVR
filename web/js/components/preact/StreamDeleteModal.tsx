@@ -56,7 +56,7 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
   };
 
   return (
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+    <div class="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
         <div class="flex justify-between items-center p-4 border-b border-border">
           <h3 class="text-lg font-medium">{isLoading

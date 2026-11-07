@@ -5607,11 +5607,8 @@ export interface components {
                 last_observed_at_ms: number;
                 observation: {
                     capability: string;
-                    freshness: string;
                     metric: string;
-                    observed_at_ms?: number;
                     resource: string;
-                    sampled_monotonic_ms?: number;
                     scope: string;
                     unit: string;
                     value: null | number;

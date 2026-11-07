@@ -121,7 +121,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }: Resta
   return createPortal(
     <div role="presentation"
       ref={modalRef}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center "
       onClick={handleBackgroundClick}
     >
       <div className="bg-card text-card-foreground rounded-lg shadow-xl p-6 max-w-md w-full mx-4 transform transition-all duration-300 ease-out">

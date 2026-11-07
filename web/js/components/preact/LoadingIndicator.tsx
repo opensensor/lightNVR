@@ -36,7 +36,7 @@ export function LoadingIndicator({ message, size = 'md', fullPage = false }: Loa
   // If fullPage is true, display as a full page overlay
   if (fullPage) {
     return (
-      <div className="fixed inset-0 bg-white bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center z-50">
+      <div className="app-modal-overlay fixed inset-0 bg-white bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center ">
         <div className="text-center">
           <div className={`inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 ${spinnerSize}`}></div>
           {resolvedMessage && <p className="mt-4 text-gray-700 dark:text-gray-300 text-lg">{resolvedMessage}</p>}

@@ -240,6 +240,10 @@ export interface HealthActiveIncident {
   thresholds?: HealthThresholdPolicy;
 }
 
+/** safe_stored_observation(): historical values have no live freshness. */
+export type HealthStoredObservation = Pick<HealthObservation,
+  'metric' | 'resource' | 'scope' | 'capability' | 'unit' | 'value'>;
+
 /** stored_incident_to_json(): the items of /api/system/health/incidents. */
 export interface HealthStoredIncident {
   incident_id: string;
@@ -253,7 +257,7 @@ export interface HealthStoredIncident {
   closed_at_ms: number | null;
   reconciliation: string;
   revision: number;
-  observation: HealthObservation;
+  observation: HealthStoredObservation;
 }
 
 export interface HealthIncidentsResponse {

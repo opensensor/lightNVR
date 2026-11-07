@@ -45,7 +45,7 @@ for (const state of ['disabled', 'restart_required', 'waiting'] as const) {
             subject: 'host', scope: 'host', state: 'closed', severity: 'critical',
             first_observed_at_ms: Date.now() - 172800000,
             last_observed_at_ms: Date.now() - 86400000, closed_at_ms: Date.now() - 86400000, revision: 1, reconciliation: 'reconciled',
-            observation: { metric: 'host.memory.available_ratio', resource: 'host', scope: 'host', freshness: 'fresh', capability: 'available', value: .232, unit: 'ratio' },
+            observation: { metric: 'host.memory.available_ratio', resource: 'host', scope: 'host', capability: 'available', value: .232, unit: 'ratio' },
           }], next_cursor: null,
         }),
       };

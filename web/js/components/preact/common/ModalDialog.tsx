@@ -43,7 +43,7 @@ export function ModalShell({
     idRef.current = `lightnvr-dialog-${nextDialogId}`;
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) return undefined;
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -105,7 +105,7 @@ export function ModalShell({
 
   return createPortal(
     <div role="presentation"
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+      className="app-modal-overlay app-modal-overlay--dialog fixed inset-0 flex items-center justify-center bg-black/55 p-4"
       data-keyboard-nav-preserve
       onMouseDown={handleBackdropMouseDown}
       onClick={(event) => event.stopPropagation()}
@@ -264,12 +264,6 @@ function TextInputDialogContent({
     const result = await onSubmit(trimmed, checkboxValue);
     if (mounted.current && result !== false) onClose();
   });
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setValue(initialValue);
-    setChecked(checkboxInitialValue);
-  }, [checkboxInitialValue, initialValue, isOpen]);
 
   const submit = (event: Event) => {
     event.preventDefault();

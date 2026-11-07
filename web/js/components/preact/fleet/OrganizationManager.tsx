@@ -350,7 +350,7 @@ export function OrganizationManager({ locations, tags, loading, onRefresh, onClo
   }, [onClose]);
 
   return (
-    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="presentation" className="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/55 p-3" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="organization-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl">
         <header className="flex items-start justify-between border-b border-border p-4">
           <div>

@@ -40,7 +40,7 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }: Dele
   };
 
   return (
-    <div role="presentation" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div role="presentation" className="app-modal-overlay fixed inset-0 bg-black/50 flex items-center justify-center " onClick={onClose}>
       <div role="presentation" className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">{t('users.deleteUser')}</h2>
 

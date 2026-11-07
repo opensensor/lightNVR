@@ -65,7 +65,7 @@ test.describe('System Health operator view @ui @system', () => {
     await page.route('**/api/system/health', (route) => route.fulfill({ json: { ...containerHealth, overall_state: 'healthy', active_incidents: [] } }));
     await page.route('**/api/system/health/incidents?**', (route) => {
       const cursor = new URL(route.request().url()).searchParams.get('cursor');
-      const incident = { incident_id: cursor ? '33333333-3333-4333-8333-333333333333' : '22222222-2222-4222-8222-222222222222', condition: cursor ? 'network.link_down' : 'memory.available_low', subject: 'host', scope: 'host', state: 'closed', severity: 'warning', first_observed_at_ms: Date.now() - 10000, last_observed_at_ms: Date.now(), closed_at_ms: Date.now(), reconciliation: 'reconciled', revision: 1, observation: { metric: 'host.memory.available_ratio', resource: 'host', scope: 'host', capability: 'available', freshness: 'fresh', unit: 'ratio', value: 0.1 } };
+      const incident = { incident_id: cursor ? '33333333-3333-4333-8333-333333333333' : '22222222-2222-4222-8222-222222222222', condition: cursor ? 'network.link_down' : 'memory.available_low', subject: 'host', scope: 'host', state: 'closed', severity: 'warning', first_observed_at_ms: Date.now() - 10000, last_observed_at_ms: Date.now(), closed_at_ms: Date.now(), reconciliation: 'reconciled', revision: 1, observation: { metric: 'host.memory.available_ratio', resource: 'host', scope: 'host', capability: 'available', unit: 'ratio', value: 0.1 } };
       return route.fulfill({ json: contractFixture(validateHostHealthIncidents, { schema_version: 1, count: 1, incidents: [incident], next_cursor: cursor ? null : 'v1:123:11111111-1111-4111-8111-111111111111' }) });
     });
     await openSystemHealth(page);

@@ -239,7 +239,7 @@ export function AuditHistoryModal({ users = [], onClose, getAuthHeaders }: Audit
   const hasNext = bounds.end < bounds.total;
 
   return (
-    <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-3" onClick={() => !savingRetention && !exporting && onClose()}>
+    <div role="presentation" className="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/50 p-2 sm:p-3" onClick={() => !savingRetention && !exporting && onClose()}>
       <section /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- only keeps clicks inside the dialog from reaching the backdrop */ role="dialog" aria-modal="true" aria-labelledby="audit-history-title" className="flex max-h-[96vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-border p-4 sm:p-5">
           <div><h2 id="audit-history-title" className="text-xl font-bold">{t('audit.title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('audit.description')}</p></div>

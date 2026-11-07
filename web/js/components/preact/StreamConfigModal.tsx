@@ -443,7 +443,7 @@ export function StreamConfigModal({
           onClose={() => setShowZoneEditor(false)}
         />
       )}
-    <div id="stream-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div id="stream-modal" className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
       <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border flex-shrink-0">

@@ -1673,7 +1673,7 @@ body.pseudo-native-fullscreen-active {
 
 /* Snapshot modal specific styles */
 #snapshot-preview-modal {
-    z-index: 1050;
+    z-index: var(--layer-modal);
 }
 
 #snapshot-preview-modal .modal-content {

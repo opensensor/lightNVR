@@ -153,7 +153,7 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
   const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/50">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-md p-6">
         <h2 class="text-lg font-semibold mb-4">{t('recordings.downloadSelectedRecordings')}</h2>
         <p class="text-sm text-muted-foreground mb-4">

@@ -242,7 +242,7 @@ export function EventRouteEditor({ route, catalog, healthConditions, healthRegis
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3" role="dialog" aria-modal="true" aria-labelledby="event-route-editor-title">
+    <div className="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/55 p-3" role="dialog" aria-modal="true" aria-labelledby="event-route-editor-title">
       <form className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl" onSubmit={submit}>
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>

@@ -548,7 +548,7 @@ export function ZoneEditor({ streamName, streamWidth, streamHeight, zones = [], 
   };
 
   return <>
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+    <div className="app-modal-overlay app-modal-overlay--nested fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4">
       <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border">

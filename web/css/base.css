@@ -30,6 +30,12 @@
 
 /* Custom Variables */
 :root {
+  /* Dialogs must clear the expanded Live View (1000) and fallback video
+     fullscreen (9999). Shared confirmations sit above their parent editors. */
+  --layer-modal: 11000;
+  --layer-modal-nested: 11010;
+  --layer-dialog: 11020;
+  --layer-toast: 11030;
   /* Legacy color variables - kept for backward compatibility */
   --primary-color: #1e88e5;
   --secondary-color: #424242;
@@ -236,7 +242,8 @@
 
   /* Modal */
   .modal {
-    @apply fixed inset-0 z-50 overflow-auto bg-black/50 flex items-center justify-center;
+    @apply fixed inset-0 overflow-auto bg-black/50 flex items-center justify-center;
+    z-index: var(--layer-modal);
   }
 
   .modal-content {

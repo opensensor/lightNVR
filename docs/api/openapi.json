@@ -38392,9 +38392,6 @@
                     "capability": {
                       "type": "string"
                     },
-                    "freshness": {
-                      "type": "string"
-                    },
                     "unit": {
                       "type": "string"
                     },
@@ -38407,12 +38404,6 @@
                           "type": "number"
                         }
                       ]
-                    },
-                    "sampled_monotonic_ms": {
-                      "type": "number"
-                    },
-                    "observed_at_ms": {
-                      "type": "number"
                     }
                   },
                   "required": [
@@ -38420,7 +38411,6 @@
                     "resource",
                     "scope",
                     "capability",
-                    "freshness",
                     "unit",
                     "value"
                   ],

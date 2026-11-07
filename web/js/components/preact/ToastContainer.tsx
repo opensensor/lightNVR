@@ -110,7 +110,7 @@ export function ToastContainer() {
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:inset-e-4 sm:inset-s-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] z-50 flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
+      className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:inset-e-4 sm:inset-s-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] app-toast-layer flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
     >
       {toasts.map(toast => {
         const getToastStyles = (type: string) => {

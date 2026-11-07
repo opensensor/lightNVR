@@ -42,7 +42,7 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
     : (isDelete ? t('streams.confirmPermanentDeletion') : isEnable ? t('streams.confirmEnable') : t('streams.confirmDisable'));
 
   return (
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+    <div class="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
 
         {/* Header */}

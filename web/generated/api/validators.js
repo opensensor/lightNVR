@@ -61743,14 +61743,6 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
                                               missingProperty: "capability"
                                             }
                                           } ], !1;
-                                          if (void 0 === data15.freshness) return validate266.errors = [ {
-                                            instancePath: instancePath + "/incidents/" + i0 + "/observation",
-                                            schemaPath: "#/properties/incidents/items/properties/observation/required",
-                                            keyword: "required",
-                                            params: {
-                                              missingProperty: "freshness"
-                                            }
-                                          } ], !1;
                                           if (void 0 === data15.unit) return validate266.errors = [ {
                                             instancePath: instancePath + "/incidents/" + i0 + "/observation",
                                             schemaPath: "#/properties/incidents/items/properties/observation/required",
@@ -61819,11 +61811,11 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
                                                   var valid20 = _errs46 === errors;
                                                 } else valid20 = !0;
                                                 if (valid20) {
-                                                  if (void 0 !== data15.freshness) {
+                                                  if (void 0 !== data15.unit) {
                                                     let _errs48 = errors;
-                                                    if ("string" != typeof data15.freshness) return validate266.errors = [ {
-                                                      instancePath: instancePath + "/incidents/" + i0 + "/observation/freshness",
-                                                      schemaPath: "#/properties/incidents/items/properties/observation/properties/freshness/type",
+                                                    if ("string" != typeof data15.unit) return validate266.errors = [ {
+                                                      instancePath: instancePath + "/incidents/" + i0 + "/observation/unit",
+                                                      schemaPath: "#/properties/incidents/items/properties/observation/properties/unit/type",
                                                       keyword: "type",
                                                       params: {
                                                         type: "string"
@@ -61831,85 +61823,43 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
                                                     } ], !1;
                                                     var valid21 = _errs48 === errors;
                                                   } else valid21 = !0;
-                                                  if (valid21) {
-                                                    if (void 0 !== data15.unit) {
-                                                      let _errs50 = errors;
-                                                      if ("string" != typeof data15.unit) return validate266.errors = [ {
-                                                        instancePath: instancePath + "/incidents/" + i0 + "/observation/unit",
-                                                        schemaPath: "#/properties/incidents/items/properties/observation/properties/unit/type",
+                                                  if (valid21 && void 0 !== data15.value) {
+                                                    let data21 = data15.value, _errs51 = errors, valid23 = !1, _errs52 = errors;
+                                                    if (null !== data21) {
+                                                      let err3 = {
+                                                        instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
+                                                        schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf/0/type",
                                                         keyword: "type",
                                                         params: {
-                                                          type: "string"
+                                                          type: "null"
                                                         }
-                                                      } ], !1;
-                                                      var valid22 = _errs50 === errors;
-                                                    } else valid22 = !0;
-                                                    if (valid22) {
-                                                      if (void 0 !== data15.value) {
-                                                        let data22 = data15.value, _errs52 = errors, _errs53 = errors, valid24 = !1, _errs54 = errors;
-                                                        if (null !== data22) {
-                                                          let err3 = {
-                                                            instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
-                                                            schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf/0/type",
-                                                            keyword: "type",
-                                                            params: {
-                                                              type: "null"
-                                                            }
-                                                          };
-                                                          vErrors.push(err3), errors++;
-                                                        }
-                                                        var _valid1 = _errs54 === errors;
-                                                        valid24 = valid24 || _valid1;
-                                                        let _errs56 = errors;
-                                                        if ("number" != typeof data22 || !isFinite(data22)) {
-                                                          let err4 = {
-                                                            instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
-                                                            schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf/1/type",
-                                                            keyword: "type",
-                                                            params: {
-                                                              type: "number"
-                                                            }
-                                                          };
-                                                          vErrors.push(err4), errors++;
-                                                        }
-                                                        if (_valid1 = _errs56 === errors, valid24 = valid24 || _valid1, !valid24) {
-                                                          let err5 = {
-                                                            instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
-                                                            schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf",
-                                                            keyword: "anyOf",
-                                                            params: {}
-                                                          };
-                                                          return vErrors.push(err5), errors++, validate266.errors = vErrors, !1;
-                                                        }
-                                                        errors = _errs53, vErrors.length = _errs53;
-                                                        var valid23 = _errs52 === errors;
-                                                      } else valid23 = !0;
-                                                      if (valid23) {
-                                                        if (void 0 !== data15.sampled_monotonic_ms) {
-                                                          let data23 = data15.sampled_monotonic_ms, _errs58 = errors;
-                                                          if ("number" != typeof data23 || !isFinite(data23)) return validate266.errors = [ {
-                                                            instancePath: instancePath + "/incidents/" + i0 + "/observation/sampled_monotonic_ms",
-                                                            schemaPath: "#/properties/incidents/items/properties/observation/properties/sampled_monotonic_ms/type",
-                                                            keyword: "type",
-                                                            params: {
-                                                              type: "number"
-                                                            }
-                                                          } ], !1;
-                                                          var valid25 = _errs58 === errors;
-                                                        } else valid25 = !0;
-                                                        if (valid25 && void 0 !== data15.observed_at_ms) {
-                                                          let data24 = data15.observed_at_ms;
-                                                          if ("number" != typeof data24 || !isFinite(data24)) return validate266.errors = [ {
-                                                            instancePath: instancePath + "/incidents/" + i0 + "/observation/observed_at_ms",
-                                                            schemaPath: "#/properties/incidents/items/properties/observation/properties/observed_at_ms/type",
-                                                            keyword: "type",
-                                                            params: {
-                                                              type: "number"
-                                                            }
-                                                          } ], !1;
-                                                        }
-                                                      }
+                                                      };
+                                                      vErrors.push(err3), errors++;
                                                     }
+                                                    var _valid1 = _errs52 === errors;
+                                                    valid23 = valid23 || _valid1;
+                                                    let _errs54 = errors;
+                                                    if ("number" != typeof data21 || !isFinite(data21)) {
+                                                      let err4 = {
+                                                        instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
+                                                        schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf/1/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "number"
+                                                        }
+                                                      };
+                                                      vErrors.push(err4), errors++;
+                                                    }
+                                                    if (_valid1 = _errs54 === errors, valid23 = valid23 || _valid1, !valid23) {
+                                                      let err5 = {
+                                                        instancePath: instancePath + "/incidents/" + i0 + "/observation/value",
+                                                        schemaPath: "#/properties/incidents/items/properties/observation/properties/value/anyOf",
+                                                        keyword: "anyOf",
+                                                        params: {}
+                                                      };
+                                                      return vErrors.push(err5), errors++, validate266.errors = vErrors, !1;
+                                                    }
+                                                    errors = _errs51, vErrors.length = _errs51;
                                                   }
                                                 }
                                               }
@@ -61935,8 +61885,8 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
           var valid2 = _errs6 === errors;
         } else valid2 = !0;
         if (valid2 && void 0 !== data.next_cursor) {
-          let data25 = data.next_cursor, _errs63 = errors, valid28 = !1, _errs64 = errors;
-          if (null !== data25) {
+          let data22 = data.next_cursor, _errs57 = errors, valid25 = !1, _errs58 = errors;
+          if (null !== data22) {
             let err6 = {
               instancePath: instancePath + "/next_cursor",
               schemaPath: "#/properties/next_cursor/anyOf/0/type",
@@ -61947,10 +61897,10 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
             };
             vErrors.push(err6), errors++;
           }
-          var _valid2 = _errs64 === errors;
-          valid28 = valid28 || _valid2;
-          let _errs66 = errors;
-          if ("string" != typeof data25) {
+          var _valid2 = _errs58 === errors;
+          valid25 = valid25 || _valid2;
+          let _errs60 = errors;
+          if ("string" != typeof data22) {
             let err7 = {
               instancePath: instancePath + "/next_cursor",
               schemaPath: "#/properties/next_cursor/anyOf/1/type",
@@ -61961,7 +61911,7 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
             };
             vErrors.push(err7), errors++;
           }
-          if (_valid2 = _errs66 === errors, valid28 = valid28 || _valid2, !valid28) {
+          if (_valid2 = _errs60 === errors, valid25 = valid25 || _valid2, !valid25) {
             let err8 = {
               instancePath: instancePath + "/next_cursor",
               schemaPath: "#/properties/next_cursor/anyOf",
@@ -61970,7 +61920,7 @@ function validate266(data, {instancePath: instancePath = "", parentData: parentD
             };
             return vErrors.push(err8), errors++, validate266.errors = vErrors, !1;
           }
-          errors = _errs63, vErrors.length = _errs63;
+          errors = _errs57, vErrors.length = _errs57;
         }
       }
     }

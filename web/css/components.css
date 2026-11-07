@@ -10,8 +10,14 @@
  */
 
 .toast-container {
-    @apply fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none;
+    @apply fixed top-5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none;
+    z-index: var(--layer-toast);
 }
+
+.app-modal-overlay { z-index: var(--layer-modal); }
+.app-modal-overlay--nested { z-index: var(--layer-modal-nested); }
+.app-modal-overlay--dialog { z-index: var(--layer-dialog); }
+.app-toast-layer { z-index: var(--layer-toast); }
 
 .toast {
     @apply py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center opacity-0 -translate-y-5 transition-all duration-300 pointer-events-auto font-medium;

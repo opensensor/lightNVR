@@ -310,7 +310,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }: AccessPolic
   };
 
   return (
-    <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" onClick={() => !saving && onClose()}>
+    <div role="presentation" className="app-modal-overlay fixed inset-0 flex items-center justify-center bg-black/50 p-3" onClick={() => !saving && onClose()}>
       <section /* eslint-disable-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- only keeps clicks inside the dialog from reaching the backdrop */ role="dialog" aria-modal="true" aria-labelledby="access-policy-title" className="flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-card-foreground shadow-xl" onClick={(event) => event.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div><h2 id="access-policy-title" className="text-xl font-bold">{t('access.policy.title', { username: user.username })}</h2><p className="mt-1 text-sm text-muted-foreground">{t('access.policy.description')}</p></div>

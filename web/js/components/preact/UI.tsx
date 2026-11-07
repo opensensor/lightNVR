@@ -146,7 +146,7 @@ export function DeleteConfirmationModal(props: DeleteConfirmationModalProps) {
 
   return (
     <div role="presentation"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      class="app-modal-overlay fixed inset-0 bg-black/50 flex items-center justify-center "
       onClick={handleBackgroundClick}
       onKeyDown={handleKeyDown}
     >
@@ -236,7 +236,7 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
     <div role="presentation"
       ref={modalRef}
       id="snapshot-preview-modal"
-      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      className="app-modal-overlay fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center "
       onClick={handleBackgroundClick}
     >
       <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style={{ width: '90%' }}>
@@ -866,7 +866,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }: Vi
     <div role="presentation"
       ref={modalRef}
       id="video-preview-modal"
-      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      className="app-modal-overlay fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center "
       onClick={handleBackgroundClick}
     >
       <div role="dialog" aria-modal="true" aria-labelledby="video-preview-title" className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">

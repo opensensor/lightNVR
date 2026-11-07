@@ -45,6 +45,23 @@ test('system reads require effective system authority and have precise response 
  expect((await wire(server,'/api/system/status',manager)).response.status).toBe(403);
 });
 
+test('persisted incident history matches the contract without live observation freshness',async({server})=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ database(server,`INSERT INTO system_health_incidents
+  (uuid,condition_code,subject,scope,state,severity,first_seen_at_ms,last_seen_at_ms,
+   closed_at_ms,last_observation_json,reconciliation_state,boot_id,run_id)
+  VALUES ('${id}','memory.available_low','host','host','closed','warning',1000,2000,2000,
+   '{"metric":"host.memory.available_ratio","value":0.1,"unit":"ratio","capability":"available"}',
+   'reconciled','boot-fixture','22222222-2222-4222-8222-222222222222')`);
+ try {
+  const result=await ok(server,'/api/system/health/incidents?limit=20&include_closed=true');
+  valid('HostHealthIncidents',result);
+  expect(result.incidents.find((item:{incident_id:string})=>item.incident_id===id)?.observation).toEqual({
+   metric:'host.memory.available_ratio',resource:'host',scope:'host',value:0.1,unit:'ratio',capability:'available',
+  });
+ } finally {database(server,`DELETE FROM system_health_incidents WHERE uuid='${id}'`);}
+});
+
 test('denied system mutations do not change config or stop the isolated process',async({server})=>{
  const config=path.join(server.directory,'lightnvr.ini'),before=readFileSync(config);
  for(const identity of [anonymous,viewer,await token(server)])for(const route of protectedWrites){
