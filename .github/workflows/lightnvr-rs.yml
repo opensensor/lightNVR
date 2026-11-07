@@ -107,14 +107,17 @@ jobs:
 
       - name: Smoke and API contract tests against lightnvr-rs
         # /tmp is tmpfs: overlay storage trips storage placement for C and Rust alike.
+        # Each test owns its fixture (server, port, temp dir), so 4 workers are safe:
+        # ~3 min instead of ~12 on a 4-vCPU runner. web/dist is needed for redirects.
         run: *in_image
         env:
           STEP: >-
             npm ci --ignore-scripts &&
+            npm ci --prefix web && npm --prefix web run build &&
             node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs &&
             LIGHTNVR_CONTRACT_BIN=/work/rust/target/release/lightnvr-rs
             npx playwright test -c tests/contracts/playwright.config.ts --project=api
-            --workers=1 --retries=0 --forbid-only --reporter=list
+            --workers=4 --retries=0 --forbid-only --reporter=list
 
       - name: Upload contract results and server logs
         if: failure()
