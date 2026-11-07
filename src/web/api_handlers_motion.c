@@ -37,6 +37,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include <cjson/cJSON.h>
 
@@ -182,12 +183,19 @@ static void *motion_pulse_worker(void *arg) {
     motion_pulse_task_t *task = (motion_pulse_task_t *)arg;
     if (!task) return NULL;
 
-    useconds_t usec = (useconds_t)task->duration_ms * 1000u;
-    /* usleep is limited to <1s on some platforms; loop in 500ms chunks. */
-    while (usec > 0) {
-        useconds_t chunk = usec > 500000u ? 500000u : usec;
-        usleep(chunk);
-        usec -= chunk;
+    int remaining_ms = task->duration_ms;
+    /* Sleep in <=500ms chunks and handle EINTR without losing remaining time. */
+    while (remaining_ms > 0) {
+        int chunk_ms = remaining_ms > 500 ? 500 : remaining_ms;
+        struct timespec req;
+        req.tv_sec = chunk_ms / 1000;
+        req.tv_nsec = (long)(chunk_ms % 1000) * 1000000L;
+
+        while (nanosleep(&req, &req) == -1 && errno == EINTR) {
+            /* Retry sleeping the remaining time in req. */
+        }
+
+        remaining_ms -= chunk_ms;
     }
 
     /* Only a tracked, current generation may emit a deferred stop. */
