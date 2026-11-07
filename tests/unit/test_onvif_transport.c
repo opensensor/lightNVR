@@ -68,7 +68,12 @@ static void *redirect_server(void *unused) {
     int length = snprintf(response, sizeof(response),
         "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:%u/stolen\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         destination_port);
-    if (send(client, response, (size_t)length, MSG_NOSIGNAL) != length) server_failed = 5;
+    size_t sent_total = 0;
+    while (sent_total < (size_t)length) {
+        ssize_t n = send(client, response + sent_total, (size_t)length - sent_total, MSG_NOSIGNAL);
+        if (n <= 0) { server_failed = 5; break; }
+        sent_total += (size_t)n;
+    }
     close(client);
     return NULL;
 }
