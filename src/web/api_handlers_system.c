@@ -191,18 +191,21 @@ static void trim_copy_value(char *dest, size_t dest_size, const char *src) {
     }
 
     const char *start = ltrim_pos(src);
-    // rtrim_pos returns a pointer into src one *after* the last printing
-    // character, so we need to subtract 1 to check the last characters
-    // in the string.
-    const char *end = rtrim_pos(src, 0) - 1;
+    // rtrim_pos returns an exclusive end pointer (one past last non-whitespace).
+    const char *end = rtrim_pos(src, 0);
 
-    if ((end - start) >= 2 && ((*start == '"' && *end == '"') ||
-                     (*start == '\'' && *end == '\''))) {
+    if (end <= start) {
+        return;
+    }
+
+    if ((end - start) >= 2 &&
+        ((*start == '"' && *(end - 1) == '"') ||
+         (*start == '\'' && *(end - 1) == '\''))) {
         start++;
         end--;
     }
 
-    size_t len = end - start;
+    size_t len = (size_t)(end - start);
     if (len >= dest_size) {
         len = dest_size - 1;
     }
