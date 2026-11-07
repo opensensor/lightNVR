@@ -20,6 +20,11 @@ on:
       - '.github/workflows/docs-link-check.yml'
   workflow_dispatch:
 
+# Superseded commits do not need to finish the same workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   links:
     name: Check documentation links

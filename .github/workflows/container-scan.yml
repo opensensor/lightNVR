@@ -11,6 +11,11 @@ permissions:
   contents: read
   security-events: write
 
+# Superseded commits do not need to finish the same workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   trivy:
     name: Trivy Container Scan
