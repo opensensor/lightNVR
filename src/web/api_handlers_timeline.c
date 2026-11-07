@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <time.h>
 #include <pthread.h>
+#include <errno.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers_timeline.h"
@@ -1106,15 +1107,33 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
     char *saveptr = NULL;
     char *token = strtok_r(ids_param, ",", &saveptr);
     while (token) {
-        while (*token == ' ') token++;
-        uint64_t id = strtoull(token, NULL, 10);
-        if (id > 0) {
-            if (id_count == MAX_TIMELINE_SEGMENTS) {
-                http_response_set_json_error(res, 400, "Too many recording IDs provided");
-                return;
-            }
-            ids[id_count++] = id;
+        while (isspace((unsigned char)*token)) token++;
+        if (*token == '\0' || *token == '+' || *token == '-') {
+            http_response_set_json_error(res, 400, "Invalid recording ID in ids parameter");
+            return;
         }
+
+        errno = 0;
+        char *endptr = NULL;
+        uint64_t id = strtoull(token, &endptr, 10);
+
+        if (errno == ERANGE || endptr == token) {
+            http_response_set_json_error(res, 400, "Invalid recording ID in ids parameter");
+            return;
+        }
+
+        while (*endptr != '\0' && isspace((unsigned char)*endptr)) endptr++;
+        if (*endptr != '\0' || id == 0) {
+            http_response_set_json_error(res, 400, "Invalid recording ID in ids parameter");
+            return;
+        }
+
+        if (id_count == MAX_TIMELINE_SEGMENTS) {
+            http_response_set_json_error(res, 400, "Too many recording IDs provided");
+            return;
+        }
+        ids[id_count++] = id;
+
         token = strtok_r(NULL, ",", &saveptr);
     }
     if (id_count == 0) {
