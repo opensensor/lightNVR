@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <curl/curl.h>
 #include "core/shutdown_coordinator.h"
 
@@ -49,29 +50,34 @@ static bool restart_web_server(void);
 
 // Global variables for health check
 static time_t g_last_health_check = 0;
-static bool g_is_healthy = true;
-static int g_failed_health_checks = 0;
-static int g_total_requests = 0;
-static int g_failed_requests = 0;
+static atomic_bool g_is_healthy = true;
+static atomic_int g_failed_health_checks = 0;
+static atomic_int g_total_requests = 0;
+static atomic_int g_failed_requests = 0;
 static time_t g_start_time = 0;
 
 // Add these variables to track server restart
-static bool g_server_needs_restart = false;
+static atomic_bool g_server_needs_restart = false;
 static time_t g_last_restart_attempt = 0;
-static int g_restart_attempts = 0;
+static atomic_int g_restart_attempts = 0;
 static const int MAX_RESTART_ATTEMPTS = 5;
 static const int RESTART_COOLDOWN_SECONDS = 30;
 
 // Health check thread variables
 static pthread_t g_health_check_thread;
-static volatile bool g_health_thread_running = false;
-static volatile bool g_health_thread_exited = false;  // Flag to indicate thread has exited
+static atomic_bool g_health_thread_running = false;
+static atomic_bool g_health_thread_exited = true;
+static atomic_bool g_health_thread_stopping = false;
+/* Serialize ownership, joins, and configuration changes. A timed-out worker
+ * stays joinable and owned until its exit is observed; it is never detached. */
+static pthread_mutex_t g_health_lifecycle_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool g_health_thread_created = false;
 static int g_health_check_interval = 10; // seconds
 
 // Wakeable sleep so stop_health_check_thread() can pull the thread out of its
 // interval sleep immediately. Initialized once and never destroyed: the stop
-// path may detach (rather than join) the thread on timeout, so the thread can
-// outlive the stop call and must not race a destroy.
+// path retains a timed-out worker, so it can outlive the stop call and must
+// not race a destroy.
 static interruptible_sleep_t g_health_wake;
 static bool g_health_wake_initialized = false;
 static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health?liveness=true";
@@ -715,6 +721,8 @@ static void *health_check_thread_func(void *arg) {
 
         // Perform health check
         bool check_result = perform_health_check();
+        // A probe completing during stop must not restart the listener.
+        if (!g_health_thread_running || is_shutdown_initiated()) break;
 
         if (!check_result) {
             log_warn("Health check failed (consecutive failures: %d)", g_failed_health_checks);
@@ -751,14 +759,36 @@ static void *health_check_thread_func(void *arg) {
     }
 
     log_info("Health check thread exiting");
-    g_health_thread_exited = true;  // Signal that thread has exited
+    g_health_thread_running = false;
+    g_health_thread_exited = true;  // Publish completion after the last state access
     return NULL;
+}
+
+/* Caller holds g_health_lifecycle_mutex. Never join a worker that is still
+ * accessing health state. Keep ownership on join failure as well. */
+static bool reap_health_thread_locked(void) {
+    if (!g_health_thread_created) return true;
+    if (!g_health_thread_exited) return false;
+    int rc = pthread_join(g_health_check_thread, NULL);
+    if (rc != 0) {
+        log_error("Failed to join health check thread: %s", strerror(rc));
+        return false;
+    }
+    g_health_thread_created = false;
+    g_health_thread_stopping = false;
+    return true;
 }
 
 /**
  * @brief Initialize health check system
  */
 void init_health_check_system(void) {
+    pthread_mutex_lock(&g_health_lifecycle_mutex);
+    if (!reap_health_thread_locked()) {
+        log_warn("Health check worker still active; initialization deferred");
+        pthread_mutex_unlock(&g_health_lifecycle_mutex);
+        return;
+    }
     g_start_time = time(NULL);
     g_last_health_check = g_start_time;
     g_is_healthy = true;
@@ -782,14 +812,17 @@ void init_health_check_system(void) {
              config.web_port);
 
     log_info("Health check system initialized with URL: %s", g_health_check_url);
+    pthread_mutex_unlock(&g_health_lifecycle_mutex);
 }
 
 /**
  * @brief Start health check thread
  */
 void start_health_check_thread(void) {
-    if (g_health_thread_running) {
-        log_warn("Health check thread already running");
+    pthread_mutex_lock(&g_health_lifecycle_mutex);
+    if (!reap_health_thread_locked()) {
+        log_warn("Health check worker already owned; start deferred until it exits");
+        pthread_mutex_unlock(&g_health_lifecycle_mutex);
         return;
     }
 
@@ -809,10 +842,14 @@ void start_health_check_thread(void) {
     if (pthread_create(&g_health_check_thread, NULL, health_check_thread_func, NULL) != 0) {
         log_error("Failed to create health check thread");
         g_health_thread_running = false;
+        g_health_thread_exited = true;
+        pthread_mutex_unlock(&g_health_lifecycle_mutex);
         return;
     }
 
+    g_health_thread_created = true;
     log_info("Health check thread started with %d second interval", g_health_check_interval);
+    pthread_mutex_unlock(&g_health_lifecycle_mutex);
 }
 
 /**
@@ -821,55 +858,42 @@ void start_health_check_thread(void) {
  * Uses a portable polling approach instead of pthread_timedjoin_np (GNU extension)
  * to work on both glibc and musl (e.g., Linux 4.4 with thingino-firmware)
  */
-void stop_health_check_thread(void) {
-    if (!g_health_thread_running && g_health_thread_exited) {
-        // Thread was never started or already stopped
-        return;
-    }
+static void stop_health_thread_locked(void) {
+    if (reap_health_thread_locked()) return;
 
-    log_info("Stopping health check thread...");
+    g_health_thread_stopping = true;
     g_health_thread_running = false;
+    if (g_health_wake_initialized) interruptible_sleep_wake(&g_health_wake);
 
-    // Wake the thread out of its interval sleep so it exits promptly instead of
-    // the poll loop below waiting out the timeout.
-    if (g_health_wake_initialized) {
-        interruptible_sleep_wake(&g_health_wake);
-    }
-
-    // Use portable polling approach with timeout (5 seconds)
-    // Poll every 50ms to check if thread has exited
-    int timeout_ms = 5000;
-    int elapsed_ms = 0;
+    // Portable bounded wait for glibc and musl. Retain the pthread handle on
+    // timeout so later cleanup/start can join it without overlapping workers.
+    const int timeout_ms = 5000;
     const int poll_interval_ms = 50;
-
-    while (elapsed_ms < timeout_ms) {
-        if (g_health_thread_exited) {
-            // Thread has exited, we can join it
-            pthread_join(g_health_check_thread, NULL);
-            log_info("Health check thread stopped successfully");
-            return;
-        }
+    for (int elapsed_ms = 0; elapsed_ms < timeout_ms; elapsed_ms += poll_interval_ms) {
+        if (reap_health_thread_locked()) return;
         usleep(poll_interval_ms * 1000);
-        elapsed_ms += poll_interval_ms;
     }
-
-    // Thread did not exit in time, detach it
-    log_warn("Health check thread did not exit in time (%d ms), detaching", timeout_ms);
-    pthread_detach(g_health_check_thread);
+    if (!reap_health_thread_locked())
+        log_warn("Health check thread still stopping after %d ms; retaining ownership", timeout_ms);
 }
 
-/**
- * @brief Cleanup health check system during shutdown
- */
+void stop_health_check_thread(void) {
+    pthread_mutex_lock(&g_health_lifecycle_mutex);
+    stop_health_thread_locked();
+    pthread_mutex_unlock(&g_health_lifecycle_mutex);
+}
+
+/** @brief Cleanup only after the worker has stopped accessing health state. */
 void cleanup_health_check_system(void) {
-    stop_health_check_thread();
-
-    // Reset all state
-    g_is_healthy = false;
-    g_failed_health_checks = 0;
-    g_server_needs_restart = false;
-
-    log_info("Health check system cleaned up");
+    pthread_mutex_lock(&g_health_lifecycle_mutex);
+    stop_health_thread_locked();
+    if (!g_health_thread_created) {
+        g_is_healthy = false;
+        g_failed_health_checks = 0;
+        g_server_needs_restart = false;
+        log_info("Health check system cleaned up");
+    }
+    pthread_mutex_unlock(&g_health_lifecycle_mutex);
 }
 
 /**
@@ -886,7 +910,7 @@ void update_health_metrics(bool request_succeeded) {
  * @brief Check if the web server is healthy
  */
 bool is_web_server_healthy(void) {
-    return g_is_healthy && is_web_server_thread_running();
+    return !g_health_thread_stopping && g_is_healthy && is_web_server_thread_running();
 }
 
 /**
@@ -900,10 +924,16 @@ int get_failed_health_checks(void) {
  * @brief Reset health check metrics
  */
 void reset_health_metrics(void) {
+    pthread_mutex_lock(&g_health_lifecycle_mutex);
+    if (g_health_thread_stopping && !reap_health_thread_locked()) {
+        pthread_mutex_unlock(&g_health_lifecycle_mutex);
+        return;
+    }
     g_total_requests = 0;
     g_failed_requests = 0;
     g_failed_health_checks = 0;
     g_is_healthy = true;
+    pthread_mutex_unlock(&g_health_lifecycle_mutex);
 }
 
 /**

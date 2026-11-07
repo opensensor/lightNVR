@@ -166,6 +166,13 @@ add_layer2_test(test_detection_config CI_UNIT CI_SANITIZER)
 add_layer2_test_with_curl(test_detection_model_motion CI_UNIT CI_SANITIZER)
 add_layer2_test_with_curl(test_detection_system_onvif)
 add_layer3_test(test_onvif_poll_recovery)
+add_layer3_test(test_health_thread_lifecycle CI_UNIT CI_SANITIZER)
+set_tests_properties(test_health_thread_lifecycle PROPERTIES TIMEOUT 20)
+target_link_options(test_health_thread_lifecycle PRIVATE
+    "-Wl,--wrap=pthread_create" "-Wl,--wrap=pthread_join" "-Wl,--wrap=usleep"
+    "-Wl,--wrap=curl_easy_perform" "-Wl,--wrap=is_shutdown_initiated"
+    "-Wl,--wrap=http_server_start" "-Wl,--wrap=http_server_stop"
+    "-Wl,--wrap=httpd_secure_cookies" "-Wl,--wrap=_log_message_ctx")
 add_layer3_test(test_health_probe_transport CI_UNIT CI_SANITIZER)
 target_link_options(test_health_probe_transport PRIVATE "-Wl,--wrap=httpd_secure_cookies"
     "-Wl,--wrap=malloc" "-Wl,--wrap=curl_easy_init" "-Wl,--wrap=_log_message_ctx")
