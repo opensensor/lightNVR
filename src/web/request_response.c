@@ -245,16 +245,18 @@ int http_response_add_header(http_response_t *res, const char *name, const char 
 int http_response_set_body(http_response_t *res, const char *body) {
     if (!res || !body) return -1;
 
+    size_t len = strlen(body);
+    char *new_body = malloc(len + 1);
+    if (!new_body) return -1;
+
+    memcpy(new_body, body, len + 1);
+
     // Free previous body if it was allocated by us
     if (res->body_allocated && res->body) {
         free(res->body);
     }
 
-    size_t len = strlen(body);
-    res->body = malloc(len + 1);
-    if (!res->body) return -1;
-
-    memcpy(res->body, body, len + 1);
+    res->body = new_body;
     res->body_length = len;
     res->body_allocated = true;
     return 0;
