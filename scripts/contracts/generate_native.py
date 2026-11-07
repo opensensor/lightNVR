@@ -101,6 +101,11 @@ def validate(doc, projected=False):
     for item in doc['paths'].values():
         if not isinstance(item, dict):
             raise ValueError('Path item must be an object')
+        # The native projection rejects path-item references. Reject them here
+        # too, rather than letting referenced operations bypass metadata checks
+        # or accepting a document that cannot be served at runtime.
+        if '$ref' in item:
+            raise ValueError('Path item references are not supported')
         for method, operation in item.items():
             if method not in METHODS:
                 continue
