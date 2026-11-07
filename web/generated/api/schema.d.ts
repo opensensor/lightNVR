@@ -6189,7 +6189,7 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** @description stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. start/end are UTC timestamp strings. detection/protected numeric values use C integer conversion; protected is clamped to -1..1. In-progress rows are excluded. */
+        /** @description stream_name (or stream fallback) selects comma-separated current camera names. Without a nonempty stream filter, all-fleet recording.delete authority is required. Authorized camera UUIDs and collection membership are captured before dispatch; caller-supplied camera UUID fields do not grant scope. Supplied start/end must be valid UTC YYYY-MM-DDTHH:mm:ss strings, optionally followed by fractional seconds and/or Z; fractions are truncated to whole seconds. Bounds must be after the Unix epoch and start must not exceed end. Invalid types, calendar dates, suffixes, or ranges return400 before job creation. Omitted bounds are unbounded. detection/protected numeric values use C integer conversion; protected is clamped to -1..1. In-progress rows are excluded. */
         RecordingDeletionFilter: {
             capture_method?: string;
             collection_uuid?: string;
