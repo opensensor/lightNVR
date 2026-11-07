@@ -104,10 +104,14 @@ def validate(doc, projected=False):
                 raise ValueError('Every canonical operation needs authorization metadata')
     schemas = doc.get('components', {}).get('schemas', {})
     selected = doc.get('x-lightnvr-validators', list(schemas))
-    if not isinstance(selected, list) or len(set(selected)) != len(selected):
+    if not isinstance(selected, list):
+        raise ValueError('x-lightnvr-validators must be a unique schema name array')
+    if any(not isinstance(name, str) for name in selected):
+        raise ValueError('Validator names must identify named component schemas')
+    if len(set(selected)) != len(selected):
         raise ValueError('x-lightnvr-validators must be a unique schema name array')
     for name in selected:
-        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', name) or name not in schemas:
+        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', name) or name not in schemas:
             raise ValueError('Validator names must identify named component schemas')
     return doc
 
@@ -152,7 +156,7 @@ def main():
     parser.add_argument('--validate-only', action='store_true')
     parser.add_argument('--projected', action='store_true')
     args = parser.parse_args()
-    doc = validate(json.loads(pathlib.Path(args.source).read_text()), args.projected)
+    doc = validate(json.loads(pathlib.Path(args.source).read_text(encoding='utf-8')), args.projected)
     if not args.validate_only:
         target = pathlib.Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)
