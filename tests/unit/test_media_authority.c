@@ -124,6 +124,43 @@ void test_malformed_generated_lease_is_bounded_and_not_stored(void) {
         }
     }
 }
+void test_issuance_rejects_missing_camera_and_invalid_principal(void) {
+    strcpy(original.query_string, "src=missing_camera");
+    TEST_ASSERT_FALSE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+    TEST_ASSERT_EQUAL_INT(404, response.status_code);
+    TEST_ASSERT_EQUAL_CHAR(0, lease[0]);
+    strcpy(original.query_string, "src=camera_sub");
+    strcpy(original.headers[0].value, "Basic invalid");
+    TEST_ASSERT_FALSE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+    TEST_ASSERT_EQUAL_INT(401, response.status_code);
+    TEST_ASSERT_EQUAL_CHAR(0, lease[0]);
+    TEST_ASSERT_NULL(media_leases[0].request);
+}
+void test_lease_capacity_fails_closed_and_reclaims_only_expired_slot(void) {
+    /* Authentication-disabled deployments still have bounded media leases.
+     * Avoid 256 password hashes while exercising real registry allocations. */
+    g_config.web_auth_enabled = false;
+    char first[LIGHTNVR_UUID_STRING_SIZE];
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
+        TEST_ASSERT_TRUE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+        if (i == 0) strcpy(first, lease);
+    }
+    TEST_ASSERT_FALSE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+    TEST_ASSERT_EQUAL_INT(503, response.status_code);
+    TEST_ASSERT_EQUAL_CHAR(0, lease[0]);
+    strcpy(callback.headers[0].value, first);
+    check(200, NULL);
+    media_leases[0].touched -= MEDIA_LEASE_IDLE_SECONDS + 1;
+    TEST_ASSERT_TRUE(go2rtc_proxy_create_media_lease(&original, &response, lease));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(first, lease));
+    TEST_ASSERT_EQUAL_STRING(lease, media_leases[0].token);
+    check(403, NULL);
+    strcpy(callback.headers[0].value, lease);
+    check(200, NULL);
+    int occupied = 0;
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) occupied += media_leases[i].request != NULL;
+    TEST_ASSERT_EQUAL_INT(MEDIA_LEASE_CAPACITY, occupied);
+}
 void test_basic_audio_directions_and_live_revocation(void) {
     issue();
     check(200, "{\"view\":true,\"listen\":false,\"talk\":false}");
@@ -295,6 +332,8 @@ int main(int argc, char **argv) {
     media_fixture = argc > 1 ? argv[1] : NULL;
     UNITY_BEGIN();
     RUN_TEST(test_malformed_generated_lease_is_bounded_and_not_stored);
+    RUN_TEST(test_issuance_rejects_missing_camera_and_invalid_principal);
+    RUN_TEST(test_lease_capacity_fails_closed_and_reclaims_only_expired_slot);
     RUN_TEST(test_basic_audio_directions_and_live_revocation);
     RUN_TEST(test_instance_audio_disable_overrides_granted_media_rights);
     RUN_TEST(test_instance_audio_disable_remuxes_native_hls_despite_cached_grant);
