@@ -472,6 +472,11 @@ void handle_put_camera_tag_assignments(const http_request_t *req,
     if (!httpd_authorize_camera_identity_action_with_context(
             req, res, AUTHZ_CAMERA_CONFIGURE, camera_uuid, NULL, &(user_t){0},
             &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) return;
+    /* The success response reads assignments. Check read authority before any
+     * mutation so a hidden camera cannot be changed and then reported denied. */
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_LIVE_VIEW, camera_uuid, NULL, &(user_t){0},
+            &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) return;
     cJSON *body = httpd_parse_json_body(req);
     cJSON *items = body ?
         cJSON_GetObjectItemCaseSensitive(body, "tag_uuids") : NULL;
@@ -499,12 +504,6 @@ void handle_put_camera_tag_assignments(const http_request_t *req,
         safe_strcpy(tag_storage[i], item->valuestring,
                     sizeof(tag_storage[i]), 0);
         tag_uuids[i] = tag_storage[i];
-    }
-    if (!httpd_authorize_camera_identity_action_with_context(
-            req, res, AUTHZ_LIVE_VIEW, camera_uuid, NULL, &(user_t){0},
-            &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) {
-        cJSON_Delete(body);
-        return;
     }
     cJSON_Delete(body);
     db_camera_tag_result_t result =

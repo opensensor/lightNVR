@@ -377,6 +377,8 @@ Thirteen added operations bring the partial inventory to 57 operations across
 previews, saved views, collection reads and location/tag catalogs are discoverable
 by authenticated principals, including empty camera scopes. Camera tag assignments
 require raw `live.view` discovery; each concrete handler checks the target camera.
+Assignment writes require both `camera.configure` and `live.view` on that camera
+before mutation because their success response includes the resulting assignments.
 Discovery does not promise a particular row or grant access through stored selectors.
 
 Rows, facets, counts and organization trees use the caller's visible inventory.
