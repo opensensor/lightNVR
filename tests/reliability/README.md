@@ -188,8 +188,9 @@ historical database by running the real old recorder. The dated
 `upgrade-fixture.json` remains the original workstation evidence, not a portable
 build recipe. Every preparation and scenario needs a new output directory.
 
-Build the current managed Debug recorder using the command above, including the
-parent Go patch **before the current Go build**. Capture its manifest immediately
+Build the current managed Debug recorder using the command above and build
+the pinned go2rtc submodule, which includes the earlier relay repair. Do not
+reapply that historical patch to current source. Capture its manifest immediately
 after compilation, before changing any source or executables. With a coherent
 native toolchain, prepare the old release and run the upgrade:
 
@@ -270,3 +271,9 @@ artifact-upload inputs. A failed job still attempts this sanitized summary;
 missing summary files fail the upload. Full local runs retain their private
 diagnostics for inspection. Hosted execution has not yet been observed; local
 preparer/upgrade evidence is recorded in `docs/api/contracts/upgrade-evidence.md`.
+
+## Fresh post-merge local evidence
+
+The [2026-11-07 qualification](../../docs/validation/recovery-qualification-2026-11-07.md)
+repeats all four scenarios on one current Release binary and extends lifecycle
+to ten cycles per phase. Named hardware and long-duration acceptance remain open.
