@@ -1,5 +1,11 @@
 # Mobile viewing experience
 
+**Status (2026-11-07)**: First slice merged in
+[#840](https://github.com/opensensor/lightNVR/pull/840), reviewed on main
+`c9bb7b0b`. M1–M3 below remain open. Hosted checks on the final main revision
+were queued/pending at this checkpoint; local evidence below belongs to the
+implementation revision.
+
 Requested 2026-11-07 after reviewing the phone live-view screenshot. Prioritize
 camera viewing, navigation and recorded playback; administration is a later
 pass. Preserve the desktop experience and existing authorization behavior.
@@ -32,7 +38,7 @@ For the first implementation:
 
 ## Implemented first slice
 
-`codex/mobile-live-ux` builds on the API contract review stack, including #838.
+Merged #840 builds on the merged API contract stack, including #838.
 The live toolbar uses the same mounted controls and players at both sizes.
 Mobile has a native cameras-per-page selector; desktop keeps its grid picker.
 The recordings view uses separate mobile preferences, collapsed filters and
@@ -48,20 +54,65 @@ five new), 172 related unit/localization tests, and five existing component
 browser cases. Web/contract type checks, lint, production build and documentation
 links pass. The review URL is recorded in the PR description.
 
-## Next slices
+## Next slices and acceptance
 
-1. **Find footage on a phone:** compact recording list when thumbnails are
-   disabled, mobile sorting and batch actions, and camera/time filters that do
-   not require navigating a desktop table. Keep explicit selection and deletion
-   confirmation. Include empty, loading, error and interrupted-media states.
-2. **Timeline and investigation:** thumb-friendly time navigation and scrubbing,
-   clear camera/date context, a compact events list, and a predictable route back
-   to live view. Carry camera scope and timestamps across these transitions.
-3. **Real-device qualification:** iPhone Safari and Android Chrome, portrait and
-   landscape, browser toolbar/keyboard changes, installed mode, rotation during
-   playback, background/resume, slow network and connection recovery. Verify
-   audio, fullscreen and safe areas on actual devices. Test long translations,
-   RTL and enlarged text before calling the mobile viewing program complete.
+The older [foundation](UXD_01_MobileFirstFoundation.md),
+[live ergonomics](UXD_02_LiveViewErgonomics.md) and
+[recordings/timeline](UXD_03_RecordingsAndTimeline.md) implementations remain the
+baseline. Timeline pinch/pan/fling/snap and live gestures already exist. The next
+slices address complete phone workflows and qualification, not a replacement
+gesture implementation.
+
+### M1: Find footage on a phone — next implementation
+
+Current code forces table mode when thumbnails are disabled. Provide a compact
+phone list that works without generated thumbnails, with camera/time/duration,
+playback availability and protection state visible. Keep explicit URL choices
+and desktop preferences intact. Phone sorting, camera/date filters and selected
+item actions must work without horizontal table navigation.
+
+Acceptance:
+
+- At 360, 390 and 768 CSS pixels, both thumbnail settings support finding and
+  playing footage without page overflow. At 1440 pixels desktop behavior remains
+  covered. Test the thumbnail-disabled path explicitly; #840's recording case
+  enables thumbnails and does not establish this behavior.
+- Sorting and filtering preserve URL scope, timestamps and pagination intent.
+  Empty/loading/error results keep filters and retry reachable. Interrupted media
+  shows the existing explanation instead of an unexplained broken player.
+- Selection is explicit, with selected count and clear/cancel affordances.
+  Preserve deletion confirmation, protection and permission checks, request
+  pending state, partial failures and batch download/delete completion feedback.
+- Real-server browser cases cover both settings, success/error/retry, scoped
+  viewers and an actual playable recording. Verify focus restoration and phone
+  preference isolation as in the existing slice.
+
+### M2: Timeline and investigation workflow
+
+Depends on M1's recording navigation conventions. Audit the existing ruler and
+gesture primitives in the complete flow: live camera → recordings → timeline or
+investigation → playback → return. Improve camera/date context and the compact
+event list where the audit demonstrates friction.
+
+Acceptance: camera scope and time survive forward/back navigation; scrub/release
+preserves playback intent; gaps and unavailable footage have clear states;
+filters and controls stay reachable in portrait/landscape. Cover populated and
+busy-day fixtures, keyboard/touch paths and scoped principals. Retain existing
+pinch/pan/fling/snap regressions and desktop mouse/wheel behavior.
+
+### M3: Real-device and accessibility qualification
+
+The #840 slice can be qualified now; repeat affected paths after M1/M2. Record
+device model, OS/browser versions, build/fork hashes, network and result for each
+case. Test iPhone Safari and Android Chrome in portrait, landscape and installed
+mode where supported: browser toolbar/keyboard changes, rotation during playback,
+background/resume, slow network, disconnect/reconnect, audio listen/talk,
+fullscreen and safe areas. Include long translations, RTL and enlarged text.
+
+Acceptance requires actual media playback/recovery and accessible controls on the
+named devices. A fixture or viewport pass cannot close a physical-device case.
+Share these receipts with engineering F14; use F13 browser measurements for
+performance budgets rather than declaring an unmeasured phone latency target.
 
 Administration screens remain outside this pass. Browser viewport tests do not
 establish real-device playback or performance qualification. Desktop regressions

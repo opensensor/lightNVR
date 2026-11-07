@@ -1,20 +1,27 @@
 # Engineering API expansion: next bounded slices
 
-Status (2026-11-07): F1 authentication/MFA and F2 fleet reads are merged;
-F12/F16 recording integrity and the later security corrections are merged.
-S1, F3 and F4 are in review as [#835](https://github.com/opensensor/lightNVR/pull/835),
-[#836](https://github.com/opensensor/lightNVR/pull/836), and
-[#837](https://github.com/opensensor/lightNVR/pull/837). F5–F11 are in review as
-[#838](https://github.com/opensensor/lightNVR/pull/838); the
-[current execution plan](engineering-hardening-four-pr-plan.md) and
-[integration receipt](docs/api/contracts/integration-evidence.md) record validation.
-F13 capacity measurements and F14 extended qualification remain outstanding;
-F15's final production-level acceptance depends on those measurements.
+Status (2026-11-07): F1 authentication/MFA, F2 fleet reads, F12/F16 recording
+integrity and subsequent security corrections are merged. S1 media authority,
+F3 identity administration and F4 fleet writes merged in #835, #836 and #837;
+F5–F11 merged in #838. Main `c9bb7b0b` also includes #839 fixture/documentation
+corrections and #840's first mobile viewing slice. During this review, #841
+installation corrections also merged as `1fe8e0eb`; #842 playback cancellation
+remains in review with corrections. The supporting
+[go2rtc #4](https://github.com/opensensor/go2rtc/pull/4)
+remains open; main already pins its published `ba99c7e` commit.
 
-Current review baseline: main `84ed0174` (57 accepted operations, 183 residual
-registrations). The historical receipts below retain their original revisions and
-counts; they are not present-day coverage claims. Continue from
-[the original hardening plan](engineering-api-contracts-plan.md) and
+The [four-PR execution plan](engineering-hardening-four-pr-plan.md) and
+[integration receipt](docs/api/contracts/integration-evidence.md) retain the
+original local validation. Main hosted workflows were queued/pending when
+reviewed; merge status is not a claim that final hosted checks passed.
+F13 capacity measurements and F14 extended qualification remain outstanding;
+F15's final production acceptance depends on them.
+
+Current inventory: 241 registrations, comprising 232 OpenAPI operations across
+168 paths, eight media-protocol dispositions and one internal callback.
+Discovery remains `partial=true` for the nine explicitly excluded routes.
+Historical receipts below retain their original revisions and counts. Continue
+from [the original hardening plan](engineering-api-contracts-plan.md) and
 [the PRD](docs/prd/ENG_01_Safety_Contracts_TypeScript.md).
 TS/TSX conversion is complete. Automated Rust conversion, synchronization with C,
 a second backend and at-rest encryption remain deferred. Preserve Basic/key
@@ -60,8 +67,9 @@ F1..F14,F16 -> F15
 - **status**: Original-wave checkpoint complete: 33 accepted operations / 30 paths,
   207 residual registered operations (240 total); no contract expansion in F12/F16.
   The F1b follow-up raises this to 37 operations / 34 paths and 203 residual.
-  Full residual assignment and F4/F10/F11 decomposition remain required before
-  those families execute. F1 is bounded in the linked plan below.
+  Subsequent assignment/decomposition and inventory reconciliation are complete
+  in #835–#838: 241 registrations with no unassigned entries. Earlier counts
+  above describe their original checkpoints only.
 
 ### F1: Identity self-service and MFA
 - **depends_on**: [F0]
@@ -90,63 +98,63 @@ F1..F14,F16 -> F15
 - **ownership**: User/authorization/audit handlers and tests; one UsersView owner.
 - **description**: User CRUD, legacy-key issuance, password/login locks, actions/simulation, role CRUD, user-policy GET/PUT and audit events/export/settings.
 - **validation**: Policy/revocation changes affect discovery and handlers; preserve self-lockout/revision behavior; no secret leaks or token privilege expansion; validate actual audit export bytes.
-- **status**: In review — [#836](https://github.com/opensensor/lightNVR/pull/836); 20 operations, see identity-admin evidence.
+- **status**: Merged — [#836](https://github.com/opensensor/lightNVR/pull/836); 20 operations, see identity-admin evidence.
 
 ### F4: Fleet organization and live workspace objects
 - **depends_on**: [F2]
 - **ownership**: Collections separate from location/tag handlers; saved views/layouts/plans/favorites as distinct sub-slices.
 - **description**: Location CRUD/assignment, tag CRUD/merge/assignment, collection CRUD/membership/preview and saved views. Explicitly enumerate live layouts, floor plans and favorites.
 - **validation**: Cross-owner/shared access, selector transitions, reference deletion, revision failures and unauthorized bulk no-effects; real uploaded image/content checks.
-- **status**: In review — [#837](https://github.com/opensensor/lightNVR/pull/837); 31 operations, see fleet-writes evidence.
+- **status**: Merged — [#837](https://github.com/opensensor/lightNVR/pull/837); 31 operations, see fleet-writes evidence.
 
 ### F5: Storage configuration and preview
 - **depends_on**: [F4]
 - **ownership**: Target/pool/policy handlers and tests; single StorageTab owner.
 - **description**: Target CRUD/probe, pool CRUD, policy CRUD/preview, storage health/compliance. Use owned destinations for probes.
 - **validation**: Revision conflicts, credential redaction, invalid destinations, protected references and scoped selectors. Separate local filesystem evidence from remote-provider qualification.
-- **status**: Implemented locally with F6 — 28 operations; storage evidence and fourth-PR integration track acceptance.
+- **status**: Merged in #838 with F6 — 28 operations; storage and integration receipts record owned-fixture qualification.
 
 ### F6: Storage jobs and lifecycle actions
 - **depends_on**: [F5]
 - **ownership**: Migration/archive/cleanup handlers and tests; shared recovery harness coordinated centrally.
 - **description**: Policy apply; migration list/create/detail/cancel/retry; archive list/retry; storage cleanup. Reuse recording mutation test techniques while documenting each storage handler's actual policy. Migration get/cancel/retry currently require global `storage.configure`, without recording-job owner/token matching; changing that requires a separate behavior decision.
 - **validation**: Denials create no jobs/files; retry/cancel preserve protection and catalog/file consistency. Reuse publication/deletion-ledger tests and real injected full/read-only/unavailable storage faults; distinguish acknowledgement from completion.
-- **status**: Implemented locally with F5; owned local migration/archive/cleanup lifecycle qualified, remote providers excluded.
+- **status**: Merged in #838 with F5; owned local migration/archive/cleanup lifecycle qualified, remote providers excluded.
 
 ### F7: Settings, system and public bootstrap
 - **depends_on**: [F1]
 - **ownership**: Settings/system/workspace/health handlers; one SettingsView/SystemView owner.
 - **description**: Settings GET/POST, go2rtc validation, workspace GET/PUT, system info/status/health/incidents/logs, effective-config/override-status. Separate restart/shutdown/log-clear/backup from reads; explicitly classify health, metrics, telemetry and setup/public routes.
 - **validation**: Zero values, credentials, revisions/errors; isolated process-control acknowledgements/restarts and real backup contents. HTTP success alone does not establish completion.
-- **status**: Implemented locally — 23 operations; system evidence and fourth-PR integration track acceptance.
+- **status**: Merged in #838 — 23 operations; system and integration receipts record owned-fixture qualification.
 
 ### F8: Event routing
 - **depends_on**: [F4, F7]
 - **ownership**: Event catalog/destination/route handlers, EventRoutingView and owned local sinks.
 - **description**: Catalog, destination CRUD, route CRUD, preview and POST `/api/motion/trigger`, using accepted selector and health-setting shapes.
 - **validation**: Secret redaction, stale revisions, private collection references, suppression/retry and denied no-delivery effects; observe actual local deliveries separately from mocks.
-- **status**: Implemented locally — 13 operations with real owned MQTT delivery; fourth-PR integration tracks acceptance.
+- **status**: Merged in #838 — 13 operations with real owned MQTT delivery; see event and integration receipts.
 
 ### F9: Stream lifecycle and ONVIF discovery
 - **depends_on**: [F0]
 - **ownership**: Stream/ONVIF discovery handlers; sole StreamsView owner.
 - **description**: Stream single read/create/test/delete/refresh/recording controls; zones GET/POST/DELETE, retention GET/PUT and detection-engines GET/PUT; seven ONVIF discovery/device operations. Preserve captured UUIDs, create-after-edit intent and pending-state guards.
 - **validation**: Owned SOAP/discovery fixtures, invalid/denied configuration no-effects; multicast/vendor behavior remains unqualified until observed on identified hardware.
-- **status**: Implemented locally in the fourth PR; 15 stream JSON operations and seven ONVIF operations use owned fixtures.
+- **status**: Merged in #838; 15 stream JSON operations and seven ONVIF operations use owned fixtures.
 
 ### F10: Device control and streaming protocols
 - **depends_on**: [F9]
 - **ownership**: PTZ/imaging and HLS/go2rtc boundaries as separately reviewed sub-slices.
 - **description**: PTZ capabilities/presets/movement, imaging/daynight, GET `/api/ice-servers`, HLS and direct signaling/proxy routes. Address the documented direct go2rtc audio authorization gap before claiming action isolation.
 - **validation**: SOAP fixtures plus authorized device checks; media bytes, signaling permissions and reconnect behavior alongside JSON schemas.
-- **status**: Implemented locally with F9 and S1; 15 device controls and eight explicit protocol dispositions. Physical-device/vendor qualification remains outside this wave.
+- **status**: Merged in #838 with F9 and S1; 15 device controls and eight explicit protocol dispositions. Physical-device/vendor qualification remains outside this wave.
 
 ### F11: Investigations, detections and residual recording routes
 - **depends_on**: [F2]
 - **ownership**: Investigation/bookmark, detection/model/snapshot and LPR sub-slices; residual recording work coordinated with storage.
 - **description**: Investigation timeline/segment-at/search/preview/thumbnails/bookmarks; detection results/models/snapshots; LPR search/export/delete; recording files/check/delete, protected-list/sync and timeline manifest/play excluded from the current UI contract slice.
 - **validation**: Captured UUID/name-reuse/legacy fallback through every aggregate/enrichment route; hidden counts/facets remain hidden. Independently validate actual images, ZIP/media bytes and ranges.
-- **status**: Implemented locally in the fourth PR; 23 operations with captured-identity authorization and concrete media/export evidence.
+- **status**: Merged in #838; 23 operations with captured-identity authorization and concrete media/export evidence.
 
 ### F12: Recording pathname collision safety
 - **depends_on**: [F0]
@@ -159,7 +167,7 @@ F1..F14,F16 -> F15
 ### F13: Target capacity and active-media measurements
 - **depends_on**: [F0]
 - **ownership**: Performance harnesses and named target evidence; optimization requires a separately reviewed measured need.
-- **description**: Extend disabled-camera measurements to populated tags/locations/collections, realistic policies and active recording on representative hardware. Measure the remaining configured-max metrics buffer (about 11.9 MiB at 1,024 streams), snapshot/JSON memory, latency, descriptors and assets. T24 grows the modern validator chunk from 136,439 to 358,973 raw bytes while only Streams/explorer currently consume it; measure exclusion or splitting of unused guards before broadening coverage further.
+- **description**: Extend disabled-camera measurements to populated tags/locations/collections, realistic policies and active recording on representative hardware. Measure the remaining configured-max metrics buffer (about 11.9 MiB at 1,024 streams), snapshot/JSON memory, latency, descriptors and assets. The integrated modern validator chunk is now 2,240.15 kB raw / 218.55 kB gzip (legacy: 2,230.06 / 181.69 kB); these replace the earlier pilot sizes. Measure page loading, parse/evaluation and memory before deciding whether to split validators by consumer family.
 - **validation**: Named hardware/binaries/flags, repeated serial/concurrent samples and controls. Derive budgets from target headroom; workstation numbers are not embedded capacity or production SLOs.
 - **status**: Not started
 
@@ -175,7 +183,7 @@ F1..F14,F16 -> F15
 - **ownership**: Integration owner; canonical, coverage, PRD and receipts.
 - **description**: Accept slices individually, then reconcile all residual route/device/protocol limits and measured costs. Rust requires a separate explicit future decision.
 - **validation**: Fresh integrated contract/native/frontend/recovery checks, exact drift/coverage and named builds; no unobserved hosted/device claims.
-- **status**: Not started
+- **status**: Route reconciliation complete in #838; production acceptance pending F13/F14 and final hosted results
 
 ### F16: Recording export I/O failure handling
 - **depends_on**: [F0]
@@ -196,7 +204,58 @@ F1..F14,F16 -> F15
 - **validation**: Denied listen/talk cannot negotiate or receive media through
   alternate direct/proxy paths. Test owner/token/camera intersections and revoked
   access with an owned go2rtc fixture; browser hiding alone is not enforcement.
-- **status**: In review — [#835](https://github.com/opensensor/lightNVR/pull/835) and [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4). See media-authority evidence for actual transport tests, revocation bounds and deployment limits.
+- **status**: LightNVR [#835](https://github.com/opensensor/lightNVR/pull/835) merged; supporting [go2rtc #4](https://github.com/opensensor/go2rtc/pull/4) remains open, with its commit pinned on main. See media-authority evidence for actual transport tests, revocation bounds and deployment limits.
+
+## Next execution sequence after #840
+
+These are planned acceptance gates, not completed measurements. The mobile
+[M1 footage-finding slice](docs/prd/UXD_Mobile_Viewing.md) can proceed independently
+of the native qualification work; browser performance results should inform it.
+
+| Slice | Work and evidence | Completion gate |
+| --- | --- | --- |
+| F13a — Reproducible capacity harness | Extend the existing [projection benchmark](tests/contracts/projection-benchmark.mjs) with populated locations/tags/collections and realistic principal scopes. Record source/binary/fork hashes, build flags, CPU/RAM/storage, workload, warmup and sample counts. Keep disabled-camera controls separate from active recording/live workloads. | Repeated serial/concurrent samples report latency, peak/steady memory, CPU, descriptors and recording continuity; failed runs are retained. Harness completion alone is not target qualification. |
+| F13b — Browser loading and validators | Measure current Live, Recordings, Settings and explorer loads: transferred bytes, validator parse/evaluation, time to usable controls/first media and memory, with cold/warm caches and named clients. Use the integrated artifact sizes, not the historical pilot numbers. | A measured baseline identifies whether validator splitting is justified. Any optimization keeps canonical validation and exact diagnostic behavior, with independent Ajv equivalence and consumer regression checks. |
+| F13c — Named target acceptance | Run the harness on explicitly identified representative hardware and storage with declared camera/codec/bitrate/viewer mixes. Include the 1,024-configured-stream metrics allocation separately from supported active-stream capacity. | Record sustainable load and headroom; derive budgets from measurements. Workstation results cannot close this gate for embedded targets. |
+| F14a — Extended recovery and storage | Extend the [existing reliability harnesses](tests/reliability/README.md), using the F13 load envelope. Predeclare duration, fault cadence and gap/recovery tolerances; cover recorder/go2rtc restart, source loss, unavailable/read-only/full storage and provider faults where an owned provider exists. | Decode/DTS/gap evidence, protected-file hashes, catalog integrity and stable resources after recovery. Unsupported remote providers remain explicitly unqualified. |
+| F14b — Upgrade and device qualification | Upgrade copied installations with exact prior-release and submodule provenance. Qualify selected camera vendors/backchannels, multicast discovery and real iPhone/Android viewing; reuse the mobile M3 matrix. | Retained before/after data, playable media, authorization/revocation checks and cleanup; name every qualified device/browser/version and every untested combination. |
+| F15 — Production acceptance | Reconcile inventory, device/provider limits, fork publication and exact-revision hosted/local checks after F13/F14. | Evidence supports the declared deployment envelope; no remaining qualification task is relabeled complete merely because its implementation merged. |
+
+Start F13a/F13b and mobile M1 next. F14 harness preparation can begin while F13
+measurements run, but its final workload and acceptance depend on F13 results.
+The supporting go2rtc PR and final hosted main results need follow-through;
+neither is a reason to reopen completed contract-family implementation.
+
+## Post-merge code quality review (2026-11-07)
+
+The six reported findings (#2172–#2177, last seen on `2f86424`) were traced to
+union code generation, fleet error formatting and an unused floor-plan response.
+Fix the emitters and regenerate, rather than editing generated output: `oneOf`
+branches have independent validity temporaries, fully evaluated property sentinels
+avoid redundant self-read guards, and `anyOf` skips property maps that the enclosing
+`additionalProperties` rule will replace. Exact branch diagnostics remain tested.
+The floor-plan test now asserts the returned name and revision.
+
+A fresh scan of the expanded main source also identified unused storage/navigator
+imports and ambiguous adapter spacing; those are included in this cleanup.
+CodeQL 2.27.4 with JavaScript queries 2.5.0 reports zero standard quality findings
+on a fresh 519-file JS/TS/JSON source snapshot after corrections. This is local
+analysis; hosted finding closure requires analysis of the merged revision.
+
+All 15 tooling tests pass, including 33,306 independent Ajv comparisons across
+306 exported schemas and focused union/evaluated-property tests. Generated drift,
+web/contract typing, web lint and production build pass. Five real-server fleet
+API cases pass against the existing owned-fixture native binary. Native production
+code and schemas are unchanged by this cleanup. Logs and SARIF are retained under
+ignored `build/post-merge-review/`.
+
+The #841 source/submodule and published-image upgrade fixes merged during review;
+additional source-built Compose and uninstall-path clarifications follow separately.
+The #842 autofix originally guarded only stale errors. Its correction guards
+successful metadata and detection responses, cancels both requests and clears
+recording-owned state; 3/4 new browser cases fail on the original PR and 4/4 pass
+after correction. The new cases plus existing keyboard cases pass 13/13; web typing
+and lint pass on that PR. These PR-specific results are separate from main's scan.
 
 ## Recording integrity execution receipt (2026-11-06)
 
