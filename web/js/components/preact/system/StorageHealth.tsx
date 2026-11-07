@@ -1,3 +1,5 @@
+import {storageJSON} from '../../../api/storage.ts';
+import {useStorageQuery} from '../../../api/storageQuery.ts';
 /**
  * StorageHealth Component
  * Displays storage controller health: disk pressure, last cleanup stats,
@@ -5,7 +7,7 @@
  */
 
 import { useState } from 'preact/hooks';
-import { useQuery, useMutation, fetchJSON } from '../../../query-client.ts';
+import { useMutation } from '../../../query-client.ts';
 import { nowMilliseconds } from '../../../utils/date-utils.ts';
 import { useI18n } from '../../../i18n.ts';
 import type { FormatBytes, StorageHealthResponse, Translate } from '../../../types/system.ts';
@@ -60,7 +62,7 @@ export function StorageHealth({ formatBytes }: StorageHealthProps) {
   const [cleanupPending, setCleanupPending] = useState(false);
   const [cleanupTriggeredAt, setCleanupTriggeredAt] = useState<number | null>(null);
 
-  const { data: health, isLoading, error, refetch } = useQuery<StorageHealthResponse>(
+  const { data: health, isLoading, error, refetch } = useStorageQuery<StorageHealthResponse>(
     ['storageHealth'],
     '/api/storage/health',
     { timeout: 10000, retries: 1 },
@@ -69,7 +71,7 @@ export function StorageHealth({ formatBytes }: StorageHealthProps) {
 
   const cleanupMutation = useMutation<unknown, Error, boolean>({
     mutationFn: async (aggressive) => {
-      return await fetchJSON('/api/storage/cleanup', {
+      return await storageJSON('/api/storage/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aggressive: !!aggressive }),

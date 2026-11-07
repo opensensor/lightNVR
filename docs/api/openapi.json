@@ -35,11 +35,15 @@
     {
       "name": "Recording actions",
       "description": "Capture-identity protection, tags, deletion and export jobs. Job access remains creator/token-bound; cancellation is unsupported."
+    },
+    {
+      "name": "Storage",
+      "description": "Storage configuration, local lifecycle and archive operations."
     }
   ],
   "x-lightnvr-coverage": {
     "partial": true,
-    "canonical_revision": "eng-api-fleet-writes-v1",
+    "canonical_revision": "eng-api-storage-v1",
     "covered_operations": [
       "listStreams",
       "getStreamFull",
@@ -128,7 +132,35 @@
       "deleteFloorPlan",
       "getFloorPlanBackground",
       "setFloorPlanBackground",
-      "deleteFloorPlanBackground"
+      "deleteFloorPlanBackground",
+      "listStorageTargets",
+      "createStorageTarget",
+      "getStorageTarget",
+      "updateStorageTarget",
+      "deleteStorageTarget",
+      "listStoragePools",
+      "createStoragePool",
+      "getStoragePool",
+      "updateStoragePool",
+      "deleteStoragePool",
+      "listStoragePolicies",
+      "createStoragePolicy",
+      "getStoragePolicy",
+      "updateStoragePolicy",
+      "deleteStoragePolicy",
+      "probeStorageTarget",
+      "previewStoragePolicy",
+      "applyStoragePolicy",
+      "listStorageMigrations",
+      "createStorageMigration",
+      "getStorageMigration",
+      "cancelStorageMigration",
+      "retryStorageMigration",
+      "getStorageArchive",
+      "retryStorageArchive",
+      "getStorageCompliance",
+      "getStorageHealth",
+      "triggerStorageCleanup"
     ],
     "description": "Partial contract coverage: Streams pilot, identity/token, recording reads and twelve recording action/job operations. The covered operation list is independent of authorization; omitted projected operations may be covered but denied. Uncovered APIs are not permission decisions. Identity includes session/trusted-device lifecycle, MFA completion/enrollment, password change and legacy logout. Fleet organization and live workspace contracts add 31 reviewed operations including binary plan backgrounds."
   },
@@ -246,7 +278,43 @@
     "FloorPlan",
     "FloorPlansResponse",
     "FloorPlanDeletion",
-    "CameraUuid"
+    "CameraUuid",
+    "StorageTargetHealth",
+    "StorageTarget",
+    "StorageTargetsResponse",
+    "StorageTargetCreate",
+    "StorageTargetUpdate",
+    "StoragePoolMember",
+    "StoragePoolMemberRequest",
+    "StoragePool",
+    "StoragePoolsResponse",
+    "StoragePoolCreate",
+    "StoragePoolUpdate",
+    "StoragePolicy",
+    "StoragePoliciesResponse",
+    "StoragePolicyCreate",
+    "StoragePolicyUpdate",
+    "StoragePolicyPreviewRequest",
+    "StoragePolicyWinner",
+    "StoragePolicyPreviewSample",
+    "StoragePolicyConflict",
+    "StoragePolicyPreview",
+    "StoragePolicyApplyRequest",
+    "StoragePolicyApplyResponse",
+    "StorageMigration",
+    "StorageMigrationsResponse",
+    "StorageMigrationCreate",
+    "StorageArchiveDeletion",
+    "StorageArchiveResponse",
+    "StorageArchiveRetryRequest",
+    "StorageArchiveRetryResponse",
+    "StorageHealthResponse",
+    "StorageCleanupRequest",
+    "StorageCleanupResponse",
+    "StorageComplianceTarget",
+    "StorageCompliancePolicy",
+    "StorageComplianceViolation",
+    "StorageComplianceResponse"
   ],
   "paths": {
     "/api/streams": {
@@ -10505,6 +10573,3794 @@
           }
         ]
       }
+    },
+    "/api/storage-targets": {
+      "get": {
+        "operationId": "listStorageTargets",
+        "summary": "ListStorageTargets",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageTargetsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createStorageTarget",
+        "summary": "CreateStorageTarget",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageTargetCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-targets/{uuid}": {
+      "get": {
+        "operationId": "getStorageTarget",
+        "summary": "GetStorageTarget",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateStorageTarget",
+        "summary": "UpdateStorageTarget",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageTargetUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteStorageTarget",
+        "summary": "DeleteStorageTarget",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-pools": {
+      "get": {
+        "operationId": "listStoragePools",
+        "summary": "ListStoragePools",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePoolsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createStoragePool",
+        "summary": "CreateStoragePool",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePoolCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-pools/{uuid}": {
+      "get": {
+        "operationId": "getStoragePool",
+        "summary": "GetStoragePool",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateStoragePool",
+        "summary": "UpdateStoragePool",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePoolUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteStoragePool",
+        "summary": "DeleteStoragePool",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-policies": {
+      "get": {
+        "operationId": "listStoragePolicies",
+        "summary": "ListStoragePolicies",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePoliciesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createStoragePolicy",
+        "summary": "CreateStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "201": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePolicyCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-policies/{uuid}": {
+      "get": {
+        "operationId": "getStoragePolicy",
+        "summary": "GetStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateStoragePolicy",
+        "summary": "UpdateStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePolicyUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteStoragePolicy",
+        "summary": "DeleteStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetMutationAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-targets/{uuid}/probe": {
+      "post": {
+        "operationId": "probeStorageTarget",
+        "summary": "ProbeStorageTarget",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-policies/preview": {
+      "post": {
+        "operationId": "previewStoragePolicy",
+        "summary": "PreviewStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePolicyPreviewRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-policies/{uuid}/apply": {
+      "post": {
+        "operationId": "applyStoragePolicy",
+        "summary": "ApplyStoragePolicy",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Preview counts records whose captured policy revision differs. Apply updates those revision references transactionally and requires unfinished transfers to finish first. It does not itself delete files or complete asynchronous archive/migration work.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyApplyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePolicyApplyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-migrations": {
+      "get": {
+        "operationId": "listStorageMigrations",
+        "summary": "ListStorageMigrations",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMigrationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createStorageMigration",
+        "summary": "CreateStorageMigration",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Queues move (default) or copy of a complete recording. A 202 job is not completion. Poll the job state; verify checksum/publication and cleanup independently. Permission is global storage.configure, not creator ownership.",
+        "responses": {
+          "202": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMigration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageMigrationCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-migrations/{uuid}": {
+      "get": {
+        "operationId": "getStorageMigration",
+        "summary": "GetStorageMigration",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMigration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-migrations/{uuid}/cancel": {
+      "post": {
+        "operationId": "cancelStorageMigration",
+        "summary": "CancelStorageMigration",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Global storage.configure permits acting on any job. Cancel may request cancellation of an active job; retry requeues eligible failed/cancelled work. Poll state to observe completion and cleanup; the acknowledgement is not a completed transfer.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMigration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-migrations/{uuid}/retry": {
+      "post": {
+        "operationId": "retryStorageMigration",
+        "summary": "RetryStorageMigration",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Global storage.configure permits acting on any job. Cancel may request cancellation of an active job; retry requeues eligible failed/cancelled work. Poll state to observe completion and cleanup; the acknowledgement is not a completed transfer.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageMigration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CameraUuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/storage-archive": {
+      "get": {
+        "operationId": "getStorageArchive",
+        "summary": "GetStorageArchive",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageArchiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-archive/retry": {
+      "post": {
+        "operationId": "retryStorageArchive",
+        "summary": "RetryStorageArchive",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "202": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageArchiveRetryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageArchiveRetryRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage-compliance": {
+      "get": {
+        "operationId": "getStorageCompliance",
+        "summary": "GetStorageCompliance",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageComplianceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage/health": {
+      "get": {
+        "operationId": "getStorageHealth",
+        "summary": "GetStorageHealth",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Requires global storage.configure, including for scoped tokens. Resource existence, revisions and reference/state checks still apply. Basic and legacy-key compatibility is preserved.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage/cleanup": {
+      "post": {
+        "operationId": "triggerStorageCleanup",
+        "summary": "TriggerStorageCleanup",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "basicAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          },
+          {
+            "bearerToken": []
+          }
+        ],
+        "x-lightnvr-authorization": {
+          "version": 1,
+          "kind": "global",
+          "requirements": [
+            {
+              "action": "storage.configure",
+              "resource": "raw"
+            }
+          ]
+        },
+        "description": "Signals the asynchronous cleanup controller. Success acknowledges scheduling, not deletion or reclaimed bytes. Invalid bodies are rejected before scheduling. Protected media and retention constraints still apply.",
+        "responses": {
+          "200": {
+            "description": "Successful operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCleanupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Global storage.configure denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision, reference or state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Storage target unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage operation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Catalog or storage service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageCleanupRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16771,6 +20627,2224 @@
       "CameraUuid": {
         "type": "string",
         "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      },
+      "StorageTargetHealth": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "pressure": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "capacity_known": {
+            "type": "boolean"
+          },
+          "duplicate_filesystem": {
+            "type": "boolean"
+          },
+          "capacity_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "available_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "used_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cleanup_target_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "filesystem_device": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "used_pct": {
+            "type": "number",
+            "minimum": 0
+          },
+          "last_probe_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "pressure",
+          "last_error",
+          "capacity_known",
+          "duplicate_filesystem",
+          "capacity_bytes",
+          "available_bytes",
+          "used_bytes",
+          "cleanup_target_bytes",
+          "filesystem_device",
+          "used_pct",
+          "last_probe_at",
+          "last_success_at"
+        ],
+        "additionalProperties": false
+      },
+      "StorageTarget": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "root_path": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": "string",
+            "enum": [
+              "filesystem",
+              "s3"
+            ]
+          },
+          "archive_only": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "mount_required": {
+            "type": "boolean"
+          },
+          "mount_guard_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storage_class": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "warm",
+              "cold"
+            ]
+          },
+          "archive_budget_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reserve_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recording_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recording_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "replica_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "replica_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "migration_bandwidth_bps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high_watermark_pct": {
+            "type": "number"
+          },
+          "low_watermark_pct": {
+            "type": "number"
+          },
+          "archival_window_start_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "archival_window_end_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "health": {
+            "$ref": "#/components/schemas/StorageTargetHealth"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "root_path",
+          "endpoint",
+          "region",
+          "bucket",
+          "credential_ref",
+          "target_type",
+          "archive_only",
+          "enabled",
+          "is_default",
+          "mount_required",
+          "mount_guard_path",
+          "storage_class",
+          "archive_budget_bytes",
+          "reserve_bytes",
+          "recording_count",
+          "recording_bytes",
+          "replica_count",
+          "replica_bytes",
+          "migration_bandwidth_bps",
+          "high_watermark_pct",
+          "low_watermark_pct",
+          "archival_window_start_minute",
+          "archival_window_end_minute",
+          "revision",
+          "created_at",
+          "updated_at",
+          "health"
+        ],
+        "additionalProperties": false
+      },
+      "StorageTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageTarget"
+            },
+            "maxItems": 128
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "targets",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "StorageTargetCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "root_path": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": "string",
+            "enum": [
+              "filesystem",
+              "s3"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "mount_required": {
+            "type": "boolean"
+          },
+          "storage_class": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "warm",
+              "cold"
+            ]
+          },
+          "archive_budget_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reserve_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "migration_bandwidth_bps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high_watermark_pct": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 100
+          },
+          "low_watermark_pct": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": 100
+          },
+          "archival_window_start_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "archival_window_end_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          }
+        },
+        "required": [
+          "name",
+          "root_path"
+        ],
+        "additionalProperties": false
+      },
+      "StorageTargetUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "root_path": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": "string",
+            "enum": [
+              "filesystem",
+              "s3"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "mount_required": {
+            "type": "boolean"
+          },
+          "storage_class": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "warm",
+              "cold"
+            ]
+          },
+          "archive_budget_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reserve_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "migration_bandwidth_bps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high_watermark_pct": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 100
+          },
+          "low_watermark_pct": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": 100
+          },
+          "archival_window_start_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "archival_window_end_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoolMember": {
+        "type": "object",
+        "properties": {
+          "target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "target_uuid",
+          "position",
+          "weight"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoolMemberRequest": {
+        "type": "object",
+        "properties": {
+          "target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "target_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePool": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "most_free",
+              "round_robin",
+              "priority"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePoolMember"
+            },
+            "minItems": 1,
+            "maxItems": 128
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "strategy",
+          "enabled",
+          "revision",
+          "created_at",
+          "updated_at",
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoolsResponse": {
+        "type": "object",
+        "properties": {
+          "pools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePool"
+            },
+            "maxItems": 64
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "pools",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoolCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "most_free",
+              "round_robin",
+              "priority"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePoolMemberRequest"
+            },
+            "minItems": 1,
+            "maxItems": 128
+          }
+        },
+        "required": [
+          "name",
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoolUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "most_free",
+              "round_robin",
+              "priority"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePoolMemberRequest"
+            },
+            "minItems": 1,
+            "maxItems": 128
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicy": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "primary_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "primary_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replication_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "migration_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "target",
+              "pause",
+              "fail"
+            ]
+          },
+          "minimum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "desired_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "maximum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "migration_after_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "required_copy_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "pressure_priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "archive_after_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "hot_residency_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "archive_protected": {
+            "type": "boolean"
+          },
+          "archive_on_pressure": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "enabled",
+          "priority",
+          "selector",
+          "primary_target_uuid",
+          "primary_pool_uuid",
+          "fallback_target_uuid",
+          "replication_pool_uuid",
+          "migration_target_uuid",
+          "fallback_mode",
+          "minimum_retention_days",
+          "desired_retention_days",
+          "maximum_retention_days",
+          "migration_after_days",
+          "required_copy_count",
+          "pressure_priority",
+          "archive_after_seconds",
+          "hot_residency_seconds",
+          "archive_protected",
+          "archive_on_pressure",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePoliciesResponse": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePolicy"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "policies",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "primary_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "primary_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replication_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "migration_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "target",
+              "pause",
+              "fail"
+            ]
+          },
+          "minimum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "desired_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "maximum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "migration_after_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "required_copy_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "pressure_priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "archive_after_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "hot_residency_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "archive_protected": {
+            "type": "boolean"
+          },
+          "archive_on_pressure": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "selector"
+        ],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "primary_target_uuid"
+            ],
+            "properties": {
+              "primary_target_uuid": {
+                "$ref": "#/components/schemas/CameraUuid"
+              }
+            }
+          },
+          {
+            "required": [
+              "primary_pool_uuid"
+            ],
+            "properties": {
+              "primary_pool_uuid": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CameraUuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "StoragePolicyUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "primary_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "primary_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replication_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "migration_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "target",
+              "pause",
+              "fail"
+            ]
+          },
+          "minimum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "desired_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "maximum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "migration_after_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "required_copy_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "pressure_priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "archive_after_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "hot_residency_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "archive_protected": {
+            "type": "boolean"
+          },
+          "archive_on_pressure": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "selector": {
+            "$ref": "#/components/schemas/FleetSelector"
+          },
+          "primary_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "primary_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replication_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "migration_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "target",
+              "pause",
+              "fail"
+            ]
+          },
+          "minimum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "desired_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "maximum_retention_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "migration_after_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 36500
+          },
+          "required_copy_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "pressure_priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "archive_after_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "hot_residency_seconds": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "archive_protected": {
+            "type": "boolean"
+          },
+          "archive_on_pressure": {
+            "type": "boolean"
+          },
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "uuid",
+              "revision"
+            ],
+            "properties": {
+              "uuid": {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          {
+            "required": [
+              "name",
+              "selector",
+              "primary_target_uuid"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 127
+              },
+              "selector": {
+                "$ref": "#/components/schemas/FleetSelector"
+              },
+              "primary_target_uuid": {
+                "$ref": "#/components/schemas/CameraUuid"
+              }
+            }
+          },
+          {
+            "required": [
+              "name",
+              "selector",
+              "primary_pool_uuid"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 127
+              },
+              "selector": {
+                "$ref": "#/components/schemas/FleetSelector"
+              },
+              "primary_pool_uuid": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CameraUuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "StoragePolicyWinner": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "type": "boolean"
+          },
+          "policy_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy_name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000
+          },
+          "primary_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "primary_pool_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback_mode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "target",
+              "pause",
+              "fail"
+            ]
+          },
+          "fallback_target_uuid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CameraUuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "draft",
+          "policy_uuid",
+          "policy_name",
+          "priority",
+          "primary_target_uuid",
+          "primary_pool_uuid",
+          "fallback_mode",
+          "fallback_target_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyPreviewSample": {
+        "type": "object",
+        "properties": {
+          "camera_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "camera_name": {
+            "type": "string"
+          },
+          "overlapping_policy_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoragePolicyWinner"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "camera_uuid",
+          "camera_name",
+          "overlapping_policy_count",
+          "effective_policy"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyConflict": {
+        "type": "object",
+        "properties": {
+          "policy_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "policy_name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000
+          },
+          "overlap_camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "draft_precedes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "policy_uuid",
+          "policy_name",
+          "priority",
+          "overlap_camera_count",
+          "draft_precedes"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyPreview": {
+        "type": "object",
+        "properties": {
+          "draft_enabled": {
+            "type": "boolean"
+          },
+          "sample_truncated": {
+            "type": "boolean"
+          },
+          "matched_camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "shadowed_camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conflict_camera_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conflict_policy_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePolicyPreviewSample"
+            },
+            "maxItems": 50
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePolicyConflict"
+            }
+          }
+        },
+        "required": [
+          "draft_enabled",
+          "sample_truncated",
+          "matched_camera_count",
+          "effective_camera_count",
+          "shadowed_camera_count",
+          "conflict_camera_count",
+          "conflict_policy_count",
+          "sample",
+          "conflicts"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyApplyRequest": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "preview": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revision",
+          "preview"
+        ],
+        "additionalProperties": false
+      },
+      "StoragePolicyApplyResponse": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "preview": {
+            "type": "boolean"
+          },
+          "recordings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "past_new_retention_limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unfinished_transfers": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "revision",
+          "preview",
+          "recordings",
+          "bytes",
+          "past_new_retention_limit",
+          "unfinished_transfers"
+        ],
+        "additionalProperties": false
+      },
+      "StorageMigration": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "source_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "destination_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "recording_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "move",
+              "copy"
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "destination_object_key": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "copying",
+              "verifying",
+              "committing",
+              "retry_wait",
+              "cleanup_pending",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "checksum_mode": {
+            "type": "string",
+            "const": "sha256"
+          },
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bytes_total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes_copied": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bandwidth_limit_bps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "window_start_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "window_end_minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "uuid",
+          "source_target_uuid",
+          "destination_target_uuid",
+          "recording_id",
+          "operation",
+          "source_object_key",
+          "destination_object_key",
+          "last_error",
+          "state",
+          "checksum_mode",
+          "checksum",
+          "bytes_total",
+          "bytes_copied",
+          "attempt_count",
+          "max_attempts",
+          "bandwidth_limit_bps",
+          "progress",
+          "next_attempt_at",
+          "cancel_requested",
+          "window_start_minute",
+          "window_end_minute",
+          "revision",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
+        ],
+        "additionalProperties": false
+      },
+      "StorageMigrationsResponse": {
+        "type": "object",
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageMigration"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "worker_concurrency": {
+            "type": "integer",
+            "const": 1
+          }
+        },
+        "required": [
+          "jobs",
+          "count",
+          "worker_concurrency"
+        ],
+        "additionalProperties": false
+      },
+      "StorageMigrationCreate": {
+        "type": "object",
+        "properties": {
+          "recording_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "destination_target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "move",
+              "copy"
+            ]
+          }
+        },
+        "required": [
+          "recording_id",
+          "destination_target_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "StorageArchiveDeletion": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "recording_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remaining_objects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "next_attempt_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "recording_id",
+          "created_at",
+          "remaining_objects",
+          "attempts",
+          "next_attempt_at",
+          "last_error"
+        ],
+        "additionalProperties": false
+      },
+      "StorageArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "s3_enabled": {
+            "type": "boolean"
+          },
+          "recovery_read_only": {
+            "type": "boolean"
+          },
+          "archive_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transfer_backlog_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retrieval_cache_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retrieval_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pending_deletion_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pending_deletions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageArchiveDeletion"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "s3_enabled",
+          "recovery_read_only",
+          "archive_bytes",
+          "transfer_backlog_bytes",
+          "retrieval_cache_bytes",
+          "retrieval_jobs",
+          "pending_deletion_count",
+          "pending_deletions"
+        ],
+        "additionalProperties": false
+      },
+      "StorageArchiveRetryRequest": {
+        "type": "object",
+        "properties": {
+          "deletion_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          }
+        },
+        "required": [
+          "deletion_uuid"
+        ],
+        "additionalProperties": false
+      },
+      "StorageArchiveRetryResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "retry_queued"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "StorageHealthResponse": {
+        "type": "object",
+        "properties": {
+          "pressure_level": {
+            "type": "string"
+          },
+          "pressure_level_num": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "free_space_pct": {
+            "type": "number"
+          },
+          "fill_rate_bytes_per_day": {
+            "type": "number"
+          },
+          "projected_seconds_to_target": {
+            "type": "number"
+          },
+          "free_space_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_space_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "used_space_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_check_time": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_cleanup_time": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_deep_time": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_cleanup_deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_cleanup_freed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "capacity_target_free_pct": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "pressure_level",
+          "pressure_level_num",
+          "free_space_pct",
+          "fill_rate_bytes_per_day",
+          "projected_seconds_to_target",
+          "free_space_bytes",
+          "total_space_bytes",
+          "used_space_bytes",
+          "last_check_time",
+          "last_cleanup_time",
+          "last_deep_time",
+          "last_cleanup_deleted",
+          "last_cleanup_freed",
+          "capacity_target_free_pct"
+        ],
+        "additionalProperties": false
+      },
+      "StorageCleanupRequest": {
+        "type": "object",
+        "properties": {
+          "aggressive": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "StorageCleanupResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "aggressive": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "const": "Cleanup triggered successfully"
+          }
+        },
+        "required": [
+          "success",
+          "aggressive",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "StorageComplianceTarget": {
+        "type": "object",
+        "properties": {
+          "target_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "sample_window_days": {
+            "type": "number",
+            "minimum": 0
+          },
+          "observed_daily_bytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "days_to_high_watermark": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_retention_days": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "target_uuid",
+          "target_name",
+          "sample_window_days",
+          "observed_daily_bytes",
+          "sample_count",
+          "observed_bytes",
+          "confidence",
+          "days_to_high_watermark",
+          "expected_retention_days"
+        ],
+        "additionalProperties": false
+      },
+      "StorageCompliancePolicy": {
+        "type": "object",
+        "properties": {
+          "policy_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "policy_name": {
+            "type": "string"
+          },
+          "recording_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recording_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minimum_retention_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "desired_retention_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maximum_retention_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "required_copy_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "copy_deficit_recordings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_violation_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sample_window_days": {
+            "type": "number"
+          },
+          "observed_daily_bytes": {
+            "type": "number"
+          },
+          "achieved_retention_days": {
+            "type": "number"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "expected_retention_days": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minimum_forecast_met": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "policy_uuid",
+          "policy_name",
+          "recording_count",
+          "recording_bytes",
+          "minimum_retention_days",
+          "desired_retention_days",
+          "maximum_retention_days",
+          "required_copy_count",
+          "copy_deficit_recordings",
+          "active_violation_count",
+          "sample_window_days",
+          "observed_daily_bytes",
+          "achieved_retention_days",
+          "confidence",
+          "expected_retention_days",
+          "minimum_forecast_met"
+        ],
+        "additionalProperties": false
+      },
+      "StorageComplianceViolation": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "policy_uuid": {
+            "$ref": "#/components/schemas/CameraUuid"
+          },
+          "policy_name": {
+            "type": "string"
+          },
+          "recording_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          },
+          "first_seen_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "uuid",
+          "policy_uuid",
+          "policy_name",
+          "recording_id",
+          "type",
+          "details",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "additionalProperties": false
+      },
+      "StorageComplianceResponse": {
+        "type": "object",
+        "properties": {
+          "forecast_window_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "forecast_note": {
+            "type": "string"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageComplianceTarget"
+            }
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageCompliancePolicy"
+            }
+          },
+          "active_violations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageComplianceViolation"
+            }
+          }
+        },
+        "required": [
+          "forecast_window_days",
+          "forecast_note",
+          "targets",
+          "policies",
+          "active_violations"
+        ],
+        "additionalProperties": false
       }
     }
   }

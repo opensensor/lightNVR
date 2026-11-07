@@ -136,22 +136,23 @@ void handle_post_storage_cleanup(const http_request_t *req, http_response_t *res
     if (!httpd_authorize_action(req, res, AUTHZ_STORAGE_CONFIGURE, NULL,
                                 &user, &evaluation)) return;
 
-    // Parse optional body for aggressive flag
+    /* Invalid input must not schedule a cleanup. Parse the complete request;
+     * truncating or ignoring a malformed body silently changed operator intent. */
     bool aggressive = false;
     if (req->body && req->body_len > 0) {
-        char body_buf[256];
-        size_t copy_len = req->body_len < sizeof(body_buf) - 1 ? req->body_len : sizeof(body_buf) - 1;
-        memcpy(body_buf, req->body, copy_len);
-        body_buf[copy_len] = '\0';
-
-        cJSON *body_json = cJSON_Parse(body_buf);
-        if (body_json) {
-            cJSON *agg = cJSON_GetObjectItemCaseSensitive(body_json, "aggressive");
-            if (cJSON_IsBool(agg) && cJSON_IsTrue(agg)) {
-                aggressive = true;
-            }
-            cJSON_Delete(body_json);
+        const char *end = NULL;
+        const char *limit = (const char *)req->body + req->body_len;
+        cJSON *body = cJSON_ParseWithLengthOpts(req->body, req->body_len, &end, false);
+        while (end && end < limit && *end && strchr(" \t\r\n", *end)) ++end;
+        const cJSON *flag = cJSON_GetObjectItemCaseSensitive(body, "aggressive");
+        if (!cJSON_IsObject(body) || end != limit || (flag && !cJSON_IsBool(flag))) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 400,
+                "Cleanup body must be an object with an optional aggressive boolean");
+            return;
         }
+        aggressive = cJSON_IsTrue(flag);
+        cJSON_Delete(body);
     }
 
     // Trigger cleanup via the unified controller (signals the controller thread)
