@@ -1,5 +1,6 @@
 import {eventJSON,EventRequestError} from '../../js/api/events.ts';
 import {ContractValidationError} from '../../js/api/contractErrors.ts';
+import {withRedirectFixture} from './redirectHarness';
 const uuid='00000000-0000-4000-8000-000000000001',secret='synthetic-secret-never-expose';
 const destination={uuid,key:`mqtt:${uuid}`,name:'Fixture',description:'',enabled:false,type:'mqtt',managed:true,broker:{host:'127.0.0.1',port:1883,client_id:'fixture',topic_template:'events/{type}/{subject_id}',status_topic_template:'',keepalive_seconds:60,qos:1},authentication:{username:'fixture',password_configured:true},tls:{mode:'disabled',ca_file:'',cert_file:'',key_file:''},revision:1,created_at:0,updated_at:0};
 const body={name:'Fixture',broker:{host:'127.0.0.1'},authentication:{username:'fixture',password:secret}};
@@ -67,7 +68,6 @@ test('wrong content type and status reject, and canceled requests do not leak th
  await expect(eventJSON('/api/events/catalog',{signal:controller.signal})).rejects.toMatchObject({name:'AbortError'});expect(fetch).not.toHaveBeenCalled();
 });
 
-import {withRedirectFixture} from './redirectHarness';
 test.each([307,308] as const)('HTTP %i cannot forward broker credentials or retry the mutation',async status=>{
  await withRedirectFixture(status,async fixture=>{
   const fetch=jest.spyOn(global,'fetch').mockImplementation(fixture.fetch);
