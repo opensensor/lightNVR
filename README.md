@@ -1,4 +1,4 @@
-# LightNVR - Lightweight Network Video Recorder
+# LightNVR
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Container Image](https://img.shields.io/badge/container-ghcr.io-blue?logo=docker)](https://github.com/opensensor/lightNVR/pkgs/container/lightnvr)
@@ -6,581 +6,155 @@
 [![Static Analysis](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml)
 [![Sanitizer Build](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml)
 [![CodeQL](https://github.com/opensensor/lightNVR/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/codeql-analysis.yml)
-[![Container Scan](https://github.com/opensensor/lightNVR/actions/workflows/container-scan.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/container-scan.yml)
-
-LightNVR is a tiny, memory-optimized Network Video Recorder software written in C. While originally designed for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM, it can run on any Linux system.
-
-> **Free to use does not mean free to build.** About $10,000 of the maintainer's own money has gone into lightNVR's development and operation over roughly two years. If lightNVR saves you money, supports your customers, or creates value for your business, please help sustain the work through the **[lightNVR $10K Sustainability Drive](docs/SPONSORSHIP.md)** or **[sponsor directly on GitHub](https://github.com/sponsors/matteius)**.
-
-## Overview
-
-LightNVR provides a lightweight yet powerful solution for recording and managing IP camera streams. It's designed to run efficiently on low-power, memory-constrained devices while still providing essential NVR functionality with a modern, responsive web interface.
-
-![Live Streams Interface](docs/images/live-streams.png)
-
-> **✨ New Features:** Detection zones with visual polygon editor, customizable themes, enhanced light-object-detect integration, and ultra-low-latency WebRTC streaming!
-
-### Key Features
-
-#### 🎯 Smart Detection & Recording
-- **Detection Zones**: Visual polygon-based zone editor for targeted object detection - define multiple zones per camera with custom class filters and confidence thresholds
-- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/opensensor/light-object-detect) API for ONNX/TFLite-based object detection with zone filtering; [DOODS2](https://github.com/snowzach/doods2) servers are supported through a selectable request format
-- **ONVIF Motion Events**: Automated recording triggered by ONVIF motion detection events
-- **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
-
-#### 📺 Streaming & Playback
-- **WebRTC Streaming**: Ultra-low latency live viewing with automatic NAT/firewall traversal via STUN/ICE
-- **HLS Streaming**: HLS playback for broad device compatibility
-- **Dual Streaming Modes**: Toggle between WebRTC (low latency) and HLS (compatibility) on-the-fly
-- **Detection Overlays**: Real-time bounding boxes and labels on live streams
-
-#### 🎨 Modern User Interface
-- **Customizable Themes**: 8 beautiful color themes (Ocean Blue, Forest Green, Royal Purple, Sunset Rose, Golden Amber, Cool Slate, Retro 80s, Default)
-- **Dark/Light Mode**: Automatic system preference detection with manual override
-- **Color Intensity Control**: Fine-tune theme brightness and contrast to your preference
-- **Responsive Design**: Built with Tailwind CSS and Preact for smooth, modern UX
-
-#### 🔧 Core Capabilities
-- **Cross-Platform**: Runs on any Linux system, from embedded devices to full servers
-- **Memory Efficient**: Optimized to run on devices with low memory (SBCs and certain SoCs)
-- **Stream Support**: Handle multiple video streams (with memory-optimized buffering)
-- **Protocol Support**: RTSP and ONVIF (basic profile)
-- **Codec Support**: H.264 (primary), H.265 (if resources permit)
-- **Resolution Support**: Configurable resolution per stream
-- **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
-- **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
-- **Storage Management**: Automatic retention policies and disk space management
-- **Reliability**: Automatic recovery after power loss or system failure
-- **Operational Health**: Bounded OS/container/filesystem/hardware sampling,
-  durable incidents, Prometheus metrics, and MQTT loss-of-contact presence
-- **Resource Optimization**: Stream prioritization to manage limited RAM
-
-## 🧱 Architecture Overview
-
-LightNVR is built as a small, C-based core service with a modern Preact/Tailwind web UI and go2rtc as the streaming backbone. Object detection is handled by an external detection API (typically `light-object-detect`).
-
-| ![Overall Architecture](docs/images/arch-overall.svg) |
-|:------------------------------------------------------:|
-| High-level architecture: web UI, API, core, go2rtc, and detection service |
-
-At a high level:
-
-- **Web UI & API layer** – Preact single-page UI served by the embedded HTTP server, plus JSON REST endpoints for streams, recordings, detection, and settings.
-- **Core service** – Stream manager, recorder, retention logic, configuration store, and event system implemented in C for low memory use.
-- **Streaming layer (go2rtc)** – Handles RTSP ingest and provides WebRTC/HLS endpoints. LightNVR configures go2rtc and talks to it directly for `/api/webrtc` and snapshot (`/api/frame.jpeg`) calls.
-- **Detection service** – External HTTP API (e.g. `light-object-detect`) that receives frames from go2rtc and returns object detections which LightNVR stores and overlays.
-- **Storage & system resources** – MP4/HLS writers, file system, DB, and lightweight threading model tuned for small devices.
-
-For more detail, the repository also includes:
-
-- `docs/images/arch-state.svg` – high-level state machine for streams/recordings
-- `docs/images/arch-thread.svg` – thread and worker layout for the core service
-
-## 🆕 Recent Highlights
-
-### libuv HTTP Backend (v0.20.0)
-Migrated from Mongoose to libuv + llhttp for the HTTP server, improving performance and reliability.
-
-### TOTP Two-Factor Authentication (v0.20.0)
-Optional TOTP-based MFA for securing the web interface with authenticator apps.
-
-### MQTT Event Streaming (v0.19.0)
-Publish detection events to an MQTT broker for integration with Home Assistant and other automation platforms.
-
-### Demo Mode (v0.21.0)
-Built-in demo mode with virtual test streams for development and evaluation without real cameras.
-
-### Database-Backed User Management (v0.21.7)
-Users live in the database and are managed from the **Users** page, not the config file. The first run creates an `admin` account with the password `admin` — [change it immediately](#first-login).
-
-## 💡 Use Cases
-
-LightNVR is perfect for:
-
-- **🏠 Home Security**: Monitor your property with smart detection zones - get alerts only for activity in specific areas
-- **🏢 Small Business**: Cost-effective surveillance with professional features like zone-based detection and retention policies
-- **🔬 IoT & Edge Computing**: Run on resource-constrained devices (Raspberry Pi, SBCs) with minimal memory footprint
-- **🎓 Education & Research**: Learn about video processing, object detection, and real-time streaming with clean, well-documented code
-- **🛠️ DIY Projects**: Build custom surveillance solutions with flexible API integration and modern web interface
-- **📦 Warehouse & Logistics**: Monitor specific zones (loading docks, storage areas) with class-specific detection (person, forklift, etc.)
-
-## 🆚 Why LightNVR?
-
-| Feature | LightNVR | Traditional NVR | Cloud Solutions |
-|---------|----------|-----------------|-----------------|
-| **Memory Footprint** | 256MB minimum | 2GB+ typical | N/A (cloud-based) |
-| **Detection Zones** | ✅ Visual polygon editor | ❌ Usually grid-based or none | ✅ Varies by provider |
-| **Custom Themes** | ✅ 8 themes + intensity control | ❌ Fixed UI | ⚠️ Limited options |
-| **WebRTC Streaming** | ✅ Sub-second latency | ⚠️ Often RTSP only | ✅ Usually supported |
-| **Object Detection** | ✅ ONNX/TFLite/SOD support | ⚠️ Proprietary or limited | ✅ Usually included |
-| **Privacy** | ✅ 100% local, no cloud | ✅ Local | ❌ Data sent to cloud |
-| **Cost** | ✅ Free & open-source | 💰 $200-2000+ | 💰 $10-50/month per camera |
-| **Customization** | ✅ Full source code access | ❌ Closed source | ❌ Limited to API |
-| **Resource Usage** | ✅ Optimized for SBCs | ⚠️ Requires dedicated hardware | N/A |
-| **API Integration** | ✅ RESTful API + WebSocket | ⚠️ Varies | ✅ Usually available |
-
-## System Requirements
-
-- **Processor**: Any Linux-compatible processor (ARM, x86, MIPS, etc.)
-- **Memory**: 256MB RAM minimum (more recommended for multiple streams)
-- **Storage**: Any storage device accessible by the OS
-- **Network**: Ethernet or WiFi connection
-- **OS**: Linux with kernel 4.4 or newer
-
-## 🌟 Feature Highlights
-
-### Detection Zones - Precision Object Detection
-
-Define custom detection zones with a visual polygon editor. Perfect for monitoring specific areas like doorways, parking spots, or restricted zones while ignoring irrelevant motion.
-
-| ![Detection Zone Editor](docs/images/zone-editor-demo.png) |
-|:----------------------------------------------------------:|
-| Interactive zone editor with driveway detection zone drawn |
-
-| ![Detection Zones Configuration](docs/images/stream-config-zones.png) |
-|:---------------------------------------------------------------------:|
-| Detection Zones section in stream configuration                       |
-
-**Key capabilities:**
-- Draw unlimited polygons per camera stream
-- Per-zone class filtering (e.g., only detect "person" in Zone A, "car" in Zone B)
-- Adjustable confidence thresholds per zone
-- Color-coded zones for easy identification
-- Enable/disable zones without deleting configuration
-
-### Theme Customization - Your Style, Your Way
-
-Choose from 8 professionally designed color themes and fine-tune the intensity to match your environment and preferences.
-
-| ![Theme Selector (Light)](docs/images/theme-selector.png) | ![Theme Selector (Dark)](docs/images/theme-selector-dark.png) |
-|:--------------------------------------------------------:|:-----------------------------------------------------------:|
-| Theme selector in light mode                             | Theme selector in dark mode                                 |
-
-| ![Ocean Blue Theme](docs/images/theme-blue.png) | ![Emerald Theme](docs/images/theme-emerald.png) | ![Royal Purple Theme](docs/images/theme-purple.png) | ![Sunset Rose Theme](docs/images/theme-rose.png) |
-|:-----------------------------------------------:|:------------------------------------------------:|:-------------------------------------------------:|:------------------------------------------------:|
-| Ocean Blue                                      | Forest/Emerald Green                            | Royal Purple                                     | Sunset Rose                                      |
-
-**Available themes:**
-- 🎨 Default (Neutral Gray)
-- 🌊 Ocean Blue
-- 🌲 Forest Green
-- 👑 Royal Purple
-- 🌹 Sunset Rose
-- ⚡ Golden Amber
-- 🗿 Cool Slate
-- 🕹️ Retro 80s
-
-Each theme supports both light and dark modes with adjustable color intensity (0-100%).
-
-### WebRTC Live Streaming - Ultra-Low Latency
-
-Experience real-time camera feeds with sub-second latency using WebRTC technology. Automatic NAT traversal ensures it works even behind firewalls.
-
-| ![WebRTC Live Streams](docs/images/live-streams.png) | ![HLS Live Streams](docs/images/live-streams-hls.png) |
-|:---------------------------------------------------:|:----------------------------------------------------:|
-| WebRTC live view with ultra-low latency             | HLS-based live view for compatibility                |
-
-| ![Detection Overlay](docs/images/detection-overlay.png) |
-|:-------------------------------------------------------:|
-| Real-time detection overlays with bounding boxes        |
-
-**Features:**
-- Sub-second latency for real-time monitoring
-- Automatic STUN/ICE configuration for NAT traversal
-- Seamless fallback to HLS for compatibility
-- Real-time detection overlay with bounding boxes
-- Grid layout supporting multiple simultaneous streams
-
-### light-object-detect Integration
-
-Powerful object detection using modern ONNX and TFLite models with zone-aware filtering.
-
-**Integration features:**
-- Per-stream API endpoint configuration
-- Configurable detection backends (ONNX, TFLite, OpenCV)
-- Zone-based filtering to reduce false positives
-- Track ID and zone ID support for advanced analytics
-- Direct go2rtc frame extraction (no FFmpeg overhead)
-
-## Screenshots
-
-| ![Stream Management](docs/images/stream-management.png) | ![Recording Management](docs/images/recording-management.png) |
-|:-------------------------------------------------------:|:------------------------------------------------------------:|
-| Stream Management                                       | Recording Management                                          |
-
-| ![Recording Playback](docs/images/recording-playback.png) |
-|:---------------------------------------------------------:|
-| Recording Playback with video player modal                |
-
-| ![Settings Management](docs/images/settings-management.png) | ![System Information](docs/images/system-info.png) |
-|:----------------------------------------------------------:|:--------------------------------------------:|
-| Settings Management                                         | System Information                            |
-
-## Quick Start
-
-### Installation
-
-> **🏠 Running Home Assistant?** Install LightNVR straight from the add-on store —
-> no Docker or command line needed. Add the repository
-> **[opensensor/lightnvr-hassio-addons](https://github.com/opensensor/lightnvr-hassio-addons)**
-> under **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, then install
-> **LightNVR**. See that repo's README for one-click setup.
-
-1. **Build from source**:
-
-   Prerequisites (in addition to `build-essential`, `cmake`, `pkg-config`):
-   - **FFmpeg ≥ 7.1**, tested up to 9.0 (`libavcodec ≥ 61`, `libavformat ≥ 61`, `libavutil ≥ 59`,
-     `libswscale ≥ 8`, `libswresample ≥ 5`; optional `libavfilter ≥ 10` for
-     per-stream voice enhancement). Debian 12 (bookworm) and Ubuntu
-     22.04 ship FFmpeg 5.x/6.x, which is too old — build FFmpeg from source or
-     use a newer distro release (Debian 13 / Ubuntu 24.04+ ship a compatible
-     version).
-   - **Node.js ≥ 24.11 and < 25** for the web build. Use the pinned version in
-     `.nvmrc`; distribution packages may be older, so install Node 24 via
-     [NodeSource](https://github.com/nodesource/distributions) or
-     [nvm](https://github.com/nvm-sh/nvm) when needed.
-   - **`libsqlite3-dev`** (not pulled in automatically by any of the above).
-
-   ```bash
-   # Clone the repository
-   git clone https://github.com/opensensor/lightnvr.git
-   cd lightnvr
-
-   # Initialize submodules (required for go2rtc)
-   git submodule update --init --recursive
-
-   # Build web assets (requires Node.js >= 24.11 and < 25 -- see above).
-   # Use this script rather than running: cd web && npm install && npm run build
-   # It also runs scripts/extract_version.js first, which generates web/js/version.js
-   # from CMakeLists.txt. Skipping that step fails the Vite build with:
-   # "Could not resolve '../../version.js'" in Header.tsx.
-   ./scripts/build_web_vite.sh
-
-   # Build the software
-   ./scripts/build.sh --release
-
-   # Install (requires root)
-   sudo ./scripts/install.sh
-   ```
-
-2. **Configure**:
-   ```bash
-   # Edit the configuration file
-   sudo nano /etc/lightnvr/lightnvr.ini
-   ```
-
-3. **Start the service**:
-   ```bash
-   sudo systemctl start lightnvr
-   sudo systemctl enable lightnvr
-   ```
-
-4. **Access the web interface**:
-   Open a web browser and navigate to `http://your-device-ip:8080`
-
-   See [First login](#first-login) — the default credentials are `admin` / `admin` and you should change them before anything else.
-
-5. **(Optional) Set up object detection**:
-
-   For advanced object detection with zone filtering, integrate with [light-object-detect](https://github.com/opensensor/light-object-detect):
-
-   ```bash
-   # Install light-object-detect (requires Python 3.8+)
-   pip install light-object-detect
-
-   # Start the detection API server (default port 9001)
-   light-object-detect --host 0.0.0.0 --port 9001
-   ```
-
-   Then configure detection in LightNVR:
-   - Navigate to **Streams** → Select a stream → **Configure**
-   - Enable **Detection Based Recording**
-   - Set **API Detection URL** to `http://localhost:9001/api/v1/detect`
-   - Choose detection backend: `onnx` (recommended), `tflite`, or `opencv`
-   - Running [DOODS2](https://github.com/snowzach/doods2) instead? Set **API Request Format** to DOODS2 in **Settings → Detection** and point the URL at its `/detect` endpoint (see [API Detection Settings](docs/CONFIGURATION.md#api-detection-settings))
-   - Configure **Detection Zones** to define areas of interest
-
-   See [Zone Configuration Guide](docs/ZONE_CONFIGURATION.md) for detailed zone setup instructions.
+[![lightnvr-rs](https://github.com/opensensor/lightNVR/actions/workflows/lightnvr-rs.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/lightnvr-rs.yml)
+
+**A self-hosted network video recorder that runs on anything from a 256 MB embedded
+board to a server.** LightNVR records your IP cameras, streams them live to the browser
+over WebRTC or HLS, and finds what matters with detection zones, ONVIF events and licence
+plate search — all locally, with no cloud account.
+
+![Live view](docs/images/live-streams.png)
+
+> **Free to use does not mean free to build.** About $10,000 of the maintainer's own money
+> has gone into LightNVR over roughly two years. If it saves you money or supports your
+> customers, please help through the **[$10K Sustainability Drive](docs/SPONSORSHIP.md)** or
+> **[sponsor on GitHub](https://github.com/sponsors/matteius)**.
+
+## What it does
+
+**Record**
+- Continuous, scheduled, motion- and detection-triggered recording to standard MP4, with a
+  pre-event buffer so clips include what led up to them
+- Retention policies, recording protection and tags, and disk-space management
+- Optional archival to S3, NFS or SAN storage ([storage & archive](docs/STORAGE_ARCHIVE.md))
+
+**Watch**
+- Live grid over WebRTC (sub-second) or HLS, with detection overlays — proxied and
+  authenticated through LightNVR, built on [go2rtc](https://github.com/AlexxIT/go2rtc)
+- Recordings browser, a timeline, and an **Investigation** workspace that reviews up to 16
+  cameras against one shared clock without hiding gaps in footage
+- Clip and multi-camera export
+
+**Detect**
+- Polygon detection zones with per-zone object classes and confidence thresholds
+  ([zones](docs/ZONE_CONFIGURATION.md))
+- External detection through [light-object-detect](https://github.com/opensensor/light-object-detect)
+  (ONNX/TFLite) or [DOODS2](https://github.com/snowzach/doods2), or embedded
+  [SOD](docs/SOD_INTEGRATION.md) for small devices ([detection engines](docs/DETECTION_ENGINES.md))
+- ONVIF discovery and camera-side motion events ([ONVIF](docs/ONVIF_DETECTION.md))
+- Licence plate reads with plate search
+
+**Run it securely**
+- Database-backed users with roles, TOTP multi-factor authentication and API keys
+- A forced password change on first login; go2rtc's API kept on loopback
+- Operational health: OS, container, filesystem and hardware sampling, incidents, and
+  Prometheus metrics ([system health](docs/api/system-health.md))
+- Non-root container image with all capabilities dropped
+
+**Integrate**
+- REST API with an in-app API reference ([API](docs/API.md))
+- MQTT events and Home Assistant discovery ([MQTT](docs/MQTT_INTEGRATION.md),
+  [Home Assistant](docs/HOME_ASSISTANT.md))
+
+The web UI ships in 19 languages, with light and dark modes and eight colour themes.
+
+| ![Detection zone editor](docs/images/zone-editor-demo.png) | ![Recordings](docs/images/recording-management.png) |
+|:---:|:---:|
+| Detection zone editor | Recordings |
+| ![Stream configuration](docs/images/stream-config-detection.png) | ![System](docs/images/system-info.png) |
+| Per-stream detection settings | System health |
+
+## Quick start
+
+### Docker Compose
+
+```bash
+mkdir lightnvr && cd lightnvr
+curl -LO https://raw.githubusercontent.com/opensensor/lightNVR/main/docker-compose.yml
+docker compose up -d
+```
+
+Open `http://<host>:8080`. Images are published to `ghcr.io/opensensor/lightnvr` for
+`linux/amd64`, `linux/arm64` and `linux/arm/v7` on every release. Volumes, ports,
+environment variables and upgrades are covered in the [Docker guide](docs/DOCKER.md).
+
+### Other ways to install
+
+| | |
+|---|---|
+| **Home Assistant** | Add [opensensor/lightnvr-hassio-addons](https://github.com/opensensor/lightnvr-hassio-addons) under *Settings → Add-ons → Add-on Store → ⋮ → Repositories*, then install LightNVR. See [Home Assistant](docs/HOME_ASSISTANT.md). |
+| **Debian / Ubuntu** | `.deb` packages for amd64, arm64 and armhf are attached to each [release](https://github.com/opensensor/lightNVR/releases). |
+| **Windows** | [Podman + WSL2](docs/WINDOWS_PODMAN.md) |
+| **From source** | [Build guide](docs/BUILD.md): FFmpeg ≥ 7.1, Node.js 24, CMake. Required for embedded targets. |
 
 ### First login
 
-> ⚠️ **LightNVR ships with the credentials `admin` / `admin`, and the web server listens on
-> `0.0.0.0` by default.** Until you change the password, anyone who can reach port 8080 can
-> reach your cameras and recordings. Change it before you expose the port to anything.
+> ⚠️ **The default login is `admin` / `admin`, and the web server listens on all
+> interfaces.** Until you change the password, anyone who can reach port 8080 can see your
+> cameras.
 
-Log in at `http://your-device-ip:8080` with `admin` / `admin`. LightNVR immediately
-opens a blocking password-change screen; the initial session cannot use the rest of the
-UI or protected password-authenticated APIs. After replacing the password, sign in again
-with the new credential. MFA, when enabled, is evaluated on that next sign-in.
+LightNVR opens a password-change screen on first login and blocks the rest of the UI until
+you replace the default. To avoid the default ever being valid, set `password` in the
+`[web]` section of `lightnvr.ini` before the first start. Locked out? See
+[Authentication issues](docs/TROUBLESHOOTING.md#authentication-issues).
 
-You can also pre-set the password *before* the first start, which avoids the default ever
-being valid: set `password` in the `[web]` section of `lightnvr.ini` and start LightNVR.
-The first run creates the admin account with that password instead. The setting is only
-read when the account is created — after that, users live in the database and are managed
-from the **Users** page.
+Then add a camera (ONVIF discovery or an RTSP URL), confirm it records, and set a retention
+policy. The [documentation index](docs/README.md#getting-started) walks through each step.
 
-Upgrades do not mark existing accounts for a forced password change. The gate is set only
-when LightNVR creates a new administrator with the fallback `admin` password. API-key
-authentication and demo mode are not restricted by this first-login UI flow.
+### Something wrong?
 
-Forgot the password? There is no reset flag. Stop LightNVR, delete the account row, and
-restart — it will be recreated from the same rules as a first run:
+- **Blank page** — usually a volume mounted over `/var/lib/lightnvr` instead of
+  `/var/lib/lightnvr/data`. See [web interface troubleshooting](docs/TROUBLESHOOTING_WEB_INTERFACE.md).
+- **WebRTC won't connect** — set `external_ip` under `[go2rtc]` in `lightnvr.ini` to the
+  host's LAN address. See [WebRTC not working](docs/DOCKER.md#webrtc-not-working).
+- **Anything else** — the [troubleshooting guide](docs/TROUBLESHOOTING.md).
 
-```bash
-sudo systemctl stop lightnvr
-sqlite3 /var/lib/lightnvr/data/database/lightnvr.db "DELETE FROM users WHERE username = 'admin';"
-sudo systemctl start lightnvr
-```
+## Native C and Rust builds
 
-## Troubleshooting
+LightNVR is written in C, and **C remains the source of truth**: every feature and fix is
+made there, and the native builds above come from it.
 
-### Blank Web Page
+Alongside them, CI translates the C into Rust with [C2Rust](https://github.com/immunant/c2rust)
+on every pull request, builds it, and runs the smoke and API contract tests against it.
+This build, **lightnvr-rs**, is for organizations whose policies call for software built
+in a memory-safe language. Starting with 0.47.3, it is
+published as `ghcr.io/opensensor/lightnvr-rs` and `lightnvr-rs_<version>_sid_amd64.deb`.
 
-If you see a blank page after installation:
+Today the translation is C-shaped `unsafe` Rust linking the same native libraries, so its
+safety properties are essentially those of the C build. It is the foundation for removing
+`unsafe` over time, not a finished safe-Rust port. Contributors never edit
+[`rust/`](rust/README.md) by hand. The
+[announcement](https://github.com/opensensor/lightNVR/discussions/874) explains the reasoning.
 
-**For Docker users:**
-```bash
-# Check if you mounted /var/lib/lightnvr directly (this overwrites web assets)
-docker inspect lightnvr | grep -A 5 Mounts
+## Requirements
 
-# Fix: Update docker-compose.yml to mount /var/lib/lightnvr/data instead
-# Then recreate the container:
-docker compose down
-docker compose up -d
-```
-
-**For native installation:**
-```bash
-# Install/reinstall web assets (requires source directory)
-sudo ./scripts/install_web_assets.sh
-
-# Restart service
-sudo systemctl restart lightnvr
-```
-
-See [Web Interface Troubleshooting Guide](docs/TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
-
-### WebRTC Streams Not Connecting
-
-If live streams fail with ICE connection errors, set your machine's local IP as `external_ip` in `lightnvr.ini`:
-
-```ini
-[go2rtc]
-external_ip = 192.168.1.100  ; Replace with your machine's local IP
-```
-
-To find your local IP:
-```bash
-# Linux
-hostname -I | awk '{print $1}'
-
-# macOS
-ipconfig getifaddr en0    # or en1 for Wi-Fi
-```
-
-Then restart LightNVR (or `docker compose restart` for Docker). See the [Docker Deployment Guide](docs/DOCKER.md#webrtc-not-working) for more WebRTC troubleshooting.
-
-### General Troubleshooting
-
-For other issues, see the [General Troubleshooting Guide](docs/TROUBLESHOOTING.md).
-
-### Docker Installation
-
-#### Quick Start with Docker Compose (Recommended)
-
-No clone or build required — [`docker-compose.yml`](docker-compose.yml) pulls the published image:
-
-```bash
-# Download the compose file into an empty directory
-curl -LO https://raw.githubusercontent.com/opensensor/lightNVR/main/docker-compose.yml
-
-# Pull the image and start the container
-docker compose up -d
-
-# View logs
-docker compose logs -f
-```
-
-To build the image from source instead, clone the repository, run `git submodule update --init --recursive`, and switch the `image:` line in `docker-compose.yml` to the commented-out `build:` block.
-
-The container will automatically:
-- Create default configuration files in `./config`
-- Initialize the database in `./data/database`
-- Set up web assets with working defaults
-- Configure go2rtc with WebRTC/STUN support
-
-Access the web UI at `http://localhost:8080`. The default credentials are `admin` / `admin` — see [First login](#first-login).
-
-#### Using Docker Run
-
-Images are published to GHCR on every tagged release, for `linux/amd64`, `linux/arm64`, and `linux/arm/v7`:
-
-```bash
-docker pull ghcr.io/opensensor/lightnvr:latest
-```
-
-```bash
-docker run -d \
-  --name lightnvr \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -p 8554:8554 \
-  -p 8555:8555 \
-  -p 8555:8555/udp \
-  --security-opt no-new-privileges --cap-drop ALL \
-  -v lightnvr-config:/etc/lightnvr \
-  -v lightnvr-database:/var/lib/lightnvr/data/database \
-  -v lightnvr-recordings:/var/lib/lightnvr/data/recordings \
-  -v lightnvr-models:/var/lib/lightnvr/data/models \
-  -e TZ=America/New_York \
-  ghcr.io/opensensor/lightnvr:latest
-```
-
-#### Volume Mounts Explained
-
-The example uses named volumes for config, database, recordings, and models. Existing bind mounts must be owned by UID:GID `10001:10001`; see the [migration notes](docs/DOCKER.md#security-migration-non-root-runtime-and-private-go2rtc-api) before upgrading. WebRTC and MSE use LightNVR’s authenticated proxy on the dashboard port. For HTTPS, see the [reverse-proxy configuration](docs/REVERSE_PROXY.md).
-
-Persistent paths:
-
-- **`/etc/lightnvr`** - Configuration files
-  - `lightnvr.ini` - Main configuration
-  - `go2rtc/go2rtc.yaml` - go2rtc WebRTC/RTSP configuration
-
-- **`/var/lib/lightnvr/data`** - Persistent data
-  - `database/` - SQLite database
-  - `recordings/` - Video recordings (HLS and MP4)
-  - `models/` - Object detection models
-
-**⚠️ Important:** Do NOT mount `/var/lib/lightnvr` directly as it will overwrite web assets!
-
-#### Exposed Ports
-
-- **8080** - Web UI (HTTP)
-- **8554** - RTSP streaming
-- **8555** - WebRTC (TCP/UDP)
-- **1984** - internal go2rtc API, bound to loopback; do not publish
-
-#### Environment Variables
-
-- `TZ` - Timezone (default: UTC)
-- `GO2RTC_CONFIG_PERSIST` - Persist go2rtc config across restarts (default: true)
-- `LIGHTNVR_ONVIF_NETWORK` - Camera network to scan for ONVIF discovery, in CIDR form
-
-See [Docker Deployment](docs/DOCKER.md#environment-variables) for the full list.
-
-#### First Run
-
-On first run, the container will:
-1. Create default configuration files in `/etc/lightnvr`
-2. Verify the web assets baked into the image at `/var/lib/lightnvr/www`
-3. Initialize the database in `/var/lib/lightnvr/data/database`
-4. Seed detection models into `/var/lib/lightnvr/data/models`
-5. Set up go2rtc with WebRTC/STUN configuration
-
-The go2rtc configuration includes STUN servers for WebRTC NAT traversal, so WebRTC streaming should work out-of-the-box in most network environments.
-
-#### Customizing Configuration
-
-After first run, you can customize the configuration:
-
-```bash
-# Edit main configuration
-nano ./config/lightnvr.ini
-
-# Edit go2rtc configuration (WebRTC, RTSP settings)
-nano ./config/go2rtc/go2rtc.yaml
-
-# Restart to apply changes
-docker compose restart
-```
-
-The configuration files will persist across container restarts and updates.
+- Linux on ARM, x86 or MIPS (kernel 4.4+)
+- 256 MB RAM minimum; more for several streams or detection
+  ([memory in practice](docs/INSTALLATION.md#memory-in-practice))
+- Cameras that speak RTSP or ONVIF, H.264 or H.265 ([camera notes](docs/CAMERAS.md))
 
 ## Documentation
 
-**📖 [Full documentation index](docs/README.md)** — grouped by task, with a
-getting-started path from install to first recording.
+The **[documentation index](docs/README.md)** is grouped by task: install, configure,
+operate, integrate and develop. Common starting points:
 
-### Getting Started
-- [Installation Guide](docs/INSTALLATION.md)
-- [Build Instructions](docs/BUILD.md)
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Docker Deployment](docs/DOCKER.md)
-- [Home Assistant Add-on](docs/HOME_ASSISTANT.md)
-- [Windows (Podman + WSL2)](docs/WINDOWS_PODMAN.md)
-- [Reverse Proxy & HTTPS](docs/REVERSE_PROXY.md)
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-
-### Features & Integration
-- **[Zone Configuration](docs/ZONE_CONFIGURATION.md)** - Visual polygon-based detection zones
-- [API Documentation](docs/API.md)
-- [go2rtc Integration](docs/GO2RTC_INTEGRATION.md)
-- [go2rtc Config Override](docs/GO2RTC_CONFIG_OVERRIDE.md)
-- [MQTT Integration](docs/MQTT_INTEGRATION.md)
-- [Camera Compatibility](docs/CAMERAS.md)
-- [ONVIF Detection](docs/ONVIF_DETECTION.md)
-- [Multiple Detection Engines](docs/DETECTION_ENGINES.md)
-- [Motion Buffer System](docs/MOTION_BUFFER.md)
-- [SOD Integration](docs/SOD_INTEGRATION.md)
-
-### Architecture & Development
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Frontend Architecture](docs/FRONTEND.md)
-- [Release Process](docs/RELEASE_PROCESS.md)
-- [Product requirement documents](docs/prd/)
-- [Internal design notes](docs/internal/) — historical writeups, not current guidance
-
-## Project Structure
-
-- `src/` - C source code
-  - `core/` - Core system components
-  - `video/` - Video processing and stream handling
-  - `storage/` - Storage management
-  - `web/` - HTTP server and API handlers
-  - `database/` - Database operations and migrations
-  - `utils/` - Utility functions
-- `include/` - Header files
-- `web/` - Web frontend (Vite + Preact + Tailwind CSS)
-  - `js/` - Preact components and pages
-  - `css/` - Tailwind CSS stylesheets
-  - `*.html` - HTML entry points
-- `db/migrations/` - SQLite schema migrations
-- `scripts/` - Build, install, and utility scripts
-- `config/` - Configuration templates
-- `docs/` - Documentation
-- `tests/` - Integration and Playwright tests
-
-## Memory Optimization
-
-LightNVR is specifically designed for memory-constrained environments:
-
-- **Efficient Buffering**: Minimizes memory usage while maintaining reliable recording
-- **Stream Prioritization**: Allocates resources based on stream importance
-- **Staggered Initialization**: Prevents memory spikes during startup
-- **Swap Support**: Optional swap file configuration for additional virtual memory
-- **Resource Governors**: Prevents system crashes due to memory exhaustion
+- [Installation](docs/INSTALLATION.md) · [Docker](docs/DOCKER.md) · [Configuration](docs/CONFIGURATION.md) · [Reverse proxy & HTTPS](docs/REVERSE_PROXY.md)
+- [Cameras](docs/CAMERAS.md) · [Detection zones](docs/ZONE_CONFIGURATION.md) · [Storage & archive](docs/STORAGE_ARCHIVE.md)
+- [REST API](docs/API.md) · [MQTT](docs/MQTT_INTEGRATION.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-**Note:** By contributing to this project, you agree to sign our [Contributor License Agreement (CLA)](CLA.md). The CLA bot will guide you through the process on your first pull request.
+Pull requests are welcome. Make changes in C under `src/` and `include/`, or in the web UI
+under `web/`. CI regenerates the Rust build for you. On your first pull request, the CLA
+bot will ask you to sign the [Contributor License Agreement](CLA.md). Report security
+issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+LightNVR is licensed under the [GNU General Public License v3.0](LICENSE). For proprietary
+integration or professional support, see [commercial licensing](docs/COMMERCIAL.md).
 
-### Commercial Licensing
-
-For organizations that need to integrate lightNVR into proprietary products or cannot comply with GPL requirements, **commercial licenses** are available from OpenSensor Engineering. See [Commercial Licensing & Professional Support](docs/COMMERCIAL.md) for details.
-
-## Star History
+## Star history
 
 <!-- The encrypted Star History token expires on 2027-08-23; regenerate the embed before then. -->
 <a href="https://www.star-history.com/?repos=opensensor%2FlightNVR&type=date&legend=top-left">
@@ -593,25 +167,10 @@ For organizations that need to integrate lightNVR into proprietary products or c
 
 ## Acknowledgments
 
-LightNVR is built on the shoulders of giants. Special thanks to:
-
-### Core Technologies
-- **[FFmpeg](https://ffmpeg.org/)** - Video processing and codec support
-- **[go2rtc](https://github.com/AlexxIT/go2rtc)** - WebRTC and RTSP streaming engine
-- **[SQLite](https://www.sqlite.org/)** - Efficient embedded database
-- **[libuv](https://github.com/libuv/libuv)** - Cross-platform async I/O library
-- **[llhttp](https://github.com/nodejs/llhttp)** - HTTP parser
-- **[cJSON](https://github.com/DaveGamble/cJSON)** - Lightweight JSON parser
-
-### Frontend Stack
-- **[Tailwind CSS](https://tailwindcss.com/)** - Modern utility-first CSS framework
-- **[Preact](https://preactjs.com/)** - Fast 3kB alternative to React
-- **[HLS.js](https://github.com/video-dev/hls.js/)** - JavaScript HLS client
-
-### Detection & AI
-- **[light-object-detect](https://github.com/opensensor/light-object-detect)** - ONNX/TFLite object detection API
-- **[SOD](https://github.com/symisc/sod)** - Embedded computer vision library
-
-### Community
-- All contributors who have helped improve LightNVR
-- The open-source community for inspiration and support
+LightNVR builds on [FFmpeg](https://ffmpeg.org/), [go2rtc](https://github.com/AlexxIT/go2rtc),
+[SQLite](https://www.sqlite.org/), [libuv](https://github.com/libuv/libuv),
+[llhttp](https://github.com/nodejs/llhttp), [cJSON](https://github.com/DaveGamble/cJSON),
+[Preact](https://preactjs.com/), [Tailwind CSS](https://tailwindcss.com/),
+[HLS.js](https://github.com/video-dev/hls.js/), [SOD](https://github.com/symisc/sod) and
+[light-object-detect](https://github.com/opensensor/light-object-detect) — and on everyone
+who has filed an issue, sent a patch or sponsored the work.
