@@ -108,6 +108,16 @@ static void test_untracked_pulse_still_serializes_stop_effects(void) {
     TEST_ASSERT_EQUAL_INT(0, accepted_actions);
 }
 
+static void test_untracked_stale_pulse_has_no_stop_effects_after_newer_action(void) {
+    pthread_mutex_lock(&g_pulse_gen_mutex);
+    pulse_gen_increment("camera");
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
+    run_worker(0, true);
+    TEST_ASSERT_EQUAL_INT(0, close_calls + notify_calls + fanout_calls);
+    TEST_ASSERT_EQUAL_INT(0, concurrent_attempts);
+    TEST_ASSERT_EQUAL_INT(0, accepted_actions);
+}
+
 static void test_annotation_only_pulse_skips_recording_notification(void) {
     run_worker(1, false);
     TEST_ASSERT_EQUAL_INT(1, close_calls);
@@ -122,6 +132,7 @@ int main(void) {
     RUN_TEST(test_current_pulse_serializes_every_stop_effect);
     RUN_TEST(test_superseded_pulse_has_no_stop_effects);
     RUN_TEST(test_untracked_pulse_still_serializes_stop_effects);
+    RUN_TEST(test_untracked_stale_pulse_has_no_stop_effects_after_newer_action);
     RUN_TEST(test_annotation_only_pulse_skips_recording_notification);
     return UNITY_END();
 }
