@@ -3,18 +3,19 @@
 #include "unity.h"
 #include <errno.h>
 
-static int sleep_calls, interruptions, effects;
+static int sleep_calls, interruptions, effects, fixture_errors;
 static int64_t elapsed_ns, expected_ns;
 static bool fail_sleep, supersede;
 
 static int simulate_sleep(int64_t requested, struct timespec *remaining) {
-    TEST_ASSERT_GREATER_THAN_INT64(0, requested);
-    TEST_ASSERT_LESS_OR_EQUAL_INT64(500000000, requested);
-    TEST_ASSERT_EQUAL_INT(0, effects);
+    if (requested <= 0 || requested > 500000000 || effects != 0) fixture_errors++;
     /* Waiting must not block acceptance of a newer motion action. */
-    TEST_ASSERT_EQUAL_INT(0, pthread_mutex_trylock(&g_pulse_gen_mutex));
-    if (supersede && sleep_calls == 0) pulse_gen_increment("camera");
-    pthread_mutex_unlock(&g_pulse_gen_mutex);
+    if (pthread_mutex_trylock(&g_pulse_gen_mutex) != 0) {
+        fixture_errors++;
+    } else {
+        if (supersede && sleep_calls == 0) pulse_gen_increment("camera");
+        pthread_mutex_unlock(&g_pulse_gen_mutex);
+    }
     sleep_calls++;
     if (fail_sleep) { errno = EINVAL; return -1; }
     if (interruptions > 0) {
@@ -38,21 +39,23 @@ int __wrap_usleep(useconds_t usec) {
     return simulate_sleep((int64_t)usec * 1000, NULL);
 }
 static void stop_effect(const char *name) {
-    TEST_ASSERT_EQUAL_STRING("camera", name);
-    if (!fail_sleep) TEST_ASSERT_EQUAL_INT64(expected_ns, elapsed_ns);
+    if (strcmp(name, "camera") || (!fail_sleep && expected_ns != elapsed_ns)) fixture_errors++;
     effects++;
 }
 int __wrap_close_external_motion_detections(const char *uuid, const char *name, time_t end) {
     (void)uuid; (void)end; stop_effect(name); return 0;
 }
 void __wrap_unified_detection_notify_motion(const char *name, bool active) {
-    TEST_ASSERT_FALSE(active); stop_effect(name);
+    if (active) fixture_errors++;
+    stop_effect(name);
 }
 int __wrap_process_motion_event(const char *name, bool active, time_t now, bool propagated) {
-    (void)now; TEST_ASSERT_FALSE(active); TEST_ASSERT_FALSE(propagated); stop_effect(name); return 0;
+    (void)now;
+    if (active || propagated) fixture_errors++;
+    stop_effect(name); return 0;
 }
 void setUp(void) {
-    sleep_calls = interruptions = effects = 0;
+    sleep_calls = interruptions = effects = fixture_errors = 0;
     elapsed_ns = expected_ns = 0;
     fail_sleep = supersede = false;
     memset(g_pulse_gen, 0, sizeof(g_pulse_gen));
@@ -61,6 +64,7 @@ void setUp(void) {
     pulse_gen_increment("camera");
 }
 void tearDown(void) {
+    TEST_ASSERT_EQUAL_INT(0, fixture_errors);
     TEST_ASSERT_EQUAL_INT(0, pthread_mutex_trylock(&g_pulse_gen_mutex));
     pthread_mutex_unlock(&g_pulse_gen_mutex);
 }
