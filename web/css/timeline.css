@@ -315,3 +315,50 @@
     opacity: 0;
     transition: opacity 100ms ease;
 }
+
+/* One primary playback row; secondary controls keep their mounted state. */
+.timeline-primary-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
+.timeline-mobile-toggle { display: none; }
+.timeline-fullscreen-button {
+    position: absolute; top: .5rem; inset-inline-end: .5rem; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border-radius: .5rem;
+    color: white; background: rgb(0 0 0 / .6);
+}
+
+@media (max-width: 768px), (max-width: 960px) and (max-height: 500px) and (orientation: landscape) {
+    body:has(.timeline-page) > .container { width: 100%; max-width: none; padding-inline: .5rem; }
+    .timeline-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .timeline-page .recordings-navigation { margin-bottom: .25rem; }
+    .timeline-mobile-toggle {
+        display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+        min-height: 44px; padding: .25rem .65rem; border: 1px solid hsl(var(--border));
+        border-radius: .5rem; background: hsl(var(--secondary)); color: hsl(var(--foreground));
+        font-size: .8rem;
+    }
+    .timeline-context-toggle { width: 100%; justify-content: space-between; margin-bottom: .5rem; }
+    .timeline-context-toggle > span:first-child { overflow-wrap: anywhere; text-align: start; }
+    .timeline-context:not([data-context-open="true"]) #timeline-context-fields { display: none; }
+    .timeline-workspace { display: flex; flex-direction: column; gap: .4rem; }
+    .timeline-player-container { order: 0; max-width: 100%; margin-bottom: 0; }
+    .timeline-controls { display: contents; }
+    .timeline-primary-controls { order: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .35rem; }
+    .timeline-play-label, .timeline-keyboard-hint, .timeline-inline-hint { display: none; }
+    .timeline-play-control > button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+    .timeline-time-display { min-width: 0; padding: .25rem; font-size: .8rem; overflow-wrap: anywhere; }
+    .timeline-workspace #timeline-container { order: 2; margin-bottom: 0; }
+    .timeline-recording-options { order: 3; }
+    .timeline-zoom-options { order: 4; }
+    .timeline-player-options { order: 5; padding: .5rem; border: 1px solid hsl(var(--border)); border-radius: .5rem; }
+    .timeline-workspace:not([data-options-open="true"]) :is(.timeline-recording-options, .timeline-zoom-options, .timeline-player-options) { display: none; }
+    .timeline-legend { order: 6; margin-bottom: 0; }
+}
+
+/* A landscape phone gives the video the wide column; tools sit alongside it. */
+@media (max-width: 960px) and (max-height: 500px) and (orientation: landscape) {
+    .timeline-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 28%); align-items: start; }
+    .timeline-player-container { grid-column: 1; grid-row: 1 / 8; position: sticky; top: .5rem; }
+    .timeline-player-container > [data-testid="timeline-video-container"] { max-height: calc(100dvh - 1rem); }
+    .timeline-workspace > :not(.timeline-player-container, .timeline-controls),
+    .timeline-controls > * { grid-column: 2; min-width: 0; }
+}

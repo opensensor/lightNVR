@@ -25,7 +25,10 @@ import type { TimelineSegment, TimelineState } from '../../../types/timeline.ts'
  * TimelineControls component
  * @returns {JSX.Element} TimelineControls component
  */
-export function TimelineControls() {
+export function TimelineControls({optionsOpen = false, onToggleOptions}: {
+  optionsOpen?: boolean;
+  onToggleOptions?: () => void;
+} = {}) {
   const { t, dir } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
   const [canZoomIn, setCanZoomIn] = useState(true);
@@ -141,6 +144,17 @@ export function TimelineControls() {
     } else {
       segmentIndex = 0;
       segmentToPlay = timelineState.timelineSegments[0]!;
+      relativeTime = 0;
+    }
+
+    // Native play() restarts an ended file at zero. At a recording edge,
+    // explicitly continue to the following clip instead of replaying the old one.
+    if (relativeTime >= segmentToPlay.end_timestamp - segmentToPlay.start_timestamp) {
+      const next = timelineState.timelineSegments[segmentIndex + 1];
+      if (next) {
+        segmentIndex += 1;
+        segmentToPlay = next;
+      }
       relativeTime = 0;
     }
 
@@ -270,36 +284,49 @@ export function TimelineControls() {
 
   return (
     <div className="timeline-controls flex flex-wrap justify-between items-center gap-2 mb-1">
-      <div className="flex items-center gap-1.5">
-        <button
-          id="play-button"
-          type="button"
+      <div className="timeline-primary-controls">
+        <div className="timeline-play-control flex items-center gap-1.5">
+          <button
+            id="play-button"
+            type="button"
+            data-keyboard-nav-preserve
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+              isPlaying
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-green-600 hover:bg-green-700'
+            }`}
+            onClick={togglePlayback}
+            title={isPlaying ? t('timeline.pause') : t('timeline.playFromCurrentPosition')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {isPlaying ? (
+                <>
+                  <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
+                  <rect x="14" y="6" width="4" height="12" rx="1" fill="white" />
+                </>
+              ) : (
+                <path d="M8 5.14v14l11-7-11-7z" fill="white" />
+              )}
+            </svg>
+          </button>
+          <span className="timeline-play-label text-[11px] text-muted-foreground">{t('timeline.playFromCursor')}</span>
+        </div>
+
+        <div id="time-display" dir="ltr"
           data-keyboard-nav-preserve
-          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shadow-sm ${
-            isPlaying
-              ? 'bg-red-600 hover:bg-red-700'
-              : 'bg-green-600 hover:bg-green-700'
-          }`}
-          onClick={togglePlayback}
-          title={isPlaying ? t('timeline.pause') : t('timeline.playFromCurrentPosition')}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            {isPlaying ? (
-              <>
-                <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
-                <rect x="14" y="6" width="4" height="12" rx="1" fill="white" />
-              </>
-            ) : (
-              <path d="M8 5.14v14l11-7-11-7z" fill="white" />
-            )}
-          </svg>
-        </button>
-        <span className="text-[11px] text-muted-foreground">{t('timeline.playFromCursor')}</span>
+          className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border min-w-[140px] max-w-full break-words text-center">
+          {timeDisplayText}
+        </div>
+        <button type="button" id="timeline-options-toggle" className="timeline-mobile-toggle"
+          aria-expanded={optionsOpen}
+          aria-controls="timeline-recording-options timeline-zoom-options timeline-player-options"
+          aria-label={t('timeline.playbackOptions')}
+          onClick={onToggleOptions}>{t('timeline.options')}</button>
       </div>
 
-      {/* Current time display. Pinned LTR like the timeline track below it:
+      {/* Pinned LTR like the timeline track below it:
           "previous recording" stays on the left, pointing back in time. */}
-      <div className="flex items-center gap-1" dir="ltr">
+      <div id="timeline-recording-options" className="timeline-recording-options flex flex-wrap items-center gap-1 min-w-0 max-w-full" dir="ltr">
         <button
           type="button"
           data-keyboard-nav-preserve
@@ -313,11 +340,7 @@ export function TimelineControls() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div id="time-display"
-          data-keyboard-nav-preserve
-          className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border min-w-[140px] text-center">
-          {timeDisplayText}
-        </div>
+
         {currentRecordingId && (
           <button
             type="button"
@@ -380,7 +403,7 @@ export function TimelineControls() {
         </button>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div id="timeline-zoom-options" className="timeline-zoom-options flex items-center gap-1">
         <button
           type="button"
           data-keyboard-nav-preserve

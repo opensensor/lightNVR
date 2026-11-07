@@ -39,6 +39,7 @@ import {
   getLocalDayBounds,
   getTimelineDayLengthHours,
   localClockTimeToTimestamp,
+  normalizeTimelineRange,
   panTimelineRange,
   reconcileTimelineSegments,
   resolveActiveSegmentIndex,
@@ -153,6 +154,23 @@ const timelineState: TimelineState = {
     if (this.isNotifying) {
       this.pendingUpdates = { ...this.pendingUpdates, ...newState };
       return;
+    }
+
+    // Follow recording changes across gaps without undoing deliberate pan/zoom.
+    // Ordinary media-clock updates do not recenter a view the operator has moved.
+    if (newState.currentSegmentIndex !== undefined && newState.currentSegmentIndex >= 0 &&
+        newState.currentSegmentIndex !== this.currentSegmentIndex &&
+        newState.currentTime != null && newState.timelineStartHour === undefined &&
+        newState.timelineEndHour === undefined && !this.userControllingCursor) {
+      const day = newState.selectedDate ?? this.selectedDate;
+      const hour = timestampToTimelineOffset(newState.currentTime, day);
+      const start = this.timelineStartHour ?? 0;
+      const end = this.timelineEndHour ?? getTimelineDayLengthHours(day);
+      if (hour !== null && (hour < start || hour > end)) {
+        const range = end - start;
+        const next = normalizeTimelineRange(hour - range / 2, hour + range / 2, getTimelineDayLengthHours(day));
+        newState = {...newState, timelineStartHour: next.startHour, timelineEndHour: next.endHour};
+      }
     }
 
     Object.assign(this, newState);
@@ -273,6 +291,8 @@ export function TimelinePage() {
   const recordingIds = idsMode ? urlParams.ids : '';
 
   // State
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const [streamsList, setStreamsList] = useState<StreamSummary[]>([]);
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
   const [selectedCameraUuid, setSelectedCameraUuid] = useState(urlParams.cameraUuid);
@@ -287,6 +307,23 @@ export function TimelinePage() {
     urlParams.nav === 'fine' ? 'fine' : 'broad'
   );
   const [timelineContainer, setTimelineContainer] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const closeDisclosure = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.key !== 'Escape' || event.defaultPrevented || !(target instanceof Element) ||
+          !target.closest('.timeline-page') || target.closest('[role="dialog"]')) return;
+      if (optionsOpen) {
+        setOptionsOpen(false);
+        document.getElementById('timeline-options-toggle')?.focus();
+      } else if (contextOpen) {
+        setContextOpen(false);
+        document.getElementById('timeline-context-toggle')?.focus();
+      }
+    };
+    window.addEventListener('keydown', closeDisclosure);
+    return () => window.removeEventListener('keydown', closeDisclosure);
+  }, [optionsOpen, contextOpen]);
 
   // Refs
   const timelineContainerRef = useCallback((node: HTMLDivElement | null) => {
@@ -882,8 +919,7 @@ export function TimelinePage() {
     });
   }, [idsMode, idsTimelineSegments, selectedRecordingMap]);
 
-  const loadSegmentsIntoTimeline = useCallback((rawSegments: TimelineSegment[] | null | undefined, effectiveDate: string, options: { successMessage?: string | null } = {}) => {
-    const { successMessage = null } = options;
+  const loadSegmentsIntoTimeline = useCallback((rawSegments: TimelineSegment[] | null | undefined, effectiveDate: string) => {
     const segmentsCopy: TimelineSegment[] = JSON.parse(JSON.stringify(rawSegments || []));
 
     if (segmentsCopy.length === 0) {
@@ -1045,9 +1081,6 @@ export function TimelinePage() {
 
     }
 
-    if (successMessage) {
-      showStatusMessage(successMessage, 'success');
-    }
     return true;
   }, []);
 
@@ -1144,8 +1177,6 @@ export function TimelinePage() {
           // Build a pseudo-stream name from unique streams
           const uniqueStreams = [...new Set(segs.map(s => s.stream))];
           setSelectedStream(uniqueStreams.join(', '));
-
-          showStatusMessage(t(availableDates.length === 1 ? 'timeline.loadedSelectedSegmentsOneDay' : 'timeline.loadedSelectedSegmentsManyDays', { count: segs.length, days: availableDates.length }), 'success');
         } else {
           setIdsTimelineSegments([]);
           loadSegmentsIntoTimeline([], selectedDate);
@@ -1255,9 +1286,7 @@ export function TimelinePage() {
       return;
     }
 
-    loadSegmentsIntoTimeline(timelineSegments, selectedDate, {
-      successMessage: `Loaded ${timelineSegments.length} recording segments`
-    });
+    loadSegmentsIntoTimeline(timelineSegments, selectedDate);
   }, [timelineData, timelineError, selectedDate, loadSegmentsIntoTimeline]);
 
   // Transparent polling: silently fetch for new recordings every 30 s (normal mode only)
@@ -1438,7 +1467,7 @@ export function TimelinePage() {
     }
 
     return (
-      <>
+      <div className="timeline-workspace" data-options-open={optionsOpen}>
         {/* Video player */}
         <TimelinePlayer
           videoElementRef={videoElementRef}
@@ -1448,9 +1477,9 @@ export function TimelinePage() {
         />
 
         {/* Playback controls (includes time display) */}
-        <TimelineControls />
+        <TimelineControls optionsOpen={optionsOpen} onToggleOptions={() => setOptionsOpen(open => !open)} />
 
-        <div className="mb-2 flex justify-end">
+        <div className="timeline-keyboard-hint mb-2 flex justify-end">
           <span
             data-testid="timeline-keyboard-nav-mode"
             className="rounded border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground"
@@ -1476,14 +1505,14 @@ export function TimelinePage() {
           {/* Inline hint — hidden on small screens where it would overlap and
               obscure the (already compressed) timeline segments (#453). The same
               guidance is available in the collapsible "How to use" help panel. */}
-          <div className="hidden sm:block absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
+          <div className="timeline-inline-hint hidden sm:block absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
             {t('timeline.inlineHint')}
           </div>
         </div>
 
         {/* Legend — explains the segment colours so users know what the green
             (detection) bars mean without hunting through the help panel (#454). */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[11px] text-muted-foreground">
+        <div className="timeline-legend flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <span
               className="inline-block w-3 h-3 rounded-sm"
@@ -1505,7 +1534,7 @@ export function TimelinePage() {
             {t('timeline.legend.detection')}
           </span>
         </div>
-      </>
+      </div>
     );
   };
 
@@ -1515,7 +1544,7 @@ export function TimelinePage() {
 
   return (
     <div className="timeline-page">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
+      <div className="timeline-heading flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
         <h1 className="text-2xl font-bold">
           {idsMode ? t('timeline.selectedRecordingsTimeline') : t('timeline.timelinePlayback')}
         </h1>
@@ -1526,6 +1555,15 @@ export function TimelinePage() {
         start={navigationBounds?.startTimestamp} end={navigationBounds?.endTimestamp} cursor={timelineState.currentTime} />
 
 
+      <div className="timeline-context" data-context-open={contextOpen}>
+        <button type="button" id="timeline-context-toggle" className="timeline-mobile-toggle timeline-context-toggle"
+          aria-expanded={contextOpen} aria-controls="timeline-context-fields"
+          aria-label={t('timeline.cameraAndDate')}
+          onClick={() => setContextOpen(open => !open)}>
+          <span>{idsMode ? t('timeline.recordingsCount', {count: segments.length}) : selectedStream || t('nav.streams')} · {formatDisplayDate(selectedDate)}</span>
+          <span aria-hidden="true">{contextOpen ? '−' : '+'}</span>
+        </button>
+      <div id="timeline-context-fields">
       {idsMode ? (
         /* IDs mode: compact info bar */
         <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-secondary rounded-lg text-sm">
@@ -1620,6 +1658,9 @@ export function TimelinePage() {
           )}
         </div>
       )}
+
+      </div>
+      </div>
 
       {/* Content */}
       {renderContent()}

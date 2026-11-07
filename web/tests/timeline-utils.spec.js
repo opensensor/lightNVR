@@ -15,6 +15,7 @@ import {
   getSteppedVideoTime,
   resolvePlaybackStreamName,
   resolveActiveSegmentIndex,
+  resolveTimelineSeek,
   formatTimestampAsClock,
   formatTimelineOffsetLabel,
   getAvailableDatesForSegments,
@@ -757,5 +758,17 @@ describe('timelineUtils', () => {
       timestamp: bounds.startTimestamp - 0.2,
       snapped: false
     });
+  });
+});
+
+
+describe('timeline scrub resolution', () => {
+  const segments = [{start_timestamp:100,end_timestamp:130},{start_timestamp:220,end_timestamp:250}];
+  test.each([[115,0,115,false],[160,0,130,true],[200,1,220,true],[90,0,100,true],[260,1,250,true],[220,1,220,false]])(
+    'resolves %s to the actual recording clock', (time,index,timestamp,inGap) => {
+      expect(resolveTimelineSeek(segments,time)).toEqual({index,timestamp,inGap});
+    });
+  test('an empty day does not invent footage',()=>{
+    expect(resolveTimelineSeek([],100)).toEqual({index:-1,timestamp:100,inGap:false});
   });
 });

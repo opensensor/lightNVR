@@ -587,6 +587,18 @@ export function findNearestSegmentIndex(segments: MaybeRanges, timestamp: number
   return bestIndex;
 }
 
+/** Resolve a scrub to actual footage so the media clock and playhead cannot disagree in a gap. */
+export function resolveTimelineSeek(segments: MaybeRanges, timestamp: number) {
+  const containingIndex = findContainingSegmentIndex(segments, timestamp);
+  const index = containingIndex >= 0 ? containingIndex : findNearestSegmentIndex(segments, timestamp);
+  const segment = segments?.[index];
+  return {
+    index,
+    timestamp: segment ? Math.min(segment.end_timestamp, Math.max(segment.start_timestamp, timestamp)) : timestamp,
+    inGap: index >= 0 && containingIndex < 0,
+  };
+}
+
 export function resolveActiveSegmentIndex(segments: MaybeRanges, currentSegmentIndex: number, timestamp: number | null | undefined = null): number {
   if (!Array.isArray(segments) || segments.length === 0) {
     return -1;

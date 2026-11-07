@@ -9,11 +9,13 @@ import { timelineState } from './TimelinePage.tsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
+  resolveTimelineSeek,
   formatPlaybackTimeLabel,
   getTimelinePreviewFrameIndex,
   getClippedSegmentHourRange
 } from './timelineUtils.ts';
 import { formatLocalTime } from '../../../utils/date-utils.ts';
+import { showStatusMessage } from '../ToastContainer.tsx';
 import { useI18n } from '../../../i18n.ts';
 import type { TimelineDragPreview, TimelineDetectionInterval, TimelineSegment } from '../../../types/timeline.ts';
 
@@ -104,6 +106,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
     if (!container) return;
 
     const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
       // Handle clicks on the container, clickable area, or directly on segments
       const target = e.target;
       const isElementTarget = target instanceof Element;
@@ -163,12 +166,14 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
         return;
       }
 
+      const target = resolveTimelineSeek(segments, finalSeek.timestamp);
+      if (target.inGap) showStatusMessage(t('timeline.gapSeek'), 'info');
       timelineState.setState({
-        currentTime: finalSeek.timestamp,
+        currentTime: target.timestamp,
         prevCurrentTime: timelineState.currentTime,
-        isPlaying: shouldResume && finalSeek.targetIndex >= 0,
-        currentSegmentIndex: finalSeek.targetIndex,
-        forceReload: finalSeek.targetIndex >= 0,
+        isPlaying: shouldResume && target.index >= 0,
+        currentSegmentIndex: target.index,
+        forceReload: target.index >= 0,
         userControllingCursor: false,
         preserveCursorPosition: false,
         cursorPositionLocked: false,
@@ -217,7 +222,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
 
   const showDragPreview = ({ timestamp, targetIndex, positionPercent }: TimelineClickTarget) => {
     const segment = segments[targetIndex];
-    if (!segment || segment.id === null || segment.id === undefined) {
+    if (!segment || timestamp < segment.start_timestamp || timestamp > segment.end_timestamp || segment.id === null || segment.id === undefined) {
       setDragPreview(null);
       return;
     }
