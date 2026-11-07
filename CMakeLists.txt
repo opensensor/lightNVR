@@ -681,7 +681,7 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
 # Add HLS sources
-file(GLOB HLS_SOURCES "src/video/hls/*.c")
+file(GLOB CONFIGURE_DEPENDS HLS_SOURCES "src/video/hls/*.c")
 # hls_unified_thread.c is added explicitly via HLS_UNIFIED_THREAD_SOURCES below.
 # Exclude it here to avoid duplicate source listing.
 list(FILTER HLS_SOURCES EXCLUDE REGEX ".*hls_unified_thread\\.c$")
